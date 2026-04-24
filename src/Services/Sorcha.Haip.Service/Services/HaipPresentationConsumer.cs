@@ -3,6 +3,7 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Sorcha.Haip.Service.Models;
 using Sorcha.PresentationLifecycle.Abstractions;
 
@@ -30,7 +31,20 @@ public sealed class HaipPresentationConsumer : IPresentationConsumer
         object verifierPayload,
         CancellationToken cancellationToken)
     {
-        if (verifierPayload is not VerificationResult result)
+        // The Blueprint callback endpoint accepts the body as a JsonElement and
+        // forwards it opaquely — per the IPresentationConsumer contract, the
+        // consumer is responsible for deserialising the payload into its own
+        // types. An in-process test double can also pass a VerificationResult
+        // directly; handle both.
+        var result = verifierPayload switch
+        {
+            VerificationResult vr => vr,
+            JsonElement je => je.Deserialize<VerificationResult>(
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }),
+            _ => null
+        };
+
+        if (result is null)
         {
             _logger.LogWarning(
                 "HAIP consumer received unexpected verifier payload type {Type} for requestId {RequestId}",

@@ -147,11 +147,29 @@ public class RedisPendingPresentationStoreTests
             })
             .ReturnsAsync(true);
 
-        var ok = await _store.TryClaimOutcomeSentinelAsync(id, "claimant-1");
+        var ok = await _store.TryClaimOutcomeSentinelAsync(id, "claimant-1", validityWindowSeconds: 300);
 
         ok.Should().BeTrue();
         capturedWhen.Should().Be(When.NotExists);
         capturedKey!.Value.ToString().Should().Be($"sorcha:presentation:outcome-sentinel:{id}");
+    }
+
+    [Fact]
+    public async Task TryClaimOutcomeSentinelAsync_TtlHonoursValidityWindow()
+    {
+        // Regression guard for claude-review bug #2: sentinel TTL must track the
+        // blueprint's validity window plus the 1h overshoot, not a hardcoded 600s.
+        TimeSpan? capturedTtl = null;
+        _mockDb.Setup(d => d.StringSetAsync(
+                It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan?>(), It.IsAny<When>()))
+            .Callback<RedisKey, RedisValue, TimeSpan?, When>((_, _, ttl, _) => capturedTtl = ttl)
+            .ReturnsAsync(true);
+
+        await _store.TryClaimOutcomeSentinelAsync(Guid.NewGuid(), "c", validityWindowSeconds: 1800);
+
+        // 1800s validity + 1h overshoot
+        capturedTtl.Should().Be(TimeSpan.FromSeconds(1800) + TimeSpan.FromHours(1));
     }
 
     [Fact]
@@ -162,7 +180,7 @@ public class RedisPendingPresentationStoreTests
                 It.IsAny<TimeSpan?>(), It.IsAny<When>()))
             .ReturnsAsync(false);
 
-        var ok = await _store.TryClaimOutcomeSentinelAsync(Guid.NewGuid(), "claimant-2");
+        var ok = await _store.TryClaimOutcomeSentinelAsync(Guid.NewGuid(), "claimant-2", validityWindowSeconds: 300);
 
         ok.Should().BeFalse();
     }

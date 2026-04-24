@@ -256,7 +256,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         if (!isLateAfterAbandonment)
         {
             var claimed = await _pendingStore.TryClaimOutcomeSentinelAsync(
-                presentationRequestId, "outcome-pending-write", cancellationToken);
+                presentationRequestId, "outcome-pending-write",
+                pending.ValidityWindowSeconds, cancellationToken);
             if (!claimed)
             {
                 // Lost the race to a concurrent outcome call; treat as replay.
@@ -347,7 +348,9 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             (false, PresentationOutcomeKind.Decline) => "decline",
             _ => "decline"
         };
-        await _pendingStore.SetOutcomeSentinelAsync(presentationRequestId, finalSentinel, cancellationToken);
+        await _pendingStore.SetOutcomeSentinelAsync(
+            presentationRequestId, finalSentinel,
+            pending.ValidityWindowSeconds, cancellationToken);
 
         _logger.LogInformation(
             "PresentationOutcome tx {TxId} written for requestId {RequestId} kind={Kind} sentinel={Sentinel}",

@@ -30,7 +30,14 @@ public interface IPendingPresentationStore
     /// true if the caller is the first writer (expected to proceed with writing
     /// the outcome transaction); false if another party already claimed it.
     /// </summary>
-    Task<bool> TryClaimOutcomeSentinelAsync(Guid presentationRequestId, string claimantValue, CancellationToken ct = default);
+    /// <param name="validityWindowSeconds">The pending-presentation validity window
+    /// for this attempt. Sentinel TTL overshoots this by an implementation-defined
+    /// grace (1h) so late callbacks after abandonment still find the sentinel.</param>
+    Task<bool> TryClaimOutcomeSentinelAsync(
+        Guid presentationRequestId,
+        string claimantValue,
+        int validityWindowSeconds,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Read the current outcome sentinel value. Returns null if unset.
@@ -43,7 +50,14 @@ public interface IPendingPresentationStore
     /// "success"/"decline" after the outcome tx is written, or to mark
     /// "abandoned+outcome" after a late callback).
     /// </summary>
-    Task SetOutcomeSentinelAsync(Guid presentationRequestId, string value, CancellationToken ct = default);
+    /// <param name="validityWindowSeconds">The pending-presentation validity window
+    /// for this attempt. Sentinel TTL overshoots this by an implementation-defined
+    /// grace (1h).</param>
+    Task SetOutcomeSentinelAsync(
+        Guid presentationRequestId,
+        string value,
+        int validityWindowSeconds,
+        CancellationToken ct = default);
 
     /// <summary>
     /// List keys of pending attempts whose TTL is at or below the given threshold,

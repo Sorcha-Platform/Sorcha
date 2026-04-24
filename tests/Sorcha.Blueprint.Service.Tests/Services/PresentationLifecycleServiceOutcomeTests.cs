@@ -106,12 +106,12 @@ public class PresentationLifecycleServiceOutcomeTests
             .ReturnsAsync(MakePending(id));
         _store.Setup(s => s.GetOutcomeSentinelAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
-        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         string? capturedSentinel = null;
-        _store.Setup(s => s.SetOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback<Guid, string, CancellationToken>((_, v, _) => capturedSentinel = v)
+        _store.Setup(s => s.SetOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, string, int, CancellationToken>((_, v, _, _) => capturedSentinel = v)
             .Returns(Task.CompletedTask);
 
         var svc = Make(new FakeConsumer(new PresentationOutcome(
@@ -136,11 +136,11 @@ public class PresentationLifecycleServiceOutcomeTests
         var id = Guid.NewGuid();
         _store.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(MakePending(id));
         _store.Setup(s => s.GetOutcomeSentinelAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
-        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         string? captured = null;
-        _store.Setup(s => s.SetOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback<Guid, string, CancellationToken>((_, v, _) => captured = v)
+        _store.Setup(s => s.SetOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, string, int, CancellationToken>((_, v, _, _) => captured = v)
             .Returns(Task.CompletedTask);
 
         var svc = Make(new FakeConsumer(new PresentationOutcome(
@@ -172,7 +172,7 @@ public class PresentationLifecycleServiceOutcomeTests
 
         result.IsIdempotentReplay.Should().BeTrue();
         result.OutcomeTransactionId.Should().BeEmpty();
-        _store.Verify(s => s.SetOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _store.Verify(s => s.SetOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -181,7 +181,7 @@ public class PresentationLifecycleServiceOutcomeTests
         var id = Guid.NewGuid();
         _store.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(MakePending(id));
         _store.Setup(s => s.GetOutcomeSentinelAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
-        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var svc = Make(new FakeConsumer(new PresentationOutcome(
@@ -199,8 +199,8 @@ public class PresentationLifecycleServiceOutcomeTests
         _store.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(MakePending(id));
         _store.Setup(s => s.GetOutcomeSentinelAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync("abandoned");
         string? captured = null;
-        _store.Setup(s => s.SetOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback<Guid, string, CancellationToken>((_, v, _) => captured = v)
+        _store.Setup(s => s.SetOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, string, int, CancellationToken>((_, v, _, _) => captured = v)
             .Returns(Task.CompletedTask);
 
         var svc = Make(new FakeConsumer(new PresentationOutcome(
@@ -211,7 +211,7 @@ public class PresentationLifecycleServiceOutcomeTests
         result.IsLateAfterAbandonment.Should().BeTrue();
         result.IsIdempotentReplay.Should().BeFalse();
         captured.Should().Be("abandoned+outcome");
-        _store.Verify(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _store.Verify(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

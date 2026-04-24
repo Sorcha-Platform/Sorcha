@@ -68,22 +68,65 @@ public sealed class RedisPendingPresentationStore : IPendingPresentationStore
 
         var map = entries.ToDictionary(e => (string)e.Name!, e => (string)e.Value!);
 
+        // Guard against partial writes (crash after HashSet but before KeyExpire,
+        // or field schema drift). Missing required fields → null + warning
+        // rather than an unhandled KeyNotFoundException bubbling up through the
+        // callback endpoint.
+        string? Required(string field)
+        {
+            if (map.TryGetValue(field, out var v) && !string.IsNullOrEmpty(v)) return v;
+            _logger.LogWarning(
+                "Pending presentation {RequestId} missing required field {Field} — treating as expired/corrupt",
+                presentationRequestId, field);
+            return null;
+        }
+
+        var instanceIdStr = Required("instanceId");
+        var actionIdStr = Required("actionId");
+        var registerId = Required("registerId");
+        var blueprintId = Required("blueprintId");
+        var submitterWallet = Required("submitterWallet");
+        var consumerName = Required("consumerName");
+        var digest = Required("credentialRequirementDigest");
+        var validityStr = Required("validityWindowSeconds");
+        var createdAtStr = Required("createdAt");
+
+        if (instanceIdStr is null || actionIdStr is null || registerId is null ||
+            blueprintId is null || submitterWallet is null || consumerName is null ||
+            digest is null || validityStr is null || createdAtStr is null)
+        {
+            return null;
+        }
+
+        if (!Guid.TryParse(instanceIdStr, out var instanceId) ||
+            !int.TryParse(actionIdStr, out var actionId) ||
+            !int.TryParse(validityStr, out var validity) ||
+            !DateTimeOffset.TryParse(createdAtStr, out var createdAt))
+        {
+            _logger.LogWarning(
+                "Pending presentation {RequestId} has malformed field values — treating as expired/corrupt",
+                presentationRequestId);
+            return null;
+        }
+
         return new PendingPresentation
         {
             PresentationRequestId = presentationRequestId,
-            InstanceId = Guid.Parse(map["instanceId"]),
-            ActionId = int.Parse(map["actionId"]),
-            RegisterId = map["registerId"],
-            BlueprintId = map["blueprintId"],
-            SubmitterWallet = map["submitterWallet"],
-            ConsumerName = map["consumerName"],
-            DraftPayloadJson = map["draftPayload"],
-            CredentialRequirementDigestHex = map["credentialRequirementDigest"],
-            DelegationToken = string.IsNullOrEmpty(map["delegationToken"]) ? null : map["delegationToken"],
-            RecordAbandonment = map["recordAbandonment"] == "true",
-            OutcomeDetailLevel = map["outcomeDetailLevel"],
-            ValidityWindowSeconds = int.Parse(map["validityWindowSeconds"]),
-            CreatedAt = DateTimeOffset.Parse(map["createdAt"])
+            InstanceId = instanceId,
+            ActionId = actionId,
+            RegisterId = registerId,
+            BlueprintId = blueprintId,
+            SubmitterWallet = submitterWallet,
+            ConsumerName = consumerName,
+            DraftPayloadJson = map.GetValueOrDefault("draftPayload", string.Empty),
+            CredentialRequirementDigestHex = digest,
+            DelegationToken = string.IsNullOrEmpty(map.GetValueOrDefault("delegationToken"))
+                ? null
+                : map["delegationToken"],
+            RecordAbandonment = map.GetValueOrDefault("recordAbandonment") == "true",
+            OutcomeDetailLevel = map.GetValueOrDefault("outcomeDetailLevel", "minimal"),
+            ValidityWindowSeconds = validity,
+            CreatedAt = createdAt
         };
     }
 
@@ -93,13 +136,17 @@ public sealed class RedisPendingPresentationStore : IPendingPresentationStore
         return db.KeyDeleteAsync(PendingKey(presentationRequestId));
     }
 
-    public async Task<bool> TryClaimOutcomeSentinelAsync(Guid presentationRequestId, string claimantValue, CancellationToken ct = default)
+    public async Task<bool> TryClaimOutcomeSentinelAsync(
+        Guid presentationRequestId,
+        string claimantValue,
+        int validityWindowSeconds,
+        CancellationToken ct = default)
     {
         var db = _redis.GetDatabase();
         var key = SentinelKey(presentationRequestId);
-        // Use conditional SET to realise NX semantics. TTL overshoots the pending
-        // TTL so late callbacks after abandonment can still read the sentinel.
-        var ttl = TimeSpan.FromSeconds(600) + SentinelOvershootTtl; // placeholder; caller usually aligns separately
+        // TTL overshoots the pending window so late callbacks after abandonment
+        // still find the sentinel (research R6).
+        var ttl = TimeSpan.FromSeconds(validityWindowSeconds) + SentinelOvershootTtl;
         return await db.StringSetAsync(key, claimantValue, ttl, When.NotExists);
     }
 
@@ -110,10 +157,14 @@ public sealed class RedisPendingPresentationStore : IPendingPresentationStore
         return value.HasValue ? value.ToString() : null;
     }
 
-    public async Task SetOutcomeSentinelAsync(Guid presentationRequestId, string value, CancellationToken ct = default)
+    public async Task SetOutcomeSentinelAsync(
+        Guid presentationRequestId,
+        string value,
+        int validityWindowSeconds,
+        CancellationToken ct = default)
     {
         var db = _redis.GetDatabase();
-        var ttl = TimeSpan.FromSeconds(600) + SentinelOvershootTtl;
+        var ttl = TimeSpan.FromSeconds(validityWindowSeconds) + SentinelOvershootTtl;
         await db.StringSetAsync(SentinelKey(presentationRequestId), value, ttl);
     }
 

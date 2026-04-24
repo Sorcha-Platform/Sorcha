@@ -41,24 +41,30 @@ public static class PresentationEndpoints
                     _ => "unknown"
                 };
 
+                // The presentationRequestId appears in the QR URI sent to the
+                // citizen's wallet app, which polls this endpoint unauthenticated.
+                // The response is deliberately scoped to lifecycle state + expiry
+                // only — register/instance/action/consumer metadata is never
+                // returned here, to prevent anyone holding a leaked QR URI from
+                // probing register structure. Full history lives on the register
+                // transaction stream under its own authorisation rules.
                 return Results.Ok(new PresentationStatusResponse
                 {
                     PresentationRequestId = presentationRequestId,
                     State = state,
-                    ConsumerName = pending?.ConsumerName,
-                    InstanceId = pending?.InstanceId,
-                    ActionId = pending?.ActionId,
-                    RegisterId = pending?.RegisterId,
                     ExpiresAt = pending is not null
                         ? pending.CreatedAt.AddSeconds(pending.ValidityWindowSeconds)
                         : null
                 });
             })
+            .AllowAnonymous()
             .WithName("GetPresentationStatus")
-            .WithSummary("Get the current status of a presentation lifecycle")
+            .WithSummary("Get the current lifecycle state of a presentation attempt")
             .WithDescription(
-                "Returns the current lifecycle state of a presentation attempt: " +
-                "awaiting-presentation, success, decline, abandoned, abandoned-with-late-outcome, or expired. " +
+                "Returns only the lifecycle state (awaiting-presentation / success / " +
+                "decline / abandoned / abandoned-with-late-outcome / expired) and the " +
+                "attempt expiry. Wallet-facing and polled unauthenticated by the QR " +
+                "scanner; no instance, register, or consumer metadata is included. " +
                 "The register's transaction stream is the authoritative history.");
 
         app.MapPost("/callbacks/{consumerName}", async (
@@ -98,15 +104,13 @@ public static class PresentationEndpoints
 }
 
 /// <summary>
-/// Response shape for <c>GET /api/presentations/{id}/status</c>.
+/// Response shape for <c>GET /api/presentations/{id}/status</c>. Deliberately
+/// minimal — wallet-facing endpoint returns state + expiry only, no register
+/// or instance metadata (see security review on PR #382).
 /// </summary>
 public sealed record PresentationStatusResponse
 {
     public required Guid PresentationRequestId { get; init; }
     public required string State { get; init; }
-    public string? ConsumerName { get; init; }
-    public Guid? InstanceId { get; init; }
-    public int? ActionId { get; init; }
-    public string? RegisterId { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
 }
