@@ -21,7 +21,7 @@ Import-Module $modulePath -Force
 
 # ── Environment ───────────────────────────────────────────────────
 $sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
-$secrets = Get-SorchaSecrets -WalkthroughName "council"
+$secrets = Get-SorchaSecrets -WalkthroughName "council" -Profile $Profile
 
 Write-WtBanner "Strathcarron Council Universe Setup"
 

@@ -22,7 +22,7 @@ Import-Module $modulePath -Force
 
 Write-WtBanner "AssuredIdentity — Setup"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "assured-identity"
+$secrets = Get-SorchaSecrets -WalkthroughName "assured-identity" -Profile $Profile
 $sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path

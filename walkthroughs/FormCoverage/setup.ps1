@@ -24,7 +24,7 @@ Import-Module $modulePath -Force
 
 Write-WtBanner "FormCoverage — Demo Setup"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "form-coverage"
+$secrets = Get-SorchaSecrets -WalkthroughName "form-coverage" -Profile $Profile
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path

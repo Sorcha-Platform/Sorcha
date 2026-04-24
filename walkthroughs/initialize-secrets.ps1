@@ -50,7 +50,19 @@ $secrets = [ordered]@{
     "_meta" = @{
         generatedAt = (Get-Date -Format "o")
         description = "Auto-generated walkthrough credentials. Do NOT commit to source control."
-        note        = "All walkthroughs use the platform seed admin (DatabaseInitializer defaults)."
+        note        = "All walkthroughs use the platform seed admin (DatabaseInitializer defaults). Use _profiles to override admin creds per deployment target. Get-SorchaSecrets -Profile <name> applies _profiles.<name> over the walkthrough's base keys."
+    }
+    "_profiles" = [ordered]@{
+        n1 = [ordered]@{
+            adminEmail              = "admin@sorcha.dev"
+            adminPassword           = "Dev_Pass_2026!"
+            sysAdminEmail           = "admin@sorcha.dev"
+            sysAdminPassword        = "Dev_Pass_2026!"
+            meridianAdminEmail      = "admin@sorcha.dev"
+            meridianAdminPassword   = "Dev_Pass_2026!"
+            highlandAdminEmail      = "admin@sorcha.dev"
+            highlandAdminPassword   = "Dev_Pass_2026!"
+        }
     }
     "platform" = @{
         adminEmail    = $platformEmail

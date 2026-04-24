@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -18,7 +18,7 @@ Import-Module $modulePath -Force
 
 Write-WtBanner "DistributedRegister — Setup (Local)"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "dist-register"
+$secrets = Get-SorchaSecrets -WalkthroughName "dist-register" -Profile $Profile
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 $admin = Connect-SorchaAdmin `

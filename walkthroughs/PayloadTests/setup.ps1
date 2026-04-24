@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -24,7 +24,7 @@ Import-Module $modulePath -Force
 
 Write-WtBanner "PayloadTests — Multi-Org Setup"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "payload-test"
+$secrets = Get-SorchaSecrets -WalkthroughName "payload-test" -Profile $Profile
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path

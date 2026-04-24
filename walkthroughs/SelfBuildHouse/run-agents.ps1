@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Launches autonomous actor agents for the SelfBuildHouse walkthrough.
 .DESCRIPTION
@@ -35,7 +35,7 @@ if (-not (Test-Path $StatePath)) {
 }
 
 $state = Get-Content $StatePath -Raw | ConvertFrom-Json
-$secrets = Get-SorchaSecrets -WalkthroughName "self-build-house"
+$secrets = Get-SorchaSecrets -WalkthroughName "self-build-house" -Profile $Profile
 
 # Resolve URLs
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck

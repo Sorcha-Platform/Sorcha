@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -35,7 +35,7 @@ Import-Module $modulePath -Force
 
 Write-WtBanner "ConstructionPermit — Multi-Org Setup"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "construction-permit"
+$secrets = Get-SorchaSecrets -WalkthroughName "construction-permit" -Profile $Profile
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 # ============================================================================

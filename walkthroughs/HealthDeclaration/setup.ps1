@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -23,7 +23,7 @@ Import-Module $modulePath -Force
 
 Write-WtBanner "HealthDeclaration — Demo Setup"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "health-declaration"
+$secrets = Get-SorchaSecrets -WalkthroughName "health-declaration" -Profile $Profile
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path

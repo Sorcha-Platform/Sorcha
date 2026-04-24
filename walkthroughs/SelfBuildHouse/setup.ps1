@@ -36,7 +36,7 @@ Import-Module $modulePath -Force
 
 Write-WtBanner "SelfBuildHouse — Multi-Org Setup"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "self-build-house"
+$secrets = Get-SorchaSecrets -WalkthroughName "self-build-house" -Profile $Profile
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
