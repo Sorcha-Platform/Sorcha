@@ -639,6 +639,25 @@ public class BuiltTransaction
     {
         var payloadElement = JsonSerializer.Deserialize<JsonElement>(TransactionData);
 
+        var submissionMetadata = new Dictionary<string, string>
+        {
+            ["instanceId"] = Metadata.GetValueOrDefault("instanceId")?.ToString() ?? string.Empty,
+            ["Type"] = MapTransactionTypeName(TransactionType)
+        };
+
+        // Feature 111 — propagate lifecycle markers onto the sealed transaction's
+        // TrackingData so retry-gating (US3) and audit consumers can query outcome
+        // kind without decrypting payloads. Key names are sourced from
+        // Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys
+        // so the writer here and the reader in AssertNoPriorSuccessfulPresentationAsync
+        // cannot drift apart.
+        if (Metadata.TryGetValue(Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.OutcomeKind, out var outcomeKind) && outcomeKind is not null)
+            submissionMetadata[Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.OutcomeKind] = outcomeKind.ToString()!;
+        if (Metadata.TryGetValue(Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.PresentationRequestId, out var reqId) && reqId is not null)
+            submissionMetadata[Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.PresentationRequestId] = reqId.ToString()!;
+        if (Metadata.TryGetValue(Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.ConsumerName, out var consumer) && consumer is not null)
+            submissionMetadata[Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.ConsumerName] = consumer.ToString()!;
+
         return new TransactionSubmission
         {
             TransactionId = TxId,
@@ -661,11 +680,7 @@ public class BuiltTransaction
             PreviousTransactionId = Metadata.GetValueOrDefault("previousTxId")?.ToString(),
             SequenceNumber = sequenceNumber,
             RecipientsWallets = RecipientsWallets.Count > 0 ? RecipientsWallets : null,
-            Metadata = new Dictionary<string, string>
-            {
-                ["instanceId"] = Metadata.GetValueOrDefault("instanceId")?.ToString() ?? string.Empty,
-                ["Type"] = MapTransactionTypeName(TransactionType)
-            }
+            Metadata = submissionMetadata
         };
     }
 

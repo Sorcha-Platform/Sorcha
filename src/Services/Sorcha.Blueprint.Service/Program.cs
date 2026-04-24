@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using Sorcha.Blueprint.Service.Endpoints;
 using Sorcha.Blueprint.Service.Extensions;
 using Sorcha.Blueprint.Service.Hubs;
+using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.JsonLd;
 using Sorcha.Blueprint.Service.Services;
 using Sorcha.Blueprint.Schemas.Services;
@@ -1857,13 +1858,18 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/execute", async (
 
         return Results.Ok(response);
     }
-    catch (Sorcha.Blueprint.Service.Services.Implementation.PresentationRateLimitedException ex)
+    catch (PresentationRateLimitedException ex)
     {
         if (ex.RetryAfter is { } retry)
         {
             context.Response.Headers["Retry-After"] = ((int)Math.Ceiling(retry.TotalSeconds)).ToString();
         }
         return Results.Problem(ex.Message, statusCode: StatusCodes.Status429TooManyRequests);
+    }
+    catch (PresentationAlreadyCompleteException ex)
+    {
+        // Feature 111 US3 — retry gate: action already has a successful outcome.
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
     }
     catch (UnauthorizedAccessException ex)
     {
