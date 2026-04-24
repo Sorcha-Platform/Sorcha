@@ -2337,15 +2337,28 @@ public class ActionExecutionService : IActionExecutionService
     /// PresentationOutcome with kind=success exists for this instance+action.
     /// Prior decline / abandoned outcomes do NOT block — retry is a first-class flow.
     /// </summary>
+    /// <remarks>
+    /// Known limitation: scans all transactions for the instance client-side.
+    /// IRegisterServiceClient does not yet expose a transactionType filter; if
+    /// it grows one, narrow this to PresentationOutcome server-side.
+    /// </remarks>
     private async Task AssertNoPriorSuccessfulPresentationAsync(
         Sorcha.Blueprint.Service.Models.Instance instance,
         int actionId,
         CancellationToken cancellationToken)
     {
+        if (actionId < 0)
+        {
+            // Action ids are semantically non-negative. A negative value indicates
+            // a caller bug — fail loud rather than silently skipping the gate.
+            throw new ArgumentOutOfRangeException(nameof(actionId), actionId,
+                "Action id must be non-negative for presentation retry gating.");
+        }
+
         try
         {
             var transactions = await _registerClient.GetTransactionsByInstanceIdAsync(
-                instance.RegisterId, instance.Id, cancellationToken);
+                instance.RegisterId, instance.Id, cancellationToken) ?? [];
 
             foreach (var tx in transactions)
             {
@@ -2356,8 +2369,8 @@ public class ActionExecutionService : IActionExecutionService
                 // The outcome kind lives in the transaction payload metadata;
                 // on the BuiltTransaction path we set it as metadata["outcomeKind"].
                 // For register-sealed transactions, TrackingData carries the same value.
-                var kind = tx.MetaData.TrackingData?.GetValueOrDefault("outcomeKind");
-                if (string.Equals(kind, "success", StringComparison.OrdinalIgnoreCase))
+                var kind = tx.MetaData.TrackingData?.GetValueOrDefault(PresentationMetadataKeys.OutcomeKind);
+                if (string.Equals(kind, PresentationMetadataKeys.OutcomeKindSuccess, StringComparison.OrdinalIgnoreCase))
                 {
                     _logger.LogInformation(
                         "Retry gate: instance {InstanceId} action {ActionId} already has a successful PresentationOutcome (tx {TxId}); rejecting new attempt",

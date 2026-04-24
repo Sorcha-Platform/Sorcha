@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Xunit;
 
@@ -27,10 +26,29 @@ public class PresentationRetryGateTests
     }
 
     [Fact]
-    public void PresentationAlreadyCompleteException_InheritsFromException()
+    public void PresentationAlreadyCompleteException_ActionIdZero_ProducesValidMessage()
     {
-        var ex = new PresentationAlreadyCompleteException(0, "tx");
+        // Regression guard: starting action (actionId=0) is a valid case for retry
+        // gating — e.g. the first action of an AssuredIdentity flow. The exception
+        // must still produce a non-empty, human-readable message.
+        var ex = new PresentationAlreadyCompleteException(0, "tx-start");
 
-        ex.Should().BeAssignableTo<Exception>();
+        ex.ActionId.Should().Be(0);
+        ex.Message.Should().NotBeNullOrWhiteSpace();
+        ex.Message.Should().Contain("0");
+        ex.Message.Should().Contain("tx-start");
+    }
+
+    [Fact]
+    public void PresentationAlreadyCompleteException_MessageDoesNotLeakInternalState()
+    {
+        // The message is HTTP-surfaced as a 409 Problem detail. It must reference
+        // the action and the blocking transaction, but must NOT leak internal
+        // sentinel state ("success", "abandoned+outcome", etc.) — those are
+        // lifecycle-internal and not appropriate for external clients.
+        var ex = new PresentationAlreadyCompleteException(7, "tx-success-xyz");
+
+        ex.Message.Should().NotContain("abandoned+outcome");
+        ex.Message.Should().NotContain("outcome-pending-write");
     }
 }
