@@ -11,6 +11,17 @@ public sealed class TransactionalEmailService : ITransactionalEmailService
     private const string VerifySubject = "Confirm your email";
     private const string PasswordResetSubject = "Reset your password";
 
+    /// <summary>
+    /// Maximum number of characters of an organisation name that may appear in an email
+    /// subject line. Defensive mitigation against admin-set org names being used as a
+    /// phishing surface through subject previews (e.g. inbox list views). Org-name
+    /// validation at creation time is the stronger fix and tracked as a follow-up;
+    /// until that lands, longer names are ellipsised here so a pathological subject
+    /// ("Urgent: verify your account within 24 hours or…") is visibly truncated rather
+    /// than rendered in full.
+    /// </summary>
+    private const int MaxOrgNameInSubjectChars = 60;
+
     private readonly IEmailTemplateRenderer _renderer;
     private readonly IEmailBrandingResolver _branding;
     private readonly IEmailSender _sender;
@@ -57,7 +68,7 @@ public sealed class TransactionalEmailService : ITransactionalEmailService
             Branding: branding);
 
         var (html, text) = _renderer.Render("invite", model);
-        var subject = $"You're invited to join {dispatch.InvitingOrganization.Name}";
+        var subject = $"You're invited to join {TruncateForSubject(dispatch.InvitingOrganization.Name)}";
         await _sender.SendAsync(dispatch.ToEmail, subject, html, text, ct);
     }
 
@@ -122,7 +133,20 @@ public sealed class TransactionalEmailService : ITransactionalEmailService
             Branding: branding);
 
         var (html, text) = _renderer.Render("welcome-invited", model);
-        var subject = $"You've joined {context.InvitingOrganization.Name}";
+        var subject = $"You've joined {TruncateForSubject(context.InvitingOrganization.Name)}";
         await _sender.SendAsync(context.User.Email, subject, html, text, ct);
+    }
+
+    /// <summary>
+    /// Caps an organisation name at <see cref="MaxOrgNameInSubjectChars"/> characters
+    /// with a visible ellipsis when longer. Keeps email subjects readable and bounds
+    /// the phishing surface of admin-set org names until platform-wide org-name
+    /// validation is implemented as a follow-up.
+    /// </summary>
+    private static string TruncateForSubject(string orgName)
+    {
+        if (string.IsNullOrEmpty(orgName) || orgName.Length <= MaxOrgNameInSubjectChars)
+            return orgName;
+        return orgName.Substring(0, MaxOrgNameInSubjectChars) + "…";
     }
 }

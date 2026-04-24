@@ -7,28 +7,6 @@ using Sorcha.Tenant.Service.Models;
 
 namespace Sorcha.Tenant.Service.Services;
 
-/// <summary>
-/// Owns the one-shot welcome-email semantics: sends exactly one welcome per user across
-/// the lifetime of the account, regardless of how many times the verify-success or
-/// first-login trigger fires. Idempotent and non-throwing — a failed send is logged
-/// but MUST NOT block the calling authentication flow (FR-020).
-/// </summary>
-public interface IWelcomeEmailDispatcher
-{
-    /// <summary>
-    /// Sends the appropriate welcome email if the user is eligible (email verified AND
-    /// welcome not previously sent). On success, atomically sets
-    /// <see cref="PlatformUser.WelcomeSentAt"/> via an optimistic WHERE clause so two
-    /// concurrent triggers cannot both send.
-    /// </summary>
-    /// <remarks>
-    /// Swallows send exceptions after logging — verification or login flows must proceed
-    /// regardless of whether the welcome send succeeded. <see cref="PlatformUser.WelcomeSentAt"/>
-    /// is set ONLY on successful send, so a failure can be retried by the next trigger.
-    /// </remarks>
-    Task SendIfPendingAsync(PlatformUser user, CancellationToken ct);
-}
-
 /// <inheritdoc />
 public sealed class WelcomeEmailDispatcher : IWelcomeEmailDispatcher
 {
@@ -136,9 +114,10 @@ public sealed class WelcomeEmailDispatcher : IWelcomeEmailDispatcher
         // Pull memberships directly — callers aren't required to Include the navigation,
         // and mutating the navigation on a tracked entity is fragile (EF change-tracker
         // side effects). Read-only query, result used locally.
-        // Ordering is done client-side: SQLite can't ORDER BY a DateTimeOffset column
-        // (NotSupportedException at query-compile time), and the membership count per
-        // user is small enough that an in-memory sort is trivially fast.
+        // Membership count per user is bounded (a user belongs to a handful of orgs at
+        // most), so the small in-memory sort after materialisation is trivially fast
+        // and sidesteps any provider-specific quirks around ORDER BY on timezone-aware
+        // datetime columns.
         var memberships = (await _dbContext.PlatformUserOrgMemberships
             .AsNoTracking()
             .Where(m => m.PlatformUserId == user.Id)

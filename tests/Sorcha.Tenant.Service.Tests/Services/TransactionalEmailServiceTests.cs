@@ -199,6 +199,58 @@ public class TransactionalEmailServiceTests
     }
 
     [Fact]
+    public async Task SendInvitationAsync_OrgNameExceedsSubjectCap_IsEllipsisedInSubject()
+    {
+        // Defence against admin-set org names being used as a phishing surface in
+        // inbox subject-line previews. Longer than 60 chars → visible ellipsis.
+        var longName = new string('A', 100); // 100 × "A"
+        var org = new Organization { Id = Guid.NewGuid(), Name = longName };
+
+        var dispatch = new InviteEmailDispatch(
+            ToEmail: "invitee@example.com",
+            InviterName: "Admin",
+            InvitingOrganization: org,
+            RoleDisplayName: "Designer",
+            AcceptUrl: "https://sorcha.dev/invitations/accept?token=T",
+            ExpiresInDays: 7);
+
+        await _service.SendInvitationAsync(dispatch);
+
+        _sender.Verify(s => s.SendAsync(
+            "invitee@example.com",
+            It.Is<string>(sub =>
+                sub.Contains("…") &&
+                sub.Length < "You're invited to join ".Length + longName.Length),
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendInvitationAsync_OrgNameWithinCap_RendersUntruncated()
+    {
+        var shortName = "Acme";
+        var org = new Organization { Id = Guid.NewGuid(), Name = shortName };
+
+        var dispatch = new InviteEmailDispatch(
+            ToEmail: "invitee@example.com",
+            InviterName: "Admin",
+            InvitingOrganization: org,
+            RoleDisplayName: "Designer",
+            AcceptUrl: "https://sorcha.dev/invitations/accept?token=T",
+            ExpiresInDays: 7);
+
+        await _service.SendInvitationAsync(dispatch);
+
+        _sender.Verify(s => s.SendAsync(
+            "invitee@example.com",
+            "You're invited to join Acme",
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task SendWelcomeAsync_InvitedWithoutRole_Throws()
     {
         var user = new PlatformUser { Email = "x@x.com", DisplayName = "x", EmailVerified = true };
