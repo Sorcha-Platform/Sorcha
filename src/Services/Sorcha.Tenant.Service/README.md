@@ -672,6 +672,83 @@ dotnet ef migrations script --output migrations.sql
 
 ---
 
+## Transactional Email Architecture (Feature 112)
+
+All transactional email the Tenant Service sends — verification, invitation,
+password reset, and welcome — goes through a single templated pipeline. The
+entry point application code uses is `ITransactionalEmailService`.
+
+```
+Caller (EmailVerificationService / InvitationService / PasswordResetService /
+        WelcomeEmailDispatcher)
+      │
+      ▼ typed dispatch record
+ITransactionalEmailService  ← the only surface callers touch
+      │
+      ├── IEmailTemplateRenderer (Scriban, embedded resources, pre-parsed at startup)
+      │        │
+      │        ▼
+      │   Emails/Templates/*.html + .txt (six pairs; base.* is shared layout)
+      │
+      └── IEmailSender (SMTP via MailKit OR Azure Communication Services)
+               multipart HTML + plaintext on every message
+```
+
+**Templates** live under `Emails/Templates/` as embedded resources:
+
+| Name | Purpose | Branding |
+|------|---------|----------|
+| `base.html` / `base.txt` | Shared frame (logo/sender header, body, footer with reply-to) | — |
+| `verify.html` / `.txt` | Confirm-your-email after email+password signup | Sorcha |
+| `invite.html` / `.txt` | Organisation invitation, clear org name + role | Per-org (logo, colour) |
+| `reset.html` / `.txt` | Password reset link | Sorcha |
+| `welcome-public.html` / `.txt` | First-verify greeting with recovery-phrase advance warning | Sorcha |
+| `welcome-invited.html` / `.txt` | First-login greeting for org-invited users | Per-org |
+
+**Branding** is resolved per-send by `IEmailBrandingResolver`. Invitations and
+invited welcomes pull `Organization.Name` / `Branding.LogoUrl` /
+`Branding.PrimaryColor` from the inviting org with per-field fallback to Sorcha
+platform defaults — the org name always wins; any branding field missing on the
+org falls back to Sorcha's default.
+
+**Welcome email** is one-shot per user. `WelcomeEmailDispatcher.SendIfPendingAsync`
+is called from three trigger points and is idempotent (guarded by
+`PlatformUser.WelcomeSentAt`) and non-throwing (a send failure is logged but
+never reverses the authentication flow):
+
+1. `EmailVerificationService.VerifyTokenAsync` — after `EmailVerified = true`
+   on the email+password signup path
+2. `LoginService` — after a successful password login (covers users who've
+   already verified and are logging in for the first time)
+3. `SocialCallback` Razor PageModel — after successful social-login OAuth
+   exchange (social users skip verification; the IdP pre-verified the email)
+
+Variant selection is based on the user's `PlatformUserOrgMembership` rows:
+public-org-only → `welcome-public` (with recovery-phrase advance-warning
+section); any standard-org membership → `welcome-invited` with the earliest-
+joined standard org as the "inviting" org.
+
+**Design-history reference**:
+[`docs/superpowers/specs/2026-04-24-email-sweep-design.md`](../../../docs/superpowers/specs/2026-04-24-email-sweep-design.md)
+carries the full design rationale. The feature spec, plan, tasks, and contracts
+live under [`specs/112-email-sweep/`](../../../specs/112-email-sweep/).
+
+**Snapshot fixtures** for every template pair are committed under
+`tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/`. When a deliberate copy
+change is made to a template, regenerate fixtures with
+`UPDATE_EMAIL_FIXTURES=1 dotnet test --filter "~EmailTemplateSnapshotTests"`.
+
+### Tone and content guardrails
+
+- Single clear action per message (one CTA button).
+- No recovery-phrase content in any email body. The public welcome primes users
+  for the recovery-phrase moment at wallet creation but never includes phrase
+  material — the phrase is shown exactly once in the UI at wallet creation and
+  is never stored.
+- No phishing-shaped language. Every email footer includes a reply-to.
+
+---
+
 ## Authorization Roles
 
 The Tenant Service uses 5 consolidated roles for access control:

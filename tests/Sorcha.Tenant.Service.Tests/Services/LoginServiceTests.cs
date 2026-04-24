@@ -27,6 +27,7 @@ public class LoginServiceTests : IDisposable
     private readonly Mock<IPasskeyService> _passkeyService = new();
     private readonly Mock<ITokenRevocationService> _revocationService = new();
     private readonly Mock<IPlatformUserService> _platformUserService = new();
+    private readonly Mock<ITransactionalEmailService> _transactionalEmail = new();
     private readonly ILogger<LoginService> _logger = NullLogger<LoginService>.Instance;
     private readonly TenantDbContext _dbContext;
 
@@ -43,8 +44,11 @@ public class LoginServiceTests : IDisposable
         _dbContext.Dispose();
     }
 
-    private LoginService CreateService() =>
-        new(
+    private LoginService CreateService()
+    {
+        var dispatcher = new WelcomeEmailDispatcher(
+            _dbContext, _transactionalEmail.Object, NullLogger<WelcomeEmailDispatcher>.Instance);
+        return new(
             _dbContext,
             _identityRepo.Object,
             _orgRepo.Object,
@@ -53,7 +57,9 @@ public class LoginServiceTests : IDisposable
             _passkeyService.Object,
             _revocationService.Object,
             _platformUserService.Object,
+            dispatcher,
             _logger);
+    }
 
     private PlatformUser SeedPlatformUser(Guid platformUserId, string email = "user@test.com")
     {
@@ -200,6 +206,90 @@ public class LoginServiceTests : IDisposable
 
         _revocationService.Verify(r => r.ResetFailedAuthAttemptsAsync("user@test.com", It.IsAny<CancellationToken>()), Times.Once);
         _identityRepo.Verify(r => r.UpdateUserAsync(It.Is<UserIdentity>(u => u.LastLoginAt != null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task LoginAsync_VerifiedUserFirstSuccessfulLogin_FiresWelcomeDispatcher()
+    {
+        // Arrange — user has verified email but hasn't had a welcome yet. This is the
+        // social/passkey-equivalent case on the email-password path: verification was
+        // completed previously, and the first successful login is now the welcome moment.
+        var (platformUser, org, identity) = SeedFullUser();
+        platformUser.EmailVerified = true;
+        platformUser.EmailVerifiedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        platformUser.WelcomeSentAt = null;
+        _dbContext.SaveChanges();
+
+        SetupNoRateLimit();
+        SetupNo2Fa();
+        SetupPasswordSuccess();
+        SetupPlatformUserLookup(platformUser);
+        SetupOrgMemberships(platformUser.Id, new PlatformUserOrgMembership
+        {
+            PlatformUserId = platformUser.Id,
+            OrganizationId = org.Id,
+            Role = "Consumer",
+            JoinedAt = DateTimeOffset.UtcNow,
+        });
+        _tokenService
+            .Setup(t => t.GenerateUserTokenAsync(
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenResponse { AccessToken = "a", RefreshToken = "r" });
+
+        var service = CreateService();
+
+        // Act
+        var result = await service.LoginAsync("user@test.com", "correct-password");
+
+        // Assert
+        result.Success.Should().BeTrue();
+        _transactionalEmail.Verify(t => t.SendWelcomeAsync(
+            It.Is<WelcomeDispatchContext>(c => c.User.Id == platformUser.Id),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        // WelcomeSentAt should have been persisted on success.
+        var reloaded = _dbContext.PlatformUsers.AsNoTracking().First(u => u.Id == platformUser.Id);
+        reloaded.WelcomeSentAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task LoginAsync_AlreadyWelcomedUser_DoesNotFireWelcomeAgain()
+    {
+        // Arrange — user already received a welcome on a prior login/verification.
+        var (platformUser, org, identity) = SeedFullUser();
+        var priorWelcome = DateTimeOffset.UtcNow.AddDays(-7);
+        platformUser.EmailVerified = true;
+        platformUser.WelcomeSentAt = priorWelcome;
+        _dbContext.SaveChanges();
+
+        SetupNoRateLimit();
+        SetupNo2Fa();
+        SetupPasswordSuccess();
+        SetupPlatformUserLookup(platformUser);
+        SetupOrgMemberships(platformUser.Id, new PlatformUserOrgMembership
+        {
+            PlatformUserId = platformUser.Id,
+            OrganizationId = org.Id,
+            Role = "Consumer",
+            JoinedAt = DateTimeOffset.UtcNow,
+        });
+        _tokenService
+            .Setup(t => t.GenerateUserTokenAsync(
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenResponse { AccessToken = "a", RefreshToken = "r" });
+
+        var service = CreateService();
+
+        // Act
+        var result = await service.LoginAsync("user@test.com", "correct-password");
+
+        // Assert
+        result.Success.Should().BeTrue();
+        _transactionalEmail.Verify(t => t.SendWelcomeAsync(
+            It.IsAny<WelcomeDispatchContext>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var reloaded = _dbContext.PlatformUsers.AsNoTracking().First(u => u.Id == platformUser.Id);
+        reloaded.WelcomeSentAt.Should().Be(priorWelcome);
     }
 
     [Fact]

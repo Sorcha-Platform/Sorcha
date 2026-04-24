@@ -1,0 +1,10 @@
+Admin User has invited you to join Acme Verification Co. as a Designer.
+
+Accept the invitation by opening this link:
+https://sorcha.io/invitations/accept?token=FIXTURE_TOKEN
+
+This invitation expires in 7 days. If you weren't expecting
+this, you can safely ignore this email — no account will be created.
+
+— the Acme Verification Co. team
+Questions? Write to help@sorcha.io.

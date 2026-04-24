@@ -104,6 +104,10 @@ public class EmailVerificationService : IEmailVerificationService
             "Email verified for PlatformUser {PlatformUserId} ({Email})",
             platformUser.Id, platformUser.Email);
 
+        // Fire the welcome email if the user hasn't had one yet. The dispatcher is
+        // idempotent and non-throwing — a send failure will not reverse verification.
+        await _welcomeDispatcher.SendIfPendingAsync(platformUser, cancellationToken);
+
         return (true, null);
     }
 

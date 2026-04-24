@@ -1,0 +1,26 @@
+{{ capture content -}}
+Welcome to {{ branding.sender_name }}, {{ display_name }}!
+
+Your account is ready. Jump in whenever you're set.
+
+  Dashboard: {{ dashboard_url }}
+
+ONE THING WORTH KNOWING NOW
+
+When you create your first wallet, {{ branding.sender_name }} will show you a
+12-word recovery phrase. Write it down the moment you see it — a password
+manager or a piece of paper in a drawer both work. That phrase is the only way
+back into your wallet if you lose access. We can't see it and can't get it
+back for you — that's the whole point.
+
+No rush, but when you're ready to create a wallet, have a pen handy.
+
+WHAT'S NEXT
+
+  Browse your registers: {{ browse_registers_url }}
+  Try a demo workflow:   {{ demo_workflows_url }}
+  Read the docs:         {{ docs_url }}
+
+Any questions, just reply to this email — a human's at the other end.
+{{- end -}}
+{{- include 'base.txt' -}}

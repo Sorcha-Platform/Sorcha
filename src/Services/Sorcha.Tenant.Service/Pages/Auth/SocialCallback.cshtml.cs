@@ -25,6 +25,7 @@ public class SocialCallbackModel : PageModel
     private readonly IIdentityRepository _identityRepository;
     private readonly IOrganizationRepository _organizationRepository;
     private readonly ITokenService _tokenService;
+    private readonly WelcomeEmailDispatcher _welcomeDispatcher;
     private readonly TenantDbContext _db;
     private readonly ILogger<SocialCallbackModel> _logger;
 
@@ -37,6 +38,7 @@ public class SocialCallbackModel : PageModel
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         ITokenService tokenService,
+        WelcomeEmailDispatcher welcomeDispatcher,
         TenantDbContext db,
         ILogger<SocialCallbackModel> logger)
     {
@@ -45,6 +47,7 @@ public class SocialCallbackModel : PageModel
         _identityRepository = identityRepository;
         _organizationRepository = organizationRepository;
         _tokenService = tokenService;
+        _welcomeDispatcher = welcomeDispatcher;
         _db = db;
         _logger = logger;
     }
@@ -144,6 +147,11 @@ public class SocialCallbackModel : PageModel
 
         _logger.LogInformation("Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",
             platformUser.Id, provider, isNew);
+
+        // Welcome email — social/passkey paths skip email verification (IdP already
+        // asserted the address), so first-login is the natural welcome moment.
+        // Idempotent + non-throwing by design.
+        await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
 
         // Redirect to app with token in fragment
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +

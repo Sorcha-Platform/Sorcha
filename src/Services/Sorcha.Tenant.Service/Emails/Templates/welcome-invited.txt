@@ -1,0 +1,12 @@
+{{ capture content -}}
+You've joined {{ organization_name }}.
+
+Hi {{ display_name }} — welcome aboard. Your {{ role_display_name }} account
+at {{ organization_name }} is ready to go.
+
+  Dashboard: {{ dashboard_url }}
+
+If you have any questions about your role or what you can access, your
+organisation's admin team is the best place to start.
+{{- end -}}
+{{- include 'base.txt' -}}

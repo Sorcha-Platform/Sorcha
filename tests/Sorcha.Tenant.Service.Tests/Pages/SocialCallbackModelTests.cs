@@ -26,6 +26,7 @@ public class SocialCallbackModelTests : IDisposable
     private readonly Mock<IIdentityRepository> _identityRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
     private readonly Mock<ITokenService> _tokenService = new();
+    private readonly Mock<ITransactionalEmailService> _transactionalEmail = new();
     private readonly TenantDbContext _dbContext;
 
     public SocialCallbackModelTests()
@@ -43,12 +44,15 @@ public class SocialCallbackModelTests : IDisposable
 
     private SocialCallbackModel CreateModel()
     {
+        var dispatcher = new WelcomeEmailDispatcher(
+            _dbContext, _transactionalEmail.Object, NullLogger<WelcomeEmailDispatcher>.Instance);
         var model = new SocialCallbackModel(
             _socialLoginService.Object,
             _platformUserService.Object,
             _identityRepo.Object,
             _orgRepo.Object,
             _tokenService.Object,
+            dispatcher,
             _dbContext,
             NullLogger<SocialCallbackModel>.Instance);
 
