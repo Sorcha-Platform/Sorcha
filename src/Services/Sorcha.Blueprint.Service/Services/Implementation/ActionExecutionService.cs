@@ -231,8 +231,6 @@ public class ActionExecutionService : IActionExecutionService
         }
 
         // 4c. Verify credential presentations against action requirements
-        CreatePresentationRequestResult? haipPresentationResult = null;
-        // Resolve HAIP requirement early — reused in response builder (avoids duplicate LINQ)
         var haipRequirement = actionDef.CredentialRequirements?
             .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet);
         if (actionDef.CredentialRequirements?.Any() == true)
@@ -295,23 +293,15 @@ public class ActionExecutionService : IActionExecutionService
                     }
                 };
             }
-            else if (haipRequirement != null && !hasSubmittedPresentations && _haipClient != null)
+            else if (haipRequirement != null && !hasSubmittedPresentations)
             {
-                // Legacy path retained for backwards-compat during rollout — exercised only
-                // when the PresentationLifecycleService is not registered. New deployments
-                // should always have the lifecycle service and take the branch above.
-                _logger.LogWarning(
-                    "HAIP presentation taking legacy single-shot path (PresentationLifecycleService not registered)");
-
-                var requiredClaimNames = haipRequirement.RequiredClaims?
-                    .Select(c => c.ClaimName)
-                    .ToList();
-
-                haipPresentationResult = await _haipClient.CreatePresentationRequestAsync(
-                    haipRequirement.Type,
-                    requiredClaimNames,
-                    haipRequirement.AcceptedIssuers?.ToList(),
-                    cancellationToken);
+                // Feature 111 removed the legacy single-shot HAIP path. If we reach
+                // this branch it means the blueprint requires a HAIP presentation but
+                // the lifecycle service is not registered — a deployment configuration
+                // error rather than a runtime scenario the code should silently handle.
+                throw new InvalidOperationException(
+                    "HAIP presentation requested but IPresentationLifecycleService is not registered. " +
+                    "Ensure PresentationLifecycleOptions and related services are wired in the DI container.");
             }
             else if (_credentialVerifier != null)
             {
@@ -1061,17 +1051,11 @@ public class ActionExecutionService : IActionExecutionService
                     ExpiresAt = haipOfferResult.ExpiresAt
                 }
                 : null,
-            PresentationRequest = haipPresentationResult != null
-                ? new HaipPresentationRequestResponse
-                {
-                    RequestId = haipPresentationResult.RequestId,
-                    PresentationRequestUri = haipPresentationResult.AuthorizationRequestUri,
-                    CredentialType = haipRequirement?.Type ?? string.Empty,
-                    RequestedClaims = haipRequirement?.RequiredClaims?
-                        .Select(c => c.ClaimName).ToList(),
-                    ExpiresAt = haipPresentationResult.ExpiresAt
-                }
-                : null
+            // Feature 111 — presentation requests now return via the 202 Accepted
+            // short-circuit earlier in ExecuteAsync. The 200 OK response never
+            // carries a PresentationRequest; this field is preserved for
+            // backwards-compatible schema shape only.
+            PresentationRequest = null
         };
 
         _logger.LogInformation(
