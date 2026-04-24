@@ -1,0 +1,27 @@
+Welcome to Sorcha, Stuart Fraser!
+
+Your account is ready. Jump in whenever you're set.
+
+  Dashboard: https://sorcha.dev/dashboard
+
+ONE THING WORTH KNOWING NOW
+
+When you create your first wallet, Sorcha will show you a
+12-word recovery phrase. Write it down the moment you see it — a password
+manager or a piece of paper in a drawer both work. That phrase is the only way
+back into your wallet if you lose access. We can't see it and can't get it
+back for you — that's the whole point.
+
+No rush, but when you're ready to create a wallet, have a pen handy.
+
+WHAT'S NEXT
+
+  Browse your registers: https://sorcha.dev/registers
+  Try a demo workflow:   https://sorcha.dev/blueprints
+  Read the docs:         https://docs.sorcha.dev
+
+Any questions, just reply to this email — a human's at the other end.
+
+— the Sorcha team
+Decentralised registers for secure data flow
+Questions? Write to help@sorcha.dev.

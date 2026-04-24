@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.10
-**Last Updated:** 2026-04-21
+**Version:** 7.12
+**Last Updated:** 2026-04-24
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -45,7 +45,8 @@ This document now tracks **remaining work for the first production release**, or
 | SEC-011 | Service-to-service authentication for internal endpoints | P1 | 8h | ✅ | Closed: RequireService policy on all 5 internal endpoints. Service clients attach JWT headers. |
 | SEC-011b | Defence-in-depth: per-service identity policies | P2 | 8h | 📋 | Check `service_name` claim per endpoint, scope enforcement, API Gateway internal route blocking, audit logging. Deferred from SEC-011. |
 | SEC-012 | CodeQL alert remediation — log injection, info exposure, resource leaks | P1 | 4h | ✅ | Fixed: AcsEmailSender private info exposure, HttpRequestMessage/FormUrlEncodedContent dispose, SystemWalletSigningService double-check-locking. Log injection alerts (19) confirmed already resolved in master. |
-| SEC-013 | HAIP Service internal endpoints — replace AllowAnonymous with service-to-service JWT auth | P0 | 4h | 📋 | PR #253 changed HAIP offer/verifier endpoints to AllowAnonymous for Blueprint Service calls. Needs proper RequireService policy with service JWT token forwarding (same pattern as SEC-011). Endpoints: POST /api/v1/offers, GET /api/v1/offers/{id}, POST /api/v1/verifier/requests, GET /api/v1/verifier/requests/{id}/result. |
+| SEC-013 | HAIP Service internal endpoints — replace AllowAnonymous with service-to-service JWT auth | P0 | 4h | ✅ | PR #378 (merged 2026-04-23) — 4 HAIP internal endpoints now use `RequireService` policy (same pattern as SEC-011); `HaipServiceClient` attaches service JWT via `ServiceClientAuthHelper.SetAuthHeaderAsync`. Wallet-facing endpoints (Request Object GET, direct_post POST) correctly remain AllowAnonymous. |
+| SEC-015 | Platform-wide organisation name validation — length cap, character class, admin-name guard | P2 | 4h | 📋 | Spun out from PR #391 code review (Feature 112). `Organization.Name` is currently a free-form `required string` with no DTO validation — an admin could set a phishing-shaped name that flows into every invitation / welcome email subject, admin UI, audit log, and participant DID card. PR #391 added defensive 60-char subject-line truncation on the email path as a local mitigation; the structural fix is validation at `CreateOrganizationRequest` / `UpdateOrganizationRequest` DTO level (max length ~80, alphanum + punctuation + basic emoji allowlist, reject unicode control chars and RTL-override exploits). |
 | SEC-014 | HAIP presentation-request action — two-phase execution to prevent premature ledger recording | P0 | 12h | ✅ | Superseded by Feature 111 (three-event Timebound Presentation Lifecycle primitive). Shipped via PRs #382 (Phases 1-4: abstractions, US1 attempt-always-recorded, US2 outcome-with-reason, HAIP consumer) and #383 (US3 retry-first-class gating + 409 precondition). Integration tests + remaining Polish (Prometheus counters, walkthrough verification, legacy path removal) tracked in `specs/111-presentation-lifecycle/tasks.md`. |
 
 ---
@@ -175,7 +176,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | AUTH-003 | Cross-tab token synchronization (localStorage events) | P3 | 6h | 📋 | Multi-tab consistency |
 | AUTH-004 | Session expiry warning UI (toast with "Extend" button) | P3 | 4h | 📋 | UX improvement |
 | AUTH-005 | OIDC integration for participant authentication (PART-1) | P3 | 24h | ✅ | Feature 054: OIDC token exchange, social login (Microsoft, Google, Apple), auto-provisioning on first login |
-| AUTH-006 | Production SMTP configuration (replace MailKit stub) | P1 | 8h | 📋 | Feature 054 uses stub email sender; needs real SMTP/SendGrid for email verification |
+| AUTH-006 | Transactional email sweep — unified templated pipeline, per-org branding, welcome emails | P1 | 8h | ✅ | Feature 112 — `ITransactionalEmailService` facade, Scriban templates (6 pairs) + snapshot fixtures, `WelcomeEmailDispatcher` one-shot per user, per-org branding on invitations, plaintext-token verification/invitation bugs fixed. SMTP (MailKit) and ACS backends unchanged other than multipart HTML+text. 12 new Tenant Service tests + 6 snapshot-fixture cases. See `specs/112-email-sweep/` and the Tenant Service README. |
 | AUTH-007 | Breach password list integration (HaveIBeenPwned API) | P2 | 6h | 📋 | NIST policy implemented but breach list check needs external API integration |
 | AUTH-008 | Custom domain DNS verification automation | P2 | 12h | 📋 | Feature 054 supports custom domains but DNS CNAME verification is manual |
 | AUTH-009 | Social login provider testing with real credentials | P2 | 8h | 📋 | Feature 054 IdP config tested with mocks; needs real OAuth app credentials for each provider |
@@ -255,15 +256,15 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 | Theme | Priority | Tasks | Effort | Focus |
 |-------|----------|-------|--------|-------|
-| 1. Security Hardening | P0 | 8 (3 ✅, 5 remaining) | 80-100h | Release blocker — SEC-012 CodeQL fixes done |
+| 1. Security Hardening | P0 | 10 (5 ✅, 5 remaining) | 80-100h | Release blocker — SEC-012 CodeQL fixes done; SEC-013 HAIP auth closed (PR #378); SEC-015 org-name validation spun out from Feature 112 review |
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
 | 3. Deferred Feature Gaps | P1-P2 | 17 (4 ✅, 13 remaining) | 21-41h | Close MVD gaps — GAP-005/011/018/019 done (075, 063, 077); GAP-011b E2E spun out as 3h P3 |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
-| 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
+| 5. Authentication & Identity | P1-P3 | 11 (4 ✅, 7 remaining) | 50-80h | Enterprise identity — OIDC/org admin/social login (054); passkey/WebAuthn (055); platform org topology (058); transactional email sweep (112) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
 | 8. Mobile App Prerequisites | P1 | 8 (3 ✅, 1 ❌, 4 remaining) | 60-80h | Package portability, device inputs, white-label branding — Feature 084 done (MOB-002/003/004), MOB-001 eliminated |
-| **Total** | | **73** (15 ✅, 1 ❌, 57 remaining) | **561-821h** | |
+| **Total** | | **75** (17 ✅, 1 ❌, 57 remaining) | **565-825h** | |
 
 ### Completed Features (not in themes above)
 
@@ -292,6 +293,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.10
-**Last Updated:** 2026-04-21
+**Version:** 7.12
+**Last Updated:** 2026-04-24
 **Document Owner:** Sorcha Architecture Team

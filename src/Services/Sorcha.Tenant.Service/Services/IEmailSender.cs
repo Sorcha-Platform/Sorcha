@@ -4,43 +4,38 @@
 namespace Sorcha.Tenant.Service.Services;
 
 /// <summary>
-/// Abstraction for sending emails from the Tenant Service.
-/// Implementations may use SMTP (MailKit), SendGrid, or other providers.
+/// Backend-agnostic transactional email sender. Implementations ship a multipart
+/// HTML + plaintext message to the configured SMTP or cloud backend.
 /// </summary>
+/// <remarks>
+/// Application code should not call <see cref="IEmailSender"/> directly — use
+/// <see cref="ITransactionalEmailService"/> instead, which renders templates and
+/// resolves branding before handing off to this abstraction.
+/// </remarks>
 public interface IEmailSender
 {
     /// <summary>
-    /// Sends an email to a single recipient.
+    /// Sends a multipart email (HTML body + plaintext alternative) to a single recipient.
+    /// Both bodies MUST be provided — the plaintext alternative is mandatory (see FR-002
+    /// in specs/112-email-sweep/spec.md).
     /// </summary>
     /// <param name="to">Recipient email address.</param>
-    /// <param name="subject">Email subject line.</param>
-    /// <param name="htmlBody">HTML body content.</param>
+    /// <param name="subject">Subject line.</param>
+    /// <param name="htmlBody">HTML body content. Rendered by mail clients that support HTML.</param>
+    /// <param name="textBody">Plaintext body content. Rendered by clients without HTML support.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    Task SendAsync(string to, string subject, string htmlBody, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Sends an email verification message with a tokenized link.
-    /// </summary>
-    /// <param name="to">Recipient email address.</param>
-    /// <param name="verificationToken">URL-safe verification token.</param>
-    /// <param name="orgSubdomain">Organization subdomain for link construction.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    Task SendVerificationEmailAsync(string to, string verificationToken, string orgSubdomain, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Sends an organization invitation email.
-    /// </summary>
-    /// <param name="to">Recipient email address.</param>
-    /// <param name="invitationToken">URL-safe invitation token.</param>
-    /// <param name="organizationName">Name of the inviting organization.</param>
-    /// <param name="roleName">Role the user will be assigned.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    Task SendInvitationEmailAsync(string to, string invitationToken, string organizationName, string roleName, CancellationToken cancellationToken = default);
+    Task SendAsync(
+        string to,
+        string subject,
+        string htmlBody,
+        string textBody,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// SMTP configuration settings for MailKit email sending.
-/// Bound from configuration section "Email".
+/// Configuration bound from the <c>Email</c> section in appsettings. Controls both the
+/// backend selection (SMTP vs Azure Communication Services) and the Sorcha-default
+/// branding applied to emails that are not per-org-branded.
 /// </summary>
 public class EmailSettings
 {
@@ -60,17 +55,39 @@ public class EmailSettings
     public bool UseSsl { get; set; } = true;
 
     /// <summary>Sender email address (From header).</summary>
-    public string FromAddress { get; set; } = "noreply@sorcha.io";
+    public string FromAddress { get; set; } = "noreply@sorcha.dev";
 
     /// <summary>Sender display name.</summary>
     public string FromName { get; set; } = "Sorcha Platform";
 
-    /// <summary>Base URL for constructing verification and invitation links.</summary>
-    public string BaseUrl { get; set; } = "https://sorcha.io";
+    /// <summary>Base URL for constructing verification, invitation, and reset links.</summary>
+    public string BaseUrl { get; set; } = "https://sorcha.dev";
 
     /// <summary>
     /// Azure Communication Services connection string for REST API email sending.
     /// When set, the ACS sender is used instead of SMTP. Takes precedence over SMTP settings.
     /// </summary>
     public string? AcsConnectionString { get; set; }
+
+    /// <summary>
+    /// Sorcha platform default logo URL for email headers. Absolute https URL.
+    /// Null → fall back to rendering the Sorcha name in the primary colour.
+    /// </summary>
+    public string? LogoUrl { get; set; }
+
+    /// <summary>
+    /// Sorcha platform default primary brand colour (hex, e.g. "#2563eb"). Applied to
+    /// action buttons and footer links when no per-org colour is in effect.
+    /// </summary>
+    public string PrimaryColor { get; set; } = "#2563eb";
+
+    /// <summary>
+    /// Optional footer tagline rendered above the reply-to line in Sorcha-branded emails.
+    /// </summary>
+    public string? Tagline { get; set; }
+
+    /// <summary>
+    /// Reply-to address shown in the email footer so recipients can easily ask for help.
+    /// </summary>
+    public string ReplyTo { get; set; } = "help@sorcha.dev";
 }

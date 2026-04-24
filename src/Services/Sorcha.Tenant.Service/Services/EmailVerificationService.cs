@@ -3,6 +3,7 @@
 
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 
@@ -15,18 +16,24 @@ namespace Sorcha.Tenant.Service.Services;
 public class EmailVerificationService : IEmailVerificationService
 {
     private readonly TenantDbContext _dbContext;
-    private readonly IEmailSender _emailSender;
+    private readonly ITransactionalEmailService _transactional;
+    private readonly IWelcomeEmailDispatcher _welcomeDispatcher;
+    private readonly EmailSettings _emailSettings;
     private readonly ILogger<EmailVerificationService> _logger;
 
     private static readonly TimeSpan TokenExpiry = TimeSpan.FromHours(24);
 
     public EmailVerificationService(
         TenantDbContext dbContext,
-        IEmailSender emailSender,
+        ITransactionalEmailService transactional,
+        IWelcomeEmailDispatcher welcomeDispatcher,
+        IOptions<EmailSettings> emailSettings,
         ILogger<EmailVerificationService> logger)
     {
         _dbContext = dbContext;
-        _emailSender = emailSender;
+        _transactional = transactional;
+        _welcomeDispatcher = welcomeDispatcher;
+        _emailSettings = emailSettings.Value;
         _logger = logger;
     }
 
@@ -49,11 +56,15 @@ public class EmailVerificationService : IEmailVerificationService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        // Send verification email
-        await _emailSender.SendAsync(
-            user.Email,
-            "Verify your email address",
-            $"Please verify your email by using this token: {token}",
+        // Send the verification email via the templated facade. The verify URL takes
+        // the user to the Tenant Service Razor Page at /auth/verify-email.
+        var verifyUrl = $"{_emailSettings.BaseUrl.TrimEnd('/')}/auth/verify-email?token={Uri.EscapeDataString(token)}";
+        await _transactional.SendVerificationAsync(
+            new VerifyEmailDispatch(
+                ToEmail: user.Email,
+                DisplayName: user.DisplayName,
+                VerifyUrl: verifyUrl,
+                ExpiresInHours: (int)TokenExpiry.TotalHours),
             cancellationToken);
 
         _logger.LogInformation(
@@ -92,6 +103,10 @@ public class EmailVerificationService : IEmailVerificationService
         _logger.LogInformation(
             "Email verified for PlatformUser {PlatformUserId} ({Email})",
             platformUser.Id, platformUser.Email);
+
+        // Fire the welcome email if the user hasn't had one yet. The dispatcher is
+        // idempotent and non-throwing — a send failure will not reverse verification.
+        await _welcomeDispatcher.SendIfPendingAsync(platformUser, cancellationToken);
 
         return (true, null);
     }

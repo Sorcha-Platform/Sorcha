@@ -242,7 +242,8 @@ namespace Sorcha.Tenant.Service.Migrations
                     CreatedOrgsCount = table.Column<int>(type: "integer", nullable: false),
                     Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    LastLoginAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    LastLoginAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    WelcomeSentAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {

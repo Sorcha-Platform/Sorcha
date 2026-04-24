@@ -1,0 +1,10 @@
+{{ capture content -}}
+Hi {{ display_name }} — thanks for signing up to {{ branding.sender_name }}.
+
+Confirm your email by opening this link:
+{{ verify_url }}
+
+The link works for {{ expires_in_hours }} hours. If you didn't sign up,
+just ignore this — no account will be created.
+{{- end -}}
+{{- include 'base.txt' -}}

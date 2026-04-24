@@ -1,0 +1,10 @@
+{{ capture content -}}
+{{ inviter_name }} has invited you to join {{ organization_name }} as a {{ role_display_name }}.
+
+Accept the invitation by opening this link:
+{{ accept_url }}
+
+This invitation expires in {{ expires_in_days }} days. If you weren't expecting
+this, you can safely ignore this email — no account will be created.
+{{- end -}}
+{{- include 'base.txt' -}}

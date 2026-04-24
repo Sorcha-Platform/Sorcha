@@ -23,6 +23,7 @@ public class LoginService : ILoginService
     private readonly IPasskeyService _passkeyService;
     private readonly ITokenRevocationService _revocationService;
     private readonly IPlatformUserService _platformUserService;
+    private readonly IWelcomeEmailDispatcher _welcomeDispatcher;
     private readonly ILogger<LoginService> _logger;
 
     /// <summary>
@@ -37,6 +38,7 @@ public class LoginService : ILoginService
         IPasskeyService passkeyService,
         ITokenRevocationService revocationService,
         IPlatformUserService platformUserService,
+        IWelcomeEmailDispatcher welcomeDispatcher,
         ILogger<LoginService> logger)
     {
         _dbContext = dbContext;
@@ -47,6 +49,7 @@ public class LoginService : ILoginService
         _passkeyService = passkeyService;
         _revocationService = revocationService;
         _platformUserService = platformUserService;
+        _welcomeDispatcher = welcomeDispatcher;
         _logger = logger;
     }
 
@@ -246,6 +249,10 @@ public class LoginService : ILoginService
         _logger.LogInformation("User logged in successfully - {Email} (OrgId: {OrgId})",
             user.Email, organization.Id);
 
+        // Fire-and-forget welcome email if this is the user's first login and they
+        // haven't been welcomed yet. Idempotent + non-throwing by design.
+        await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
+
         return new LoginResult(true, Tokens: tokenResponse);
     }
 
@@ -341,6 +348,9 @@ public class LoginService : ILoginService
 
             _logger.LogInformation("Subdomain login succeeded - {Email} in org {Subdomain} (UserId: {UserId})",
                 email, orgSubdomain, user.Id);
+
+            // Welcome email — once per user across all login paths.
+            await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
 
             return new LoginResult(true, Tokens: tokenResponse);
         }

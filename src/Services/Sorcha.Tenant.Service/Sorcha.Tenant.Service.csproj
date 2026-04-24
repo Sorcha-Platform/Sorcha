@@ -13,6 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Emails/Templates/**/*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" />
     <PackageReference Include="Azure.Communication.Email" />
@@ -35,7 +39,8 @@
     <PackageReference Include="Otp.NET" />
     <PackageReference Include="Polly" />
     <PackageReference Include="Scalar.AspNetCore" />
-<PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="Scriban" />
+    <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
   </ItemGroup>
 

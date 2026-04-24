@@ -1,0 +1,10 @@
+{{ capture content -}}
+Hi {{ display_name }} — we got a request to reset the password on your {{ branding.sender_name }} account.
+
+Choose a new password by opening this link:
+{{ reset_url }}
+
+The link works for {{ expires_in_minutes }} minutes. If you didn't ask for a
+reset, you can safely ignore this email — your password hasn't changed.
+{{- end -}}
+{{- include 'base.txt' -}}

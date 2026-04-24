@@ -4,6 +4,7 @@
 using System.Security.Cryptography;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
@@ -20,20 +21,26 @@ public class InvitationService : IInvitationService
 {
     private readonly IInvitationRepository _invitationRepository;
     private readonly IIdentityRepository _identityRepository;
-    private readonly IEmailSender _emailSender;
+    private readonly IOrganizationRepository _organizationRepository;
+    private readonly ITransactionalEmailService _transactional;
+    private readonly EmailSettings _emailSettings;
     private readonly TenantDbContext _dbContext;
     private readonly ILogger<InvitationService> _logger;
 
     public InvitationService(
         IInvitationRepository invitationRepository,
         IIdentityRepository identityRepository,
-        IEmailSender emailSender,
+        IOrganizationRepository organizationRepository,
+        ITransactionalEmailService transactional,
+        IOptions<EmailSettings> emailSettings,
         TenantDbContext dbContext,
         ILogger<InvitationService> logger)
     {
         _invitationRepository = invitationRepository;
         _identityRepository = identityRepository;
-        _emailSender = emailSender;
+        _organizationRepository = organizationRepository;
+        _transactional = transactional;
+        _emailSettings = emailSettings.Value;
         _dbContext = dbContext;
         _logger = logger;
     }
@@ -50,6 +57,16 @@ public class InvitationService : IInvitationService
         {
             throw new ArgumentException("Cannot assign SystemAdmin role via invitation.", nameof(request));
         }
+
+        // Fail-fast lookups BEFORE we persist anything. Previously the invitation row
+        // was committed before the org lookup — a missing org would leave an orphaned
+        // row with a valid token and no email ever sent (reviewer M-1).
+        var invitingOrg = await _organizationRepository.GetByIdAsync(organizationId, cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Inviting organisation {organizationId} not found when preparing invitation email.");
+
+        var inviter = await _identityRepository.GetUserByIdAsync(invitedByUserId, cancellationToken);
+        var inviterName = inviter?.DisplayName ?? "An administrator";
 
         // Check for duplicate active invitation
         if (await _invitationRepository.HasActiveInvitationAsync(organizationId, request.Email, cancellationToken))
@@ -74,14 +91,16 @@ public class InvitationService : IInvitationService
 
         await _invitationRepository.CreateAsync(invitation, cancellationToken);
 
-        // Send invitation email
-        var inviter = await _identityRepository.GetUserByIdAsync(invitedByUserId, cancellationToken);
-        var inviterName = inviter?.DisplayName ?? "An administrator";
+        var acceptUrl = $"{_emailSettings.BaseUrl.TrimEnd('/')}/invitations/accept?token={Uri.EscapeDataString(token)}";
 
-        await _emailSender.SendAsync(
-            request.Email,
-            "You've been invited to join an organization",
-            $"{inviterName} has invited you to join their organization. Use token: {token}",
+        await _transactional.SendInvitationAsync(
+            new InviteEmailDispatch(
+                ToEmail: request.Email,
+                InviterName: inviterName,
+                InvitingOrganization: invitingOrg,
+                RoleDisplayName: request.Role.ToString(),
+                AcceptUrl: acceptUrl,
+                ExpiresInDays: request.ExpiryDays),
             cancellationToken);
 
         // Audit

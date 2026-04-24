@@ -926,6 +926,9 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Property<DateTimeOffset?>("VerificationTokenExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("WelcomeSentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
