@@ -13,11 +13,16 @@ using Xunit;
 namespace Sorcha.Blueprint.Service.Tests.Integration;
 
 /// <summary>
-/// T037-T038, T059 — integration tests for the Feature 111 callback + status
+/// T037 / T038 / T059 — integration tests for the Feature 111 callback + status
 /// endpoints. Exercises the HTTP-boundary wiring (path binding, auth, JSON
 /// shape) plus the consumer dispatch → outcome-tx-write → sentinel-state-machine
 /// through the real ASP.NET Core pipeline.
 /// </summary>
+/// <remarks>
+/// The factory is shared via <c>IClassFixture</c> for startup speed. Every test
+/// MUST call <c>_factory.ResetMocksAndState()</c> at the top to avoid bleed
+/// between Moq setups, accumulating invocation lists, and stale pending state.
+/// </remarks>
 public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLifecycleWebApplicationFactory>
 {
     private readonly PresentationLifecycleWebApplicationFactory _factory;
@@ -34,13 +39,13 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
     /// successful InitiateAsync — so callback tests don't have to go through
     /// the full /execute pipeline.
     /// </summary>
-    private Guid SeedPending(
+    private async Task<Guid> SeedPendingAsync(
         string consumerName = "haip",
         string outcomeDetailLevel = "minimal",
         bool recordAbandonment = false)
     {
         var id = Guid.NewGuid();
-        _factory.PendingStore.StoreAsync(new PendingPresentation
+        await _factory.PendingStore.StoreAsync(new PendingPresentation
         {
             PresentationRequestId = id,
             InstanceId = Guid.NewGuid(),
@@ -56,15 +61,16 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
             ValidityWindowSeconds = 600,
             CreatedAt = DateTimeOffset.UtcNow,
             InitiatedTransactionId = "tx-initiated-abc"
-        }).GetAwaiter().GetResult();
+        });
         return id;
     }
 
     [Fact]
-    public async Task Callback_SuccessOutcome_WritesTx_AndMarksSentinelSuccess_T037()
+    public async Task Callback_SuccessOutcome_WritesTx_AndMarksSentinelSuccess()
     {
         // Arrange
-        var requestId = SeedPending();
+        _factory.ResetMocksAndState();
+        var requestId = await SeedPendingAsync();
         _factory.HaipConsumer.NextOutcome = new PresentationOutcome(
             Kind: PresentationOutcomeKind.Success,
             VerifiedClaims: new Dictionary<string, object> { ["name"] = "Alice" },
@@ -72,7 +78,7 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
             VerifierDiagnostics: null,
             PresentationSubmissionHash: "sha256:abc");
 
-        var capturedSubmission = default(TransactionSubmission);
+        TransactionSubmission? capturedSubmission = null;
         _factory.ValidatorClient
             .Setup(v => v.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
             .Callback<TransactionSubmission, CancellationToken>((sub, _) => capturedSubmission = sub)
@@ -93,25 +99,22 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
         body.IdempotentReplay.Should().BeFalse();
         body.LateAfterAbandonment.Should().BeFalse();
 
-        // Sentinel advanced to "success"
         var sentinel = await _factory.PendingStore.GetOutcomeSentinelAsync(requestId);
         sentinel.Should().Be("success");
 
-        // Validator saw a PresentationOutcome submission with outcomeKind=success
         capturedSubmission.Should().NotBeNull();
         capturedSubmission!.Metadata.Should().ContainKey("outcomeKind")
             .WhoseValue.Should().Be("success");
 
-        // HAIP consumer was invoked with the right context
         _factory.HaipConsumer.InvokedContexts.Should().Contain(c =>
             c.PresentationRequestId == requestId);
     }
 
     [Fact]
-    public async Task Callback_DeclineOutcome_WritesTx_AndMarksSentinelDecline_T038a()
+    public async Task Callback_DeclineOutcome_WritesTx_AndMarksSentinelDecline()
     {
-        // Arrange
-        var requestId = SeedPending();
+        _factory.ResetMocksAndState();
+        var requestId = await SeedPendingAsync();
         _factory.HaipConsumer.NextOutcome = new PresentationOutcome(
             Kind: PresentationOutcomeKind.Decline,
             VerifiedClaims: null,
@@ -119,12 +122,10 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
             VerifierDiagnostics: null,
             PresentationSubmissionHash: null);
 
-        // Act
         var response = await _client.PostAsJsonAsync(
             $"/api/presentations/callbacks/haip/{requestId}",
             new { error = "expired_credential" });
 
-        // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<PresentationCallbackResponse>();
         body!.Kind.Should().Be("Decline");
@@ -135,83 +136,76 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
     }
 
     [Fact]
-    public async Task Callback_DuplicateCallback_IsIdempotentReplay_NoNewTx_T038b()
+    public async Task Callback_DuplicateCallback_IsIdempotentReplay_NoNewTx()
     {
-        // Arrange
-        var requestId = SeedPending();
+        _factory.ResetMocksAndState();
+        var requestId = await SeedPendingAsync();
         _factory.HaipConsumer.NextOutcome = new PresentationOutcome(
             PresentationOutcomeKind.Success, new Dictionary<string, object>(), null, null, "sha");
 
         int validatorSubmitCount = 0;
         _factory.ValidatorClient
             .Setup(v => v.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
-            .Callback(() => Interlocked.Increment(ref validatorSubmitCount))
-            .ReturnsAsync(new TransactionSubmissionResult { Success = true });
+            .Callback<TransactionSubmission, CancellationToken>((sub, _) => Interlocked.Increment(ref validatorSubmitCount))
+            .ReturnsAsync((TransactionSubmission sub, CancellationToken _) =>
+                new TransactionSubmissionResult { Success = true, TransactionId = sub.TransactionId });
 
-        // Act — first callback
         var first = await _client.PostAsJsonAsync(
             $"/api/presentations/callbacks/haip/{requestId}", new { });
         first.StatusCode.Should().Be(HttpStatusCode.OK);
         var firstBody = await first.Content.ReadFromJsonAsync<PresentationCallbackResponse>();
         firstBody!.IdempotentReplay.Should().BeFalse();
 
-        // Act — duplicate callback (same requestId)
         var second = await _client.PostAsJsonAsync(
             $"/api/presentations/callbacks/haip/{requestId}", new { });
 
-        // Assert
         second.StatusCode.Should().Be(HttpStatusCode.OK);
         var secondBody = await second.Content.ReadFromJsonAsync<PresentationCallbackResponse>();
         secondBody!.IdempotentReplay.Should().BeTrue();
         secondBody.OutcomeTransactionId.Should().BeEmpty();
 
-        // Only one tx hit the validator.
         validatorSubmitCount.Should().Be(1);
     }
 
     [Fact]
     public async Task Callback_UnknownRequestId_Returns400()
     {
-        // Arrange — no pending state seeded
+        _factory.ResetMocksAndState();
+
         var response = await _client.PostAsJsonAsync(
             $"/api/presentations/callbacks/haip/{Guid.NewGuid()}",
             new { });
 
-        // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
     public async Task Callback_ConsumerNameMismatch_Returns400()
     {
-        // Arrange — pending state says "haip" but callback path says "other"
-        var requestId = SeedPending(consumerName: "haip");
+        _factory.ResetMocksAndState();
+        var requestId = await SeedPendingAsync(consumerName: "haip");
 
-        // Act — swap to the unknown consumer via URL path
         var response = await _client.PostAsJsonAsync(
             $"/api/presentations/callbacks/other-consumer/{requestId}",
             new { });
 
-        // Assert — no consumer matches "other-consumer" in DI, InvalidOperationException → 400
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
-    public async Task Callback_LateAfterAbandonment_WritesOutcome_MarksAbandonedWithOutcome_T059()
+    public async Task Callback_LateAfterAbandonment_WritesOutcome_MarksAbandonedWithOutcome()
     {
-        // Arrange — force the sentinel to "abandoned" as if the sweeper ran already.
-        var requestId = SeedPending(recordAbandonment: true);
+        _factory.ResetMocksAndState();
+        var requestId = await SeedPendingAsync(recordAbandonment: true);
         _factory.PendingStore.ForceSentinel(requestId, "abandoned");
         _factory.HaipConsumer.NextOutcome = new PresentationOutcome(
             PresentationOutcomeKind.Success,
             new Dictionary<string, object> { ["name"] = "Alice" },
             null, null, "sha");
 
-        // Act
         var response = await _client.PostAsJsonAsync(
             $"/api/presentations/callbacks/haip/{requestId}", new { });
 
-        // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<PresentationCallbackResponse>();
         body!.LateAfterAbandonment.Should().BeTrue();
@@ -225,13 +219,11 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
     [Fact]
     public async Task StatusEndpoint_AwaitingPresentation_ReturnsPendingStateOnly()
     {
-        // Arrange
-        var requestId = SeedPending();
+        _factory.ResetMocksAndState();
+        var requestId = await SeedPendingAsync();
 
-        // Act
         var response = await _client.GetAsync($"/api/presentations/{requestId}/status");
 
-        // Assert — state + expiresAt only; no registerId / instanceId / consumer
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<PresentationStatusResponse>();
         body.Should().NotBeNull();
@@ -239,7 +231,6 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
         body.State.Should().Be("awaiting-presentation");
         body.ExpiresAt.Should().NotBeNull();
 
-        // Payload JSON must not leak privileged fields.
         var json = await response.Content.ReadAsStringAsync();
         json.Should().NotContain("registerId");
         json.Should().NotContain("instanceId");
@@ -249,14 +240,18 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
     [Fact]
     public async Task StatusEndpoint_AfterSuccessCallback_ReturnsSuccess()
     {
-        // Arrange — seed + success callback
-        var requestId = SeedPending();
+        _factory.ResetMocksAndState();
+        var requestId = await SeedPendingAsync();
+        // Explicit success outcome — avoids inheriting state from any test that
+        // runs before this one under the class-level IClassFixture.
+        _factory.HaipConsumer.NextOutcome = new PresentationOutcome(
+            PresentationOutcomeKind.Success,
+            new Dictionary<string, object>(),
+            null, null, "sha");
         await _client.PostAsJsonAsync($"/api/presentations/callbacks/haip/{requestId}", new { });
 
-        // Act
         var response = await _client.GetAsync($"/api/presentations/{requestId}/status");
 
-        // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<PresentationStatusResponse>();
         body!.State.Should().Be("success");
@@ -265,6 +260,8 @@ public class PresentationCallbackIntegrationTests : IClassFixture<PresentationLi
     [Fact]
     public async Task StatusEndpoint_UnknownRequestId_Returns404()
     {
+        _factory.ResetMocksAndState();
+
         var response = await _client.GetAsync($"/api/presentations/{Guid.NewGuid()}/status");
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

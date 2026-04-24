@@ -35,6 +35,55 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
     /// </summary>
     public TestHaipConsumer HaipConsumer { get; } = new();
 
+    /// <summary>
+    /// Reset all mock state and in-memory stores between tests. The factory is
+    /// shared via <c>IClassFixture</c> for speed, so tests must call this at the
+    /// start of each method to prevent shared-state bleed (Moq last-setup-wins,
+    /// accumulating <see cref="TestHaipConsumer.InvokedContexts"/>, rate-limit
+    /// counters, pending hashes, sentinel values).
+    /// </summary>
+    public void ResetMocksAndState()
+    {
+        HaipClient.Reset();
+        ValidatorClient.Reset();
+        ApplyDefaultMockSetups();
+        PendingStore.Clear();
+        RateLimiter.Reset();
+        HaipConsumer.Reset();
+    }
+
+    private void ApplyDefaultMockSetups()
+    {
+        HaipClient
+            .Setup(h => h.CreatePresentationRequestAsync(
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreatePresentationRequestResult(
+                RequestId: Guid.NewGuid(),
+                AuthorizationRequestUri: "openid4vp://authorize?request_uri=...",
+                RequestUri: "https://haip.test/request-object",
+                Nonce: "test-nonce",
+                ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(10)));
+
+        ValidatorClient
+            .Setup(v => v.GetNextSequenceNumberAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1L);
+
+        ValidatorClient
+            .Setup(v => v.SubmitTransactionAsync(
+                It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TransactionSubmission sub, CancellationToken _) =>
+                new TransactionSubmissionResult
+                {
+                    Success = true,
+                    TransactionId = sub.TransactionId,
+                    RegisterId = sub.RegisterId
+                });
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
@@ -61,36 +110,7 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
                 services.AddSingleton(extra);
             }
 
-            // HAIP default: successful presentation-request creation.
-            HaipClient
-                .Setup(h => h.CreatePresentationRequestAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<List<string>?>(),
-                    It.IsAny<List<string>?>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new CreatePresentationRequestResult(
-                    RequestId: Guid.NewGuid(),
-                    AuthorizationRequestUri: "openid4vp://authorize?request_uri=...",
-                    RequestUri: "https://haip.test/request-object",
-                    Nonce: "test-nonce",
-                    ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(10)));
-
-            // Validator default: all submissions succeed.
-            ValidatorClient
-                .Setup(v => v.GetNextSequenceNumberAsync(
-                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(1L);
-
-            ValidatorClient
-                .Setup(v => v.SubmitTransactionAsync(
-                    It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((TransactionSubmission sub, CancellationToken _) =>
-                    new TransactionSubmissionResult
-                    {
-                        Success = true,
-                        TransactionId = sub.TransactionId,
-                        RegisterId = sub.RegisterId
-                    });
+            ApplyDefaultMockSetups();
         });
     }
 }
@@ -139,11 +159,24 @@ public sealed class InMemoryPendingPresentationStore : IPendingPresentationStore
         return Task.CompletedTask;
     }
 
+    /// <remarks>
+    /// Test-only stub: ignores <paramref name="withinDuration"/> and returns all
+    /// pending keys up to <paramref name="max"/>. The Redis adapter honours the
+    /// TTL-window filter; integration tests that exercise sweeper timing must
+    /// either extend this or use the real <c>RedisPendingPresentationStore</c>.
+    /// </remarks>
     public Task<IReadOnlyList<Guid>> ListPendingNearExpiryAsync(TimeSpan withinDuration, int max, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Guid>>(_pending.Keys.Take(max).ToList());
 
     /// <summary>Manually force the sentinel value for late-outcome-after-abandonment tests.</summary>
     public void ForceSentinel(Guid id, string value) => _sentinel[id] = value;
+
+    /// <summary>Clear all pending state + sentinels between tests.</summary>
+    public void Clear()
+    {
+        _pending.Clear();
+        _sentinel.Clear();
+    }
 }
 
 /// <summary>
@@ -170,6 +203,14 @@ public sealed class CountingPresentationRateLimiter : IPresentationRateLimiter
             Threshold: Threshold,
             RetryAfter: allowed ? null : TimeSpan.FromSeconds(WindowSeconds)));
     }
+
+    /// <summary>Reset counters between tests.</summary>
+    public void Reset()
+    {
+        _counts.Clear();
+        Threshold = 10;
+        WindowSeconds = 600;
+    }
 }
 
 /// <summary>
@@ -194,5 +235,17 @@ public sealed class TestHaipConsumer : IPresentationConsumer
     {
         InvokedContexts.Add(context);
         return Task.FromResult(NextOutcome);
+    }
+
+    /// <summary>Reset invocation tracking + outcome between tests.</summary>
+    public void Reset()
+    {
+        InvokedContexts.Clear();
+        NextOutcome = new PresentationOutcome(
+            Kind: PresentationOutcomeKind.Success,
+            VerifiedClaims: new Dictionary<string, object> { ["name"] = "Test" },
+            Reason: null,
+            VerifierDiagnostics: null,
+            PresentationSubmissionHash: "sha256:test");
     }
 }
