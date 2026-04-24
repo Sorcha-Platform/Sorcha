@@ -825,6 +825,64 @@ a candidate is selected.
 
 ### Base Path: `/api/blueprints`
 
+### Timebound Presentation Lifecycle (Feature 111)
+
+Three-event on-register lifecycle for timebound credential presentations. When an action carries `credentialRequirements` targeting HaipExternalWallet and the citizen submits without pre-attached presentations, `/execute` returns **`202 Accepted`** with `AwaitingPresentation=true` and a QR code. A `PresentationInitiated` transaction is written to the register immediately. The action does NOT complete until the verifier callback writes a `PresentationOutcome` with `kind=success`. Retry after a decline is first-class; a second attempt after a successful outcome returns **`409 Conflict`**.
+
+#### `POST /api/instances/{instanceId}/actions/{actionId}/execute` — 202 semantics
+
+When the action requires a HAIP presentation and the submitter has not attached presentations:
+
+**Response:** `202 Accepted` with `Location: /api/presentations/{id}/status`
+```json
+{
+  "transactionId": "abcd1234...",
+  "instanceId": "78654d78-...",
+  "isComplete": false,
+  "awaitingPresentation": true,
+  "presentationRequest": {
+    "requestId": "9f7c2e1a-0b3d-...",
+    "presentationRequestUri": "openid4vp://...",
+    "credentialType": "VerifiedIdentityCredential",
+    "requestedClaims": ["givenName", "familyName", "dateOfBirth"],
+    "expiresAt": "2026-04-24T21:25:00Z"
+  }
+}
+```
+
+Rate-limited submitters receive `429 Too Many Requests` with `Retry-After`. Action already completed via prior success returns `409 Conflict`.
+
+#### `GET /api/presentations/{presentationRequestId}/status`
+
+Wallet-facing, unauthenticated. Returns lifecycle state + expiry only; no register, instance, or consumer metadata.
+
+**Response:** `200 OK`
+```json
+{
+  "presentationRequestId": "9f7c2e1a-...",
+  "state": "awaiting-presentation",
+  "expiresAt": "2026-04-24T21:25:00Z"
+}
+```
+
+State values: `awaiting-presentation` · `success` · `decline` · `abandoned` · `abandoned-with-late-outcome` · `expired`.
+
+The register's transaction stream is the authoritative history — query `PresentationInitiated` / `PresentationOutcome` / `PresentationAbandoned` transactions from the Register Service for the full event record.
+
+#### `POST /api/presentations/callbacks/{consumerName}/{presentationRequestId}`
+
+Service-to-service only (`AuthorizationPolicies.RequireService`). Called by a registered `IPresentationConsumer` (e.g. the HAIP Service `PresentationCallbackRelay`) after verification. Writes the `PresentationOutcome` transaction. Idempotent by `presentationRequestId`. Body is an opaque JSON payload the consumer interprets (for HAIP: a serialised `VerificationResult`).
+
+**Response:** `200 OK`
+```json
+{
+  "kind": "Success",
+  "outcomeTransactionId": "def5678...",
+  "idempotentReplay": false,
+  "lateAfterAbandonment": false
+}
+```
+
 ### Endpoints
 
 #### 1. Get All Blueprints
