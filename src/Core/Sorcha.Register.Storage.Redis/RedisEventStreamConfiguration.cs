@@ -24,7 +24,10 @@ public class RedisEventStreamConfiguration
     public int MaxStreamLength { get; set; } = 10000;
 
     /// <summary>
-    /// Block timeout in milliseconds for XREADGROUP
+    /// Idle delay in milliseconds between XREADGROUP polls when no messages are returned.
+    /// The typed StackExchange.Redis StreamReadGroupAsync overload does not expose the
+    /// XREADGROUP BLOCK argument, so the consumer loop sleeps for this duration instead
+    /// of busy-spinning when streams are empty. Default: 5000.
     /// </summary>
     public int ReadBlockMilliseconds { get; set; } = 5000;
 

@@ -119,11 +119,13 @@ public class RedisStreamEventSubscriber : IEventSubscriber
                     _consumerName,
                     _config.BatchSize);
 
+                var processedAny = false;
                 if (results is not null)
                 {
                     foreach (var result in results)
                     {
                         if (result.Entries.Length == 0) continue;
+                        processedAny = true;
 
                         if (subscriptionSnapshot.TryGetValue(result.Key.ToString(), out var handlers))
                         {
@@ -143,6 +145,16 @@ public class RedisStreamEventSubscriber : IEventSubscriber
                         await ReclaimPendingMessagesAsync(db, streamKey, subscriptionSnapshot[streamKey]);
                     }
                     lastPendingClaim = DateTime.UtcNow;
+                }
+
+                // The typed StreamReadGroupAsync overload does not accept the XREADGROUP BLOCK
+                // argument, so an empty read returns immediately. Without a delay this loop spun
+                // ~15k iterations/sec and pegged a vCPU on n1 (load avg ~11 on a 2-vCPU box,
+                // wedging SSH). Sleep when idle; events arriving incur no extra latency because
+                // the next iteration polls right away.
+                if (!processedAny)
+                {
+                    await Task.Delay(_config.ReadBlockMilliseconds, cancellationToken);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
