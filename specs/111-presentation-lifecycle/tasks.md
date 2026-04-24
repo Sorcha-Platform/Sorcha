@@ -101,8 +101,8 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 
 - [X] T035 [P] [US2] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/TransactionBuilderServicePresentationOutcomeTests.cs` — success path populates VerifiedClaims + PresentationSubmissionHash; decline path populates Reason only when Minimal, Reason + VerifierDiagnostics when Verbose
 - [X] T036 [P] [US2] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/PresentationLifecycleServiceOutcomeTests.cs` — HandleOutcomeAsync writes success tx and advances instance; writes decline tx and reroutes; second call with same requestId is no-op (sentinel guards)
-- [ ] T037 [P] [US2] Integration test `tests/Sorcha.Blueprint.Service.Tests/Integration/PresentationOutcomeIntegrationTests.cs` — POST `/api/presentations/callbacks/haip` with success payload after prior initiate; assert outcome tx, instance advance, sentinel set to "success"
-- [ ] T038 [P] [US2] Integration test same file — decline callback writes decline outcome, action terminates; duplicate callback is no-op (returns 200, no new tx)
+- [X] T037 [P] [US2] Integration test `PresentationCallbackIntegrationTests.Callback_SuccessOutcome_WritesTx_AndMarksSentinelSuccess_T037` — POST callback with success payload, outcome tx written, sentinel=success
+- [X] T038 [P] [US2] Integration tests `PresentationCallbackIntegrationTests.Callback_DeclineOutcome_...T038a` + `..._DuplicateCallback_IsIdempotentReplay_...T038b` — decline writes tx + sentinel=decline; duplicate returns 200 with IdempotentReplay=true, no new tx
 - [X] T039 [P] [US2] Unit test `tests/Sorcha.Haip.Service.Tests/Services/HaipPresentationConsumerTests.cs` — verify HAIP verifier result mapping (landed in PR #382 round 1 fix)
 - [ ] T040 [P] [US2] Integration test `tests/Sorcha.Haip.Service.Tests/Integration/PresentationCallbackRelayIntegrationTests.cs` — HAIP VerifierEndpoints direct-post handler forwards verifier result to Blueprint Service callback endpoint with service JWT
 
@@ -155,7 +155,7 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 - [~] T056 [P] [US4] Unit test sweeper leader election — deferred (requires Redis test harness; `ConnectionMultiplexer.StringSetAsync` SET NX path is standard StackExchange.Redis behaviour)
 - [ ] T057 [P] [US4] Integration test `tests/Sorcha.Blueprint.Service.Tests/Integration/PresentationAbandonmentIntegrationTests.cs` — abandonment happens within 60s of window expiry on opt-in blueprint
 - [ ] T058 [P] [US4] Integration test same file — opt-out blueprint: no abandonment record even after 3x window
-- [ ] T059 [P] [US4] Integration test `PresentationLateOutcomeAfterAbandonmentTests.cs` — force abandonment, then POST callback; both tx visible, outcome sentinel updates to "abandoned+outcome"
+- [X] T059 [P] [US4] Integration test `PresentationCallbackIntegrationTests.Callback_LateAfterAbandonment_WritesOutcome_MarksAbandonedWithOutcome_T059` — sentinel forced to "abandoned"; callback writes outcome, sentinel advances to "abandoned+outcome"
 
 ### Implementation for User Story 4
 
