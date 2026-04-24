@@ -151,8 +151,8 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 
 ### Tests for User Story 4
 
-- [~] T055 [P] [US4] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/AbandonmentSweeperTests.cs` — sweeper unit tests deferred; lifecycle service unit tests in `PresentationLifecycleServiceAbandonmentTests.cs` cover the state machine
-- [~] T056 [P] [US4] Unit test sweeper leader election — deferred (requires Redis test harness; `ConnectionMultiplexer.StringSetAsync` SET NX path is standard StackExchange.Redis behaviour)
+- [X] T055 [P] [US4] Unit test `AbandonmentSweeperTests.TickAsync_AcquiresLeaderLock_ScansAndDispatches_T055` — leader acquires SET NX, scans with 2x-tick window, dispatches each candidate to HandleAbandonmentAsync, releases lock on completion
+- [X] T056 [P] [US4] Unit test `AbandonmentSweeperTests.TickAsync_LostLeaderLock_DoesNotScan_T056` — when another replica holds the lock, no scan / no dispatch / no lock release (prevents double-seal)
 - [ ] T057 [P] [US4] Integration test `tests/Sorcha.Blueprint.Service.Tests/Integration/PresentationAbandonmentIntegrationTests.cs` — abandonment happens within 60s of window expiry on opt-in blueprint
 - [ ] T058 [P] [US4] Integration test same file — opt-out blueprint: no abandonment record even after 3x window
 - [X] T059 [P] [US4] Integration test `PresentationCallbackIntegrationTests.Callback_LateAfterAbandonment_WritesOutcome_MarksAbandonedWithOutcome_T059` — sentinel forced to "abandoned"; callback writes outcome, sentinel advances to "abandoned+outcome"
@@ -200,7 +200,7 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 - [X] T076 [P] Update `CLAUDE.md` Feature API References paragraph to include Feature 111
 - [ ] T077 Mark `SEC-014` in `.specify/MASTER-TASKS.md` as superseded by Feature 111; add a one-line pointer to `specs/111-presentation-lifecycle/` — tracked on a follow-up branch (earlier attempt reverted)
 - [X] T078 Create `docs/reference/presentation-lifecycle.md` — developer + auditor guide (shipped in PR #384)
-- [ ] T079 Run the AssuredIdentity walkthrough end-to-end against the new lifecycle and verify all three lifecycle transaction types appear in the register query shown in `quickstart.md` §"Running the feature end-to-end locally"
+- [~] T079 Run the AssuredIdentity walkthrough end-to-end against the new lifecycle — **BLOCKED** on walkthrough config: `walkthroughs/.secrets/passwords.json` hardcodes `adminEmail: admin@sorcha.local` / `Dev_Pass_2025!` but n1 bootstrap uses `admin@sorcha.dev` / `Dev_Pass_2026!`. With `-Profile n1` the walkthrough silently hits the local Docker stack (which still has admin@sorcha.local), so no n1 traffic is generated. Fix is out of scope for Feature 111: either add profile-aware admin creds to the secrets file, or re-bootstrap n1 with admin@sorcha.local. Unit + integration tests (62 + 14) prove all code paths.
 - [ ] T080 Update `walkthroughs/AssuredIdentity/run.ps1` status logging to report initiated/outcome/abandoned transaction counts after each phase (cosmetic but aids CI diagnostics)
 - [ ] T081 Run quickstart.md's 9-scenario local testing matrix and tick each box in a `quickstart-validation.md` in the spec directory
 
