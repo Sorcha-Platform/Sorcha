@@ -2,7 +2,7 @@
 name: sorcha-architecture
 description: |
   Sorcha feature-specific API references, domain models, and cross-cutting architectural patterns that don't belong in service-level skills.
-  Use when: working on or extending any of the features documented below (Participant Identity, Register Invitations, Trust Hardening, Stored Data / file attachments, Validator Roster, Org Key Derivation, Platform Org Topology, Consumer Persona, System Register Genesis, Open Participants / late binding, x-review / credential id-cards, ownership-agnostic submission / derived relationship). Also use when you need a concise catalogue of well-known IDs, DID shapes, or the endpoint surface for these features.
+  Use when: working on or extending any of the features documented below (Participant Identity, Register Invitations, Trust Hardening, Stored Data / file attachments, Validator Roster, Org Key Derivation, Platform Org Topology, Consumer Persona, System Register Genesis, Open Participants / late binding, x-review / credential id-cards, ownership-agnostic submission / derived relationship, Timebound Presentation Lifecycle, Transactional Email / welcome dispatcher). Also use when you need a concise catalogue of well-known IDs, DID shapes, or the endpoint surface for these features.
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
@@ -473,3 +473,71 @@ Three-event on-register lifecycle for timebound evidence presentations. HAIP ext
 **Endpoints:** `GET /api/presentations/{id}/status` returns current state (awaiting-presentation / success / decline / abandoned / abandoned-with-late-outcome / expired). Register tx stream is the authoritative history — the status endpoint reads Redis + sentinel.
 
 **Runtime source:** `src/Common/Sorcha.PresentationLifecycle.Abstractions/` (cross-consumer contract), `src/Services/Sorcha.Blueprint.Service/Services/Implementation/PresentationLifecycleService.cs`, `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/` (pending store + rate limiter), `src/Services/Sorcha.Blueprint.Service/Endpoints/PresentationEndpoints.cs`, `src/Services/Sorcha.Haip.Service/Services/HaipPresentationConsumer.cs`, `src/Services/Sorcha.Haip.Service/Services/PresentationCallbackRelay.cs`. Spec: `specs/111-presentation-lifecycle/`.
+
+---
+
+## Transactional Email Architecture (Feature 112)
+
+Every transactional email sent by the Tenant Service — verification, invitation, password reset, welcome — flows through a single templated pipeline. **Application code calls `ITransactionalEmailService`, never `IEmailSender` directly.**
+
+### Components (`Sorcha.Tenant.Service/Services/`)
+
+| Component | Kind | Responsibility |
+|-----------|------|----------------|
+| `ITransactionalEmailService` / `TransactionalEmailService` | Scoped facade | Single entry point. Four typed methods: `SendVerificationAsync`, `SendInvitationAsync`, `SendPasswordResetAsync`, `SendWelcomeAsync`. Builds the view model, resolves branding, renders, and delegates to the sender. Stateless. |
+| `IEmailTemplateRenderer` / `ScribanEmailTemplateRenderer` | Singleton | Parses every embedded `.html`/`.txt` under `Emails/Templates/*` at startup (fail-fast on parse errors). Includes an in-memory `ITemplateLoader` so `{{ include 'base.html' }}` works without disk I/O. Snake_case member renaming (e.g. `display_name` → `.DisplayName`). |
+| `IEmailBrandingResolver` / `EmailBrandingResolver` | Scoped | Returns `EmailBranding` (sender name, logo URL, primary colour, tagline, reply-to). Sorcha defaults from `EmailSettings`; per-org overrides via `Organization.Branding` with per-field fallback — org name always wins, other fields fall back per-field to Sorcha. |
+| `IEmailSender` + `SmtpEmailSender` / `AcsEmailSender` | Singleton | Tightened to `SendAsync(to, subject, htmlBody, textBody, ct)`. MailKit (SMTP) or Azure Communication Services — auto-selected on `Email:AcsConnectionString`. Multipart HTML + plaintext required on every message. |
+| `WelcomeEmailDispatcher` | Scoped | One-shot-per-user welcome. Idempotent via `PlatformUser.WelcomeSentAt`; non-throwing (a send failure is logged, never blocks the triggering authentication flow). |
+
+### Templates (embedded resources)
+
+```
+src/Services/Sorcha.Tenant.Service/Emails/Templates/
+  base.html  base.txt           — shared frame (header + body slot + footer)
+  verify.html  verify.txt       — Sorcha-branded
+  invite.html  invite.txt       — per-org branded (logo + colour)
+  reset.html  reset.txt         — Sorcha-branded
+  welcome-public.html  .txt     — Sorcha-branded, recovery-phrase advance-warning
+  welcome-invited.html  .txt    — per-org branded, role-aware
+```
+
+Every `.html` template ends with `{{ capture content }}...{{ end }} {{ include 'base.html' }}`. Plaintext counterparts are hand-authored (not HTML-stripped).
+
+### Welcome dispatch rules
+
+- Trigger points: `EmailVerificationService.VerifyTokenAsync` (email+password path), `LoginService` success path (covers users who've already verified and are logging in for the first time), `SocialCallback` Razor PageModel (social/passkey — IdP pre-verifies).
+- Pre-conditions: `EmailVerified == true` AND `WelcomeSentAt == null`.
+- Variant: public-org-only membership → `welcome-public`; any standard-org membership → `welcome-invited` using the **earliest-joined** standard org for branding.
+- No recovery-phrase content appears in any email body, ever — FR-016. The phrase is shown exactly once in `CreateWallet.razor` and is not stored anywhere we can retrieve.
+
+### Snapshot fixtures
+
+All six template pairs have committed golden fixtures at `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/{verify,invite-branded,invite-default,reset,welcome-public,welcome-invited}.{html,txt}`. Regenerate on intentional copy changes:
+
+```bash
+UPDATE_EMAIL_FIXTURES=1 dotnet test \
+  tests/Sorcha.Tenant.Service.Tests/Sorcha.Tenant.Service.Tests.csproj \
+  --filter "FullyQualifiedName~EmailTemplateSnapshotTests"
+```
+
+### Call-site examples
+
+```csharp
+// Verification — EmailVerificationService
+var verifyUrl = $"{_emailSettings.BaseUrl.TrimEnd('/')}/auth/verify-email?token={Uri.EscapeDataString(token)}";
+await _transactional.SendVerificationAsync(
+    new VerifyEmailDispatch(user.Email, user.DisplayName, verifyUrl, 24), ct);
+
+// Invitation — InvitationService (org-branded)
+var invitingOrg = await _organizationRepository.GetByIdAsync(organizationId, ct);
+await _transactional.SendInvitationAsync(
+    new InviteEmailDispatch(request.Email, inviterName, invitingOrg, role, acceptUrl, days), ct);
+
+// Welcome — never called directly by application code. Always via the dispatcher:
+await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
+```
+
+### Runtime source
+
+`src/Services/Sorcha.Tenant.Service/Services/*Email*.cs`, `src/Services/Sorcha.Tenant.Service/Services/*Welcome*.cs`, `src/Services/Sorcha.Tenant.Service/Emails/Templates/**`. DI wiring: `ServiceCollectionExtensions.AddTenantEmail`. Tests: `tests/Sorcha.Tenant.Service.Tests/Services/{EmailTemplateSnapshotTests,ScribanEmailTemplateRendererTests,EmailBrandingResolverTests,TransactionalEmailServiceTests,WelcomeEmailDispatcherTests,EmailVerificationServiceTests}.cs`. Spec: `specs/112-email-sweep/`. Design doc: `docs/superpowers/specs/2026-04-24-email-sweep-design.md`. Tenant Service README carries the user-facing architecture overview.

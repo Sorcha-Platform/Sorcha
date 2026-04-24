@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.10
-**Last Updated:** 2026-04-21
+**Version:** 7.11
+**Last Updated:** 2026-04-24
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -175,7 +175,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | AUTH-003 | Cross-tab token synchronization (localStorage events) | P3 | 6h | 📋 | Multi-tab consistency |
 | AUTH-004 | Session expiry warning UI (toast with "Extend" button) | P3 | 4h | 📋 | UX improvement |
 | AUTH-005 | OIDC integration for participant authentication (PART-1) | P3 | 24h | ✅ | Feature 054: OIDC token exchange, social login (Microsoft, Google, Apple), auto-provisioning on first login |
-| AUTH-006 | Production SMTP configuration (replace MailKit stub) | P1 | 8h | 📋 | Feature 054 uses stub email sender; needs real SMTP/SendGrid for email verification |
+| AUTH-006 | Transactional email sweep — unified templated pipeline, per-org branding, welcome emails | P1 | 8h | ✅ | Feature 112 — `ITransactionalEmailService` facade, Scriban templates (6 pairs) + snapshot fixtures, `WelcomeEmailDispatcher` one-shot per user, per-org branding on invitations, plaintext-token verification/invitation bugs fixed. SMTP (MailKit) and ACS backends unchanged other than multipart HTML+text. 12 new Tenant Service tests + 6 snapshot-fixture cases. See `specs/112-email-sweep/` and the Tenant Service README. |
 | AUTH-007 | Breach password list integration (HaveIBeenPwned API) | P2 | 6h | 📋 | NIST policy implemented but breach list check needs external API integration |
 | AUTH-008 | Custom domain DNS verification automation | P2 | 12h | 📋 | Feature 054 supports custom domains but DNS CNAME verification is manual |
 | AUTH-009 | Social login provider testing with real credentials | P2 | 8h | 📋 | Feature 054 IdP config tested with mocks; needs real OAuth app credentials for each provider |
@@ -259,11 +259,11 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
 | 3. Deferred Feature Gaps | P1-P2 | 17 (4 ✅, 13 remaining) | 21-41h | Close MVD gaps — GAP-005/011/018/019 done (075, 063, 077); GAP-011b E2E spun out as 3h P3 |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
-| 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
+| 5. Authentication & Identity | P1-P3 | 11 (4 ✅, 7 remaining) | 50-80h | Enterprise identity — OIDC/org admin/social login (054); passkey/WebAuthn (055); platform org topology (058); transactional email sweep (112) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
 | 8. Mobile App Prerequisites | P1 | 8 (3 ✅, 1 ❌, 4 remaining) | 60-80h | Package portability, device inputs, white-label branding — Feature 084 done (MOB-002/003/004), MOB-001 eliminated |
-| **Total** | | **73** (15 ✅, 1 ❌, 57 remaining) | **561-821h** | |
+| **Total** | | **73** (16 ✅, 1 ❌, 56 remaining) | **561-821h** | |
 
 ### Completed Features (not in themes above)
 
@@ -292,6 +292,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.10
-**Last Updated:** 2026-04-21
+**Version:** 7.11
+**Last Updated:** 2026-04-24
 **Document Owner:** Sorcha Architecture Team

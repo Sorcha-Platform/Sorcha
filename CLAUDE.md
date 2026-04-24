@@ -84,7 +84,7 @@ Full project tree: `docs/reference/project-structure.md`. Architecture diagrams:
 
 ## Feature API References
 
-Feature-specific endpoint tables, domain models, and cross-cutting patterns for Participant Identity, Register Invitations, Trust Hardening (079), Stored Data / file attachments (085), Validator Roster (086), Org Key Derivation (083), Platform Org Topology, Consumer Persona (092), System Register Genesis (099), Open Participants / late binding (103), `x-review` / credential id-cards (107), ownership-agnostic submission / derived relationship (108), and Timebound Presentation Lifecycle (111) are consolidated in the **`sorcha-architecture`** skill (`.claude/skills/sorcha-architecture/SKILL.md`). Load it when touching any of those features — it carries what used to live inline here.
+Feature-specific endpoint tables, domain models, and cross-cutting patterns for Participant Identity, Register Invitations, Trust Hardening (079), Stored Data / file attachments (085), Validator Roster (086), Org Key Derivation (083), Platform Org Topology, Consumer Persona (092), System Register Genesis (099), Open Participants / late binding (103), `x-review` / credential id-cards (107), ownership-agnostic submission / derived relationship (108), Timebound Presentation Lifecycle (111), and the transactional email architecture (112 — facade / template renderer / branding resolver / welcome dispatcher, see Tenant Service README) are consolidated in the **`sorcha-architecture`** skill (`.claude/skills/sorcha-architecture/SKILL.md`). Load it when touching any of those features — it carries what used to live inline here.
 
 Full REST/gRPC reference: `docs/reference/API-DOCUMENTATION.md`.
 
@@ -215,6 +215,28 @@ builder.AddRateLimiting();
 ```
 
 Default values are very relaxed (100k/min) for pre-release development. Tighten in `appsettings.Production.json`. Inject `IOptions<RateLimitSettings>` for non-HTTP rate limiting (e.g. wallet notifications, MCP server).
+
+### 9. Transactional Email (Feature 112)
+
+All transactional email from the Tenant Service goes through `ITransactionalEmailService` — the single, templated entry point. **Do NOT call `IEmailSender.SendAsync` directly from application code**, and **do NOT build HTML bodies with string interpolation**.
+
+```csharp
+// Inject the facade — not IEmailSender
+public MyService(ITransactionalEmailService transactional) { … }
+
+// Typed dispatch records for each flow
+await _transactional.SendVerificationAsync(new VerifyEmailDispatch(
+    ToEmail: user.Email,
+    DisplayName: user.DisplayName,
+    VerifyUrl: verifyUrl,
+    ExpiresInHours: 24), ct);
+```
+
+Six Scriban templates (`verify`, `invite`, `reset`, `welcome-public`, `welcome-invited` plus shared `base`) live as embedded resources in `src/Services/Sorcha.Tenant.Service/Emails/Templates/`. Per-org branding (logo + colour + tagline) applies only to `invite` and `welcome-invited`; all other templates stay Sorcha-branded.
+
+Welcome emails fire exactly once per user via `WelcomeEmailDispatcher.SendIfPendingAsync` — idempotent (guarded by `PlatformUser.WelcomeSentAt`) and non-throwing. Call sites: end of `EmailVerificationService.VerifyTokenAsync`, tail of each `LoginService` success path, and `SocialCallback` Razor PageModel. **Do NOT add new welcome-email trigger sites without routing through the dispatcher.**
+
+Snapshot fixtures for every template live at `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/`. Regenerate with `UPDATE_EMAIL_FIXTURES=1 dotnet test --filter "~EmailTemplateSnapshotTests"` when a template copy change is intentional. Full design-history and architecture: Tenant Service README → "Transactional Email Architecture (Feature 112)" section.
 
 > Feature-specific patterns (Open Participants / late binding, `x-review`, ownership-agnostic submission) live in the `sorcha-architecture` skill.
 
