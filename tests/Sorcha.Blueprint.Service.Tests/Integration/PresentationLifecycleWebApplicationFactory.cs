@@ -3,13 +3,17 @@
 
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.PresentationLifecycle.Abstractions;
+using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 using Sorcha.ServiceClients.Haip;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
 
 namespace Sorcha.Blueprint.Service.Tests.Integration;
@@ -25,8 +29,41 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
 {
     public Mock<IHaipServiceClient> HaipClient { get; } = new();
     public Mock<IValidatorServiceClient> ValidatorClient { get; } = new();
+    public Mock<IRegisterServiceClient> RegisterClient { get; } = new();
     public InMemoryPendingPresentationStore PendingStore { get; } = new();
     public CountingPresentationRateLimiter RateLimiter { get; } = new();
+
+    /// <summary>
+    /// Seed a fake <c>PresentationOutcome</c> transaction for
+    /// <c>GetTransactionsByInstanceIdAsync</c> so the US3 retry gate in
+    /// <c>ActionExecutionService</c> finds a prior outcome and blocks new
+    /// attempts with 409.
+    /// </summary>
+    public void RegisterClientForRetryGate(string instanceId, int actionId, string outcomeKind, string outcomeTxId)
+    {
+        RegisterClient
+            .Setup(r => r.GetTransactionsByInstanceIdAsync(
+                It.IsAny<string>(), instanceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TransactionModel>
+            {
+                new()
+                {
+                    TxId = outcomeTxId,
+                    RegisterId = "reg-execute-integration",
+                    SenderWallet = "test",
+                    MetaData = new TransactionMetaData
+                    {
+                        TransactionType = TransactionType.PresentationOutcome,
+                        InstanceId = instanceId,
+                        ActionId = (uint)actionId,
+                        TrackingData = new Dictionary<string, string>
+                        {
+                            ["outcomeKind"] = outcomeKind
+                        }
+                    }
+                }
+            });
+    }
     /// <remarks>
     /// Populate before the first call to <see cref="WebApplicationFactory{TEntryPoint}.CreateClient()"/>.
     /// Additions after host creation have no effect because <c>ConfigureWebHost</c>
@@ -51,6 +88,7 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
     {
         HaipClient.Reset();
         ValidatorClient.Reset();
+        RegisterClient.Reset();
         ApplyDefaultMockSetups();
         PendingStore.Clear();
         RateLimiter.Reset();
@@ -59,13 +97,35 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
 
     private void ApplyDefaultMockSetups()
     {
+        // Register defaults — blueprint-publish succeeds, instance-tx queries
+        // return an empty list (retry gate sees no prior outcomes by default).
+        RegisterClient
+            .Setup(r => r.PublishBlueprintToRegisterAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        RegisterClient
+            .Setup(r => r.GetTransactionsByInstanceIdAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TransactionModel>());
+        RegisterClient
+            .Setup(r => r.GetRegisterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string regId, CancellationToken _) => new Sorcha.Register.Models.Register
+            {
+                Id = regId,
+                Name = "Test Register",
+                Status = RegisterStatus.Online
+            });
+
+        // Each CreatePresentationRequestAsync call generates a fresh RequestId —
+        // critical for retry tests where two submissions must produce distinct ids.
         HaipClient
             .Setup(h => h.CreatePresentationRequestAsync(
                 It.IsAny<string>(),
                 It.IsAny<List<string>?>(),
                 It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CreatePresentationRequestResult(
+            .ReturnsAsync(() => new CreatePresentationRequestResult(
                 RequestId: Guid.NewGuid(),
                 AuthorizationRequestUri: "openid4vp://authorize?request_uri=...",
                 RequestUri: "https://haip.test/request-object",
@@ -93,6 +153,20 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
     {
         base.ConfigureWebHost(builder);
 
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            // ServiceAuthClient constructs eagerly in some code paths and needs
+            // these present; values don't matter because all outbound clients
+            // are mocked.
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ServiceAuth:ClientId"] = "test-client",
+                ["ServiceAuth:ClientSecret"] = "test-secret",
+                ["ServiceAuth:TokenEndpoint"] = "http://localhost/token",
+                ["ServiceAuth:Scopes"] = "wallets:sign registers:write blueprints:manage"
+            });
+        });
+
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<IHaipServiceClient>();
@@ -100,6 +174,12 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
 
             services.RemoveAll<IValidatorServiceClient>();
             services.AddSingleton(ValidatorClient.Object);
+
+            // Replace the base factory's IRegisterServiceClient mock so this
+            // factory can drive RegisterClientForRetryGate() and watch the
+            // blueprint-publish call.
+            services.RemoveAll<IRegisterServiceClient>();
+            services.AddSingleton(RegisterClient.Object);
 
             services.RemoveAll<IPendingPresentationStore>();
             services.AddSingleton<IPendingPresentationStore>(PendingStore);

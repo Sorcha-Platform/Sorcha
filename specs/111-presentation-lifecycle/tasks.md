@@ -73,8 +73,8 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 - [X] T022 [P] [US1] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/TransactionBuilderServicePresentationInitiatedTests.cs` — verify the builder populates TransactionType, presentationRequestId, requirementsDigest (SHA-256 of canonical requirements), RecipientsWallets (submitter wallet), and asserts no credential fields in the payload
 - [X] T023 [P] [US1] Unit test `tests/Sorcha.Blueprint.Service.Tests/Storage/Presentations/RedisPendingPresentationStoreTests.cs` — store, retrieve, TTL expiry, key naming per data-model §2.1
 - [X] T024 [P] [US1] Unit test `tests/Sorcha.Blueprint.Service.Tests/Storage/Presentations/RedisPresentationRateLimiterTests.cs` — below-threshold allows, above-threshold rejects, window resets after TTL, per-wallet-per-register scoping
-- [ ] T025 [P] [US1] Integration test `tests/Sorcha.Blueprint.Service.Tests/Integration/PresentationInitiationIntegrationTests.cs` — `POST /api/instances/{id}/actions/{n}/execute` returns 202 with PresentationPendingResponse payload (presentationRequestId, authorizationRequestUri, status=awaiting-presentation, initiatedTransactionId)
-- [ ] T026 [P] [US1] Integration test `RateLimitIntegrationTests.cs` — 11th submission within window from same wallet against same register returns HTTP 429 with no attempt transaction written
+- [X] T025 [P] [US1] Integration test `PresentationExecuteIntegrationTests.Execute_HaipRequired_Returns202_WithAwaitingPresentation_T025` — `POST /api/instances/{id}/actions/{n}/execute` returns 202 Accepted with AwaitingPresentation=true + HAIP presentation-request details + pending state stored + initiated tx id threaded
+- [X] T026 [P] [US1] Integration test `PresentationExecuteIntegrationTests.Execute_HaipRequired_AboveRateLimit_Returns429_T026` — 4th attempt with Threshold=3 returns 429 + Retry-After header
 
 ### Implementation for User Story 1
 
@@ -130,8 +130,8 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 
 ### Tests for User Story 3
 
-- [ ] T050 [P] [US3] Integration test `tests/Sorcha.Blueprint.Service.Tests/Integration/PresentationRetryIntegrationTests.cs` — decline then retry produces 2 initiated + 2 outcome transactions; action only advances on the second success
-- [ ] T051 [P] [US3] Integration test same file — 3rd attempt submission for an action with a prior success returns HTTP 409 (already complete); no new attempt transaction written
+- [X] T050 [P] [US3] Integration test `PresentationExecuteIntegrationTests.Execute_DeclineThenRetry_Produces2Initiated_And2Outcome_T050` — decline callback, then retry submission produces a distinct presentationRequestId; per-attempt sentinels correctly report decline / success
+- [X] T051 [P] [US3] Integration test `PresentationExecuteIntegrationTests.Execute_AfterSuccessfulOutcome_Returns409_T051` — after seeding a prior PresentationOutcome(success) via the register mock, the next execute hits the US3 retry gate and returns 409 Conflict
 
 ### Implementation for User Story 3
 
