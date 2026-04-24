@@ -76,8 +76,8 @@ public sealed class AbandonmentSweeper : BackgroundService
         _logger.LogInformation("AbandonmentSweeper stopping");
     }
 
-    // Internal for unit tests — exercises the leader-lock + dispatch path
-    // without having to stand up the full BackgroundService loop.
+    // internal to avoid exposing tick logic publicly while still allowing
+    // direct invocation outside the BackgroundService timer loop.
     internal async Task TickAsync(TimeSpan lockTtl, CancellationToken ct)
     {
         // Leader election via SET NX — only the replica that acquires the lock

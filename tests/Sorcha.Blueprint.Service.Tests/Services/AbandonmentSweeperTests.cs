@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using StackExchange.Redis;
 using Sorcha.Blueprint.Service.Configuration;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage.Presentations;
-using StackExchange.Redis;
-using Xunit;
 
 namespace Sorcha.Blueprint.Service.Tests.Services;
 
@@ -69,8 +67,9 @@ public class AbandonmentSweeperTests
                 It.IsAny<TimeSpan>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ids);
 
-        // Act
-        await Make().TickAsync(TimeSpan.FromSeconds(60), CancellationToken.None);
+        // Act — use distinct tick (20s) and lockTtl (90s) so the verifier below
+        // can tell "near-expiry window = 2×tick = 40s" apart from the lock TTL.
+        await Make(tickSec: 20).TickAsync(TimeSpan.FromSeconds(90), CancellationToken.None);
 
         // Assert — each candidate was dispatched to HandleAbandonmentAsync.
         foreach (var id in ids)
@@ -80,9 +79,9 @@ public class AbandonmentSweeperTests
                 Times.Once);
         }
 
-        // Near-expiry window = 2x tick interval (60s).
+        // Near-expiry window = 2x tick interval (40s), unambiguously != lockTtl (90s).
         _storeMock.Verify(s => s.ListPendingNearExpiryAsync(
-            TimeSpan.FromSeconds(60), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            TimeSpan.FromSeconds(40), It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Once);
 
         // Lock released at end of tick.
@@ -117,7 +116,7 @@ public class AbandonmentSweeperTests
     }
 
     [Fact]
-    public async Task TickAsync_NoCandidates_NoOp()
+    public async Task TickAsync_NoCandidates_ReleasesLockWithoutDispatching()
     {
         _dbMock.Setup(d => d.StringSetAsync(
                 It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
