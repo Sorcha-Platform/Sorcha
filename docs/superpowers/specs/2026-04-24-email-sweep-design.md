@@ -466,7 +466,11 @@ Existing fields (`BaseUrl`, `FromAddress`, `FromName`, SMTP settings, `AcsConnec
 
 ## Recommended follow-ups
 
-- **Mailpit in docker-compose** (~1h) — local dev mail catcher, enables UI-level testing of emails.
+- **Platform-wide org-name validation** (tracked as SEC-015 in MASTER-TASKS.md) — `Organization.Name` is currently an unvalidated free-form string. PR #391 added defensive 60-char subject-line truncation on the email path; the structural fix is DTO-level validation (length, character class, unicode-control-char guard). Affects every surface where org name renders.
+- **Mailpit in docker-compose** (~1h) — local dev mail catcher, enables UI-level testing of emails and closes the T067 deferred smoke walk.
+- **`SocialCallback` happy-path welcome integration test** (T057) — pre-existing suite has no success-path scaffolding for this Razor PageModel. Welcome dispatcher behaviour itself is unit-tested; the wiring is verified at compile time. Worth adding if/when the suite grows.
+- **Dispatch records → plain DTOs** (reviewer N-1/N-2) — `InviteEmailDispatch.InvitingOrganization` and `WelcomeDispatchContext.User` currently embed tracked EF entities. Flatten to scalars or a lightweight DTO for cleaner boundaries.
+- **Prometheus `email_send_failures_total{template}` counter** (T069) — optional; existing structured logs cover the error case.
 - **In-app wallet-creation UX review** — ensure `CreateWallet.razor` enforces / strongly encourages recovery-phrase capture before the mnemonic is cleared from memory.
 - **Per-org branding on verify / password reset** — revisit after MOB-007 ships org branding UI.
 - **Delivery reliability pass** — retries, outbox, bounce handling.
