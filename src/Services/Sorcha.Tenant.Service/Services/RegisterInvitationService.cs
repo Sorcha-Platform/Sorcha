@@ -385,19 +385,56 @@ public partial class RegisterInvitationService : IRegisterInvitationService
 
         var records = await query.OrderByDescending(r => r.CreatedAt).ToListAsync(ct);
 
-        var summaries = records.Select(r => new InvitationSummary
+        // Pre-load every org we'll need in one round-trip — by id for sources,
+        // by wallet address for targets (target orgs are referenced by DID, which
+        // wraps the wallet address). Replaces a per-record DB hit (N+1) with two
+        // index lookups.
+        var sourceOrgIds = records.Select(r => r.SourceOrgId).Distinct().ToArray();
+        var targetWallets = records
+            .Select(r => TryExtractWalletFromOrgDid(r.TargetOrgDid))
+            .Where(w => !string.IsNullOrEmpty(w))
+            .Distinct()
+            .ToArray();
+
+        var sourceOrgs = sourceOrgIds.Length == 0
+            ? new Dictionary<Guid, Organization>()
+            : await _dbContext.Organizations
+                .Where(o => sourceOrgIds.Contains(o.Id))
+                .ToDictionaryAsync(o => o.Id, ct);
+
+        var targetOrgs = targetWallets.Length == 0
+            ? new Dictionary<string, Organization>(StringComparer.OrdinalIgnoreCase)
+            : (await _dbContext.Organizations
+                .Where(o => o.WalletAddress != null && targetWallets.Contains(o.WalletAddress))
+                .ToListAsync(ct))
+              .ToDictionary(o => o.WalletAddress!, StringComparer.OrdinalIgnoreCase);
+
+        var summaries = records.Select(r =>
         {
-            InvitationId = r.InvitationId,
-            RegisterId = r.RegisterId,
-            RegisterName = r.RegisterName,
-            SourceOrgDid = GetSourceOrgDid(r),
-            SourceOrgName = null, // Could be resolved from SourceOrgId if needed
-            TargetOrgDid = r.TargetOrgDid,
-            TargetOrgName = null,
-            Direction = r.SourceOrgId == orgId ? "sent" : "received",
-            Status = r.Status.ToString(),
-            ExpiresAt = r.ExpiresAt,
-            CreatedAt = r.CreatedAt
+            sourceOrgs.TryGetValue(r.SourceOrgId, out var sourceOrg);
+            var targetWallet = TryExtractWalletFromOrgDid(r.TargetOrgDid);
+            Organization? targetOrg = null;
+            if (!string.IsNullOrEmpty(targetWallet))
+            {
+                targetOrgs.TryGetValue(targetWallet, out targetOrg);
+            }
+
+            return new InvitationSummary
+            {
+                InvitationId = r.InvitationId,
+                RegisterId = r.RegisterId,
+                RegisterName = r.RegisterName,
+                SourceOrgDid = sourceOrg?.WalletAddress != null
+                    ? SorchaDidIdentifier.FromOrganization(sourceOrg.WalletAddress).ToString()
+                    : $"org:{r.SourceOrgId}",
+                SourceOrgName = sourceOrg?.Name,
+                TargetOrgDid = r.TargetOrgDid,
+                TargetOrgName = targetOrg?.Name,
+                Direction = r.SourceOrgId == orgId ? "sent" : "received",
+                Status = r.Status.ToString(),
+                ExpiresAt = r.ExpiresAt,
+                CreatedAt = r.CreatedAt
+            };
         }).ToList();
 
         return new InvitationListResponse
@@ -405,6 +442,20 @@ public partial class RegisterInvitationService : IRegisterInvitationService
             Invitations = summaries,
             TotalCount = summaries.Count
         };
+    }
+
+    /// <summary>
+    /// Extract the bech32 wallet address from a <c>did:sorcha:org:{walletAddress}</c>
+    /// DID. Returns null when the DID is not in the expected shape — defensive
+    /// against future DID format changes.
+    /// </summary>
+    private static string? TryExtractWalletFromOrgDid(string? did)
+    {
+        if (string.IsNullOrEmpty(did)) return null;
+        const string prefix = "did:sorcha:org:";
+        return did.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? did[prefix.Length..]
+            : null;
     }
 
     /// <inheritdoc />
@@ -431,13 +482,4 @@ public partial class RegisterInvitationService : IRegisterInvitationService
         return org?.Id ?? Guid.Empty;
     }
 
-    private string GetSourceOrgDid(RegisterInvitationRecord record)
-    {
-        // Try to resolve from the source org's wallet address
-        var sourceOrg = _dbContext.Organizations
-            .FirstOrDefault(o => o.Id == record.SourceOrgId);
-        return sourceOrg?.WalletAddress != null
-            ? SorchaDidIdentifier.FromOrganization(sourceOrg.WalletAddress).ToString()
-            : $"org:{record.SourceOrgId}";
-    }
 }
