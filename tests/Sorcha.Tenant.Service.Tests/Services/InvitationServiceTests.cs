@@ -5,6 +5,7 @@ using FluentAssertions;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Moq;
 
@@ -21,7 +22,8 @@ public class InvitationServiceTests : IDisposable
     private readonly TenantDbContext _dbContext;
     private readonly InvitationRepository _invitationRepository;
     private readonly Mock<IIdentityRepository> _identityRepoMock;
-    private readonly Mock<IEmailSender> _emailSenderMock;
+    private readonly Mock<IOrganizationRepository> _orgRepoMock;
+    private readonly Mock<ITransactionalEmailService> _transactionalMock;
     private readonly InvitationService _service;
 
     private readonly Guid _orgId = Guid.NewGuid();
@@ -36,7 +38,8 @@ public class InvitationServiceTests : IDisposable
         _dbContext = new TenantDbContext(options);
         _invitationRepository = new InvitationRepository(_dbContext);
         _identityRepoMock = new Mock<IIdentityRepository>();
-        _emailSenderMock = new Mock<IEmailSender>();
+        _orgRepoMock = new Mock<IOrganizationRepository>();
+        _transactionalMock = new Mock<ITransactionalEmailService>();
 
         _identityRepoMock
             .Setup(r => r.GetUserByIdAsync(_adminUserId, It.IsAny<CancellationToken>()))
@@ -48,14 +51,27 @@ public class InvitationServiceTests : IDisposable
                 OrganizationId = _orgId
             });
 
-        _emailSenderMock
-            .Setup(e => e.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _orgRepoMock
+            .Setup(r => r.GetByIdAsync(_orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization
+            {
+                Id = _orgId,
+                Name = "Acme Verification Co.",
+                Subdomain = "acme",
+            });
+
+        _transactionalMock
+            .Setup(t => t.SendInvitationAsync(It.IsAny<InviteEmailDispatch>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+
+        var emailSettings = Options.Create(new EmailSettings { BaseUrl = "https://sorcha.io" });
 
         _service = new InvitationService(
             _invitationRepository,
             _identityRepoMock.Object,
-            _emailSenderMock.Object,
+            _orgRepoMock.Object,
+            _transactionalMock.Object,
+            emailSettings,
             _dbContext,
             Mock.Of<ILogger<InvitationService>>());
     }
@@ -78,10 +94,14 @@ public class InvitationServiceTests : IDisposable
         result.InvitedBy.Should().Be("Admin User");
         result.ExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow);
 
-        _emailSenderMock.Verify(e => e.SendAsync(
-            "user@example.com",
-            It.IsAny<string>(),
-            It.Is<string>(body => body.Contains("Admin User")),
+        _transactionalMock.Verify(t => t.SendInvitationAsync(
+            It.Is<InviteEmailDispatch>(d =>
+                d.ToEmail == "user@example.com" &&
+                d.InviterName == "Admin User" &&
+                d.InvitingOrganization.Id == _orgId &&
+                d.RoleDisplayName == "Designer" &&
+                d.AcceptUrl.Contains("/invitations/accept?token=") &&
+                d.ExpiresInDays == 7),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

@@ -24,7 +24,7 @@ public class PasswordResetServiceTests : IDisposable
 {
     private readonly TenantDbContext _dbContext;
     private readonly Mock<IPasswordPolicyService> _passwordPolicyService = new();
-    private readonly Mock<IEmailSender> _emailSender = new();
+    private readonly Mock<ITransactionalEmailService> _transactional = new();
     private readonly ILogger<PasswordResetService> _logger = NullLogger<PasswordResetService>.Instance;
 
     public PasswordResetServiceTests()
@@ -39,7 +39,7 @@ public class PasswordResetServiceTests : IDisposable
         new(
             _dbContext,
             _passwordPolicyService.Object,
-            _emailSender.Object,
+            _transactional.Object,
             _logger);
 
     private UserIdentity CreateTestUser(
@@ -106,11 +106,13 @@ public class PasswordResetServiceTests : IDisposable
         // Assert
         result.Should().BeTrue();
 
-        // Verify email was sent
-        _emailSender.Verify(e => e.SendAsync(
-            "user@test.com",
-            "Reset your password",
-            It.Is<string>(body => body.Contains("Reset Password")),
+        // Verify facade was called with a well-formed dispatch
+        _transactional.Verify(t => t.SendPasswordResetAsync(
+            It.Is<ResetPasswordDispatch>(d =>
+                d.ToEmail == "user@test.com" &&
+                d.DisplayName == "Test User" &&
+                d.ResetUrl.Contains("token=") &&
+                d.ExpiresInMinutes == 60),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -127,10 +129,8 @@ public class PasswordResetServiceTests : IDisposable
         result.Should().BeTrue();
 
         // Verify no email was sent (prevents user enumeration)
-        _emailSender.Verify(e => e.SendAsync(
-            It.IsAny<string>(),
-            It.IsAny<string>(),
-            It.IsAny<string>(),
+        _transactional.Verify(t => t.SendPasswordResetAsync(
+            It.IsAny<ResetPasswordDispatch>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -146,8 +146,8 @@ public class PasswordResetServiceTests : IDisposable
 
         // Assert
         result.Should().BeTrue();
-        _emailSender.Verify(e => e.SendAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+        _transactional.Verify(t => t.SendPasswordResetAsync(
+            It.IsAny<ResetPasswordDispatch>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -163,8 +163,8 @@ public class PasswordResetServiceTests : IDisposable
 
         // Assert
         result.Should().BeTrue();
-        _emailSender.Verify(e => e.SendAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+        _transactional.Verify(t => t.SendPasswordResetAsync(
+            It.IsAny<ResetPasswordDispatch>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
 

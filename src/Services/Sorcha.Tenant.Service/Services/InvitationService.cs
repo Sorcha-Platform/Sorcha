@@ -4,6 +4,7 @@
 using System.Security.Cryptography;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
@@ -20,20 +21,26 @@ public class InvitationService : IInvitationService
 {
     private readonly IInvitationRepository _invitationRepository;
     private readonly IIdentityRepository _identityRepository;
-    private readonly IEmailSender _emailSender;
+    private readonly IOrganizationRepository _organizationRepository;
+    private readonly ITransactionalEmailService _transactional;
+    private readonly EmailSettings _emailSettings;
     private readonly TenantDbContext _dbContext;
     private readonly ILogger<InvitationService> _logger;
 
     public InvitationService(
         IInvitationRepository invitationRepository,
         IIdentityRepository identityRepository,
-        IEmailSender emailSender,
+        IOrganizationRepository organizationRepository,
+        ITransactionalEmailService transactional,
+        IOptions<EmailSettings> emailSettings,
         TenantDbContext dbContext,
         ILogger<InvitationService> logger)
     {
         _invitationRepository = invitationRepository;
         _identityRepository = identityRepository;
-        _emailSender = emailSender;
+        _organizationRepository = organizationRepository;
+        _transactional = transactional;
+        _emailSettings = emailSettings.Value;
         _dbContext = dbContext;
         _logger = logger;
     }
@@ -74,14 +81,25 @@ public class InvitationService : IInvitationService
 
         await _invitationRepository.CreateAsync(invitation, cancellationToken);
 
-        // Send invitation email
+        // Resolve inviter display name and the inviting organisation (so the email
+        // carries the org's branding where configured).
         var inviter = await _identityRepository.GetUserByIdAsync(invitedByUserId, cancellationToken);
         var inviterName = inviter?.DisplayName ?? "An administrator";
 
-        await _emailSender.SendAsync(
-            request.Email,
-            "You've been invited to join an organization",
-            $"{inviterName} has invited you to join their organization. Use token: {token}",
+        var invitingOrg = await _organizationRepository.GetByIdAsync(organizationId, cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Inviting organisation {organizationId} not found when preparing invitation email.");
+
+        var acceptUrl = $"{_emailSettings.BaseUrl.TrimEnd('/')}/invitations/accept?token={Uri.EscapeDataString(token)}";
+
+        await _transactional.SendInvitationAsync(
+            new InviteEmailDispatch(
+                ToEmail: request.Email,
+                InviterName: inviterName,
+                InvitingOrganization: invitingOrg,
+                RoleDisplayName: request.Role.ToString(),
+                AcceptUrl: acceptUrl,
+                ExpiresInDays: request.ExpiryDays),
             cancellationToken);
 
         // Audit

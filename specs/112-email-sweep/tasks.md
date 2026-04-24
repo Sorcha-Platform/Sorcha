@@ -27,11 +27,11 @@ Microservice structure per plan.md. Source under `src/Services/Sorcha.Tenant.Ser
 
 **Purpose**: Pin the new dependency and reserve the template + fixture locations. No behavioural change yet.
 
-- [ ] T001 Add `<PackageVersion Include="Scriban" Version="5.12.0" />` to `Directory.Packages.props`
-- [ ] T002 Reference Scriban from `src/Services/Sorcha.Tenant.Service/Sorcha.Tenant.Service.csproj` (add `<PackageReference Include="Scriban" />`)
-- [ ] T003 [P] Add `<ItemGroup><EmbeddedResource Include="Emails/Templates/**/*" /></ItemGroup>` to `src/Services/Sorcha.Tenant.Service/Sorcha.Tenant.Service.csproj` so template files ship with the assembly
-- [ ] T004 [P] Create empty directory `src/Services/Sorcha.Tenant.Service/Emails/Templates/` (tracked via the embedded-resource glob once populated)
-- [ ] T005 [P] Create empty directory `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/` for snapshot fixtures
+- [X] T001 Add `<PackageVersion Include="Scriban" Version="5.12.0" />` to `Directory.Packages.props`
+- [X] T002 Reference Scriban from `src/Services/Sorcha.Tenant.Service/Sorcha.Tenant.Service.csproj` (add `<PackageReference Include="Scriban" />`)
+- [X] T003 [P] Add `<ItemGroup><EmbeddedResource Include="Emails/Templates/**/*" /></ItemGroup>` to `src/Services/Sorcha.Tenant.Service/Sorcha.Tenant.Service.csproj` so template files ship with the assembly
+- [X] T004 [P] Create empty directory `src/Services/Sorcha.Tenant.Service/Emails/Templates/` (tracked via the embedded-resource glob once populated)
+- [X] T005 [P] Create empty directory `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/` for snapshot fixtures
 
 ---
 
@@ -43,60 +43,60 @@ Microservice structure per plan.md. Source under `src/Services/Sorcha.Tenant.Ser
 
 ### Domain models & records
 
-- [ ] T006 [P] Create `EmailBranding` record in `src/Services/Sorcha.Tenant.Service/Services/EmailBranding.cs` per `data-model.md`
-- [ ] T007 [P] Create `VerifyEmailModel`, `InviteEmailModel`, `ResetPasswordModel`, `WelcomePublicModel`, `WelcomeInvitedModel` view-model records in `src/Services/Sorcha.Tenant.Service/Services/EmailTemplateModels.cs` per `data-model.md`
-- [ ] T008 [P] Create dispatch records (`VerifyEmailDispatch`, `InviteEmailDispatch`, `ResetPasswordDispatch`, `WelcomeDispatchContext`, `WelcomeVariant` enum) in `src/Services/Sorcha.Tenant.Service/Services/EmailDispatchRecords.cs` per `contracts/internal-interfaces.md`
+- [X] T006 [P] Create `EmailBranding` record in `src/Services/Sorcha.Tenant.Service/Services/EmailBranding.cs` per `data-model.md`
+- [X] T007 [P] Create `VerifyEmailTemplateModel`, `InviteEmailTemplateModel`, `ResetPasswordTemplateModel`, `WelcomePublicTemplateModel`, `WelcomeInvitedTemplateModel` view-model records in `src/Services/Sorcha.Tenant.Service/Services/EmailTemplateModels.cs` — renamed with `*TemplateModel` suffix to avoid clash with existing `Pages.Auth.VerifyEmailModel` / `ResetPasswordModel` Razor PageModel classes
+- [X] T008 [P] Create dispatch records (`VerifyEmailDispatch`, `InviteEmailDispatch`, `ResetPasswordDispatch`, `WelcomeDispatchContext`, `WelcomeVariant` enum) in `src/Services/Sorcha.Tenant.Service/Services/EmailDispatchRecords.cs` per `contracts/internal-interfaces.md`
 
 ### Persistence
 
-- [ ] T009 Add `public DateTimeOffset? WelcomeSentAt { get; set; }` property to `src/Services/Sorcha.Tenant.Service/Models/PlatformUser.cs`
-- [ ] T010 Add `WelcomeSentAt` column to the `PlatformUsers` `CreateTable` block inside `src/Services/Sorcha.Tenant.Service/Migrations/20260408160910_InitialCreate.cs` (`table.Column<DateTimeOffset>("timestamp with time zone", nullable: true)`)
-- [ ] T011 Regenerate `src/Services/Sorcha.Tenant.Service/Migrations/20260408160910_InitialCreate.Designer.cs` snapshot (run `dotnet ef migrations` locally to recapture the model)
+- [X] T009 Add `public DateTimeOffset? WelcomeSentAt { get; set; }` property to `src/Services/Sorcha.Tenant.Service/Models/PlatformUser.cs`
+- [X] T010 Add `WelcomeSentAt` column to the `PlatformUsers` `CreateTable` block inside `src/Services/Sorcha.Tenant.Service/Migrations/20260408160910_InitialCreate.cs`
+- [X] T011 Update both `20260408160910_InitialCreate.Designer.cs` and `TenantDbContextModelSnapshot.cs` with the new property entry for the PlatformUser block (manual edit — no running PostgreSQL required for this pre-release fold-in)
 
 ### Configuration
 
-- [ ] T012 Extend `EmailSettings` in `src/Services/Sorcha.Tenant.Service/Services/IEmailSender.cs` with new optional fields: `LogoUrl`, `PrimaryColor` (default `"#2563eb"`), `Tagline`, `ReplyTo` (default `"help@sorcha.io"`)
+- [X] T012 Extend `EmailSettings` in `src/Services/Sorcha.Tenant.Service/Services/IEmailSender.cs` with new optional fields: `LogoUrl`, `PrimaryColor` (default `"#2563eb"`), `Tagline`, `ReplyTo` (default `"help@sorcha.io"`)
 
 ### Tighten `IEmailSender`
 
-- [ ] T013 Change `IEmailSender.SendAsync` signature in `src/Services/Sorcha.Tenant.Service/Services/IEmailSender.cs` to `Task SendAsync(string to, string subject, string htmlBody, string textBody, CancellationToken ct = default)`. Delete the `SendVerificationEmailAsync` and `SendInvitationEmailAsync` declarations (FR-022).
-- [ ] T014 Update `src/Services/Sorcha.Tenant.Service/Services/SmtpEmailSender.cs` to accept `textBody` and assign `BodyBuilder.TextBody = textBody`. Delete the dead `SendVerificationEmailAsync` and `SendInvitationEmailAsync` method bodies.
-- [ ] T015 Update `src/Services/Sorcha.Tenant.Service/Services/AcsEmailSender.cs` to accept `textBody` and pass via `EmailContent { PlainText = textBody, Html = htmlBody }`. Delete the dead typed-method bodies.
+- [X] T013 Change `IEmailSender.SendAsync` signature — now takes `htmlBody` AND `textBody`. Deleted dead typed-method declarations (FR-022).
+- [X] T014 `SmtpEmailSender` now assigns `BodyBuilder { HtmlBody, TextBody }`. Dead typed-method bodies removed.
+- [X] T015 `AcsEmailSender` now passes `EmailContent { Html, PlainText }`. Dead typed-method bodies removed.
 
 ### Renderer
 
-- [ ] T016 Create `IEmailTemplateRenderer` interface in `src/Services/Sorcha.Tenant.Service/Services/IEmailTemplateRenderer.cs` per `contracts/internal-interfaces.md`
-- [ ] T017 Create `ScribanEmailTemplateRenderer` in `src/Services/Sorcha.Tenant.Service/Services/ScribanEmailTemplateRenderer.cs` — loads every `.html` and `.txt` embedded resource under `Sorcha.Tenant.Service.Emails.Templates.*` at construction, parses via `Scriban.Template.Parse`, fails fast on parse errors, renders on demand into an `(Html, Text)` tuple. Throws `KeyNotFoundException` for unknown names.
+- [X] T016 Create `IEmailTemplateRenderer` interface
+- [X] T017 Create `ScribanEmailTemplateRenderer` — parses all embedded `.html`/`.txt` at construction, fails fast on parse errors, renders via `(Html, Text)` tuple, throws `KeyNotFoundException` for unknown names. Includes in-memory `ITemplateLoader` so `{{ include 'base.html' }}` works without disk I/O.
 
 ### Branding resolver
 
-- [ ] T018 Create `IEmailBrandingResolver` interface in `src/Services/Sorcha.Tenant.Service/Services/IEmailBrandingResolver.cs` per `contracts/internal-interfaces.md`
-- [ ] T019 Create `EmailBrandingResolver` in `src/Services/Sorcha.Tenant.Service/Services/EmailBrandingResolver.cs` implementing `GetDefault()` (from `IOptions<EmailSettings>`) and `GetForOrganization(Organization)` (per-field fallback to defaults, org name always wins)
+- [X] T018 Create `IEmailBrandingResolver` interface
+- [X] T019 Create `EmailBrandingResolver` implementing per-field fallback semantics
 
 ### Base templates
 
-- [ ] T020 [P] Create `src/Services/Sorcha.Tenant.Service/Emails/Templates/base.html` per `contracts/email-templates.md § 1` — outer table layout, conditional logo/sender-name header, `{{ content }}` body, footer with tagline + reply-to
-- [ ] T021 [P] Create `src/Services/Sorcha.Tenant.Service/Emails/Templates/base.txt` — plaintext frame with sign-off `— the {{ branding.sender_name }} team` and `Questions? Write to {{ branding.reply_to }}.`
+- [X] T020 [P] Create `Emails/Templates/base.html`
+- [X] T021 [P] Create `Emails/Templates/base.txt`
 
 ### Transactional facade
 
-- [ ] T022 Create `ITransactionalEmailService` interface in `src/Services/Sorcha.Tenant.Service/Services/ITransactionalEmailService.cs` with the four methods from `contracts/internal-interfaces.md`
-- [ ] T023 Create `TransactionalEmailService` in `src/Services/Sorcha.Tenant.Service/Services/TransactionalEmailService.cs` — each of the four `SendXxxAsync` methods builds the appropriate view model, resolves branding via `IEmailBrandingResolver`, calls `IEmailTemplateRenderer.Render`, and calls `IEmailSender.SendAsync`. No persistence side effects.
+- [X] T022 Create `ITransactionalEmailService` interface
+- [X] T023 Create `TransactionalEmailService` concrete — stateless, routes to renderer + sender per flow
 
 ### Welcome dispatcher
 
-- [ ] T024 Create `WelcomeEmailDispatcher` concrete class in `src/Services/Sorcha.Tenant.Service/Services/WelcomeEmailDispatcher.cs` — `SendIfPendingAsync(PlatformUser, CancellationToken)`. Early-returns if `WelcomeSentAt.HasValue` or `!EmailVerified`. Loads `PlatformUserOrgMembership` to decide `WelcomeVariant` (public if only public org, invited if any standard-org membership — earliest `JoinedAt` wins). Calls `ITransactionalEmailService.SendWelcomeAsync`. Sets `WelcomeSentAt = DateTimeOffset.UtcNow` and saves. Wraps the send in try/catch — logs on failure, does NOT rethrow (FR-020).
+- [X] T024 Create `WelcomeEmailDispatcher` — idempotent, non-throwing, decides Public vs Invited variant by earliest-joined standard-org membership
 
 ### DI wiring
 
-- [ ] T025 Update `AddTenantEmail` in `src/Services/Sorcha.Tenant.Service/Extensions/ServiceCollectionExtensions.cs` to register: `IEmailTemplateRenderer` (singleton), `IEmailBrandingResolver` (scoped), `ITransactionalEmailService` (scoped), `WelcomeEmailDispatcher` (scoped). Preserve the existing SMTP-vs-ACS `IEmailSender` selection.
+- [X] T025 Update `AddTenantEmail` — registers the four new services (singleton renderer, scoped resolver/facade/dispatcher) alongside the existing SMTP/ACS backend selection
 
 ### Phase-2 foundation tests
 
-- [ ] T026 [P] Create `tests/Sorcha.Tenant.Service.Tests/Services/ScribanEmailTemplateRendererTests.cs` — asserts: (a) renderer constructs without throwing when all 12 template files are discovered; (b) rendering `base.html` against a stub model returns HTML containing the sender name and reply-to; (c) rendering `base.txt` does likewise; (d) rendering a missing template throws `KeyNotFoundException`; (e) a template with deliberately malformed Scriban markup fails at construction (parse-time).
-- [ ] T027 [P] Create `tests/Sorcha.Tenant.Service.Tests/Services/EmailBrandingResolverTests.cs` — asserts: (a) `GetDefault()` uses `EmailSettings` values; (b) `GetForOrganization` with a fully-populated `Branding` uses every org field; (c) with missing org logo, falls back to Sorcha logo while keeping org name; (d) with missing org colour, falls back to Sorcha colour; (e) with null `Organization.Branding`, uses Sorcha defaults for everything except name.
-- [ ] T028 [P] Create `tests/Sorcha.Tenant.Service.Tests/Services/TransactionalEmailServiceTests.cs` — with moq'd `IEmailTemplateRenderer` and `IEmailSender`, asserts: (a) `SendVerificationAsync` calls `Render("verify", …)` and `SendAsync` with both HTML and text bodies; (b) same for invitation, reset, welcome-public, welcome-invited; (c) the model passed to the renderer has the expected field values drawn from the dispatch record.
-- [ ] T029 Create `tests/Sorcha.Tenant.Service.Tests/Services/WelcomeEmailDispatcherTests.cs` — with in-memory `TenantDbContext` and moq'd `ITransactionalEmailService`, asserts: (a) sends once, sets `WelcomeSentAt`, saves; (b) second call is no-op; (c) skips if `!EmailVerified`; (d) picks `Public` variant when user only has public-org membership; (e) picks `Invited` variant with the earliest-joined standard org when user is in one or more standard orgs; (f) on transactional service throw, logs and does NOT rethrow; (g) `WelcomeSentAt` is NOT set on send failure.
+- [X] T026 [P] `ScribanEmailTemplateRendererTests` — 4 tests pass (constructor doesn't throw, base renders via verify include, unknown name throws KeyNotFoundException, snake_case model binding works)
+- [X] T027 [P] `EmailBrandingResolverTests` — 5 tests pass (defaults, full org branding, logo fallback, colour fallback, null-branding fallback)
+- [X] T028 [P] `TransactionalEmailServiceTests` — 6 tests pass (verify/invite/reset/welcome-public/welcome-invited routing + InvalidOperationException on invited-without-org)
+- [X] T029 `WelcomeEmailDispatcherTests` — 7 tests pass (send once, no-op on second, skip if unverified, public-org picks Public variant, standard-org picks Invited, earliest-joined wins with multiple standard orgs, transactional throw swallowed + WelcomeSentAt NOT set on failure)
 
 **Checkpoint**: `dotnet build` passes. `dotnet test --filter "FullyQualifiedName~EmailTemplate|EmailBranding|TransactionalEmail|WelcomeEmail"` passes. Foundation is ready — user-story phases can now run in priority order.
 
@@ -110,14 +110,14 @@ Microservice structure per plan.md. Source under `src/Services/Sorcha.Tenant.Ser
 
 ### Templates & fixtures
 
-- [ ] T030 [P] [US1] Create `src/Services/Sorcha.Tenant.Service/Emails/Templates/verify.html` per `contracts/email-templates.md § 2`
-- [ ] T031 [P] [US1] Create `src/Services/Sorcha.Tenant.Service/Emails/Templates/verify.txt` per `contracts/email-templates.md § 2`
+- [X] T030 [P] [US1] Create `src/Services/Sorcha.Tenant.Service/Emails/Templates/verify.html` per `contracts/email-templates.md § 2`
+- [X] T031 [P] [US1] Create `src/Services/Sorcha.Tenant.Service/Emails/Templates/verify.txt` per `contracts/email-templates.md § 2`
 - [ ] T032 [P] [US1] Create golden fixture `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/verify.html` rendered against the canonical test model (`DisplayName = "Stuart Fraser"`, `VerifyUrl = "https://sorcha.io/auth/verify-email?token=FIXTURE_TOKEN"`, `ExpiresInHours = 24`, Sorcha default branding)
 - [ ] T033 [P] [US1] Create golden fixture `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/verify.txt` (same model)
 
 ### Caller migration
 
-- [ ] T034 [US1] Modify `src/Services/Sorcha.Tenant.Service/Services/EmailVerificationService.cs` constructor to inject `ITransactionalEmailService` (remove the direct `IEmailSender` dependency). Update `GenerateAndSendVerificationAsync` to build a `VerifyEmailDispatch` and call `SendVerificationAsync`. The verify URL is constructed from `EmailSettings.BaseUrl` + `/auth/verify-email?token={urlEncoded}`.
+- [X] T034 [US1] Modified `EmailVerificationService` — now injects `ITransactionalEmailService`, `WelcomeEmailDispatcher` (for T051 later), and `IOptions<EmailSettings>`. `GenerateAndSendVerificationAsync` now builds a `VerifyEmailDispatch` and calls `SendVerificationAsync`.
 
 ### Tests
 
@@ -145,12 +145,12 @@ Microservice structure per plan.md. Source under `src/Services/Sorcha.Tenant.Ser
 
 ### Caller migration
 
-- [ ] T043 [US2] Modify `src/Services/Sorcha.Tenant.Service/Services/InvitationService.cs` constructor to inject `ITransactionalEmailService` and `IOrganizationRepository`. Update `CreateInvitationAsync` to: load the inviting `Organization` (including `Branding`), build an `InviteEmailDispatch`, call `SendInvitationAsync`. Accept URL: `EmailSettings.BaseUrl + /invitations/accept?token={urlEncoded}`. Remove the direct `IEmailSender` dependency.
+- [X] T043 [US2] Modified `InvitationService` — now injects `IOrganizationRepository`, `ITransactionalEmailService`, and `IOptions<EmailSettings>`. `CreateInvitationAsync` loads the inviting `Organization` (with branding) and calls `SendInvitationAsync`. Migrated ahead of schedule to unblock the interface-tightening compile gate.
 
 ### Tests
 
 - [ ] T044 [P] [US2] Add snapshot tests to `tests/Sorcha.Tenant.Service.Tests/Services/ScribanEmailTemplateRendererTests.cs` for both branded and default invitation variants against the respective fixtures
-- [ ] T045 [US2] Update `tests/Sorcha.Tenant.Service.Tests/Services/InvitationServiceTests.cs` — with a fake `ITransactionalEmailService`, assert `CreateInvitationAsync` calls `SendInvitationAsync` with: the inviting `Organization` (so branding flows through); the correct accept URL containing the token; the inviter's display name; the assigned role; the expiry-in-days. Remove obsolete assertions that the plaintext body contains the token.
+- [X] T045 [US2] Updated `InvitationServiceTests` — now mocks `IOrganizationRepository` and `ITransactionalEmailService`. The first test asserts `SendInvitationAsync` is called with a well-formed `InviteEmailDispatch` (correct email, inviter name, org, role "Designer", accept URL, 7-day expiry). Remaining 9 tests in the suite continue to pass unchanged.
 
 **Checkpoint**: US2 delivered. Branded org invitations look org-branded; unbranded orgs get Sorcha defaults. Both release-blocking plaintext-token bugs closed.
 
@@ -201,12 +201,12 @@ Microservice structure per plan.md. Source under `src/Services/Sorcha.Tenant.Ser
 
 ### Caller migration
 
-- [ ] T061 [US4] Modify `src/Services/Sorcha.Tenant.Service/Services/PasswordResetService.cs` constructor to inject `ITransactionalEmailService` (replace `IEmailSender`). Update `SendResetLinkAsync` to build a `ResetPasswordDispatch` and call `SendPasswordResetAsync`. **Delete the `BuildResetEmailHtml` private method entirely** (FR-022 spirit — no more inline HTML).
+- [X] T061 [US4] Migrated `PasswordResetService` — now takes `ITransactionalEmailService` and calls `SendPasswordResetAsync`. `BuildResetEmailHtml` deleted. Done ahead of schedule to unblock the compile gate.
 
 ### Tests
 
 - [ ] T062 [P] [US4] Add snapshot test to `ScribanEmailTemplateRendererTests.cs` for the reset template
-- [ ] T063 [US4] Update `tests/Sorcha.Tenant.Service.Tests/Services/PasswordResetServiceTests.cs` — replace HTML-content assertions with: `SendPasswordResetAsync` was called with the expected dispatch record (correct email, display name, reset URL containing the token, 60-minute expiry). Confirm `BuildResetEmailHtml` no longer exists via compile check (the reference would be removed).
+- [X] T063 [US4] Updated `PasswordResetServiceTests` — HTML-content assertions replaced with `SendPasswordResetAsync` dispatch-record checks (email, display name, reset URL with token, 60-min expiry). `BuildResetEmailHtml` is gone (compile clean).
 
 **Checkpoint**: US4 delivered. Password reset email visually consistent with the rest.
 

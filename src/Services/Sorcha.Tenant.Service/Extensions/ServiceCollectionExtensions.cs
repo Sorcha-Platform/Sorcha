@@ -233,7 +233,9 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Adds email sending services with SMTP configuration.
+    /// Adds email sending services: backend (SMTP or Azure Communication Services),
+    /// Scriban-backed template renderer, branding resolver, transactional facade, and
+    /// the welcome-email dispatcher.
     /// </summary>
     public static IServiceCollection AddTenantEmail(
         this IServiceCollection services,
@@ -241,6 +243,9 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<EmailSettings>(configuration.GetSection("Email"));
 
+        // Backend selection: Azure Communication Services when a connection string is
+        // supplied; otherwise SMTP via MailKit. Both implementations emit multipart
+        // HTML + plaintext.
         var acsConnectionString = configuration["Email:AcsConnectionString"];
         if (!string.IsNullOrEmpty(acsConnectionString))
         {
@@ -250,6 +255,16 @@ public static class ServiceCollectionExtensions
         {
             services.AddSingleton<IEmailSender, SmtpEmailSender>();
         }
+
+        // Template renderer is a singleton — templates are parsed once at startup and
+        // rendering is pure. Fails fast on parse errors during first resolution.
+        services.AddSingleton<IEmailTemplateRenderer, ScribanEmailTemplateRenderer>();
+
+        // Branding resolver and facade are scoped — they read options but do not hold
+        // state across requests. Matches the DI lifetime of the other Tenant services.
+        services.AddScoped<IEmailBrandingResolver, EmailBrandingResolver>();
+        services.AddScoped<ITransactionalEmailService, TransactionalEmailService>();
+        services.AddScoped<WelcomeEmailDispatcher>();
 
         return services;
     }

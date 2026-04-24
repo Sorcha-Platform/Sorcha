@@ -26,7 +26,7 @@ public class PasswordResetService : IPasswordResetService
 
     private readonly TenantDbContext _dbContext;
     private readonly IPasswordPolicyService _passwordPolicyService;
-    private readonly IEmailSender _emailSender;
+    private readonly ITransactionalEmailService _transactional;
     private readonly ILogger<PasswordResetService> _logger;
 
     /// <summary>
@@ -35,12 +35,12 @@ public class PasswordResetService : IPasswordResetService
     public PasswordResetService(
         TenantDbContext dbContext,
         IPasswordPolicyService passwordPolicyService,
-        IEmailSender emailSender,
+        ITransactionalEmailService transactional,
         ILogger<PasswordResetService> logger)
     {
         _dbContext = dbContext;
         _passwordPolicyService = passwordPolicyService;
-        _emailSender = emailSender;
+        _transactional = transactional;
         _logger = logger;
     }
 
@@ -81,10 +81,16 @@ public class PasswordResetService : IPasswordResetService
 
         await _dbContext.SaveChangesAsync(ct);
 
-        // Send the reset email with the raw token
+        // Send the reset email via the templated facade so it shares the Sorcha
+        // base layout with verification, welcome, and invitation emails.
         var resetLink = $"{resetBaseUrl.TrimEnd('/')}?token={Uri.EscapeDataString(rawToken)}";
-        var htmlBody = BuildResetEmailHtml(user.DisplayName, resetLink);
-        await _emailSender.SendAsync(user.Email, "Reset your password", htmlBody, ct);
+        await _transactional.SendPasswordResetAsync(
+            new ResetPasswordDispatch(
+                ToEmail: user.Email,
+                DisplayName: user.DisplayName,
+                ResetUrl: resetLink,
+                ExpiresInMinutes: (int)TokenTtl.TotalMinutes),
+            ct);
 
         _logger.LogInformation("Password reset token generated and email sent for user {Email} (UserId: {UserId})",
             user.Email, user.Id);
@@ -181,28 +187,4 @@ public class PasswordResetService : IPasswordResetService
             .FirstOrDefaultAsync(p => p.PasswordResetTokenHash == tokenHash, ct);
     }
 
-    /// <summary>
-    /// Builds the HTML body for the password reset email.
-    /// </summary>
-    private static string BuildResetEmailHtml(string displayName, string resetLink)
-    {
-        return $"""
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2>Reset Your Password</h2>
-                <p>Hi {System.Net.WebUtility.HtmlEncode(displayName)},</p>
-                <p>We received a request to reset your password. Click the link below to set a new password:</p>
-                <p style="margin: 24px 0;">
-                    <a href="{System.Net.WebUtility.HtmlEncode(resetLink)}"
-                       style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-                        Reset Password
-                    </a>
-                </p>
-                <p>This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
-                <p style="color: #6b7280; font-size: 14px; margin-top: 32px;">
-                    If the button doesn't work, copy and paste this link into your browser:<br/>
-                    <a href="{System.Net.WebUtility.HtmlEncode(resetLink)}">{System.Net.WebUtility.HtmlEncode(resetLink)}</a>
-                </p>
-            </div>
-            """;
-    }
 }

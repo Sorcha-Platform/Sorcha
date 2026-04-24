@@ -101,6 +101,13 @@ public class PlatformUser
     public DateTimeOffset? LastLoginAt { get; set; }
 
     /// <summary>
+    /// When the welcome email was dispatched to this user. Null = not yet sent.
+    /// Non-null = sent, timestamp retained for audit. Written exclusively by
+    /// WelcomeEmailDispatcher. Non-null implies EmailVerified = true.
+    /// </summary>
+    public DateTimeOffset? WelcomeSentAt { get; set; }
+
+    /// <summary>
     /// Social login provider links (Google, GitHub, Microsoft, Apple).
     /// </summary>
     public ICollection<PlatformSocialLogin> SocialLogins { get; set; } = new List<PlatformSocialLogin>();

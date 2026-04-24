@@ -1,0 +1,5 @@
+{{ content }}
+
+— the {{ branding.sender_name }} team
+{{ if branding.tagline }}{{ branding.tagline }}
+{{ end }}Questions? Write to {{ branding.reply_to }}.
