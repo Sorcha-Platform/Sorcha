@@ -61,6 +61,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IHaipServiceClient? _haipClient;
     private readonly IPresentationLifecycleService? _presentationLifecycle;
     private readonly IPresentationRateLimiter? _presentationRateLimiter;
+    private readonly PresentationLifecycleMetrics? _presentationMetrics;
     private readonly IActionStore _actionStore;
     private readonly IInstanceBindingCache? _bindingCache;
     private readonly TransactionConfirmationOptions _confirmationOptions;
@@ -99,7 +100,8 @@ public class ActionExecutionService : IActionExecutionService
         IInstanceBindingCache? bindingCache = null,
         IPeerServiceClient? peerClient = null,
         IPresentationLifecycleService? presentationLifecycle = null,
-        IPresentationRateLimiter? presentationRateLimiter = null)
+        IPresentationRateLimiter? presentationRateLimiter = null,
+        PresentationLifecycleMetrics? presentationMetrics = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -124,6 +126,7 @@ public class ActionExecutionService : IActionExecutionService
         _haipClient = haipClient;
         _presentationLifecycle = presentationLifecycle;
         _presentationRateLimiter = presentationRateLimiter;
+        _presentationMetrics = presentationMetrics;
         _bindingCache = bindingCache;
 
         // Feature 093 US2: read the CredentialStatus:EnableEmbedding flag. When false,
@@ -258,8 +261,9 @@ public class ActionExecutionService : IActionExecutionService
                     if (!rateCheck.Allowed)
                     {
                         _logger.LogWarning(
-                            "Presentation attempt rate-limited for wallet={Wallet} register={RegisterId} count={Count}/{Threshold}",
+                            "PresentationCallbackRejected: rate-limited wallet={Wallet} register={RegisterId} count={Count}/{Threshold}",
                             request.SenderWallet, instance.RegisterId, rateCheck.CurrentCount, rateCheck.Threshold);
+                        _presentationMetrics?.RecordRateLimitRejected(request.SenderWallet, instance.RegisterId);
                         throw new PresentationRateLimitedException(rateCheck.RetryAfter);
                     }
                 }

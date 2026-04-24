@@ -47,6 +47,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly IPendingPresentationStore _pendingStore;
     private readonly IEnumerable<IPresentationConsumer> _consumers;
     private readonly IOptions<PresentationLifecycleOptions> _options;
+    private readonly PresentationLifecycleMetrics? _metrics;
     private readonly ILogger<PresentationLifecycleService> _logger;
 
     public PresentationLifecycleService(
@@ -57,7 +58,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IEnumerable<IPresentationConsumer> consumers,
         IOptions<PresentationLifecycleOptions> options,
         ILogger<PresentationLifecycleService> logger,
-        IHaipServiceClient? haipClient = null)
+        IHaipServiceClient? haipClient = null,
+        PresentationLifecycleMetrics? metrics = null)
     {
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
@@ -67,6 +69,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _haipClient = haipClient;
+        _metrics = metrics;
     }
 
     public async Task<PresentationInitiationResult> InitiateAsync(
@@ -187,6 +190,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             built.TxId, instance.Id, action.Id, haipResult.RequestId);
         activity?.SetTag("presentation.request_id", haipResult.RequestId.ToString());
         activity?.SetTag("tx.id", built.TxId);
+        _metrics?.RecordInitiated("haip");
 
         return new PresentationInitiationResult(
             PresentationRequestId: haipResult.RequestId,
@@ -366,10 +370,19 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             pending.ValidityWindowSeconds, cancellationToken);
 
         _logger.LogInformation(
-            "PresentationOutcome tx {TxId} written for requestId {RequestId} kind={Kind} sentinel={Sentinel}",
-            built.TxId, presentationRequestId, outcome.Kind, finalSentinel);
+            "PresentationOutcomeWritten tx {TxId} requestId {RequestId} kind={Kind} sentinel={Sentinel} lateAfterAbandonment={Late}",
+            built.TxId, presentationRequestId, outcome.Kind, finalSentinel, isLateAfterAbandonment);
         activity?.SetTag("outcome.kind", outcome.Kind.ToString());
         activity?.SetTag("tx.id", built.TxId);
+
+        _metrics?.RecordOutcome(
+            consumer: consumerName,
+            kind: outcome.Kind.ToString().ToLowerInvariant(),
+            reason: outcome.Reason?.ToString());
+        _metrics?.RecordDuration(
+            consumer: consumerName,
+            kind: outcome.Kind.ToString().ToLowerInvariant(),
+            seconds: (DateTimeOffset.UtcNow - pending.CreatedAt).TotalSeconds);
 
         return new PresentationOutcomeResult(
             Kind: outcome.Kind,
@@ -508,9 +521,10 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         }
 
         _logger.LogInformation(
-            "PresentationAbandoned tx {TxId} written for requestId {RequestId} consumer {Consumer}",
-            built.TxId, presentationRequestId, pending.ConsumerName);
+            "PresentationAbandoned tx {TxId} requestId {RequestId} consumer {Consumer} blueprint {BlueprintId}",
+            built.TxId, presentationRequestId, pending.ConsumerName, pending.BlueprintId);
         activity?.SetTag("tx.id", built.TxId);
+        _metrics?.RecordAbandoned(pending.ConsumerName, pending.BlueprintId);
     }
 
     /// <summary>

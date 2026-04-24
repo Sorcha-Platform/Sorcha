@@ -75,6 +75,9 @@ public static class Extensions
 
                 // Add custom meters for Peer Service
                 metrics.AddMeter("Sorcha.Peer.Service");
+
+                // Feature 111 — Blueprint Service presentation lifecycle metrics
+                metrics.AddMeter("Sorcha.Blueprint.Service.Presentation");
             })
             .WithTracing(tracing =>
             {
