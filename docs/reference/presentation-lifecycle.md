@@ -41,7 +41,7 @@ The action does **not** complete here. The verifier callback is the only path to
    POST /api/presentations/callbacks/haip/{presentationRequestId}
    Authorization: Bearer <service-JWT>
    ```
-4. `PresentationEndpoints` dispatches to the registered `IPresentationConsumer` by name (here, `HaipPresentationConsumer`).
+4. `PresentationEndpoints` dispatches to the registered `IPresentationConsumer` by name. The HAIP consumer is the shipping default; any registered consumer follows this same path with zero changes to the lifecycle service.
 5. Consumer converts `VerificationResult → PresentationOutcome` with a `PresentationDeclineReason` enum value for the decline path.
 6. `PresentationLifecycleService.HandleOutcomeAsync`:
    - Reads the pending state for the `presentationRequestId`.

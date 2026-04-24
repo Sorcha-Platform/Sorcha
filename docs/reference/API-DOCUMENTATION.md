@@ -854,7 +854,7 @@ Rate-limited submitters receive `429 Too Many Requests` with `Retry-After`. Acti
 
 #### `GET /api/presentations/{presentationRequestId}/status`
 
-Wallet-facing, unauthenticated. Returns lifecycle state + expiry only; no register, instance, or consumer metadata.
+Wallet-facing, intentionally unauthenticated for OpenID4VP wallet interoperability. Returns lifecycle state + expiry only; no register, instance, or consumer metadata leaks through a compromised `presentationRequestId`.
 
 **Response:** `200 OK`
 ```json

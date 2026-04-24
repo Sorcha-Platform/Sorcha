@@ -85,7 +85,10 @@ public class PresentationLifecycleServiceConsumerAgnosticTests
                 SubmitterWallet = "w", ConsumerName = consumerName,
                 DraftPayloadJson = "{}", CredentialRequirementDigestHex = "deadbeef",
                 RecordAbandonment = false, OutcomeDetailLevel = "minimal",
-                ValidityWindowSeconds = 600, CreatedAt = DateTimeOffset.UtcNow
+                ValidityWindowSeconds = 600, CreatedAt = DateTimeOffset.UtcNow,
+                // HandleOutcomeAsync uses this as previousTransactionId when building
+                // the outcome tx; a missing value silently breaks chain linkage.
+                InitiatedTransactionId = "deadbeefcafebabe"
             });
         storeMock.Setup(s => s.GetOutcomeSentinelAsync(pendingId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
