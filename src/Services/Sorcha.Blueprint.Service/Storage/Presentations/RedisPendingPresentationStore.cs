@@ -48,7 +48,8 @@ public sealed class RedisPendingPresentationStore : IPendingPresentationStore
             new("recordAbandonment",              pending.RecordAbandonment ? "true" : "false"),
             new("outcomeDetailLevel",             pending.OutcomeDetailLevel),
             new("validityWindowSeconds",          pending.ValidityWindowSeconds),
-            new("createdAt",                      pending.CreatedAt.ToString("o"))
+            new("createdAt",                      pending.CreatedAt.ToString("o")),
+            new("initiatedTxId",                  pending.InitiatedTransactionId ?? string.Empty)
         };
 
         // Pipeline the HSET and EXPIRE so a crash between them cannot leave a
@@ -132,7 +133,10 @@ public sealed class RedisPendingPresentationStore : IPendingPresentationStore
             RecordAbandonment = map.GetValueOrDefault("recordAbandonment") == "true",
             OutcomeDetailLevel = map.GetValueOrDefault("outcomeDetailLevel", "minimal"),
             ValidityWindowSeconds = validity,
-            CreatedAt = createdAt
+            CreatedAt = createdAt,
+            InitiatedTransactionId = string.IsNullOrEmpty(map.GetValueOrDefault("initiatedTxId"))
+                ? null
+                : map["initiatedTxId"]
         };
     }
 

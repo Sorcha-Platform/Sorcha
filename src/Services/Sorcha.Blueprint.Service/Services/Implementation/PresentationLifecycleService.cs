@@ -177,6 +177,11 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
                 $"[{validatorResult.ErrorCode}] {validatorResult.ErrorMessage}");
         }
 
+        // Record the initiated tx id on the pending state so later
+        // HandleOutcomeAsync / HandleAbandonmentAsync writes can set it as
+        // previousTransactionId and preserve chain integrity on the register.
+        await _pendingStore.StoreAsync(pending with { InitiatedTransactionId = built.TxId }, cancellationToken);
+
         _logger.LogInformation(
             "PresentationInitiated tx {TxId} submitted for instance {InstanceId} action {ActionId} requestId {RequestId}",
             built.TxId, instance.Id, action.Id, haipResult.RequestId);
@@ -287,7 +292,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
                 ? outcome.VerifierDiagnostics
                 : null;
 
-        var draftPayload = DeserializeDraftPayload(pending.DraftPayloadJson);
+        var draftPayload = DeserializeDraftPayload(pending.DraftPayloadJson, presentationRequestId);
 
         // Placeholder blueprint/instance/action — BuildPresentationOutcomeAsync only
         // reads Id/Title and instance.RegisterId from them, so a lightweight shim
@@ -323,7 +328,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             verifierDiagnostics: diagnosticsToWrite,
             presentationSubmissionHash: outcome.PresentationSubmissionHash,
             actionPayload: outcome.Kind == PresentationOutcomeKind.Success ? draftPayload : null,
-            previousTransactionId: null,
+            previousTransactionId: pending.InitiatedTransactionId,
             cancellationToken);
 
         // Sign + submit.
@@ -373,15 +378,23 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             IsLateAfterAbandonment: isLateAfterAbandonment);
     }
 
-    private static IReadOnlyDictionary<string, object>? DeserializeDraftPayload(string? json)
+    private IReadOnlyDictionary<string, object>? DeserializeDraftPayload(string? json, Guid requestId)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         try
         {
             return JsonSerializer.Deserialize<Dictionary<string, object>>(json);
         }
-        catch
+        catch (JsonException ex)
         {
+            // Partial-write or forward-incompatible change to the payload schema —
+            // log loudly so operators can investigate. Returning null here means
+            // a success-outcome tx will land with no actionPayload (FR-015
+            // downstream routing still gets verifiedClaims).
+            _logger.LogError(ex,
+                "Failed to deserialise draftPayload for presentation {RequestId}; outcome will write without action payload. Raw JSON prefix: {Prefix}",
+                requestId,
+                json.Length > 256 ? json[..256] : json);
             return null;
         }
     }
@@ -456,7 +469,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             consumerName: pending.ConsumerName,
             submitterWallet: pending.SubmitterWallet,
             validityWindowSeconds: pending.ValidityWindowSeconds,
-            previousTransactionId: null,
+            previousTransactionId: pending.InitiatedTransactionId,
             cancellationToken);
 
         var signResult = await _walletClient.SignTransactionAsync(

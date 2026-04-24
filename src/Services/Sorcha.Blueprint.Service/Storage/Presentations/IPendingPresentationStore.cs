@@ -100,4 +100,12 @@ public sealed record PendingPresentation
     public required string OutcomeDetailLevel { get; init; }   // "minimal" | "verbose"
     public required int ValidityWindowSeconds { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
+
+    /// <summary>
+    /// TxId of the PresentationInitiated transaction. Used as
+    /// previousTransactionId when the later PresentationOutcome or
+    /// PresentationAbandoned tx is written — preserves chain integrity on the
+    /// register. Set after the initiated tx is submitted.
+    /// </summary>
+    public string? InitiatedTransactionId { get; init; }
 }
