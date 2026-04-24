@@ -24,10 +24,18 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 
 /// <summary>
 /// Feature 111 — orchestrates the three-event Timebound Presentation Lifecycle.
-/// US1 scope: InitiateAsync writes a PresentationInitiated transaction on every
-/// submission and stores pending state; HandleOutcomeAsync and HandleAbandonmentAsync
-/// land in later user stories.
 /// </summary>
+/// <remarks>
+/// Consumer-agnostic scope: <see cref="HandleOutcomeAsync"/> and
+/// <see cref="HandleAbandonmentAsync"/> dispatch through the registered
+/// <see cref="IPresentationConsumer"/> collection and carry no consumer-specific
+/// code. <see cref="InitiateAsync"/> currently only supports HAIP — it calls
+/// <see cref="IHaipServiceClient.CreatePresentationRequestAsync"/> inline and
+/// hardcodes <c>consumerName = "haip"</c>. When non-HAIP consumers land, the
+/// initiation path will extend <see cref="IPresentationConsumer"/> with a
+/// contract like <c>CreateRequestAsync</c> and this class will delegate to the
+/// matching consumer by name, mirroring the outcome path.
+/// </remarks>
 public sealed class PresentationLifecycleService : IPresentationLifecycleService
 {
     private static readonly ActivitySource ActivitySource = new("Sorcha.Blueprint.PresentationLifecycle");
@@ -65,7 +73,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         BlueprintModel blueprint,
         Instance instance,
         ActionModel action,
-        CredentialRequirementModel haipRequirement,
+        CredentialRequirementModel credentialRequirement,
         string submitterWallet,
         string? delegationToken,
         IReadOnlyDictionary<string, object> draftPayload,
@@ -75,7 +83,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         ArgumentNullException.ThrowIfNull(blueprint);
         ArgumentNullException.ThrowIfNull(instance);
         ArgumentNullException.ThrowIfNull(action);
-        ArgumentNullException.ThrowIfNull(haipRequirement);
+        ArgumentNullException.ThrowIfNull(credentialRequirement);
         ArgumentException.ThrowIfNullOrWhiteSpace(submitterWallet);
         ArgumentNullException.ThrowIfNull(draftPayload);
 
@@ -96,17 +104,17 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             ?? _options.Value.DefaultValidityWindowSeconds;
 
         // 1. Create the HAIP presentation request (QR URI + requestId).
-        var requiredClaimNames = haipRequirement.RequiredClaims?
+        var requiredClaimNames = credentialRequirement.RequiredClaims?
             .Select(c => c.ClaimName)
             .ToList();
         var haipResult = await _haipClient.CreatePresentationRequestAsync(
-            haipRequirement.Type,
+            credentialRequirement.Type,
             requiredClaimNames,
-            haipRequirement.AcceptedIssuers?.ToList(),
+            credentialRequirement.AcceptedIssuers?.ToList(),
             cancellationToken);
 
         // 2. Compute requirements digest (SHA-256 of canonical requirements JSON).
-        var digest = ComputeRequirementsDigest(haipRequirement);
+        var digest = ComputeRequirementsDigest(credentialRequirement);
 
         // 3. Store pending state in Redis so the callback and abandonment paths can
         //    reconstitute the draft action payload and blueprint config.

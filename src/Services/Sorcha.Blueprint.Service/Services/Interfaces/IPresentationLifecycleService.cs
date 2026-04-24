@@ -21,11 +21,18 @@ public interface IPresentationLifecycleService
     /// transaction to the register and stores pending state in Redis. Returns the
     /// QR-ready details for the citizen to scan.
     /// </summary>
+    /// <remarks>
+    /// Scope note: the current implementation dispatches to the HAIP consumer
+    /// only. Non-HAIP consumers (e.g. file-upload-deadline) will land in a
+    /// future phase by extending <see cref="IPresentationConsumer"/> with an
+    /// initiation contract. The <see cref="HandleOutcomeAsync"/> path is
+    /// already consumer-agnostic.
+    /// </remarks>
     Task<PresentationInitiationResult> InitiateAsync(
         BlueprintModel blueprint,
         Instance instance,
         ActionModel action,
-        CredentialRequirementModel haipRequirement,
+        CredentialRequirementModel credentialRequirement,
         string submitterWallet,
         string? delegationToken,
         IReadOnlyDictionary<string, object> draftPayload,

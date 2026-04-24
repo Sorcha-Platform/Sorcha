@@ -51,8 +51,14 @@ public sealed class RedisPendingPresentationStore : IPendingPresentationStore
             new("createdAt",                      pending.CreatedAt.ToString("o"))
         };
 
-        await db.HashSetAsync(key, fields);
-        await db.KeyExpireAsync(key, TimeSpan.FromSeconds(pending.ValidityWindowSeconds));
+        // Pipeline the HSET and EXPIRE so a crash between them cannot leave a
+        // hash without a TTL. Both commands are dispatched atomically from the
+        // client's perspective and their results are observed together.
+        var batch = db.CreateBatch();
+        var hashTask = batch.HashSetAsync(key, fields);
+        var expireTask = batch.KeyExpireAsync(key, TimeSpan.FromSeconds(pending.ValidityWindowSeconds));
+        batch.Execute();
+        await Task.WhenAll(hashTask, expireTask);
 
         _logger.LogDebug(
             "Stored pending presentation {RequestId} for instance {InstanceId} action {ActionId}, TTL {TtlSec}s",
