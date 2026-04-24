@@ -261,7 +261,7 @@ public class ActionExecutionService : IActionExecutionService
                     if (!rateCheck.Allowed)
                     {
                         _logger.LogWarning(
-                            "PresentationCallbackRejected: rate-limited wallet={Wallet} register={RegisterId} count={Count}/{Threshold}",
+                            "PresentationCallbackRejected rate-limited wallet={Wallet} register={RegisterId} count={Count}/{Threshold}",
                             request.SenderWallet, instance.RegisterId, rateCheck.CurrentCount, rateCheck.Threshold);
                         _presentationMetrics?.RecordRateLimitRejected(request.SenderWallet, instance.RegisterId);
                         throw new PresentationRateLimitedException(rateCheck.RetryAfter);

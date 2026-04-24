@@ -8,6 +8,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Sorcha.Blueprint.Service.Configuration;
 using Sorcha.Blueprint.Service.Models;
+using Sorcha.Blueprint.Service.Services.Infrastructure;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.PresentationLifecycle.Abstractions;
@@ -48,6 +49,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly IEnumerable<IPresentationConsumer> _consumers;
     private readonly IOptions<PresentationLifecycleOptions> _options;
     private readonly PresentationLifecycleMetrics? _metrics;
+    private readonly IClock _clock;
     private readonly ILogger<PresentationLifecycleService> _logger;
 
     public PresentationLifecycleService(
@@ -59,7 +61,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IOptions<PresentationLifecycleOptions> options,
         ILogger<PresentationLifecycleService> logger,
         IHaipServiceClient? haipClient = null,
-        PresentationLifecycleMetrics? metrics = null)
+        PresentationLifecycleMetrics? metrics = null,
+        IClock? clock = null)
     {
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
@@ -70,6 +73,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _haipClient = haipClient;
         _metrics = metrics;
+        _clock = clock ?? new SystemClock();
     }
 
     public async Task<PresentationInitiationResult> InitiateAsync(
@@ -190,7 +194,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             built.TxId, instance.Id, action.Id, haipResult.RequestId);
         activity?.SetTag("presentation.request_id", haipResult.RequestId.ToString());
         activity?.SetTag("tx.id", built.TxId);
-        _metrics?.RecordInitiated("haip");
+        _metrics?.RecordInitiated(pending.ConsumerName);
 
         return new PresentationInitiationResult(
             PresentationRequestId: haipResult.RequestId,
@@ -382,7 +386,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _metrics?.RecordDuration(
             consumer: consumerName,
             kind: outcome.Kind.ToString().ToLowerInvariant(),
-            seconds: (DateTimeOffset.UtcNow - pending.CreatedAt).TotalSeconds);
+            seconds: (_clock.UtcNow - pending.CreatedAt).TotalSeconds);
 
         return new PresentationOutcomeResult(
             Kind: outcome.Kind,
