@@ -295,10 +295,9 @@ public class ActionExecutionService : IActionExecutionService
             }
             else if (haipRequirement != null && !hasSubmittedPresentations)
             {
-                // Feature 111 removed the legacy single-shot HAIP path. If we reach
-                // this branch it means the blueprint requires a HAIP presentation but
-                // the lifecycle service is not registered — a deployment configuration
-                // error rather than a runtime scenario the code should silently handle.
+                // Deployment-configuration error: this branch is only reachable when
+                // IPresentationLifecycleService is not registered. Fail fast rather
+                // than silently skipping the HAIP requirement.
                 throw new InvalidOperationException(
                     "HAIP presentation requested but IPresentationLifecycleService is not registered. " +
                     "Ensure PresentationLifecycleOptions and related services are wired in the DI container.");
@@ -1051,10 +1050,9 @@ public class ActionExecutionService : IActionExecutionService
                     ExpiresAt = haipOfferResult.ExpiresAt
                 }
                 : null,
-            // Feature 111 — presentation requests now return via the 202 Accepted
-            // short-circuit earlier in ExecuteAsync. The 200 OK response never
-            // carries a PresentationRequest; this field is preserved for
-            // backwards-compatible schema shape only.
+            // Presentation requests surface via the 202 Accepted short-circuit
+            // earlier in ExecuteAsync, so the 200 OK path never populates this.
+            // Field retained for backwards-compatible schema shape.
             PresentationRequest = null
         };
 

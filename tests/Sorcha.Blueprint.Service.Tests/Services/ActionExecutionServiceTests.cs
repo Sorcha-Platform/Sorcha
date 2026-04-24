@@ -14,6 +14,7 @@ using Sorcha.Blueprint.Service.Models.Requests;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.Blueprint.Models.Credentials;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using ParticipantModel = Sorcha.Blueprint.Models.Participant;
@@ -427,6 +428,48 @@ public class ActionExecutionServiceTests
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             _service.ExecuteAsync(instanceId, actionId, request, delegationToken));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_HaipRequirementWithoutLifecycleService_ThrowsDeploymentConfigError()
+    {
+        // Regression guard for the removed legacy single-shot HAIP path. When an
+        // action has a HAIP credential requirement and IPresentationLifecycleService
+        // is not registered, the service must fail loud with a configuration error
+        // rather than silently falling through.
+        var instanceId = "test-instance";
+        var actionId = 1;
+        var request = CreateTestRequest() with { SenderWallet = "wallet-applicant" };
+        var delegationToken = "test-token";
+        var instance = CreateTestInstance(instanceId, "blueprint-1");
+        instance.CurrentActionIds = [1];
+        var blueprint = CreateTestBlueprint();
+        var action = blueprint.Actions!.First(a => a.Id == 1);
+        action.CredentialRequirements = new List<CredentialRequirement>
+        {
+            new()
+            {
+                Type = "VerifiedIdentityCredential",
+                PresentationSource = PresentationSource.HaipExternalWallet
+            }
+        };
+
+        _mockInstanceStore
+            .Setup(x => x.GetAsync(instanceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(instance);
+        _mockActionResolver
+            .Setup(x => x.GetBlueprintAsync("blueprint-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+        _mockActionResolver
+            .Setup(x => x.GetActionDefinition(blueprint, "1"))
+            .Returns(action);
+
+        // _service was constructed without presentationLifecycle or haipClient —
+        // the branch after the legacy removal should throw.
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _service.ExecuteAsync(instanceId, actionId, request, delegationToken));
+
+        ex.Message.Should().Contain("IPresentationLifecycleService");
     }
 
     // Note: ExecuteAsync full flow test is skipped because it requires complex
