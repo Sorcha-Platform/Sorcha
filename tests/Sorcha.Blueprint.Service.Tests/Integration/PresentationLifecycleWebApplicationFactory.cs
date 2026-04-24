@@ -39,7 +39,12 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
     /// <c>ActionExecutionService</c> finds a prior outcome and blocks new
     /// attempts with 409.
     /// </summary>
-    public void RegisterClientForRetryGate(string instanceId, int actionId, string outcomeKind, string outcomeTxId)
+    public void RegisterClientForRetryGate(
+        string instanceId,
+        int actionId,
+        string outcomeKind,
+        string outcomeTxId,
+        string registerId)
     {
         RegisterClient
             .Setup(r => r.GetTransactionsByInstanceIdAsync(
@@ -49,7 +54,7 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
                 new()
                 {
                     TxId = outcomeTxId,
-                    RegisterId = "reg-execute-integration",
+                    RegisterId = registerId,
                     SenderWallet = "test",
                     MetaData = new TransactionMetaData
                     {
@@ -64,6 +69,7 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
                 }
             });
     }
+
     /// <remarks>
     /// Populate before the first call to <see cref="WebApplicationFactory{TEntryPoint}.CreateClient()"/>.
     /// Additions after host creation have no effect because <c>ConfigureWebHost</c>

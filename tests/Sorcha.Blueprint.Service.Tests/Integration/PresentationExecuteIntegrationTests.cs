@@ -23,9 +23,9 @@ namespace Sorcha.Blueprint.Service.Tests.Integration;
 /// <c>POST /api/instances/{id}/actions/{n}/execute</c> pipeline for actions
 /// that carry HAIP <see cref="CredentialRequirement"/>s. Covers:
 ///   T025 — 202 Accepted + AwaitingPresentation=true + presentation-initiated tx written
-///   T026 — 11th attempt in window returns 429 with Retry-After
-///   T050 — decline → retry produces 2 initiated + 2 outcome transactions
-///   T051 — 3rd submission after a successful outcome returns 409 Conflict
+///   T026 — 4th attempt with Threshold=3 returns 429 with Retry-After
+///   T050 — decline → retry produces a new presentationRequestId; per-attempt sentinels report decline + success
+///   T051 — second submission after a successful outcome returns 409 Conflict (US3 retry gate)
 /// </summary>
 public class PresentationExecuteIntegrationTests
     : IClassFixture<PresentationLifecycleWebApplicationFactory>, IAsyncLifetime
@@ -251,7 +251,11 @@ public class PresentationExecuteIntegrationTests
         var retrySentinel = await _factory.PendingStore.GetOutcomeSentinelAsync(retryRequestId);
         retrySentinel.Should().Be("success");
 
-        // The rate limiter saw both attempts.
+        // HAIP was called for both the initial submission and the retry —
+        // proxy assertion that two PresentationInitiated tx cycles ran. Direct
+        // validator-submission counts are covered by the builder + service
+        // unit tests; this integration suite focuses on sentinel state + API
+        // surface, not transaction accounting.
         _factory.HaipClient.Verify(h => h.CreatePresentationRequestAsync(
             It.IsAny<string>(), It.IsAny<List<string>?>(), It.IsAny<List<string>?>(),
             It.IsAny<CancellationToken>()), Times.Exactly(2));
@@ -280,13 +284,17 @@ public class PresentationExecuteIntegrationTests
             VerifierDiagnostics: null,
             PresentationSubmissionHash: "sha256:test");
 
-        // Seed a Register-returned PresentationOutcome tx so the retry gate can find it.
-        // The factory mock register client returns empty by default; override here.
+        // Seed the Register mock BEFORE the callback fires. The retry gate in
+        // ActionExecutionService consults GetTransactionsByInstanceIdAsync on
+        // the *next* /execute, not during the callback itself, so the setup
+        // order doesn't create a race — by the time the second submission
+        // arrives the outcome tx is visible to the gate.
         _factory.RegisterClientForRetryGate(
             instanceId,
             actionId: 1,
             outcomeKind: "success",
-            outcomeTxId: "outcome-tx-success");
+            outcomeTxId: "outcome-tx-success",
+            registerId: TestRegister);
 
         var successResp = await _client.PostAsJsonAsync(
             $"/api/presentations/callbacks/haip/{firstRequestId}", new { });
