@@ -166,6 +166,7 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IPresent
     Sorcha.Blueprint.Service.Services.Implementation.PresentationLifecycleService>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Infrastructure.IClock,
     Sorcha.Blueprint.Service.Services.Infrastructure.SystemClock>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.PresentationLifecycleMetrics>();
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.AbandonmentSweeper>();
 
 // Feature 103 US1: Redis read-through cache for per-instance participant bindings.
