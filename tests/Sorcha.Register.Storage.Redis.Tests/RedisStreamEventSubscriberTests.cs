@@ -286,6 +286,39 @@ public class RedisStreamEventSubscriberTests
     }
 
     [Fact]
+    public async Task StartProcessingAsync_EmptyStream_DoesNotBusySpin()
+    {
+        // Regression: pre-fix the loop ran ~15k XREADGROUP/sec on n1 (1.27B in 24h),
+        // pegging a vCPU and wedging SSH. With idle delay ~ ReadBlockMilliseconds, an
+        // empty stream over 300ms with 50ms delay should produce ~6 calls, not thousands.
+        _config.ReadBlockMilliseconds = 50;
+
+        var subscriber = CreateSubscriber();
+        await subscriber.SubscribeAsync<RegisterCreatedEvent>(
+            "register:created",
+            _ => Task.CompletedTask);
+
+        SetupConsumerGroupCreation();
+
+        var callCount = 0;
+        _dbMock.Setup(d => d.StreamReadGroupAsync(
+                It.IsAny<StreamPosition[]>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<int?>(),
+                It.IsAny<bool>(),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(() => { Interlocked.Increment(ref callCount); return Array.Empty<RedisStream>(); });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        await subscriber.StartProcessingAsync(cts.Token);
+
+        callCount.Should().BeGreaterThan(0, "consumer should still poll periodically");
+        callCount.Should().BeLessThan(30, "consumer must back off when streams are idle");
+    }
+
+    [Fact]
     public void Constructor_NullRedis_ThrowsArgumentNullException()
     {
         var act = () => new RedisStreamEventSubscriber(
