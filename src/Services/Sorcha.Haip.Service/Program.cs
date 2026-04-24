@@ -99,6 +99,17 @@ builder.Services.AddHttpClient<IetfTokenStatusListChecker>(client =>
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 
+// Feature 111 — HAIP as a consumer of the Timebound Presentation Lifecycle.
+builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
+    Sorcha.Haip.Service.Services.HaipPresentationConsumer>();
+builder.Services.AddHttpClient<Sorcha.Haip.Service.Services.PresentationCallbackRelay>(client =>
+{
+    var blueprintAddress = builder.Configuration["ServiceClients:BlueprintService:Address"]
+        ?? "http://blueprint-service:8080";
+    client.BaseAddress = new Uri(blueprintAddress);
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+
 var app = builder.Build();
 
 // OpenAPI and Scalar UI

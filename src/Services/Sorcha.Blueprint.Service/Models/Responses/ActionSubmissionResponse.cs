@@ -88,6 +88,14 @@ public record ActionSubmissionResponse
     /// Present when the action has credentialRequirements with presentationSource HaipExternalWallet.
     /// </summary>
     public HaipPresentationRequestResponse? PresentationRequest { get; init; }
+
+    /// <summary>
+    /// Feature 111 — set when the action is awaiting an external presentation outcome.
+    /// When true, <see cref="TransactionId"/> carries the PresentationInitiated (attempt)
+    /// transaction hash and the action has NOT yet completed. The verifier callback
+    /// writes the PresentationOutcome that advances the action on success.
+    /// </summary>
+    public bool AwaitingPresentation { get; init; }
 }
 
 /// <summary>

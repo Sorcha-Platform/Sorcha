@@ -177,6 +177,7 @@ public static class VerifierEndpoints
         [FromForm] string? state,
         PresentationRequestStore store,
         HaipPresentationVerifier verifier,
+        PresentationCallbackRelay? callbackRelay,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
@@ -210,6 +211,12 @@ public static class VerifierEndpoints
 
         // Store the result
         await store.MarkCompletedAsync(requestId, result, ct);
+
+        // Feature 111: relay the outcome to Blueprint Service for lifecycle transaction writing.
+        if (callbackRelay is not null)
+        {
+            await callbackRelay.RelayAsync(requestId, result, ct);
+        }
 
         if (result.IsValid)
         {

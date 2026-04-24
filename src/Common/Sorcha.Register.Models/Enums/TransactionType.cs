@@ -31,5 +31,23 @@ public enum TransactionType
     /// <summary>
     /// Revocation transaction (supersedes or revokes a previously sealed transaction)
     /// </summary>
-    Revocation = 4
+    Revocation = 4,
+
+    /// <summary>
+    /// Presentation-initiated transaction (Feature 111 — citizen started a timebound
+    /// presentation flow; no credential data yet).
+    /// </summary>
+    PresentationInitiated = 5,
+
+    /// <summary>
+    /// Presentation-outcome transaction (Feature 111 — verifier callback resolved
+    /// the attempt; success carries verified claims, decline carries a reason code).
+    /// </summary>
+    PresentationOutcome = 6,
+
+    /// <summary>
+    /// Presentation-abandoned transaction (Feature 111 — validity window expired
+    /// with no callback; opt-in per blueprint).
+    /// </summary>
+    PresentationAbandoned = 7
 }

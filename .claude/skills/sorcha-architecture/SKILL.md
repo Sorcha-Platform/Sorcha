@@ -449,3 +449,27 @@ Register.Service is the authoritative source of per-register state on each insta
 Endpoints: `GET /api/registers/{id}/local-relationship`, `GET /api/registers/{id}/sync-state`, `GET /api/internal/my-validated-registers` (requires `X-Validator-Public-Key` header). Internal intake: `POST /api/internal/registers/{id}/peer-height-observation`, `POST /api/internal/registers/{id}/validator-observation`, `POST /api/internal/peer/distribute/{id}`.
 
 Runtime source: `src/Core/Sorcha.Register.Core/LocalRelationship/`, `src/Core/Sorcha.Register.Core/SyncState/`, `src/Core/Sorcha.Register.Core/Observations/`, `src/Services/Sorcha.Validator.Service/Services/RegisterMonitoringBootstrap.cs`, `src/Services/Sorcha.Peer.Service/GrpcServices/TransactionDistributionGrpcService.cs` (SubmitTransaction RPC). Spec: `specs/108-register-local-relationship/`.
+
+
+---
+
+## Cross-Cutting Pattern: Timebound Presentation Lifecycle (Feature 111)
+
+Three-event on-register lifecycle for timebound evidence presentations. HAIP external-wallet credential presentation is the first consumer, but the primitive is consumer-agnostic.
+
+**Events written to the same register as the originating action:**
+1. `PresentationInitiated` — submitted on every attempt, carries submitter wallet, action ref, `requirementsDigest` (SHA-256 of canonical credentialRequirements), presentationRequestId, consumerName. Never contains credential data.
+2. `PresentationOutcome` — written when the verifier callback arrives. `kind=success` carries VerifiedClaims + submissionHash; `kind=decline` carries reason (from `PresentationDeclineReason` enum) + optional diagnostics (only when `outcomeDetailLevel=verbose`).
+3. `PresentationAbandoned` — written when TTL expires with no callback, *only if* the blueprint has `presentationConfig.recordAbandonment=true`. Phase 6 (deferred).
+
+**Submission flow:** `ActionExecutionService` step 4c routes HAIP-requirement actions through `IPresentationLifecycleService.InitiateAsync` — which rate-limits via `IPresentationRateLimiter` (per-wallet-per-register sliding window; 429 + Retry-After on reject), stores pending state in Redis (hash at `sorcha:presentation:pending:{id}` with TTL = validity window), builds + signs + submits the PresentationInitiated tx, and returns QR details. The `/execute` endpoint returns HTTP 202 Accepted with `AwaitingPresentation=true`; the action does NOT complete here.
+
+**Callback flow:** Verifiers POST to `POST /api/presentations/callbacks/{consumerName}` (behind `AuthorizationPolicies.RequireService`). Blueprint Service dispatches to the registered `IPresentationConsumer` by name; the consumer returns a `PresentationOutcome` which the lifecycle service writes as a tx. Two-level idempotency guard: Redis sentinel via SET NX for first-writer-wins, plus a late-outcome path that bypasses NX when sentinel is `"abandoned"` (producing `"abandoned+outcome"`).
+
+**Consumer contract** (`IPresentationConsumer` in `Sorcha.PresentationLifecycle.Abstractions`): exposes `ConsumerName` + `VerifyAsync(context, payload, ct)`. Consumers never write the register — they return outcomes. HAIP ships `HaipPresentationConsumer` in `Sorcha.Haip.Service` and the `PresentationCallbackRelay` that forwards VerificationResult from `HandleDirectPost` to Blueprint.
+
+**Blueprint config** (`Blueprint.PresentationConfig`, optional): `recordAbandonment` (bool, default false), `outcomeDetailLevel` (Minimal|Verbose), `presentationValidityWindowSeconds` (override platform default 600s).
+
+**Endpoints:** `GET /api/presentations/{id}/status` returns current state (awaiting-presentation / success / decline / abandoned / abandoned-with-late-outcome / expired). Register tx stream is the authoritative history — the status endpoint reads Redis + sentinel.
+
+**Runtime source:** `src/Common/Sorcha.PresentationLifecycle.Abstractions/` (cross-consumer contract), `src/Services/Sorcha.Blueprint.Service/Services/Implementation/PresentationLifecycleService.cs`, `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/` (pending store + rate limiter), `src/Services/Sorcha.Blueprint.Service/Endpoints/PresentationEndpoints.cs`, `src/Services/Sorcha.Haip.Service/Services/HaipPresentationConsumer.cs`, `src/Services/Sorcha.Haip.Service/Services/PresentationCallbackRelay.cs`. Spec: `specs/111-presentation-lifecycle/`.

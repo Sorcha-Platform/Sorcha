@@ -136,6 +136,12 @@ services:
       # Transaction confirmation tuning for Docker dev
       TransactionConfirmation__TimeoutSeconds: "60"
       TransactionConfirmation__PollIntervalSeconds: "1"
+      # Feature 111: Timebound Presentation Lifecycle
+      PresentationLifecycle__DefaultValidityWindowSeconds: "600"
+      PresentationLifecycle__SweeperIntervalSeconds: "30"
+      PresentationLifecycle__SweeperLeaderLockTtlSeconds: "60"
+      PresentationLifecycle__RateLimit__Threshold: "10"
+      PresentationLifecycle__RateLimit__WindowSeconds: "600"
     volumes:
       - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
     depends_on:

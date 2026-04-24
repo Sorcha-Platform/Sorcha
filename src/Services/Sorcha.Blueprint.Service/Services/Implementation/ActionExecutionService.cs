@@ -23,6 +23,7 @@ using Sorcha.Blueprint.Service.Models.Requests;
 using Sorcha.Blueprint.Service.Models.Responses;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.Cryptography.Enums;
 using Sorcha.TransactionHandler.Encryption;
 using Sorcha.TransactionHandler.Encryption.Models;
@@ -58,6 +59,8 @@ public class ActionExecutionService : IActionExecutionService
     private readonly Channel<EncryptionWorkItem>? _encryptionChannel;
     private readonly IEncryptionOperationStore? _encryptionOperationStore;
     private readonly IHaipServiceClient? _haipClient;
+    private readonly IPresentationLifecycleService? _presentationLifecycle;
+    private readonly IPresentationRateLimiter? _presentationRateLimiter;
     private readonly IActionStore _actionStore;
     private readonly IInstanceBindingCache? _bindingCache;
     private readonly TransactionConfirmationOptions _confirmationOptions;
@@ -94,7 +97,9 @@ public class ActionExecutionService : IActionExecutionService
         IEncryptionOperationStore? encryptionOperationStore = null,
         IHaipServiceClient? haipClient = null,
         IInstanceBindingCache? bindingCache = null,
-        IPeerServiceClient? peerClient = null)
+        IPeerServiceClient? peerClient = null,
+        IPresentationLifecycleService? presentationLifecycle = null,
+        IPresentationRateLimiter? presentationRateLimiter = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -117,6 +122,8 @@ public class ActionExecutionService : IActionExecutionService
         _encryptionChannel = encryptionChannel;
         _encryptionOperationStore = encryptionOperationStore;
         _haipClient = haipClient;
+        _presentationLifecycle = presentationLifecycle;
+        _presentationRateLimiter = presentationRateLimiter;
         _bindingCache = bindingCache;
 
         // Feature 093 US2: read the CredentialStatus:EnableEmbedding flag. When false,
@@ -232,12 +239,61 @@ public class ActionExecutionService : IActionExecutionService
         {
             var hasSubmittedPresentations = request.CredentialPresentations is { Count: > 0 };
 
-            if (haipRequirement != null && !hasSubmittedPresentations && _haipClient != null)
+            if (haipRequirement != null && !hasSubmittedPresentations && _presentationLifecycle != null)
             {
-                // HAIP external wallet flow: create a presentation request QR instead of blocking
+                // Feature 111 — timebound presentation lifecycle. The attempt itself is
+                // recorded on the register via a PresentationInitiated transaction; the
+                // action does NOT complete here. The verifier callback writes the
+                // PresentationOutcome which (on success) advances the action.
+                if (_presentationRateLimiter != null)
+                {
+                    var rateCheck = await _presentationRateLimiter.CheckAsync(
+                        request.SenderWallet, instance.RegisterId, cancellationToken);
+                    if (!rateCheck.Allowed)
+                    {
+                        _logger.LogWarning(
+                            "Presentation attempt rate-limited for wallet={Wallet} register={RegisterId} count={Count}/{Threshold}",
+                            request.SenderWallet, instance.RegisterId, rateCheck.CurrentCount, rateCheck.Threshold);
+                        throw new PresentationRateLimitedException(rateCheck.RetryAfter);
+                    }
+                }
+
+                var lifecycleResult = await _presentationLifecycle.InitiateAsync(
+                    blueprint, instance, actionDef, haipRequirement,
+                    submitterWallet: request.SenderWallet,
+                    delegationToken: delegationToken,
+                    draftPayload: request.PayloadData,
+                    previousTransactionId: instance.LastTransactionId,
+                    cancellationToken);
+
                 _logger.LogInformation(
-                    "Creating HAIP presentation request for external wallet: type={Type}",
-                    haipRequirement.Type);
+                    "Presentation lifecycle initiated: requestId={RequestId} attemptTx={TxId} expiresAt={ExpiresAt}",
+                    lifecycleResult.PresentationRequestId, lifecycleResult.InitiatedTransactionId, lifecycleResult.ExpiresAt);
+
+                return new ActionSubmissionResponse
+                {
+                    TransactionId = lifecycleResult.InitiatedTransactionId,
+                    InstanceId = instance.Id,
+                    IsComplete = false,
+                    AwaitingPresentation = true,
+                    PresentationRequest = new HaipPresentationRequestResponse
+                    {
+                        RequestId = lifecycleResult.PresentationRequestId,
+                        PresentationRequestUri = lifecycleResult.AuthorizationRequestUri,
+                        CredentialType = haipRequirement.Type,
+                        RequestedClaims = haipRequirement.RequiredClaims?
+                            .Select(c => c.ClaimName).ToList(),
+                        ExpiresAt = lifecycleResult.ExpiresAt
+                    }
+                };
+            }
+            else if (haipRequirement != null && !hasSubmittedPresentations && _haipClient != null)
+            {
+                // Legacy path retained for backwards-compat during rollout — exercised only
+                // when the PresentationLifecycleService is not registered. New deployments
+                // should always have the lifecycle service and take the branch above.
+                _logger.LogWarning(
+                    "HAIP presentation taking legacy single-shot path (PresentationLifecycleService not registered)");
 
                 var requiredClaimNames = haipRequirement.RequiredClaims?
                     .Select(c => c.ClaimName)
@@ -248,10 +304,6 @@ public class ActionExecutionService : IActionExecutionService
                     requiredClaimNames,
                     haipRequirement.AcceptedIssuers?.ToList(),
                     cancellationToken);
-
-                _logger.LogInformation(
-                    "HAIP presentation request created: requestId={RequestId}, expiresAt={ExpiresAt}",
-                    haipPresentationResult.RequestId, haipPresentationResult.ExpiresAt);
             }
             else if (_credentialVerifier != null)
             {
