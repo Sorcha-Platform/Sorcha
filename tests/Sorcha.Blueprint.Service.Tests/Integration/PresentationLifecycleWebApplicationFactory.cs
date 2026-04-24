@@ -27,6 +27,11 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
     public Mock<IValidatorServiceClient> ValidatorClient { get; } = new();
     public InMemoryPendingPresentationStore PendingStore { get; } = new();
     public CountingPresentationRateLimiter RateLimiter { get; } = new();
+    /// <remarks>
+    /// Populate before the first call to <see cref="WebApplicationFactory{TEntryPoint}.CreateClient()"/>.
+    /// Additions after host creation have no effect because <c>ConfigureWebHost</c>
+    /// only runs once per factory instance (shared via <c>IClassFixture</c>).
+    /// </remarks>
     public List<IPresentationConsumer> Consumers { get; } = new();
 
     /// <summary>
@@ -221,12 +226,7 @@ public sealed class TestHaipConsumer : IPresentationConsumer
 {
     public string ConsumerName => "haip";
 
-    public PresentationOutcome NextOutcome { get; set; } = new(
-        Kind: PresentationOutcomeKind.Success,
-        VerifiedClaims: new Dictionary<string, object> { ["name"] = "Test" },
-        Reason: null,
-        VerifierDiagnostics: null,
-        PresentationSubmissionHash: "sha256:test");
+    public PresentationOutcome NextOutcome { get; set; } = DefaultOutcome();
 
     public List<PresentationInitiationContext> InvokedContexts { get; } = new();
 
@@ -241,11 +241,13 @@ public sealed class TestHaipConsumer : IPresentationConsumer
     public void Reset()
     {
         InvokedContexts.Clear();
-        NextOutcome = new PresentationOutcome(
-            Kind: PresentationOutcomeKind.Success,
-            VerifiedClaims: new Dictionary<string, object> { ["name"] = "Test" },
-            Reason: null,
-            VerifierDiagnostics: null,
-            PresentationSubmissionHash: "sha256:test");
+        NextOutcome = DefaultOutcome();
     }
+
+    private static PresentationOutcome DefaultOutcome() => new(
+        Kind: PresentationOutcomeKind.Success,
+        VerifiedClaims: new Dictionary<string, object> { ["name"] = "Test" },
+        Reason: null,
+        VerifierDiagnostics: null,
+        PresentationSubmissionHash: "sha256:test");
 }
