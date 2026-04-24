@@ -106,44 +106,24 @@ public sealed class ScribanEmailTemplateRenderer : IEmailTemplateRenderer
         return (templates, sources);
     }
 
+    // Scriban's standard renamer converts PascalCase to snake_case correctly, including
+    // runs of uppercase letters (e.g. HTMLBody → html_body). Use it instead of a
+    // hand-rolled algorithm — equivalent result for our property set, battle-tested.
+    private static readonly MemberRenamerDelegate SnakeCaseRenamer =
+        StandardMemberRenamer.Default;
+
     private static TemplateContext BuildContext(object model, IReadOnlyDictionary<string, string> sources)
     {
         var scriptObject = new ScriptObject();
-        scriptObject.Import(model, renamer: member => ToSnakeCase(member.Name));
+        scriptObject.Import(model, renamer: SnakeCaseRenamer);
 
         var context = new TemplateContext
         {
-            MemberRenamer = member => ToSnakeCase(member.Name),
+            MemberRenamer = SnakeCaseRenamer,
             TemplateLoader = new InMemoryTemplateLoader(sources),
         };
         context.PushGlobal(scriptObject);
         return context;
-    }
-
-    /// <summary>
-    /// Converts a PascalCase or camelCase identifier into snake_case for Scriban's
-    /// naming convention (e.g. <c>DisplayName</c> → <c>display_name</c>,
-    /// <c>LogoUrl</c> → <c>logo_url</c>).
-    /// </summary>
-    private static string ToSnakeCase(string name)
-    {
-        if (string.IsNullOrEmpty(name)) return name;
-
-        var buffer = new System.Text.StringBuilder(name.Length + 8);
-        for (int i = 0; i < name.Length; i++)
-        {
-            var c = name[i];
-            if (char.IsUpper(c))
-            {
-                if (i > 0) buffer.Append('_');
-                buffer.Append(char.ToLowerInvariant(c));
-            }
-            else
-            {
-                buffer.Append(c);
-            }
-        }
-        return buffer.ToString();
     }
 
     /// <summary>

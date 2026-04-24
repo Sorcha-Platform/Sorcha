@@ -25,7 +25,7 @@ public class SocialCallbackModel : PageModel
     private readonly IIdentityRepository _identityRepository;
     private readonly IOrganizationRepository _organizationRepository;
     private readonly ITokenService _tokenService;
-    private readonly WelcomeEmailDispatcher _welcomeDispatcher;
+    private readonly IWelcomeEmailDispatcher _welcomeDispatcher;
     private readonly TenantDbContext _db;
     private readonly ILogger<SocialCallbackModel> _logger;
 
@@ -38,7 +38,7 @@ public class SocialCallbackModel : PageModel
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         ITokenService tokenService,
-        WelcomeEmailDispatcher welcomeDispatcher,
+        IWelcomeEmailDispatcher welcomeDispatcher,
         TenantDbContext db,
         ILogger<SocialCallbackModel> logger)
     {

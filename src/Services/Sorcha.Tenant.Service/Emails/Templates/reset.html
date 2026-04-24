@@ -1,9 +1,9 @@
 {{ capture content -}}
 <h2 style="margin:0 0 16px;font-size:22px;">Reset your password</h2>
-<p>Hi {{ display_name }} — we got a request to reset the password on your {{ branding.sender_name }} account.</p>
+<p>Hi {{ display_name | html.escape }} — we got a request to reset the password on your {{ branding.sender_name | html.escape }} account.</p>
 <p>Tap the button below to choose a new password.</p>
 <p style="margin:24px 0;">
-  <a href="{{ reset_url }}"
+  <a href="{{ reset_url | html.escape }}"
      style="background:{{ branding.primary_color }};color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:600;">
     Reset password
   </a>
@@ -13,7 +13,7 @@
 </p>
 <p style="font-size:12px;color:#888;margin-top:16px;">
   Button not working? Paste this link into your browser:<br>
-  <a href="{{ reset_url }}" style="color:{{ branding.primary_color }};word-break:break-all;">{{ reset_url }}</a>
+  <a href="{{ reset_url | html.escape }}" style="color:{{ branding.primary_color }};word-break:break-all;">{{ reset_url | html.escape }}</a>
 </p>
 {{- end -}}
 {{- include 'base.html' -}}

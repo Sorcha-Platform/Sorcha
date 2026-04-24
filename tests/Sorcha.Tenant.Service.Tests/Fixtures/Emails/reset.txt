@@ -1,11 +1,11 @@
 Hi Stuart Fraser — we got a request to reset the password on your Sorcha account.
 
 Choose a new password by opening this link:
-https://sorcha.io/auth/reset-password?token=FIXTURE_TOKEN
+https://sorcha.dev/auth/reset-password?token=FIXTURE_TOKEN
 
 The link works for 60 minutes. If you didn't ask for a
 reset, you can safely ignore this email — your password hasn't changed.
 
 — the Sorcha team
 Decentralised registers for secure data flow
-Questions? Write to help@sorcha.io.
+Questions? Write to help@sorcha.dev.

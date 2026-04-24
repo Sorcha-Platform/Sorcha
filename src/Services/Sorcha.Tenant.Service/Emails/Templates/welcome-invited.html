@@ -1,8 +1,8 @@
 {{ capture content -}}
-<h2 style="margin:0 0 16px;font-size:22px;">You've joined {{ organization_name }}</h2>
-<p>Hi {{ display_name }} — welcome aboard. Your <strong>{{ role_display_name }}</strong> account at <strong>{{ organization_name }}</strong> is ready to go.</p>
+<h2 style="margin:0 0 16px;font-size:22px;">You've joined {{ organization_name | html.escape }}</h2>
+<p>Hi {{ display_name | html.escape }} — welcome aboard. Your <strong>{{ role_display_name | html.escape }}</strong> account at <strong>{{ organization_name | html.escape }}</strong> is ready to go.</p>
 <p style="margin:24px 0;">
-  <a href="{{ dashboard_url }}"
+  <a href="{{ dashboard_url | html.escape }}"
      style="background:{{ branding.primary_color }};color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:600;">
     Take me to my dashboard
   </a>

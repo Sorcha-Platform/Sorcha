@@ -58,6 +58,16 @@ public class InvitationService : IInvitationService
             throw new ArgumentException("Cannot assign SystemAdmin role via invitation.", nameof(request));
         }
 
+        // Fail-fast lookups BEFORE we persist anything. Previously the invitation row
+        // was committed before the org lookup — a missing org would leave an orphaned
+        // row with a valid token and no email ever sent (reviewer M-1).
+        var invitingOrg = await _organizationRepository.GetByIdAsync(organizationId, cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Inviting organisation {organizationId} not found when preparing invitation email.");
+
+        var inviter = await _identityRepository.GetUserByIdAsync(invitedByUserId, cancellationToken);
+        var inviterName = inviter?.DisplayName ?? "An administrator";
+
         // Check for duplicate active invitation
         if (await _invitationRepository.HasActiveInvitationAsync(organizationId, request.Email, cancellationToken))
         {
@@ -80,15 +90,6 @@ public class InvitationService : IInvitationService
         };
 
         await _invitationRepository.CreateAsync(invitation, cancellationToken);
-
-        // Resolve inviter display name and the inviting organisation (so the email
-        // carries the org's branding where configured).
-        var inviter = await _identityRepository.GetUserByIdAsync(invitedByUserId, cancellationToken);
-        var inviterName = inviter?.DisplayName ?? "An administrator";
-
-        var invitingOrg = await _organizationRepository.GetByIdAsync(organizationId, cancellationToken)
-            ?? throw new InvalidOperationException(
-                $"Inviting organisation {organizationId} not found when preparing invitation email.");
 
         var acceptUrl = $"{_emailSettings.BaseUrl.TrimEnd('/')}/invitations/accept?token={Uri.EscapeDataString(token)}";
 

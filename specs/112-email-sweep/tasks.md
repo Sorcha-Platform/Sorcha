@@ -55,7 +55,7 @@ Microservice structure per plan.md. Source under `src/Services/Sorcha.Tenant.Ser
 
 ### Configuration
 
-- [X] T012 Extend `EmailSettings` in `src/Services/Sorcha.Tenant.Service/Services/IEmailSender.cs` with new optional fields: `LogoUrl`, `PrimaryColor` (default `"#2563eb"`), `Tagline`, `ReplyTo` (default `"help@sorcha.io"`)
+- [X] T012 Extend `EmailSettings` in `src/Services/Sorcha.Tenant.Service/Services/IEmailSender.cs` with new optional fields: `LogoUrl`, `PrimaryColor` (default `"#2563eb"`), `Tagline`, `ReplyTo` (default `"help@sorcha.dev"`)
 
 ### Tighten `IEmailSender`
 
@@ -112,7 +112,7 @@ Microservice structure per plan.md. Source under `src/Services/Sorcha.Tenant.Ser
 
 - [X] T030 [P] [US1] Create `src/Services/Sorcha.Tenant.Service/Emails/Templates/verify.html` per `contracts/email-templates.md § 2`
 - [X] T031 [P] [US1] Create `src/Services/Sorcha.Tenant.Service/Emails/Templates/verify.txt` per `contracts/email-templates.md § 2`
-- [X] T032 [P] [US1] Create golden fixture `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/verify.html` rendered against the canonical test model (`DisplayName = "Stuart Fraser"`, `VerifyUrl = "https://sorcha.io/auth/verify-email?token=FIXTURE_TOKEN"`, `ExpiresInHours = 24`, Sorcha default branding)
+- [X] T032 [P] [US1] Create golden fixture `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/verify.html` rendered against the canonical test model (`DisplayName = "Stuart Fraser"`, `VerifyUrl = "https://sorcha.dev/auth/verify-email?token=FIXTURE_TOKEN"`, `ExpiresInHours = 24`, Sorcha default branding)
 - [X] T033 [P] [US1] Create golden fixture `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/verify.txt` (same model)
 
 ### Caller migration

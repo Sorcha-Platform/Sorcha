@@ -17,7 +17,7 @@ public class EmailVerificationService : IEmailVerificationService
 {
     private readonly TenantDbContext _dbContext;
     private readonly ITransactionalEmailService _transactional;
-    private readonly WelcomeEmailDispatcher _welcomeDispatcher;
+    private readonly IWelcomeEmailDispatcher _welcomeDispatcher;
     private readonly EmailSettings _emailSettings;
     private readonly ILogger<EmailVerificationService> _logger;
 
@@ -26,7 +26,7 @@ public class EmailVerificationService : IEmailVerificationService
     public EmailVerificationService(
         TenantDbContext dbContext,
         ITransactionalEmailService transactional,
-        WelcomeEmailDispatcher welcomeDispatcher,
+        IWelcomeEmailDispatcher welcomeDispatcher,
         IOptions<EmailSettings> emailSettings,
         ILogger<EmailVerificationService> logger)
     {

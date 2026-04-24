@@ -29,19 +29,26 @@ public class LoginServiceTests : IDisposable
     private readonly Mock<IPlatformUserService> _platformUserService = new();
     private readonly Mock<ITransactionalEmailService> _transactionalEmail = new();
     private readonly ILogger<LoginService> _logger = NullLogger<LoginService>.Instance;
+    private readonly Microsoft.Data.Sqlite.SqliteConnection _connection;
     private readonly TenantDbContext _dbContext;
 
     public LoginServiceTests()
     {
+        // SQLite in-memory — the WelcomeEmailDispatcher uses ExecuteUpdateAsync which
+        // the EF Core in-memory provider does not support.
+        _connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
+        _connection.Open();
         var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseInMemoryDatabase(databaseName: $"LoginServiceTests-{Guid.NewGuid()}")
+            .UseSqlite(_connection)
             .Options;
         _dbContext = new TenantDbContext(options);
+        _dbContext.Database.EnsureCreated();
     }
 
     public void Dispose()
     {
         _dbContext.Dispose();
+        _connection.Dispose();
     }
 
     private LoginService CreateService()

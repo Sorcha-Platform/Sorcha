@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -18,27 +19,32 @@ namespace Sorcha.Tenant.Service.Tests.Services;
 /// (a) GenerateAndSendVerificationAsync dispatches a VerifyEmailDispatch through the
 /// templated facade, not a plaintext-token SendAsync; (b) VerifyTokenAsync on success
 /// invokes WelcomeEmailDispatcher.SendIfPendingAsync so the welcome fires exactly
-/// once per user on the email-password signup path.
+/// once per user on the email-password signup path. Uses SQLite in-memory because the
+/// dispatcher relies on ExecuteUpdateAsync (unsupported on the EF Core in-memory provider).
 /// </summary>
 public class EmailVerificationServiceTests : IDisposable
 {
+    private readonly SqliteConnection _connection;
     private readonly TenantDbContext _dbContext;
     private readonly Mock<ITransactionalEmailService> _transactional = new();
     private readonly ILogger<EmailVerificationService> _logger = NullLogger<EmailVerificationService>.Instance;
 
     public EmailVerificationServiceTests()
     {
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
         var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseInMemoryDatabase($"EmailVerify_{Guid.NewGuid():N}")
+            .UseSqlite(_connection)
             .Options;
         _dbContext = new TenantDbContext(options);
+        _dbContext.Database.EnsureCreated();
     }
 
     private EmailVerificationService CreateService()
     {
         var dispatcher = new WelcomeEmailDispatcher(
             _dbContext, _transactional.Object, NullLogger<WelcomeEmailDispatcher>.Instance);
-        var settings = Options.Create(new EmailSettings { BaseUrl = "https://sorcha.io" });
+        var settings = Options.Create(new EmailSettings { BaseUrl = "https://sorcha.dev" });
         return new EmailVerificationService(
             _dbContext, _transactional.Object, dispatcher, settings, _logger);
     }
@@ -85,7 +91,7 @@ public class EmailVerificationServiceTests : IDisposable
             It.Is<VerifyEmailDispatch>(d =>
                 d.ToEmail == "user@test.com" &&
                 d.DisplayName == "Stuart Fraser" &&
-                d.VerifyUrl.Contains("https://sorcha.io/auth/verify-email?token=") &&
+                d.VerifyUrl.Contains("https://sorcha.dev/auth/verify-email?token=") &&
                 d.VerifyUrl.Contains(returnedToken) &&
                 d.ExpiresInHours == 24),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -150,5 +156,9 @@ public class EmailVerificationServiceTests : IDisposable
             It.IsAny<WelcomeDispatchContext>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    public void Dispose() => _dbContext.Dispose();
+    public void Dispose()
+    {
+        _dbContext.Dispose();
+        _connection.Dispose();
+    }
 }

@@ -806,8 +806,8 @@ The service supports 3-tier URL resolution for organizations:
 
 | Tier | Pattern | Example |
 |------|---------|---------|
-| **Path** | `/org/{subdomain}` | `https://sorcha.io/org/acme` |
-| **Subdomain** | `{subdomain}.sorcha.io` | `https://acme.sorcha.io` |
+| **Path** | `/org/{subdomain}` | `https://sorcha.dev/org/acme` |
+| **Subdomain** | `{subdomain}.sorcha.dev` | `https://acme.sorcha.dev` |
 | **Custom Domain** | CNAME to platform | `https://id.acme.com` |
 
 Custom domains require CNAME DNS configuration and verification. The internal `/api/internal/resolve-domain/{domain}` endpoint is used by the API Gateway for domain-based routing.

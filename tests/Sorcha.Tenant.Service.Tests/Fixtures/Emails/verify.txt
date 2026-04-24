@@ -1,11 +1,11 @@
 Hi Stuart Fraser — thanks for signing up to Sorcha.
 
 Confirm your email by opening this link:
-https://sorcha.io/auth/verify-email?token=FIXTURE_TOKEN
+https://sorcha.dev/auth/verify-email?token=FIXTURE_TOKEN
 
 The link works for 24 hours. If you didn't sign up,
 just ignore this — no account will be created.
 
 — the Sorcha team
 Decentralised registers for secure data flow
-Questions? Write to help@sorcha.io.
+Questions? Write to help@sorcha.dev.

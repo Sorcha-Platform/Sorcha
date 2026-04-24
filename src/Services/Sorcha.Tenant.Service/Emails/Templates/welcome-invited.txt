@@ -1,5 +1,5 @@
 {{ capture content -}}
-You've joined {{ organization_name }}.
+You've joined {{ organization_name }}
 
 Hi {{ display_name }} — welcome aboard. Your {{ role_display_name }} account
 at {{ organization_name }} is ready to go.

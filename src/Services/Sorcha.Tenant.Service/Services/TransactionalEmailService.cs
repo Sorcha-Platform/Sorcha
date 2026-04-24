@@ -94,7 +94,7 @@ public sealed class TransactionalEmailService : ITransactionalEmailService
             DashboardUrl: $"{baseUrl}/dashboard",
             BrowseRegistersUrl: $"{baseUrl}/registers",
             DemoWorkflowsUrl: $"{baseUrl}/blueprints",
-            DocsUrl: "https://docs.sorcha.io",
+            DocsUrl: "https://docs.sorcha.dev",
             Branding: _branding.GetDefault());
 
         var (html, text) = _renderer.Render("welcome-public", model);
@@ -106,19 +106,18 @@ public sealed class TransactionalEmailService : ITransactionalEmailService
         if (context.InvitingOrganization is null)
             throw new InvalidOperationException(
                 "Invited welcome requires an inviting organisation in the context.");
+        if (string.IsNullOrWhiteSpace(context.InvitedRole))
+            throw new InvalidOperationException(
+                "Invited welcome requires an InvitedRole in the context — " +
+                "WelcomeEmailDispatcher populates this from the earliest standard-org membership.");
 
         var baseUrl = _settings.BaseUrl.TrimEnd('/');
         var branding = _branding.GetForOrganization(context.InvitingOrganization);
 
-        // Resolve the role display name from the user's membership in this org.
-        var membership = context.User.OrgMemberships
-            .FirstOrDefault(m => m.OrganizationId == context.InvitingOrganization.Id);
-        var role = membership?.Role ?? "Member";
-
         var model = new WelcomeInvitedTemplateModel(
             DisplayName: context.User.DisplayName,
             OrganizationName: context.InvitingOrganization.Name,
-            RoleDisplayName: role,
+            RoleDisplayName: context.InvitedRole,
             DashboardUrl: $"{baseUrl}/dashboard",
             Branding: branding);
 

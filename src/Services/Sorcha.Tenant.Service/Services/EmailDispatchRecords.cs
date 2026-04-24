@@ -33,13 +33,15 @@ public sealed record ResetPasswordDispatch(
 
 /// <summary>
 /// Context passed by <c>WelcomeEmailDispatcher</c> when dispatching a welcome email.
-/// <see cref="InvitingOrganization"/> is required when <see cref="Variant"/> is
-/// <see cref="WelcomeVariant.Invited"/>; null for <see cref="WelcomeVariant.Public"/>.
+/// <see cref="InvitingOrganization"/> and <see cref="InvitedRole"/> are required when
+/// <see cref="Variant"/> is <see cref="WelcomeVariant.Invited"/>; both are null for
+/// <see cref="WelcomeVariant.Public"/>.
 /// </summary>
 public sealed record WelcomeDispatchContext(
     PlatformUser User,
     WelcomeVariant Variant,
-    Organization? InvitingOrganization);
+    Organization? InvitingOrganization,
+    string? InvitedRole);
 
 /// <summary>Which welcome-email template variant to render.</summary>
 public enum WelcomeVariant

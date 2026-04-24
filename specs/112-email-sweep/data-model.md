@@ -58,7 +58,7 @@ public sealed record EmailBranding(
     string? LogoUrl,         // absolute https URL; null → text-only header
     string PrimaryColor,     // hex, e.g. "#2563eb"; always non-null (falls back to Sorcha default)
     string? Tagline,         // optional footer line
-    string ReplyTo);         // e.g. "help@sorcha.io"
+    string ReplyTo);         // e.g. "help@sorcha.dev"
 ```
 
 **Resolution rules** (implemented in `EmailBrandingResolver`):

@@ -13,7 +13,24 @@ namespace Sorcha.Tenant.Service.Services;
 /// first-login trigger fires. Idempotent and non-throwing — a failed send is logged
 /// but MUST NOT block the calling authentication flow (FR-020).
 /// </summary>
-public sealed class WelcomeEmailDispatcher
+public interface IWelcomeEmailDispatcher
+{
+    /// <summary>
+    /// Sends the appropriate welcome email if the user is eligible (email verified AND
+    /// welcome not previously sent). On success, atomically sets
+    /// <see cref="PlatformUser.WelcomeSentAt"/> via an optimistic WHERE clause so two
+    /// concurrent triggers cannot both send.
+    /// </summary>
+    /// <remarks>
+    /// Swallows send exceptions after logging — verification or login flows must proceed
+    /// regardless of whether the welcome send succeeded. <see cref="PlatformUser.WelcomeSentAt"/>
+    /// is set ONLY on successful send, so a failure can be retried by the next trigger.
+    /// </remarks>
+    Task SendIfPendingAsync(PlatformUser user, CancellationToken ct);
+}
+
+/// <inheritdoc />
+public sealed class WelcomeEmailDispatcher : IWelcomeEmailDispatcher
 {
     private readonly TenantDbContext _dbContext;
     private readonly ITransactionalEmailService _transactional;
@@ -32,20 +49,13 @@ public sealed class WelcomeEmailDispatcher
         _logger = logger;
     }
 
-    /// <summary>
-    /// Sends the appropriate welcome email if the user is eligible (email verified AND
-    /// welcome not previously sent). On success, sets <see cref="PlatformUser.WelcomeSentAt"/>
-    /// and persists. Safe to call from any number of trigger points.
-    /// </summary>
-    /// <remarks>
-    /// Swallows send exceptions after logging — verification or login flows must proceed
-    /// regardless of whether the welcome send succeeded. <see cref="PlatformUser.WelcomeSentAt"/>
-    /// is set ONLY on successful send, so a failure can be retried by the next trigger.
-    /// </remarks>
+    /// <inheritdoc />
     public async Task SendIfPendingAsync(PlatformUser user, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(user);
 
+        // Fast-path gate: if we can already tell from the in-memory entity that the
+        // welcome was sent or the user isn't verified, skip without touching the DB.
         if (user.WelcomeSentAt.HasValue) return;
         if (!user.EmailVerified) return;
 
@@ -62,20 +72,59 @@ public sealed class WelcomeEmailDispatcher
             return;
         }
 
+        // Atomic reservation: set WelcomeSentAt only where it's still null and the user
+        // is still email-verified. Concurrent triggers race here — the losing writer
+        // affects 0 rows and returns without sending. This replaces the previous
+        // in-memory check + SaveChangesAsync pattern, which had three problems: a TOCTOU
+        // race between the gate and the save, side-effect saves of unrelated dirty
+        // entities tracked on the shared scoped DbContext, and data loss when the
+        // cancellation token tripped after send but before save.
+        var sentAt = DateTimeOffset.UtcNow;
+        int rowsReserved;
+        try
+        {
+            rowsReserved = await _dbContext.PlatformUsers
+                .Where(u => u.Id == user.Id
+                            && u.WelcomeSentAt == null
+                            && u.EmailVerified)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(u => u.WelcomeSentAt, sentAt),
+                    ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to reserve welcome-send for user {UserId}; welcome not sent",
+                user.Id);
+            return;
+        }
+
+        if (rowsReserved == 0)
+        {
+            // Another trigger won the race (or the user is no longer verified). No send.
+            return;
+        }
+
+        // Keep the in-memory entity in sync so the calling scope sees the new value
+        // without re-querying.
+        user.WelcomeSentAt = sentAt;
+
         try
         {
             await _transactional.SendWelcomeAsync(context, ct);
         }
         catch (Exception ex)
         {
+            // Reservation already committed; the email didn't go out. Log and move on —
+            // a stale WelcomeSentAt is preferable to either blocking the caller or
+            // double-sending on the next trigger. Operators can reconcile via the
+            // structured log line below.
             _logger.LogError(ex,
-                "Failed to send welcome email to {Email} (user {UserId}, variant {Variant}); flow continues",
+                "Welcome-send reserved but delivery FAILED for {Email} (user {UserId}, variant {Variant}); " +
+                "WelcomeSentAt persisted to prevent double-send. Reconcile if needed.",
                 user.Email, user.Id, context.Variant);
             return;
         }
-
-        user.WelcomeSentAt = DateTimeOffset.UtcNow;
-        await _dbContext.SaveChangesAsync(ct);
 
         _logger.LogInformation(
             "Welcome email sent to {Email} (user {UserId}, variant {Variant})",
@@ -84,12 +133,18 @@ public sealed class WelcomeEmailDispatcher
 
     private async Task<WelcomeDispatchContext> BuildContextAsync(PlatformUser user, CancellationToken ct)
     {
-        // Pull memberships directly — the navigation collection on the passed-in user
-        // may not be loaded (callers aren't required to Include it).
-        var memberships = await _dbContext.PlatformUserOrgMemberships
+        // Pull memberships directly — callers aren't required to Include the navigation,
+        // and mutating the navigation on a tracked entity is fragile (EF change-tracker
+        // side effects). Read-only query, result used locally.
+        // Ordering is done client-side: SQLite can't ORDER BY a DateTimeOffset column
+        // (NotSupportedException at query-compile time), and the membership count per
+        // user is small enough that an in-memory sort is trivially fast.
+        var memberships = (await _dbContext.PlatformUserOrgMemberships
+            .AsNoTracking()
             .Where(m => m.PlatformUserId == user.Id)
+            .ToListAsync(ct))
             .OrderBy(m => m.JoinedAt)
-            .ToListAsync(ct);
+            .ToList();
 
         // Earliest-joined standard (non-public) org wins. Anything else = public variant.
         var firstStandardOrgMembership = memberships
@@ -97,10 +152,12 @@ public sealed class WelcomeEmailDispatcher
 
         if (firstStandardOrgMembership is null)
         {
-            return new WelcomeDispatchContext(user, WelcomeVariant.Public, InvitingOrganization: null);
+            return new WelcomeDispatchContext(
+                user, WelcomeVariant.Public, InvitingOrganization: null, InvitedRole: null);
         }
 
         var org = await _dbContext.Organizations
+            .AsNoTracking()
             .FirstOrDefaultAsync(o => o.Id == firstStandardOrgMembership.OrganizationId, ct);
 
         if (org is null)
@@ -110,17 +167,13 @@ public sealed class WelcomeEmailDispatcher
             _logger.LogWarning(
                 "Inviting organisation {OrgId} for user {UserId} not found; falling back to public welcome",
                 firstStandardOrgMembership.OrganizationId, user.Id);
-            return new WelcomeDispatchContext(user, WelcomeVariant.Public, InvitingOrganization: null);
+            return new WelcomeDispatchContext(
+                user, WelcomeVariant.Public, InvitingOrganization: null, InvitedRole: null);
         }
 
-        // Attach the resolved membership so TransactionalEmailService can read the role.
-        // The membership already belongs to the tracked user, but if navigation wasn't
-        // loaded we pre-populate OrgMemberships so the facade doesn't re-query.
-        if (user.OrgMemberships.Count == 0)
-        {
-            foreach (var m in memberships) user.OrgMemberships.Add(m);
-        }
-
-        return new WelcomeDispatchContext(user, WelcomeVariant.Invited, org);
+        // Pass the role explicitly — no navigation-collection mutation, no silent fallback
+        // to "Member" when the nav isn't loaded.
+        return new WelcomeDispatchContext(
+            user, WelcomeVariant.Invited, org, firstStandardOrgMembership.Role);
     }
 }

@@ -20,21 +20,21 @@ public class EmailTemplateSnapshotTests
         LogoUrl: null,
         PrimaryColor: "#2563eb",
         Tagline: "Decentralised registers for secure data flow",
-        ReplyTo: "help@sorcha.io");
+        ReplyTo: "help@sorcha.dev");
 
     private static readonly EmailBranding AcmeBranding = new(
         SenderName: "Acme Verification Co.",
         LogoUrl: "https://acme.example/logo.png",
         PrimaryColor: "#FF5722",
         Tagline: "Verify with confidence",
-        ReplyTo: "help@sorcha.io");
+        ReplyTo: "help@sorcha.dev");
 
     private static readonly EmailBranding AcmeDefaultBranding = new(
         SenderName: "Acme Verification Co.",
         LogoUrl: null,
         PrimaryColor: "#2563eb",
         Tagline: null,
-        ReplyTo: "help@sorcha.io");
+        ReplyTo: "help@sorcha.dev");
 
     public static TheoryData<string, object> Cases => new()
     {
@@ -42,7 +42,7 @@ public class EmailTemplateSnapshotTests
             "verify",
             new VerifyEmailTemplateModel(
                 DisplayName: "Stuart Fraser",
-                VerifyUrl: "https://sorcha.io/auth/verify-email?token=FIXTURE_TOKEN",
+                VerifyUrl: "https://sorcha.dev/auth/verify-email?token=FIXTURE_TOKEN",
                 ExpiresInHours: 24,
                 Branding: SorchaBranding)
         },
@@ -52,7 +52,7 @@ public class EmailTemplateSnapshotTests
                 InviterName: "Admin User",
                 OrganizationName: "Acme Verification Co.",
                 RoleDisplayName: "Designer",
-                AcceptUrl: "https://sorcha.io/invitations/accept?token=FIXTURE_TOKEN",
+                AcceptUrl: "https://sorcha.dev/invitations/accept?token=FIXTURE_TOKEN",
                 ExpiresInDays: 7,
                 Branding: AcmeBranding)
         },
@@ -62,7 +62,7 @@ public class EmailTemplateSnapshotTests
                 InviterName: "Admin User",
                 OrganizationName: "Acme Verification Co.",
                 RoleDisplayName: "Designer",
-                AcceptUrl: "https://sorcha.io/invitations/accept?token=FIXTURE_TOKEN",
+                AcceptUrl: "https://sorcha.dev/invitations/accept?token=FIXTURE_TOKEN",
                 ExpiresInDays: 7,
                 Branding: AcmeDefaultBranding)
         },
@@ -70,7 +70,7 @@ public class EmailTemplateSnapshotTests
             "reset",
             new ResetPasswordTemplateModel(
                 DisplayName: "Stuart Fraser",
-                ResetUrl: "https://sorcha.io/auth/reset-password?token=FIXTURE_TOKEN",
+                ResetUrl: "https://sorcha.dev/auth/reset-password?token=FIXTURE_TOKEN",
                 ExpiresInMinutes: 60,
                 Branding: SorchaBranding)
         },
@@ -78,10 +78,10 @@ public class EmailTemplateSnapshotTests
             "welcome-public",
             new WelcomePublicTemplateModel(
                 DisplayName: "Stuart Fraser",
-                DashboardUrl: "https://sorcha.io/dashboard",
-                BrowseRegistersUrl: "https://sorcha.io/registers",
-                DemoWorkflowsUrl: "https://sorcha.io/blueprints",
-                DocsUrl: "https://docs.sorcha.io",
+                DashboardUrl: "https://sorcha.dev/dashboard",
+                BrowseRegistersUrl: "https://sorcha.dev/registers",
+                DemoWorkflowsUrl: "https://sorcha.dev/blueprints",
+                DocsUrl: "https://docs.sorcha.dev",
                 Branding: SorchaBranding)
         },
         {
@@ -90,7 +90,7 @@ public class EmailTemplateSnapshotTests
                 DisplayName: "Stuart Fraser",
                 OrganizationName: "Acme Verification Co.",
                 RoleDisplayName: "Designer",
-                DashboardUrl: "https://sorcha.io/dashboard",
+                DashboardUrl: "https://sorcha.dev/dashboard",
                 Branding: AcmeBranding)
         },
     };

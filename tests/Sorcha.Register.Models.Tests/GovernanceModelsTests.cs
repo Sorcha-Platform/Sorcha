@@ -255,6 +255,8 @@ public class GovernanceModelsTests
     [Fact]
     public void TransactionType_HasExpectedValues()
     {
-        Enum.GetValues<Sorcha.Register.Models.Enums.TransactionType>().Should().HaveCount(5);
+        // Control, Action, Docket, Participant, Revocation (Feature 079),
+        // PresentationInitiated, PresentationOutcome, PresentationAbandoned (Feature 111)
+        Enum.GetValues<Sorcha.Register.Models.Enums.TransactionType>().Should().HaveCount(8);
     }
 }

@@ -23,7 +23,7 @@ public class LoginService : ILoginService
     private readonly IPasskeyService _passkeyService;
     private readonly ITokenRevocationService _revocationService;
     private readonly IPlatformUserService _platformUserService;
-    private readonly WelcomeEmailDispatcher _welcomeDispatcher;
+    private readonly IWelcomeEmailDispatcher _welcomeDispatcher;
     private readonly ILogger<LoginService> _logger;
 
     /// <summary>
@@ -38,7 +38,7 @@ public class LoginService : ILoginService
         IPasskeyService passkeyService,
         ITokenRevocationService revocationService,
         IPlatformUserService platformUserService,
-        WelcomeEmailDispatcher welcomeDispatcher,
+        IWelcomeEmailDispatcher welcomeDispatcher,
         ILogger<LoginService> logger)
     {
         _dbContext = dbContext;

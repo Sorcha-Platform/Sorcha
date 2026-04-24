@@ -2,7 +2,7 @@ Welcome to Sorcha, Stuart Fraser!
 
 Your account is ready. Jump in whenever you're set.
 
-  Dashboard: https://sorcha.io/dashboard
+  Dashboard: https://sorcha.dev/dashboard
 
 ONE THING WORTH KNOWING NOW
 
@@ -16,12 +16,12 @@ No rush, but when you're ready to create a wallet, have a pen handy.
 
 WHAT'S NEXT
 
-  Browse your registers: https://sorcha.io/registers
-  Try a demo workflow:   https://sorcha.io/blueprints
-  Read the docs:         https://docs.sorcha.io
+  Browse your registers: https://sorcha.dev/registers
+  Try a demo workflow:   https://sorcha.dev/blueprints
+  Read the docs:         https://docs.sorcha.dev
 
 Any questions, just reply to this email — a human's at the other end.
 
 — the Sorcha team
 Decentralised registers for secure data flow
-Questions? Write to help@sorcha.io.
+Questions? Write to help@sorcha.dev.

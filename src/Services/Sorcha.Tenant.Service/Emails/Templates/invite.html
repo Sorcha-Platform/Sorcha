@@ -1,9 +1,9 @@
 {{ capture content -}}
-<h2 style="margin:0 0 16px;font-size:22px;">You've been invited to {{ organization_name }}</h2>
-<p>Hi — {{ inviter_name }} has invited you to join <strong>{{ organization_name }}</strong> as a <strong>{{ role_display_name }}</strong>.</p>
+<h2 style="margin:0 0 16px;font-size:22px;">You've been invited to {{ organization_name | html.escape }}</h2>
+<p>Hi — {{ inviter_name | html.escape }} has invited you to join <strong>{{ organization_name | html.escape }}</strong> as a <strong>{{ role_display_name | html.escape }}</strong>.</p>
 <p>Tap the button below to accept the invitation and set up your account.</p>
 <p style="margin:24px 0;">
-  <a href="{{ accept_url }}"
+  <a href="{{ accept_url | html.escape }}"
      style="background:{{ branding.primary_color }};color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:600;">
     Accept invitation
   </a>
@@ -13,7 +13,7 @@
 </p>
 <p style="font-size:12px;color:#888;margin-top:16px;">
   Button not working? Paste this link into your browser:<br>
-  <a href="{{ accept_url }}" style="color:{{ branding.primary_color }};word-break:break-all;">{{ accept_url }}</a>
+  <a href="{{ accept_url | html.escape }}" style="color:{{ branding.primary_color }};word-break:break-all;">{{ accept_url | html.escape }}</a>
 </p>
 {{- end -}}
 {{- include 'base.html' -}}

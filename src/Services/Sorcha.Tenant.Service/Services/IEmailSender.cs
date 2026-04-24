@@ -55,13 +55,13 @@ public class EmailSettings
     public bool UseSsl { get; set; } = true;
 
     /// <summary>Sender email address (From header).</summary>
-    public string FromAddress { get; set; } = "noreply@sorcha.io";
+    public string FromAddress { get; set; } = "noreply@sorcha.dev";
 
     /// <summary>Sender display name.</summary>
     public string FromName { get; set; } = "Sorcha Platform";
 
     /// <summary>Base URL for constructing verification, invitation, and reset links.</summary>
-    public string BaseUrl { get; set; } = "https://sorcha.io";
+    public string BaseUrl { get; set; } = "https://sorcha.dev";
 
     /// <summary>
     /// Azure Communication Services connection string for REST API email sending.
@@ -89,5 +89,5 @@ public class EmailSettings
     /// <summary>
     /// Reply-to address shown in the email footer so recipients can easily ask for help.
     /// </summary>
-    public string ReplyTo { get; set; } = "help@sorcha.io";
+    public string ReplyTo { get; set; } = "help@sorcha.dev";
 }

@@ -71,10 +71,10 @@ Tenant Service is available on its Aspire-assigned HTTPS port. Same email backen
 # From a terminal:
 curl -X POST http://localhost:80/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"stuart+verify@sorcha.io","password":"Correct-horse-battery-staple-9","displayName":"Stuart Fraser"}'
+  -d '{"email":"stuart+verify@sorcha.dev","password":"Correct-horse-battery-staple-9","displayName":"Stuart Fraser"}'
 ```
 
-Expected: one email arrives for `stuart+verify@sorcha.io` titled `Confirm your email`, with a `Confirm my email` button linking to `/auth/verify-email?token=…`. The plaintext body contains the same link.
+Expected: one email arrives for `stuart+verify@sorcha.dev` titled `Confirm your email`, with a `Confirm my email` button linking to `/auth/verify-email?token=…`. The plaintext body contains the same link.
 
 Clicking the link or posting to `/api/auth/verify-email?token=…` should mark the user verified AND fire the welcome email in under a minute.
 
@@ -99,7 +99,7 @@ Then invite a fresh email:
 curl -X POST http://localhost:80/api/organizations/{orgId}/invitations \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"email":"stuart+invited@sorcha.io","role":"Consumer","expiryDays":7}'
+  -d '{"email":"stuart+invited@sorcha.dev","role":"Consumer","expiryDays":7}'
 ```
 
 Expected: invitation email branded with Acme logo + orange primary colour. Accept the invitation, then sign in once. The welcome email that arrives after first sign-in is the **invited** variant and carries Acme branding, not Sorcha's, and does NOT include the recovery-phrase section.
@@ -113,7 +113,7 @@ Covered by the step above — the invitation email is sent by the `POST /api/org
 ```bash
 curl -X POST http://localhost:80/api/auth/password-reset \
   -H "Content-Type: application/json" \
-  -d '{"email":"stuart+verify@sorcha.io"}'
+  -d '{"email":"stuart+verify@sorcha.dev"}'
 ```
 
 Expected: email titled `Reset your password` with a `Reset password` button. Visual treatment identical to the verification email.

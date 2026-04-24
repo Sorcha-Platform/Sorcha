@@ -22,10 +22,10 @@ public class TransactionalEmailServiceTests
     private readonly TransactionalEmailService _service;
 
     private static readonly EmailBranding FakeBranding =
-        new("Sorcha", null, "#2563eb", null, "help@sorcha.io");
+        new("Sorcha", null, "#2563eb", null, "help@sorcha.dev");
 
     private static readonly EmailBranding FakeOrgBranding =
-        new("Acme", "https://acme.example/logo.png", "#FF5722", "Verify with confidence", "help@sorcha.io");
+        new("Acme", "https://acme.example/logo.png", "#FF5722", "Verify with confidence", "help@sorcha.dev");
 
     public TransactionalEmailServiceTests()
     {
@@ -36,7 +36,7 @@ public class TransactionalEmailServiceTests
             .Setup(r => r.Render(It.IsAny<string>(), It.IsAny<object>()))
             .Returns(("<html>x</html>", "x"));
 
-        var settings = Options.Create(new EmailSettings { BaseUrl = "https://sorcha.io" });
+        var settings = Options.Create(new EmailSettings { BaseUrl = "https://sorcha.dev" });
         _service = new TransactionalEmailService(
             _renderer.Object, _branding.Object, _sender.Object, settings);
     }
@@ -47,14 +47,14 @@ public class TransactionalEmailServiceTests
         var dispatch = new VerifyEmailDispatch(
             ToEmail: "user@example.com",
             DisplayName: "Stuart Fraser",
-            VerifyUrl: "https://sorcha.io/auth/verify-email?token=T",
+            VerifyUrl: "https://sorcha.dev/auth/verify-email?token=T",
             ExpiresInHours: 24);
 
         await _service.SendVerificationAsync(dispatch);
 
         _renderer.Verify(r => r.Render("verify", It.Is<VerifyEmailTemplateModel>(m =>
             m.DisplayName == "Stuart Fraser" &&
-            m.VerifyUrl == "https://sorcha.io/auth/verify-email?token=T" &&
+            m.VerifyUrl == "https://sorcha.dev/auth/verify-email?token=T" &&
             m.ExpiresInHours == 24 &&
             m.Branding == FakeBranding)), Times.Once);
 
@@ -80,7 +80,7 @@ public class TransactionalEmailServiceTests
             InviterName: "Admin User",
             InvitingOrganization: org,
             RoleDisplayName: "Designer",
-            AcceptUrl: "https://sorcha.io/invitations/accept?token=T",
+            AcceptUrl: "https://sorcha.dev/invitations/accept?token=T",
             ExpiresInDays: 7);
 
         await _service.SendInvitationAsync(dispatch);
@@ -90,7 +90,7 @@ public class TransactionalEmailServiceTests
             m.InviterName == "Admin User" &&
             m.OrganizationName == "Acme Verification Co." &&
             m.RoleDisplayName == "Designer" &&
-            m.AcceptUrl == "https://sorcha.io/invitations/accept?token=T" &&
+            m.AcceptUrl == "https://sorcha.dev/invitations/accept?token=T" &&
             m.ExpiresInDays == 7 &&
             m.Branding == FakeOrgBranding)), Times.Once);
 
@@ -108,14 +108,14 @@ public class TransactionalEmailServiceTests
         var dispatch = new ResetPasswordDispatch(
             ToEmail: "user@example.com",
             DisplayName: "Stuart Fraser",
-            ResetUrl: "https://sorcha.io/auth/reset-password?token=T",
+            ResetUrl: "https://sorcha.dev/auth/reset-password?token=T",
             ExpiresInMinutes: 60);
 
         await _service.SendPasswordResetAsync(dispatch);
 
         _renderer.Verify(r => r.Render("reset", It.Is<ResetPasswordTemplateModel>(m =>
             m.DisplayName == "Stuart Fraser" &&
-            m.ResetUrl == "https://sorcha.io/auth/reset-password?token=T" &&
+            m.ResetUrl == "https://sorcha.dev/auth/reset-password?token=T" &&
             m.ExpiresInMinutes == 60 &&
             m.Branding == FakeBranding)), Times.Once);
 
@@ -137,14 +137,14 @@ public class TransactionalEmailServiceTests
             DisplayName = "Stuart Fraser",
             EmailVerified = true,
         };
-        var ctx = new WelcomeDispatchContext(user, WelcomeVariant.Public, InvitingOrganization: null);
+        var ctx = new WelcomeDispatchContext(user, WelcomeVariant.Public, InvitingOrganization: null, InvitedRole: null);
 
         await _service.SendWelcomeAsync(ctx);
 
         _renderer.Verify(r => r.Render("welcome-public", It.Is<WelcomePublicTemplateModel>(m =>
             m.DisplayName == "Stuart Fraser" &&
             m.Branding == FakeBranding &&
-            m.DashboardUrl.StartsWith("https://sorcha.io"))), Times.Once);
+            m.DashboardUrl.StartsWith("https://sorcha.dev"))), Times.Once);
 
         _sender.Verify(s => s.SendAsync(
             "public@example.com",
@@ -166,13 +166,9 @@ public class TransactionalEmailServiceTests
             DisplayName = "Stuart Fraser",
             EmailVerified = true,
         };
-        user.OrgMemberships.Add(new PlatformUserOrgMembership
-        {
-            PlatformUserId = user.Id,
-            OrganizationId = orgId,
-            Role = "Designer",
-        });
-        var ctx = new WelcomeDispatchContext(user, WelcomeVariant.Invited, org);
+        // Role now comes explicitly on the context — no more mutating the tracked
+        // OrgMemberships navigation (reviewer M-2).
+        var ctx = new WelcomeDispatchContext(user, WelcomeVariant.Invited, org, InvitedRole: "Designer");
 
         await _service.SendWelcomeAsync(ctx);
 
@@ -194,11 +190,24 @@ public class TransactionalEmailServiceTests
     public async Task SendWelcomeAsync_InvitedWithoutOrg_Throws()
     {
         var user = new PlatformUser { Email = "x@x.com", DisplayName = "x", EmailVerified = true };
-        var ctx = new WelcomeDispatchContext(user, WelcomeVariant.Invited, InvitingOrganization: null);
+        var ctx = new WelcomeDispatchContext(user, WelcomeVariant.Invited, InvitingOrganization: null, InvitedRole: "Designer");
 
         Func<Task> act = () => _service.SendWelcomeAsync(ctx);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*inviting organisation*");
+    }
+
+    [Fact]
+    public async Task SendWelcomeAsync_InvitedWithoutRole_Throws()
+    {
+        var user = new PlatformUser { Email = "x@x.com", DisplayName = "x", EmailVerified = true };
+        var org = new Organization { Id = Guid.NewGuid(), Name = "Acme" };
+        var ctx = new WelcomeDispatchContext(user, WelcomeVariant.Invited, org, InvitedRole: null);
+
+        Func<Task> act = () => _service.SendWelcomeAsync(ctx);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*InvitedRole*");
     }
 }

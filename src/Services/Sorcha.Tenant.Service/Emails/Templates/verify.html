@@ -1,9 +1,9 @@
 {{ capture content -}}
 <h2 style="margin:0 0 16px;font-size:22px;">Confirm your email</h2>
-<p>Hi {{ display_name }} — thanks for signing up to {{ branding.sender_name }}.</p>
+<p>Hi {{ display_name | html.escape }} — thanks for signing up to {{ branding.sender_name | html.escape }}.</p>
 <p>Tap the button below to confirm this is your email, and you'll be in.</p>
 <p style="margin:24px 0;">
-  <a href="{{ verify_url }}"
+  <a href="{{ verify_url | html.escape }}"
      style="background:{{ branding.primary_color }};color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:600;">
     Confirm my email
   </a>
@@ -13,7 +13,7 @@
 </p>
 <p style="font-size:12px;color:#888;margin-top:16px;">
   Button not working? Paste this link into your browser:<br>
-  <a href="{{ verify_url }}" style="color:{{ branding.primary_color }};word-break:break-all;">{{ verify_url }}</a>
+  <a href="{{ verify_url | html.escape }}" style="color:{{ branding.primary_color }};word-break:break-all;">{{ verify_url | html.escape }}</a>
 </p>
 {{- end -}}
 {{- include 'base.html' -}}

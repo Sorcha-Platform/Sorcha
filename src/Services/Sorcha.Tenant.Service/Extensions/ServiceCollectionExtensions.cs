@@ -264,7 +264,7 @@ public static class ServiceCollectionExtensions
         // state across requests. Matches the DI lifetime of the other Tenant services.
         services.AddScoped<IEmailBrandingResolver, EmailBrandingResolver>();
         services.AddScoped<ITransactionalEmailService, TransactionalEmailService>();
-        services.AddScoped<WelcomeEmailDispatcher>();
+        services.AddScoped<IWelcomeEmailDispatcher, WelcomeEmailDispatcher>();
 
         return services;
     }

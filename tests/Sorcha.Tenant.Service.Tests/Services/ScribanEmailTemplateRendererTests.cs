@@ -19,7 +19,7 @@ public class ScribanEmailTemplateRendererTests
         LogoUrl: null,
         PrimaryColor: "#2563eb",
         Tagline: null,
-        ReplyTo: "help@sorcha.io");
+        ReplyTo: "help@sorcha.dev");
 
     [Fact]
     public void Constructor_DiscoversAndParsesEveryEmbeddedTemplatePair()
@@ -40,16 +40,16 @@ public class ScribanEmailTemplateRendererTests
         // is only rendered via {{ include 'base.html' }}. Verify invokes base.
         var model = new VerifyEmailTemplateModel(
             DisplayName: "Stuart Fraser",
-            VerifyUrl: "https://sorcha.io/auth/verify-email?token=FIXTURE_TOKEN",
+            VerifyUrl: "https://sorcha.dev/auth/verify-email?token=FIXTURE_TOKEN",
             ExpiresInHours: 24,
             Branding: SorchaBranding());
 
         var (html, text) = renderer.Render("verify", model);
 
         html.Should().Contain("Sorcha");
-        html.Should().Contain("help@sorcha.io");
+        html.Should().Contain("help@sorcha.dev");
         text.Should().Contain("Sorcha");
-        text.Should().Contain("help@sorcha.io");
+        text.Should().Contain("help@sorcha.dev");
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class ScribanEmailTemplateRendererTests
         var renderer = new ScribanEmailTemplateRenderer();
         var model = new VerifyEmailTemplateModel(
             DisplayName: "Stuart Fraser",
-            VerifyUrl: "https://sorcha.io/auth/verify-email?token=FIXTURE_TOKEN_ABC123",
+            VerifyUrl: "https://sorcha.dev/auth/verify-email?token=FIXTURE_TOKEN_ABC123",
             ExpiresInHours: 24,
             Branding: SorchaBranding());
 

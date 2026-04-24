@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -15,9 +16,13 @@ namespace Sorcha.Tenant.Service.Tests.Services;
 /// <summary>
 /// Unit tests for <see cref="WelcomeEmailDispatcher"/>: idempotency, pre-condition
 /// guards, public-vs-invited variant selection, and non-throwing error handling.
+/// Uses SQLite in-memory because the dispatcher's atomic welcome-reservation relies
+/// on <c>ExecuteUpdateAsync</c>, which is NOT supported by the EF Core in-memory
+/// provider (throws <c>InvalidOperationException</c> at runtime).
 /// </summary>
 public class WelcomeEmailDispatcherTests : IDisposable
 {
+    private readonly SqliteConnection _connection;
     private readonly TenantDbContext _dbContext;
     private readonly Mock<ITransactionalEmailService> _transactional = new();
     private readonly WelcomeEmailDispatcher _dispatcher;
@@ -25,10 +30,15 @@ public class WelcomeEmailDispatcherTests : IDisposable
 
     public WelcomeEmailDispatcherTests()
     {
+        // SQLite in-memory, ":memory:" with a shared connection so the schema persists
+        // across DbContext operations within one test.
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
         var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseInMemoryDatabase($"WelcomeDispatcher_{Guid.NewGuid():N}")
+            .UseSqlite(_connection)
             .Options;
         _dbContext = new TenantDbContext(options);
+        _dbContext.Database.EnsureCreated();
         _dispatcher = new WelcomeEmailDispatcher(_dbContext, _transactional.Object, _logger);
     }
 
@@ -92,6 +102,13 @@ public class WelcomeEmailDispatcherTests : IDisposable
     public async Task SendIfPendingAsync_PublicOrgMembershipOnly_ChoosesPublicVariant()
     {
         var user = await SeedUserAsync(verified: true);
+        // SQLite enforces FK — seed the public org row before the membership.
+        _dbContext.Organizations.Add(new Organization
+        {
+            Id = WellKnownIds.PublicOrgId,
+            Name = "Public",
+            Subdomain = "public",
+        });
         _dbContext.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
         {
             PlatformUserId = user.Id,
@@ -169,8 +186,14 @@ public class WelcomeEmailDispatcherTests : IDisposable
     }
 
     [Fact]
-    public async Task SendIfPendingAsync_TransactionalThrows_SwallowsAndDoesNotSetWelcomeSentAt()
+    public async Task SendIfPendingAsync_TransactionalThrowsAfterReservation_SwallowsAndKeepsReservationToPreventDoubleSend()
     {
+        // With the atomic ExecuteUpdateAsync reservation (reviewer C-1/C-2/M-6 fix),
+        // we set WelcomeSentAt BEFORE calling the transactional service. If the send
+        // then fails, the reservation is DELIBERATELY kept — it prevents double-sending
+        // on a retry, at the cost of losing one welcome email that operators can
+        // reconcile from the structured error log. This is the explicit tradeoff
+        // documented in the dispatcher's implementation.
         var user = await SeedUserAsync(verified: true);
         _transactional
             .Setup(t => t.SendWelcomeAsync(It.IsAny<WelcomeDispatchContext>(), It.IsAny<CancellationToken>()))
@@ -181,8 +204,14 @@ public class WelcomeEmailDispatcherTests : IDisposable
         await act.Should().NotThrowAsync();
 
         var reloaded = await _dbContext.PlatformUsers.AsNoTracking().FirstAsync(u => u.Id == user.Id);
-        reloaded.WelcomeSentAt.Should().BeNull();
+        reloaded.WelcomeSentAt.Should().NotBeNull(
+            "the atomic reservation must survive send failure so a retry can't double-send");
     }
 
-    public void Dispose() => _dbContext.Dispose();
+
+    public void Dispose()
+    {
+        _dbContext.Dispose();
+        _connection.Dispose();
+    }
 }

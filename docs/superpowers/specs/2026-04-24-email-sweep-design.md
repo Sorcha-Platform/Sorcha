@@ -1,8 +1,8 @@
 # Email & Verification Sweep — Design
 
 **Date:** 2026-04-24
-**Status:** Brainstormed — awaiting review
-**Related task:** AUTH-006 (MASTER-TASKS.md Theme 5)
+**Status:** Implemented — shipped in PR #391 on branch `112-email-sweep`, spec + plan + tasks under `specs/112-email-sweep/`
+**Related task:** AUTH-006 (MASTER-TASKS.md Theme 5) — closed
 **Scope:** Tenant Service transactional email — verify, invite, reset, welcome
 
 ---
@@ -101,7 +101,7 @@ public sealed record EmailBranding(
     string? LogoUrl,        // absolute https URL; null → text-only header
     string PrimaryColor,    // "#2563eb" default, hex
     string? Tagline,        // footer line under sign-off
-    string ReplyTo);        // "help@sorcha.io"
+    string ReplyTo);        // "help@sorcha.dev"
 
 public sealed record VerifyEmailModel(
     string DisplayName,
@@ -405,7 +405,7 @@ New fields on `EmailSettings` (all optional with defaults):
 public string? LogoUrl { get; set; }
 public string PrimaryColor { get; set; } = "#2563eb";
 public string? Tagline { get; set; }
-public string ReplyTo { get; set; } = "help@sorcha.io";
+public string ReplyTo { get; set; } = "help@sorcha.dev";
 ```
 
 Existing fields (`BaseUrl`, `FromAddress`, `FromName`, SMTP settings, `AcsConnectionString`) stay as-is.
