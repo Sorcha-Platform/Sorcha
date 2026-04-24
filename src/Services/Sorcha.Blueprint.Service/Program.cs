@@ -1865,6 +1865,11 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/execute", async (
         }
         return Results.Problem(ex.Message, statusCode: StatusCodes.Status429TooManyRequests);
     }
+    catch (Sorcha.Blueprint.Service.Services.Implementation.PresentationAlreadyCompleteException ex)
+    {
+        // Feature 111 US3 — retry gate: action already has a successful outcome.
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
+    }
     catch (UnauthorizedAccessException ex)
     {
         return Results.Problem(ex.Message, statusCode: 403);

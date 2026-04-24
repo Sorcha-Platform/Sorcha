@@ -245,6 +245,14 @@ public class ActionExecutionService : IActionExecutionService
                 // recorded on the register via a PresentationInitiated transaction; the
                 // action does NOT complete here. The verifier callback writes the
                 // PresentationOutcome which (on success) advances the action.
+                //
+                // US3 retry gate: if any prior PresentationOutcome with kind=success
+                // exists for this instance+action, the action is already complete and
+                // a fresh attempt would be meaningless. Return 409 Conflict. Prior
+                // decline/abandoned outcomes do NOT block — retry is first-class.
+                await AssertNoPriorSuccessfulPresentationAsync(
+                    instance, actionId, cancellationToken);
+
                 if (_presentationRateLimiter != null)
                 {
                     var rateCheck = await _presentationRateLimiter.CheckAsync(
@@ -2320,6 +2328,56 @@ public class ActionExecutionService : IActionExecutionService
                 "investigate if this repeats.",
                 registerId, submission.TransactionId);
             return new DistributeTransactionResult(0, 0, LocallyOwned: false);
+        }
+    }
+
+    /// <summary>
+    /// Feature 111 US3 — enforce retry-gating. Throws
+    /// <see cref="PresentationAlreadyCompleteException"/> when a prior
+    /// PresentationOutcome with kind=success exists for this instance+action.
+    /// Prior decline / abandoned outcomes do NOT block — retry is a first-class flow.
+    /// </summary>
+    private async Task AssertNoPriorSuccessfulPresentationAsync(
+        Sorcha.Blueprint.Service.Models.Instance instance,
+        int actionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var transactions = await _registerClient.GetTransactionsByInstanceIdAsync(
+                instance.RegisterId, instance.Id, cancellationToken);
+
+            foreach (var tx in transactions)
+            {
+                if (tx.MetaData is null) continue;
+                if (tx.MetaData.TransactionType != Sorcha.Register.Models.Enums.TransactionType.PresentationOutcome) continue;
+                if (tx.MetaData.ActionId != (uint)actionId) continue;
+
+                // The outcome kind lives in the transaction payload metadata;
+                // on the BuiltTransaction path we set it as metadata["outcomeKind"].
+                // For register-sealed transactions, TrackingData carries the same value.
+                var kind = tx.MetaData.TrackingData?.GetValueOrDefault("outcomeKind");
+                if (string.Equals(kind, "success", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation(
+                        "Retry gate: instance {InstanceId} action {ActionId} already has a successful PresentationOutcome (tx {TxId}); rejecting new attempt",
+                        instance.Id, actionId, tx.TxId);
+                    throw new PresentationAlreadyCompleteException(actionId, tx.TxId);
+                }
+            }
+        }
+        catch (PresentationAlreadyCompleteException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Register query failure should not block a fresh attempt — err on the
+            // side of letting the user retry. The validator's chain-integrity check
+            // is the authoritative guard against double-completion.
+            _logger.LogWarning(ex,
+                "Retry gate: failed to query prior transactions for instance {InstanceId}; allowing attempt",
+                instance.Id);
         }
     }
 }

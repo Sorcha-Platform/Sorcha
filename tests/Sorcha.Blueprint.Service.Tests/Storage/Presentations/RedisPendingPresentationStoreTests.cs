@@ -39,25 +39,31 @@ public class RedisPendingPresentationStoreTests
     }
 
     [Fact]
-    public async Task StoreAsync_SetsHashAndAppliesTtl()
+    public async Task StoreAsync_SetsHashAndAppliesTtl_AtomicallyViaBatch()
     {
         var id = Guid.NewGuid();
         var pending = MakePending(id, validitySeconds: 300);
 
-        RedisKey? capturedKey = null;
+        // StoreAsync now pipelines HSET + EXPIRE through IBatch so a crash
+        // between them cannot leave a hash without a TTL. The test mocks the
+        // batch and captures both calls.
+        var mockBatch = new Mock<IBatch>();
+        _mockDb.Setup(d => d.CreateBatch(It.IsAny<object>())).Returns(mockBatch.Object);
+
+        RedisKey? capturedHashKey = null;
         HashEntry[]? capturedFields = null;
-        _mockDb.Setup(d => d.HashSetAsync(
+        mockBatch.Setup(b => b.HashSetAsync(
                 It.IsAny<RedisKey>(), It.IsAny<HashEntry[]>(),
                 It.IsAny<CommandFlags>()))
             .Callback<RedisKey, HashEntry[], CommandFlags>((k, f, _) =>
             {
-                capturedKey = k;
+                capturedHashKey = k;
                 capturedFields = f;
             })
             .Returns(Task.CompletedTask);
 
         TimeSpan? capturedTtl = null;
-        _mockDb.Setup(d => d.KeyExpireAsync(
+        mockBatch.Setup(b => b.KeyExpireAsync(
                 It.IsAny<RedisKey>(), It.IsAny<TimeSpan?>(),
                 It.IsAny<ExpireWhen>(), It.IsAny<CommandFlags>()))
             .Callback<RedisKey, TimeSpan?, ExpireWhen, CommandFlags>((_, ttl, __, ___) =>
@@ -66,7 +72,8 @@ public class RedisPendingPresentationStoreTests
 
         await _store.StoreAsync(pending);
 
-        capturedKey!.Value.ToString().Should().Be($"sorcha:presentation:pending:{id}");
+        mockBatch.Verify(b => b.Execute(), Times.Once);
+        capturedHashKey!.Value.ToString().Should().Be($"sorcha:presentation:pending:{id}");
         capturedFields.Should().NotBeNull();
         capturedTtl.Should().Be(TimeSpan.FromSeconds(300));
 

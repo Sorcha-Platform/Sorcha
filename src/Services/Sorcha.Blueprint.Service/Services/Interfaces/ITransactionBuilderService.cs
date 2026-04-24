@@ -639,6 +639,22 @@ public class BuiltTransaction
     {
         var payloadElement = JsonSerializer.Deserialize<JsonElement>(TransactionData);
 
+        var submissionMetadata = new Dictionary<string, string>
+        {
+            ["instanceId"] = Metadata.GetValueOrDefault("instanceId")?.ToString() ?? string.Empty,
+            ["Type"] = MapTransactionTypeName(TransactionType)
+        };
+
+        // Feature 111 — propagate lifecycle markers onto the sealed transaction's
+        // TrackingData so retry-gating (US3) and audit consumers can query outcome
+        // kind without decrypting payloads.
+        if (Metadata.TryGetValue("outcomeKind", out var outcomeKind) && outcomeKind is not null)
+            submissionMetadata["outcomeKind"] = outcomeKind.ToString()!;
+        if (Metadata.TryGetValue("presentationRequestId", out var reqId) && reqId is not null)
+            submissionMetadata["presentationRequestId"] = reqId.ToString()!;
+        if (Metadata.TryGetValue("consumerName", out var consumer) && consumer is not null)
+            submissionMetadata["consumerName"] = consumer.ToString()!;
+
         return new TransactionSubmission
         {
             TransactionId = TxId,
@@ -661,11 +677,7 @@ public class BuiltTransaction
             PreviousTransactionId = Metadata.GetValueOrDefault("previousTxId")?.ToString(),
             SequenceNumber = sequenceNumber,
             RecipientsWallets = RecipientsWallets.Count > 0 ? RecipientsWallets : null,
-            Metadata = new Dictionary<string, string>
-            {
-                ["instanceId"] = Metadata.GetValueOrDefault("instanceId")?.ToString() ?? string.Empty,
-                ["Type"] = MapTransactionTypeName(TransactionType)
-            }
+            Metadata = submissionMetadata
         };
     }
 
