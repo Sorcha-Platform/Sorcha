@@ -647,13 +647,16 @@ public class BuiltTransaction
 
         // Feature 111 — propagate lifecycle markers onto the sealed transaction's
         // TrackingData so retry-gating (US3) and audit consumers can query outcome
-        // kind without decrypting payloads.
-        if (Metadata.TryGetValue("outcomeKind", out var outcomeKind) && outcomeKind is not null)
-            submissionMetadata["outcomeKind"] = outcomeKind.ToString()!;
-        if (Metadata.TryGetValue("presentationRequestId", out var reqId) && reqId is not null)
-            submissionMetadata["presentationRequestId"] = reqId.ToString()!;
-        if (Metadata.TryGetValue("consumerName", out var consumer) && consumer is not null)
-            submissionMetadata["consumerName"] = consumer.ToString()!;
+        // kind without decrypting payloads. Key names are sourced from
+        // Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys
+        // so the writer here and the reader in AssertNoPriorSuccessfulPresentationAsync
+        // cannot drift apart.
+        if (Metadata.TryGetValue(Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.OutcomeKind, out var outcomeKind) && outcomeKind is not null)
+            submissionMetadata[Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.OutcomeKind] = outcomeKind.ToString()!;
+        if (Metadata.TryGetValue(Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.PresentationRequestId, out var reqId) && reqId is not null)
+            submissionMetadata[Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.PresentationRequestId] = reqId.ToString()!;
+        if (Metadata.TryGetValue(Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.ConsumerName, out var consumer) && consumer is not null)
+            submissionMetadata[Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.ConsumerName] = consumer.ToString()!;
 
         return new TransactionSubmission
         {
