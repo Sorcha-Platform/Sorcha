@@ -4,6 +4,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Options;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -23,6 +24,7 @@ public class LoginModel : PageModel
     private readonly IIdentityRepository _identityRepository;
     private readonly IOrganizationRepository _organizationRepository;
     private readonly ILogger<LoginModel> _logger;
+    private readonly DemoEnvironmentSettings _demoSettings;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LoginModel"/> class.
@@ -33,7 +35,8 @@ public class LoginModel : PageModel
         ITokenService tokenService,
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
-        ILogger<LoginModel> logger)
+        ILogger<LoginModel> logger,
+        IOptions<DemoEnvironmentSettings> demoSettings)
     {
         _loginService = loginService;
         _totpService = totpService;
@@ -41,7 +44,14 @@ public class LoginModel : PageModel
         _identityRepository = identityRepository;
         _organizationRepository = organizationRepository;
         _logger = logger;
+        _demoSettings = demoSettings.Value;
     }
+
+    /// <summary>Demo-environment banner flag — when true the page shows the warning notice.</summary>
+    public bool DemoBannerEnabled => _demoSettings.Enabled;
+
+    /// <summary>Demo-environment banner copy — rendered HTML-encoded.</summary>
+    public string DemoBannerMessage => _demoSettings.Message;
 
     /// <summary>
     /// User email address.
