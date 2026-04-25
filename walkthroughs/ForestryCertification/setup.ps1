@@ -49,6 +49,70 @@ function Get-OrgAdminPassword {
     return "Wt-$Subdomain-admin-2026!"
 }
 
+# Helper: deterministic participant password — matches the TradeFinance
+# convention so the same Highland Timber sales-mgr@... user works in both
+# walkthroughs without secrets juggling.
+function Get-ParticipantPassword {
+    param([string]$Subdomain, [string]$ParticipantId)
+    $secretKey = "${Subdomain}_${ParticipantId}_password"
+    if ($secrets.ContainsKey($secretKey)) { return $secrets[$secretKey] }
+    return "Wt-$Subdomain-$ParticipantId-2026!"
+}
+
+# Helper: register a participant USER (separate from the org admin), add them to
+# the org with Consumer role, and login as them. Returns a hashtable with Email,
+# Password, UserId, Headers — the Headers are scoped to the participant user, so
+# wallets created with them are owned by the participant rather than the org admin.
+function New-ParticipantUserSession {
+    param(
+        [string]$ParticipantId,
+        [string]$DisplayName,
+        [string]$Subdomain,
+        [string]$OrganizationId,
+        [hashtable]$OrgAdminHeaders
+    )
+
+    $email = "$ParticipantId@$Subdomain.sorcha.dev"
+    $password = Get-ParticipantPassword -Subdomain $Subdomain -ParticipantId $ParticipantId
+
+    try {
+        $null = Register-SorchaPublicUser `
+            -TenantUrl $sorchaEnv.TenantUrl `
+            -Email $email `
+            -Password $password `
+            -DisplayName $DisplayName
+    } catch { Write-WtInfo "  user $email may already exist" }
+
+    try {
+        $null = Invoke-SorchaApi -Method POST `
+            -Uri "$($sorchaEnv.TenantUrl)/platform/users/verify-email" `
+            -Body @{ email = $email } `
+            -Headers $sysAdmin.Headers
+    } catch { Write-WtWarn "  email verify failed for $email" }
+
+    $userId = Get-OrCreateUser `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $OrganizationId `
+        -Email $email `
+        -DisplayName $DisplayName `
+        -Headers $OrgAdminHeaders `
+        -Roles @("Consumer")
+
+    $session = Connect-SorchaUser `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -Email $email `
+        -Password $password `
+        -OrganizationId $OrganizationId
+
+    return @{
+        Email    = $email
+        Password = $password
+        UserId   = $userId
+        Headers  = $session.Headers
+        Token    = $session.Token
+    }
+}
+
 # ============================================================================
 # Step 1: Login as System Admin (creates platform-level orgs)
 # ============================================================================
@@ -160,47 +224,69 @@ try {
 # ============================================================================
 # Step 4: Auditor wallet + participant (Forestry Certification)
 # ============================================================================
-Write-WtStep "Step 4: Auditor wallet and participant"
+# The auditor is a real user (auditor@forestry-certification.sorcha.dev), not
+# the org admin. Their wallet is minted under their own session so when they
+# log in they see their own wallet rather than nothing — and the org admin
+# isn't carrying everyone's wallets.
+Write-WtStep "Step 4: Auditor user, wallet and participant"
 
-$fcSession = Connect-SorchaUser `
+$fcAdminSession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl `
     -Email $fcAdminEmail `
     -Password $fcAdminPassword `
     -OrganizationId $fcOrgId
 
+$auditorUser = New-ParticipantUserSession `
+    -ParticipantId "auditor" `
+    -DisplayName "Forestry Auditor" `
+    -Subdomain $fcSubdomain `
+    -OrganizationId $fcOrgId `
+    -OrgAdminHeaders $fcAdminSession.Headers
+Write-WtSuccess "Auditor user: $($auditorUser.Email)"
+
 $auditorWallet = New-SorchaWallet `
     -WalletUrl $sorchaEnv.WalletUrl `
     -Name "Forestry Auditor" `
-    -Headers $fcSession.Headers `
+    -Headers $auditorUser.Headers `
     -FetchPublicKey
-Write-WtSuccess "Auditor wallet: $($auditorWallet.Address)"
+Write-WtSuccess "Auditor wallet: $($auditorWallet.Address) (owned by $($auditorUser.Email))"
 
+# Use the auditor user's headers — `/me/...self-register` registers the caller,
+# and `/v1/wallets/{addr}/sign` requires the wallet owner. Both are the auditor.
 $null = Register-SorchaParticipant `
     -TenantUrl $sorchaEnv.TenantUrl `
     -WalletUrl $sorchaEnv.WalletUrl `
     -OrganizationId $fcOrgId `
     -WalletAddress $auditorWallet.Address `
     -DisplayName "Forestry Auditor" `
-    -Headers $fcSession.Headers
+    -Headers $auditorUser.Headers
 Write-WtInfo "Auditor participant registered"
 
 # ============================================================================
 # Step 5: Sales Manager wallet + participant (Highland Timber)
 # ============================================================================
-Write-WtStep "Step 5: Sales Manager wallet and participant"
+Write-WtStep "Step 5: Sales Manager user, wallet and participant"
 
-$htSession = Connect-SorchaUser `
+$htAdminSession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl `
     -Email $htAdminEmail `
     -Password $htAdminPassword `
     -OrganizationId $htOrgId
 
+$salesMgrUser = New-ParticipantUserSession `
+    -ParticipantId "sales-mgr" `
+    -DisplayName "Sales Manager" `
+    -Subdomain $htSubdomain `
+    -OrganizationId $htOrgId `
+    -OrgAdminHeaders $htAdminSession.Headers
+Write-WtSuccess "Sales Manager user: $($salesMgrUser.Email)"
+
 $salesMgrWallet = New-SorchaWallet `
     -WalletUrl $sorchaEnv.WalletUrl `
     -Name "Sales Manager" `
-    -Headers $htSession.Headers `
+    -Headers $salesMgrUser.Headers `
     -FetchPublicKey
-Write-WtSuccess "Sales Manager wallet: $($salesMgrWallet.Address)"
+Write-WtSuccess "Sales Manager wallet: $($salesMgrWallet.Address) (owned by $($salesMgrUser.Email))"
 
 $null = Register-SorchaParticipant `
     -TenantUrl $sorchaEnv.TenantUrl `
@@ -208,7 +294,7 @@ $null = Register-SorchaParticipant `
     -OrganizationId $htOrgId `
     -WalletAddress $salesMgrWallet.Address `
     -DisplayName "Sales Manager" `
-    -Headers $htSession.Headers
+    -Headers $salesMgrUser.Headers
 Write-WtInfo "Sales Manager participant registered"
 
 # ============================================================================
@@ -222,9 +308,10 @@ $register = New-SorchaRegister `
     -Name "Forestry Certification Register" `
     -Description "Digital Product Passports for verifiably-sustainable timber batches" `
     -TenantId $fcOrgId `
-    -OwnerUserId $fcSession.UserId `
+    -OwnerUserId $fcAdminSession.UserId `
     -OwnerWalletAddress $auditorWallet.Address `
-    -Headers $fcSession.Headers `
+    -Headers $fcAdminSession.Headers `
+    -WalletSignerHeaders $auditorUser.Headers `
     -TenantUrl $sorchaEnv.TenantUrl `
     -DevMode
 Write-WtSuccess "Register: $($register.RegisterId)"
@@ -239,7 +326,7 @@ try {
         -OrganizationName "Forestry Certification" `
         -WalletAddress $auditorWallet.Address `
         -PublicKey $auditorWallet.PublicKey `
-        -Headers $fcSession.Headers
+        -Headers $fcAdminSession.Headers
 } catch { Write-WtWarn "Auditor publish failed: $($_.Exception.Message)" }
 
 # Subscribe Highland Timber to the register
@@ -264,7 +351,7 @@ try {
         -OrganizationName "Highland Timber Supplies" `
         -WalletAddress $salesMgrWallet.Address `
         -PublicKey $salesMgrWallet.PublicKey `
-        -Headers $htSession.Headers
+        -Headers $htAdminSession.Headers
 } catch { Write-WtWarn "Sales Manager publish failed: $($_.Exception.Message)" }
 
 # ============================================================================
@@ -285,7 +372,7 @@ $blueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $sorchaEnv.BlueprintUrl `
     -TemplatePath (Join-Path $scriptDir "forestry-certification-template.json") `
     -WalletMap $walletMap `
-    -Headers $fcSession.Headers `
+    -Headers $fcAdminSession.Headers `
     -IdPrefix "forestry-certification" `
     -RegisterId $register.RegisterId
 
@@ -312,15 +399,21 @@ $state = @{
         salesMgr  = $salesMgrWallet.Address
     }
     roles = @{
+        # Participant roles point at the participant USER, not the org admin —
+        # so when run.ps1 logs in as 'auditor' it lands on the user that owns
+        # the auditor wallet. Logging in as the org admin instead would still
+        # see the wallet (admin can list everything in their org) but the demo
+        # narrative ("the Auditor signs the audit") is clearer when the actual
+        # auditor user is the one signing.
         auditor = @{
-            email          = $fcAdminEmail
-            password       = $fcAdminPassword
+            email          = $auditorUser.Email
+            password       = $auditorUser.Password
             organizationId = $fcOrgId
             walletAddress  = $auditorWallet.Address
         }
         salesMgr = @{
-            email          = $htAdminEmail
-            password       = $htAdminPassword
+            email          = $salesMgrUser.Email
+            password       = $salesMgrUser.Password
             organizationId = $htOrgId
             walletAddress  = $salesMgrWallet.Address
         }

@@ -283,28 +283,44 @@ foreach ($org in $selectedOrgs) {
             Write-WtInfo "  User '$($participant.displayName)' already in state"
         }
 
-        # Create wallet
+        # Login as THIS participant so the wallet is owned by them, not by the
+        # org admin. The earlier shape (admin headers everywhere) made every
+        # participant wallet appear in the org admin's wallet list and left the
+        # participant users walletless when they logged in.
+        $participantSession = Connect-SorchaUser `
+            -TenantUrl $env.TenantUrl `
+            -Email $email `
+            -Password $password `
+            -OrganizationId $ctx.OrganizationId
+
         if ($state.wallets.ContainsKey($walletKey) -and $state.wallets[$walletKey]) {
             Write-WtInfo "  Wallet for '$partId' already exists: $($state.wallets[$walletKey])"
         } else {
             $wallet = New-SorchaWallet `
                 -WalletUrl $env.WalletUrl `
                 -Name "$($participant.displayName) Wallet" `
-                -Headers $ctx.Headers `
+                -Headers $participantSession.Headers `
                 -Algorithm $participant.algorithm `
                 -FetchPublicKey
 
             $state.wallets[$walletKey] = $wallet.Address
-            Write-WtInfo "  Wallet: $partId -> $($wallet.Address)"
+            Write-WtInfo "  Wallet: $partId -> $($wallet.Address) (owned by $email)"
         }
 
-        # Store role info
+        # Store role info. participantHeaders + userId are the participant's
+        # own session — Step 3 (Register Participants) and Step 4 (Owner
+        # attestation signing) need them so calls run as the participant USER.
+        # Without that, /me/...self-register registers the admin as every
+        # participant and the wallet sign call rejects the admin trying to
+        # sign with a wallet it no longer owns.
         $state.roles[$roleKey] = @{
-            organizationId = $ctx.OrganizationId
-            walletAddress  = $state.wallets[$walletKey]
-            orgKey         = $subdomain
-            email          = $email
-            password       = $password
+            organizationId      = $ctx.OrganizationId
+            walletAddress       = $state.wallets[$walletKey]
+            orgKey              = $subdomain
+            email               = $email
+            password            = $password
+            userId              = $userId
+            participantHeaders  = $participantSession.Headers
         }
     }
 }
@@ -328,14 +344,16 @@ foreach ($org in $selectedOrgs) {
             continue
         }
 
-        # Use org admin headers — wallet-link endpoints require admin role
+        # Use the participant's OWN headers — `/me/...self-register` registers
+        # the current caller, and `/v1/wallets/{addr}/sign` requires the wallet
+        # owner. Both are now the participant user, not the org admin.
         $result = Register-SorchaParticipant `
             -TenantUrl $env.TenantUrl `
             -WalletUrl $env.WalletUrl `
             -OrganizationId $ctx.OrganizationId `
             -WalletAddress $roleInfo.walletAddress `
             -DisplayName $participant.displayName `
-            -Headers $ctx.Headers
+            -Headers $roleInfo.participantHeaders
 
         $state.roles[$partId].participantId = $result.ParticipantId
         Write-WtInfo "  $partId -> participant: $($result.ParticipantId)"
@@ -369,6 +387,10 @@ foreach ($regDef in $config.registers) {
     $ownerOrg = $selectedOrgs | Where-Object { $_.subdomain -eq $ownerSubdomain } | Select-Object -First 1
     $firstParticipant = $ownerOrg.participants[0]
     $ownerWalletAddress = $state.wallets[$firstParticipant.id]
+    # Initiate/finalize run as the org admin (org-level operation), but the
+    # `/v1/wallets/{addr}/sign` call inside the function is delegated to the
+    # wallet-owner participant — pass their headers via WalletSignerHeaders.
+    $walletOwner = $state.roles[$firstParticipant.id]
 
     Write-WtInfo "  Creating register '$($regDef.name)' (owner: $ownerSubdomain/$($firstParticipant.id))..."
 
@@ -381,6 +403,7 @@ foreach ($regDef in $config.registers) {
         -OwnerUserId $ctx.AdminUserId `
         -OwnerWalletAddress $ownerWalletAddress `
         -Headers $ctx.Headers `
+        -WalletSignerHeaders $walletOwner.participantHeaders `
         -DevMode `
         -Metadata @{ createdBy = "TradeFinance/setup.ps1"; registerType = $regDef.ownerOrg }
 
@@ -533,6 +556,13 @@ if (-not (Test-Path $mcpTemplatePath)) {
 # Save state
 # ============================================================================
 
+# Strip in-memory session headers before serialising — they're per-run JWTs
+# that don't belong in state.json.
+foreach ($k in @($state.roles.Keys)) {
+    if ($state.roles[$k] -is [hashtable] -and $state.roles[$k].ContainsKey('participantHeaders')) {
+        $state.roles[$k].Remove('participantHeaders')
+    }
+}
 $state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile -Encoding UTF8
 Write-WtSuccess "State saved to state.json"
 
