@@ -79,22 +79,21 @@ public static class StorageServiceCollectionExtensions
     /// <see cref="IServiceCollection"/> extension method to register
     /// persistent or in-memory entries before the DI container is built.
     /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown if <see cref="AddStorageRegistration"/> has not been called
-    /// (typically via <c>builder.AddServiceDefaults()</c>) before this
-    /// method is invoked. Order: <c>AddServiceDefaults</c> first, then any
-    /// <c>AddXxxDatabase</c> extensions that consume the log.
-    /// </exception>
+    /// <remarks>
+    /// Defensive: if <see cref="AddStorageRegistration"/> has not yet been
+    /// called on the service collection, this method calls it first. That
+    /// keeps service-extension methods independently unit-testable —
+    /// callers do not have to remember the prerequisite. In production,
+    /// <c>builder.AddServiceDefaults()</c> always wires the log first, so
+    /// the defensive call is a no-op via the idempotency sentinel.
+    /// </remarks>
     public static IStorageRegistrationLog GetStorageRegistrationLog(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(IStorageRegistrationLog))
-            ?? throw new InvalidOperationException(
-                $"{nameof(IStorageRegistrationLog)} is not registered. " +
-                $"Call {nameof(AddStorageRegistration)} (typically via builder.AddServiceDefaults()) " +
-                $"before {nameof(GetStorageRegistrationLog)}.");
+        services.AddStorageRegistration();
 
+        var descriptor = services.First(d => d.ServiceType == typeof(IStorageRegistrationLog));
         if (descriptor.ImplementationInstance is IStorageRegistrationLog instance)
         {
             return instance;

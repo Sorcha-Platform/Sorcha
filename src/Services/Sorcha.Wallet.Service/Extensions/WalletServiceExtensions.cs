@@ -11,6 +11,7 @@ using Sorcha.Cryptography.Core;
 using Sorcha.Cryptography.Extensions;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.ServiceDefaults;
+using Sorcha.ServiceDefaults.Storage;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Encryption.Configuration;
 using Sorcha.Wallet.Core.Encryption.Interfaces;
@@ -103,6 +104,12 @@ public static class WalletServiceExtensions
             ? configuration.GetSorchaPostgresConnectionString("Wallet", "sorcha_wallet") + ";Timeout=30;Command Timeout=30"
             : null;
 
+        // Feature 113 — record the storage choice in the registration log so operators see what
+        // backend is active (boot log + health check + OTel metrics) and Production/Staging
+        // fail-fast when this audited interface falls through to in-memory.
+        var storageLog = services.GetStorageRegistrationLog();
+        const string interfaceName = "Sorcha.Wallet.Core.Repositories.IWalletRepository";
+
         if (!string.IsNullOrEmpty(connectionString))
         {
             // Configure NpgsqlDataSource with dynamic JSON support (required for Dictionary<string, string> serialization)
@@ -141,11 +148,19 @@ public static class WalletServiceExtensions
 
             // Use EF Core repository for persistent storage
             services.AddScoped<IWalletRepository, EfCoreWalletRepository>();
+            storageLog.RegisterPersistent(
+                interfaceName,
+                typeof(EfCoreWalletRepository).FullName!,
+                "postgres");
         }
         else
         {
             // Use in-memory repository for development/testing
             services.AddSingleton<IWalletRepository, InMemoryWalletRepository>();
+            storageLog.RegisterInMemory(
+                interfaceName,
+                typeof(InMemoryWalletRepository).FullName!,
+                "no Postgres connection string in ConnectionStrings:Wallet:Postgres or ConnectionStrings:Sorcha:Postgres");
         }
 
         return services;

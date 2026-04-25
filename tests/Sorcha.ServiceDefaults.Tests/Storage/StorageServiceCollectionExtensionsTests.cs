@@ -172,14 +172,17 @@ public class StorageServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void GetStorageRegistrationLog_BeforeAddStorageRegistration_Throws()
+    public void GetStorageRegistrationLog_BeforeAddStorageRegistration_AutoRegistersAndReturns()
     {
+        // Defensive: GetStorageRegistrationLog calls AddStorageRegistration if it hasn't run yet.
+        // This keeps service-extension methods unit-testable in isolation. AddStorageRegistration
+        // is itself idempotent so subsequent AddServiceDefaults() in the same test doesn't double-wire.
         var services = new ServiceCollection();
 
-        var act = () => services.GetStorageRegistrationLog();
+        var log = services.GetStorageRegistrationLog();
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*not registered*");
+        log.Should().NotBeNull();
+        services.Where(d => d.ServiceType == typeof(IStorageRegistrationLog)).Should().HaveCount(1);
     }
 
     [Fact]
