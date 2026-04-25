@@ -17,10 +17,7 @@ public class MongoSchemaIndexRepository : ISchemaIndexRepository
 {
     private readonly IMongoCollection<SchemaIndexEntryDocument> _collection;
     private readonly ILogger<MongoSchemaIndexRepository> _logger;
-
-    /// <summary>
-    /// Initializes with an IMongoDatabase instance.
-    /// </summary>
+    private readonly SemaphoreSlim _indexCreationLock = new(1, 1);
     private bool _indexesCreated;
 
     public MongoSchemaIndexRepository(
@@ -32,14 +29,30 @@ public class MongoSchemaIndexRepository : ISchemaIndexRepository
         _collection = database.GetCollection<SchemaIndexEntryDocument>("schemaIndex");
     }
 
-    /// <summary>
-    /// Ensures indexes are created. Called lazily on first query.
-    /// </summary>
+    // Idempotent + concurrency-safe + non-throwing. Mirrors ValidatorRegistry's
+    // EnsureMongoIndexesAsync pattern. Must be invoked from every public method
+    // — read paths AND write paths — because the per-instance flag means a
+    // process that only ever upserts would otherwise never trigger index
+    // creation, leaving the collection on _id_ only (the bug fixed here).
     public async Task EnsureIndexesAsync(CancellationToken cancellationToken = default)
     {
         if (_indexesCreated) return;
-        await CreateIndexesAsync();
-        _indexesCreated = true;
+
+        await _indexCreationLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_indexesCreated) return;
+            await CreateIndexesAsync();
+            _indexesCreated = true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create schemaIndex MongoDB indexes — will retry on next operation");
+        }
+        finally
+        {
+            _indexCreationLock.Release();
+        }
     }
 
     private async Task CreateIndexesAsync()
@@ -154,6 +167,7 @@ public class MongoSchemaIndexRepository : ISchemaIndexRepository
         string sourceUri,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync(cancellationToken);
         var filter = Builders<SchemaIndexEntryDocument>.Filter.And(
             Builders<SchemaIndexEntryDocument>.Filter.Eq(d => d.SourceProvider, sourceProvider),
             Builders<SchemaIndexEntryDocument>.Filter.Eq(d => d.SourceUri, sourceUri));
@@ -166,6 +180,7 @@ public class MongoSchemaIndexRepository : ISchemaIndexRepository
         string shortCode,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync(cancellationToken);
         var filter = Builders<SchemaIndexEntryDocument>.Filter.Eq(d => d.ShortCode, shortCode);
         return await _collection.Find(filter).FirstOrDefaultAsync(cancellationToken);
     }
@@ -175,6 +190,7 @@ public class MongoSchemaIndexRepository : ISchemaIndexRepository
         SchemaIndexEntryDocument entry,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync(cancellationToken);
         var filter = Builders<SchemaIndexEntryDocument>.Filter.And(
             Builders<SchemaIndexEntryDocument>.Filter.Eq(d => d.SourceProvider, entry.SourceProvider),
             Builders<SchemaIndexEntryDocument>.Filter.Eq(d => d.SourceUri, entry.SourceUri));
@@ -229,6 +245,7 @@ public class MongoSchemaIndexRepository : ISchemaIndexRepository
         SchemaIndexStatus status,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync(cancellationToken);
         var filter = Builders<SchemaIndexEntryDocument>.Filter.Eq(d => d.SourceProvider, sourceProvider);
         var update = Builders<SchemaIndexEntryDocument>.Update
             .Set(d => d.Status, status.ToString())
@@ -242,6 +259,7 @@ public class MongoSchemaIndexRepository : ISchemaIndexRepository
         string sourceProvider,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync(cancellationToken);
         var filter = Builders<SchemaIndexEntryDocument>.Filter.Eq(d => d.SourceProvider, sourceProvider);
         return (int)await _collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
     }
