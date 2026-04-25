@@ -1,0 +1,307 @@
+{
+  "id": "forestry-certification-dpp-v1",
+  "title": "Forestry Certification — Digital Product Passport",
+  "description": "An independent forestry certifier audits a timber batch and issues a verifiable Digital Product Passport credential. The supplier requests certification by submitting batch details (species, forest origin, harvest date, processing facility, treatment chemicals, declared embodied carbon). The certifier audits and either issues a ForestProductDPPCredential carrying chain-of-custody, sustainability, and embodied-carbon claims, or declines with reason. The credential is portable across registers — downstream workflows (e.g. trade finance) can consume it to apply preferential terms for verifiably-sustainable products.",
+  "version": 1,
+  "category": "supply-chain",
+  "tags": ["digital-product-passport", "dpp", "forestry", "sustainability", "verifiable-credential", "chain-of-custody", "esg"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "forestry-certification-generated",
+    "title": "Forestry Certification — Digital Product Passport",
+    "description": "Two-action workflow where a timber supplier requests a Digital Product Passport for a specific batch, and an independent forestry certifier audits and issues a ForestProductDPPCredential. Demonstrates open-participant submission, chain-of-custody attestation, and credential issuance for downstream cross-register reuse.",
+    "version": 1,
+    "metadata": {
+      "category": "Supply Chain",
+      "complexity": "Low",
+      "actions": "2",
+      "features": "Open Participant, Verifiable Credential Issuance, Chain-of-Custody Attestation",
+      "sector": "Forestry & Construction Materials"
+    },
+    "instanceReference": {
+      "prefix": "DPP",
+      "components": [
+        { "field": "/batchId", "transform": "Truncate", "chars": 8 }
+      ]
+    },
+    "participants": [
+      {
+        "id": "sales-mgr",
+        "name": "Sales Manager",
+        "organisation": "Highland Timber Supplies",
+        "description": "Supplier representative who applies for a Digital Product Passport on a specific timber batch. Open participant — late-bound to the wallet of the first submitter."
+      },
+      {
+        "id": "auditor",
+        "name": "Forestry Auditor",
+        "organisation": "Forestry Certification",
+        "description": "Independent forestry auditor. Reviews batch evidence, performs chain-of-custody verification, and issues a ForestProductDPPCredential on approval."
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Submit Batch for Certification",
+        "description": "Supplier submits a timber batch for forestry certification. Captures batch identity, species, forest origin, harvest date, processing facility, and any treatment chemicals applied. The supplier also declares an embodied-carbon estimate which the auditor will independently verify.",
+        "sender": "sales-mgr",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "batchId": {
+                "type": "string",
+                "title": "Batch Reference",
+                "description": "Supplier's internal batch identifier (e.g. HTS-BATCH-2026-0142).",
+                "minLength": 3,
+                "maxLength": 50
+              },
+              "species": {
+                "type": "string",
+                "title": "Species",
+                "enum": [
+                  "Sitka Spruce",
+                  "Scots Pine",
+                  "Douglas Fir",
+                  "European Larch",
+                  "Norway Spruce",
+                  "Other"
+                ]
+              },
+              "speciesOther": {
+                "type": "string",
+                "title": "Species (if Other)",
+                "maxLength": 100
+              },
+              "forestOrigin": {
+                "type": "object",
+                "title": "Forest Origin",
+                "properties": {
+                  "country": {
+                    "type": "string",
+                    "title": "Country",
+                    "maxLength": 60
+                  },
+                  "forestUnit": {
+                    "type": "string",
+                    "title": "Forest / Compartment",
+                    "description": "Named forest, compartment, or parcel ID where the timber was harvested.",
+                    "maxLength": 120
+                  },
+                  "harvestDate": {
+                    "type": "string",
+                    "format": "date",
+                    "title": "Harvest Date"
+                  }
+                },
+                "required": ["country", "forestUnit", "harvestDate"]
+              },
+              "volumeCubicMetres": {
+                "type": "number",
+                "title": "Batch Volume (m³)",
+                "minimum": 0.1
+              },
+              "processingFacility": {
+                "type": "string",
+                "title": "Processing Facility",
+                "description": "Sawmill or processing site where the batch was milled.",
+                "maxLength": 200
+              },
+              "treatmentChemicals": {
+                "type": "array",
+                "title": "Treatment Chemicals",
+                "description": "Preservatives, fire retardants, or biocides applied to the batch. Leave empty if untreated.",
+                "items": { "type": "string", "maxLength": 100 },
+                "maxItems": 10
+              },
+              "declaredEmbodiedCarbonKgCO2e": {
+                "type": "number",
+                "title": "Declared Embodied Carbon (kg CO₂e per m³)",
+                "description": "Supplier's declared cradle-to-gate embodied carbon. Will be independently verified by the auditor.",
+                "minimum": 0
+              },
+              "supportingEvidence": {
+                "type": "string",
+                "title": "Supporting Evidence",
+                "description": "Free-text references to chain-of-custody documents, harvest licences, or supplier audits provided to the certifier.",
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "batchId",
+              "species",
+              "forestOrigin",
+              "volumeCubicMetres",
+              "processingFacility",
+              "declaredEmbodiedCarbonKgCO2e"
+            ]
+          }
+        ],
+        "x-sections": [
+          {
+            "title": "Batch Identity",
+            "fields": ["batchId", "species", "speciesOther", "volumeCubicMetres"]
+          },
+          {
+            "title": "Forest Origin & Chain of Custody",
+            "fields": ["forestOrigin", "processingFacility"]
+          },
+          {
+            "title": "Treatment & Carbon Declaration",
+            "fields": ["treatmentChemicals", "declaredEmbodiedCarbonKgCO2e", "supportingEvidence"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "sales-mgr", "dataPointers": ["/*"] },
+          { "participantAddress": "auditor", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-audit",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Submitted batch is queued for forestry audit"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Audit & Issue DPP",
+        "description": "Forestry auditor reviews the batch evidence, performs chain-of-custody verification, and either issues a ForestProductDPPCredential to the supplier or declines with reason. On approval, the credential carries certification scheme, certification body, verified embodied carbon, and a sustainability score (1–100) that downstream workflows can consume.",
+        "sender": "auditor",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "auditDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Audit Date"
+              },
+              "auditFindings": {
+                "type": "string",
+                "title": "Audit Findings",
+                "description": "Summary of the chain-of-custody check, document review, and any site verification performed.",
+                "maxLength": 4000
+              },
+              "decision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": ["approve", "decline"]
+              },
+              "certificationScheme": {
+                "type": "string",
+                "title": "Certification Scheme",
+                "description": "Required when decision is approve.",
+                "enum": ["FSC", "PEFC", "FSC + PEFC", "Other"]
+              },
+              "certificationBody": {
+                "type": "string",
+                "title": "Certifying Body",
+                "description": "Accredited certification body that issues this DPP under the named scheme.",
+                "maxLength": 200
+              },
+              "verifiedEmbodiedCarbonKgCO2e": {
+                "type": "number",
+                "title": "Verified Embodied Carbon (kg CO₂e per m³)",
+                "description": "Independently verified cradle-to-gate embodied carbon. Replaces the supplier's declaration in the issued credential.",
+                "minimum": 0
+              },
+              "sustainabilityScore": {
+                "type": "integer",
+                "title": "Sustainability Score (1–100)",
+                "description": "Composite score across chain-of-custody integrity, harvest sustainability, processing emissions, and treatment chemical impact. Downstream consumers (e.g. trade finance) may use this score to apply preferential terms.",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "expiryDate": {
+                "type": "string",
+                "format": "date",
+                "title": "DPP Expiry Date",
+                "description": "Date after which the issued credential is considered expired and must be re-audited. Typically 12–24 months from issuance."
+              },
+              "declineReason": {
+                "type": "string",
+                "title": "Decline Reason",
+                "description": "Required when decision is decline. Free-text reason returned to the supplier.",
+                "maxLength": 1000
+              }
+            },
+            "required": ["auditDate", "auditFindings", "decision"]
+          }
+        ],
+        "x-sections": [
+          {
+            "title": "Audit",
+            "fields": ["auditDate", "auditFindings", "decision"]
+          },
+          {
+            "title": "Certification Details",
+            "fields": ["certificationScheme", "certificationBody", "expiryDate"]
+          },
+          {
+            "title": "Sustainability Verification",
+            "fields": ["verifiedEmbodiedCarbonKgCO2e", "sustainabilityScore"]
+          },
+          {
+            "title": "Decline",
+            "fields": ["declineReason"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "ForestProductDPPCredential",
+          "recipientParticipantId": "sales-mgr",
+          "expiryDuration": "P365D",
+          "claimMappings": [
+            { "claimName": "batchId", "sourceField": "/batchId" },
+            { "claimName": "species", "sourceField": "/species" },
+            { "claimName": "originCountry", "sourceField": "/forestOrigin/country" },
+            { "claimName": "forestUnit", "sourceField": "/forestOrigin/forestUnit" },
+            { "claimName": "harvestDate", "sourceField": "/forestOrigin/harvestDate" },
+            { "claimName": "volumeCubicMetres", "sourceField": "/volumeCubicMetres" },
+            { "claimName": "processingFacility", "sourceField": "/processingFacility" },
+            { "claimName": "certificationScheme", "sourceField": "/certificationScheme" },
+            { "claimName": "certificationBody", "sourceField": "/certificationBody" },
+            { "claimName": "embodiedCarbonKgCO2e", "sourceField": "/verifiedEmbodiedCarbonKgCO2e" },
+            { "claimName": "sustainabilityScore", "sourceField": "/sustainabilityScore" },
+            { "claimName": "expiryDate", "sourceField": "/expiryDate" }
+          ],
+          "disclosable": [
+            "batchId",
+            "species",
+            "originCountry",
+            "harvestDate",
+            "certificationScheme",
+            "certificationBody",
+            "embodiedCarbonKgCO2e",
+            "sustainabilityScore",
+            "expiryDate"
+          ]
+        },
+        "disclosures": [
+          { "participantAddress": "auditor", "dataPointers": ["/*"] },
+          { "participantAddress": "sales-mgr", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "approved-terminal",
+            "nextActionIds": [],
+            "condition": { "==": [{ "var": "decision" }, "approve"] },
+            "description": "Approved — DPP credential issued to supplier, workflow complete"
+          },
+          {
+            "id": "declined-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Declined — no credential issued, workflow complete"
+          }
+        ]
+      }
+    ]
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": []
+}

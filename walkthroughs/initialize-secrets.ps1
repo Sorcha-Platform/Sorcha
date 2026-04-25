@@ -185,6 +185,11 @@ $secrets = [ordered]@{
         adminPassword = $platformPassword
         adminName     = $platformName
     }
+    "forestry-certification" = @{
+        adminEmail    = $platformEmail
+        adminPassword = $platformPassword
+        adminName     = $platformName
+    }
     "assured-identity" = @{
         adminEmail      = $platformEmail
         adminPassword   = $platformPassword
