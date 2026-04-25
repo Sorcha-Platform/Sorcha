@@ -202,6 +202,14 @@ public static class CredentialEndpoints
             c.IssuanceActionId,
             c.ClaimActionId,
             c.RegisterId,
+            // Holders need to see what's in a credential before they Accept/Decline
+            // it on the Pending tab — see CredentialAcceptCard. Without these
+            // fields the card renders "0 claims" against a credential that does
+            // have claims, which actively misleads the holder. Payload growth is
+            // bounded — claims are typically <2KB and display config is smaller.
+            c.ClaimsJson,
+            c.DisplayConfigJson,
+            c.UsagePolicy,
         });
 
         return Results.Ok(response);

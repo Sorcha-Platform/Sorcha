@@ -82,6 +82,15 @@ public class CredentialDisplayViewModel
     public string TextColor { get; set; } = "#FFFFFF";
     public string Icon { get; set; } = "Certificate";
     public string CardLayout { get; set; } = "Standard";
+
+    /// <summary>
+    /// Issuer-specified claim spotlight: key = JSON pointer into the claim
+    /// payload (e.g. "/sustainabilityScore"), value = display label
+    /// ("Sustainability"). Mirrors <c>CredentialDisplayConfig.HighlightClaims</c>
+    /// on the blueprint side. Optional — when absent the wallet picks a
+    /// reasonable default subset.
+    /// </summary>
+    public Dictionary<string, string>? HighlightClaims { get; set; }
 }
 
 /// <summary>

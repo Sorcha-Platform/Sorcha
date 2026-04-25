@@ -47,15 +47,20 @@ Two pairs make the FLE / multi-org-isolation story without saying a word:
 - **Action submission forms** for the headline actions: PO (buyer), Invoice (seller), Evaluate Application (market — shows the rate calculation visibly).
 - **Credential detail drill-in** — open one of the pending TradeFinanceCredentials to show its claims and JWT structure. Closes the loop on `seller-02`.
 
-## Once Forestry Certification (DPP) lands
+## Forestry Certification (DPP) — landed
 
-Same lens, new register at the start of the chain. Suggested additions:
+Same lens, new register at the start of the chain. Captured 2026-04-25 against n1 after Forestry Certification setup + golden-path run:
 
-| Frame | Maps to |
+| Frame | What it shows |
 |---|---|
-| `seller-00-dpp-application.png` | Highland Timber submitting a batch for forestry certification — front of the seller's journey. |
-| `certifier-01-audit.png` | New 4th lens: **Certifier** — Forestry Certification's auditor reviewing the application and issuing the DPP. |
-| `seller-05-dpp-credential.png` | Highland Timber's wallet now carrying a `ForestProductDPPCredential` alongside the invoice and finance credentials. |
-| `market-05-evaluate-uplift.png` | ScotTrade's evaluate-application form with rate calculator showing baseline vs DPP-uplifted advance % and fee. The headline frame for the entire DPP-rate-uplift story. |
+| `seller-00-dpp-application.png` | Highland Timber Sales Manager on the **Submit Batch for Certification** form — Sitka Spruce, Glen Affric Compartment 24, 320 m³, FSC chain-of-custody evidence attached, signing wallet shown (`ws11qrtl…` ED25519). Front of the seller's DPP journey. |
+| `certifier-01-audit.png` | **New 4th lens — Certifier**: Forestry Certification's auditor on the **Audit & Issue DPP** form. Decision = approve, audit findings transcribed, FSC scheme, FSC United Kingdom certifying body, audit date + DPP expiry filled. The act of issuing a DPP. |
+| `seller-05-dpp-credential.png` | Sales Manager's wallet (`ws11qr…9fly70`) — Pending tab carries a `ForestProductDPPCredential` from Forestry Certification, *Pending Review*, SD-JWT, with **Decline / Accept Credential** actions. Demonstrates the credential-as-asset story without explanation. |
 
-Pair the "before" frames in this folder with these "after" frames in the DPP PR to make the rate-uplift story land visually.
+### Still to capture (deferred)
+
+| Frame | Blocked on |
+|---|---|
+| `market-05-evaluate-uplift.png` | TradeFinance R2 changes haven't shipped — needs the rate-uplift calculator on ScotTrade's evaluate-application form. |
+
+Pair the "before" frames in this folder with the three "after" frames above to make the rate-uplift story land visually once R2 ships.
