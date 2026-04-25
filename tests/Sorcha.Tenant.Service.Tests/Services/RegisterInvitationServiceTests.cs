@@ -460,6 +460,114 @@ public class RegisterInvitationServiceTests : IDisposable
         result.Invitations[0].Direction.Should().Be("received");
     }
 
+    [Fact]
+    public async Task ListAsync_ResolvesSourceAndTargetOrgNames()
+    {
+        // Both source and target org names must be populated in the response,
+        // independent of which direction filter the caller used.
+        SetupWalletMocks();
+
+        var request = new CreateRegisterInvitationRequest
+        {
+            RegisterId = ValidRegisterId,
+            TargetOrgDid = $"did:sorcha:org:{TargetWalletAddress}"
+        };
+        await _service.CreateAsync(_sourceOrgId, request, _userId);
+
+        var sentResult = await _service.ListAsync(_sourceOrgId, "sent");
+        sentResult.Invitations.Should().HaveCount(1);
+        sentResult.Invitations[0].SourceOrgName.Should().Be("Source Org");
+        sentResult.Invitations[0].TargetOrgName.Should().Be("Target Org");
+
+        // Same data shape regardless of direction filter.
+        var receivedResult = await _service.ListAsync(_targetOrgId, "received");
+        receivedResult.Invitations[0].SourceOrgName.Should().Be("Source Org");
+        receivedResult.Invitations[0].TargetOrgName.Should().Be("Target Org");
+    }
+
+    [Fact]
+    public async Task ListAsync_TargetOrgUnknown_LeavesTargetOrgNameNull()
+    {
+        // Defensive: if the target org's wallet isn't in this tenant DB, name
+        // can't be resolved — must not throw, must return null.
+        SetupWalletMocks();
+
+        var request = new CreateRegisterInvitationRequest
+        {
+            RegisterId = ValidRegisterId,
+            TargetOrgDid = $"did:sorcha:org:{TargetWalletAddress}"
+        };
+        await _service.CreateAsync(_sourceOrgId, request, _userId);
+
+        // Drop the target org so it's no longer resolvable.
+        var targetOrg = _dbContext.Organizations.First(o => o.Id == _targetOrgId);
+        _dbContext.Organizations.Remove(targetOrg);
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _service.ListAsync(_sourceOrgId, "sent");
+        result.Invitations[0].SourceOrgName.Should().Be("Source Org");
+        result.Invitations[0].TargetOrgName.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ListAsync_MultipleDistinctTargets_AllNamesResolved()
+    {
+        // With multiple distinct target orgs, every result row must have its
+        // SourceOrgName and TargetOrgName populated. Backs the batched-lookup
+        // implementation: a per-record DB call would still pass this test on
+        // correctness, but would regress on query count — the named-this-way
+        // failure mode is "names go missing", which a future contributor
+        // changing the projection might trip.
+        SetupWalletMocks();
+
+        var targetOrgIds = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+        var targetWallets = new[] { "tgtA", "tgtB", "tgtC" };
+        for (int i = 0; i < targetOrgIds.Length; i++)
+        {
+            _dbContext.Organizations.Add(new Organization
+            {
+                Id = targetOrgIds[i],
+                Name = $"Target Org {(char)('A' + i)}",
+                Subdomain = $"target-{i}",
+                WalletAddress = targetWallets[i],
+                PublicKey = "k",
+                SigningAlgorithm = "ED25519"
+            });
+            _walletClientMock.Setup(w => w.GetWalletAsync(targetWallets[i], It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Sorcha.ServiceClients.Wallet.WalletInfo
+                {
+                    Address = targetWallets[i],
+                    Name = $"Target {(char)('A' + i)}",
+                    PublicKey = "k",
+                    Algorithm = "ED25519",
+                    Status = "Active",
+                    Owner = $"org:{targetOrgIds[i]}",
+                    Tenant = targetOrgIds[i].ToString()
+                });
+            _walletClientMock.Setup(w => w.EncryptPayloadAsync(
+                    targetWallets[i], It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new byte[] { 1, 2, 3 });
+        }
+        await _dbContext.SaveChangesAsync();
+
+        foreach (var wallet in targetWallets)
+        {
+            await _service.CreateAsync(_sourceOrgId, new CreateRegisterInvitationRequest
+            {
+                RegisterId = ValidRegisterId,
+                TargetOrgDid = $"did:sorcha:org:{wallet}"
+            }, _userId);
+        }
+
+        var result = await _service.ListAsync(_sourceOrgId, "sent");
+        result.Invitations.Should().HaveCount(3);
+        result.Invitations.Should().AllSatisfy(i =>
+        {
+            i.SourceOrgName.Should().Be("Source Org");
+            i.TargetOrgName.Should().StartWith("Target Org ");
+        });
+    }
+
     #endregion
 
     #region RevokeAsync Tests
