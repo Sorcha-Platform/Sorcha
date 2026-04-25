@@ -26,25 +26,6 @@ public static class InMemoryServiceExtensions
     }
 
     /// <summary>
-    /// Adds in-memory repository implementation.
-    /// </summary>
-    /// <typeparam name="TEntity">Entity type.</typeparam>
-    /// <typeparam name="TId">Primary key type.</typeparam>
-    /// <param name="services">Service collection.</param>
-    /// <param name="idSelector">Function to extract ID from entity.</param>
-    /// <returns>Service collection for chaining.</returns>
-    public static IServiceCollection AddInMemoryRepository<TEntity, TId>(
-        this IServiceCollection services,
-        Func<TEntity, TId> idSelector)
-        where TEntity : class
-        where TId : notnull
-    {
-        services.AddSingleton<IRepository<TEntity, TId>>(
-            new InMemoryRepository<TEntity, TId>(idSelector));
-        return services;
-    }
-
-    /// <summary>
     /// Adds in-memory document store implementation.
     /// </summary>
     /// <typeparam name="TDocument">Document type.</typeparam>

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Sorcha.Storage.Abstractions;
 
@@ -42,30 +41,4 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// Adds the storage provider factory.
-    /// </summary>
-    /// <param name="services">Service collection.</param>
-    /// <returns>Service collection for chaining.</returns>
-    public static IServiceCollection AddStorageProviderFactory(
-        this IServiceCollection services)
-    {
-        services.TryAddSingleton<IStorageProviderFactory, StorageProviderFactory>();
-        return services;
-    }
-
-    /// <summary>
-    /// Adds the full storage layer with configuration and factory.
-    /// </summary>
-    /// <param name="services">Service collection.</param>
-    /// <param name="configuration">Configuration instance.</param>
-    /// <returns>Service collection for chaining.</returns>
-    public static IServiceCollection AddSorchaStorage(
-        this IServiceCollection services,
-        IConfiguration configuration)
-    {
-        services.AddStorageConfiguration(configuration);
-        services.AddStorageProviderFactory();
-        return services;
-    }
 }
