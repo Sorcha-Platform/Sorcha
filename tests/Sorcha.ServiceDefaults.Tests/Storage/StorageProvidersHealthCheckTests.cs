@@ -16,7 +16,7 @@ public class StorageProvidersHealthCheckTests
     private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.IWalletRepository";
 
     private static StorageRegistrationLog NewLog() =>
-        new(NullLogger<StorageRegistrationLog>.Instance);
+        new();
 
     [Fact]
     public async Task Healthy_WhenAllAuditedPersistent()

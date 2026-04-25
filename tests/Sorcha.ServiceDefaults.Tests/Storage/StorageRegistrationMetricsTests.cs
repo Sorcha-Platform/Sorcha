@@ -41,7 +41,7 @@ public sealed class StorageRegistrationMetricsTests : IDisposable
             .BuildServiceProvider();
 
         _meterFactory = _sp.GetRequiredService<IMeterFactory>();
-        _log = new StorageRegistrationLog(NullLogger<StorageRegistrationLog>.Instance);
+        _log = new StorageRegistrationLog();
         _metrics = new StorageRegistrationMetrics(
             _meterFactory,
             _log,

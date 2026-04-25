@@ -13,7 +13,7 @@ namespace Sorcha.ServiceDefaults.Tests.Storage;
 public class StorageRegistrationLogTests
 {
     private static StorageRegistrationLog NewLog() =>
-        new(NullLogger<StorageRegistrationLog>.Instance);
+        new();
 
     [Fact]
     public void RegisterPersistent_WithAuditedInterface_RecordsAuditedNotInMemory()

@@ -18,7 +18,7 @@ public class StorageRegistrationEnforcementTests
     private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.IWalletRepository";
 
     private static StorageRegistrationLog NewLog() =>
-        new(NullLogger<StorageRegistrationLog>.Instance);
+        new();
 
     private static IHostEnvironment Env(string envName, string app = "Sorcha.Test.Service") =>
         new FakeHostEnvironment { EnvironmentName = envName, ApplicationName = app };
