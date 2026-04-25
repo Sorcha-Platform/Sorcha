@@ -5,6 +5,7 @@ using Fido2NetLib;
 using Microsoft.EntityFrameworkCore;
 using Polly;
 using Polly.CircuitBreaker;
+using Sorcha.ServiceDefaults;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -88,15 +89,21 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Adds PostgreSQL database context with multi-tenant support.
+    /// Uses the SorchaConnections cascade: ConnectionStrings:Tenant:Postgres → ConnectionStrings:Sorcha:Postgres.
+    /// Falls back to an in-memory provider when neither key is configured (tests / no-DB scenarios).
     /// </summary>
     public static IServiceCollection AddTenantDatabase(
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("TenantDatabase");
+        var hasResolverConfig =
+            !string.IsNullOrWhiteSpace(configuration["ConnectionStrings:Tenant:Postgres"])
+            || !string.IsNullOrWhiteSpace(configuration["ConnectionStrings:Sorcha:Postgres"]);
 
-        if (!string.IsNullOrEmpty(connectionString))
+        if (hasResolverConfig)
         {
+            var connectionString = configuration.GetSorchaPostgresConnectionString("Tenant", "sorcha_tenant");
+
             // Build a Npgsql data source with dynamic JSON support (required for
             // Dictionary<string, object> → JSONB columns like AuditLogEntry.Details)
             var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
@@ -191,12 +198,15 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Adds Redis connection with circuit breaker for token revocation.
+    /// Uses the SorchaConnections cascade: ConnectionStrings:Tenant:Redis → ConnectionStrings:Sorcha:Redis.
     /// </summary>
     public static IServiceCollection AddTenantRedis(
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var redisConnectionString = configuration.GetValue<string>("Redis:ConnectionString");
+        var redisConnectionString =
+            configuration["ConnectionStrings:Tenant:Redis"]
+            ?? configuration["ConnectionStrings:Sorcha:Redis"];
 
         if (!string.IsNullOrEmpty(redisConnectionString))
         {
@@ -225,7 +235,9 @@ public static class ServiceCollectionExtensions
         {
             // Register a null implementation for testing without Redis
             services.AddSingleton<IConnectionMultiplexer>(sp =>
-                throw new InvalidOperationException("Redis is not configured. Set Redis:ConnectionString in configuration."));
+                throw new InvalidOperationException(
+                    "Redis is not configured. Set ConnectionStrings:Sorcha:Redis (platform default) " +
+                    "or ConnectionStrings:Tenant:Redis (override)."));
         }
 
         // Configure token revocation
@@ -320,13 +332,19 @@ public static class ServiceCollectionExtensions
     {
         var healthChecks = services.AddHealthChecks();
 
-        var connectionString = configuration.GetConnectionString("TenantDatabase");
-        if (!string.IsNullOrEmpty(connectionString))
+        var hasResolverConfig =
+            !string.IsNullOrWhiteSpace(configuration["ConnectionStrings:Tenant:Postgres"])
+            || !string.IsNullOrWhiteSpace(configuration["ConnectionStrings:Sorcha:Postgres"]);
+
+        if (hasResolverConfig)
         {
+            var connectionString = configuration.GetSorchaPostgresConnectionString("Tenant", "sorcha_tenant");
             healthChecks.AddNpgSql(connectionString, name: "postgresql");
         }
 
-        var redisConnectionString = configuration.GetValue<string>("Redis:ConnectionString");
+        var redisConnectionString =
+            configuration["ConnectionStrings:Tenant:Redis"]
+            ?? configuration["ConnectionStrings:Sorcha:Redis"];
         if (!string.IsNullOrEmpty(redisConnectionString))
         {
             healthChecks.AddRedis(redisConnectionString, name: "redis");
