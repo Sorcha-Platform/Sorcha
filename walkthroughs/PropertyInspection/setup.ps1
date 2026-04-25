@@ -22,7 +22,7 @@ Import-Module $modulePath -Force
 
 # ── Environment ───────────────────────────────────────────────────
 $sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
-$piSecrets = Get-SorchaSecrets -WalkthroughName "property-inspection"
+$piSecrets = Get-SorchaSecrets -WalkthroughName "property-inspection" -Profile $Profile
 
 Write-WtBanner "PropertyInspection Walkthrough Setup"
 

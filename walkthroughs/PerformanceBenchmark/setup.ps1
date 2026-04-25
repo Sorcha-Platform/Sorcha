@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -19,7 +19,7 @@ Import-Module $modulePath -Force
 
 Write-WtBanner "PerformanceBenchmark — Setup"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "perf"
+$secrets = Get-SorchaSecrets -WalkthroughName "perf" -Profile $Profile
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 $admin = Connect-SorchaAdmin `

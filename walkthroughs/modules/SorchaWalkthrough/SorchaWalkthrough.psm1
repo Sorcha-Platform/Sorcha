@@ -351,12 +351,19 @@ function Get-SorchaSecrets {
         Name of the walkthrough (key in passwords.json).
     .PARAMETER SecretsDir
         Path to the .secrets directory. Defaults to walkthroughs/.secrets/.
+    .PARAMETER Profile
+        Optional deployment profile (e.g. "n1"). When supplied, overrides from
+        the top-level `_profiles.<profile>` object take precedence over the
+        walkthrough's base credentials. Lets a single passwords.json file
+        serve both local-Docker and remote deployments without edits between
+        runs.
     .RETURNS
         Hashtable with credential key-value pairs.
     #>
     param(
         [Parameter(Mandatory)][string]$WalkthroughName,
-        [string]$SecretsDir = ""
+        [string]$SecretsDir = "",
+        [string]$Profile = ""
     )
 
     # Default secrets dir relative to module location
@@ -389,6 +396,27 @@ function Get-SorchaSecrets {
     $result = @{}
     foreach ($prop in $wtSecrets.PSObject.Properties) {
         $result[$prop.Name] = $prop.Value
+    }
+
+    # Profile overrides — global `_profiles.<profile>` wins over walkthrough
+    # base keys. Example: the n1 deployment has a different system-admin
+    # email/password from the local-Docker bootstrap.
+    if ($Profile) {
+        if (-not $allSecrets._profiles) {
+            Write-Warning "passwords.json has no _profiles block but profile '$Profile' was requested. Falling back to base credentials — re-run initialize-secrets.ps1 to add profile support."
+        }
+        else {
+            $profileOverrides = $allSecrets._profiles.$Profile
+            if ($profileOverrides) {
+                foreach ($prop in $profileOverrides.PSObject.Properties) {
+                    $result[$prop.Name] = $prop.Value
+                }
+                Write-WtInfo "Applied profile overrides from _profiles.$Profile"
+            }
+            else {
+                Write-Warning "Profile '$Profile' not found in _profiles. Falling back to base credentials — the walkthrough may authenticate against the wrong stack."
+            }
+        }
     }
 
     return $result

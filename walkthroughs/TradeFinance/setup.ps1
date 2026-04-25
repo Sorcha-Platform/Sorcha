@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -34,7 +34,7 @@ if (-not (Test-Path $configPath)) {
 }
 $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json -Depth 20
 
-$secrets = Get-SorchaSecrets -WalkthroughName "trade-finance"
+$secrets = Get-SorchaSecrets -WalkthroughName "trade-finance" -Profile $Profile
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 # ============================================================================

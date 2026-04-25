@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -261,7 +261,7 @@ if ($Phase -le 3) {
     # Test 8: Authenticate on remote peer
     $remoteHeaders = $null
     Test-Step "Authenticate on remote peer" -Critical {
-        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register"
+        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register" -Profile $Profile
         $encodedPassword = [Uri]::EscapeDataString($secrets.adminPassword)
         $loginBody = "grant_type=password&username=$($secrets.adminEmail)&password=$encodedPassword&client_id=sorcha-cli"
         $loginResponse = Invoke-RestMethod -Uri "$remoteGateway/api/service-auth/token" `
@@ -318,7 +318,7 @@ if ($Phase -le 4) {
         $registerId = $syncState.registerId
     }
     if (-not $remoteHeaders) {
-        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register"
+        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register" -Profile $Profile
         $encodedPassword = [Uri]::EscapeDataString($secrets.adminPassword)
         $loginBody = "grant_type=password&username=$($secrets.adminEmail)&password=$encodedPassword&client_id=sorcha-cli"
         $loginResponse = Invoke-RestMethod -Uri "$remoteGateway/api/service-auth/token" `
@@ -372,7 +372,7 @@ if ($Phase -le 5) {
         $registerId = $syncState.registerId
     }
     if (-not $remoteHeaders) {
-        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register"
+        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register" -Profile $Profile
         $encodedPassword = [Uri]::EscapeDataString($secrets.adminPassword)
         $loginBody = "grant_type=password&username=$($secrets.adminEmail)&password=$encodedPassword&client_id=sorcha-cli"
         $loginResponse = Invoke-RestMethod -Uri "$remoteGateway/api/service-auth/token" `
@@ -443,7 +443,7 @@ if ($Phase -le 6) {
         $registerId = $syncState.registerId
     }
     if (-not $remoteHeaders) {
-        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register"
+        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register" -Profile $Profile
         $encodedPassword = [Uri]::EscapeDataString($secrets.adminPassword)
         $loginBody = "grant_type=password&username=$($secrets.adminEmail)&password=$encodedPassword&client_id=sorcha-cli"
         $loginResponse = Invoke-RestMethod -Uri "$remoteGateway/api/service-auth/token" `
@@ -485,7 +485,7 @@ if ($Phase -le 6) {
         }
 
         # Re-authenticate (token may have expired)
-        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register"
+        $secrets = Get-SorchaSecrets -WalkthroughName "dist-register" -Profile $Profile
         $encodedPassword = [Uri]::EscapeDataString($secrets.adminPassword)
         $loginBody = "grant_type=password&username=$($secrets.adminEmail)&password=$encodedPassword&client_id=sorcha-cli"
         $loginResponse = Invoke-RestMethod -Uri "$remoteGateway/api/service-auth/token" `

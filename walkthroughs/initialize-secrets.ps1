@@ -8,9 +8,17 @@
 # Usage:
 #   pwsh walkthroughs/initialize-secrets.ps1
 #   pwsh walkthroughs/initialize-secrets.ps1 -Force  # Overwrite existing
+#   pwsh walkthroughs/initialize-secrets.ps1 -N1AdminPassword '...' -N1AdminEmail '...'
+#
+# The local-Docker admin credentials are the well-known dev seed from
+# Sorcha.Tenant.Service/Data/DatabaseInitializer.cs. The n1 deployment
+# credentials are environment-specific — pass them via parameter rather than
+# committing to source.
 
 param(
-    [switch]$Force
+    [switch]$Force,
+    [string]$N1AdminEmail = "admin@sorcha.dev",
+    [string]$N1AdminPassword = "Dev_Pass_2026!"
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,7 +58,22 @@ $secrets = [ordered]@{
     "_meta" = @{
         generatedAt = (Get-Date -Format "o")
         description = "Auto-generated walkthrough credentials. Do NOT commit to source control."
-        note        = "All walkthroughs use the platform seed admin (DatabaseInitializer defaults)."
+        note        = "All walkthroughs use the platform seed admin (DatabaseInitializer defaults). Use _profiles to override admin creds per deployment target. Get-SorchaSecrets -Profile <name> applies _profiles.<name> over the walkthrough's base keys."
+    }
+    "_profiles" = [ordered]@{
+        # Default values are dev seeds the n1 bootstrap CLI uses on a fresh
+        # cluster (see scripts/n1-deploy.ps1). Override via parameter for any
+        # environment whose admin credentials have been rotated.
+        n1 = [ordered]@{
+            adminEmail              = $N1AdminEmail
+            adminPassword           = $N1AdminPassword
+            sysAdminEmail           = $N1AdminEmail
+            sysAdminPassword        = $N1AdminPassword
+            meridianAdminEmail      = $N1AdminEmail
+            meridianAdminPassword   = $N1AdminPassword
+            highlandAdminEmail      = $N1AdminEmail
+            highlandAdminPassword   = $N1AdminPassword
+        }
     }
     "platform" = @{
         adminEmail    = $platformEmail
@@ -239,7 +262,7 @@ Write-Host "Walkthrough credential sets:" -ForegroundColor Yellow
 
 $walkthroughCount = 0
 foreach ($key in $secrets.Keys) {
-    if ($key -eq "_meta" -or $key -eq "platform") { continue }
+    if ($key -eq "_meta" -or $key -eq "_profiles" -or $key -eq "platform") { continue }
     $walkthroughCount++
     Write-Host "  $key" -ForegroundColor White
 }
