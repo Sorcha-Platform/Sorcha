@@ -25,10 +25,18 @@ x-jwt-env: &jwt-env
 # would point Tenant at a different cluster). Postgres carries credentials/host
 # only; the per-service code appends Database={dbName} (e.g. sorcha_tenant) at
 # resolve time. Mongo and Redis don't carry a database/db-index in-band.
+#
+# The Aspire-named aliases (ConnectionStrings__redis, ConnectionStrings__mongodb)
+# are deduped via YAML scalar anchors. They exist so services that still use
+# Aspire's builder.AddRedisClient("redis") or GetConnectionString("mongodb")
+# continue to work without code change. Future PR can replace those Aspire-style
+# lookups with cascade-aware registrations and drop the aliases.
 x-sorcha-connections: &sorcha-connections
   ConnectionStrings__Sorcha__Postgres: Host=postgres;Username=sorcha;Password=sorcha_dev_password
-  ConnectionStrings__Sorcha__Mongo: mongodb://sorcha:sorcha_dev_password@mongodb:27017
-  ConnectionStrings__Sorcha__Redis: redis:6379
+  ConnectionStrings__Sorcha__Mongo: &sorcha-mongo mongodb://sorcha:sorcha_dev_password@mongodb:27017
+  ConnectionStrings__Sorcha__Redis: &sorcha-redis redis:6379
+  ConnectionStrings__mongodb: *sorcha-mongo
+  ConnectionStrings__redis: *sorcha-redis
 
 # Container hardening profile applied to every Sorcha .NET service.
 # - read_only:true     → root filesystem is immutable; named volumes (DataProtection-Keys,
@@ -182,13 +190,13 @@ services:
     ports:
       - "${BLUEPRINT_PORT:-5000}:8080"
     environment:
-      <<: [*otel-env, *jwt-env]
+      # Postgres + Mongo + Redis come from the *sorcha-connections anchor.
+      # Blueprint Postgres resolves to sorcha_blueprint via the cascade
+      # (resolver appends Database=sorcha_blueprint).
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: blueprint-service
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Redis: redis:6379
-      ConnectionStrings__BlueprintDb: Host=postgres;Database=sorcha_blueprint;Username=sorcha;Password=sorcha_dev_password
-      ConnectionStrings__mongodb: mongodb://sorcha:sorcha_dev_password@mongodb:27017
       # AI Provider configuration (Anthropic Claude API)
       AIProvider__ApiKey: ${ANTHROPIC_API_KEY:-}
       AIProvider__Model: claude-sonnet-4-5-20250929
@@ -250,12 +258,13 @@ services:
     mem_limit: 1g
     # No ports published - internal service only, accessed via API Gateway
     environment:
-      <<: [*otel-env, *jwt-env]
+      # Postgres + Redis come from the *sorcha-connections anchor.
+      # Wallet's Timeout / Command Timeout (30s each) are appended in
+      # WalletServiceExtensions.cs after the resolver returns the base string.
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: wallet-service
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Redis: redis:6379
-      ConnectionStrings__wallet-db: Host=postgres;Database=sorcha_wallet;Username=sorcha;Password=sorcha_dev_password;Timeout=30;Command Timeout=30
       ServiceAuth__ClientId: service-wallet
       ServiceAuth__ClientSecret: wallet-service-secret
       ServiceAuth__Scopes: "registers:write registers:read"
@@ -451,14 +460,16 @@ services:
     ports:
       - "${PEER_GRPC_PORT:-50051}:5000"  # gRPC for external P2P connections
     environment:
-      <<: [*otel-env, *jwt-env]
+      # Postgres + Mongo + Redis come from the *sorcha-connections anchor.
+      # Peer Postgres resolves to sorcha_peer via the cascade. Mongo lookup
+      # in PeerService Program.cs reads via the cascade resolver too; the
+      # MongoDB__DatabaseName below is the per-service database NAME (not a
+      # connection string) selected via IMongoClient.GetDatabase(name).
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: peer-service
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       ASPNETCORE_HTTP_PORTS: "8080"
-      ConnectionStrings__Redis: redis:6379
-      ConnectionStrings__PeerDb: Host=postgres;Database=sorcha_peer;Username=sorcha;Password=sorcha_dev_password
-      MongoDB__ConnectionString: mongodb://sorcha:sorcha_dev_password@mongodb:27017
       MongoDB__DatabaseName: sorcha_system_register
       ServiceAuth__ClientId: service-peer
       ServiceAuth__ClientSecret: peer-service-secret

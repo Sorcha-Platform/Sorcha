@@ -13,6 +13,7 @@ using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Distribution;
 using Sorcha.Peer.Service.Endpoints;
 using Sorcha.Peer.Service.Extensions;
+using Sorcha.ServiceDefaults;
 using Sorcha.Peer.Service.Monitoring;
 using Sorcha.Peer.Service.Network;
 using Sorcha.Peer.Service.Observability;
@@ -79,8 +80,14 @@ builder.WebHost.ConfigureKestrel(options =>
 // Add Redis for advertisement persistence
 builder.AddRedisClient("redis");
 
-// Add PeerDbContext with PostgreSQL (falls back to InMemory if no connection string)
-var peerDbConnectionString = builder.Configuration.GetConnectionString("PeerDb");
+// Add PeerDbContext with PostgreSQL (falls back to InMemory if no connection string).
+// SorchaConnections cascade: ConnectionStrings:Peer:Postgres → ConnectionStrings:Sorcha:Postgres.
+var hasPeerPgConfig =
+    !string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:Peer:Postgres"])
+    || !string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:Sorcha:Postgres"]);
+var peerDbConnectionString = hasPeerPgConfig
+    ? builder.Configuration.GetSorchaPostgresConnectionString("Peer", "sorcha_peer")
+    : null;
 if (!string.IsNullOrEmpty(peerDbConnectionString))
 {
     builder.Services.AddDbContextFactory<Sorcha.Peer.Service.Data.PeerDbContext>(options =>
