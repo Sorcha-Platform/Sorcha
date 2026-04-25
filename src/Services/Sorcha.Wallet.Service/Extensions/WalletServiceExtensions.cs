@@ -10,6 +10,7 @@ using Sorcha.Cryptography;
 using Sorcha.Cryptography.Core;
 using Sorcha.Cryptography.Extensions;
 using Sorcha.Cryptography.Interfaces;
+using Sorcha.ServiceDefaults;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Encryption.Configuration;
 using Sorcha.Wallet.Core.Encryption.Interfaces;
@@ -91,9 +92,16 @@ public static class WalletServiceExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Try Aspire connection string name first, then fallback to standard name
-        var connectionString = configuration.GetConnectionString("wallet-db")
-                            ?? configuration.GetConnectionString("WalletDatabase");
+        // SorchaConnections cascade: ConnectionStrings:Wallet:Postgres → ConnectionStrings:Sorcha:Postgres.
+        // Wallet appends Timeout / Command Timeout (30s each) — operational tuning that lives in code
+        // alongside the EnableRetryOnFailure config below, not in the platform-default connection string.
+        var hasResolverConfig =
+            !string.IsNullOrWhiteSpace(configuration["ConnectionStrings:Wallet:Postgres"])
+            || !string.IsNullOrWhiteSpace(configuration["ConnectionStrings:Sorcha:Postgres"]);
+
+        var connectionString = hasResolverConfig
+            ? configuration.GetSorchaPostgresConnectionString("Wallet", "sorcha_wallet") + ";Timeout=30;Command Timeout=30"
+            : null;
 
         if (!string.IsNullOrEmpty(connectionString))
         {
@@ -148,12 +156,14 @@ public static class WalletServiceExtensions
         this IHealthChecksBuilder builder,
         IConfiguration configuration)
     {
-        // Add PostgreSQL health check if connection string is configured
-        var connectionString = configuration.GetConnectionString("wallet-db")
-                            ?? configuration.GetConnectionString("WalletDatabase");
+        // SorchaConnections cascade — same lookup as AddWalletDatabase above.
+        var hasResolverConfig =
+            !string.IsNullOrWhiteSpace(configuration["ConnectionStrings:Wallet:Postgres"])
+            || !string.IsNullOrWhiteSpace(configuration["ConnectionStrings:Sorcha:Postgres"]);
 
-        if (!string.IsNullOrEmpty(connectionString))
+        if (hasResolverConfig)
         {
+            var connectionString = configuration.GetSorchaPostgresConnectionString("Wallet", "sorcha_wallet");
             builder.AddNpgSql(connectionString, name: "wallet-postgresql");
         }
 

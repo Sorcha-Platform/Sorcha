@@ -13,6 +13,7 @@ using Sorcha.Blueprint.Service.Extensions;
 using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.JsonLd;
+using Sorcha.ServiceDefaults;
 using Sorcha.Blueprint.Service.Services;
 using Sorcha.Blueprint.Schemas.Services;
 using Sorcha.Cryptography.Core;
@@ -46,8 +47,14 @@ builder.AddRedisDistributedCache("redis");
 builder.AddSorchaOpenApi("Sorcha Blueprint Service API",
     "Blueprint workflow management, action execution, credential lifecycle, schema library, and SignalR real-time notifications.");
 
-// Add storage — EF Core + PostgreSQL when configured, InMemory fallback otherwise
-var blueprintDbConn = builder.Configuration.GetConnectionString("BlueprintDb");
+// Add storage — EF Core + PostgreSQL when configured, InMemory fallback otherwise.
+// SorchaConnections cascade: ConnectionStrings:Blueprint:Postgres → ConnectionStrings:Sorcha:Postgres.
+var hasBlueprintPgConfig =
+    !string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:Blueprint:Postgres"])
+    || !string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:Sorcha:Postgres"]);
+var blueprintDbConn = hasBlueprintPgConfig
+    ? builder.Configuration.GetSorchaPostgresConnectionString("Blueprint", "sorcha_blueprint")
+    : null;
 if (!string.IsNullOrEmpty(blueprintDbConn))
 {
     builder.Services.AddDbContextFactory<Sorcha.Blueprint.Service.Data.BlueprintDbContext>(options =>
@@ -277,8 +284,12 @@ builder.Services.AddSingleton<IExternalSchemaProvider>(sp =>
 // Add Schema Library services (034-schema-library)
 builder.Services.AddSingleton<Sorcha.Blueprint.Schemas.Repositories.ISchemaIndexRepository>(sp =>
 {
-    var mongoClient = new MongoDB.Driver.MongoClient(
-        builder.Configuration.GetConnectionString("mongodb") ?? "mongodb://localhost:27017");
+    // SorchaConnections cascade: ConnectionStrings:Blueprint:Mongo → ConnectionStrings:Sorcha:Mongo.
+    // Mongo connection strings carry credentials/host only; database is selected via GetDatabase.
+    var mongoConnStr = builder.Configuration["ConnectionStrings:Blueprint:Mongo"]
+                    ?? builder.Configuration["ConnectionStrings:Sorcha:Mongo"]
+                    ?? "mongodb://localhost:27017";
+    var mongoClient = new MongoDB.Driver.MongoClient(mongoConnStr);
     var database = mongoClient.GetDatabase("sorcha-blueprints");
     var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Sorcha.Blueprint.Schemas.Repositories.MongoSchemaIndexRepository>>();
     return new Sorcha.Blueprint.Schemas.Repositories.MongoSchemaIndexRepository(database, logger);
@@ -293,7 +304,9 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.ISect
 // Register MongoDB schema repository for persistent schema storage (063 AI Builder)
 builder.Services.Configure<Sorcha.Blueprint.Schemas.Repositories.MongoSchemaStorageConfiguration>(options =>
 {
-    options.ConnectionString = builder.Configuration.GetConnectionString("mongodb") ?? "mongodb://localhost:27017";
+    options.ConnectionString = builder.Configuration["ConnectionStrings:Blueprint:Mongo"]
+                            ?? builder.Configuration["ConnectionStrings:Sorcha:Mongo"]
+                            ?? "mongodb://localhost:27017";
     options.DatabaseName = "sorcha-blueprints";
     options.CollectionName = "schemas";
 });
