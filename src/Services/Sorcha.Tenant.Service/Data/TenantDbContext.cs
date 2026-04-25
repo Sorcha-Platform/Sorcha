@@ -455,6 +455,13 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.EventType);
             entity.HasIndex(e => e.IdentityId);
             entity.HasIndex(e => e.OrganizationId);
+
+            // Composite covering the AuditCleanupService per-org retention sweep
+            // (WHERE OrganizationId = X AND Timestamp < cutoff) and the audit-log
+            // viewer's "this org, newest first" listing.
+            entity.HasIndex(e => new { e.OrganizationId, e.Timestamp })
+                .IsDescending(false, true)
+                .HasDatabaseName("IX_AuditLog_Org_Time");
         });
     }
 
@@ -920,6 +927,14 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.PasswordResetTokenHash)
                 .HasDatabaseName("IX_PlatformUser_PasswordResetTokenHash");
 
+            // EmailVerificationService.VerifyTokenAsync looks up users by raw token;
+            // partial-unique on the populated rows keeps the index small and avoids
+            // a sequential scan on every verify-email click.
+            entity.HasIndex(e => e.VerificationToken)
+                .IsUnique()
+                .HasFilter("\"VerificationToken\" IS NOT NULL")
+                .HasDatabaseName("UQ_PlatformUser_VerificationToken");
+
             entity.HasMany(e => e.SocialLogins)
                 .WithOne(s => s.PlatformUser)
                 .HasForeignKey(s => s.PlatformUserId)
@@ -1132,6 +1147,13 @@ public class TenantDbContext : DbContext
 
             entity.HasIndex(e => e.RegisterId)
                 .HasDatabaseName("IX_OrgRegSub_RegisterId");
+
+            // Hot path: RegisterSubscriptionService and RegisterInvitationService
+            // both filter by (OrganizationId, Status='Active'). Partial keeps the
+            // index narrow even as historical/cancelled subscriptions accumulate.
+            entity.HasIndex(e => e.OrganizationId)
+                .HasFilter("\"Status\" = 'Active'")
+                .HasDatabaseName("IX_OrgRegSub_Org_Active");
 
             entity.HasOne(e => e.Organization)
                 .WithMany()

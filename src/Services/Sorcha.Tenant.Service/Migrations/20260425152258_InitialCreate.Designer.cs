@@ -14,7 +14,7 @@ using Sorcha.Tenant.Service.Data;
 namespace Sorcha.Tenant.Service.Migrations
 {
     [DbContext(typeof(TenantDbContext))]
-    [Migration("20260408160910_InitialCreate")]
+    [Migration("20260425152258_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -146,6 +146,10 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.HasIndex("OrganizationId");
 
                     b.HasIndex("Timestamp");
+
+                    b.HasIndex("OrganizationId", "Timestamp")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_AuditLog_Org_Time");
 
                     b.ToTable("AuditLogEntries", "public");
                 });
@@ -614,7 +618,8 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId")
-                        .HasDatabaseName("IX_OrgRegSub_OrganizationId");
+                        .HasDatabaseName("IX_OrgRegSub_Org_Active")
+                        .HasFilter("\"Status\" = 'Active'");
 
                     b.HasIndex("RegisterId")
                         .HasDatabaseName("IX_OrgRegSub_RegisterId");
@@ -940,6 +945,11 @@ namespace Sorcha.Tenant.Service.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_PlatformUser_Status");
+
+                    b.HasIndex("VerificationToken")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_PlatformUser_VerificationToken")
+                        .HasFilter("\"VerificationToken\" IS NOT NULL");
 
                     b.ToTable("PlatformUsers", "public");
                 });

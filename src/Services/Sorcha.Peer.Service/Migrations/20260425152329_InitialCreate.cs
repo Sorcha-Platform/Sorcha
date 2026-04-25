@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Sorcha.Peer.Service.Data.Migrations
+namespace Sorcha.Peer.Service.Migrations
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration
@@ -141,6 +141,12 @@ namespace Sorcha.Peer.Service.Data.Migrations
                 schema: "peer",
                 table: "queued_transactions",
                 column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_QueuedTransactions_Status_EnqueuedAt",
+                schema: "peer",
+                table: "queued_transactions",
+                columns: new[] { "Status", "EnqueuedAt" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_RegisterSubscriptions_RegisterId",

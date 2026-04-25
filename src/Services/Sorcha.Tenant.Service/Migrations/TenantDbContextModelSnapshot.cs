@@ -144,6 +144,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
                     b.HasIndex("Timestamp");
 
+                    b.HasIndex("OrganizationId", "Timestamp")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_AuditLog_Org_Time");
+
                     b.ToTable("AuditLogEntries", "public");
                 });
 
@@ -611,7 +615,8 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId")
-                        .HasDatabaseName("IX_OrgRegSub_OrganizationId");
+                        .HasDatabaseName("IX_OrgRegSub_Org_Active")
+                        .HasFilter("\"Status\" = 'Active'");
 
                     b.HasIndex("RegisterId")
                         .HasDatabaseName("IX_OrgRegSub_RegisterId");
@@ -937,6 +942,11 @@ namespace Sorcha.Tenant.Service.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_PlatformUser_Status");
+
+                    b.HasIndex("VerificationToken")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_PlatformUser_VerificationToken")
+                        .HasFilter("\"VerificationToken\" IS NOT NULL");
 
                     b.ToTable("PlatformUsers", "public");
                 });
