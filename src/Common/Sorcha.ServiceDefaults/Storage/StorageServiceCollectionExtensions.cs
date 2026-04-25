@@ -51,6 +51,8 @@ public static class StorageServiceCollectionExtensions
         services.AddHealthChecks()
             .AddCheck<StorageProvidersHealthCheck>(
                 StorageProvidersHealthCheck.Name,
+                // failureStatus is the result if CheckHealthAsync throws an unhandled exception.
+                // The check itself returns Healthy or Degraded — never Unhealthy.
                 failureStatus: HealthStatus.Unhealthy,
                 tags: ["ready", "storage"]);
 

@@ -240,6 +240,30 @@ Snapshot fixtures for every template live at `tests/Sorcha.Tenant.Service.Tests/
 
 > Feature-specific patterns (Open Participants / late binding, `x-review`, ownership-agnostic submission) live in the `sorcha-architecture` skill.
 
+### 10. Storage Registration Log (Feature 113)
+
+All storage interface registrations go through `IStorageRegistrationLog` from `Sorcha.ServiceDefaults.Storage`. Service-specific storage wiring (`AddWalletDatabase`, `AddRegisterStorage`, etc.) MUST call `RegisterPersistent` or `RegisterInMemory` immediately before the matching `AddScoped` / `AddSingleton`.
+
+```csharp
+if (!string.IsNullOrEmpty(connectionString))
+{
+    services.AddScoped<IFooRepository, EfCoreFooRepository>();
+    storageLog.RegisterPersistent("IFooRepository", "EfCoreFooRepository", "postgres");
+}
+else
+{
+    services.AddSingleton<IFooRepository, InMemoryFooRepository>();
+    storageLog.RegisterInMemory("IFooRepository", "InMemoryFooRepository",
+        "no Postgres connection string in ConnectionStrings:Service:Postgres or ConnectionStrings:Sorcha:Postgres");
+}
+```
+
+Six interfaces are **audited** — they fail-fast at host startup in `Production` or `Staging` if registered with an in-memory implementation: `IWalletRepository`, `IRegisterRepository`, `IInstanceStore`, `IActionStore`, `IVerifiedTransactionQueue`, `IAtomicDistributedCache`. Cache-style stores (`IBlueprintStore`, `IPublishedBlueprintStore`, etc.) emit the warning but do not gate startup.
+
+Operators who need to run a Production-flagged container against an ephemeral environment (CI smoke tests, debugging) can set `Storage:AllowInMemoryInProduction=true` to bypass fail-fast. The bypass logs at `LogCritical`.
+
+Health check `storage-providers` reports `Degraded` when any audited interface is on an in-memory backend. OpenTelemetry instruments on the `Sorcha.Storage` meter — `sorcha_storage_provider_info` and `sorcha_storage_fallback_active` — surface the same state for dashboards and alerting.
+
 ---
 
 ## Key Documentation
