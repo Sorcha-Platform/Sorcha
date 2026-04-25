@@ -286,6 +286,9 @@ public class CredentialApiService : ICredentialApiService
 
     private static CredentialCardViewModel MapToCardViewModel(CredentialListItem item)
     {
+        var displayConfig = ParseDisplayConfig(item.DisplayConfigJson);
+        var claims = ParseClaims(item.ClaimsJson);
+
         var vm = new CredentialCardViewModel
         {
             CredentialId = item.Id ?? string.Empty,
@@ -297,11 +300,14 @@ public class CredentialApiService : ICredentialApiService
             Status = item.Status ?? CredentialStatus.Active,
             IssuedAt = item.IssuedAt,
             ExpiresAt = item.ExpiresAt,
+            UsagePolicy = string.IsNullOrWhiteSpace(item.UsagePolicy) ? "Reusable" : item.UsagePolicy,
             IssuanceBlueprintId = item.IssuanceBlueprintId,
             IssuanceInstanceId = item.IssuanceInstanceId,
             IssuanceActionId = item.IssuanceActionId,
             ClaimActionId = item.ClaimActionId,
             RegisterId = item.RegisterId,
+            DisplayConfig = displayConfig,
+            HighlightClaims = BuildHighlightClaims(claims, displayConfig),
             // Feature 106 — rows with the new PendingAcceptance status flow into
             // the MyCredentials PENDING tab via CredentialCardViewModel.IsPending.
             IsPending = string.Equals(item.Status, CredentialStatus.PendingAcceptance, StringComparison.Ordinal),
@@ -310,6 +316,104 @@ public class CredentialApiService : ICredentialApiService
         vm.AvailableActions = GetAvailableActions(vm.Status);
         return vm;
     }
+
+    /// <summary>
+    /// Resolve the claims map to display on a card. Honours
+    /// <c>displayConfig.highlightClaims</c> (key = JSON pointer, value = display
+    /// label) when the issuer specified one; otherwise falls back to the first
+    /// six claim entries with their raw keys so credentials without an explicit
+    /// display contract still render meaningfully.
+    /// </summary>
+    private static Dictionary<string, string> BuildHighlightClaims(
+        IReadOnlyDictionary<string, object?> claims,
+        CredentialDisplayViewModel displayConfig)
+    {
+        if (claims.Count == 0) return new();
+
+        if (displayConfig.HighlightClaims is { Count: > 0 })
+        {
+            var result = new Dictionary<string, string>();
+            foreach (var (pointer, label) in displayConfig.HighlightClaims)
+            {
+                var value = ResolveJsonPointer(claims, pointer);
+                if (value is null) continue;
+                result[label] = value;
+            }
+            if (result.Count > 0) return result;
+        }
+
+        return claims
+            .Where(kvp => kvp.Value is not null)
+            .Take(6)
+            .ToDictionary(kvp => kvp.Key, kvp => StringifyClaimValue(kvp.Value));
+    }
+
+    private static Dictionary<string, object?> ParseClaims(string? claimsJson)
+    {
+        if (string.IsNullOrWhiteSpace(claimsJson)) return new();
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, object?>>(claimsJson, JsonOptions)
+                ?? new();
+        }
+        catch (JsonException)
+        {
+            return new();
+        }
+    }
+
+    private static CredentialDisplayViewModel ParseDisplayConfig(string? displayConfigJson)
+    {
+        if (string.IsNullOrWhiteSpace(displayConfigJson)) return new();
+        try
+        {
+            return JsonSerializer.Deserialize<CredentialDisplayViewModel>(displayConfigJson, JsonOptions)
+                ?? new();
+        }
+        catch (JsonException)
+        {
+            return new();
+        }
+    }
+
+    private static string? ResolveJsonPointer(IReadOnlyDictionary<string, object?> root, string pointer)
+    {
+        // Minimal RFC 6901 resolver — supports "/a", "/a/b", or bare "a" keys.
+        var path = pointer.StartsWith('/') ? pointer[1..] : pointer;
+        if (path.Length == 0) return null;
+        var segments = path.Split('/');
+        object? cursor = root;
+        foreach (var segment in segments)
+        {
+            switch (cursor)
+            {
+                case IReadOnlyDictionary<string, object?> dict when dict.TryGetValue(segment, out var next):
+                    cursor = next;
+                    break;
+                case JsonElement el when el.ValueKind == JsonValueKind.Object && el.TryGetProperty(segment, out var next):
+                    cursor = next;
+                    break;
+                default:
+                    return null;
+            }
+        }
+        return StringifyClaimValue(cursor);
+    }
+
+    private static string StringifyClaimValue(object? value) => value switch
+    {
+        null => string.Empty,
+        string s => s,
+        JsonElement el => el.ValueKind switch
+        {
+            JsonValueKind.String => el.GetString() ?? string.Empty,
+            JsonValueKind.Number => el.ToString(),
+            JsonValueKind.True or JsonValueKind.False => el.GetBoolean().ToString(),
+            JsonValueKind.Null => string.Empty,
+            _ => el.GetRawText()
+        },
+        _ => value.ToString() ?? string.Empty
+    };
 
     private static CredentialDetailViewModel MapToDetailViewModel(CredentialDetailResponse entity)
     {
@@ -408,6 +512,12 @@ public class CredentialApiService : ICredentialApiService
         public string? IssuanceActionId { get; set; }
         public string? ClaimActionId { get; set; }
         public string? RegisterId { get; set; }
+
+        // Holder needs the claim payload + display config to make an informed
+        // Accept/Decline decision on the Pending tab — see CredentialAcceptCard.
+        public string? ClaimsJson { get; set; }
+        public string? DisplayConfigJson { get; set; }
+        public string? UsagePolicy { get; set; }
     }
 
     private class CredentialDetailResponse
