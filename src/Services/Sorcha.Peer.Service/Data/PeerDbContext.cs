@@ -108,6 +108,13 @@ public class PeerDbContext : DbContext
             entity.HasIndex(e => e.RegisterId).HasDatabaseName("IX_QueuedTransactions_RegisterId");
             entity.HasIndex(e => e.Status).HasDatabaseName("IX_QueuedTransactions_Status");
             entity.HasIndex(e => e.EnqueuedAt).HasDatabaseName("IX_QueuedTransactions_EnqueuedAt");
+
+            // PeerDataCleanupService.PurgeQueuedTransactionsAsync filters
+            // (Status IN ('Completed','Failed') AND EnqueuedAt < cutoff); the
+            // composite turns it into an index-range scan instead of two
+            // single-column filters AND'd in memory.
+            entity.HasIndex(e => new { e.Status, e.EnqueuedAt })
+                .HasDatabaseName("IX_QueuedTransactions_Status_EnqueuedAt");
         });
     }
 }

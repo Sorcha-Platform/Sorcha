@@ -8,7 +8,7 @@ using Sorcha.Peer.Service.Data;
 
 #nullable disable
 
-namespace Sorcha.Peer.Service.Data.Migrations
+namespace Sorcha.Peer.Service.Migrations
 {
     [DbContext(typeof(PeerDbContext))]
     partial class PeerDbContextModelSnapshot : ModelSnapshot
@@ -169,6 +169,9 @@ namespace Sorcha.Peer.Service.Data.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_QueuedTransactions_Status");
+
+                    b.HasIndex("Status", "EnqueuedAt")
+                        .HasDatabaseName("IX_QueuedTransactions_Status_EnqueuedAt");
 
                     b.ToTable("queued_transactions", "peer");
                 });

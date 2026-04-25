@@ -683,6 +683,13 @@ namespace Sorcha.Tenant.Service.Migrations
                 filter: "\"IsRead\" = false");
 
             migrationBuilder.CreateIndex(
+                name: "IX_AuditLog_Org_Time",
+                schema: "public",
+                table: "AuditLogEntries",
+                columns: new[] { "OrganizationId", "Timestamp" },
+                descending: new[] { false, true });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_AuditLogEntries_EventType",
                 schema: "public",
                 table: "AuditLogEntries",
@@ -762,10 +769,11 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_OrgRegSub_OrganizationId",
+                name: "IX_OrgRegSub_Org_Active",
                 schema: "public",
                 table: "OrganizationRegisterSubscriptions",
-                column: "OrganizationId");
+                column: "OrganizationId",
+                filter: "\"Status\" = 'Active'");
 
             migrationBuilder.CreateIndex(
                 name: "IX_OrgRegSub_OrgId_RegisterId",
@@ -909,6 +917,14 @@ namespace Sorcha.Tenant.Service.Migrations
                 table: "PlatformUsers",
                 column: "Email",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "UQ_PlatformUser_VerificationToken",
+                schema: "public",
+                table: "PlatformUsers",
+                column: "VerificationToken",
+                unique: true,
+                filter: "\"VerificationToken\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PushSubscription_UserId",
