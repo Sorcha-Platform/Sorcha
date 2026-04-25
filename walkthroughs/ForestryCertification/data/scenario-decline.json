@@ -1,0 +1,27 @@
+{
+  "name": "Scenario B: Declined Audit",
+  "description": "Highland Timber submits a treated Scots Pine batch but the chain-of-custody documentation gap and a non-permitted preservative cause the auditor to decline. No credential issued.",
+  "expectedDecision": "decline",
+  "actions": {
+    "1": {
+      "batchId": "HTS-BATCH-2026-0151",
+      "species": "Scots Pine",
+      "forestOrigin": {
+        "country": "Scotland",
+        "forestUnit": "Loch Ness Estate Compartment 7",
+        "harvestDate": "2026-03-02"
+      },
+      "volumeCubicMetres": 180.0,
+      "processingFacility": "Highland Timber Mill, Inverness",
+      "treatmentChemicals": ["Creosote", "Tributyltin oxide"],
+      "declaredEmbodiedCarbonKgCO2e": 52.0,
+      "supportingEvidence": "Harvest licence FCS-HL-26-0521. FSC certificate scan attached but expiry 2025-11-30. Treatment supplier datasheet provided."
+    },
+    "2": {
+      "auditDate": "2026-04-15",
+      "auditFindings": "FSC certificate covering Loch Ness Estate Compartment 7 expired 2025-11-30, four months before harvest date. Tributyltin oxide is on the FSC restricted-substance list — its use disqualifies the batch under both FSC and PEFC schemes. Supplier requested to re-apply once a valid FSC certificate is in place and an alternative non-restricted preservative is used.",
+      "decision": "decline",
+      "declineReason": "Chain-of-custody certificate expired before harvest date, and a treatment chemical (Tributyltin oxide) is on the FSC restricted-substance list. Re-apply once a valid FSC certificate covers the compartment and a non-restricted preservative is used."
+    }
+  }
+}

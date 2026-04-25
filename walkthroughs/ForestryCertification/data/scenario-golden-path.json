@@ -1,0 +1,32 @@
+{
+  "name": "Scenario A: Golden Path",
+  "description": "Highland Timber Supplies submits a Sitka Spruce batch for FSC certification. Auditor approves with a high sustainability score; ForestProductDPPCredential is issued.",
+  "expectedDecision": "approve",
+  "expectedSustainabilityScore": 87,
+  "actions": {
+    "1": {
+      "batchId": "HTS-BATCH-2026-0142",
+      "species": "Sitka Spruce",
+      "forestOrigin": {
+        "country": "Scotland",
+        "forestUnit": "Glen Affric Compartment 24",
+        "harvestDate": "2026-02-18"
+      },
+      "volumeCubicMetres": 320.0,
+      "processingFacility": "Highland Timber Mill, Inverness",
+      "treatmentChemicals": [],
+      "declaredEmbodiedCarbonKgCO2e": 38.0,
+      "supportingEvidence": "FSC chain-of-custody cert FSC-COC-2024-HTS, harvest licence FCS-HL-26-0418, supplier's last annual audit (Q1 2026)."
+    },
+    "2": {
+      "auditDate": "2026-04-15",
+      "auditFindings": "Chain of custody verified end-to-end. Glen Affric compartment 24 holds active FSC certification (cert FSC-FM-2023-0091). No treatment chemicals applied. Independently measured embodied carbon at 36.4 kg CO2e/m^3, marginally below supplier declaration. Mill audit Q1 2026 confirmed scope and segregation controls.",
+      "decision": "approve",
+      "certificationScheme": "FSC",
+      "certificationBody": "FSC United Kingdom",
+      "verifiedEmbodiedCarbonKgCO2e": 36.4,
+      "sustainabilityScore": 87,
+      "expiryDate": "2027-04-15"
+    }
+  }
+}
