@@ -46,8 +46,10 @@ public sealed class StorageProvidersHealthCheck : IHealthCheck
 
         if (inMemoryAudited.Length == 0)
         {
-            return Task.FromResult(HealthCheckResult.Healthy(
-                description: $"All {snapshot.Count} registered storage interfaces are persistent."));
+            var healthyDescription = snapshot.Count == 0
+                ? "No storage interfaces registered yet."
+                : $"All {snapshot.Count} registered storage interfaces are persistent.";
+            return Task.FromResult(HealthCheckResult.Healthy(healthyDescription));
         }
 
         var description = "Audited storage interfaces on in-memory backends: " +

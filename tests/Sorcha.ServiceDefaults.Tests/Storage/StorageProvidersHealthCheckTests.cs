@@ -41,6 +41,9 @@ public class StorageProvidersHealthCheckTests
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         result.Status.Should().Be(HealthStatus.Healthy);
+        // Distinct description for the empty case so operators can tell
+        // "no services have registered yet" from "all services are persistent".
+        result.Description.Should().Be("No storage interfaces registered yet.");
     }
 
     [Fact]

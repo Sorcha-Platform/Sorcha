@@ -143,4 +143,47 @@ public class StorageRegistrationLogTests
 
         log.Snapshot().Should().AllSatisfy(r => r.IsAudited.Should().BeTrue());
     }
+
+    [Fact]
+    public async Task RegisterPersistent_ConcurrentCallsDifferentInterfaces_AllRecorded()
+    {
+        var log = NewLog();
+
+        var tasks = Enumerable.Range(0, 100)
+            .Select(i => Task.Run(() => log.RegisterPersistent($"IRepo{i}", $"Impl{i}", "postgres")))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+
+        log.Snapshot().Should().HaveCount(100);
+    }
+
+    [Fact]
+    public async Task Register_ConcurrentCallsSameInterface_OnlyOneSucceeds()
+    {
+        var log = NewLog();
+
+        var tasks = Enumerable.Range(0, 50)
+            .Select(_ => Task.Run<Exception?>(() =>
+            {
+                try
+                {
+                    log.RegisterPersistent("ISharedRepo", "Impl", "postgres");
+                    return null;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return ex;
+                }
+            }))
+            .ToArray();
+
+        var results = await Task.WhenAll(tasks);
+
+        // Exactly one task succeeds (returns null); the rest see the duplicate-registration throw.
+        results.Count(r => r is null).Should().Be(1);
+        results.Count(r => r is InvalidOperationException).Should().Be(49);
+
+        log.Snapshot().Should().HaveCount(1);
+    }
 }
