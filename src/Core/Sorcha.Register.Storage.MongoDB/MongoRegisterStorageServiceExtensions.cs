@@ -27,6 +27,12 @@ public static class MongoRegisterStorageServiceExtensions
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
+        // TODO(db-audit): Register + Validator still bind MongoDB via this typed Options
+        // section instead of the SorchaConnections cascade adopted by Tenant/Wallet/Blueprint/
+        // Peer (PRs #405-#408). When this is next touched, either teach the cascade resolver
+        // to back typed Options, or have the IMongoClient registration below pull from
+        // configuration["ConnectionStrings:Sorcha:Mongo"] (with Register/Validator overrides)
+        // and let MongoRegisterStorageConfiguration carry only the database/collection names.
         services.Configure<MongoRegisterStorageConfiguration>(
             configuration.GetSection("RegisterStorage:MongoDB"));
 

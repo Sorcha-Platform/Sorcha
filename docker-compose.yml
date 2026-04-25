@@ -35,6 +35,11 @@ x-sorcha-connections: &sorcha-connections
   ConnectionStrings__Sorcha__Postgres: Host=postgres;Username=sorcha;Password=sorcha_dev_password
   ConnectionStrings__Sorcha__Mongo: &sorcha-mongo mongodb://sorcha:sorcha_dev_password@mongodb:27017
   ConnectionStrings__Sorcha__Redis: &sorcha-redis redis:6379
+  # TODO(db-audit): drop these two Aspire-named aliases once every service that
+  # uses builder.AddRedisClient("redis") / GetConnectionString("mongodb") has
+  # been migrated to a cascade-aware registration that reads :Sorcha:Redis /
+  # :Sorcha:Mongo directly. Today they're needed for back-compat with the Aspire
+  # client extensions in Wallet/Blueprint/Peer/Register/Validator/Haip Program.cs.
   ConnectionStrings__mongodb: *sorcha-mongo
   ConnectionStrings__redis: *sorcha-redis
 

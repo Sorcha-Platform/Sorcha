@@ -110,6 +110,11 @@ public static class ServiceCollectionExtensions
             dataSourceBuilder.EnableDynamicJson();
             var dataSource = dataSourceBuilder.Build();
 
+            // TODO(db-audit): convert to AddDbContextFactory<TenantDbContext>. Scoped lifetime
+            // forces background services (AuditCleanupService, OrgWalletReconciliationService,
+            // CustomDomainVerificationService) to wrap each DB call in IServiceScopeFactory
+            // ceremony; the factory pattern (used by Blueprint + Peer) is safer for parallel
+            // and background work. Adopting it touches every consumer of TenantDbContext.
             services.AddDbContext<TenantDbContext>(options =>
             {
                 options.UseNpgsql(dataSource, npgsqlOptions =>
