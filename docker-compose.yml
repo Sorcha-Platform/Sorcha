@@ -18,6 +18,18 @@ x-jwt-env: &jwt-env
   JwtSettings__InstallationName: ${INSTALLATION_NAME:-localhost}
   JwtSettings__SigningKey: ${JWT_SIGNING_KEY:-c29yY2hhLWRvY2tlci1kZXYta2V5LTIwMjUtbWluLTI1Ni1iaXRzLXNlY3VyZQ==}
 
+# Platform-default connection strings, resolved by the SorchaConnections cascade
+# in Sorcha.ServiceDefaults: ConnectionStrings:{Service}:{Kind} falls back to
+# ConnectionStrings:Sorcha:{Kind}. Per-service overrides go in that service's
+# environment block alongside this anchor (e.g. ConnectionStrings__Tenant__Postgres
+# would point Tenant at a different cluster). Postgres carries credentials/host
+# only; the per-service code appends Database={dbName} (e.g. sorcha_tenant) at
+# resolve time. Mongo and Redis don't carry a database/db-index in-band.
+x-sorcha-connections: &sorcha-connections
+  ConnectionStrings__Sorcha__Postgres: Host=postgres;Username=sorcha;Password=sorcha_dev_password
+  ConnectionStrings__Sorcha__Mongo: mongodb://sorcha:sorcha_dev_password@mongodb:27017
+  ConnectionStrings__Sorcha__Redis: redis:6379
+
 # Container hardening profile applied to every Sorcha .NET service.
 # - read_only:true     → root filesystem is immutable; named volumes (DataProtection-Keys,
 #                        wallet-keys) and tmpfs mounts remain writable.
@@ -373,12 +385,15 @@ services:
     ports:
       - "${TENANT_PORT:-5450}:8080"  # Exposed for direct access during development/bootstrap
     environment:
-      <<: [*otel-env, *jwt-env]
+      # Tenant is the SorchaConnections-cascade pilot. Postgres + Redis come from the
+      # *sorcha-connections anchor (default for the platform); the resolver in
+      # Sorcha.ServiceDefaults appends Database=sorcha_tenant. Add a
+      # ConnectionStrings__Tenant__Postgres / __Redis line here if Tenant should ever
+      # diverge from the platform default.
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: tenant-service
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__TenantDatabase: Host=postgres;Database=sorcha_tenant;Username=sorcha;Password=sorcha_dev_password
-      Redis__ConnectionString: redis:6379
       # Tenant service is the JWT authority - it issues tokens using the installation name
       JwtSettings__SigningKeySource: Configuration
       # Service-to-service auth for Wallet Service calls during wallet link verification
