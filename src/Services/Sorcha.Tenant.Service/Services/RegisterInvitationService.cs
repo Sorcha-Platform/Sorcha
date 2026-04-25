@@ -385,13 +385,16 @@ public partial class RegisterInvitationService : IRegisterInvitationService
 
         var records = await query.OrderByDescending(r => r.CreatedAt).ToListAsync(ct);
 
-        // Pre-load every org we'll need in one round-trip — by id for sources,
-        // by wallet address for targets (target orgs are referenced by DID, which
-        // wraps the wallet address). Replaces a per-record DB hit (N+1) with two
-        // index lookups.
+        // Parse target wallet once per record up front; reused below for both
+        // the batched lookup and the projection. Replaces a per-record DB hit
+        // (N+1) with two batched org lookups.
+        var recordsWithTargetWallet = records
+            .Select(r => (Record: r, TargetWallet: TryExtractWalletFromOrgDid(r.TargetOrgDid)))
+            .ToList();
+
         var sourceOrgIds = records.Select(r => r.SourceOrgId).Distinct().ToArray();
-        var targetWallets = records
-            .Select(r => TryExtractWalletFromOrgDid(r.TargetOrgDid))
+        var targetWallets = recordsWithTargetWallet
+            .Select(t => t.TargetWallet)
             .Where(w => !string.IsNullOrEmpty(w))
             .Distinct()
             .ToArray();
@@ -409,14 +412,14 @@ public partial class RegisterInvitationService : IRegisterInvitationService
                 .ToListAsync(ct))
               .ToDictionary(o => o.WalletAddress!, StringComparer.OrdinalIgnoreCase);
 
-        var summaries = records.Select(r =>
+        var summaries = recordsWithTargetWallet.Select(t =>
         {
+            var r = t.Record;
             sourceOrgs.TryGetValue(r.SourceOrgId, out var sourceOrg);
-            var targetWallet = TryExtractWalletFromOrgDid(r.TargetOrgDid);
             Organization? targetOrg = null;
-            if (!string.IsNullOrEmpty(targetWallet))
+            if (!string.IsNullOrEmpty(t.TargetWallet))
             {
-                targetOrgs.TryGetValue(targetWallet, out targetOrg);
+                targetOrgs.TryGetValue(t.TargetWallet, out targetOrg);
             }
 
             return new InvitationSummary

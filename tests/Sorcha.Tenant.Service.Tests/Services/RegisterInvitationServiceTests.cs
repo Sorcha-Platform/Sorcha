@@ -463,7 +463,8 @@ public class RegisterInvitationServiceTests : IDisposable
     [Fact]
     public async Task ListAsync_ResolvesSourceAndTargetOrgNames()
     {
-        // GAP-013 — ListAsync used to leave SourceOrgName / TargetOrgName as null.
+        // Both source and target org names must be populated in the response,
+        // independent of which direction filter the caller used.
         SetupWalletMocks();
 
         var request = new CreateRegisterInvitationRequest
@@ -509,12 +510,14 @@ public class RegisterInvitationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ListAsync_MultipleInvitations_DoesNotN1QueryOrgs()
+    public async Task ListAsync_MultipleDistinctTargets_AllNamesResolved()
     {
-        // GAP-015 — pre-PR, every record fired its own DB query through
-        // GetSourceOrgDid. After the fix, all org lookups happen in two
-        // batches (sources by id, targets by wallet address) and the response
-        // shape stays correct regardless of cardinality.
+        // With multiple distinct target orgs, every result row must have its
+        // SourceOrgName and TargetOrgName populated. Backs the batched-lookup
+        // implementation: a per-record DB call would still pass this test on
+        // correctness, but would regress on query count — the named-this-way
+        // failure mode is "names go missing", which a future contributor
+        // changing the projection might trip.
         SetupWalletMocks();
 
         var targetOrgIds = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
