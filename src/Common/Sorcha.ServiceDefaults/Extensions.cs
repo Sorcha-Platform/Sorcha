@@ -15,6 +15,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Sorcha.ServiceDefaults;
 using Sorcha.ServiceDefaults.Helpers;
+using Sorcha.ServiceDefaults.Storage;
 
 namespace Microsoft.Extensions.Hosting;
 
@@ -49,6 +50,11 @@ public static class Extensions
             http.AddServiceDiscovery();
         });
 
+        // Feature 113 — storage registration log, health check, metrics, and fail-fast hosted service.
+        // Service-specific storage wiring resolves IStorageRegistrationLog and calls Register* at
+        // the matching AddScoped / AddSingleton sites.
+        builder.Services.AddStorageRegistration();
+
         return builder;
     }
 
@@ -78,6 +84,9 @@ public static class Extensions
 
                 // Feature 111 — Blueprint Service presentation lifecycle metrics
                 metrics.AddMeter("Sorcha.Blueprint.Service.Presentation");
+
+                // Feature 113 — Storage provider registration audit
+                metrics.AddMeter(Sorcha.ServiceDefaults.Storage.StorageRegistrationMetrics.MeterName);
             })
             .WithTracing(tracing =>
             {
