@@ -115,6 +115,11 @@ public static class WalletServiceExtensions
 
             // Configure PostgreSQL with EF Core using the registered data source
             // IMPORTANT: Do NOT pass connection string again - it will use the registered NpgsqlDataSource
+            // TODO(db-audit): convert to AddDbContextFactory<WalletDbContext>. Same rationale
+            // as TenantDbContext (see ServiceCollectionExtensions.cs). Wallet has background
+            // services (NotificationDigestWorker, OrgWalletReconciliationService consumers)
+            // that benefit from per-operation contexts. Adopting the factory touches every
+            // consumer of WalletDbContext.
             services.AddDbContext<WalletDbContext>((serviceProvider, options) =>
             {
                 // Use the registered NpgsqlDataSource with EnableDynamicJson configured

@@ -5,7 +5,12 @@ Companion to the index quick-wins squashed into the InitialCreate migrations
 deferred because they require **code changes** (new background services,
 view definitions, refactors) rather than a migration tweak.
 
-Captured on 2026-04-25 against `master @ 0b00b2f1`.
+Captured on 2026-04-25 against `master @ 0b00b2f1`. Updated 2026-04-25
+after the storage-coherence track (PRs #405–#408) shipped.
+
+Code-locatable items carry a `// TODO(db-audit):` marker at the relevant
+site so a `grep "TODO(db-audit)"` from any storage / DB sweep surfaces
+them in priority order.
 
 ---
 
@@ -195,6 +200,64 @@ created on the write path). Remaining items:
   client looping `MongoClient.Create()` could exhaust file descriptors
   before hitting any visible cap. Tighten to a sane bound for the
   expected service count.
+
+---
+
+## Storage-coherence follow-ups (added 2026-04-25 after PRs #405–#408)
+
+These five items extend the storage-coherence track. The first four are
+code-locatable and carry inline `// TODO(db-audit):` markers. The fifth is
+diffuse and lives only here.
+
+1. **Sweep Register + Validator onto the SorchaConnections cascade** —
+   marker at `src/Core/Sorcha.Register.Storage.MongoDB/MongoRegisterStorageServiceExtensions.cs`.
+   Both services bind MongoDB via the typed `MongoRegisterStorageConfiguration`
+   Options class fed from the bespoke `RegisterStorage:MongoDB` config section,
+   not from `ConnectionStrings:Sorcha:Mongo`. Migration needs either a typed-
+   Options-aware extension to the cascade resolver, or refactoring the
+   IMongoClient registration to read directly from the cascade and letting
+   the Options class carry only database/collection names.
+
+2. **Standardise on `AddDbContextFactory<>` for Tenant + Wallet** — markers at
+   `Sorcha.Tenant.Service/Extensions/ServiceCollectionExtensions.cs` (around
+   `AddDbContext<TenantDbContext>`) and `Sorcha.Wallet.Service/Extensions/
+   WalletServiceExtensions.cs` (around `AddDbContext<WalletDbContext>`).
+   Today these use scoped lifetime; Blueprint and Peer use the factory
+   pattern. Background services in Tenant + Wallet currently work around
+   the scoped lifetime via `IServiceScopeFactory` ceremony — the factory
+   removes that. Touches every consumer of those DbContexts.
+
+3. **Drop the Aspire-named compose aliases** (`ConnectionStrings__redis`,
+   `ConnectionStrings__mongodb`) — marker at the `x-sorcha-connections`
+   anchor in `docker-compose.yml`. Today they're the back-compat layer for
+   `builder.AddRedisClient("redis")` / `GetConnectionString("mongodb")`
+   call sites that haven't been migrated to cascade-aware registrations
+   yet. Once every Program.cs reads via the cascade resolver, the aliases
+   become dead config and can go.
+
+4. **Adopt `ICacheStore` opportunistically** — no single marker site since
+   the goal is consistent Redis access across services. Today four patterns
+   coexist (raw `IConnectionMultiplexer`, Aspire `AddRedis*`, `IDistributedCache`,
+   bespoke `Redis*Store` classes). Each time a service's Redis usage gets
+   touched for unrelated reasons, replace the bespoke pattern with
+   `ICacheStore` injection. Convergence comes from incremental adoption,
+   not a single sweep.
+
+5. **All Tenant pruning sweepers** (5 unindexed growth-prone tables:
+   `WalletLinkChallenges`, `InvitationNonces`, `OrgInvitations`,
+   `RegisterInvitationRecords`, `ParticipantAuditEntries`). Already
+   captured in detail in the **Tenant Service → Pruning gaps** section
+   above; remains the highest-effort and highest-value remaining item.
+
+### Note on `MongoRegisterRepository.EnsureIndexesCreatedAsync`
+
+The original audit flagged this as needing the bootstrap pattern fix
+that PR #404 applied to `MongoSchemaIndexRepository`. On closer inspection
+it already uses the correct double-checked-locking pattern with
+`SemaphoreSlim`. The only difference from `ValidatorRegistry` is that
+`MongoRegisterRepository` lets exceptions propagate from `CreateIndexesAsync`
+(retries on the next call) while `ValidatorRegistry` swallows + logs.
+That's a design choice, not a bug — no change needed.
 
 ---
 
