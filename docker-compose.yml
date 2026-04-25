@@ -18,6 +18,35 @@ x-jwt-env: &jwt-env
   JwtSettings__InstallationName: ${INSTALLATION_NAME:-localhost}
   JwtSettings__SigningKey: ${JWT_SIGNING_KEY:-c29yY2hhLWRvY2tlci1kZXYta2V5LTIwMjUtbWluLTI1Ni1iaXRzLXNlY3VyZQ==}
 
+# Container hardening profile applied to every Sorcha .NET service.
+# - read_only:true     → root filesystem is immutable; named volumes (DataProtection-Keys,
+#                        wallet-keys) and tmpfs mounts remain writable.
+# - cap_drop:[ALL]     → drops every Linux capability. Chiseled .NET images need none —
+#                        they bind to >1024 ports as a non-root user and never call
+#                        privileged syscalls.
+# - no-new-privileges  → blocks setuid binaries from gaining capabilities at exec time.
+#                        Belt-and-braces with cap_drop:ALL.
+# - pids_limit         → stops a runaway service from fork-bombing the host.
+# - tmpfs /tmp         → ASP.NET / .NET runtime needs /tmp for HTTP request bodies,
+#                        Razor pre-compile caches, etc. Sized to 64m (well above
+#                        observed steady-state usage; bump per-service if needed).
+x-app-hardening: &app-hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 200
+  tmpfs:
+    - /tmp:rw,size=64m,mode=1777
+
+# Lighter hardening profile for stateful infrastructure (postgres / mongo / redis).
+# These images run init scripts as root and chown data directories, so cap_drop:ALL
+# and read_only break them. no-new-privileges is the one universally safe knob.
+x-infra-hardening: &infra-hardening
+  security_opt:
+    - no-new-privileges:true
+
 services:
   # ===========================
   # Infrastructure Services
@@ -27,6 +56,9 @@ services:
     image: redis:8-alpine
     container_name: sorcha-redis
     restart: unless-stopped
+    <<: *infra-hardening
+    mem_limit: 512m
+    pids_limit: 100
     # maxmemory caps Redis below the container budget so it can't OOM-kill
     # itself; volatile-lru evicts only TTL-bearing keys when full so the
     # event streams (sorcha:events:*, no TTL) and the few persistent state
@@ -48,6 +80,9 @@ services:
     image: postgres:17-alpine
     container_name: sorcha-postgres
     restart: unless-stopped
+    <<: *infra-hardening
+    mem_limit: 1g
+    pids_limit: 200
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     environment:
@@ -70,6 +105,9 @@ services:
     image: mongo:8
     container_name: sorcha-mongodb
     restart: unless-stopped
+    <<: *infra-hardening
+    mem_limit: 1g
+    pids_limit: 200
     # WiredTiger cache defaults to 50% of HOST RAM, which inside a 1 GB
     # container would be ~30 GB and gets the kernel to OOM-kill mongod
     # the moment the working set grows. Cap at 0.5 GB and leave the rest
@@ -99,6 +137,13 @@ services:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
     container_name: sorcha-aspire-dashboard
     restart: unless-stopped
+    # aspire-dashboard is a Microsoft-shipped image that we don't control. Apply the
+    # safe lighter profile rather than the full app-hardening anchor — the dashboard
+    # writes telemetry working files to its own paths and we'd rather not chase
+    # tmpfs sizing for a dev-time dashboard.
+    <<: *infra-hardening
+    mem_limit: 1g
+    pids_limit: 200
     ports:
       - "${ASPIRE_UI_PORT:-18888}:18888"    # Dashboard UI
       - "${OTLP_GRPC_PORT:-4317}:18889"     # OTLP gRPC endpoint
@@ -120,6 +165,8 @@ services:
     image: sorchadev/blueprint-service:latest
     container_name: sorcha-blueprint-service
     restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
     ports:
       - "${BLUEPRINT_PORT:-5000}:8080"
     environment:
@@ -187,6 +234,8 @@ services:
     image: sorchadev/wallet-service:latest
     container_name: sorcha-wallet-service
     restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
     # No ports published - internal service only, accessed via API Gateway
     environment:
       <<: [*otel-env, *jwt-env]
@@ -241,6 +290,8 @@ services:
     image: sorchadev/register-service:latest
     container_name: sorcha-register-service
     restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
     ports:
       - "${REGISTER_PORT:-5380}:8080"  # Exposed for walkthrough testing
     environment:
@@ -317,6 +368,8 @@ services:
     image: sorchadev/tenant-service:latest
     container_name: sorcha-tenant-service
     restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
     ports:
       - "${TENANT_PORT:-5450}:8080"  # Exposed for direct access during development/bootstrap
     environment:
@@ -378,6 +431,8 @@ services:
     image: sorchadev/peer-service:latest
     container_name: sorcha-peer-service
     restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
     ports:
       - "${PEER_GRPC_PORT:-50051}:5000"  # gRPC for external P2P connections
     environment:
@@ -434,6 +489,8 @@ services:
     image: sorchadev/validator-service:latest
     container_name: sorcha-validator-service
     restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
     ports:
       - "${VALIDATOR_HTTP_PORT:-5800}:8080"   # HTTP REST API and health checks
       - "${VALIDATOR_GRPC_PORT:-5801}:8081"   # gRPC endpoint
@@ -505,6 +562,8 @@ services:
     image: sorchadev/ui-web:latest
     container_name: sorcha-ui-web
     restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
     ports:
       - "${UI_HTTP_PORT:-5400}:8080"   # HTTP
       - "${UI_HTTPS_PORT:-5401}:8443"  # HTTPS
@@ -536,6 +595,8 @@ services:
     image: sorchadev/haip-service:latest
     container_name: sorcha-haip-service
     restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 512m
     # No ports published - accessed via API Gateway
     environment:
       <<: [*otel-env, *jwt-env]
@@ -565,6 +626,8 @@ services:
     image: sorchadev/api-gateway:latest
     container_name: sorcha-api-gateway
     restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 512m
     ports:
       - "${GATEWAY_HTTP_PORT:-80}:8080"    # HTTP ingress
       - "${GATEWAY_HTTPS_PORT:-443}:8443"  # HTTPS ingress
@@ -627,6 +690,8 @@ services:
       dockerfile: src/Apps/Sorcha.McpServer/Dockerfile
     image: sorchadev/mcp-server:latest
     container_name: sorcha-mcp-server
+    <<: *app-hardening
+    mem_limit: 512m
     profiles:
       - tools  # Only starts with --profile tools or docker-compose run
     environment:
