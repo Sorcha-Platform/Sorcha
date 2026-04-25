@@ -7,6 +7,7 @@ using Polly;
 using Polly.CircuitBreaker;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 using StackExchange.Redis;
 
@@ -68,6 +69,10 @@ public static class ServiceCollectionExtensions
 
         // Add email sender
         services.AddTenantEmail(configuration);
+
+        // Demo-environment banner flag (e.g. n1.sorcha.dev). Default off; flipped
+        // on per deployment via the DemoEnvironment__Enabled env var.
+        services.Configure<DemoEnvironmentSettings>(configuration.GetSection("DemoEnvironment"));
 
         // Add FIDO2/WebAuthn services
         services.AddFido2WebAuthn(configuration);

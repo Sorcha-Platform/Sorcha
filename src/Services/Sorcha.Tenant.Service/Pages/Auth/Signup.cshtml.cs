@@ -4,6 +4,8 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Options;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Pages.Auth;
@@ -16,17 +18,26 @@ public class SignupModel : PageModel
 {
     private readonly IRegistrationService _registrationService;
     private readonly ILogger<SignupModel> _logger;
+    private readonly DemoEnvironmentSettings _demoSettings;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SignupModel"/> class.
     /// </summary>
     public SignupModel(
         IRegistrationService registrationService,
-        ILogger<SignupModel> logger)
+        ILogger<SignupModel> logger,
+        IOptions<DemoEnvironmentSettings> demoSettings)
     {
         _registrationService = registrationService;
         _logger = logger;
+        _demoSettings = demoSettings.Value;
     }
+
+    /// <summary>Demo-environment banner flag — when true the page shows the warning notice.</summary>
+    public bool DemoBannerEnabled => _demoSettings.Enabled;
+
+    /// <summary>Demo-environment banner copy — rendered HTML-encoded.</summary>
+    public string DemoBannerMessage => _demoSettings.Message;
 
     /// <summary>
     /// User's display name.

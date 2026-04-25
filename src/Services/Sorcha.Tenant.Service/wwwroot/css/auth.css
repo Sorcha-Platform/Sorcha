@@ -187,3 +187,30 @@
     color: var(--primary-color);
     border-bottom-color: var(--primary-color);
 }
+
+/* Demo-environment notice — informational banner shown above the auth-card on
+   shared demo deployments (e.g. n1.sorcha.dev). Driven by DemoEnvironment:Enabled. */
+.demo-environment-notice {
+    max-width: 460px;
+    margin: 0 auto 1rem;
+    padding: 0.75rem 1rem;
+    background: #fff8e1;
+    border: 1px solid #f0c674;
+    border-radius: 8px;
+    color: #5a4500;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.demo-environment-notice .demo-icon {
+    flex: 0 0 auto;
+    font-size: 1.1rem;
+    line-height: 1.4;
+}
+
+.demo-environment-notice strong {
+    color: #3a2d00;
+}

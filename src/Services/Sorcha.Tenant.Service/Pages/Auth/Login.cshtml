@@ -4,6 +4,14 @@
     ViewData["Title"] = "Sign In";
 }
 
+@if (Model.DemoBannerEnabled)
+{
+    <div class="demo-environment-notice" role="note" aria-label="Demo environment notice">
+        <span class="demo-icon" aria-hidden="true">&#9888;</span>
+        <span><strong>Technology demonstrator.</strong> @Model.DemoBannerMessage</span>
+    </div>
+}
+
 <div class="auth-card">
     <div class="auth-header">
         <h2>Sign In</h2>

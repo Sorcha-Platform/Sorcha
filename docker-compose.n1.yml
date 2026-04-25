@@ -50,6 +50,10 @@ services:
       # (TOTP, Strict) keep their production defaults.
       RateLimiting__PlatformAuthPermitLimit: 500
       RateLimiting__PlatformAuthQueueLimit: 100
+      # n1 is a public demo node — render an informational banner on auth pages
+      # so visitors know the environment may be reset without notice. Plain
+      # informational notice; no consent gate, no friction.
+      DemoEnvironment__Enabled: "true"
 
   peer-service:
     image: sorchadev/peer-service:latest
