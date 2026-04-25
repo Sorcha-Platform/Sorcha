@@ -149,6 +149,55 @@ empty. Audit them once a real register is exercised end-to-end:
 
 ---
 
+## Redis (added 2026-04-25 from Redis/Mongo audit)
+
+The two outage-shaped items (unbounded `maxmemory` and `noeviction` policy)
+shipped in PR #404 alongside the `MongoSchemaIndexRepository` bootstrap
+fix. Items below are quality-of-life improvements deferred until they
+have a concrete trigger.
+
+- **Db isolation** — every service uses db 0 today. Splitting into
+  db 0 (cache), db 1 (event streams), db 2 (sessions) makes
+  `INFO keyspace` and `MEMORY USAGE` per-namespace useful, and lets you
+  `FLUSHDB 0` without nuking streams. Touches every service connection
+  string.
+- **Cache hit-ratio observation** — measured 27.5% on a fresh stack
+  (heavy cold-start noise). Re-measure after a real walkthrough; if it
+  stays low, suspect TTL-too-short or churning keys.
+- **AOF for the event streams** — current `appendonly: no` means a Redis
+  crash loses any stream events written between RDB snapshots
+  (~10-min intervals). If event-driven sync is load-bearing for register
+  consistency, switch to `appendonly yes` with `appendfsync everysec`,
+  scoped only to the keys that need it (or accept the loss as the price
+  of cache-only Redis and drive durability from the Postgres ledger).
+
+---
+
+## MongoDB (added 2026-04-25)
+
+PR #404 fixed the schemaIndex bootstrap bug (indexes were never being
+created on the write path). Remaining items:
+
+- **`SearchAsync` regex → `$text`** — `MongoSchemaIndexRepository.SearchAsync`
+  filters with `BsonRegularExpression` (regex) rather than the
+  `$text` operator that the now-created `idx_text_search` index serves.
+  At 1,390 docs the difference is sub-millisecond, but as the schema
+  catalogue grows this becomes a collection scan. Behaviour change
+  (text-index uses word stems, not substring match) so it's a product
+  decision, not just a perf one.
+- **Per-register collection audit** — `MongoRegisterRepository` defines
+  comprehensive indexes on `transactions`, `dockets`, `receipts`
+  (`TxId` unique, `SenderWallet`, `TimeStamp DESC`, `DocketNumber`,
+  `MetaData.TransactionType`, revocation index, etc.) but per-register
+  databases are lazy-created. Verify these all materialise on first use
+  once a real register is exercised end-to-end.
+- **`maxIncomingConnections: 500`** — current default is ~420k. A buggy
+  client looping `MongoClient.Create()` could exhaust file descriptors
+  before hitting any visible cap. Tighten to a sane bound for the
+  expected service count.
+
+---
+
 ## Process notes
 
 - All quick-win indexes were squashed into the InitialCreate migration

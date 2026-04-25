@@ -27,6 +27,11 @@ services:
     image: redis:8-alpine
     container_name: sorcha-redis
     restart: unless-stopped
+    # maxmemory caps Redis below the container budget so it can't OOM-kill
+    # itself; volatile-lru evicts only TTL-bearing keys when full so the
+    # event streams (sorcha:events:*, no TTL) and the few persistent state
+    # keys (token-revocation, idempotency anchors) never get dropped.
+    command: ["redis-server", "--maxmemory", "384mb", "--maxmemory-policy", "volatile-lru", "--save", "3600", "1", "300", "100", "60", "10000"]
     ports:
       - "${REDIS_PORT:-16379}:6379"
     volumes:
@@ -65,6 +70,11 @@ services:
     image: mongo:8
     container_name: sorcha-mongodb
     restart: unless-stopped
+    # WiredTiger cache defaults to 50% of HOST RAM, which inside a 1 GB
+    # container would be ~30 GB and gets the kernel to OOM-kill mongod
+    # the moment the working set grows. Cap at 0.5 GB and leave the rest
+    # of the container budget for connections + ingest.
+    command: ["mongod", "--auth", "--bind_ip_all", "--wiredTigerCacheSizeGB", "0.5"]
     ports:
       - "${MONGODB_PORT:-27017}:27017"
     environment:
