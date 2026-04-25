@@ -401,13 +401,21 @@ function Get-SorchaSecrets {
     # Profile overrides — global `_profiles.<profile>` wins over walkthrough
     # base keys. Example: the n1 deployment has a different system-admin
     # email/password from the local-Docker bootstrap.
-    if ($Profile -and $allSecrets._profiles) {
-        $profileOverrides = $allSecrets._profiles.$Profile
-        if ($profileOverrides) {
-            foreach ($prop in $profileOverrides.PSObject.Properties) {
-                $result[$prop.Name] = $prop.Value
+    if ($Profile) {
+        if (-not $allSecrets._profiles) {
+            Write-Warning "passwords.json has no _profiles block but profile '$Profile' was requested. Falling back to base credentials — re-run initialize-secrets.ps1 to add profile support."
+        }
+        else {
+            $profileOverrides = $allSecrets._profiles.$Profile
+            if ($profileOverrides) {
+                foreach ($prop in $profileOverrides.PSObject.Properties) {
+                    $result[$prop.Name] = $prop.Value
+                }
+                Write-WtInfo "Applied profile overrides from _profiles.$Profile"
             }
-            Write-WtInfo "Applied profile overrides from _profiles.$Profile"
+            else {
+                Write-Warning "Profile '$Profile' not found in _profiles. Falling back to base credentials — the walkthrough may authenticate against the wrong stack."
+            }
         }
     }
 
