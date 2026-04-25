@@ -23,7 +23,7 @@ namespace Sorcha.ServiceDefaults.Storage;
 /// trigger fail-fast.
 /// </para>
 /// </remarks>
-public static class AuditedStorageInterfaces
+internal static class AuditedStorageInterfaces
 {
     /// <summary>
     /// Fully-qualified names of the storage interfaces audited by feature 113.

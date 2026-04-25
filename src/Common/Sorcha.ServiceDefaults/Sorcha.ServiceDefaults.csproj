@@ -30,4 +30,8 @@
     <ProjectReference Include="..\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.ServiceDefaults.Tests" />
+  </ItemGroup>
+
 </Project>

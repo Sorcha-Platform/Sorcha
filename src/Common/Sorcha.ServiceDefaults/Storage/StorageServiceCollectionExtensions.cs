@@ -20,7 +20,9 @@ public static class StorageServiceCollectionExtensions
     /// <see cref="StorageEnforcementHostedService"/>.
     /// </summary>
     /// <remarks>
-    /// Idempotent — safe to call multiple times. Services should resolve
+    /// Idempotent — safe to call multiple times. The first call wires the
+    /// log, metrics, health check, and enforcement hosted service; subsequent
+    /// calls are no-ops. Services should resolve
     /// <see cref="IStorageRegistrationLog"/> via DI in their storage-wiring
     /// helpers and call <c>RegisterPersistent</c> / <c>RegisterInMemory</c>
     /// at the matching <c>AddScoped</c> / <c>AddSingleton</c> sites.
@@ -29,11 +31,21 @@ public static class StorageServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddSingleton<IStorageRegistrationLog, StorageRegistrationLog>();
-        services.TryAddSingleton<StorageRegistrationMetrics>();
+        // Sentinel: presence of IStorageRegistrationLog means this method has already run.
+        // Required because AddHealthChecks().AddCheck<T>(name, ...) appends unconditionally —
+        // duplicate calls would register two checks with the same name.
+        if (services.Any(d => d.ServiceType == typeof(IStorageRegistrationLog)))
+        {
+            return services;
+        }
+
+        services.AddSingleton<IStorageRegistrationLog, StorageRegistrationLog>();
+        services.AddSingleton<StorageRegistrationMetrics>();
 
         // Force eager construction of the metrics class so its observable instruments are registered
-        // with the Meter even if no caller resolves it directly.
+        // with the Meter even if no caller resolves it directly. AddHostedService<T> is itself
+        // dedup'd by TryAddEnumerable (service+impl type), but we sentinel-guard the whole method
+        // for the AddCheck case anyway.
         services.AddHostedService<StorageMetricsActivator>();
 
         services.AddHealthChecks()

@@ -50,9 +50,6 @@ public static class Extensions
             http.AddServiceDiscovery();
         });
 
-        // Feature 113 — storage registration log, health check, metrics, and fail-fast hosted service.
-        // Service-specific storage wiring resolves IStorageRegistrationLog and calls Register* at
-        // the matching AddScoped / AddSingleton sites.
         builder.Services.AddStorageRegistration();
 
         return builder;
