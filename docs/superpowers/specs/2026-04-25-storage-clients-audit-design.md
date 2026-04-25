@@ -366,24 +366,34 @@ expiry, idempotent missing-key behaviour, and CAS races.
 
 ## Observability
 
-One Prometheus metric family across all axes, plus structured log fields:
+Five OpenTelemetry instruments across three new meter sources, plus
+structured log fields. Metrics flow through the existing
+`Sorcha.ServiceDefaults` `AddOpenTelemetry().WithMetrics()` pipeline and
+export via OTLP to the Aspire dashboard. No Prometheus dependency
+introduced.
 
 ```
-sorcha_storage_provider_info{service, interface, implementation, backend}   = 1
-  (gauge, one per registered interface, set at startup)
+Meter "Sorcha.Storage":
+  sorcha_storage_provider_info{service, interface, implementation, backend}
+    (observable gauge, one observation per registered interface, set at startup)
+  sorcha_storage_fallback_active{service, interface}
+    (observable gauge; = 1 when an audited interface is on InMemory; direct alerting target)
 
-sorcha_validator_mempool_size{register_id, state}
-  (gauge; state ∈ {available, claimed})
+Meter "Sorcha.Validator.Mempool":
+  sorcha_validator_mempool_size{register_id, state}
+    (observable gauge; state ∈ {available, claimed})
+  sorcha_validator_mempool_lease_expired_total{register_id}
+    (counter; high value = validator dying mid-seal or lease too short)
 
-sorcha_validator_mempool_lease_expired_total{register_id}
-  (counter; high value = validator dying mid-seal or lease too short)
-
-sorcha_haip_nonce_consume_total{store, outcome}
-  (counter; store ∈ {nonce, preauth, presentation}, outcome ∈ {success, miss})
-
-sorcha_storage_fallback_active{service, interface}
-  (gauge; = 1 when an audited interface is on InMemory; direct alerting target)
+Meter "Sorcha.Haip.Nonces":
+  sorcha_haip_nonce_consume_total{store, outcome}
+    (counter; store ∈ {nonce, preauth, presentation}, outcome ∈ {success, miss})
 ```
+
+Each new meter source is registered via `metrics.AddMeter("...")` in
+`Sorcha.ServiceDefaults.Extensions.ConfigureOpenTelemetry`, alongside the
+existing `Sorcha.Peer.Service` and `Sorcha.Blueprint.Service.Presentation`
+entries.
 
 Structured log fields on every InMemory-fallback warning: `service`,
 `interface`, `implementation`, `reason`, `environment`.

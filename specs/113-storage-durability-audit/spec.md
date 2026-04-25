@@ -73,16 +73,16 @@ A developer adds a new domain semantic to a service-specific store interface (e.
 
 ### User Story 5 — Operators can observe storage provider state and validator mempool depth (Priority: P3)
 
-A Sorcha operator wants to know at a glance: which services in this deployment are running on persistent backends, which (if any) are on in-memory fallbacks, and how deep is the validator mempool right now. Today there are no metrics for any of this. After this feature, a dashboard alert can fire on "any audited interface in any service is on an in-memory backend in Staging or Production".
+A Sorcha operator wants to know at a glance: which services in this deployment are running on persistent backends, which (if any) are on in-memory fallbacks, and how deep is the validator mempool right now. Today there are no metrics for any of this. After this feature, the Aspire dashboard exposes the storage-provider state and mempool depth for every service, and an OTLP-fed alerting backend can fire on "any audited interface in any service is on an in-memory backend in Staging or Production".
 
 **Why this priority**: Operational visibility, not correctness — but cheap given the helper is already in the registration code path. Ship in the same cycle for the small marginal effort.
 
-**Independent Test**: Boot a service with one persistent and one in-memory audited interface. Scrape `/metrics`. Confirm the gauges report the expected `1` for the in-memory interface and the persistent one's backend label is correct. Boot the validator with traffic and confirm `sorcha_validator_mempool_size` updates as transactions are claimed and confirmed.
+**Independent Test**: Boot a service with one persistent and one in-memory audited interface. Open the Aspire dashboard at `http://localhost:18888` and inspect the metric explorer (or query the OTLP endpoint directly). Confirm the gauges report the expected `1` for the in-memory interface and the persistent one's `backend` tag is correct. Boot the validator with traffic and confirm `sorcha_validator_mempool_size` updates as transactions are claimed and confirmed.
 
 **Acceptance Scenarios**:
 
-1. **Given** any service has booted, **When** an operator scrapes `/metrics`, **Then** `sorcha_storage_provider_info{service, interface, implementation, backend}` is exposed for every registered audited interface.
-2. **Given** an audited interface is on an in-memory backend, **When** an operator scrapes `/metrics`, **Then** `sorcha_storage_fallback_active{service, interface}=1` for that interface and `0` for persistent ones — directly alertable.
+1. **Given** any service has booted, **When** an operator inspects the Aspire dashboard's metric explorer, **Then** `sorcha_storage_provider_info{service, interface, implementation, backend}` is observable for every registered audited interface.
+2. **Given** an audited interface is on an in-memory backend, **When** an operator queries `sorcha_storage_fallback_active`, **Then** the gauge reports `1` for that interface and `0` for persistent ones — directly alertable.
 3. **Given** the validator is sealing dockets, **When** transactions are claimed and confirmed, **Then** `sorcha_validator_mempool_size{register_id, state}` updates accordingly with `state ∈ {available, claimed}`, and `sorcha_validator_mempool_lease_expired_total` increments when a lease expires unconfirmed.
 
 ---
@@ -139,11 +139,30 @@ A Sorcha operator wants to know at a glance: which services in this deployment a
 
 **Observability (Axis v — cross-cutting)**
 
-- **FR-025**: System MUST expose a Prometheus gauge `sorcha_storage_provider_info` with labels `service`, `interface`, `implementation`, and `backend`, with one record per registered audited interface set at startup.
-- **FR-026**: System MUST expose a Prometheus gauge `sorcha_storage_fallback_active` with labels `service` and `interface`, set to 1 when an audited interface is on an in-memory backend and 0 when persistent.
-- **FR-027**: System MUST expose a Prometheus gauge `sorcha_validator_mempool_size` with labels `register_id` and `state` (where `state ∈ {available, claimed}`).
-- **FR-028**: System MUST expose a Prometheus counter `sorcha_validator_mempool_lease_expired_total` with label `register_id` that increments whenever the expiry sweep auto-releases a stale lease.
-- **FR-029**: System MUST expose a Prometheus counter `sorcha_haip_nonce_consume_total` with labels `store ∈ {nonce, preauth, presentation}` and `outcome ∈ {success, miss}`.
+All metrics are emitted through the OpenTelemetry `Meter` API (existing
+`Sorcha.ServiceDefaults` `AddOpenTelemetry().WithMetrics()` pipeline) and
+exported via OTLP to the Aspire dashboard. No Prometheus dependency is
+introduced; Aspire is the single observability surface.
+
+- **FR-025**: System MUST emit an OpenTelemetry observable gauge
+  `sorcha_storage_provider_info` (meter `Sorcha.Storage`) with tags
+  `service`, `interface`, `implementation`, and `backend`. One observation
+  per registered audited interface, set once at startup.
+- **FR-026**: System MUST emit an OpenTelemetry observable gauge
+  `sorcha_storage_fallback_active` (meter `Sorcha.Storage`) with tags
+  `service` and `interface`. Value 1 when an audited interface is on an
+  in-memory backend; 0 when persistent.
+- **FR-027**: System MUST emit an OpenTelemetry observable gauge
+  `sorcha_validator_mempool_size` (meter `Sorcha.Validator.Mempool`) with
+  tags `register_id` and `state` (where `state ∈ {available, claimed}`).
+- **FR-028**: System MUST emit an OpenTelemetry counter
+  `sorcha_validator_mempool_lease_expired_total` (meter
+  `Sorcha.Validator.Mempool`) with tag `register_id`. Increments whenever
+  the expiry sweep auto-releases a stale lease.
+- **FR-029**: System MUST emit an OpenTelemetry counter
+  `sorcha_haip_nonce_consume_total` (meter `Sorcha.Haip.Nonces`) with tags
+  `store ∈ {nonce, preauth, presentation}` and
+  `outcome ∈ {success, miss}`.
 
 ### Key Entities
 
@@ -160,7 +179,7 @@ A Sorcha operator wants to know at a glance: which services in this deployment a
 - **SC-002**: A validator process restart loses zero verified-but-not-yet-sealed transactions when running on the persistent backend. Verified by killing the validator after enqueue and before docket-build, restarting, and confirming all enqueued transactions are sealed in the next docket cycle.
 - **SC-003**: Under 100 concurrent consumes of a single c_nonce or pre-auth code, exactly one consume succeeds. Verified by automated race tests that fail today's implementation and pass the new one.
 - **SC-004**: A developer changing the contract of any audited store interface (e.g., adding a new query method or invariant) cannot merge a change that updates only one of the two implementations — the contract-test suite for the unchanged implementation fails the build.
-- **SC-005**: Operators can write a single dashboard alert ("any service in Staging or Production has any audited interface on in-memory") that catches misconfigured deployments using only the metrics exposed by this feature.
+- **SC-005**: Operators can write a single alert rule against the OTLP-fed metrics backend ("any service in Staging or Production has any audited interface on in-memory") that catches misconfigured deployments using only the OpenTelemetry metrics exposed by this feature.
 - **SC-006**: The validator's HA-replica deployment shape (two replicas sharing one validator identity, one active and one standby) becomes possible without code changes outside this feature; demonstrated by a documented test that kills the active replica mid-claim and confirms the standby completes the seal after the lease expires.
 - **SC-007**: Each of the eight rollout PRs is independently mergeable and revertable. Verified by the PR sequence shipping in order with no PR depending on a later PR's behaviour for its own tests to pass.
 - **SC-008**: No deployed service that previously ran on a persistent backend regresses to in-memory after this feature ships. Verified by the `sorcha_storage_fallback_active` gauge reporting 0 for all audited interfaces in Staging and Production after each PR's deploy.

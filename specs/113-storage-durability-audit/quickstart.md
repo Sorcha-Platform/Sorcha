@@ -201,37 +201,47 @@ The same drift-then-fail experiment works for `IActionStore`,
 
 ---
 
-## Scenario E — Operator metrics are exposed (US5)
+## Scenario E — Operator metrics are observable via Aspire (US5)
 
-Goal: prove that the new Prometheus metrics scrape correctly.
+Goal: prove that the new OpenTelemetry metrics flow to the Aspire dashboard.
 
-With the AppHost running:
-
-```bash
-curl -s http://localhost:5001/metrics | grep -E '^sorcha_(storage|validator_mempool|haip_nonce)'
-```
-
-**Expected (excerpt):**
+With the AppHost running, open the Aspire dashboard:
 
 ```
-# HELP sorcha_storage_provider_info Storage interface provider registration
-# TYPE sorcha_storage_provider_info gauge
-sorcha_storage_provider_info{service="wallet",interface="IWalletRepository",implementation="EfCoreWalletRepository",backend="postgres"} 1
-sorcha_storage_provider_info{service="wallet",interface="IAtomicDistributedCache",implementation="RedisAtomicDistributedCache",backend="redis"} 1
-
-# HELP sorcha_storage_fallback_active Set when an audited interface is on an in-memory backend
-# TYPE sorcha_storage_fallback_active gauge
-sorcha_storage_fallback_active{service="wallet",interface="IWalletRepository"} 0
-
-# HELP sorcha_validator_mempool_size Verified transactions in the mempool
-# TYPE sorcha_validator_mempool_size gauge
-sorcha_validator_mempool_size{register_id="reg-abc",state="available"} 4
-sorcha_validator_mempool_size{register_id="reg-abc",state="claimed"} 1
+http://localhost:18888
 ```
+
+Navigate to **Metrics** in the left nav, then select any service from the
+resource dropdown. In the metric explorer, search for `sorcha_storage` —
+both `sorcha_storage_provider_info` and `sorcha_storage_fallback_active`
+should appear with one observation per audited interface registered by that
+service.
+
+**Expected observations** (Wallet service, healthy config):
+
+| Instrument                       | Tags                                                                                                | Value |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- | ----- |
+| `sorcha_storage_provider_info`   | `service=wallet, interface=IWalletRepository, implementation=EfCoreWalletRepository, backend=postgres` | 1     |
+| `sorcha_storage_provider_info`   | `service=wallet, interface=IAtomicDistributedCache, implementation=RedisAtomicDistributedCache, backend=redis` | 1     |
+| `sorcha_storage_fallback_active` | `service=wallet, interface=IWalletRepository`                                                       | 0     |
+
+Switch to the Validator service and search for `sorcha_validator_mempool` —
+the size gauge updates as transactions are claimed and confirmed:
+
+| Instrument                                       | Tags                                          | Value      |
+| ------------------------------------------------ | --------------------------------------------- | ---------- |
+| `sorcha_validator_mempool_size`                  | `register_id=reg-abc, state=available`        | (live)     |
+| `sorcha_validator_mempool_size`                  | `register_id=reg-abc, state=claimed`          | (live)     |
+| `sorcha_validator_mempool_lease_expired_total`   | `register_id=reg-abc`                         | counter    |
 
 Run the validator-restart smoke from Scenario B and watch
 `sorcha_validator_mempool_lease_expired_total` increment if you kill the
 validator mid-claim.
+
+If your environment has an OTLP collector forwarding to a long-term metrics
+backend, the same instruments are queryable there — the alert rule for
+"any audited interface on in-memory in Staging or Production" goes against
+that backend.
 
 ---
 

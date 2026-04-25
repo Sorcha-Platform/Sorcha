@@ -25,8 +25,13 @@ dependencies. No behavioural change for end users.
 **Language/Version**: C# 14 / .NET 10
 **Primary Dependencies**: .NET Aspire 13, StackExchange.Redis (existing
 `IConnectionMultiplexer`), `IDistributedCache` Redis provider, EF Core 10,
-MongoDB.Driver, FluentValidation, OpenTelemetry, prometheus-net (existing in
-ServiceDefaults)
+MongoDB.Driver, FluentValidation, OpenTelemetry (existing in ServiceDefaults
+via `AddOpenTelemetry().WithMetrics()` — metrics emitted through `Meter` API
+and exported via OTLP to the Aspire dashboard; no Prometheus dependency),
+`SorchaConnectionsExtensions` (existing in ServiceDefaults since master
+`340bb880` / #405; adopted by Tenant in #407 and by Wallet/Blueprint/Peer
+in #408 — registration-log calls integrate with the existing
+`hasResolverConfig`-guarded fallback pattern rather than replacing it)
 **Storage**: PostgreSQL (Wallet, Blueprint, Tenant), MongoDB (Register), Redis
 (cache, streams, new mempool + atomic cache), all already provisioned in every
 deployment
@@ -47,7 +52,7 @@ beyond a single development cycle. Pre-existing flaky test classes
 errors) must be filtered around, not fixed by this feature.
 **Scale/Scope**: 6 audited interfaces, 5 services touched (Wallet, Register,
 Blueprint, Validator, HAIP), ~5 contract test bases with 10–12 subclass
-fixtures total, 5 Prometheus metric series, 1 new shared helper in
+fixtures total, 5 OpenTelemetry instruments across 3 new meter sources, 1 new shared helper in
 `Sorcha.ServiceDefaults`, 1 new common project (`Sorcha.AtomicCache` or shim
 inside `Sorcha.ServiceDefaults`).
 
@@ -66,7 +71,7 @@ Sorcha Project Constitution v1.1.0 — eight principles. Pre-Phase-0 evaluation:
 | V | Code Quality | ✅ Pass | C# 14 / .NET 10, async/await, DI throughout, nullable reference types stay on, no compiler warnings. |
 | VI | Blueprint Creation Standards | ✅ N/A | No blueprint changes. |
 | VII | Domain-Driven Design | ✅ Pass | No domain-model changes. Lease and registration-record are infrastructure types, not domain types. |
-| VIII | Observability by Default | ✅ Pass + reinforces | Five new Prometheus metric families. Structured logging (no string interpolation). Health check `storage-providers` joins existing endpoints. |
+| VIII | Observability by Default | ✅ Pass + reinforces | Five new OpenTelemetry instruments across three new meter sources, exported via OTLP to the Aspire dashboard (no Prometheus dependency). Structured logging (no string interpolation). Health check `storage-providers` joins existing endpoints. |
 
 **Result**: PASS. No violations. Complexity Tracking section can be omitted.
 
@@ -176,7 +181,7 @@ re-evaluating the eight constitution principles:
 | V | Code Quality | ✅ Pass | Confirmed: C# 14 / .NET 10, async/await on all I/O, DI throughout, nullable reference types stay on. No compiler warnings expected — the new code is greenfield with the existing project's analyzer settings inherited. |
 | VI | Blueprint Creation Standards | ✅ N/A | No blueprint changes. |
 | VII | Domain-Driven Design | ✅ Pass | Confirmed: `StorageRegistrationRecord`, `VerifiedTransactionLease`, atomic-cache entries are infrastructure types, not domain types. Existing domain language (Register, Transaction, Docket) untouched. |
-| VIII | Observability by Default | ✅ Pass | Reinforced. Five new Prometheus metric families documented in data-model.md §9 with cardinality boundaries. Structured logging via `[STORAGE-FALLBACK]` banner field. Health check `storage-providers` joins existing `/health` endpoints. |
+| VIII | Observability by Default | ✅ Pass | Reinforced. Five new OpenTelemetry instruments across three new meter sources documented in data-model.md §9 with cardinality boundaries. Structured logging via `[STORAGE-FALLBACK]` banner field. Health check `storage-providers` joins existing `/health` endpoints. |
 
 **Result**: PASS. No new violations introduced by Phase 1 design. Complexity
 Tracking remains empty.

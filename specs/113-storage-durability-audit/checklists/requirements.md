@@ -36,7 +36,7 @@ acceptable deviations because they conflict with the nature of the feature:
 
 1. **Implementation-details items.** The spec mentions C# interface names
    (`IWalletRepository`, `IVerifiedTransactionQueue`, etc.), specific
-   technologies (Redis, Lua, Prometheus), and configuration keys
+   technologies (Redis, Lua, OpenTelemetry / Aspire), and configuration keys
    (`Storage:AllowInMemoryInProduction`, `ValidatorMempool:LeaseDurationSeconds`).
    These are not incidental implementation details — they *are* the user-facing
    surface for this feature, because the audience is Sorcha operators and

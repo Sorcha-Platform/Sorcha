@@ -326,7 +326,12 @@ in this feature:
   in-memory stores carry domain-rich semantics that the generic
   `InMemoryRepository<T>` cannot express. Keeping them is the right call;
   contract tests (Axis iv) cover the parity concern that drove the original
-  refactor instinct.
+  refactor instinct. **Update post-rebase**: PR #406 (`50b8d93d`) deleted the
+  `IRepository<T>` / `EFCoreRepository<T>` generic abstractions entirely —
+  zero consumers existed across the codebase. This validates the decision:
+  the generic abstraction was never the right shape, and the surviving
+  abstractions (`IDocumentStore`, `IWormStore`, `ICacheStore`, `IVerifiedCache`)
+  remain in active use and are unaffected by this feature.
 - **Multi-active validator sealing.** Out of scope per spec.
 - **`InMemoryBlueprintStore` / `InMemoryPublishedBlueprintStore` migration.**
   These are caches that reload from the persistent transaction log. They

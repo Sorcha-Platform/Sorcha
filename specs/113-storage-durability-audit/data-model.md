@@ -210,18 +210,26 @@ default that callers may override per `ClaimAsync` call.
 
 ---
 
-## 9. Metrics labels (cross-cutting)
+## 9. OpenTelemetry metric tags (cross-cutting)
 
-For the metrics defined in spec FR-025–FR-029. Documented here so callers
-have a single source for cardinality:
+For the metrics defined in spec FR-025–FR-029. All metrics are emitted via
+the OpenTelemetry `Meter` API (existing `Sorcha.ServiceDefaults`
+`AddOpenTelemetry().WithMetrics()` pipeline) and exported via OTLP to the
+Aspire dashboard. New meter sources must be registered via
+`metrics.AddMeter("...")` in `Sorcha.ServiceDefaults.Extensions.cs` alongside
+the existing `Sorcha.Peer.Service` and `Sorcha.Blueprint.Service.Presentation`
+entries.
 
-| Metric                                            | Label set                                                                       |
-| ------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `sorcha_storage_provider_info`                    | `service`, `interface`, `implementation`, `backend`                             |
-| `sorcha_storage_fallback_active`                  | `service`, `interface`                                                          |
-| `sorcha_validator_mempool_size`                   | `register_id`, `state` (`available` \| `claimed`)                               |
-| `sorcha_validator_mempool_lease_expired_total`    | `register_id`                                                                   |
-| `sorcha_haip_nonce_consume_total`                 | `store` (`nonce` \| `preauth` \| `presentation`), `outcome` (`success` \| `miss`) |
+| Instrument                                        | Type             | Meter source                  | Tag set                                                                         |
+| ------------------------------------------------- | ---------------- | ----------------------------- | ------------------------------------------------------------------------------- |
+| `sorcha_storage_provider_info`                    | Observable gauge | `Sorcha.Storage`              | `service`, `interface`, `implementation`, `backend`                             |
+| `sorcha_storage_fallback_active`                  | Observable gauge | `Sorcha.Storage`              | `service`, `interface`                                                          |
+| `sorcha_validator_mempool_size`                   | Observable gauge | `Sorcha.Validator.Mempool`    | `register_id`, `state` (`available` \| `claimed`)                               |
+| `sorcha_validator_mempool_lease_expired_total`    | Counter          | `Sorcha.Validator.Mempool`    | `register_id`                                                                   |
+| `sorcha_haip_nonce_consume_total`                 | Counter          | `Sorcha.Haip.Nonces`          | `store` (`nonce` \| `preauth` \| `presentation`), `outcome` (`success` \| `miss`) |
 
-`register_id` is the only high-cardinality label and matches the cardinality
-already used by existing Sorcha register metrics.
+`register_id` is the only high-cardinality tag and matches the cardinality
+already used by existing Sorcha register metrics. Naming convention follows
+existing project meter names (dot-separated namespace) for the meter source;
+metric instrument names use snake_case to match the existing
+`sorcha_*` instrument naming used by Feature 111 presentation metrics.
