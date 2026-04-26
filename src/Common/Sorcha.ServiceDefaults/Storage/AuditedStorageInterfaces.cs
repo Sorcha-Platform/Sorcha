@@ -38,10 +38,12 @@ internal static class AuditedStorageInterfaces
         // Verified: matches typeof(Sorcha.Register.Core.Storage.IRegisterRepository).FullName.
         "Sorcha.Register.Core.Storage.IRegisterRepository",
 
-        // TODO(audit-fqn): Verify against typeof(IInstanceStore).FullName at adoption time.
+        // Blueprint Service — workflow instances.
+        // Verified: matches typeof(Sorcha.Blueprint.Service.Storage.IInstanceStore).FullName.
         "Sorcha.Blueprint.Service.Storage.IInstanceStore",
 
-        // TODO(audit-fqn): Verify against typeof(IActionStore).FullName at adoption time.
+        // Blueprint Service — per-action state.
+        // Verified: matches typeof(Sorcha.Blueprint.Service.Storage.IActionStore).FullName.
         "Sorcha.Blueprint.Service.Storage.IActionStore",
 
         // TODO(audit-fqn): Verify against typeof(IVerifiedTransactionQueue).FullName at adoption time.
