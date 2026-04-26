@@ -544,6 +544,89 @@ await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
 
 ---
 
+## Citizen Wallet PWA API (Feature 114) — server-side surface
+
+Server-side endpoints + cryptographic primitives for the citizen-facing Blazor WASM wallet (in flight on branch `114-citizen-wallet-pwa`, PR #420). The wallet PWA + reference verifier projects do not yet exist; everything documented below is *server-side* and live in `src`.
+
+### Endpoints
+
+#### Wallet Service — public (citizen JWT, audience `sorcha:citizen-wallet`)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/wallet/devices/enrol` | Enrol a device — derives holder key (slot 108), issues device-delegation SD-JWT VC, allocates status-list slot, registers device with Tenant Service. Strict rate limit. |
+
+#### Wallet Service — public (anonymous, verifier-facing)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/wallet/status/{orgId:guid}/citizen-devices/{listId:int}.statuslist+jwt` | IETF Token Status List 2024 JWT for the org/list. `Cache-Control: public, max-age=21600`. |
+
+#### Tenant Service — internal (service principal, `RequireService` policy)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/internal/platform-user-devices` | Bridge endpoint called by Wallet Service after issuing a delegation credential. Idempotent on `(PlatformUserId, DevicePublicJwkThumbprint)`. |
+
+### Key Models
+
+- **`PlatformUserDevice`** (Tenant Service) — `Active|Revoked` status, RFC 7638 thumbprint (43 chars), citizen-editable `Label`, `DelegationExpiresAt` + `DelegationCredentialJti` rotated on renewal, `StatusListIndex` allocated from the org's pool. Cascade delete from `PlatformUser`.
+- **`CitizenDeviceStatusList`** (Wallet Service) — packed bitstring (default 32 768 bits / 4 KB), `RevokedCount`, `LastAllocatedIndex` watermark, `SignedJwt` cached column. One row per `(OrganizationId, ListId)`; lists roll over at capacity.
+- **`CitizenWalletSyncCursor`** (Wallet Service) — per-`(PlatformUserId, PlatformUserDeviceId)` `LastEventSeq` for the not-yet-implemented `/sync` endpoint.
+- **`DeviceDelegationCredential`** (`Sorcha.CitizenWallet.Abstractions`) — typed wrapper around the SD-JWT VC payload. `iss=did:sorcha:holder:{thumbprint}`, `sub=did:sorcha:device:{thumbprint}`, `vct=https://sorcha.dev/vc/citizen-device-delegation/v1`, `cnf.jwk` = device's EC P-256 public JWK, `status.status_list = { uri, idx }`. Lifetime 12 months.
+
+### Key Services
+
+- **`IHolderKeyService`** / `HolderKeyService` (Wallet Service) — derives the citizen's per-PlatformUser holder key under `sorcha:citizen-holder` (slot 108, BIP44 path `m/44'/0'/0'/0/108`). Public JWK + RFC 7638 thumbprint cached in Redis (24 h TTL). PQC wallets derive a classical co-key (ES256/Ed25519). Signing always re-derives + zeroises after use.
+- **`ICitizenStatusListPublisher`** / `CitizenStatusListPublisher` (Wallet Service) — owns the bitstring + signed-JWT lifecycle. `AllocateIndexAsync(orgId, signingWallet)` → monotonic `(listId, idx)`. `FlipAsync` is idempotent. Token Status List 2024 wire format. Default 32 768 capacity, 24 h list lifetime, signed by slot-109 key.
+- **`CitizenStatusListPublisherService`** (Wallet Service `BackgroundService`) — hourly tick, scans for lists within 1 h of `exp` and re-signs each via `RegenerateAsync`. Singleton with scoped deps via `IServiceScopeFactory`. Internal `RunOnceAsync` test seam. Closes the v1 freshness gap when no revocations occur.
+- **`IDeviceDelegationIssuer`** / `DeviceDelegationIssuer` (Wallet Service) — pure composition over `IHolderKeyService` + `ICitizenStatusListPublisher`. Issues the SD-JWT VC payload signed with the holder key.
+- **`IOrgStatusSigningWalletResolver`** / `OrgStatusSigningWalletResolver` (Wallet Service) — lazily provisions a per-org ED25519 system wallet (owner=`system:citizen-status:{orgId}`, tenant=`system`) on first call. Every list signed by this wallet's slot-109 key — verifiers pin one kid per org rather than per citizen.
+- **`IPlatformUserDeviceService`** / `PlatformUserDeviceService` (Tenant Service) — single `RegisterAsync`, idempotent on `(PlatformUserId, DevicePublicJwkThumbprint)`. Refreshes delegation fields on retry; preserves `Id` + `EnrolledAt` so the wallet's deviceId stays stable.
+- **`IPlatformUserDeviceClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.PlatformUserDevice`) — Wallet→Tenant service-to-service HTTP client. Uses `ServiceAuthClient` token.
+- **`ICitizenWalletClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.CitizenWallet`) — forward HTTP client for the citizen wallet PWA (and tests / reference verifier setup) to call Wallet Service. Caller-supplied JWT; no service-principal injection.
+
+### Derivation slots (`SorchaDerivationPaths`)
+
+| Slot | Context | Path | Purpose |
+|------|---------|------|---------|
+| 108 | `sorcha:citizen-holder` | `m/44'/0'/0'/0/108` | Per-citizen holder identity. Issuers bind credentials to this key via `cnf`; signs device delegation credentials. |
+| 109 | `sorcha:citizen-status-signing` | `m/44'/0'/0'/0/109` | Per-org status-list signing key. One pinnable kid per org. |
+
+### `WalletHub` (SignalR)
+
+Hub URL `/hubs/wallet`. `[Authorize(AuthenticationSchemes = "Bearer")]`. On connect, the bearer JWT's `platform_user_id` claim places the connection in group `wallet:platform-user:{guid:N}` so server-side broadcasters target a single citizen across all their enrolled devices. Public helpers `WalletHub.PlatformUserIdClaim` and `WalletHub.GroupNameFor(Guid)`. Server-to-client methods land here as features need them (US3 `DeviceRevoked(Guid)`, US4 `CredentialAvailable(string)`).
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/Common/Sorcha.CitizenWallet.Abstractions/` | DTOs, derivation context constants, VCT URIs, validators, embedded JSON schema |
+| `src/Core/Sorcha.Wallet.Portable/Domain/Entities/CitizenDeviceStatusList.cs` + `CitizenWalletSyncCursor.cs` | Wallet Service entities |
+| `src/Services/Sorcha.Tenant.Service/Models/PlatformUserDevice.cs` | Tenant Service entity |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/HolderKeyService.cs` | Slot-108 holder key derivation + JWK + thumbprint + sign |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenStatusListPublisher.cs` | Token Status List 2024 publisher |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenStatusListPublisherService.cs` | Hourly freshness BackgroundService |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/DeviceDelegationIssuer.cs` | SD-JWT VC composition |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/OrgStatusSigningWalletResolver.cs` | Lazy per-org system-wallet provisioner |
+| `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` | `/api/v1/wallet/devices/enrol` |
+| `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenStatusListEndpoints.cs` | Public status-list JWT endpoint |
+| `src/Services/Sorcha.Wallet.Service/Hubs/WalletHub.cs` | SignalR hub at `/hubs/wallet` |
+| `src/Services/Sorcha.Tenant.Service/Services/PlatformUserDeviceService.cs` | Tenant device registry |
+| `src/Services/Sorcha.Tenant.Service/Endpoints/InternalEndpoints.cs` | `/api/internal/platform-user-devices` bridge |
+| `src/Common/Sorcha.ServiceClients.Http/PlatformUserDevice/` | Wallet → Tenant s2s client |
+| `src/Common/Sorcha.ServiceClients.Http/CitizenWallet/` | PWA → Wallet client |
+| `specs/114-citizen-wallet-pwa/` | Spec, plan, contracts, data model, tasks |
+| `docs/superpowers/specs/2026-04-26-citizen-wallet-pwa-design.md` | Brainstorm design doc |
+
+### Test patterns specific to Feature 114
+
+- **`TestCitizenWalletDbContext`** (`tests/Sorcha.Wallet.Service.Tests/Services/`) — inherits `WalletDbContext` and `modelBuilder.Ignore<T>()`s every base entity (jsonb columns are Npgsql-only). Reuse this pattern for any future Wallet Service citizen-only tests using the InMemory provider.
+- **`HolderKeyService` mock gotcha** — when mocking `IKeyManagementService.DeriveKeyAtPathAsync`, return a fresh `byte[].Clone()` each call. The publisher zeroises the private key after signing; a shared array reference is wiped between invocations.
+- **Endpoint handler tests** — follow the established reflection-based static-handler invocation pattern (`PresentationEndpointTests`, `CitizenWalletEnrolEndpointTests`). No `WebApplicationFactory` needed for handler-level coverage.
+
+---
+
 ## Storage Provider Audit (Feature 113)
 
 Every audited storage interface registration goes through `IStorageRegistrationLog` from `Sorcha.ServiceDefaults.Storage`. Production and Staging refuse to start when an audited interface lands on an in-memory implementation. Operators see `[STORAGE-FALLBACK]` warnings at boot, the `storage-providers` health check reports `Degraded`, and the `Sorcha.Storage` OpenTelemetry meter exposes `sorcha_storage_provider_info` and `sorcha_storage_fallback_active` for dashboards.

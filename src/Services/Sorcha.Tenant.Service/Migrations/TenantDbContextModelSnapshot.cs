@@ -951,6 +951,82 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("PlatformUsers", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DelegationCredentialJti")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("DelegationExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DevicePublicJwkJson")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("DevicePublicJwkThumbprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("EnrolledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RevokedByPlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("StatusListIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserAgent")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DevicePublicJwkThumbprint")
+                        .HasDatabaseName("IX_PlatformUserDevices_DevicePublicJwkThumbprint");
+
+                    b.HasIndex("StatusListIndex")
+                        .HasDatabaseName("IX_PlatformUserDevices_StatusListIndex");
+
+                    b.HasIndex("PlatformUserId", "Status")
+                        .HasDatabaseName("IX_PlatformUserDevices_PlatformUserId_Status");
+
+                    b.ToTable("PlatformUserDevices", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserOrgMembership", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1493,6 +1569,17 @@ namespace Sorcha.Tenant.Service.Migrations
                 {
                     b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
                         .WithMany("SocialLogins")
+                        .HasForeignKey("PlatformUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlatformUser");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserDevice", b =>
+                {
+                    b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
+                        .WithMany()
                         .HasForeignKey("PlatformUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

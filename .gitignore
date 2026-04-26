@@ -252,3 +252,4 @@ walkthroughs/*/wallet/
 walkthroughs/*/state.json
 .claude/scheduled_tasks.lock
 verify-feature-106.ps1
+walkthroughs/*/state.gateway.json

@@ -32,6 +32,7 @@ public class TenantDbContext : DbContext
     public DbSet<PlatformSocialLogin> PlatformSocialLogins => Set<PlatformSocialLogin>();
     public DbSet<PlatformUserOrgMembership> PlatformUserOrgMemberships => Set<PlatformUserOrgMembership>();
     public DbSet<PlatformUserPersona> PlatformUserPersonas => Set<PlatformUserPersona>();
+    public DbSet<PlatformUserDevice> PlatformUserDevices => Set<PlatformUserDevice>();
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
     public DbSet<ServicePrincipal> ServicePrincipals => Set<ServicePrincipal>();
@@ -156,6 +157,9 @@ public class TenantDbContext : DbContext
 
         // Configure PlatformUserPersona entity (public schema) — Feature 092
         ConfigurePlatformUserPersona(modelBuilder);
+
+        // Configure PlatformUserDevice entity (public schema) — Feature 114
+        ConfigurePlatformUserDevice(modelBuilder);
     }
 
     private void ConfigureOrganization(ModelBuilder modelBuilder)
@@ -988,6 +992,72 @@ public class TenantDbContext : DbContext
             entity.HasOne(e => e.PlatformUser)
                 .WithOne()
                 .HasForeignKey<PlatformUserPersona>(e => e.PlatformUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    // Feature 114: Citizen wallet device enrolment — many-to-one with PlatformUser,
+    // cascade delete. Indexed for: (PlatformUserId, Status) device list queries,
+    // DevicePublicJwkThumbprint enrolment-dedupe lookup, StatusListIndex publish.
+    private void ConfigurePlatformUserDevice(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<PlatformUserDevice>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("PlatformUserDevices");
+            else
+                entity.ToTable("PlatformUserDevices", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Label)
+                .IsRequired()
+                .HasMaxLength(120);
+
+            entity.Property(e => e.DevicePublicJwkThumbprint)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.Property(e => e.DevicePublicJwkJson)
+                .IsRequired()
+                .HasMaxLength(512);
+
+            entity.Property(e => e.Platform)
+                .IsRequired()
+                .HasMaxLength(120);
+
+            entity.Property(e => e.UserAgent)
+                .HasMaxLength(512);
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(16)
+                .IsRequired();
+
+            entity.Property(e => e.EnrolledAt).IsRequired();
+            entity.Property(e => e.DelegationExpiresAt).IsRequired();
+
+            entity.Property(e => e.DelegationCredentialJti)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.HasIndex(e => new { e.PlatformUserId, e.Status })
+                .HasDatabaseName("IX_PlatformUserDevices_PlatformUserId_Status");
+
+            entity.HasIndex(e => e.DevicePublicJwkThumbprint)
+                .HasDatabaseName("IX_PlatformUserDevices_DevicePublicJwkThumbprint");
+
+            entity.HasIndex(e => e.StatusListIndex)
+                .HasDatabaseName("IX_PlatformUserDevices_StatusListIndex");
+
+            // Many-to-one with PlatformUser. Cascade delete keeps device records
+            // in lock-step with the owning identity.
+            entity.HasOne(e => e.PlatformUser)
+                .WithMany()
+                .HasForeignKey(e => e.PlatformUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

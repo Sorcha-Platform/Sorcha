@@ -24,11 +24,92 @@ namespace Sorcha.Wallet.Core.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CitizenDeviceStatusList", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<byte[]>("Bitstring")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<int>("Capacity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("GeneratedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LastAllocatedIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ListId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RevokedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SignedJwt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "ListId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CitizenDeviceStatusLists_Org_ListId");
+
+                    b.ToTable("CitizenDeviceStatusLists", "wallet");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CitizenWalletSyncCursor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<long>("LastEventSeq")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("LastSyncAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PlatformUserDeviceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlatformUserId", "PlatformUserDeviceId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CitizenWalletSyncCursors_User_Device");
+
+                    b.ToTable("CitizenWalletSyncCursors", "wallet");
+                });
+
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CredentialEntity", b =>
                 {
                     b.Property<string>("Id")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<string>("WalletAddress")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ClaimActionId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("ClaimsJson")
                         .IsRequired()
@@ -45,27 +126,15 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.Property<DateTimeOffset?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("IssuerOrgName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                    b.Property<string>("IssuanceActionId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("IssuanceBlueprintId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
                     b.Property<string>("IssuanceInstanceId")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("IssuanceActionId")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("ClaimActionId")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("RegisterId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
@@ -81,6 +150,10 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("IssuerOrgName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<int?>("MaxPresentations")
                         .HasColumnType("integer");
 
@@ -90,6 +163,10 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.Property<string>("RawToken")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("RegisterId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -117,11 +194,6 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.Property<string>("UsagePolicy")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<string>("WalletAddress")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id", "WalletAddress");
 

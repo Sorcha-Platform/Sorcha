@@ -75,6 +75,16 @@ public class WalletDbContext : DbContext
     public DbSet<SigningSession> SigningSessions => Set<SigningSession>();
 
     /// <summary>
+    /// Per-org citizen device status lists (Feature 114).
+    /// </summary>
+    public DbSet<CitizenDeviceStatusList> CitizenDeviceStatusLists => Set<CitizenDeviceStatusList>();
+
+    /// <summary>
+    /// Per-(PlatformUser, device) sync cursors (Feature 114).
+    /// </summary>
+    public DbSet<CitizenWalletSyncCursor> CitizenWalletSyncCursors => Set<CitizenWalletSyncCursor>();
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="WalletDbContext"/> class.
     /// </summary>
     /// <param name="options">The database context options configured with PostgreSQL connection string.</param>
@@ -113,6 +123,8 @@ public class WalletDbContext : DbContext
         ConfigureThresholdKeyGroup(modelBuilder);
         ConfigureSigningKeyShare(modelBuilder);
         ConfigureSigningSession(modelBuilder);
+        ConfigureCitizenDeviceStatusList(modelBuilder);
+        ConfigureCitizenWalletSyncCursor(modelBuilder);
     }
 
     private static void ConfigureWallet(ModelBuilder modelBuilder)
@@ -861,6 +873,63 @@ public class WalletDbContext : DbContext
 
             entity.HasIndex(e => e.ThresholdKeyGroupId)
                 .HasDatabaseName("IX_SigningSessions_ThresholdKeyGroupId");
+        });
+    }
+
+    // Feature 114: Citizen wallet device status list — one or more per org,
+    // unique on (OrganizationId, ListId), bitstring stored as bytea.
+    private static void ConfigureCitizenDeviceStatusList(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CitizenDeviceStatusList>(entity =>
+        {
+            entity.ToTable("CitizenDeviceStatusLists");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.OrganizationId).IsRequired();
+            entity.Property(e => e.ListId).IsRequired();
+            entity.Property(e => e.Capacity).IsRequired();
+
+            entity.Property(e => e.Bitstring)
+                .HasColumnType("bytea")
+                .IsRequired();
+
+            entity.Property(e => e.RevokedCount).IsRequired();
+            entity.Property(e => e.LastAllocatedIndex).IsRequired();
+            entity.Property(e => e.GeneratedAt).IsRequired();
+            entity.Property(e => e.ExpiresAt).IsRequired();
+
+            entity.Property(e => e.SignedJwt)
+                .HasColumnType("text")
+                .IsRequired();
+
+            entity.HasIndex(e => new { e.OrganizationId, e.ListId })
+                .IsUnique()
+                .HasDatabaseName("IX_CitizenDeviceStatusLists_Org_ListId");
+        });
+    }
+
+    // Feature 114: Citizen wallet sync cursor — one row per (PlatformUser, device).
+    private static void ConfigureCitizenWalletSyncCursor(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CitizenWalletSyncCursor>(entity =>
+        {
+            entity.ToTable("CitizenWalletSyncCursors");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.PlatformUserId).IsRequired();
+            entity.Property(e => e.PlatformUserDeviceId).IsRequired();
+            entity.Property(e => e.LastEventSeq).IsRequired();
+            entity.Property(e => e.LastSyncAt).IsRequired();
+
+            entity.HasIndex(e => new { e.PlatformUserId, e.PlatformUserDeviceId })
+                .IsUnique()
+                .HasDatabaseName("IX_CitizenWalletSyncCursors_User_Device");
         });
     }
 }

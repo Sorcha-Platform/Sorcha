@@ -1,0 +1,114 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Citizen Wallet — Tenant Service additions
+  version: 0.1.0
+  description: |
+    Endpoints added to Sorcha.Tenant.Service for the citizen wallet PWA (Feature 114).
+    These mirror the Wallet Service device endpoints but operate on PlatformUserDevice
+    rows directly (Tenant owns the entity) and are also reachable from the existing
+    main Sorcha web UI.
+
+servers:
+  - url: https://localhost/api/v1
+    description: Local Aspire / docker-compose
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    DeviceSummary:
+      type: object
+      required: [deviceId, label, platform, status, enrolledAt]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        label:
+          type: string
+        platform:
+          type: string
+        status:
+          type: string
+          enum: [Active, Revoked]
+        enrolledAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedByPlatformUserId:
+          type: string
+          format: uuid
+          nullable: true
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        delegationExpiresAt:
+          type: string
+          format: date-time
+
+    DeviceListResponse:
+      type: object
+      required: [devices]
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceSummary'
+
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  /me/devices:
+    get:
+      summary: List the authenticated citizen's enrolled wallet devices
+      description: |
+        Mirror of `/wallet/devices` reachable through the main Sorcha web UI for
+        recovery flows ("I lost my phone, log in here, see and revoke devices").
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceListResponse'
+
+  /me/devices/{deviceId}:
+    delete:
+      summary: Revoke a device
+      description: |
+        Same effect as `DELETE /wallet/devices/{deviceId}` on the Wallet Service —
+        Tenant updates `PlatformUserDeviceStatus = Revoked` and notifies Wallet Service
+        via the existing service-to-service channel to flip the status-list bit and
+        regenerate the signed list.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Device revoked
+        '404':
+          description: Device not found or not owned by caller

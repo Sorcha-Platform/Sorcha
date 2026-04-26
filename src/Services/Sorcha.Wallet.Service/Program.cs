@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using FluentValidation;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Sorcha.Wallet.Service.Extensions;
 using Sorcha.Wallet.Service.Endpoints;
@@ -119,6 +120,34 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderBind
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHaipIssuerCoKeyService,
     Sorcha.Wallet.Service.Services.Implementation.HaipIssuerCoKeyService>();
 
+// Feature 114: Citizen wallet holder key (per-citizen identity for offline OID4VP wallets)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderKeyService,
+    Sorcha.Wallet.Service.Services.Implementation.HolderKeyService>();
+
+// Feature 114: Citizen device delegation revocation — IETF Token Status List 2024 publisher
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenStatusListPublisher,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenStatusListPublisher>();
+
+// Feature 114: Device delegation credential issuer (SD-JWT VC, signed by holder key)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceDelegationIssuer,
+    Sorcha.Wallet.Service.Services.Implementation.DeviceDelegationIssuer>();
+
+// Feature 114: Per-org citizen status-list signing wallet resolver (lazy system-wallet provisioner)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IOrgStatusSigningWalletResolver,
+    Sorcha.Wallet.Service.Services.Implementation.OrgStatusSigningWalletResolver>();
+
+// Feature 114: Hourly status-list freshness worker — keeps lists signed within their 24h exp
+// even when no revocation events occur (eventful path is covered by AllocateIndexAsync / FlipAsync).
+builder.Services.AddHostedService<
+    Sorcha.Wallet.Service.Services.Implementation.CitizenStatusListPublisherService>();
+
+// Feature 114: FluentValidation for citizen wallet request DTOs
+builder.Services.AddValidatorsFromAssemblyContaining<
+    Sorcha.CitizenWallet.Abstractions.Validators.DeviceEnrolmentRequestValidator>();
+
+// Feature 114: SignalR for citizen wallet push notifications
+builder.Services.AddSignalR();
+
 // File reassembly service (US2 — File Download)
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IFileReassemblyService,
     Sorcha.Wallet.Service.Services.Implementation.FileReassemblyService>();
@@ -192,6 +221,15 @@ app.MapPresentationEndpoints();
 app.MapOrgKeyEndpoints();
 app.MapFileDownloadEndpoints();
 app.MapPersonaCryptoEndpoints();
+
+// Feature 114: Public citizen-device status list endpoint
+app.MapCitizenStatusListEndpoints();
+
+// Feature 114: Citizen wallet PWA endpoints (device enrolment, sync, etc.)
+app.MapCitizenWalletEndpoints();
+
+// Feature 114: Citizen wallet SignalR hub. Routed via API Gateway as `/hubs/wallet`.
+app.MapHub<Sorcha.Wallet.Service.Hubs.WalletHub>("/hubs/wallet");
 
 // ===========================
 // Statistics Endpoint (public, no auth)

@@ -171,6 +171,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgProvisioningService, OrgProvisioningService>();
         services.AddScoped<IPlatformUserProvisioningService, PlatformUserProvisioningService>();
 
+        // Feature 114: Citizen wallet device registry
+        services.AddScoped<IPlatformUserDeviceService, PlatformUserDeviceService>();
+
         // IDP configuration services
         services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();
         services.AddScoped<IIdpConfigurationService, IdpConfigurationService>();

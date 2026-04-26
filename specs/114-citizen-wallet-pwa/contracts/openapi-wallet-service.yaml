@@ -1,0 +1,516 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Citizen Wallet — Wallet Service additions
+  version: 0.1.0
+  description: |
+    Endpoints added to Sorcha.Wallet.Service for the citizen wallet PWA (Feature 114).
+    All endpoints are JWT-authenticated via the existing Sorcha auth surface;
+    citizen-wallet endpoints additionally require the JWT audience to include
+    `sorcha:citizen-wallet`.
+
+servers:
+  - url: https://localhost/api/v1
+    description: Local Aspire / docker-compose
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    DeviceEnrolmentRequest:
+      type: object
+      required: [deviceLabel, devicePublicJwk, platform, userAgent]
+      properties:
+        deviceLabel:
+          type: string
+          minLength: 1
+          maxLength: 120
+          example: "Stuart's iPhone 16"
+        devicePublicJwk:
+          $ref: '#/components/schemas/EcP256PublicJwk'
+        platform:
+          type: string
+          maxLength: 120
+          example: "iOS 19 / Safari 19"
+        userAgent:
+          type: string
+          maxLength: 512
+
+    DeviceEnrolmentResponse:
+      type: object
+      required: [deviceId, delegationCredential, holderPublicJwk, statusListUri, statusListIndex, delegationExpiresAt]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        delegationCredential:
+          type: string
+          description: Compact-serialised SD-JWT VC, signed by the holder key.
+        holderPublicJwk:
+          $ref: '#/components/schemas/EcP256PublicJwk'
+        statusListUri:
+          type: string
+          format: uri
+        statusListIndex:
+          type: integer
+          minimum: 0
+        delegationExpiresAt:
+          type: string
+          format: date-time
+
+    DeviceSummary:
+      type: object
+      required: [deviceId, label, platform, status, enrolledAt, delegationExpiresAt]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        label:
+          type: string
+        platform:
+          type: string
+        status:
+          type: string
+          enum: [Active, Revoked]
+        enrolledAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        delegationExpiresAt:
+          type: string
+          format: date-time
+
+    DeviceListResponse:
+      type: object
+      required: [devices]
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceSummary'
+
+    DeviceLabelUpdateRequest:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+
+    DelegationRenewalRequest:
+      type: object
+      required: [deviceId]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+
+    DelegationRenewalResponse:
+      type: object
+      required: [delegationCredential, expiresAt]
+      properties:
+        delegationCredential:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    SyncRequest:
+      type: object
+      properties:
+        since:
+          type: string
+          description: Opaque sync token returned by a previous response. Omit on first sync.
+          nullable: true
+
+    SyncResponse:
+      type: object
+      required: [syncToken, credentials, statusListsToRefresh]
+      properties:
+        syncToken:
+          type: string
+          description: Opaque cursor — pass this back as `since` on the next sync request.
+        credentials:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: '#/components/schemas/CachedCredentialPayload'
+            revoked:
+              type: array
+              items:
+                $ref: '#/components/schemas/RevokedCredentialEntry'
+            replaced:
+              type: array
+              items:
+                $ref: '#/components/schemas/ReplacedCredentialEntry'
+        delegation:
+          type: object
+          properties:
+            renewed:
+              type: boolean
+            jwt:
+              type: string
+              nullable: true
+            expiresAt:
+              type: string
+              format: date-time
+              nullable: true
+        statusListsToRefresh:
+          type: array
+          items:
+            type: string
+            format: uri
+
+    CachedCredentialPayload:
+      type: object
+      required: [id, vct, jwt, issuerDid, issuedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        vct:
+          type: string
+          format: uri
+        jwt:
+          type: string
+          description: Compact-serialised SD-JWT VC.
+        issuerDid:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        statusListUri:
+          type: string
+          format: uri
+          nullable: true
+        statusListIndex:
+          type: integer
+          minimum: 0
+          nullable: true
+        displayMeta:
+          type: object
+          description: Issuer-supplied display hints; mirrors x-review id-card shape.
+
+    RevokedCredentialEntry:
+      type: object
+      required: [id, reason, revokedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          enum: [Superseded, Erroneous, Compromised, Expired, Withdrawn, Regulatory]
+        revokedAt:
+          type: string
+          format: date-time
+
+    ReplacedCredentialEntry:
+      type: object
+      required: [oldId, newId, jwt, issuedAt]
+      properties:
+        oldId:
+          type: string
+          format: uuid
+        newId:
+          type: string
+          format: uuid
+        jwt:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+
+    CredentialListResponse:
+      type: object
+      required: [credentials]
+      properties:
+        credentials:
+          type: array
+          items:
+            $ref: '#/components/schemas/CachedCredentialPayload'
+
+    PresentationLogReportRequest:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/PresentationLogEntry'
+
+    PresentationLogEntry:
+      type: object
+      required: [id, credentialId, presentedAt, outcome, disclosedClaims]
+      properties:
+        id:
+          type: string
+          format: uuid
+        credentialId:
+          type: string
+          format: uuid
+        verifierDid:
+          type: string
+          nullable: true
+        verifierLabel:
+          type: string
+          nullable: true
+        disclosedClaims:
+          type: array
+          items:
+            type: string
+        presentedAt:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          enum: [Presented, DeclinedByCitizen, VerifierRejected]
+        registerId:
+          type: string
+          nullable: true
+          description: Originating register, if known to the wallet, for lifecycle correlation.
+        actionTxId:
+          type: string
+          nullable: true
+
+    EcP256PublicJwk:
+      type: object
+      required: [kty, crv, x, y]
+      properties:
+        kty:
+          type: string
+          enum: [EC]
+        crv:
+          type: string
+          enum: [P-256]
+        x:
+          type: string
+          description: base64url
+        y:
+          type: string
+          description: base64url
+
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  /wallet/devices/enrol:
+    post:
+      summary: Enrol a new device for the authenticated citizen
+      description: |
+        Generates (if absent) the citizen's holder key under `sorcha:citizen-holder`,
+        issues a device delegation credential, allocates a status-list index, and
+        returns everything needed for the wallet to operate offline.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEnrolmentRequest'
+      responses:
+        '200':
+          description: Device enrolled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceEnrolmentResponse'
+        '400':
+          description: Invalid public key, label too long, etc.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Device with this public key thumbprint is already enrolled.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /wallet/devices:
+    get:
+      summary: List the citizen's enrolled devices
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceListResponse'
+
+  /wallet/devices/{deviceId}/label:
+    put:
+      summary: Update a device's citizen-visible label
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceLabelUpdateRequest'
+      responses:
+        '204':
+          description: Label updated
+        '404':
+          description: Device not found or not owned by caller
+
+  /wallet/devices/{deviceId}:
+    delete:
+      summary: Revoke a device
+      description: |
+        Marks the device as Revoked, flips its status-list bit, regenerates and signs
+        the org's citizen-devices status list, publishes a SignalR `deviceRevoked` event,
+        and writes a Tenant-side audit entry.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Device revoked
+        '404':
+          description: Device not found or not owned by caller
+
+  /wallet/devices/renew-delegation:
+    post:
+      summary: Renew the device's delegation credential
+      description: |
+        Idempotent — silent renewal is the wallet's normal path when within 30 days
+        of expiry. Server returns the existing delegation if not yet within renewal window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DelegationRenewalRequest'
+      responses:
+        '200':
+          description: Renewed (or returned existing)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DelegationRenewalResponse'
+
+  /wallet/sync:
+    get:
+      summary: Pull credential and delegation deltas since the last sync
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Opaque sync token from a prior response. Omit on first sync.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+        '410':
+          description: Sync token is too old / no longer servable. Wallet should re-sync from scratch.
+
+  /wallet/credentials:
+    get:
+      summary: List all credentials currently issued to this citizen (full snapshot)
+      description: |
+        Used by a freshly-enrolled wallet to seed its cache. Subsequent updates flow through `/wallet/sync`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialListResponse'
+
+  /wallet/presentations/log:
+    post:
+      summary: Report offline presentations the wallet made while disconnected
+      description: |
+        Idempotent on `entries[].id`. Forwarded to the Blueprint Service which writes
+        Feature 111 lifecycle events (PresentationInitiated + PresentationOutcome) on
+        the originating register, preserving the offline timestamps.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresentationLogReportRequest'
+      responses:
+        '202':
+          description: Accepted; lifecycle write is async.
+        '400':
+          description: Malformed entries
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /wallet/status/{orgId}/citizen-devices/{listId}.statuslist+jwt:
+    get:
+      summary: Fetch a citizen-device status list (signed JWT)
+      description: |
+        Public endpoint (no auth) — verifiers fetch this to refresh their cached revocation status.
+        Cache-Control headers carry the list's `exp` for browser/edge caching.
+      security: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Status list JWT
+          content:
+            application/statuslist+jwt:
+              schema:
+                type: string
+        '404':
+          description: List not found
