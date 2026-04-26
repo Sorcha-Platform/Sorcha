@@ -41,7 +41,8 @@
     {
         @foreach (var c in _credentials)
         {
-            <MudCard Class="mb-3">
+            <MudCard Class="mb-3" Style="cursor:pointer;"
+                     @onclick="@(() => Nav.NavigateTo($"/credentials/{c.Id}"))">
                 <MudCardContent>
                     <MudText Typo="Typo.subtitle1">@(c.DisplayLabel ?? c.Vct)</MudText>
                     <MudText Typo="Typo.caption" Color="Color.Secondary">@c.Vct</MudText>
