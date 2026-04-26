@@ -17,8 +17,10 @@
 @inject ICredentialCache Credentials
 @inject IDelegationStore Delegation
 @inject IDeviceKeyService DeviceKey
+@inject ISyncService Sync
 @inject HttpClient Http
 @inject NavigationManager Nav
+@inject ILogger<Index> Logger
 
 <PageTitle>Sorcha Wallet</PageTitle>
 
@@ -58,12 +60,21 @@
                    Disabled="@(_credentials is null || _credentials.Count == 0)">
             Present a credential
         </MudButton>
-        <MudButton Color="Color.Secondary" Variant="Variant.Outlined"
+        <MudButton Color="Color.Tertiary" Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Sync"
+                   OnClick="@(() => SyncNowAsync(false))" Disabled="@_syncing">
+            @(_syncing ? "Syncing…" : "Sync now")
+        </MudButton>
+        <MudButton Color="Color.Secondary" Variant="Variant.Text"
                    OnClick="LoadDemoAsync" Disabled="@_seeding">
             @(_seeding ? "Loading…" : "Load demo credential")
         </MudButton>
     </MudStack>
 
+    @if (!string.IsNullOrEmpty(_syncStatus))
+    {
+        <MudAlert Severity="@_syncSeverity" Dense="true" Class="mt-3">@_syncStatus</MudAlert>
+    }
     @if (!string.IsNullOrEmpty(_seedError))
     {
         <MudAlert Severity="Severity.Error" Class="mt-3">@_seedError</MudAlert>
@@ -73,10 +84,57 @@
 @code {
     private IReadOnlyList<CachedCredential>? _credentials;
     private bool _seeding;
+    private bool _syncing;
     private string? _seedError;
+    private string? _syncStatus;
+    private Severity _syncSeverity = Severity.Info;
 
     protected override async Task OnInitializedAsync()
-        => _credentials = await Credentials.ListAsync();
+    {
+        _credentials = await Credentials.ListAsync();
+        // Fire-and-forget background sync — refreshes the cache from server without
+        // blocking first paint. UI updates via StateHasChanged when sync completes.
+        _ = SyncNowAsync(silentSuccess: true);
+    }
+
+    private async Task SyncNowAsync(bool silentSuccess = false)
+    {
+        if (_syncing) return;
+        _syncing = true;
+        _syncStatus = null;
+        try
+        {
+            var outcome = await Sync.SyncAsync();
+            _credentials = await Credentials.ListAsync();
+            _syncSeverity = Severity.Success;
+            _syncStatus = outcome.Mode == SyncMode.FullSnapshot
+                ? $"Synced — pulled full snapshot ({outcome.Added} credential(s))."
+                : $"Synced — {outcome.Added} added, {outcome.Revoked} revoked, {outcome.Replaced} replaced.";
+            if (silentSuccess && outcome.Added == 0 && outcome.Revoked == 0 && outcome.Replaced == 0)
+            {
+                _syncStatus = null; // first-load no-op shouldn't pop a banner
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _syncSeverity = Severity.Warning;
+            _syncStatus = ex.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                ? "Sync needs sign-in. Enrolment wizard arrives with US2."
+                : $"Sync failed: {ex.Message}";
+            Logger.LogWarning(ex, "Wallet sync failed");
+        }
+        catch (Exception ex)
+        {
+            _syncSeverity = Severity.Error;
+            _syncStatus = $"Sync error: {ex.Message}";
+            Logger.LogError(ex, "Wallet sync threw");
+        }
+        finally
+        {
+            _syncing = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task LoadDemoAsync()
     {
