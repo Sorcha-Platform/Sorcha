@@ -23,6 +23,7 @@ namespace Sorcha.Validator.Service.Services;
 public class InMemoryVerifiedTransactionQueue : IVerifiedTransactionQueue
 {
     private readonly VerifiedQueueConfiguration _config;
+    private readonly ValidatorMempoolMetrics? _metrics;
     private readonly ILogger<InMemoryVerifiedTransactionQueue> _logger;
 
     // Per-register state.
@@ -33,12 +34,23 @@ public class InMemoryVerifiedTransactionQueue : IVerifiedTransactionQueue
     private long _totalConfirmed;
     private long _totalExpired;
 
+    /// <summary>Test-friendly constructor — metrics optional.</summary>
     public InMemoryVerifiedTransactionQueue(
         IOptions<VerifiedQueueConfiguration> config,
         ILogger<InMemoryVerifiedTransactionQueue> logger)
+        : this(config, logger, metrics: null)
+    {
+    }
+
+    /// <summary>Production constructor — DI-injects ValidatorMempoolMetrics for lease-expiry counter.</summary>
+    public InMemoryVerifiedTransactionQueue(
+        IOptions<VerifiedQueueConfiguration> config,
+        ILogger<InMemoryVerifiedTransactionQueue> logger,
+        ValidatorMempoolMetrics? metrics)
     {
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _metrics = metrics;
     }
 
     /// <inheritdoc/>
@@ -114,7 +126,14 @@ public class InMemoryVerifiedTransactionQueue : IVerifiedTransactionQueue
             return Task.FromResult<IReadOnlyList<VerifiedTransactionLease>>([]);
         }
 
-        var leases = queue.Claim(registerId, maxCount, leaseDuration);
+        var (leases, expiredCount) = queue.Claim(registerId, maxCount, leaseDuration);
+        if (expiredCount > 0)
+        {
+            _metrics?.RecordLeaseExpired(registerId, expiredCount);
+            _logger.LogDebug(
+                "Auto-released {Count} expired lease(s) for register {RegisterId}",
+                expiredCount, registerId);
+        }
         if (leases.Count > 0)
         {
             _logger.LogDebug(
@@ -385,7 +404,7 @@ public class InMemoryVerifiedTransactionQueue : IVerifiedTransactionQueue
             }
         }
 
-        public IReadOnlyList<VerifiedTransactionLease> Claim(string registerId, int maxCount, TimeSpan leaseDuration)
+        public (IReadOnlyList<VerifiedTransactionLease> Leases, int ExpiredCount) Claim(string registerId, int maxCount, TimeSpan leaseDuration)
         {
             lock (_lock)
             {
@@ -427,7 +446,7 @@ public class InMemoryVerifiedTransactionQueue : IVerifiedTransactionQueue
                     _claimed[tx.TransactionId] = new ClaimedEntry(tx, leaseExpiresAt);
                 }
 
-                return leases;
+                return (leases, expiredClaims.Count);
             }
         }
 
