@@ -267,6 +267,9 @@ public static class Extensions
                 path.StartsWith("/app", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/explorer", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/not-found", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/wallet", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/verify", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/hubs/wallet", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/_framework", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/_content", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/_blazor", StringComparison.OrdinalIgnoreCase) ||
