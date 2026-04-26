@@ -1,32 +1,39 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
-using Microsoft.Extensions.Caching.Distributed;
+using Sorcha.AtomicCache;
 
 namespace Sorcha.Haip.Service.Services;
 
 /// <summary>
-/// Redis-backed store for pre-authorized codes. Codes are one-time-use
-/// with TTL-based expiry. The in-memory fallback uses ConcurrentDictionary
-/// for thread safety under concurrent ASP.NET Core requests.
+/// Stores pre-authorized codes for HAIP credential issuance. Codes are
+/// one-time-use with TTL-based expiry. Backed by
+/// <see cref="IAtomicDistributedCache"/> so redemption is a single
+/// atomic round-trip — two relying-party callbacks racing to redeem the
+/// same code resolve to exactly one winner.
 /// </summary>
 public class PreAuthCodeStore
 {
-    private readonly IDistributedCache? _cache;
+    private readonly IAtomicDistributedCache _cache;
+    private readonly HaipNonceMetrics _metrics;
     private readonly ILogger<PreAuthCodeStore> _logger;
     private readonly int _ttlSeconds;
 
-    private readonly ConcurrentDictionary<string, string> _memoryStore = new();
-
     public PreAuthCodeStore(
+        IAtomicDistributedCache cache,
+        HaipNonceMetrics metrics,
         ILogger<PreAuthCodeStore> logger,
-        IConfiguration configuration,
-        IDistributedCache? cache = null)
+        IConfiguration configuration)
     {
-        _logger = logger;
+        ArgumentNullException.ThrowIfNull(cache);
+        ArgumentNullException.ThrowIfNull(metrics);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(configuration);
+
         _cache = cache;
+        _metrics = metrics;
+        _logger = logger;
         _ttlSeconds = configuration.GetValue<int>("Haip:PreAuthCodeLifetimeSeconds", 300);
     }
 
@@ -40,18 +47,7 @@ public class PreAuthCodeStore
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
         var key = $"haip:preauth:{code}";
-        var value = offerId.ToString();
-
-        if (_cache != null)
-        {
-            await _cache.SetStringAsync(key, value,
-                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(_ttlSeconds) },
-                ct);
-        }
-        else
-        {
-            _memoryStore[key] = value;
-        }
+        await _cache.SetAsync(key, offerId.ToString(), TimeSpan.FromSeconds(_ttlSeconds), ct);
 
         _logger.LogInformation("Created pre-auth code for offer {OfferId}, TTL={Ttl}s", offerId, _ttlSeconds);
         return code;
@@ -59,37 +55,23 @@ public class PreAuthCodeStore
 
     /// <summary>
     /// Redeems a pre-authorized code (one-time-use). Returns the offer ID
-    /// or null if the code is invalid/expired/already redeemed.
-    /// Uses atomic remove for thread safety — concurrent redemption attempts
-    /// on the same code will only succeed once.
+    /// or null if the code is invalid, expired, or already redeemed.
+    /// Atomic — under N concurrent redeems of the same code, exactly one
+    /// returns the offer ID and the rest return null.
     /// </summary>
     public async Task<Guid?> RedeemAsync(string code, CancellationToken ct = default)
     {
         var key = $"haip:preauth:{code}";
+        var value = await _cache.GetAndRemoveAsync(key, ct);
 
-        string? value;
-        if (_cache != null)
+        if (value is null || !Guid.TryParse(value, out var offerId))
         {
-            // Atomic get-and-delete: read then remove in sequence.
-            // IDistributedCache doesn't expose GETDEL — the Remove call
-            // is a separate round-trip but acceptable for the pre-release
-            // in-memory Redis provider. Production should use IDatabase.StringGetDeleteAsync.
-            value = await _cache.GetStringAsync(key, ct);
-            if (value != null)
-                await _cache.RemoveAsync(key, ct);
-        }
-        else
-        {
-            // ConcurrentDictionary.TryRemove is atomic
-            _memoryStore.TryRemove(key, out value);
-        }
-
-        if (value == null || !Guid.TryParse(value, out var offerId))
-        {
+            _metrics.RecordMiss(HaipNonceMetrics.StoreKind.PreAuth);
             _logger.LogWarning("Pre-auth code redemption failed: code not found or expired");
             return null;
         }
 
+        _metrics.RecordSuccess(HaipNonceMetrics.StoreKind.PreAuth);
         _logger.LogInformation("Redeemed pre-auth code for offer {OfferId}", offerId);
         return offerId;
     }

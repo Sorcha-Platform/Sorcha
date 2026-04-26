@@ -104,6 +104,18 @@ public class PresentationRequestStore
     /// <summary>
     /// Updates a request with the verification result and marks it as completed.
     /// </summary>
+    /// <remarks>
+    /// TODO(113-followup): The Get-then-Set sequence here is not CAS-protected.
+    /// Two HandleDirectPost callbacks for the same request landing concurrently
+    /// will each read the pending state, transition it independently, and the
+    /// last writer wins. Today this is a low-probability race because verifier
+    /// callbacks for the same request are unusual. Migrating this to
+    /// IAtomicDistributedCache.TryUpdateIfMatchAsync would close the window
+    /// fully — but the migration is more invasive than the
+    /// NonceStore/PreAuthCodeStore changes (this store has read-many semantics
+    /// and serialised PresentationRequest objects, not opaque tokens).
+    /// Tracked as a feature 113 follow-up; not blocking US3 closure.
+    /// </remarks>
     public async Task MarkCompletedAsync(
         Guid requestId,
         VerificationResult result,
