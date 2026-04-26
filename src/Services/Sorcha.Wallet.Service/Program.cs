@@ -136,6 +136,11 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceDele
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IOrgStatusSigningWalletResolver,
     Sorcha.Wallet.Service.Services.Implementation.OrgStatusSigningWalletResolver>();
 
+// Feature 114: Hourly status-list freshness worker — keeps lists signed within their 24h exp
+// even when no revocation events occur (eventful path is covered by AllocateIndexAsync / FlipAsync).
+builder.Services.AddHostedService<
+    Sorcha.Wallet.Service.Services.Implementation.CitizenStatusListPublisherService>();
+
 // Feature 114: FluentValidation for citizen wallet request DTOs
 builder.Services.AddValidatorsFromAssemblyContaining<
     Sorcha.CitizenWallet.Abstractions.Validators.DeviceEnrolmentRequestValidator>();
