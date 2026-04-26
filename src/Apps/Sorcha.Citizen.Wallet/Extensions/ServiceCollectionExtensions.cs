@@ -11,14 +11,16 @@ public static class ServiceCollectionExtensions
 {
     /// <summary>
     /// Register the PWA's services as singletons (single-user-per-tab).
-    /// v1 MVP wires in-memory implementations; the production WebCrypto +
-    /// IndexedDB-backed bridge implementations land with T054-T067 hardening.
+    /// IDeviceKeyService is wired to <see cref="WebCryptoDeviceKeyService"/> by
+    /// default — the InMemory variant is reserved for unit tests where IJSRuntime
+    /// isn't available. Cache + delegation + status-list start as in-memory MVP
+    /// impls; IndexedDB-backed replacements land with T060-T062.
     /// </summary>
     public static IServiceCollection AddCitizenWalletServices(this IServiceCollection services)
     {
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IPresentationEngine, PresentationEngine>();
-        services.AddSingleton<IDeviceKeyService, InMemoryDeviceKeyService>();
+        services.AddSingleton<IDeviceKeyService, WebCryptoDeviceKeyService>();
         services.AddSingleton<ICredentialCache, InMemoryCredentialCache>();
         services.AddSingleton<IDelegationStore, InMemoryDelegationStore>();
         services.AddSingleton<IStatusListService, NoopStatusListService>();

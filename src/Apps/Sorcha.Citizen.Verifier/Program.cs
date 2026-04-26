@@ -34,6 +34,7 @@ app.UseStaticFiles();
 app.UseAntiforgery();
 
 app.MapPresentationResponseEndpoints();
+app.MapDemoMintEndpoint();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
