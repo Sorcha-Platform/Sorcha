@@ -87,6 +87,9 @@ public static class Extensions
 
                 // Feature 113 — HAIP replay-protection-state consumption outcomes
                 metrics.AddMeter("Sorcha.Haip.Nonces");
+
+                // Feature 113 — Validator mempool depth + lease expiry
+                metrics.AddMeter("Sorcha.Validator.Mempool");
             })
             .WithTracing(tracing =>
             {
