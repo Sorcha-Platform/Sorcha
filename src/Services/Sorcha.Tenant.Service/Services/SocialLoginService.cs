@@ -423,8 +423,13 @@ public class SocialLoginService : ISocialLoginService
         var login = userRoot.TryGetProperty("login", out var loginProp) ? loginProp.GetString() : null;
         displayName ??= login;
 
-        // Fetch primary verified email from /user/emails
+        // Fetch primary verified email from /user/emails. We track emailVerified
+        // explicitly rather than inferring it from "did we set email" — making the
+        // invariant explicit so a future fallback (e.g. assign email from any
+        // primary entry, or fetch from /user) cannot silently smuggle an
+        // unverified email past the strict-link gate.
         string? email = null;
+        bool emailVerified = false;
         try
         {
             using var emailResponse = await client.GetAsync(GitHubUserEmailsEndpoint, cancellationToken);
@@ -439,6 +444,7 @@ public class SocialLoginService : ISocialLoginService
                     if (isPrimary && isVerified)
                     {
                         email = emailEntry.TryGetProperty("email", out var e) ? e.GetString() : null;
+                        emailVerified = true;
                         break;
                     }
                 }
@@ -448,11 +454,6 @@ public class SocialLoginService : ISocialLoginService
         {
             _logger.LogWarning(ex, "Failed to fetch GitHub user emails");
         }
-
-        // GitHub: EmailVerified is true only when /user/emails returned a primary
-        // entry whose `verified` flag is true. The fetch loop above only assigns
-        // `email` in that case, so a non-null `email` here implies verified.
-        var emailVerified = !string.IsNullOrEmpty(email);
 
         _logger.LogInformation("GitHub social login claims extracted for user {Subject} (emailVerified={EmailVerified})", subject, emailVerified);
         return new SocialAuthCallbackResult(true, null, subject, email, displayName, emailVerified, provider);

@@ -207,8 +207,11 @@ public class SocialCallbackModel : PageModel
     }
 
     /// <summary>
-    /// Hashes an email to an 8-byte hex tag suitable for log correlation
-    /// without exposing the address itself. Returns "(none)" when input is
+    /// Hashes an email to an 8-character hex tag suitable for log correlation
+    /// without exposing the address itself. The 4-byte (32-bit) truncation is
+    /// deliberate PII minimisation — collisions are tolerable for log
+    /// correlation, and shorter tags reduce the chance a leaked log line
+    /// contributes to re-identification. Returns "(none)" when input is
     /// null or empty. Feature 115 FR-018.
     /// </summary>
     private static string HashEmailForLog(string? email)

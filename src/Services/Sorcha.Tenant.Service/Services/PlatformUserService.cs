@@ -313,14 +313,17 @@ public class PlatformUserService : IPlatformUserService
                     return new ResolveSocialUserResult(User: null, IsNew: false, SocialLoginRefusal.ExistingUnverified);
                 }
 
-                await LinkSocialLoginAsync(existingByEmail.Id, provider, subject, email, displayName, ct);
-
+                // Stage the DisplayName refresh on the tracked entity BEFORE
+                // LinkSocialLoginAsync — its SaveChangesAsync will then persist
+                // both the new link row and the updated PlatformUser in a single
+                // round-trip rather than two.
                 if (!string.IsNullOrWhiteSpace(displayName)
                     && !string.Equals(displayName, existingByEmail.DisplayName, StringComparison.Ordinal))
                 {
                     existingByEmail.DisplayName = displayName;
-                    await _db.SaveChangesAsync(ct);
                 }
+
+                await LinkSocialLoginAsync(existingByEmail.Id, provider, subject, email, displayName, ct);
 
                 _logger.LogInformation(
                     "Social login linked {Provider}/{Subject} to existing user {UserId} via email match",
