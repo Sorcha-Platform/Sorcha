@@ -127,6 +127,10 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderKeyS
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenStatusListPublisher,
     Sorcha.Wallet.Service.Services.Implementation.CitizenStatusListPublisher>();
 
+// Feature 114: Device delegation credential issuer (SD-JWT VC, signed by holder key)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceDelegationIssuer,
+    Sorcha.Wallet.Service.Services.Implementation.DeviceDelegationIssuer>();
+
 // Feature 114: SignalR for citizen wallet push notifications
 builder.Services.AddSignalR();
 

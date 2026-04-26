@@ -43,7 +43,10 @@
       "PowerShell(.specify/scripts/powershell/update-agent-context.ps1 -AgentType claude)",
       "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json)",
       "PowerShell(.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)",
-      "Bash(grep -E --line-buffered \"^#[0-9]+ naming|DONE|ERROR|error:|failed|Successfully|CACHED|sha256.*$|Building [0-9]\")"
+      "Bash(grep -E --line-buffered \"^#[0-9]+ naming|DONE|ERROR|error:|failed|Successfully|CACHED|sha256.*$|Building [0-9]\")",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"https://n1.sorcha.dev/\" -TimeoutSec 10 -SkipHttpErrorCheck; \"HTTP $\\($r.StatusCode\\)\" } catch { \"ERROR: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(dotnet ef migrations)",
+      "PowerShell(dotnet ef migrations *)"
     ],
     "deny": [],
     "ask": []
