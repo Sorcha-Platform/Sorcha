@@ -19,6 +19,7 @@
 @inject IDeviceKeyService DeviceKey
 @inject ISyncService Sync
 @inject IDelegationRenewalClient Renewal
+@inject IServerClockObserver ServerClock
 @inject HttpClient Http
 @inject NavigationManager Nav
 @inject ILogger<Index> Logger
@@ -27,6 +28,24 @@
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
     <MudText Typo="Typo.h5" Class="mb-3">Your credentials</MudText>
+
+    @{
+        var skewMinutes = (int)Math.Abs(ServerClock.GetSkew().TotalMinutes);
+    }
+    @if (skewMinutes >= 60)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">
+            Your device clock is off by ~@skewMinutes minutes. Presentations will be
+            rejected by verifiers. Fix your device clock, then refresh.
+        </MudAlert>
+    }
+    else if (skewMinutes >= 5)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-3">
+            Your device clock is ~@skewMinutes minutes off the server. Verifiers may
+            reject offline presentations until you correct it.
+        </MudAlert>
+    }
 
     @if (_credentials is null)
     {

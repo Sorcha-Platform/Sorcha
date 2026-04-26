@@ -34,17 +34,26 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IEnrolmentService, EnrolmentService>();
         services.AddSingleton<IDelegationRenewalClient, DelegationRenewalClient>();
 
+        // Server-clock observer (T101) — populated by the ServerClockHandler on
+        // every outbound HTTP call; read by Pages/Index.razor to surface a
+        // clock-skew banner if the device drifts far from the server.
+        services.AddSingleton<IServerClockObserver, ServerClockObserver>();
+        services.AddTransient<ServerClockHandler>();
+
         // Auth surface: a separate HttpClient that does NOT inject the bearer
-        // token (so sign-in requests don't carry stale tokens).
+        // token (so sign-in requests don't carry stale tokens). Still observes
+        // the server clock — sign-in is a great moment to capture initial drift.
         services.AddTransient<BearerTokenHandler>();
         services.AddHttpClient<IAuthService, AuthService>(c =>
-            c.BaseAddress = new Uri(gatewayBaseAddress));
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<ServerClockHandler>();
 
         // Citizen wallet client: every outbound call automatically carries the
-        // wallet's stored bearer token.
+        // wallet's stored bearer token AND records server clock observations.
         services.AddHttpClient<ICitizenWalletClient, CitizenWalletClient>(c =>
             c.BaseAddress = new Uri(gatewayBaseAddress))
-            .AddHttpMessageHandler<BearerTokenHandler>();
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
 
         return services;
     }
