@@ -3,6 +3,7 @@
 
 using MudBlazor.Services;
 using Sorcha.Citizen.Verifier.Components;
+using Sorcha.Citizen.Verifier.Endpoints;
 using Sorcha.Citizen.Verifier.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,6 +30,8 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 app.UseAntiforgery();
+
+app.MapPresentationResponseEndpoints();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
