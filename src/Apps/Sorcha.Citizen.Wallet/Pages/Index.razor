@@ -2,16 +2,56 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Placeholder home page for the citizen wallet PWA. Replaced by Home.razor
-    + EnrolmentWizard.razor in Phase 3 / US2 (T109-T110).
+    Wallet home (Feature 114, T110 placeholder). v1 MVP renders a minimal
+    landing page with a Present button — the credential list view + enrolment
+    wizard land with US2.
 *@
 @page "/"
+@layout MainLayout
+@using Sorcha.Citizen.Wallet.Services
+@using Sorcha.Citizen.Wallet.Services.Presentation
+@inject ICredentialCache Credentials
+@inject NavigationManager Nav
 
 <PageTitle>Sorcha Wallet</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
-    <MudText Typo="Typo.h4">Sorcha Citizen Wallet</MudText>
-    <MudText Typo="Typo.body1" Class="mt-2">
-        Feature 114 PWA shell. Real UI lands in Phase 3.
-    </MudText>
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Your credentials</MudText>
+
+    @if (_credentials is null)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+    }
+    else if (_credentials.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">
+            No credentials yet. Enrol via the Sorcha web UI; they'll sync here once
+            US2 lands.
+        </MudAlert>
+    }
+    else
+    {
+        @foreach (var c in _credentials)
+        {
+            <MudCard Class="mb-3">
+                <MudCardContent>
+                    <MudText Typo="Typo.subtitle1">@(c.DisplayLabel ?? c.Vct)</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@c.Vct</MudText>
+                </MudCardContent>
+            </MudCard>
+        }
+    }
+
+    <MudButton Class="mt-4" Color="Color.Primary" Variant="Variant.Filled"
+               StartIcon="@Icons.Material.Filled.QrCodeScanner"
+               OnClick="@(() => Nav.NavigateTo("/present"))">
+        Present a credential
+    </MudButton>
 </MudContainer>
+
+@code {
+    private IReadOnlyList<CachedCredential>? _credentials;
+
+    protected override async Task OnInitializedAsync()
+        => _credentials = await Credentials.ListAsync();
+}
