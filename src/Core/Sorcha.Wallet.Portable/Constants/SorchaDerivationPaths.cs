@@ -158,6 +158,42 @@ public static class SorchaDerivationPaths
     public const string TenantCaSigningPath = "m/44'/0'/0'/0/107";
 
     /// <summary>
+    /// Derivation path for the citizen wallet holder identity (Feature 114)
+    /// </summary>
+    /// <remarks>
+    /// Used by the Wallet Service to derive a per-PlatformUser holder key under which
+    /// citizen-wallet credentials are bound (via the credential's <c>cnf</c> claim) and
+    /// which signs device-delegation credentials issued to enrolled wallet devices.
+    /// Distinct from <see cref="CredentialHolderBinding"/> (slot 105): that is per-wallet
+    /// for KB-JWT signing on the existing online HAIP path. Slot 108 is the citizen's
+    /// stable cross-device identity for the offline-first wallet model.
+    /// Maps to: m/44'/0'/0'/0/108
+    /// </remarks>
+    public const string CitizenHolder = "sorcha:citizen-holder";
+
+    /// <summary>
+    /// BIP44 path for the citizen wallet holder identity
+    /// </summary>
+    public const string CitizenHolderPath = "m/44'/0'/0'/0/108";
+
+    /// <summary>
+    /// Derivation path for the per-org citizen device status-list signing key (Feature 114)
+    /// </summary>
+    /// <remarks>
+    /// Used by the Wallet Service to sign Token Status List 2024 JWTs that publish the
+    /// revocation status of citizen wallet device delegations. One derived key per tenant
+    /// org, signing all citizen-device status lists for that org. Separated from the
+    /// org root wallet to apply least-privilege to a frequently-used signing operation.
+    /// Maps to: m/44'/0'/0'/0/109
+    /// </remarks>
+    public const string CitizenStatusSigning = "sorcha:citizen-status-signing";
+
+    /// <summary>
+    /// BIP44 path for the citizen device status-list signing key
+    /// </summary>
+    public const string CitizenStatusSigningPath = "m/44'/0'/0'/0/109";
+
+    /// <summary>
     /// Resolves a Sorcha system path to its corresponding BIP44 path
     /// </summary>
     /// <param name="systemPath">Sorcha system path (e.g., "sorcha:register-attestation")</param>
@@ -183,6 +219,8 @@ public static class SorchaDerivationPaths
             CredentialHolderBinding => CredentialHolderBindingPath,
             HaipIssuerSigning => HaipIssuerSigningPath,
             TenantCaSigning => TenantCaSigningPath,
+            CitizenHolder => CitizenHolderPath,
+            CitizenStatusSigning => CitizenStatusSigningPath,
             _ => throw new ArgumentException($"Unknown Sorcha system path: {systemPath}", nameof(systemPath))
         };
     }

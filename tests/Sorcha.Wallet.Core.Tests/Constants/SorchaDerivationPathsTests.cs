@@ -98,4 +98,59 @@ public class SorchaDerivationPathsTests
         SorchaDerivationPaths.IsSystemPath("").Should().BeFalse();
         SorchaDerivationPaths.IsSystemPath(null!).Should().BeFalse();
     }
+
+    [Fact]
+    public void ResolvePath_CitizenHolder_ReturnsSlot108()
+    {
+        var result = SorchaDerivationPaths.ResolvePath("sorcha:citizen-holder");
+
+        result.Should().Be("m/44'/0'/0'/0/108");
+    }
+
+    [Fact]
+    public void ResolvePath_CitizenStatusSigning_ReturnsSlot109()
+    {
+        var result = SorchaDerivationPaths.ResolvePath("sorcha:citizen-status-signing");
+
+        result.Should().Be("m/44'/0'/0'/0/109");
+    }
+
+    [Fact]
+    public void CitizenHolderPath_IsDistinctFromAllOtherSlots()
+    {
+        // Guard against accidental collision; citizen-holder must not equal any prior slot.
+        var citizenHolder = SorchaDerivationPaths.CitizenHolderPath;
+
+        citizenHolder.Should().NotBe(SorchaDerivationPaths.RegisterAttestationPath);
+        citizenHolder.Should().NotBe(SorchaDerivationPaths.RegisterControlPath);
+        citizenHolder.Should().NotBe(SorchaDerivationPaths.DocketSigningPath);
+        citizenHolder.Should().NotBe(SorchaDerivationPaths.BlueprintPublishPath);
+        citizenHolder.Should().NotBe(SorchaDerivationPaths.PersonaVaultPath);
+        citizenHolder.Should().NotBe(SorchaDerivationPaths.CredentialHolderBindingPath);
+        citizenHolder.Should().NotBe(SorchaDerivationPaths.HaipIssuerSigningPath);
+        citizenHolder.Should().NotBe(SorchaDerivationPaths.TenantCaSigningPath);
+    }
+
+    [Fact]
+    public void CitizenStatusSigningPath_IsDistinctFromAllOtherSlots()
+    {
+        var statusSigning = SorchaDerivationPaths.CitizenStatusSigningPath;
+
+        statusSigning.Should().NotBe(SorchaDerivationPaths.RegisterAttestationPath);
+        statusSigning.Should().NotBe(SorchaDerivationPaths.RegisterControlPath);
+        statusSigning.Should().NotBe(SorchaDerivationPaths.DocketSigningPath);
+        statusSigning.Should().NotBe(SorchaDerivationPaths.BlueprintPublishPath);
+        statusSigning.Should().NotBe(SorchaDerivationPaths.PersonaVaultPath);
+        statusSigning.Should().NotBe(SorchaDerivationPaths.CredentialHolderBindingPath);
+        statusSigning.Should().NotBe(SorchaDerivationPaths.HaipIssuerSigningPath);
+        statusSigning.Should().NotBe(SorchaDerivationPaths.TenantCaSigningPath);
+        statusSigning.Should().NotBe(SorchaDerivationPaths.CitizenHolderPath);
+    }
+
+    [Fact]
+    public void CitizenHolder_IsRecognisedAsSystemPath()
+    {
+        SorchaDerivationPaths.IsSystemPath(SorchaDerivationPaths.CitizenHolder).Should().BeTrue();
+        SorchaDerivationPaths.IsSystemPath(SorchaDerivationPaths.CitizenStatusSigning).Should().BeTrue();
+    }
 }
