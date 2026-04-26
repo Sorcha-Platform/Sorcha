@@ -34,6 +34,29 @@ public static class SocialLoginEndpoints
     public const string CallbackPath = "/auth/social/callback";
 
     /// <summary>
+    /// Resolves the canonical callback URL for OAuth providers. Production
+    /// environments behind a TLS-terminating reverse proxy (Caddy, ALB,
+    /// ingress) MUST set <c>OAuth:CallbackBaseUrl</c> to the public origin
+    /// (e.g. <c>https://n1.sorcha.dev</c>) — relying on
+    /// <see cref="HttpRequest.Scheme"/> alone has produced
+    /// <c>redirect_uri_mismatch</c> errors at Google when the proxy chain
+    /// did not propagate <c>X-Forwarded-Proto</c> cleanly. When the config
+    /// value is unset, falls back to <c>{Scheme}://{Host}</c> from the
+    /// current request — appropriate only for local development.
+    /// Feature 115 FR-021.
+    /// </summary>
+    private static string ResolveCallbackUrl(HttpContext httpContext, IConfiguration configuration)
+    {
+        var configured = configuration["OAuth:CallbackBaseUrl"];
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return $"{configured.TrimEnd('/')}{CallbackPath}";
+        }
+
+        return $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{CallbackPath}";
+    }
+
+    /// <summary>
     /// Maps social login endpoints to the application.
     /// </summary>
     public static IEndpointRouteBuilder MapSocialLoginEndpoints(this IEndpointRouteBuilder app)
@@ -83,6 +106,7 @@ public static class SocialLoginEndpoints
         SocialLoginInitiateRequest request,
         ISocialLoginService socialLoginService,
         IPlatformSettingsService platformSettingsService,
+        IConfiguration configuration,
         HttpContext httpContext,
         ILogger<Program> logger,
         CancellationToken ct)
@@ -107,11 +131,10 @@ public static class SocialLoginEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        // Build redirect URI for the callback. This MUST match the registered
-        // redirect URI at the OAuth provider (see docs/guides/SOCIAL-LOGIN-SETUP.md).
-        // Single canonical path per environment per feature 115 FR-021.
-        var baseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
-        var redirectUri = $"{baseUrl}{CallbackPath}";
+        // Resolve callback URL (config-first, falls back to Request scheme/host).
+        // See ResolveCallbackUrl for why config-first is required behind a
+        // TLS-terminating reverse proxy.
+        var redirectUri = ResolveCallbackUrl(httpContext, configuration);
 
         try
         {
@@ -274,6 +297,7 @@ public static class SocialLoginEndpoints
     private static async Task<IResult> LinkSocialProvider(
         SocialLoginInitiateRequest request,
         ISocialLoginService socialLoginService,
+        IConfiguration configuration,
         HttpContext httpContext,
         ILogger<Program> logger,
         CancellationToken ct)
@@ -296,9 +320,10 @@ public static class SocialLoginEndpoints
             return TypedResults.Unauthorized();
         }
 
-        // Build redirect URI
-        var baseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
-        var redirectUri = $"{baseUrl}/api/auth/social/callback-redirect";
+        // Build redirect URI — same canonical path as the new-signup flow.
+        // ResolveCallbackUrl honours OAuth:CallbackBaseUrl when set, falling
+        // back to the request scheme/host for local development.
+        var redirectUri = ResolveCallbackUrl(httpContext, configuration);
 
         try
         {

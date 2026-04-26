@@ -59,6 +59,13 @@ services:
       # After first seed the value persists in tenant.platform_settings; this
       # env var is only consulted when seeding a fresh database. Feature 115.
       PlatformSettings__SeedPublicOrgEnabled: "true"
+      # OAuth callback base URL — explicit because Caddy terminates TLS on
+      # the host and the proxy chain (Caddy → api-gateway → tenant-service)
+      # does not always propagate X-Forwarded-Proto cleanly, causing
+      # http:// to leak into the redirect_uri sent to providers and yielding
+      # redirect_uri_mismatch errors. Set the public origin explicitly per
+      # feature 115 FR-021.
+      OAuth__CallbackBaseUrl: https://n1.sorcha.dev
       # Social login providers — feature 115. ClientId/ClientSecret are
       # interpolated from the host's /opt/sorcha/.env file (gitignored).
       # Buttons for unconfigured providers are hidden client-side, so leaving
