@@ -48,8 +48,10 @@ public sealed class EnrolmentService : IEnrolmentService
     private readonly IDeviceKeyService _deviceKeys;
     private readonly ICitizenWalletClient _walletClient;
     private readonly IDelegationStore _delegations;
+    private readonly IDeviceMetaStore _deviceMeta;
     private readonly ISyncService _sync;
     private readonly ICredentialCache _cache;
+    private readonly TimeProvider _clock;
     private readonly ILogger<EnrolmentService> _logger;
 
     /// <summary>Initialises a new instance.</summary>
@@ -57,15 +59,19 @@ public sealed class EnrolmentService : IEnrolmentService
         IDeviceKeyService deviceKeys,
         ICitizenWalletClient walletClient,
         IDelegationStore delegations,
+        IDeviceMetaStore deviceMeta,
         ISyncService sync,
         ICredentialCache cache,
+        TimeProvider clock,
         ILogger<EnrolmentService> logger)
     {
         _deviceKeys = deviceKeys ?? throw new ArgumentNullException(nameof(deviceKeys));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
         _delegations = delegations ?? throw new ArgumentNullException(nameof(delegations));
+        _deviceMeta = deviceMeta ?? throw new ArgumentNullException(nameof(deviceMeta));
         _sync = sync ?? throw new ArgumentNullException(nameof(sync));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -97,6 +103,14 @@ public sealed class EnrolmentService : IEnrolmentService
 
         // 3. Persist the delegation locally so offline presentations can use it.
         await _delegations.SetAsync(response.DelegationCredential, ct);
+
+        // 3b. Persist enrolment metadata so the renewal trigger can find the
+        //     deviceId + expiry without re-asking the server.
+        await _deviceMeta.SetAsync(new DeviceMetaRecord(
+            response.DeviceId,
+            request.DeviceLabel,
+            EnrolledAt: _clock.GetUtcNow(),
+            response.DelegationExpiresAt), ct);
 
         // 4. Pull the initial credential snapshot via the sync orchestrator —
         //    it handles the cursor bootstrap on top of the snapshot fetch.

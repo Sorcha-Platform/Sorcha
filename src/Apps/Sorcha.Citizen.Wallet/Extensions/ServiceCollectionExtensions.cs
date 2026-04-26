@@ -30,7 +30,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISyncCursorStore, IndexedDbSyncCursorStore>();
         services.AddSingleton<IAccessTokenStore, IndexedDbAccessTokenStore>();
         services.AddSingleton<ISyncService, SyncService>();
+        services.AddSingleton<IDeviceMetaStore, IndexedDbDeviceMetaStore>();
         services.AddSingleton<IEnrolmentService, EnrolmentService>();
+        services.AddSingleton<IDelegationRenewalClient, DelegationRenewalClient>();
 
         // Auth surface: a separate HttpClient that does NOT inject the bearer
         // token (so sign-in requests don't carry stale tokens).

@@ -18,6 +18,7 @@
 @inject IDelegationStore Delegation
 @inject IDeviceKeyService DeviceKey
 @inject ISyncService Sync
+@inject IDelegationRenewalClient Renewal
 @inject HttpClient Http
 @inject NavigationManager Nav
 @inject ILogger<Index> Logger
@@ -101,6 +102,32 @@
         // Fire-and-forget background sync — refreshes the cache from server without
         // blocking first paint. UI updates via StateHasChanged when sync completes.
         _ = SyncNowAsync(silentSuccess: true);
+        // Fire-and-forget delegation renewal check — silent unless renewal happens.
+        _ = RenewIfDueAsync();
+    }
+
+    private async Task RenewIfDueAsync()
+    {
+        try
+        {
+            var outcome = await Renewal.RenewIfDueAsync();
+            if (outcome == DelegationRenewalOutcome.Renewed)
+            {
+                _syncSeverity = Severity.Info;
+                _syncStatus = "Device delegation renewed.";
+                StateHasChanged();
+            }
+            else if (outcome == DelegationRenewalOutcome.DeviceNotFound)
+            {
+                _syncSeverity = Severity.Warning;
+                _syncStatus = "This device was revoked on another device. Re-enrol to continue.";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Background delegation renewal failed");
+        }
     }
 
     private async Task SyncNowAsync(bool silentSuccess = false)
