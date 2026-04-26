@@ -325,6 +325,50 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 | `/api/auth/public/social/initiate` | POST | Initiate social login/signup with provider (Google, Microsoft, GitHub, Apple) |
 | `/api/auth/public/social/callback` | POST | Handle OAuth callback and issue tokens |
 
+**Browser callback URL:** providers redirect to the Razor page at
+`/auth/social/callback` (single canonical path per environment, see
+[`docs/guides/SOCIAL-LOGIN-SETUP.md`](../../../docs/guides/SOCIAL-LOGIN-SETUP.md)).
+The page resolves the provider from the cached state — provider is NOT a
+query parameter — and applies the strict link policy added in
+feature 115 before issuing tokens.
+
+**Strict link policy (feature 115).** Both signup and link flows refuse
+when verification is missing on either side:
+
+- New user creation requires the provider to assert
+  `email_verified=true`. Otherwise → refusal with
+  `provider_unverified` reason.
+- Cross-method linking (existing Sorcha account, new social provider
+  with the same email) requires *both* the provider's claim and the
+  existing account's `EmailVerified` to be true. Otherwise → refusal
+  with `existing_unverified` reason.
+- Returning users (provider+sub already linked) are NOT re-checked
+  against verification gates — trust is established at link time.
+
+**Provider visibility.** Signup and login pages render a "Continue
+with..." button only for providers configured with non-empty
+`ClientId` and `ClientSecret`. Configuration shape:
+
+```yaml
+SocialProviders__0__Name: Google
+SocialProviders__0__ClientId: ${GOOGLE_OAUTH_CLIENT_ID}
+SocialProviders__0__ClientSecret: ${GOOGLE_OAUTH_CLIENT_SECRET}
+```
+
+Adding a new provider requires only configuration + service restart.
+See [`docs/guides/SOCIAL-LOGIN-SETUP.md`](../../../docs/guides/SOCIAL-LOGIN-SETUP.md)
+for the operator runbook.
+
+**Telemetry.** Refusals emit
+`sorcha_social_login_refusal_total{provider, reason}` on the
+`Sorcha.Tenant` meter. PII is never tagged on these metrics; the
+matching log line carries a hash-based redacted email tag.
+
+**Public-organisation seed.** A fresh database can be seeded with
+`PublicOrgEnabled=true` via
+`PlatformSettings__SeedPublicOrgEnabled=true` (feature 115 FR-019).
+Seed-time only — admin UI/API toggles win on subsequent boots.
+
 ### Public User Auth Method Management (`/api/auth/public`) — Authenticated
 
 | Endpoint | Method | Description |

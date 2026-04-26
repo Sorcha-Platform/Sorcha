@@ -129,6 +129,20 @@ public class SocialLoginService : ISocialLoginService
                 }
 
                 _providers[config.Name] = config;
+
+                // Operator hint: a provider is registered in config but missing
+                // credentials on this host. The button will be hidden by
+                // GetConfiguredProviderNames(), but a startup warning helps
+                // operators spot a missing .env entry without staring at an
+                // empty signup tab. Feature 115.
+                if (string.IsNullOrWhiteSpace(config.ClientId)
+                    || string.IsNullOrWhiteSpace(config.ClientSecret))
+                {
+                    _logger.LogWarning(
+                        "Social provider {Provider} is registered but has empty {MissingField} — its button will be hidden. Set the credential in this environment's .env or appsettings to enable.",
+                        config.Name,
+                        string.IsNullOrWhiteSpace(config.ClientId) ? "ClientId" : "ClientSecret");
+                }
             }
         }
     }
@@ -210,17 +224,31 @@ public class SocialLoginService : ISocialLoginService
         if (stateBytes is null)
         {
             _logger.LogWarning("Social login callback: invalid or expired state parameter");
-            return new SocialAuthCallbackResult(false, "Invalid or expired state parameter.", null, null, null, provider);
+            return new SocialAuthCallbackResult(false, "Invalid or expired state parameter.", null, null, null, false, provider);
         }
 
         // Remove state from cache (single-use)
         await _cache.RemoveAsync(cacheKey, cancellationToken);
 
         var stateData = JsonSerializer.Deserialize<SocialStateData>(Encoding.UTF8.GetString(stateBytes));
-        if (stateData is null || !string.Equals(stateData.Provider, provider, StringComparison.OrdinalIgnoreCase))
+        if (stateData is null)
         {
-            _logger.LogWarning("Social login callback: state provider mismatch");
-            return new SocialAuthCallbackResult(false, "State parameter mismatch.", null, null, null, provider);
+            _logger.LogWarning("Social login callback: state data could not be deserialised");
+            return new SocialAuthCallbackResult(false, "State parameter mismatch.", null, null, null, false, provider);
+        }
+
+        // The Razor-page callback flow does not have provider in the query
+        // string (OAuth redirects do not preserve it), so callers may pass an
+        // empty string and rely on the cached provider. The API endpoint flow
+        // passes a provider explicitly and we validate it matches. Feature 115.
+        if (string.IsNullOrEmpty(provider))
+        {
+            provider = stateData.Provider;
+        }
+        else if (!string.Equals(stateData.Provider, provider, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Social login callback: state provider mismatch (expected {Cached}, got {Provided})", stateData.Provider, provider);
+            return new SocialAuthCallbackResult(false, "State parameter mismatch.", null, null, null, false, provider);
         }
 
         var config = GetProviderConfig(provider);
@@ -234,7 +262,7 @@ public class SocialLoginService : ISocialLoginService
 
             if (tokenResponse is null)
             {
-                return new SocialAuthCallbackResult(false, "Token exchange failed.", null, null, null, provider);
+                return new SocialAuthCallbackResult(false, "Token exchange failed.", null, null, null, false, provider);
             }
 
             // Extract claims — GitHub uses user info endpoint, others use ID token
@@ -248,8 +276,20 @@ public class SocialLoginService : ISocialLoginService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Social login code exchange failed for provider {Provider}", provider);
-            return new SocialAuthCallbackResult(false, "Authentication failed.", null, null, null, provider);
+            return new SocialAuthCallbackResult(false, "Authentication failed.", null, null, null, false, provider);
         }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> GetConfiguredProviderNames()
+    {
+        // Filter out providers configured with empty client credentials —
+        // those would yield non-functional buttons. Feature 115 FR-002.
+        return _providers.Values
+            .Where(p => !string.IsNullOrWhiteSpace(p.ClientId)
+                     && !string.IsNullOrWhiteSpace(p.ClientSecret))
+            .Select(p => p.Name)
+            .ToArray();
     }
 
     private SocialProviderConfig GetProviderConfig(string provider)
@@ -356,7 +396,7 @@ public class SocialLoginService : ISocialLoginService
             if (claims is not null)
             {
                 _logger.LogInformation("Social login claims extracted from ID token for provider {Provider}", provider);
-                return new SocialAuthCallbackResult(true, null, claims.Subject, claims.Email, claims.DisplayName, provider);
+                return new SocialAuthCallbackResult(true, null, claims.Subject, claims.Email, claims.DisplayName, claims.EmailVerified, provider);
             }
         }
 
@@ -367,7 +407,7 @@ public class SocialLoginService : ISocialLoginService
         }
 
         _logger.LogWarning("No ID token or user info endpoint available for provider {Provider}", provider);
-        return new SocialAuthCallbackResult(false, "Could not extract user claims.", null, null, null, provider);
+        return new SocialAuthCallbackResult(false, "Could not extract user claims.", null, null, null, false, provider);
     }
 
     private async Task<SocialAuthCallbackResult> ExtractGitHubClaimsAsync(
@@ -385,7 +425,7 @@ public class SocialLoginService : ISocialLoginService
         if (!userResponse.IsSuccessStatusCode)
         {
             _logger.LogWarning("GitHub user info request failed with status {StatusCode}", userResponse.StatusCode);
-            return new SocialAuthCallbackResult(false, "Failed to fetch GitHub user info.", null, null, null, provider);
+            return new SocialAuthCallbackResult(false, "Failed to fetch GitHub user info.", null, null, null, false, provider);
         }
 
         var userJson = await userResponse.Content.ReadAsStringAsync(cancellationToken);
@@ -397,8 +437,13 @@ public class SocialLoginService : ISocialLoginService
         var login = userRoot.TryGetProperty("login", out var loginProp) ? loginProp.GetString() : null;
         displayName ??= login;
 
-        // Fetch primary verified email from /user/emails
+        // Fetch primary verified email from /user/emails. We track emailVerified
+        // explicitly rather than inferring it from "did we set email" — making the
+        // invariant explicit so a future fallback (e.g. assign email from any
+        // primary entry, or fetch from /user) cannot silently smuggle an
+        // unverified email past the strict-link gate.
         string? email = null;
+        bool emailVerified = false;
         try
         {
             using var emailResponse = await client.GetAsync(GitHubUserEmailsEndpoint, cancellationToken);
@@ -413,6 +458,7 @@ public class SocialLoginService : ISocialLoginService
                     if (isPrimary && isVerified)
                     {
                         email = emailEntry.TryGetProperty("email", out var e) ? e.GetString() : null;
+                        emailVerified = true;
                         break;
                     }
                 }
@@ -423,8 +469,8 @@ public class SocialLoginService : ISocialLoginService
             _logger.LogWarning(ex, "Failed to fetch GitHub user emails");
         }
 
-        _logger.LogInformation("GitHub social login claims extracted for user {Subject}", subject);
-        return new SocialAuthCallbackResult(true, null, subject, email, displayName, provider);
+        _logger.LogInformation("GitHub social login claims extracted for user {Subject} (emailVerified={EmailVerified})", subject, emailVerified);
+        return new SocialAuthCallbackResult(true, null, subject, email, displayName, emailVerified, provider);
     }
 
     private async Task<SocialAuthCallbackResult> FetchUserInfoClaimsAsync(
@@ -441,7 +487,7 @@ public class SocialLoginService : ISocialLoginService
         {
             _logger.LogWarning("User info request failed for provider {Provider} with status {StatusCode}",
                 provider, response.StatusCode);
-            return new SocialAuthCallbackResult(false, "Failed to fetch user info.", null, null, null, provider);
+            return new SocialAuthCallbackResult(false, "Failed to fetch user info.", null, null, null, false, provider);
         }
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -451,9 +497,11 @@ public class SocialLoginService : ISocialLoginService
         var subject = root.TryGetProperty("sub", out var sub) ? sub.GetString() : null;
         var email = root.TryGetProperty("email", out var e) ? e.GetString() : null;
         var displayName = root.TryGetProperty("name", out var n) ? n.GetString() : null;
+        var emailVerified = root.TryGetProperty("email_verified", out var ev)
+                            && ev.ValueKind == JsonValueKind.True;
 
-        _logger.LogInformation("Social login user info claims extracted for provider {Provider}", provider);
-        return new SocialAuthCallbackResult(true, null, subject, email, displayName, provider);
+        _logger.LogInformation("Social login user info claims extracted for provider {Provider} (emailVerified={EmailVerified})", provider, emailVerified);
+        return new SocialAuthCallbackResult(true, null, subject, email, displayName, emailVerified, provider);
     }
 
     private static IdTokenClaims? ParseIdTokenClaims(string idToken)
@@ -486,8 +534,13 @@ public class SocialLoginService : ISocialLoginService
             var subject = root.TryGetProperty("sub", out var sub) ? sub.GetString() : null;
             var email = root.TryGetProperty("email", out var e) ? e.GetString() : null;
             var displayName = root.TryGetProperty("name", out var n) ? n.GetString() : null;
+            // email_verified must be a JSON Boolean true; default false for any other shape.
+            // Some providers serialise it as a string "true" — treat that as untrusted and
+            // require the canonical boolean form. Feature 115 FR-010.
+            var emailVerified = root.TryGetProperty("email_verified", out var ev)
+                                && ev.ValueKind == JsonValueKind.True;
 
-            return new IdTokenClaims(subject, email, displayName);
+            return new IdTokenClaims(subject, email, displayName, emailVerified);
         }
         catch
         {
@@ -522,5 +575,5 @@ public class SocialLoginService : ISocialLoginService
 
     private readonly record struct TokenExchangeResult(string AccessToken, string? IdToken);
 
-    private record IdTokenClaims(string? Subject, string? Email, string? DisplayName);
+    private record IdTokenClaims(string? Subject, string? Email, string? DisplayName, bool EmailVerified);
 }

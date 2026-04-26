@@ -27,6 +27,7 @@ public class LoginModelTests
     private readonly Mock<ITokenService> _tokenService = new();
     private readonly Mock<IIdentityRepository> _identityRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
+    private readonly Mock<ISocialLoginService> _socialLoginService = new();
 
     private LoginModel CreateModel()
     {
@@ -37,13 +38,48 @@ public class LoginModelTests
             _identityRepo.Object,
             _orgRepo.Object,
             NullLogger<LoginModel>.Instance,
-            Options.Create(new DemoEnvironmentSettings()));
+            Options.Create(new DemoEnvironmentSettings()),
+            _socialLoginService.Object);
 
         var httpContext = new DefaultHttpContext();
         model.PageContext = new PageContext(new ActionContext(
             httpContext, new RouteData(), new PageActionDescriptor()));
 
         return model;
+    }
+
+    [Fact]
+    public void OnGet_PopulatesAvailableProvidersFromSocialLoginService()
+    {
+        // Arrange
+        _socialLoginService
+            .Setup(s => s.GetConfiguredProviderNames())
+            .Returns(new[] { "Google", "GitHub" });
+
+        var model = CreateModel();
+
+        // Act
+        model.OnGet();
+
+        // Assert — login page shows the same set of providers as the signup page.
+        model.AvailableProviders.Should().Equal("Google", "GitHub");
+    }
+
+    [Fact]
+    public void OnGet_NoConfiguredProviders_AvailableProvidersEmpty()
+    {
+        // Arrange
+        _socialLoginService
+            .Setup(s => s.GetConfiguredProviderNames())
+            .Returns(Array.Empty<string>());
+
+        var model = CreateModel();
+
+        // Act
+        model.OnGet();
+
+        // Assert
+        model.AvailableProviders.Should().BeEmpty();
     }
 
     private static TokenResponse CreateTokens() => new()

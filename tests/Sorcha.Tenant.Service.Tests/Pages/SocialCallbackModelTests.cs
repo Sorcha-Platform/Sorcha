@@ -64,17 +64,17 @@ public class SocialCallbackModelTests : IDisposable
     }
 
     [Theory]
-    [InlineData(null, "code", "state")]
-    [InlineData("Google", null, "state")]
-    [InlineData("Google", "code", null)]
+    [InlineData(null, "state")]
+    [InlineData("code", null)]
     public async Task OnGetAsync_MissingParams_ShowsError(
-        string? provider, string? code, string? state)
+        string? code, string? state)
     {
-        // Arrange
+        // Arrange — provider is recovered from cached state inside ExchangeCodeAsync
+        // (feature 115 FR-021), so it is no longer a query parameter.
         var model = CreateModel();
 
         // Act
-        var result = await model.OnGetAsync(provider, code, state, null, CancellationToken.None);
+        var result = await model.OnGetAsync(code, state, null, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<PageResult>();
@@ -88,10 +88,68 @@ public class SocialCallbackModelTests : IDisposable
         var model = CreateModel();
 
         // Act
-        var result = await model.OnGetAsync("Google", "code", "state", "access_denied", CancellationToken.None);
+        var result = await model.OnGetAsync("code", "state", "access_denied", CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<PageResult>();
         model.ErrorMessage.Should().Contain("cancelled or failed");
+    }
+
+    [Fact]
+    public async Task OnGetAsync_RefusalProviderUnverified_RendersDocumentedCopy()
+    {
+        // Arrange
+        _socialLoginService
+            .Setup(s => s.ExchangeCodeAsync(string.Empty, "code", "state", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SocialAuthCallbackResult(
+                Success: true, Error: null,
+                Subject: "sub-1", Email: "x@y.com", DisplayName: "X",
+                EmailVerified: false, Provider: "Google"));
+
+        _platformUserService
+            .Setup(s => s.ResolveOrCreateSocialUserAsync(
+                It.IsAny<SocialAuthCallbackResult>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolveSocialUserResult(
+                User: null, IsNew: false, Refusal: SocialLoginRefusal.ProviderUnverified));
+
+        var model = CreateModel();
+
+        // Act
+        var result = await model.OnGetAsync("code", "state", null, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<PageResult>();
+        model.ErrorMessage.Should().Contain("Google");
+        model.ErrorMessage.Should().Contain("verify");
+    }
+
+    [Fact]
+    public async Task OnGetAsync_RefusalExistingUnverified_RendersDocumentedCopy()
+    {
+        // Arrange
+        _socialLoginService
+            .Setup(s => s.ExchangeCodeAsync(string.Empty, "code", "state", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SocialAuthCallbackResult(
+                Success: true, Error: null,
+                Subject: "sub-1", Email: "x@y.com", DisplayName: "X",
+                EmailVerified: true, Provider: "Google"));
+
+        _platformUserService
+            .Setup(s => s.ResolveOrCreateSocialUserAsync(
+                It.IsAny<SocialAuthCallbackResult>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolveSocialUserResult(
+                User: null, IsNew: false, Refusal: SocialLoginRefusal.ExistingUnverified));
+
+        var model = CreateModel();
+
+        // Act
+        var result = await model.OnGetAsync("code", "state", null, CancellationToken.None);
+
+        // Assert — copy directs the user to verify their existing account
+        result.Should().BeOfType<PageResult>();
+        model.ErrorMessage.Should().Contain("account exists");
+        model.ErrorMessage.Should().Contain("verify");
     }
 }

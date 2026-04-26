@@ -452,7 +452,8 @@ FIDO2/WebAuthn passkey authentication for both organizational users (2FA) and pu
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/api/auth/public/social/initiate` | Anonymous | Initiate OAuth flow for provider (Google, Microsoft, GitHub, Apple) |
-| POST | `/api/auth/public/social/callback` | Anonymous | Handle OAuth callback, provision user, issue tokens |
+| POST | `/api/auth/public/social/callback` | Anonymous | Handle OAuth callback (SPA flow), provision user under strict link policy, issue tokens. Returns 400 with refusal message when `email_verified=false` from provider or when target user is unverified. |
+| GET  | `/auth/social/callback` | Anonymous | Razor-page browser redirect URI for OAuth providers. Single canonical path per environment. Provider is recovered from cached state, NOT a query parameter. See `docs/guides/SOCIAL-LOGIN-SETUP.md`. |
 
 #### Public User Auth Method Management
 

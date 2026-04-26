@@ -21,6 +21,19 @@ namespace Sorcha.Tenant.Service.Endpoints;
 public static class SocialLoginEndpoints
 {
     /// <summary>
+    /// The single canonical OAuth callback path for the environment. Both
+    /// the initiate and link flows pass <c>{baseUrl}{CallbackPath}</c> as
+    /// the <c>redirect_uri</c> sent to the provider, and the matching
+    /// Razor page at <c>Pages/Auth/SocialCallback.cshtml</c> declares
+    /// <c>@page "/auth/social/callback"</c>. Feature 115 FR-021.
+    ///
+    /// Regression guard: if this constant changes, the OAuth-app
+    /// registrations at every provider for every environment must be
+    /// updated to match. Do not change without coordinated rollout.
+    /// </summary>
+    public const string CallbackPath = "/auth/social/callback";
+
+    /// <summary>
     /// Maps social login endpoints to the application.
     /// </summary>
     public static IEndpointRouteBuilder MapSocialLoginEndpoints(this IEndpointRouteBuilder app)
@@ -94,9 +107,11 @@ public static class SocialLoginEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        // Build redirect URI for the callback
+        // Build redirect URI for the callback. This MUST match the registered
+        // redirect URI at the OAuth provider (see docs/guides/SOCIAL-LOGIN-SETUP.md).
+        // Single canonical path per environment per feature 115 FR-021.
         var baseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
-        var redirectUri = $"{baseUrl}/api/auth/social/callback-redirect";
+        var redirectUri = $"{baseUrl}{CallbackPath}";
 
         try
         {
@@ -166,10 +181,34 @@ public static class SocialLoginEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        // Resolve or create PlatformUser
-        var (platformUser, isNew) = await platformUserService.ResolveOrCreateSocialUserAsync(
-            request.Provider, callbackResult.Subject,
-            callbackResult.Email, callbackResult.DisplayName, ct);
+        // Resolve or create PlatformUser under the strict link policy (feature 115).
+        // Use the resolved provider name from the callback result throughout — it's
+        // been validated against the cached state and is the same value used for
+        // metrics tagging and logging. Defence-in-depth: never reflect raw
+        // request input back into a user-visible message.
+        var resolveResult = await platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, ct);
+        if (resolveResult.Refusal != SocialLoginRefusal.None)
+        {
+            var resolvedProvider = callbackResult.Provider;
+            var problemMessage = resolveResult.Refusal switch
+            {
+                SocialLoginRefusal.ProviderUnverified =>
+                    $"Your {resolvedProvider} account hasn't verified this email address. Please verify it with the provider and try again.",
+                SocialLoginRefusal.ExistingUnverified =>
+                    "An account exists for this email but isn't verified. Sign in with your password and verify your email first.",
+                _ => "Social login was refused.",
+            };
+
+            SocialLoginMetrics.RecordRefusal(resolvedProvider, resolveResult.Refusal);
+            logger.LogWarning(
+                "Social login refused via API: provider={Provider}, reason={Reason}",
+                resolvedProvider, resolveResult.Refusal);
+
+            return TypedResults.Problem(problemMessage, statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var platformUser = resolveResult.User!;
+        var isNew = resolveResult.IsNew;
 
         // Ensure UserIdentity exists in the public org
         var publicOrgId = WellKnownIds.PublicOrgId;

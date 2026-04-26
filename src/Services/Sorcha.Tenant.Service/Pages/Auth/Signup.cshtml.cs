@@ -19,6 +19,7 @@ public class SignupModel : PageModel
     private readonly IRegistrationService _registrationService;
     private readonly ILogger<SignupModel> _logger;
     private readonly DemoEnvironmentSettings _demoSettings;
+    private readonly ISocialLoginService _socialLoginService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SignupModel"/> class.
@@ -26,11 +27,13 @@ public class SignupModel : PageModel
     public SignupModel(
         IRegistrationService registrationService,
         ILogger<SignupModel> logger,
-        IOptions<DemoEnvironmentSettings> demoSettings)
+        IOptions<DemoEnvironmentSettings> demoSettings,
+        ISocialLoginService socialLoginService)
     {
         _registrationService = registrationService;
         _logger = logger;
         _demoSettings = demoSettings.Value;
+        _socialLoginService = socialLoginService;
     }
 
     /// <summary>Demo-environment banner flag — when true the page shows the warning notice.</summary>
@@ -38,6 +41,13 @@ public class SignupModel : PageModel
 
     /// <summary>Demo-environment banner copy — rendered HTML-encoded.</summary>
     public string DemoBannerMessage => _demoSettings.Message;
+
+    /// <summary>
+    /// Social-login providers configured with non-empty credentials. Drives
+    /// conditional rendering of "Continue with..." buttons. Empty when no
+    /// providers are configured. Feature 115 FR-001/FR-002.
+    /// </summary>
+    public IReadOnlyList<string> AvailableProviders { get; private set; } = [];
 
     /// <summary>
     /// User's display name.
@@ -111,6 +121,8 @@ public class SignupModel : PageModel
         {
             ActiveTab = tab;
         }
+
+        AvailableProviders = _socialLoginService.GetConfiguredProviderNames();
     }
 
     /// <summary>

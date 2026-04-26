@@ -248,48 +248,107 @@ public class PlatformUserService : IPlatformUserService
     }
 
     /// <inheritdoc />
-    public async Task<(PlatformUser User, bool IsNew)> ResolveOrCreateSocialUserAsync(
-        string provider, string subject, string? email, string? displayName, CancellationToken ct)
+    public async Task<ResolveSocialUserResult> ResolveOrCreateSocialUserAsync(
+        SocialAuthCallbackResult claim, CancellationToken ct)
     {
-        // Step 1: Find by provider + subject (returning user)
+        ArgumentNullException.ThrowIfNull(claim);
+
+        var provider = claim.Provider;
+        var subject = claim.Subject ?? throw new ArgumentException("claim.Subject is required", nameof(claim));
+        var email = claim.Email;
+        var displayName = claim.DisplayName;
+
+        // Step 1: Returning user (provider + subject already linked).
+        // No verification re-check — trust is established at link time
+        // (FR-013). Refresh DisplayName from the latest claim if non-empty
+        // and changed (FR-008); refresh LastUsedAt unconditionally (FR-007).
         var existingByProvider = await GetByProviderSubjectAsync(provider, subject, ct);
         if (existingByProvider is not null)
         {
-            // Update last used timestamp on the social login
             var socialLogin = await _db.PlatformSocialLogins
                 .FirstAsync(s => s.Provider == provider && s.Subject == subject, ct);
             socialLogin.LastUsedAt = DateTimeOffset.UtcNow;
+
+            if (!string.IsNullOrWhiteSpace(displayName)
+                && !string.Equals(displayName, existingByProvider.DisplayName, StringComparison.Ordinal))
+            {
+                existingByProvider.DisplayName = displayName;
+            }
+
             await _db.SaveChangesAsync(ct);
 
             _logger.LogInformation(
                 "Social login resolved existing user {UserId} via {Provider}/{Subject}",
                 existingByProvider.Id, provider, subject);
 
-            return (existingByProvider, false);
+            return new ResolveSocialUserResult(existingByProvider, IsNew: false, SocialLoginRefusal.None);
         }
 
-        // Step 2: Find by email and link provider (existing user, new provider)
+        // Step 2: Email-collision linking — strict-link policy gate (FR-011, FR-012).
+        // Both the provider's claim AND the existing Sorcha account must be verified
+        // for cross-method linking to succeed. The two refusal directions point the
+        // user at different recovery paths, so distinguish them precisely:
+        //   provider unverified  → ProviderUnverified ("verify with the provider")
+        //   existing unverified  → ExistingUnverified ("verify your Sorcha account")
         if (!string.IsNullOrWhiteSpace(email))
         {
             var existingByEmail = await GetByEmailAsync(email, ct);
             if (existingByEmail is not null)
             {
+                if (!claim.EmailVerified)
+                {
+                    _logger.LogWarning(
+                        "Social login refused: email-collision link rejected — provider {Provider} did not assert email_verified",
+                        provider);
+
+                    return new ResolveSocialUserResult(User: null, IsNew: false, SocialLoginRefusal.ProviderUnverified);
+                }
+
+                if (!existingByEmail.EmailVerified)
+                {
+                    _logger.LogWarning(
+                        "Social login refused: email-collision link rejected — existing user {UserId} email is not verified for {Provider}",
+                        existingByEmail.Id, provider);
+
+                    return new ResolveSocialUserResult(User: null, IsNew: false, SocialLoginRefusal.ExistingUnverified);
+                }
+
+                // Stage the DisplayName refresh on the tracked entity BEFORE
+                // LinkSocialLoginAsync — its SaveChangesAsync will then persist
+                // both the new link row and the updated PlatformUser in a single
+                // round-trip rather than two.
+                if (!string.IsNullOrWhiteSpace(displayName)
+                    && !string.Equals(displayName, existingByEmail.DisplayName, StringComparison.Ordinal))
+                {
+                    existingByEmail.DisplayName = displayName;
+                }
+
                 await LinkSocialLoginAsync(existingByEmail.Id, provider, subject, email, displayName, ct);
 
                 _logger.LogInformation(
                     "Social login linked {Provider}/{Subject} to existing user {UserId} via email match",
                     provider, subject, existingByEmail.Id);
 
-                return (existingByEmail, false);
+                return new ResolveSocialUserResult(existingByEmail, IsNew: false, SocialLoginRefusal.None);
             }
         }
 
-        // Step 3: Create new PlatformUser + link social login
+        // Step 3: Genuinely new user — provider must assert email_verified=true (FR-010).
+        // Refusal here means no PlatformUser is created at all.
+        if (!claim.EmailVerified)
+        {
+            _logger.LogWarning(
+                "Social login refused: provider {Provider} did not assert email_verified for {Subject}",
+                provider, subject);
+
+            return new ResolveSocialUserResult(User: null, IsNew: false, SocialLoginRefusal.ProviderUnverified);
+        }
+
         var resolvedDisplayName = displayName ?? email?.Split('@')[0] ?? "User";
         var newUser = await CreateAsync(email ?? $"{provider}_{subject}@noemail.local", resolvedDisplayName, null, ct);
         await LinkSocialLoginAsync(newUser.Id, provider, subject, email, displayName, ct);
 
-        // Mark email as verified for social login users (provider verified it)
+        // Mark email as verified — provider asserted it and we trust that assertion.
         if (!string.IsNullOrWhiteSpace(email))
         {
             newUser.EmailVerified = true;
@@ -301,7 +360,7 @@ public class PlatformUserService : IPlatformUserService
             "Social login created new user {UserId} via {Provider}/{Subject}",
             newUser.Id, provider, subject);
 
-        return (newUser, true);
+        return new ResolveSocialUserResult(newUser, IsNew: true, SocialLoginRefusal.None);
     }
 }
 

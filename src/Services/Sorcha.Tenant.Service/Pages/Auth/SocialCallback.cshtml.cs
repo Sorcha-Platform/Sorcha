@@ -64,10 +64,12 @@ public class SocialCallbackModel : PageModel
 
     /// <summary>
     /// Handles GET requests from the OAuth provider redirect.
-    /// Exchanges the authorization code, resolves/creates user, and redirects with JWT.
+    /// Exchanges the authorization code (which internally resolves the
+    /// provider from the cached <c>state</c> data — feature 115 FR-021),
+    /// resolves/creates user under the strict link policy, and redirects
+    /// with JWT on success or renders a refusal message on policy gate.
     /// </summary>
     public async Task<IActionResult> OnGetAsync(
-        string? provider,
         string? code,
         string? state,
         string? error,
@@ -77,29 +79,74 @@ public class SocialCallbackModel : PageModel
 
         if (!string.IsNullOrEmpty(error))
         {
-            _logger.LogWarning("Social login callback received error from provider {Provider}: {Error}", provider, error);
+            _logger.LogWarning("Social login callback received error: {Error}", error);
             ErrorMessage = "The sign-in was cancelled or failed. Please try again.";
+            // Provider name is unknown at this point (we never reached state-cache lookup);
+            // tag as "unknown" so the counter still surfaces volume of cancelled flows.
+            SocialLoginMetrics.RecordUpstreamFailure("unknown", "provider_error");
             return Page();
         }
 
-        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state) || string.IsNullOrEmpty(provider))
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
         {
             ErrorMessage = "Invalid callback parameters. Please try signing in again.";
+            SocialLoginMetrics.RecordUpstreamFailure("unknown", "missing_params");
             return Page();
         }
 
-        // Exchange code for claims
-        var callbackResult = await _socialLoginService.ExchangeCodeAsync(provider, code, state, ct);
+        // The provider is recovered from cached state inside ExchangeCodeAsync;
+        // it is NOT a query parameter (OAuth providers do not preserve query
+        // parameters across the redirect, so the previous behaviour was relying
+        // on a value that was never actually present). We pass an empty string
+        // here to maintain the existing service signature; ExchangeCodeAsync
+        // returns the resolved provider on the result.
+        var callbackResult = await _socialLoginService.ExchangeCodeAsync(string.Empty, code, state, ct);
+        var provider = callbackResult.Provider;
+
         if (!callbackResult.Success || string.IsNullOrEmpty(callbackResult.Subject))
         {
             _logger.LogWarning("Social login exchange failed for {Provider}: {Error}", provider, callbackResult.Error);
             ErrorMessage = callbackResult.Error ?? "Authentication failed. Please try again.";
+            // Tag the cause based on what ExchangeCodeAsync surfaced — the message is
+            // user-facing copy, so we map it back to a stable telemetry tag rather
+            // than tagging the message verbatim.
+            var reasonTag = callbackResult.Error switch
+            {
+                { } e when e.Contains("state", StringComparison.OrdinalIgnoreCase) => "state_invalid",
+                { } e when e.Contains("token", StringComparison.OrdinalIgnoreCase) => "code_exchange_failed",
+                _ => "code_exchange_failed",
+            };
+            SocialLoginMetrics.RecordUpstreamFailure(provider, reasonTag);
             return Page();
         }
 
-        // Resolve or create PlatformUser
-        var (platformUser, isNew) = await _platformUserService.ResolveOrCreateSocialUserAsync(
-            provider, callbackResult.Subject, callbackResult.Email, callbackResult.DisplayName, ct);
+        // Resolve or create PlatformUser under the strict link policy
+        var resolveResult = await _platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, ct);
+
+        // Refusal handling (feature 115 FR-016, FR-018)
+        if (resolveResult.Refusal != SocialLoginRefusal.None)
+        {
+            ErrorMessage = resolveResult.Refusal switch
+            {
+                SocialLoginRefusal.ProviderUnverified =>
+                    $"Your {provider} account hasn't verified this email address. Please verify it with {provider} and try again.",
+                SocialLoginRefusal.ExistingUnverified =>
+                    "An account exists for this email but isn't verified. Sign in with your password and verify your email first, or recover access at /auth/login.",
+                _ => "Authentication failed. Please try again.",
+            };
+
+            // Structured warning + redacted email tag for telemetry (FR-018).
+            var emailTag = HashEmailForLog(callbackResult.Email);
+            _logger.LogWarning(
+                "Social login refused for provider {Provider}: reason={Reason}, emailHash={EmailHash}",
+                provider, resolveResult.Refusal, emailTag);
+
+            SocialLoginMetrics.RecordRefusal(provider, resolveResult.Refusal);
+            return Page();
+        }
+
+        var platformUser = resolveResult.User!;
+        var isNew = resolveResult.IsNew;
 
         // Ensure UserIdentity in public org
         var publicOrgId = WellKnownIds.PublicOrgId;
@@ -157,5 +204,25 @@ public class SocialCallbackModel : PageModel
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
                        $"&refresh={Uri.EscapeDataString(tokens.RefreshToken)}";
         return Redirect($"/app/#{fragment}");
+    }
+
+    /// <summary>
+    /// Hashes an email to an 8-character hex tag suitable for log correlation
+    /// without exposing the address itself. The 4-byte (32-bit) truncation is
+    /// deliberate PII minimisation — collisions are tolerable for log
+    /// correlation, and shorter tags reduce the chance a leaked log line
+    /// contributes to re-identification. Returns "(none)" when input is
+    /// null or empty. Feature 115 FR-018.
+    /// </summary>
+    private static string HashEmailForLog(string? email)
+    {
+        if (string.IsNullOrEmpty(email))
+        {
+            return "(none)";
+        }
+
+        var bytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(email.ToLowerInvariant()));
+        return Convert.ToHexString(bytes.AsSpan(0, 4)).ToLowerInvariant();
     }
 }

@@ -91,20 +91,21 @@
                 <span>&#128274;</span> Sign in with Passkey
             </button>
 
-            <div class="d-grid gap-2 mt-3">
-                <button type="button" class="social-btn" data-provider="Google">
-                    Continue with Google
-                </button>
-                <button type="button" class="social-btn" data-provider="Microsoft">
-                    Continue with Microsoft
-                </button>
-                <button type="button" class="social-btn" data-provider="GitHub">
-                    Continue with GitHub
-                </button>
-                <button type="button" class="social-btn" data-provider="Apple">
-                    Continue with Apple
-                </button>
-            </div>
+            @* Social-login buttons render only for providers configured with non-empty *@
+            @* credentials on this environment. Feature 115 FR-001/FR-002. When no *@
+            @* providers are configured the section is omitted entirely (no message); *@
+            @* the divider above already separates passkey from password. *@
+            @if (Model.AvailableProviders.Count > 0)
+            {
+                <div class="d-grid gap-2 mt-3">
+                    @foreach (var provider in Model.AvailableProviders)
+                    {
+                        <button type="button" class="social-btn" data-provider="@provider">
+                            Continue with @provider
+                        </button>
+                    }
+                </div>
+            }
         }
 
         <div class="text-center mt-4">

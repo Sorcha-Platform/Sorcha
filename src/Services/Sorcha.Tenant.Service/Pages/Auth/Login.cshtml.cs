@@ -25,6 +25,7 @@ public class LoginModel : PageModel
     private readonly IOrganizationRepository _organizationRepository;
     private readonly ILogger<LoginModel> _logger;
     private readonly DemoEnvironmentSettings _demoSettings;
+    private readonly ISocialLoginService _socialLoginService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LoginModel"/> class.
@@ -36,7 +37,8 @@ public class LoginModel : PageModel
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         ILogger<LoginModel> logger,
-        IOptions<DemoEnvironmentSettings> demoSettings)
+        IOptions<DemoEnvironmentSettings> demoSettings,
+        ISocialLoginService socialLoginService)
     {
         _loginService = loginService;
         _totpService = totpService;
@@ -45,6 +47,7 @@ public class LoginModel : PageModel
         _organizationRepository = organizationRepository;
         _logger = logger;
         _demoSettings = demoSettings.Value;
+        _socialLoginService = socialLoginService;
     }
 
     /// <summary>Demo-environment banner flag — when true the page shows the warning notice.</summary>
@@ -52,6 +55,13 @@ public class LoginModel : PageModel
 
     /// <summary>Demo-environment banner copy — rendered HTML-encoded.</summary>
     public string DemoBannerMessage => _demoSettings.Message;
+
+    /// <summary>
+    /// Social-login providers configured with non-empty credentials. Drives
+    /// conditional rendering of "Continue with..." buttons on the login page.
+    /// Feature 115 FR-001/FR-002.
+    /// </summary>
+    public IReadOnlyList<string> AvailableProviders { get; private set; } = [];
 
     /// <summary>
     /// User email address.
@@ -129,6 +139,7 @@ public class LoginModel : PageModel
     public void OnGet(string? returnUrl = null)
     {
         ReturnUrl = returnUrl;
+        AvailableProviders = _socialLoginService.GetConfiguredProviderNames();
     }
 
     /// <summary>

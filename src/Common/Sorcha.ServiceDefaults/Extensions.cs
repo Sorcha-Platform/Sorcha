@@ -90,6 +90,9 @@ public static class Extensions
 
                 // Feature 113 — Validator mempool depth + lease expiry
                 metrics.AddMeter("Sorcha.Validator.Mempool");
+
+                // Feature 115 — Tenant Service social-login refusal counter
+                metrics.AddMeter("Sorcha.Tenant");
             })
             .WithTracing(tracing =>
             {
