@@ -119,6 +119,13 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderBind
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHaipIssuerCoKeyService,
     Sorcha.Wallet.Service.Services.Implementation.HaipIssuerCoKeyService>();
 
+// Feature 114: Citizen wallet holder key (per-citizen identity for offline OID4VP wallets)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderKeyService,
+    Sorcha.Wallet.Service.Services.Implementation.HolderKeyService>();
+
+// Feature 114: SignalR for citizen wallet push notifications
+builder.Services.AddSignalR();
+
 // File reassembly service (US2 — File Download)
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IFileReassemblyService,
     Sorcha.Wallet.Service.Services.Implementation.FileReassemblyService>();
@@ -192,6 +199,9 @@ app.MapPresentationEndpoints();
 app.MapOrgKeyEndpoints();
 app.MapFileDownloadEndpoints();
 app.MapPersonaCryptoEndpoints();
+
+// Feature 114: Citizen wallet SignalR hub. Routed via API Gateway as `/hubs/wallet`.
+app.MapHub<Sorcha.Wallet.Service.Hubs.WalletHub>("/hubs/wallet");
 
 // ===========================
 // Statistics Endpoint (public, no auth)
