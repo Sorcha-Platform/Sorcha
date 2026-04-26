@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -35,7 +36,8 @@ public class LoginModelTests
             _tokenService.Object,
             _identityRepo.Object,
             _orgRepo.Object,
-            NullLogger<LoginModel>.Instance);
+            NullLogger<LoginModel>.Instance,
+            Options.Create(new DemoEnvironmentSettings()));
 
         var httpContext = new DefaultHttpContext();
         model.PageContext = new PageContext(new ActionContext(

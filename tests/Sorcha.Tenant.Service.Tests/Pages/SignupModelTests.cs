@@ -7,7 +7,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Pages.Auth;
 using Sorcha.Tenant.Service.Services;
 
@@ -24,7 +26,8 @@ public class SignupModelTests
     {
         var model = new SignupModel(
             _registrationService.Object,
-            NullLogger<SignupModel>.Instance);
+            NullLogger<SignupModel>.Instance,
+            Options.Create(new DemoEnvironmentSettings()));
 
         var httpContext = new DefaultHttpContext();
         model.PageContext = new PageContext(new ActionContext(
