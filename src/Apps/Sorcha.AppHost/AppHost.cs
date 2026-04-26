@@ -128,6 +128,17 @@ var uiWeb = builder.AddProject<Projects.Sorcha_UI_Web>("ui-web")
     .WithReference(apiGateway) // UI can discover and call API Gateway
     .WithExternalHttpEndpoints(); // Primary external entry point for users
 
+// Feature 114: Citizen Wallet PWA (standalone Blazor WASM, served via dev server in Aspire,
+// nginx in docker-compose) and Reference Verifier (Blazor Server). Both speak to the
+// API Gateway for auth + wallet endpoints.
+var citizenWallet = builder.AddProject<Projects.Sorcha_Citizen_Wallet>("citizen-wallet")
+    .WithReference(apiGateway)
+    .WithExternalHttpEndpoints();
+
+var citizenVerifier = builder.AddProject<Projects.Sorcha_Citizen_Verifier>("citizen-verifier")
+    .WithReference(apiGateway)
+    .WithExternalHttpEndpoints();
+
 builder.Build().Run();
 
 /// <summary>
