@@ -42,4 +42,12 @@ public interface ICitizenWalletClient
     /// or to recover after a stale-cursor 410.
     /// </summary>
     Task<CredentialListResponse> ListCredentialsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Renews the device delegation credential for the supplied device id.
+    /// Calls <c>POST /api/v1/wallet/devices/renew-delegation</c>. Returns
+    /// <c>null</c> on 404 (device unknown or not owned by caller).
+    /// </summary>
+    Task<DelegationRenewalResponse?> RenewDelegationAsync(
+        Guid deviceId, CancellationToken ct = default);
 }

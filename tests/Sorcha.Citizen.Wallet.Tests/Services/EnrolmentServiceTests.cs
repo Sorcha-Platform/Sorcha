@@ -51,9 +51,10 @@ public sealed class EnrolmentServiceTests
                 DelegationExpiresAt = DateTimeOffset.UtcNow.AddYears(1),
             });
 
-        // 3. Delegation store + cache observable.
+        // 3. Delegation store + cache + meta observable.
         var delegations = new InMemoryDelegationStore();
         var cache = new InMemoryCredentialCache();
+        var meta = new InMemoryDeviceMetaStore();
 
         // 4. Sync service runs and reports success.
         var sync = new Mock<ISyncService>();
@@ -61,7 +62,8 @@ public sealed class EnrolmentServiceTests
             .ReturnsAsync(new SyncOutcome(SyncMode.FullSnapshot, 0, 0, 0, []));
 
         var sut = new EnrolmentService(deviceKey.Object, client.Object, delegations,
-            sync.Object, cache, NullLogger<EnrolmentService>.Instance);
+            meta, sync.Object, cache, TimeProvider.System,
+            NullLogger<EnrolmentService>.Instance);
 
         var result = await sut.EnrolAsync("My iPhone", "iOS 19 / Safari 19", "Mozilla/5.0...");
 
@@ -74,6 +76,12 @@ public sealed class EnrolmentServiceTests
         sentRequest.Platform.Should().Be("iOS 19 / Safari 19");
         (await delegations.GetCurrentAsync()).Should().Be("eyJ.delegation.compact");
         sync.Verify(s => s.SyncAsync(It.IsAny<CancellationToken>()), Times.Once);
+
+        var persistedMeta = await meta.GetAsync();
+        persistedMeta.Should().NotBeNull();
+        persistedMeta!.DeviceId.Should().Be(deviceId);
+        persistedMeta.Label.Should().Be("My iPhone");
+        persistedMeta.DelegationExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow.AddDays(360));
     }
 
     [Fact]
@@ -103,7 +111,8 @@ public sealed class EnrolmentServiceTests
             .ReturnsAsync(new SyncOutcome(SyncMode.Delta, 0, 0, 0, []));
 
         var sut = new EnrolmentService(deviceKey.Object, client.Object,
-            new InMemoryDelegationStore(), sync.Object, new InMemoryCredentialCache(),
+            new InMemoryDelegationStore(), new InMemoryDeviceMetaStore(),
+            sync.Object, new InMemoryCredentialCache(), TimeProvider.System,
             NullLogger<EnrolmentService>.Instance);
 
         await sut.EnrolAsync("  Padded label  ", "  ", "  ");
@@ -120,8 +129,10 @@ public sealed class EnrolmentServiceTests
             new Mock<IDeviceKeyService>().Object,
             new Mock<ICitizenWalletClient>().Object,
             new InMemoryDelegationStore(),
+            new InMemoryDeviceMetaStore(),
             new Mock<ISyncService>().Object,
             new InMemoryCredentialCache(),
+            TimeProvider.System,
             NullLogger<EnrolmentService>.Instance);
 
         var act = () => sut.EnrolAsync("   ", "iOS", "ua");
@@ -135,8 +146,10 @@ public sealed class EnrolmentServiceTests
             new Mock<IDeviceKeyService>().Object,
             new Mock<ICitizenWalletClient>().Object,
             new InMemoryDelegationStore(),
+            new InMemoryDeviceMetaStore(),
             new Mock<ISyncService>().Object,
             new InMemoryCredentialCache(),
+            TimeProvider.System,
             NullLogger<EnrolmentService>.Instance);
 
         var act = () => sut.EnrolAsync(new string('a', 121), "iOS", "ua");

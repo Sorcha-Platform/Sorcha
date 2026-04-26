@@ -91,4 +91,20 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         return await response.Content.ReadFromJsonAsync<CredentialListResponse>(JsonOptions, ct)
             ?? throw new InvalidOperationException("Wallet Service returned an empty body for /credentials.");
     }
+
+    /// <inheritdoc />
+    public async Task<DelegationRenewalResponse?> RenewDelegationAsync(
+        Guid deviceId, CancellationToken ct = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync(
+            "api/v1/wallet/devices/renew-delegation",
+            new DelegationRenewalRequest { DeviceId = deviceId },
+            JsonOptions, ct);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<DelegationRenewalResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Wallet Service returned an empty body for /devices/renew-delegation.");
+    }
 }
