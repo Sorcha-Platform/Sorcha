@@ -15,6 +15,11 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddAuthorizationCore();
 builder.Services.AddMudServices();
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
-builder.Services.AddCitizenWalletServices();
+
+// Gateway base address for typed Sorcha service clients. The wallet PWA is
+// mounted at /wallet/ behind the API Gateway; gateway-relative routes start
+// at the host root so we strip the /wallet/ prefix off the BaseAddress.
+var hostRoot = new Uri(builder.HostEnvironment.BaseAddress).GetLeftPart(UriPartial.Authority) + "/";
+builder.Services.AddCitizenWalletServices(hostRoot);
 
 await builder.Build().RunAsync();
