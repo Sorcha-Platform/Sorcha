@@ -159,7 +159,7 @@ templates — no production code changes.
 - [X] T040 [P] Update `src/Services/Sorcha.Tenant.Service/README.md` "Social login" section: link to new doc, note the strict link policy, list the env vars consumed
 - [X] T041 [P] Update `docs/reference/API-DOCUMENTATION.md` if any of the social-auth endpoints' summaries changed (likely no — but verify)
 - [X] T042 Run full Tenant Service test suite to confirm nothing else regressed: `dotnet test tests/Sorcha.Tenant.Service.Tests/ --filter "Category!=Integration|FullyQualifiedName!~Integration"` — expect all green except known pre-existing failures unrelated to this feature
-- [ ] T043 Commit and push branch; open draft PR; request `claude-review` per workflow; address any findings the bot surfaces; mark PR ready
+- [X] T043 Commit and push branch; open draft PR; request `claude-review` per workflow; address any findings the bot surfaces; mark PR ready — **PR #423** opened (https://github.com/Sorcha-Platform/Sorcha/pull/423)
 - [ ] T044 [Manual + collaborative] Run the n1 deploy walkthrough from `quickstart.md` §4-7 jointly with operator: register OAuth apps, seed `/opt/sorcha/.env`, run `n1-reset.ps1`, walk the seven smoke scenarios in browser, verify telemetry counter populated for the email-collision refusal step
 - [ ] T045 [Manual] After successful n1 deploy, set up the `/schedule` reminder to flip n1's `ASPNETCORE_ENVIRONMENT` to `Staging` per REQ-7 (target +7 days)
 
