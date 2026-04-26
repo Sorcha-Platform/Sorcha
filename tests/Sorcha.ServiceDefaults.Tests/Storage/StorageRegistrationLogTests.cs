@@ -21,13 +21,13 @@ public class StorageRegistrationLogTests
         var log = NewLog();
 
         log.RegisterPersistent(
-            "Sorcha.Wallet.Core.Repositories.IWalletRepository",
+            "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository",
             "Sorcha.Wallet.Core.Repositories.EfCoreWalletRepository",
             "postgres");
 
         var snapshot = log.Snapshot();
         snapshot.Should().HaveCount(1);
-        snapshot[0].InterfaceName.Should().Be("Sorcha.Wallet.Core.Repositories.IWalletRepository");
+        snapshot[0].InterfaceName.Should().Be("Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository");
         snapshot[0].ImplementationName.Should().Be("Sorcha.Wallet.Core.Repositories.EfCoreWalletRepository");
         snapshot[0].Backend.Should().Be("postgres");
         snapshot[0].IsInMemory.Should().BeFalse();
@@ -40,7 +40,7 @@ public class StorageRegistrationLogTests
         var log = NewLog();
 
         log.RegisterInMemory(
-            "Sorcha.Wallet.Core.Repositories.IWalletRepository",
+            "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository",
             "Sorcha.Wallet.Core.Repositories.InMemoryWalletRepository",
             "no Postgres connection string configured");
 

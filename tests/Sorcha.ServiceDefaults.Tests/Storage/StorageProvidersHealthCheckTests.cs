@@ -13,7 +13,7 @@ namespace Sorcha.ServiceDefaults.Tests.Storage;
 /// </summary>
 public class StorageProvidersHealthCheckTests
 {
-    private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.IWalletRepository";
+    private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository";
 
     private static StorageRegistrationLog NewLog() =>
         new();
@@ -82,7 +82,7 @@ public class StorageProvidersHealthCheckTests
     public async Task Degraded_DescriptionEnumeratesAllOffenders()
     {
         var log = NewLog();
-        log.RegisterInMemory("Sorcha.Wallet.Core.Repositories.IWalletRepository", "InMemoryWalletRepository", "no postgres");
+        log.RegisterInMemory("Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository", "InMemoryWalletRepository", "no postgres");
         log.RegisterInMemory("Sorcha.Blueprint.Service.Storage.IInstanceStore", "InMemoryInstanceStore", "no postgres");
 
         var check = new StorageProvidersHealthCheck(log);

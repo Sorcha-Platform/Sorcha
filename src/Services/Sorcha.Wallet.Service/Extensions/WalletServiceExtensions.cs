@@ -108,7 +108,7 @@ public static class WalletServiceExtensions
         // backend is active (boot log + health check + OTel metrics) and Production/Staging
         // fail-fast when this audited interface falls through to in-memory.
         var storageLog = services.GetStorageRegistrationLog();
-        const string interfaceName = "Sorcha.Wallet.Core.Repositories.IWalletRepository";
+        var interfaceName = typeof(IWalletRepository).FullName!;
 
         if (!string.IsNullOrEmpty(connectionString))
         {

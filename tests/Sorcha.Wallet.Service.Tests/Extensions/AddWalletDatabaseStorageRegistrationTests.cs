@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sorcha.ServiceDefaults.Storage;
+using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Extensions;
 
 namespace Sorcha.Wallet.Service.Tests.Extensions;
@@ -21,7 +22,7 @@ namespace Sorcha.Wallet.Service.Tests.Extensions;
 /// </summary>
 public class AddWalletDatabaseStorageRegistrationTests
 {
-    private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.IWalletRepository";
+    private static readonly string AuditedInterface = typeof(IWalletRepository).FullName!;
 
     private static IConfiguration Config(Dictionary<string, string?>? values = null) =>
         new ConfigurationBuilder()

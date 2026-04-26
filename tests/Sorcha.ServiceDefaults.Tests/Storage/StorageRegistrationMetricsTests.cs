@@ -17,7 +17,7 @@ namespace Sorcha.ServiceDefaults.Tests.Storage;
 /// </summary>
 public sealed class StorageRegistrationMetricsTests : IDisposable
 {
-    private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.IWalletRepository";
+    private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository";
     private const string CacheInterface = "Sorcha.Blueprint.Service.Storage.IBlueprintStore";
 
     /// <summary>
@@ -154,7 +154,7 @@ public sealed class StorageRegistrationMetricsTests : IDisposable
     public void Observations_ReflectFullRegistrationLog()
     {
         _log.RegisterPersistent(
-            "Sorcha.Wallet.Core.Repositories.IWalletRepository",
+            "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository",
             "EfCoreWalletRepository",
             "postgres");
         _log.RegisterInMemory(

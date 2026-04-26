@@ -162,13 +162,13 @@ public class StorageServiceCollectionExtensionsTests
         services.AddStorageRegistration();
 
         var log = services.GetStorageRegistrationLog();
-        log.RegisterPersistent("Sorcha.Wallet.Core.Repositories.IWalletRepository", "EfCoreWalletRepository", "postgres");
+        log.RegisterPersistent("Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository", "EfCoreWalletRepository", "postgres");
 
         using var sp = services.BuildServiceProvider();
         var resolved = sp.GetRequiredService<IStorageRegistrationLog>();
 
         resolved.Snapshot().Should().HaveCount(1);
-        resolved.Snapshot()[0].InterfaceName.Should().Be("Sorcha.Wallet.Core.Repositories.IWalletRepository");
+        resolved.Snapshot()[0].InterfaceName.Should().Be("Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository");
     }
 
     [Fact]
