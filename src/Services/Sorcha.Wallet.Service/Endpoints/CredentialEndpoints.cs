@@ -221,9 +221,12 @@ public static class CredentialEndpoints
         ICredentialStore store,
         CancellationToken cancellationToken = default)
     {
-        var credential = await store.GetByIdAsync(credentialId, cancellationToken);
+        // Wallet-scoped lookup — credential IDs are not globally unique when a
+        // credential exists on both the issuer's wallet (Active) and the
+        // recipient's wallet (PendingAcceptance via InboundCredentialDetector).
+        var credential = await store.GetByIdForWalletAsync(credentialId, walletAddress, cancellationToken);
 
-        if (credential == null || credential.WalletAddress != walletAddress)
+        if (credential == null)
             return Results.NotFound();
 
         return Results.Ok(credential);
@@ -257,9 +260,9 @@ public static class CredentialEndpoints
         ICredentialStore store,
         CancellationToken cancellationToken = default)
     {
-        var credential = await store.GetByIdAsync(credentialId, cancellationToken);
+        var credential = await store.GetByIdForWalletAsync(credentialId, walletAddress, cancellationToken);
 
-        if (credential == null || credential.WalletAddress != walletAddress)
+        if (credential == null)
             return Results.NotFound();
 
         await store.DeleteAsync(credentialId, cancellationToken);
@@ -272,9 +275,9 @@ public static class CredentialEndpoints
         ICredentialStore store,
         CancellationToken cancellationToken = default)
     {
-        var credential = await store.GetByIdAsync(credentialId, cancellationToken);
+        var credential = await store.GetByIdForWalletAsync(credentialId, walletAddress, cancellationToken);
 
-        if (credential == null || credential.WalletAddress != walletAddress)
+        if (credential == null)
             return Results.NotFound();
 
         return Results.Ok(new
@@ -346,9 +349,9 @@ public static class CredentialEndpoints
             return Results.BadRequest(new { error = $"Invalid status value: {request.Status}. Allowed: Active, Suspended, Revoked, Consumed" });
         }
 
-        var credential = await store.GetByIdAsync(credentialId, cancellationToken);
+        var credential = await store.GetByIdForWalletAsync(credentialId, walletAddress, cancellationToken);
 
-        if (credential == null || credential.WalletAddress != walletAddress)
+        if (credential == null)
             return Results.NotFound();
 
         var previousStatus = credential.Status;
@@ -399,9 +402,15 @@ public static class CredentialEndpoints
         }
 
         // Read previous status for the SignalR event (needed BEFORE the patch runs).
-        var existing = await store.GetByIdAsync(credentialId, cancellationToken);
-        if (existing is null
-            || !string.Equals(existing.WalletAddress, walletAddress, StringComparison.OrdinalIgnoreCase))
+        // Use the wallet-scoped lookup — credential IDs are NOT globally unique
+        // when a credential is recorded on both the issuer's wallet (Active at
+        // issuance time) and the recipient's wallet (PendingAcceptance via
+        // InboundCredentialDetector). Looking up by credential-id alone returns
+        // an arbitrary one of the two rows, then the wallet-address mismatch
+        // check 404s the legitimate caller. Bug surfaced by the TradeFinance
+        // walkthrough credential-fetch step.
+        var existing = await store.GetByIdForWalletAsync(credentialId, walletAddress, cancellationToken);
+        if (existing is null)
         {
             return Results.NotFound();
         }
