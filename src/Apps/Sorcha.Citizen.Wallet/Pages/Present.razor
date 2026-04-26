@@ -12,6 +12,7 @@
 @using System.Net.Http
 @using System.Net.Http.Json
 @using System.Text.Json
+@using Sorcha.Citizen.Wallet.Components
 @using Sorcha.Citizen.Wallet.Services
 @using Sorcha.Citizen.Wallet.Services.Presentation
 @inject IPresentationEngine Engine
@@ -44,54 +45,23 @@
     }
     else if (_phase == Phase.NoMatch)
     {
-        <MudAlert Severity="Severity.Warning" Class="mb-3">
-            None of your credentials match this verifier's request for <code>@_request?.RequiredVct</code>.
-        </MudAlert>
-        <MudButton Variant="Variant.Outlined" OnClick="Reset">Cancel</MudButton>
+        <NoMatchingCredentialDialog RequiredVct="@_request?.RequiredVct"
+                                    OnCancel="Reset" />
     }
     else if (_phase == Phase.PickCredential && _matches is not null)
     {
-        <MudText Typo="Typo.subtitle1" Class="mb-2">Choose a credential</MudText>
-        <MudList T="CredentialMatch" SelectedValueChanged="OnCredentialChosen">
-            @foreach (var m in _matches)
-            {
-                <MudListItem T="CredentialMatch" Value="m">
-                    <strong>@(m.Credential.DisplayLabel ?? m.Credential.Vct)</strong>
-                    <MudText Typo="Typo.caption">id: @m.Credential.Id</MudText>
-                </MudListItem>
-            }
-        </MudList>
-        <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="Reset">Cancel</MudButton>
+        <CredentialPickerDialog Matches="_matches"
+                                OnChosen="OnCredentialChosen"
+                                OnCancel="Reset" />
     }
     else if (_phase == Phase.Consent && _selected is not null && _request is not null)
     {
-        <MudPaper Elevation="2" Class="pa-4">
-            <MudText Typo="Typo.subtitle1">@_request.Purpose</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3 d-block">
-                Audience: <code>@_request.ClientId</code>
-            </MudText>
-
-            <MudText Typo="Typo.body2" Class="mt-3 mb-1"><strong>Required (always shared):</strong></MudText>
-            @foreach (var name in _selected.SatisfiedRequired)
-            {
-                <MudCheckBox T="bool" Value="true" Disabled="true" Label="@name" />
-            }
-
-            @if (_selected.AvailableOptional.Count > 0)
-            {
-                <MudText Typo="Typo.body2" Class="mt-3 mb-1"><strong>Optional:</strong></MudText>
-                @foreach (var name in _selected.AvailableOptional)
-                {
-                    <MudCheckBox T="bool" @bind-Value="_optionalToggles[name]" Label="@name" />
-                }
-            }
-
-            <MudButton Class="mt-4 mr-2" Color="Color.Primary" Variant="Variant.Filled"
-                       OnClick="ConfirmAsync" Disabled="@_busy">
-                @(_busy ? "Sharing…" : "Hold to share")
-            </MudButton>
-            <MudButton Variant="Variant.Outlined" OnClick="Reset" Disabled="@_busy">Cancel</MudButton>
-        </MudPaper>
+        <ConsentSheet Selected="_selected"
+                      Request="_request"
+                      OptionalToggles="_optionalToggles"
+                      Busy="_busy"
+                      OnConfirm="ConfirmAsync"
+                      OnCancel="Reset" />
     }
     else if (_phase == Phase.Done)
     {
