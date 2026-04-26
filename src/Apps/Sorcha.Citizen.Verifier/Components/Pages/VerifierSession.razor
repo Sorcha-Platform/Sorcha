@@ -6,7 +6,7 @@
     and polls /verify/r/{sessionId}/status until the citizen wallet POSTs an
     outcome, then routes to /verify/{sessionId}/outcome.
 *@
-@page "/verify/{SessionId}"
+@page "/verify/s/{SessionId}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @using System.Net.Http
@@ -97,7 +97,7 @@
                     $"verify/r/{SessionId}/status", ct);
                 if (status is not null && status.Status != "pending")
                 {
-                    await InvokeAsync(() => Nav.NavigateTo($"/verify/{SessionId}/outcome"));
+                    await InvokeAsync(() => Nav.NavigateTo($"/verify/s/{SessionId}/outcome"));
                     return;
                 }
             }

@@ -6,7 +6,7 @@
     after the citizen wallet posts an outcome — accepted (with disclosed claims
     table) or rejected (with reasons).
 *@
-@page "/verify/{SessionId}/outcome"
+@page "/verify/s/{SessionId}/outcome"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Sorcha.Citizen.Verifier.Services
 @inject IVerifierSessionStore Store
@@ -21,7 +21,7 @@
     else if (_session.Outcome is null)
     {
         <MudAlert Severity="Severity.Info">Still pending — return to the QR page.</MudAlert>
-        <MudButton Class="mt-4" Variant="Variant.Outlined" Href="@($"/verify/{SessionId}")">Back to QR</MudButton>
+        <MudButton Class="mt-4" Variant="Variant.Outlined" Href="@($"/verify/s/{SessionId}")">Back to QR</MudButton>
     }
     else if (_session.Outcome.Accepted)
     {
