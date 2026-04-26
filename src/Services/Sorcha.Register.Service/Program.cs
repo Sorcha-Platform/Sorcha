@@ -20,6 +20,7 @@ using Microsoft.Extensions.Options;
 using Sorcha.Register.Storage.InMemory;
 using Sorcha.Register.Storage.MongoDB;
 using Sorcha.Register.Storage.Redis;
+using Sorcha.ServiceDefaults.Storage;
 using Sorcha.Register.Service.Endpoints;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceClients.Peer;
@@ -94,6 +95,8 @@ builder.Services.AddSingleton<IMongoClient>(sp =>
 
 // Smart configuration: Use MongoDB if configured, otherwise InMemory
 var storageType = builder.Configuration["RegisterStorage:Type"] ?? "InMemory";
+var storageLog = builder.Services.GetStorageRegistrationLog();
+var registerInterfaceName = typeof(IRegisterRepository).FullName!;
 if (storageType.Equals("MongoDB", StringComparison.OrdinalIgnoreCase))
 {
     builder.Services.AddSingleton<IRegisterRepository>(sp =>
@@ -103,16 +106,23 @@ if (storageType.Equals("MongoDB", StringComparison.OrdinalIgnoreCase))
         var logger = sp.GetRequiredService<ILogger<MongoRegisterRepository>>();
         return new MongoRegisterRepository(client, options, logger);
     });
+    storageLog.RegisterPersistent(
+        registerInterfaceName,
+        typeof(MongoRegisterRepository).FullName!,
+        "mongo");
 
     // Register the same instance as IReadOnlyRegisterRepository
     builder.Services.AddSingleton<IReadOnlyRegisterRepository>(sp =>
         sp.GetRequiredService<IRegisterRepository>());
-
 }
 else
 {
     // Use in-memory storage (default)
     builder.Services.AddSingleton<IRegisterRepository, InMemoryRegisterRepository>();
+    storageLog.RegisterInMemory(
+        registerInterfaceName,
+        typeof(InMemoryRegisterRepository).FullName!,
+        "RegisterStorage:Type is not 'MongoDB' (default 'InMemory'). Set RegisterStorage:Type=MongoDB to enable persistent storage.");
 
     // Register the same instance as IReadOnlyRegisterRepository
     builder.Services.AddSingleton<IReadOnlyRegisterRepository>(sp =>
