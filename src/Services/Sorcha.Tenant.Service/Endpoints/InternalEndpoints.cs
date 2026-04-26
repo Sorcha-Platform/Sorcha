@@ -2,8 +2,10 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 
 using Sorcha.Tenant.Service.Data.Repositories;
+using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Endpoints;
 
@@ -28,8 +30,61 @@ public static class InternalEndpoints
                 + "Used internally by the API Gateway for domain-based routing.")
             .RequireAuthorization("RequireService");
 
+        // Feature 114: Citizen wallet device enrolment bridge.
+        group.MapPost("/platform-user-devices", RegisterPlatformUserDevice)
+            .WithName("RegisterPlatformUserDevice")
+            .WithSummary("Register or refresh a citizen wallet device")
+            .WithDescription("Called by Wallet Service after issuing a device delegation credential. "
+                + "Idempotent on (PlatformUserId, DevicePublicJwkThumbprint).")
+            .RequireAuthorization("RequireService");
+
         return app;
     }
+
+    private static async Task<Results<Ok<PlatformUserDeviceRegistrationResponse>, BadRequest<string>>> RegisterPlatformUserDevice(
+        [FromBody] PlatformUserDeviceRegistrationRequest request,
+        IPlatformUserDeviceService deviceService,
+        CancellationToken ct)
+    {
+        try
+        {
+            var device = await deviceService.RegisterAsync(
+                request.PlatformUserId,
+                request.Label,
+                request.DevicePublicJwkThumbprint,
+                request.DevicePublicJwkJson,
+                request.Platform,
+                request.UserAgent,
+                request.DelegationExpiresAt,
+                request.DelegationCredentialJti,
+                request.StatusListIndex,
+                ct);
+
+            return TypedResults.Ok(new PlatformUserDeviceRegistrationResponse(
+                device.Id, device.EnrolledAt));
+        }
+        catch (ArgumentException ex)
+        {
+            return TypedResults.BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>Internal request body for citizen device registration.</summary>
+    public sealed record PlatformUserDeviceRegistrationRequest(
+        Guid PlatformUserId,
+        string Label,
+        string DevicePublicJwkThumbprint,
+        string DevicePublicJwkJson,
+        string Platform,
+        string UserAgent,
+        DateTimeOffset DelegationExpiresAt,
+        string DelegationCredentialJti,
+        int StatusListIndex);
+
+    /// <summary>Internal response with persisted device id and enrolment timestamp.</summary>
+    public sealed record PlatformUserDeviceRegistrationResponse(
+        Guid DeviceId,
+        DateTimeOffset EnrolledAt);
 
     private static async Task<Results<Ok<DomainResolutionResponse>, NotFound>> ResolveDomain(
         string domain,

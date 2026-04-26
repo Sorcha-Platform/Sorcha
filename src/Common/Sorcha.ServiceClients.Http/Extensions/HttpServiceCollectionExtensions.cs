@@ -8,6 +8,7 @@ using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.Did;
 using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Participant;
+using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Subscription;
 using Sorcha.ServiceClients.Validator;
@@ -69,6 +70,10 @@ public static class HttpServiceCollectionExtensions
         // Feature 060: Passkey public key retrieval for recovery key wrapping
         services.AddHttpClient<Passkey.PasskeyServiceClient>();
         services.AddScoped<Passkey.IPasskeyServiceClient, Passkey.PasskeyServiceClient>();
+
+        // Feature 114: Citizen wallet device registry on Tenant Service
+        services.AddHttpClient<PlatformUserDeviceClient>();
+        services.AddScoped<IPlatformUserDeviceClient, PlatformUserDeviceClient>();
 
         // DID resolvers
         services.AddDidResolvers();
