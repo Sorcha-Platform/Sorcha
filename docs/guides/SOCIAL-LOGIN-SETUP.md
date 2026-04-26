@@ -91,7 +91,7 @@ These are `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`.
 Once you have the four credentials in hand:
 
 ```bash
-ssh sorcha@51.105.7.135
+ssh sorcha@n1.sorcha.dev
 cd /opt/sorcha
 
 # If .env does not exist, copy from the template:
@@ -152,7 +152,7 @@ To rotate a provider's client secret:
 1. Generate a new secret at the provider's developer console (Google
    Cloud Console → Credentials → your OAuth client → Add secret;
    GitHub → OAuth Apps → your app → Generate a new client secret).
-2. SSH to the n1 host: `ssh sorcha@51.105.7.135`
+2. SSH to the n1 host: `ssh sorcha@n1.sorcha.dev`
 3. `nano /opt/sorcha/.env` — replace the old secret with the new one
 4. `cd /opt/sorcha && docker compose -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml restart tenant-service`
 5. Verify with a sign-in, then revoke the old secret at the provider.

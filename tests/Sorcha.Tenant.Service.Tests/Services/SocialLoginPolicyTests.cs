@@ -196,9 +196,11 @@ public class SocialLoginPolicyTests : IDisposable
     }
 
     [Fact]
-    public async Task EmailCollision_ProviderUnverified_RefusesWithExistingUnverified()
+    public async Task EmailCollision_ProviderUnverified_RefusesWithProviderUnverified()
     {
-        // Arrange — verified existing user, but provider asserts unverified
+        // Arrange — VERIFIED existing user, but provider asserts unverified.
+        // The refusal must point the user at the provider (where the verification
+        // step is missing), NOT at their already-verified Sorcha account.
         var existing = new PlatformUser
         {
             Id = Guid.NewGuid(),
@@ -216,9 +218,13 @@ public class SocialLoginPolicyTests : IDisposable
             Claim(email: "alice@example.com", emailVerified: false),
             CancellationToken.None);
 
-        // Assert — both-sides-verified rule: refuse when provider is the unverified party
-        result.Refusal.Should().Be(SocialLoginRefusal.ExistingUnverified);
+        // Assert — provider is the unverified party, so refusal directs the user there
+        result.Refusal.Should().Be(SocialLoginRefusal.ProviderUnverified);
         result.User.Should().BeNull();
+
+        // No link should be created
+        var linkCount = await _db.PlatformSocialLogins.CountAsync(s => s.PlatformUserId == existing.Id);
+        linkCount.Should().Be(0);
     }
 
     // --- Scenario C: genuinely new user ---
@@ -262,6 +268,23 @@ public class SocialLoginPolicyTests : IDisposable
 
         var afterCount = await _db.PlatformUsers.CountAsync();
         afterCount.Should().Be(beforeCount, "no user record should be created on a refused signup");
+    }
+
+    [Fact]
+    public void RecordRefusal_DoesNotThrow_ForKnownReasons()
+    {
+        // Smoke test: the refusal counter accepts both reason values without
+        // throwing. Used by SocialCallback rendering and SocialLoginEndpoints
+        // API path.
+        SocialLoginMetrics.RecordRefusal("Google", SocialLoginRefusal.ProviderUnverified);
+        SocialLoginMetrics.RecordRefusal("GitHub", SocialLoginRefusal.ExistingUnverified);
+
+        // None is treated as a no-op
+        SocialLoginMetrics.RecordRefusal("Google", SocialLoginRefusal.None);
+
+        // Upstream-failure variant for state/code-exchange paths
+        SocialLoginMetrics.RecordUpstreamFailure("Google", "code_exchange_failed");
+        SocialLoginMetrics.RecordUpstreamFailure(string.Empty, "state_invalid");
     }
 
     public void Dispose()

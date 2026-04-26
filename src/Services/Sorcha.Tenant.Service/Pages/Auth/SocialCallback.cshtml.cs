@@ -81,12 +81,16 @@ public class SocialCallbackModel : PageModel
         {
             _logger.LogWarning("Social login callback received error: {Error}", error);
             ErrorMessage = "The sign-in was cancelled or failed. Please try again.";
+            // Provider name is unknown at this point (we never reached state-cache lookup);
+            // tag as "unknown" so the counter still surfaces volume of cancelled flows.
+            SocialLoginMetrics.RecordUpstreamFailure("unknown", "provider_error");
             return Page();
         }
 
         if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
         {
             ErrorMessage = "Invalid callback parameters. Please try signing in again.";
+            SocialLoginMetrics.RecordUpstreamFailure("unknown", "missing_params");
             return Page();
         }
 
@@ -103,6 +107,16 @@ public class SocialCallbackModel : PageModel
         {
             _logger.LogWarning("Social login exchange failed for {Provider}: {Error}", provider, callbackResult.Error);
             ErrorMessage = callbackResult.Error ?? "Authentication failed. Please try again.";
+            // Tag the cause based on what ExchangeCodeAsync surfaced — the message is
+            // user-facing copy, so we map it back to a stable telemetry tag rather
+            // than tagging the message verbatim.
+            var reasonTag = callbackResult.Error switch
+            {
+                { } e when e.Contains("state", StringComparison.OrdinalIgnoreCase) => "state_invalid",
+                { } e when e.Contains("token", StringComparison.OrdinalIgnoreCase) => "code_exchange_failed",
+                _ => "code_exchange_failed",
+            };
+            SocialLoginMetrics.RecordUpstreamFailure(provider, reasonTag);
             return Page();
         }
 

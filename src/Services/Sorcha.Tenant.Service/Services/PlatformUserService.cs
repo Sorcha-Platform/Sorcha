@@ -286,17 +286,29 @@ public class PlatformUserService : IPlatformUserService
 
         // Step 2: Email-collision linking — strict-link policy gate (FR-011, FR-012).
         // Both the provider's claim AND the existing Sorcha account must be verified
-        // for cross-method linking to succeed. Otherwise refuse with ExistingUnverified.
+        // for cross-method linking to succeed. The two refusal directions point the
+        // user at different recovery paths, so distinguish them precisely:
+        //   provider unverified  → ProviderUnverified ("verify with the provider")
+        //   existing unverified  → ExistingUnverified ("verify your Sorcha account")
         if (!string.IsNullOrWhiteSpace(email))
         {
             var existingByEmail = await GetByEmailAsync(email, ct);
             if (existingByEmail is not null)
             {
-                if (!claim.EmailVerified || !existingByEmail.EmailVerified)
+                if (!claim.EmailVerified)
                 {
                     _logger.LogWarning(
-                        "Social login refused: email-collision link rejected (providerVerified={ProviderVerified}, existingVerified={ExistingVerified}) for {Provider}",
-                        claim.EmailVerified, existingByEmail.EmailVerified, provider);
+                        "Social login refused: email-collision link rejected — provider {Provider} did not assert email_verified",
+                        provider);
+
+                    return new ResolveSocialUserResult(User: null, IsNew: false, SocialLoginRefusal.ProviderUnverified);
+                }
+
+                if (!existingByEmail.EmailVerified)
+                {
+                    _logger.LogWarning(
+                        "Social login refused: email-collision link rejected — existing user {UserId} email is not verified for {Provider}",
+                        existingByEmail.Id, provider);
 
                     return new ResolveSocialUserResult(User: null, IsNew: false, SocialLoginRefusal.ExistingUnverified);
                 }

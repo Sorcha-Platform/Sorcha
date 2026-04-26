@@ -92,7 +92,9 @@
             </button>
 
             @* Social-login buttons render only for providers configured with non-empty *@
-            @* credentials on this environment. Feature 115 FR-001/FR-002. *@
+            @* credentials on this environment. Feature 115 FR-001/FR-002. When no *@
+            @* providers are configured the section is omitted entirely (no message); *@
+            @* the divider above already separates passkey from password. *@
             @if (Model.AvailableProviders.Count > 0)
             {
                 <div class="d-grid gap-2 mt-3">

@@ -159,9 +159,11 @@ public interface IPlatformUserService
     /// <see cref="SocialLoginRefusal.ProviderUnverified"/>.</item>
     /// </list>
     /// </summary>
-    /// <param name="claim">The verified-or-not claim set returned by <see cref="ISocialLoginService.ExchangeCodeAsync"/>.</param>
+    /// <param name="claim">The verified-or-not claim set returned by <see cref="ISocialLoginService.ExchangeCodeAsync"/>. Must have a non-null <c>Subject</c>.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A <see cref="ResolveSocialUserResult"/> indicating success, refusal reason, and new-user state.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="claim"/> is null.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="claim"/>'s <c>Subject</c> is null. Callers should validate the upstream exchange succeeded before invoking this method.</exception>
     Task<ResolveSocialUserResult> ResolveOrCreateSocialUserAsync(
         SocialAuthCallbackResult claim, CancellationToken ct);
 }

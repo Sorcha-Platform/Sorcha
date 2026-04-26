@@ -181,10 +181,14 @@ public static class SocialLoginEndpoints
                 _ => "Social login was refused.",
             };
 
-            SocialLoginMetrics.RecordRefusal(request.Provider, resolveResult.Refusal);
+            // Use the resolved provider name from the callback result rather than the
+            // raw request value — they should agree, but the resolved value is the
+            // one validated against the cached state and matches the metrics tag.
+            var loggedProvider = callbackResult.Provider;
+            SocialLoginMetrics.RecordRefusal(loggedProvider, resolveResult.Refusal);
             logger.LogWarning(
                 "Social login refused via API: provider={Provider}, reason={Reason}",
-                request.Provider, resolveResult.Refusal);
+                loggedProvider, resolveResult.Refusal);
 
             return TypedResults.Problem(problemMessage, statusCode: StatusCodes.Status400BadRequest);
         }
