@@ -179,6 +179,72 @@ public sealed class VerifiablePresentationValidatorTests
         var outcome = await _validator.ValidateAsync(Session(), "not-a-jwt", "also-not-a-jwt");
         outcome.Accepted.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task ValidateAsync_RegisteredIssuerKeyMatches_AcceptedAndIssuerSignatureVerified()
+    {
+        var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce);
+        var registry = new JwkRegistryIssuerKeyResolver();
+        registry.Register("did:sorcha:org:test",
+            System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+                TestVpFactory.ToJwk(bundle.IssuerKey)));
+        var hardened = new VerifiablePresentationValidator(
+            _statusList.Object, registry, TimeProvider.System,
+            NullLogger<VerifiablePresentationValidator>.Instance,
+            requireIssuerSignature: true);
+
+        var outcome = await hardened.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
+    }
+
+    [Fact]
+    public async Task ValidateAsync_RegisteredIssuerKeyDoesNotMatch_Rejected()
+    {
+        var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce);
+        // Register a DIFFERENT key under the same issuer DID — signature must reject.
+        using var foreignIssuer = System.Security.Cryptography.ECDsa.Create(
+            System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var registry = new JwkRegistryIssuerKeyResolver();
+        registry.Register("did:sorcha:org:test",
+            System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+                TestVpFactory.ToJwk(foreignIssuer)));
+        var hardened = new VerifiablePresentationValidator(
+            _statusList.Object, registry, TimeProvider.System,
+            NullLogger<VerifiablePresentationValidator>.Instance);
+
+        var outcome = await hardened.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeFalse();
+        outcome.Errors.Should().Contain(e => e.Contains("issuer", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ValidateAsync_RequireIssuerWithoutKey_Rejected()
+    {
+        var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce);
+        var hardened = new VerifiablePresentationValidator(
+            _statusList.Object, new OptOutIssuerKeyResolver(), TimeProvider.System,
+            NullLogger<VerifiablePresentationValidator>.Instance,
+            requireIssuerSignature: true);
+
+        var outcome = await hardened.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeFalse();
+        outcome.Errors.Should().Contain(e => e.Contains("RequireIssuerSignature", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ValidateAsync_OptOutResolver_AcceptsWithWarning_DefaultV1Behaviour()
+    {
+        // Default _validator uses the back-compat constructor (opt-out, !require).
+        // This is the v1 contract: trust holder→device chain when issuer key is unknown.
+        var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce);
+
+        var outcome = await _validator.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
+    }
 }
 
 /// <summary>Smoke tests for <see cref="PresentationRequestBuilder"/> (T088).</summary>

@@ -33,18 +33,43 @@ namespace Sorcha.Citizen.Verifier.Services;
 public sealed class VerifiablePresentationValidator : IVerifiablePresentationValidator
 {
     private readonly IStatusListCache _statusListCache;
+    private readonly IIssuerKeyResolver _issuerKeys;
     private readonly TimeProvider _clock;
     private readonly ILogger<VerifiablePresentationValidator> _logger;
+    private readonly bool _requireIssuerSignature;
 
-    /// <summary>Initialises a new instance.</summary>
+    /// <summary>
+    /// Initialises a new instance. <paramref name="issuerKeys"/> defaults to
+    /// the opt-out resolver via DI registration; <paramref name="requireIssuerSignature"/>
+    /// is read from configuration <c>Verifier:RequireIssuerSignature</c>
+    /// (default false in v1, true expected in production hardening pass).
+    /// </summary>
+    public VerifiablePresentationValidator(
+        IStatusListCache statusListCache,
+        IIssuerKeyResolver issuerKeys,
+        TimeProvider clock,
+        ILogger<VerifiablePresentationValidator> logger,
+        bool requireIssuerSignature = false)
+    {
+        _statusListCache = statusListCache ?? throw new ArgumentNullException(nameof(statusListCache));
+        _issuerKeys = issuerKeys ?? throw new ArgumentNullException(nameof(issuerKeys));
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _requireIssuerSignature = requireIssuerSignature;
+    }
+
+    /// <summary>
+    /// Back-compat constructor used by the existing test suite (Feature 114
+    /// Phase 3 tests passed in just status list + clock + logger). Wires the
+    /// opt-out issuer resolver — which preserves the v1 contract of
+    /// "trust holder→device chain even if issuer is unverifiable".
+    /// </summary>
     public VerifiablePresentationValidator(
         IStatusListCache statusListCache,
         TimeProvider clock,
         ILogger<VerifiablePresentationValidator> logger)
+        : this(statusListCache, new OptOutIssuerKeyResolver(), clock, logger, false)
     {
-        _statusListCache = statusListCache ?? throw new ArgumentNullException(nameof(statusListCache));
-        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc />
@@ -120,6 +145,41 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             {
                 errors.Add("Delegation credential is required for citizen wallet presentations.");
                 return Failure(errors);
+            }
+
+            // ── 4b. Verify the credential's issuer signature ──────────────────────
+            //   The issuer DID is in the iss claim. We resolve a public JWK via
+            //   IIssuerKeyResolver — production wires DID resolution, tests and
+            //   the demo register keys explicitly, the v1 default opts out and
+            //   accepts on the holder→device chain alone (logged warning).
+            var issuer = TryGetString(credentialPayload.Value, "iss");
+            if (string.IsNullOrEmpty(issuer))
+            {
+                errors.Add("Credential is missing iss claim.");
+                return Failure(errors);
+            }
+            var issuerJwk = await _issuerKeys.ResolveAsync(issuer, ct);
+            if (issuerJwk is not null)
+            {
+                if (!VerifyJwsSignature(credentialJwt, issuerJwk.Value, out _))
+                {
+                    errors.Add($"Credential signature verification failed against issuer '{issuer}' key.");
+                    return Failure(errors);
+                }
+            }
+            else if (_requireIssuerSignature)
+            {
+                errors.Add(
+                    $"No public key available for issuer '{issuer}' and " +
+                    "RequireIssuerSignature is enabled. Reject.");
+                return Failure(errors);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Issuer '{Issuer}' key unresolved; accepting on holder→device chain only " +
+                    "(v1 contract; enable Verifier:RequireIssuerSignature to harden).",
+                    issuer);
             }
 
             // ── 5. Verify KB-JWT signature with the device key ────────────────────
