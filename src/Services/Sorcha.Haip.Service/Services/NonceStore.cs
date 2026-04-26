@@ -2,31 +2,41 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Buffers.Text;
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
-using Microsoft.Extensions.Caching.Distributed;
+using Sorcha.AtomicCache;
 
 namespace Sorcha.Haip.Service.Services;
 
 /// <summary>
-/// Redis-backed store for c_nonce values. Nonces are single-use
-/// with TTL-based expiry. Thread-safe via ConcurrentDictionary fallback.
+/// Stores c_nonce values for HAIP credential issuance. Nonces are
+/// single-use with TTL-based expiry. Backed by
+/// <see cref="IAtomicDistributedCache"/> so consumption is a single
+/// atomic round-trip — concurrent consumers of the same nonce can no
+/// longer both succeed (the documented Get+Remove TOCTOU window from
+/// the previous <see cref="Microsoft.Extensions.Caching.Distributed.IDistributedCache"/>
+/// implementation is closed).
 /// </summary>
 public class NonceStore
 {
-    private readonly IDistributedCache? _cache;
+    private readonly IAtomicDistributedCache _cache;
+    private readonly HaipNonceMetrics _metrics;
     private readonly ILogger<NonceStore> _logger;
     private readonly int _ttlSeconds;
 
-    private readonly ConcurrentDictionary<string, byte> _memoryStore = new();
-
     public NonceStore(
+        IAtomicDistributedCache cache,
+        HaipNonceMetrics metrics,
         ILogger<NonceStore> logger,
-        IConfiguration configuration,
-        IDistributedCache? cache = null)
+        IConfiguration configuration)
     {
-        _logger = logger;
+        ArgumentNullException.ThrowIfNull(cache);
+        ArgumentNullException.ThrowIfNull(metrics);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(configuration);
+
         _cache = cache;
+        _metrics = metrics;
+        _logger = logger;
         _ttlSeconds = configuration.GetValue<int>("Haip:NonceLifetimeSeconds", 300);
     }
 
@@ -36,45 +46,34 @@ public class NonceStore
     public async Task<(string Nonce, int ExpiresIn)> CreateAsync(CancellationToken ct = default)
     {
         var nonce = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
-
         var key = $"haip:nonce:{nonce}";
 
-        if (_cache != null)
-        {
-            await _cache.SetStringAsync(key, "1",
-                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(_ttlSeconds) },
-                ct);
-        }
-        else
-        {
-            _memoryStore[key] = 1;
-        }
+        await _cache.SetAsync(key, "1", TimeSpan.FromSeconds(_ttlSeconds), ct);
 
         return (nonce, _ttlSeconds);
     }
 
     /// <summary>
-    /// Consumes a c_nonce (single-use). Returns true if the nonce was valid.
-    /// Uses atomic remove for thread safety.
+    /// Consumes a c_nonce (single-use). Returns true if the nonce was
+    /// valid. Atomic — under N concurrent consumes of the same nonce,
+    /// exactly one returns true and the rest return false.
     /// </summary>
     public async Task<bool> ConsumeAsync(string nonce, CancellationToken ct = default)
     {
         var key = $"haip:nonce:{nonce}";
+        var value = await _cache.GetAndRemoveAsync(key, ct);
+        var success = value is not null;
 
-        if (_cache != null)
+        if (success)
         {
-            // Atomic get-and-delete: read then remove in sequence.
-            // IDistributedCache doesn't expose GETDEL — the Remove call
-            // is a separate round-trip but acceptable for the pre-release
-            // in-memory Redis provider. Production should use IDatabase.StringGetDeleteAsync
-            // to close the TOCTOU gap where a concurrent request could consume
-            // the same nonce between the Get and Remove calls.
-            var value = await _cache.GetStringAsync(key, ct);
-            if (value == null) return false;
-            await _cache.RemoveAsync(key, ct);
-            return true;
+            _metrics.RecordSuccess(HaipNonceMetrics.StoreKind.Nonce);
+        }
+        else
+        {
+            _metrics.RecordMiss(HaipNonceMetrics.StoreKind.Nonce);
+            _logger.LogWarning("Nonce consume failed: nonce not found, expired, or already consumed");
         }
 
-        return _memoryStore.TryRemove(key, out _);
+        return success;
     }
 }

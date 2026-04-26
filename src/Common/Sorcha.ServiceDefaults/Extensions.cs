@@ -84,6 +84,9 @@ public static class Extensions
 
                 // Feature 113 — Storage provider registration audit
                 metrics.AddMeter(Sorcha.ServiceDefaults.Storage.StorageRegistrationMetrics.MeterName);
+
+                // Feature 113 — HAIP replay-protection-state consumption outcomes
+                metrics.AddMeter("Sorcha.Haip.Nonces");
             })
             .WithTracing(tracing =>
             {
