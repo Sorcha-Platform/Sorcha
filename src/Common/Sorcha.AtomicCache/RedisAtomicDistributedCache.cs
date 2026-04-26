@@ -18,11 +18,13 @@ public sealed class RedisAtomicDistributedCache : IAtomicDistributedCache
 {
     private readonly IConnectionMultiplexer _multiplexer;
 
-    // Lua compare-and-set: refresh TTL only on match. Returns 1 on match, 0 otherwise.
-    // Atomic on the Redis side — the entire script runs as one operation.
+    // Lua compare-and-set: refresh TTL (in milliseconds) only on match.
+    // Returns 1 on match, 0 otherwise. Atomic on the Redis side — the entire
+    // script runs as one operation. Uses PX (milliseconds) to match the
+    // millisecond-precision TimeSpan handling on SetAsync's StringSetAsync path.
     private const string CasScript = """
         if redis.call('GET', KEYS[1]) == ARGV[1] then
-            redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+            redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
             return 1
         else
             return 0
@@ -98,16 +100,14 @@ public sealed class RedisAtomicDistributedCache : IAtomicDistributedCache
         }
         ct.ThrowIfCancellationRequested();
 
-        var ttlSeconds = (long)ttl.TotalSeconds;
-        if (ttlSeconds <= 0)
-        {
-            ttlSeconds = 1; // Guard sub-second TTLs against being rounded to zero.
-        }
+        // Pass TTL as milliseconds so sub-second values from SetAsync's TimeSpan path
+        // round-trip without precision loss. PX in the Lua script consumes ms directly.
+        var ttlMs = (long)ttl.TotalMilliseconds;
 
         var result = await Db.ScriptEvaluateAsync(
             CasScript,
             keys: new RedisKey[] { key },
-            values: new RedisValue[] { expected, newValue, ttlSeconds }).ConfigureAwait(false);
+            values: new RedisValue[] { expected, newValue, ttlMs }).ConfigureAwait(false);
 
         return (long)result == 1;
     }

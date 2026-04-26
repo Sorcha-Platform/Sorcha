@@ -40,6 +40,15 @@ public static class AtomicCacheServiceExtensions
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentException.ThrowIfNullOrWhiteSpace(serviceName);
 
+        // Idempotency sentinel — multiple consumers in one service (NonceStore,
+        // PreAuthCodeStore, PresentationRequestStore, …) typically each call
+        // AddAtomicDistributedCache. The first call wires the implementation,
+        // multiplexer, and storage log entry; subsequent calls are no-ops.
+        if (services.Any(d => d.ServiceType == typeof(IAtomicDistributedCache)))
+        {
+            return services;
+        }
+
         var hasResolverConfig =
             !string.IsNullOrWhiteSpace(configuration[$"ConnectionStrings:{serviceName}:Redis"])
             || !string.IsNullOrWhiteSpace(configuration["ConnectionStrings:Sorcha:Redis"]);
