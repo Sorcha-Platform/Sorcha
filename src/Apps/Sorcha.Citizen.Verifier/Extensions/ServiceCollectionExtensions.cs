@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IVerifierSessionStore, InMemoryVerifierSessionStore>();
         services.AddSingleton<IPresentationRequestBuilder, PresentationRequestBuilder>();
         services.AddSingleton<IVerifiablePresentationValidator, VerifiablePresentationValidator>();
+        services.AddSingleton<QrRenderer>();
         return services;
     }
 }

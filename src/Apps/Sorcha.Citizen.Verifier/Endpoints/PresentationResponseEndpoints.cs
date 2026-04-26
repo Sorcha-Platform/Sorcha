@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -17,7 +18,7 @@ namespace Sorcha.Citizen.Verifier.Endpoints;
 /// </summary>
 public static class PresentationResponseEndpoints
 {
-    /// <summary>Maps the verifier callback endpoint.</summary>
+    /// <summary>Maps the verifier callback + status endpoints.</summary>
     public static IEndpointRouteBuilder MapPresentationResponseEndpoints(this IEndpointRouteBuilder routes)
     {
         routes.MapPost("/verify/r/{sessionId}/response", HandleResponseAsync)
@@ -31,7 +32,35 @@ public static class PresentationResponseEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
+        routes.MapGet("/verify/r/{sessionId}/status", HandleStatus)
+            .WithName("CitizenVerifierPresentationStatus")
+            .WithSummary("Read the current outcome of a verifier session.")
+            .WithDescription("Used by the verifier UI to poll for completion. Returns 404 if the session is unknown or expired.")
+            .Produces<SessionStatusResponse>()
+            .Produces(StatusCodes.Status404NotFound);
+
         return routes;
+    }
+
+    private static IResult HandleStatus(string sessionId, IVerifierSessionStore store)
+    {
+        var session = store.Get(sessionId);
+        if (session is null) return Results.NotFound();
+
+        if (session.Outcome is null)
+        {
+            return Results.Ok(new SessionStatusResponse(
+                Status: "pending", Purpose: session.Purpose,
+                Accepted: null, Errors: null, DisclosedClaims: null));
+        }
+
+        return Results.Ok(new SessionStatusResponse(
+            Status: session.Outcome.Accepted ? "accepted" : "rejected",
+            Purpose: session.Purpose,
+            Accepted: session.Outcome.Accepted,
+            Errors: session.Outcome.Errors,
+            DisclosedClaims: session.Outcome.DisclosedClaims
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value?.ToString())));
     }
 
     private static async Task<IResult> HandleResponseAsync(
@@ -70,3 +99,16 @@ public static class PresentationResponseEndpoints
 /// <param name="VpToken">The SD-JWT VC compact form including disclosures and KB-JWT.</param>
 /// <param name="Delegation">The device delegation credential (separate compact JWT).</param>
 public sealed record VerificationCallbackBody(string VpToken, string? Delegation);
+
+/// <summary>Status payload returned by <c>GET /verify/r/{sessionId}/status</c>.</summary>
+/// <param name="Status">One of <c>pending</c>, <c>accepted</c>, <c>rejected</c>.</param>
+/// <param name="Purpose">Verifier-supplied human-readable purpose.</param>
+/// <param name="Accepted">Null while pending; true/false once decided.</param>
+/// <param name="Errors">Rejection reasons; null on accept or pending.</param>
+/// <param name="DisclosedClaims">Disclosed claim values, stringified for transport.</param>
+public sealed record SessionStatusResponse(
+    string Status,
+    string Purpose,
+    bool? Accepted,
+    IReadOnlyList<string>? Errors,
+    IReadOnlyDictionary<string, string?>? DisclosedClaims);

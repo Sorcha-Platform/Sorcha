@@ -13,6 +13,8 @@ builder.AddServiceDefaults();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddMudServices();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient();
 
 // Feature 114: verifier services (status list cache; VP validator + presentation
 // request builder land with T088-T091).
