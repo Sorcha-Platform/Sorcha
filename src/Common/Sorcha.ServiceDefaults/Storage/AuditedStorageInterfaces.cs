@@ -34,9 +34,9 @@ internal static class AuditedStorageInterfaces
         // Verified: matches typeof(Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository).FullName.
         "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository",
 
-        // TODO(audit-fqn): Verify against typeof(IRegisterRepository).FullName at adoption time.
-        // Wrong FQN here = silent fail-fast bypass for this interface.
-        "Sorcha.Register.Storage.IRegisterRepository",
+        // Register Service — register documents and transaction stream.
+        // Verified: matches typeof(Sorcha.Register.Core.Storage.IRegisterRepository).FullName.
+        "Sorcha.Register.Core.Storage.IRegisterRepository",
 
         // TODO(audit-fqn): Verify against typeof(IInstanceStore).FullName at adoption time.
         "Sorcha.Blueprint.Service.Storage.IInstanceStore",
