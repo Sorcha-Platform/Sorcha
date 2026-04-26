@@ -2,7 +2,7 @@
 name: sorcha-architecture
 description: |
   Sorcha feature-specific API references, domain models, and cross-cutting architectural patterns that don't belong in service-level skills.
-  Use when: working on or extending any of the features documented below (Participant Identity, Register Invitations, Trust Hardening, Stored Data / file attachments, Validator Roster, Org Key Derivation, Platform Org Topology, Consumer Persona, System Register Genesis, Open Participants / late binding, x-review / credential id-cards, ownership-agnostic submission / derived relationship, Timebound Presentation Lifecycle, Transactional Email / welcome dispatcher). Also use when you need a concise catalogue of well-known IDs, DID shapes, or the endpoint surface for these features.
+  Use when: working on or extending any of the features documented below (Participant Identity, Register Invitations, Trust Hardening, Stored Data / file attachments, Validator Roster, Org Key Derivation, Platform Org Topology, Consumer Persona, System Register Genesis, Open Participants / late binding, x-review / credential id-cards, ownership-agnostic submission / derived relationship, Timebound Presentation Lifecycle, Transactional Email / welcome dispatcher, Storage Provider Audit / IStorageRegistrationLog, Atomic Distributed Cache / IAtomicDistributedCache, Validator Mempool Durability / IVerifiedTransactionQueue lease pattern). Also use when you need a concise catalogue of well-known IDs, DID shapes, or the endpoint surface for these features.
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
@@ -541,3 +541,135 @@ await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
 ### Runtime source
 
 `src/Services/Sorcha.Tenant.Service/Services/*Email*.cs`, `src/Services/Sorcha.Tenant.Service/Services/*Welcome*.cs`, `src/Services/Sorcha.Tenant.Service/Emails/Templates/**`. DI wiring: `ServiceCollectionExtensions.AddTenantEmail`. Tests: `tests/Sorcha.Tenant.Service.Tests/Services/{EmailTemplateSnapshotTests,ScribanEmailTemplateRendererTests,EmailBrandingResolverTests,TransactionalEmailServiceTests,WelcomeEmailDispatcherTests,EmailVerificationServiceTests}.cs`. Spec: `specs/112-email-sweep/`. Design doc: `docs/superpowers/specs/2026-04-24-email-sweep-design.md`. Tenant Service README carries the user-facing architecture overview.
+
+---
+
+## Storage Provider Audit (Feature 113)
+
+Every audited storage interface registration goes through `IStorageRegistrationLog` from `Sorcha.ServiceDefaults.Storage`. Production and Staging refuse to start when an audited interface lands on an in-memory implementation. Operators see `[STORAGE-FALLBACK]` warnings at boot, the `storage-providers` health check reports `Degraded`, and the `Sorcha.Storage` OpenTelemetry meter exposes `sorcha_storage_provider_info` and `sorcha_storage_fallback_active` for dashboards.
+
+### Audited interfaces (fail-fast in Production)
+
+| Interface (FQN) | Service |
+|-----------------|---------|
+| `Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository` | Wallet |
+| `Sorcha.Register.Core.Storage.IRegisterRepository` | Register |
+| `Sorcha.Blueprint.Service.Storage.IInstanceStore` | Blueprint |
+| `Sorcha.Blueprint.Service.Storage.IActionStore` | Blueprint |
+| `Sorcha.Validator.Service.Services.Interfaces.IVerifiedTransactionQueue` | Validator |
+| `Sorcha.AtomicCache.IAtomicDistributedCache` | HAIP + future consumers |
+
+Cache-style stores (`IBlueprintStore`, `IPublishedBlueprintStore`, `BlueprintCache`, `ValidatorRegistry`, in-process routing tables) emit the warning but are intentionally not audited — they reload from the persistent transaction log on cold start.
+
+### Adoption pattern
+
+```csharp
+var storageLog = services.GetStorageRegistrationLog();
+var interfaceName = typeof(IFooRepository).FullName!;
+
+if (hasResolverConfig)
+{
+    services.AddScoped<IFooRepository, EfCoreFooRepository>();
+    storageLog.RegisterPersistent(interfaceName, typeof(EfCoreFooRepository).FullName!, "postgres");
+}
+else
+{
+    services.AddSingleton<IFooRepository, InMemoryFooRepository>();
+    storageLog.RegisterInMemory(
+        interfaceName,
+        typeof(InMemoryFooRepository).FullName!,
+        "no Postgres connection string in ConnectionStrings:Service:Postgres or ConnectionStrings:Sorcha:Postgres");
+}
+```
+
+**Always use `typeof().FullName!`** — magic strings silently bypass the audit when the namespace doesn't match. Two FQN bugs (`IWalletRepository`, `IRegisterRepository`) were caught this way during the original feature 113 rollout.
+
+### Bypass
+
+`Storage:AllowInMemoryInProduction=true` skips fail-fast and emits `LogCritical`. Per-service config; intended only for CI smoke tests against ephemeral environments.
+
+### Runtime source
+
+`src/Common/Sorcha.ServiceDefaults/Storage/` — `IStorageRegistrationLog`, `AuditedStorageInterfaces`, `StorageRegistrationLog`, `StorageProvidersHealthCheck`, `StorageRegistrationEnforcement`, `StorageEnforcementHostedService`, `StorageRegistrationMetrics`. CLAUDE.md pattern #10 carries the operator-facing summary. Spec: `specs/113-storage-durability-audit/`. Design doc: `docs/superpowers/specs/2026-04-25-storage-clients-audit-design.md`.
+
+---
+
+## Atomic Distributed Cache (Feature 113)
+
+`Sorcha.AtomicCache` is a separate common project providing `IAtomicDistributedCache` — the GETDEL + Lua-backed CAS primitive that closes the GET+DEL TOCTOU window in HAIP replay-protection state. Two consumers today: `NonceStore.ConsumeAsync` and `PreAuthCodeStore.RedeemAsync`. `PresentationRequestStore.MarkCompletedAsync` carries a `TODO(113-followup)` for the read-many+CAS migration.
+
+### Operations
+
+| Method | Redis primitive | InMemory primitive |
+|--------|-----------------|--------------------|
+| `GetAsync` | `GET` | `ConcurrentDictionary.TryGet` |
+| `SetAsync(ttl)` | `SET key value EX ttl` | `ConcurrentDictionary[key]=` + expiry tracking |
+| `RemoveAsync` | `DEL` | `TryRemove` |
+| `GetAndRemoveAsync` | `GETDEL` (`StringGetDeleteAsync`) — single round-trip atomic | `TryRemove(key, out value)` — atomic at dictionary level |
+| `TryUpdateIfMatchAsync` | Lua: `GET → if equals → SET PX ttl → return 1 else 0` | `lock` over read+write |
+
+### Wiring
+
+```csharp
+services.AddAtomicDistributedCache(builder.Configuration, "Haip");
+```
+
+Idempotent — multiple consumers in one service each call this safely. Resolves Redis via SorchaConnections cascade (`ConnectionStrings:Haip:Redis` → `ConnectionStrings:Sorcha:Redis`). Records the choice in the storage registration log; on the audited list, so Production/Staging fail-fast applies.
+
+### OpenTelemetry
+
+The `Sorcha.Haip.Nonces` meter exposes `sorcha_haip_nonce_consume_total` (counter, tags: `store ∈ {nonce,preauth,presentation}`, `outcome ∈ {success,miss}`).
+
+### Runtime source
+
+`src/Common/Sorcha.AtomicCache/` — `IAtomicDistributedCache`, `RedisAtomicDistributedCache` (`StringGetDeleteAsync` + Lua CAS in milliseconds), `InMemoryAtomicDistributedCache`, `Extensions/AtomicCacheServiceExtensions.cs`. HAIP consumers: `src/Services/Sorcha.Haip.Service/Services/{Nonce,PreAuthCode}Store.cs`.
+
+---
+
+## Validator Mempool Durability (Feature 113)
+
+`IVerifiedTransactionQueue` uses a Claim/Confirm/Release lease pattern that lets HA-replica validator deployments share one mempool without double-sealing. Two implementations:
+
+- **`InMemoryVerifiedTransactionQueue`** — per-process `ConcurrentDictionary<string, RegisterQueue>`. Dev/test fallback. On the audited list — Production/Staging fail-fast.
+- **`RedisVerifiedTransactionQueue`** — Redis sorted sets per register, single Lua claim+auto-release script. Survives validator process restart; multiple replicas with the same identity coordinate via shared Redis state.
+
+### Lease lifecycle
+
+```csharp
+var leases = await queue.ClaimAsync(registerId, maxBatchSize, leaseDuration, ct);
+try
+{
+    var docket = await BuildAndSealAsync(leases, ct);
+    await queue.ConfirmAsync(registerId, leases.Select(l => l.TransactionId), ct);
+}
+catch
+{
+    await queue.ReleaseAsync(registerId, leases.Select(l => l.TransactionId), ct);
+    throw;
+}
+```
+
+If the validator dies between Claim and Confirm, the lease auto-releases on the next ClaimAsync (default 60s, `ValidatorMempool:LeaseDurationSeconds`). The Redis Lua script handles auto-release atomically as the first step of any claim. Confirm/Release are idempotent.
+
+### Redis key layout
+
+```
+sorcha:vtq:{registerId}:available    ZSET  score=ComputeScore(priority, enqueueTime)
+sorcha:vtq:{registerId}:claimed      ZSET  score=lease expiry unix-ms
+sorcha:vtq:{registerId}:payload      HASH  txId → JSON(VerifiedTransaction)
+sorcha:vtq:{registerId}:scores       HASH  txId → numeric score (priority restoration)
+```
+
+`{registerId}` cluster-slot braces keep multi-key Lua / batch operations slot-local. Score = `-priority * 1e13 + enqueuedAtUnixMs` so `ZRANGE 0..N-1` returns highest-priority first with FIFO within priority class.
+
+### OpenTelemetry
+
+The `Sorcha.Validator.Mempool` meter exposes `sorcha_validator_mempool_lease_expired_total` (counter, per-register). Per-register size gauge tracked as follow-up — Redis impl can't compute cross-register totals cheaply.
+
+### Selection
+
+`VerifiedQueueExtensions.AddVerifiedTransactionQueue` branches on the SorchaConnections Redis cascade. `n1` deployments get the Redis-backed implementation automatically once `ConnectionStrings:Sorcha:Redis` is set; fallback paths are flagged at boot via the storage registration log.
+
+### Runtime source
+
+`src/Services/Sorcha.Validator.Service/Services/{In,}VerifiedTransactionQueue.cs` (in-memory + Redis impls embed Lua scripts as constants), `src/Services/Sorcha.Validator.Service/Services/ValidatorMempoolMetrics.cs`, `src/Services/Sorcha.Validator.Service/Extensions/VerifiedQueueExtensions.cs`. Single caller: `src/Services/Sorcha.Validator.Service/Services/DocketBuilder.cs` (claim → build → confirm; release on failure; **genesis path also confirms** — caught by claude-review on PR #416 as a real lease-leak bug).

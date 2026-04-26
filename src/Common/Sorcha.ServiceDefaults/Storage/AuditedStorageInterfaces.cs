@@ -46,8 +46,10 @@ internal static class AuditedStorageInterfaces
         // Verified: matches typeof(Sorcha.Blueprint.Service.Storage.IActionStore).FullName.
         "Sorcha.Blueprint.Service.Storage.IActionStore",
 
-        // TODO(audit-fqn): Verify against typeof(IVerifiedTransactionQueue).FullName at adoption time.
-        "Sorcha.Validator.Service.Storage.IVerifiedTransactionQueue",
+        // Validator Service — verified-but-not-yet-sealed mempool.
+        // Verified: matches typeof(Sorcha.Validator.Service.Services.Interfaces.IVerifiedTransactionQueue).FullName.
+        // (Earlier PR-7 placeholder used .Storage. — wrong; caught by claude-review on PR #419.)
+        "Sorcha.Validator.Service.Services.Interfaces.IVerifiedTransactionQueue",
 
         // HAIP and other consumers — atomic distributed cache for replay-protection state.
         // Verified: matches typeof(Sorcha.AtomicCache.IAtomicDistributedCache).FullName.
