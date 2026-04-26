@@ -28,7 +28,7 @@ public static class DemoMintEndpoint
     /// <summary>Maps the demo mint endpoint at <c>POST /verify/demo/mint</c>.</summary>
     public static IEndpointRouteBuilder MapDemoMintEndpoint(this IEndpointRouteBuilder routes)
     {
-        routes.MapPost("/verify/demo/mint", Handle)
+        routes.MapPost("/demo/mint", Handle)
             .WithName("CitizenVerifierDemoMint")
             .WithSummary("Demo-only — mint a credential + delegation bound to a wallet's device key.")
             .WithDescription(

@@ -21,7 +21,7 @@ public static class PresentationResponseEndpoints
     /// <summary>Maps the verifier callback + status endpoints.</summary>
     public static IEndpointRouteBuilder MapPresentationResponseEndpoints(this IEndpointRouteBuilder routes)
     {
-        routes.MapPost("/verify/r/{sessionId}/response", HandleResponseAsync)
+        routes.MapPost("/r/{sessionId}/response", HandleResponseAsync)
             .WithName("CitizenVerifierPresentationResponse")
             .WithSummary("Wallet POSTs an OID4VP vp_token + delegation here.")
             .WithDescription(
@@ -32,7 +32,7 @@ public static class PresentationResponseEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
-        routes.MapGet("/verify/r/{sessionId}/status", HandleStatus)
+        routes.MapGet("/r/{sessionId}/status", HandleStatus)
             .WithName("CitizenVerifierPresentationStatus")
             .WithSummary("Read the current outcome of a verifier session.")
             .WithDescription("Used by the verifier UI to poll for completion. Returns 404 if the session is unknown or expired.")

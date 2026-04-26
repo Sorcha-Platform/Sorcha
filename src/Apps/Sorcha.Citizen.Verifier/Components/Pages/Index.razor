@@ -6,7 +6,6 @@
     to ask for, hits Start, and is sent to the QR session page.
 *@
 @page "/"
-@page "/verify"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Http
@@ -67,7 +66,7 @@
             var baseUri = ResolveBaseUri();
             var result = await Builder.CreateAsync(
                 verifierOrgId, _purpose, _vct, required, optional, baseUri);
-            Nav.NavigateTo($"/verify/s/{result.Session.SessionId}");
+            Nav.NavigateTo($"s/{result.Session.SessionId}");
         }
         catch (Exception ex)
         {
