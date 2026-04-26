@@ -67,7 +67,7 @@ public class PreAuthCodeStore
         if (value is null || !Guid.TryParse(value, out var offerId))
         {
             _metrics.RecordMiss(HaipNonceMetrics.StoreKind.PreAuth);
-            _logger.LogWarning("Pre-auth code redemption failed: code not found or expired");
+            _logger.LogWarning("Pre-auth code redemption failed: code not found, expired, or already redeemed");
             return null;
         }
 

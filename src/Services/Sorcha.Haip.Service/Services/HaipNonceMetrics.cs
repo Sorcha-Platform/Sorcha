@@ -48,6 +48,13 @@ public sealed class HaipNonceMetrics : IDisposable
     {
         Nonce,
         PreAuth,
+
+        /// <summary>
+        /// Forward-declared for the future PresentationRequestStore CAS migration
+        /// (113-followup). No instrument observations carry this label until that
+        /// migration lands — dashboards filtering on <c>store="presentation"</c>
+        /// will be empty until then.
+        /// </summary>
         Presentation,
     }
 

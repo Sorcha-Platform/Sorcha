@@ -22,8 +22,12 @@ public class NonceStoreTests : IDisposable
 
     public NonceStoreTests()
     {
-        _sp = new ServiceCollection().AddMetrics().BuildServiceProvider();
-        var meterFactory = _sp.GetRequiredService<IMeterFactory>();
+        // Build the metrics class through DI so it shares the host lifecycle and
+        // is disposed cleanly with the ServiceProvider.
+        _sp = new ServiceCollection()
+            .AddMetrics()
+            .AddSingleton<HaipNonceMetrics>()
+            .BuildServiceProvider();
 
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -34,7 +38,7 @@ public class NonceStoreTests : IDisposable
 
         _store = new NonceStore(
             new InMemoryAtomicDistributedCache(),
-            new HaipNonceMetrics(meterFactory),
+            _sp.GetRequiredService<HaipNonceMetrics>(),
             NullLogger<NonceStore>.Instance,
             config);
     }
