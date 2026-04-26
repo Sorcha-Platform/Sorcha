@@ -42,7 +42,65 @@ public static class CitizenWalletEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status409Conflict);
 
+        group.MapGet("/credentials", ListCredentials)
+            .WithName("ListCitizenCredentials")
+            .WithSummary("Full credential snapshot for the authenticated citizen")
+            .WithDescription(
+                "Returns every credential currently issued to the citizen. Used by a " +
+                "freshly-enrolled wallet to seed its cache; subsequent updates flow " +
+                "through GET /api/v1/wallet/sync.")
+            .Produces<CredentialListResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapGet("/sync", SyncCredentials)
+            .WithName("SyncCitizenWallet")
+            .WithSummary("Pull credential and delegation deltas since the last sync")
+            .WithDescription(
+                "Returns adds/revokes/replacements since the supplied opaque cursor. " +
+                "Omit the cursor on first sync. Cursors older than 30 days return 410 — " +
+                "the wallet should fall back to GET /credentials.")
+            .Produces<SyncResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status410Gone);
+
         return app;
+    }
+
+    private static async Task<IResult> ListCredentials(
+        HttpContext context,
+        ICitizenSyncService sync,
+        IHolderKeyService holderKeys,
+        CancellationToken ct)
+    {
+        var (platformUserId, citizenWallet, _) = ResolveCitizenContext(context.User);
+        if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
+
+        var holderKeyId = await holderKeys.GetHolderJwkThumbprintAsync(citizenWallet, ct);
+        var snapshot = await sync.ListAllCredentialsAsync(platformUserId.Value, holderKeyId, ct);
+        return Results.Ok(snapshot);
+    }
+
+    private static async Task<IResult> SyncCredentials(
+        HttpContext context,
+        [FromQuery] string? since,
+        ICitizenSyncService sync,
+        IHolderKeyService holderKeys,
+        CancellationToken ct)
+    {
+        var (platformUserId, citizenWallet, _) = ResolveCitizenContext(context.User);
+        if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
+
+        var holderKeyId = await holderKeys.GetHolderJwkThumbprintAsync(citizenWallet, ct);
+        var delta = await sync.ComposeDeltaAsync(platformUserId.Value, holderKeyId, since, ct);
+        if (delta is null)
+        {
+            return Results.Problem(
+                title: "Sync cursor expired",
+                detail: "The supplied sync cursor is older than the maximum cursor age. " +
+                        "Re-seed the cache via GET /api/v1/wallet/credentials.",
+                statusCode: StatusCodes.Status410Gone);
+        }
+        return Results.Ok(delta);
     }
 
     private static async Task<IResult> EnrolDevice(

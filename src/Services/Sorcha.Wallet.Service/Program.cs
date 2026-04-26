@@ -141,6 +141,14 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IOrgStatusS
 builder.Services.AddHostedService<
     Sorcha.Wallet.Service.Services.Implementation.CitizenStatusListPublisherService>();
 
+// Feature 114: Citizen wallet sync surface (T103). EmptyCitizenCredentialEventStream is a
+// placeholder until the citizen-credential issuance pipeline lands (US4 / Phase 6); the sync
+// surface, sync-token round-trip, and 410 stale-cursor path are still exercised end-to-end.
+builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizenCredentialEventStream,
+    Sorcha.Wallet.Service.Services.Implementation.EmptyCitizenCredentialEventStream>();
+builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizenSyncService,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenSyncService>();
+
 // Feature 114: FluentValidation for citizen wallet request DTOs
 builder.Services.AddValidatorsFromAssemblyContaining<
     Sorcha.CitizenWallet.Abstractions.Validators.DeviceEnrolmentRequestValidator>();
