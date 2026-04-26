@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.CitizenWallet.Abstractions</PackageId>
+    <Version>1.0.0</Version>
+    <Description>Shared DTOs, constants, validators, and JSON-Schema artefacts for the Sorcha Citizen Wallet PWA (Feature 114). Consumed by the wallet PWA, the reference verifier, and the server-side Wallet/Tenant/Blueprint extensions. No transport, no IO, no Sorcha runtime dependencies — pure contract.</Description>
+    <PackageTags>sorcha;citizen-wallet;pwa;abstractions;oid4vp;sd-jwt-vc</PackageTags>
+    <RootNamespace>Sorcha.CitizenWallet.Abstractions</RootNamespace>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Schemas\device-delegation-credential.v1.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.CitizenWallet.Abstractions.Tests" />
+  </ItemGroup>
+
+</Project>
