@@ -114,4 +114,13 @@ public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
 
         return device;
     }
+
+    /// <inheritdoc />
+    public async Task<PlatformUserDevice?> GetByIdAsync(
+        Guid deviceId, Guid platformUserId, CancellationToken ct = default)
+    {
+        return await _db.PlatformUserDevices
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == deviceId && d.PlatformUserId == platformUserId, ct);
+    }
 }

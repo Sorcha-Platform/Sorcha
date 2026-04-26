@@ -52,6 +52,19 @@ public static class CitizenWalletEndpoints
             .Produces<CredentialListResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapPost("/devices/renew-delegation", RenewDelegation)
+            .WithName("RenewCitizenDeviceDelegation")
+            .WithSummary("Renew the device delegation credential")
+            .WithDescription(
+                "Idempotent re-issuance of the holder→device delegation, signed by " +
+                "the citizen's holder key. Wallets call this when their current " +
+                "delegation is approaching expiry (within 30 days). Returns 404 if " +
+                "the device is unknown or not owned by the caller.")
+            .Produces<DelegationRenewalResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
+
         group.MapGet("/sync", SyncCredentials)
             .WithName("SyncCitizenWallet")
             .WithSummary("Pull credential and delegation deltas since the last sync")
@@ -64,6 +77,34 @@ public static class CitizenWalletEndpoints
             .Produces(StatusCodes.Status410Gone);
 
         return app;
+    }
+
+    private static async Task<IResult> RenewDelegation(
+        [FromBody] DelegationRenewalRequest request,
+        HttpContext context,
+        IDelegationRenewalService renewal,
+        CancellationToken ct)
+    {
+        var (platformUserId, citizenWallet, organizationId) = ResolveCitizenContext(context.User);
+        if (platformUserId is null || citizenWallet is null || organizationId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (request.DeviceId == Guid.Empty)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["deviceId"] = new[] { "deviceId is required." }
+            });
+        }
+
+        var response = await renewal.RenewAsync(
+            request.DeviceId, platformUserId.Value, citizenWallet, organizationId.Value, ct);
+
+        return response is null
+            ? Results.NotFound()
+            : Results.Ok(response);
     }
 
     private static async Task<IResult> ListCredentials(

@@ -83,4 +83,20 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
         return result ?? throw new InvalidOperationException(
             "Tenant Service returned an empty body for platform-user-device registration.");
     }
+
+    /// <inheritdoc />
+    public async Task<PlatformUserDeviceLookupResult?> GetByIdAsync(
+        Guid deviceId, Guid platformUserId, CancellationToken ct = default)
+    {
+        await ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Tenant Service (PlatformUserDevice)", ct);
+
+        var response = await _httpClient.GetAsync(
+            $"api/internal/platform-user-devices/{deviceId}?platformUserId={platformUserId}", ct);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<PlatformUserDeviceLookupResult>(JsonOptions, ct);
+    }
 }
