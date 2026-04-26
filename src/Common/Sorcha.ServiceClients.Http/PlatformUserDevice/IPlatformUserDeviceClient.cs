@@ -25,6 +25,15 @@ public interface IPlatformUserDeviceClient
         string delegationCredentialJti,
         int statusListIndex,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Look up a single device by id, scoped to the supplied platform user.
+    /// Returns null if the device does not exist or is not owned by the user.
+    /// </summary>
+    Task<PlatformUserDeviceLookupResult?> GetByIdAsync(
+        Guid deviceId,
+        Guid platformUserId,
+        CancellationToken ct = default);
 }
 
 /// <summary>Result of <see cref="IPlatformUserDeviceClient.RegisterAsync"/>.</summary>
@@ -33,3 +42,17 @@ public interface IPlatformUserDeviceClient
 public sealed record PlatformUserDeviceRegistrationResult(
     Guid DeviceId,
     DateTimeOffset EnrolledAt);
+
+/// <summary>Result of <see cref="IPlatformUserDeviceClient.GetByIdAsync"/>.</summary>
+public sealed record PlatformUserDeviceLookupResult(
+    Guid DeviceId,
+    Guid PlatformUserId,
+    string Label,
+    string DevicePublicJwkThumbprint,
+    string DevicePublicJwkJson,
+    string Platform,
+    string Status,
+    DateTimeOffset EnrolledAt,
+    DateTimeOffset DelegationExpiresAt,
+    string DelegationCredentialJti,
+    int StatusListIndex);

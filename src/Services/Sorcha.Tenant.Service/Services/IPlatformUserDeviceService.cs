@@ -49,4 +49,15 @@ public interface IPlatformUserDeviceService
         string delegationCredentialJti,
         int statusListIndex,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Look up a single device by id, scoped to the supplied platform user.
+    /// Returns null if the device does not exist OR is not owned by the user
+    /// (the two cases are intentionally indistinguishable to callers — both
+    /// surface as "not your device" without leaking existence).
+    /// </summary>
+    Task<PlatformUserDevice?> GetByIdAsync(
+        Guid deviceId,
+        Guid platformUserId,
+        CancellationToken ct = default);
 }

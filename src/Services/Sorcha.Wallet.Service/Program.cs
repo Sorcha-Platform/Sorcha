@@ -149,6 +149,12 @@ builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizen
 builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizenSyncService,
     Sorcha.Wallet.Service.Services.Implementation.CitizenSyncService>();
 
+// Feature 114: Delegation renewal (T106). Composes Tenant Service device lookup
+// + IDeviceDelegationIssuer + IOrgStatusSigningWalletResolver behind one
+// idempotent re-issuance call.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDelegationRenewalService,
+    Sorcha.Wallet.Service.Services.Implementation.DelegationRenewalService>();
+
 // Feature 114: FluentValidation for citizen wallet request DTOs
 builder.Services.AddValidatorsFromAssemblyContaining<
     Sorcha.CitizenWallet.Abstractions.Validators.DeviceEnrolmentRequestValidator>();

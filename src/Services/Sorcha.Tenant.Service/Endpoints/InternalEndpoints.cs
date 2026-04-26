@@ -38,6 +38,14 @@ public static class InternalEndpoints
                 + "Idempotent on (PlatformUserId, DevicePublicJwkThumbprint).")
             .RequireAuthorization("RequireService");
 
+        // Feature 114: device lookup for delegation renewal flow.
+        group.MapGet("/platform-user-devices/{deviceId:guid}", GetPlatformUserDevice)
+            .WithName("GetPlatformUserDevice")
+            .WithSummary("Look up a citizen wallet device by id, scoped to its owning platform user")
+            .WithDescription("Called by Wallet Service during delegation renewal. The platformUserId "
+                + "query parameter scopes the lookup so cross-user device probing is impossible.")
+            .RequireAuthorization("RequireService");
+
         return app;
     }
 
@@ -68,6 +76,43 @@ public static class InternalEndpoints
             return TypedResults.BadRequest(ex.Message);
         }
     }
+
+    private static async Task<Results<Ok<PlatformUserDeviceLookupResponse>, NotFound>> GetPlatformUserDevice(
+        Guid deviceId,
+        [FromQuery] Guid platformUserId,
+        IPlatformUserDeviceService deviceService,
+        CancellationToken ct)
+    {
+        var device = await deviceService.GetByIdAsync(deviceId, platformUserId, ct);
+        if (device is null) return TypedResults.NotFound();
+
+        return TypedResults.Ok(new PlatformUserDeviceLookupResponse(
+            device.Id,
+            device.PlatformUserId,
+            device.Label,
+            device.DevicePublicJwkThumbprint,
+            device.DevicePublicJwkJson,
+            device.Platform,
+            device.Status.ToString(),
+            device.EnrolledAt,
+            device.DelegationExpiresAt,
+            device.DelegationCredentialJti,
+            device.StatusListIndex));
+    }
+
+    /// <summary>Internal response for a single device lookup.</summary>
+    public sealed record PlatformUserDeviceLookupResponse(
+        Guid DeviceId,
+        Guid PlatformUserId,
+        string Label,
+        string DevicePublicJwkThumbprint,
+        string DevicePublicJwkJson,
+        string Platform,
+        string Status,
+        DateTimeOffset EnrolledAt,
+        DateTimeOffset DelegationExpiresAt,
+        string DelegationCredentialJti,
+        int StatusListIndex);
 
     /// <summary>Internal request body for citizen device registration.</summary>
     public sealed record PlatformUserDeviceRegistrationRequest(
