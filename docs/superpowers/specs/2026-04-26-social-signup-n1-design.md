@@ -75,6 +75,13 @@ The plumbing is in good shape; what is missing is:
 - BACKLOG-5: Azure Key Vault for OAuth secrets at first Kubernetes deployment
 - BACKLOG-6: Google OAuth consent-screen real-publisher verification when
   organic n1 traffic exceeds the 100-user test-mode cap
+- BACKLOG-7: Existing-`PlatformSocialLogin`-row audit before any non-reset
+  rollout of the strict-link policy. n1 is reset on this deploy so all
+  rows are fresh under the new policy; if the policy is later applied
+  to an environment that has accumulated history, those rows carry no
+  link-time `EmailVerified` evidence and would all pass Scenario A
+  (returning user, no re-check) silently. Surfaced by claude-review on
+  PR #423.
 
 ## Decisions
 
