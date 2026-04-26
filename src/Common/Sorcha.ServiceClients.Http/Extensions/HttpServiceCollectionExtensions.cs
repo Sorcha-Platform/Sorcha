@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Blueprint;
+using Sorcha.ServiceClients.CitizenWallet;
 using Sorcha.ServiceClients.Did;
 using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Participant;
@@ -74,6 +75,11 @@ public static class HttpServiceCollectionExtensions
         // Feature 114: Citizen wallet device registry on Tenant Service
         services.AddHttpClient<PlatformUserDeviceClient>();
         services.AddScoped<IPlatformUserDeviceClient, PlatformUserDeviceClient>();
+
+        // Feature 114: Citizen wallet client used by the PWA to call Wallet Service.
+        // Caller-supplied JWT (no service-principal injection — citizen audience required).
+        services.AddHttpClient<CitizenWalletClient>();
+        services.AddScoped<ICitizenWalletClient, CitizenWalletClient>();
 
         // DID resolvers
         services.AddDidResolvers();
