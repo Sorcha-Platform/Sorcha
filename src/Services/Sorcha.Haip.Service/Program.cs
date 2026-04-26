@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.AtomicCache.Extensions;
 using Sorcha.Haip.Service.Endpoints;
 using Sorcha.Haip.Service.Services;
 
@@ -13,8 +14,19 @@ builder.AddServiceDefaults();
 builder.AddSorchaOpenApi("Sorcha HAIP Service API",
     "OpenID4VCI issuer endpoint for HAIP-compliant external wallet credential issuance.");
 
-// Add Redis for transient HAIP state (pre-auth codes, nonces, access tokens)
+// Add Redis for transient HAIP state (pre-auth codes, nonces, access tokens).
+// AddRedisClient registers IConnectionMultiplexer which RedisAtomicDistributedCache picks up.
 builder.AddRedisClient("redis");
+
+// Atomic distributed cache for replay-protection state — closes the GET+DEL TOCTOU
+// window in NonceStore / PreAuthCodeStore. Uses SorchaConnections cascade
+// (ConnectionStrings:Haip:Redis → ConnectionStrings:Sorcha:Redis); falls back to
+// in-memory in dev (audited list — Production/Staging fail-fast).
+builder.Services.AddAtomicDistributedCache(builder.Configuration, "Haip");
+
+// HAIP nonce metric meter — sorcha_haip_nonce_consume_total{store, outcome}.
+// Registered as singleton; consumed by NonceStore + PreAuthCodeStore.
+builder.Services.AddSingleton<HaipNonceMetrics>();
 
 // Add JWT authentication (for service-to-service calls on internal endpoints)
 builder.AddJwtAuthentication();

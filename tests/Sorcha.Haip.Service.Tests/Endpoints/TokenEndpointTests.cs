@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Diagnostics.Metrics;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sorcha.AtomicCache;
 using Sorcha.Haip.Service.Models;
 using Sorcha.Haip.Service.Services;
 using Xunit;
@@ -32,8 +35,11 @@ public class TokenEndpointTests
             })
             .Build();
 
-        _codeStore = new PreAuthCodeStore(Mock.Of<ILogger<PreAuthCodeStore>>(), config);
-        _nonceStore = new NonceStore(Mock.Of<ILogger<NonceStore>>(), config);
+        var meterFactory = new ServiceCollection().AddMetrics().BuildServiceProvider().GetRequiredService<IMeterFactory>();
+        var atomicCache = new InMemoryAtomicDistributedCache();
+        var nonceMetrics = new HaipNonceMetrics(meterFactory);
+        _codeStore = new PreAuthCodeStore(atomicCache, nonceMetrics, Mock.Of<ILogger<PreAuthCodeStore>>(), config);
+        _nonceStore = new NonceStore(atomicCache, nonceMetrics, Mock.Of<ILogger<NonceStore>>(), config);
         _offerService = new CredentialOfferService(
             _codeStore, Mock.Of<ILogger<CredentialOfferService>>(), config);
     }

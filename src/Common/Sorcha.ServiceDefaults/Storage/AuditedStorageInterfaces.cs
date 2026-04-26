@@ -31,19 +31,28 @@ internal static class AuditedStorageInterfaces
     public static readonly IReadOnlySet<string> Names = new HashSet<string>(StringComparer.Ordinal)
     {
         // Wallet Service — user wallets, HD-derived keys, signing material.
-        "Sorcha.Wallet.Core.Repositories.IWalletRepository",
+        // Verified: matches typeof(Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository).FullName.
+        "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository",
 
         // Register Service — register documents and transaction stream.
-        "Sorcha.Register.Storage.IRegisterRepository",
+        // Verified: matches typeof(Sorcha.Register.Core.Storage.IRegisterRepository).FullName.
+        "Sorcha.Register.Core.Storage.IRegisterRepository",
 
-        // Blueprint Service — workflow instances and per-action state.
+        // Blueprint Service — workflow instances.
+        // Verified: matches typeof(Sorcha.Blueprint.Service.Storage.IInstanceStore).FullName.
         "Sorcha.Blueprint.Service.Storage.IInstanceStore",
+
+        // Blueprint Service — per-action state.
+        // Verified: matches typeof(Sorcha.Blueprint.Service.Storage.IActionStore).FullName.
         "Sorcha.Blueprint.Service.Storage.IActionStore",
 
         // Validator Service — verified-but-not-yet-sealed mempool.
-        "Sorcha.Validator.Service.Storage.IVerifiedTransactionQueue",
+        // Verified: matches typeof(Sorcha.Validator.Service.Services.Interfaces.IVerifiedTransactionQueue).FullName.
+        // (Earlier PR-7 placeholder used .Storage. — wrong; caught by claude-review on PR #419.)
+        "Sorcha.Validator.Service.Services.Interfaces.IVerifiedTransactionQueue",
 
         // HAIP and other consumers — atomic distributed cache for replay-protection state.
+        // Verified: matches typeof(Sorcha.AtomicCache.IAtomicDistributedCache).FullName.
         "Sorcha.AtomicCache.IAtomicDistributedCache",
     };
 

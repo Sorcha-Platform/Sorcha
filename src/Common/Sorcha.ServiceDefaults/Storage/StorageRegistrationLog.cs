@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using Microsoft.Extensions.Logging;
-
 namespace Sorcha.ServiceDefaults.Storage;
 
 /// <summary>
@@ -10,22 +8,22 @@ namespace Sorcha.ServiceDefaults.Storage;
 /// Thread-safe singleton — accumulates registration records over the lifetime
 /// of the service and exposes an immutable snapshot to callers.
 /// </summary>
+/// <remarks>
+/// Registration calls are pure data capture — they do not log directly.
+/// Logging is deferred to <see cref="StorageEnforcementHostedService"/>
+/// which iterates the snapshot at host startup using the proper DI logger
+/// and emits one Information line per persistent registration plus one
+/// Warning line (with the <c>[STORAGE-FALLBACK]</c> banner) per in-memory
+/// registration. This decoupling lets services materialise the log at
+/// <see cref="Microsoft.Extensions.DependencyInjection.IServiceCollection"/>-extension
+/// time (before the DI container is built and before any logger is
+/// available) without sacrificing log fidelity.
+/// </remarks>
 public sealed class StorageRegistrationLog : IStorageRegistrationLog
 {
-    private readonly ILogger<StorageRegistrationLog> _logger;
     private readonly object _lock = new();
     private readonly List<StorageRegistrationRecord> _records = new();
     private readonly HashSet<string> _seenInterfaces = new(StringComparer.Ordinal);
-
-    /// <summary>
-    /// Creates a new registration log. Typically resolved from DI; only
-    /// constructed manually in tests.
-    /// </summary>
-    public StorageRegistrationLog(ILogger<StorageRegistrationLog> logger)
-    {
-        ArgumentNullException.ThrowIfNull(logger);
-        _logger = logger;
-    }
 
     /// <inheritdoc />
     public void RegisterPersistent(string interfaceName, string implementationName, string backend)
@@ -34,7 +32,7 @@ public sealed class StorageRegistrationLog : IStorageRegistrationLog
         ArgumentException.ThrowIfNullOrWhiteSpace(implementationName);
         ArgumentException.ThrowIfNullOrWhiteSpace(backend);
 
-        var record = Add(new StorageRegistrationRecord(
+        Add(new StorageRegistrationRecord(
             InterfaceName: interfaceName,
             ImplementationName: implementationName,
             Backend: backend,
@@ -42,10 +40,6 @@ public sealed class StorageRegistrationLog : IStorageRegistrationLog
             RegisteredAt: DateTimeOffset.UtcNow,
             IsAudited: AuditedStorageInterfaces.Names.Contains(interfaceName),
             IsInMemory: false));
-
-        _logger.LogInformation(
-            "Storage registration: {Interface} → {Implementation} ({Backend})",
-            record.InterfaceName, record.ImplementationName, record.Backend);
     }
 
     /// <inheritdoc />
@@ -55,7 +49,7 @@ public sealed class StorageRegistrationLog : IStorageRegistrationLog
         ArgumentException.ThrowIfNullOrWhiteSpace(implementationName);
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
 
-        var record = Add(new StorageRegistrationRecord(
+        Add(new StorageRegistrationRecord(
             InterfaceName: interfaceName,
             ImplementationName: implementationName,
             Backend: AuditedStorageInterfaces.InMemoryBackend,
@@ -63,11 +57,6 @@ public sealed class StorageRegistrationLog : IStorageRegistrationLog
             RegisteredAt: DateTimeOffset.UtcNow,
             IsAudited: AuditedStorageInterfaces.Names.Contains(interfaceName),
             IsInMemory: true));
-
-        // Greppable banner — tooling and operators search for [STORAGE-FALLBACK] in logs.
-        _logger.LogWarning(
-            "[STORAGE-FALLBACK] {Interface} → {Implementation} — DATA WILL NOT SURVIVE RESTART. Reason: {Reason}",
-            record.InterfaceName, record.ImplementationName, record.Reason);
     }
 
     /// <inheritdoc />
@@ -79,7 +68,7 @@ public sealed class StorageRegistrationLog : IStorageRegistrationLog
         }
     }
 
-    private StorageRegistrationRecord Add(StorageRegistrationRecord record)
+    private void Add(StorageRegistrationRecord record)
     {
         lock (_lock)
         {
@@ -93,7 +82,5 @@ public sealed class StorageRegistrationLog : IStorageRegistrationLog
 
             _records.Add(record);
         }
-
-        return record;
     }
 }

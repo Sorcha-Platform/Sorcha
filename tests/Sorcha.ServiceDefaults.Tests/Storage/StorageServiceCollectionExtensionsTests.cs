@@ -122,4 +122,74 @@ public class StorageServiceCollectionExtensionsTests
         var act = () => services!.AddStorageRegistration();
         act.Should().Throw<ArgumentNullException>();
     }
+
+    [Fact]
+    public void GetStorageRegistrationLog_AfterAddStorageRegistration_ReturnsInstance()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddStorageRegistration();
+
+        var log = services.GetStorageRegistrationLog();
+
+        log.Should().NotBeNull();
+        log.Should().BeOfType<StorageRegistrationLog>();
+    }
+
+    [Fact]
+    public void GetStorageRegistrationLog_ReturnsSameInstanceFromDIContainer()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddStorageRegistration();
+
+        var fromExtension = services.GetStorageRegistrationLog();
+
+        using var sp = services.BuildServiceProvider();
+        var fromContainer = sp.GetRequiredService<IStorageRegistrationLog>();
+
+        fromContainer.Should().BeSameAs(fromExtension);
+    }
+
+    [Fact]
+    public void GetStorageRegistrationLog_RegistrationsArePreservedThroughBuild()
+    {
+        // Service-side AddXxxDatabase calls register entries on the log instance
+        // BEFORE the container is built. Those entries must survive into the resolved
+        // singleton so EnforcementHostedService and the metrics callbacks see them.
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddStorageRegistration();
+
+        var log = services.GetStorageRegistrationLog();
+        log.RegisterPersistent("Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository", "EfCoreWalletRepository", "postgres");
+
+        using var sp = services.BuildServiceProvider();
+        var resolved = sp.GetRequiredService<IStorageRegistrationLog>();
+
+        resolved.Snapshot().Should().HaveCount(1);
+        resolved.Snapshot()[0].InterfaceName.Should().Be("Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository");
+    }
+
+    [Fact]
+    public void GetStorageRegistrationLog_BeforeAddStorageRegistration_AutoRegistersAndReturns()
+    {
+        // Defensive: GetStorageRegistrationLog calls AddStorageRegistration if it hasn't run yet.
+        // This keeps service-extension methods unit-testable in isolation. AddStorageRegistration
+        // is itself idempotent so subsequent AddServiceDefaults() in the same test doesn't double-wire.
+        var services = new ServiceCollection();
+
+        var log = services.GetStorageRegistrationLog();
+
+        log.Should().NotBeNull();
+        services.Where(d => d.ServiceType == typeof(IStorageRegistrationLog)).Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void GetStorageRegistrationLog_NullServices_Throws()
+    {
+        IServiceCollection? services = null;
+        var act = () => services!.GetStorageRegistrationLog();
+        act.Should().Throw<ArgumentNullException>();
+    }
 }

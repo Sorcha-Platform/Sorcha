@@ -14,6 +14,7 @@ using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.JsonLd;
 using Sorcha.ServiceDefaults;
+using Sorcha.ServiceDefaults.Storage;
 using Sorcha.Blueprint.Service.Services;
 using Sorcha.Blueprint.Schemas.Services;
 using Sorcha.Cryptography.Core;
@@ -55,25 +56,44 @@ var hasBlueprintPgConfig =
 var blueprintDbConn = hasBlueprintPgConfig
     ? builder.Configuration.GetSorchaPostgresConnectionString("Blueprint", "sorcha_blueprint")
     : null;
+var storageLog = builder.Services.GetStorageRegistrationLog();
+// IBlueprintStore is a cache that rebuilds from the register transaction log on cold start
+// (see BlueprintRecoveryService below). It logs warn-on-fallback but is not on the audited list,
+// so an in-memory implementation does not gate Production startup.
 if (!string.IsNullOrEmpty(blueprintDbConn))
 {
     builder.Services.AddDbContextFactory<Sorcha.Blueprint.Service.Data.BlueprintDbContext>(options =>
         options.UseNpgsql(blueprintDbConn));
     builder.Services.AddSingleton<IBlueprintStore, Sorcha.Blueprint.Service.Storage.EfCoreBlueprintStore>();
+    storageLog.RegisterPersistent(
+        typeof(IBlueprintStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.EfCoreBlueprintStore).FullName!,
+        "postgres");
+    // IDocumentStore<BlueprintTemplate, string> shares this branch's connection but is a
+    // generic abstraction (Sorcha.Storage.Abstractions), not a named audited interface —
+    // intentionally not logged.
     builder.Services.AddSingleton<Sorcha.Storage.Abstractions.IDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>,
         Sorcha.Blueprint.Service.Storage.EfCoreTemplateStore>();
-    Serilog.Log.Logger.Information("Blueprint Service using PostgreSQL for durable storage");
 }
 else
 {
     builder.Services.AddSingleton<IBlueprintStore, InMemoryBlueprintStore>();
+    storageLog.RegisterInMemory(
+        typeof(IBlueprintStore).FullName!,
+        typeof(InMemoryBlueprintStore).FullName!,
+        "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres — IBlueprintStore is a cache reconstructable from the register transaction log on cold start");
+    // IDocumentStore<BlueprintTemplate, string> shares this branch but is a generic
+    // abstraction, not a named audited interface — intentionally not logged.
     builder.Services.AddSingleton<Sorcha.Storage.Abstractions.IDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>>(
         new Sorcha.Storage.InMemory.InMemoryDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>(t => t.Id));
-    Serilog.Log.Logger.Warning("Blueprint Service using in-memory storage — data will be lost on restart");
 }
 // Published blueprints: InMemory for now — register is the source of truth,
 // so published data is reconstructable. Redis cache (068 US3) deferred to follow-up.
 builder.Services.AddSingleton<IPublishedBlueprintStore, InMemoryPublishedBlueprintStore>();
+storageLog.RegisterInMemory(
+    typeof(IPublishedBlueprintStore).FullName!,
+    typeof(InMemoryPublishedBlueprintStore).FullName!,
+    "register transaction log is the source of truth — published data reconstructable on cold start (Redis cache deferred to feature 068 US3)");
 
 // Recovery: rebuild published blueprint state from register ledger on startup
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Models.RecoveryState>();
@@ -144,16 +164,36 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransac
 // Add consolidated service clients (Sprint 6)
 builder.Services.AddServiceClients(builder.Configuration);
 
-// Add Action storage — EF Core when configured, InMemory fallback
+// Add Action / Instance storage — EF Core when configured, InMemory fallback.
+// Both IActionStore and IInstanceStore are audited interfaces — Production/Staging
+// fail-fast when on in-memory.
 if (!string.IsNullOrEmpty(blueprintDbConn))
 {
     builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IActionStore, Sorcha.Blueprint.Service.Storage.EfCoreActionStore>();
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Blueprint.Service.Storage.IActionStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.EfCoreActionStore).FullName!,
+        "postgres");
+
     builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IInstanceStore, Sorcha.Blueprint.Service.Storage.EfCoreInstanceStore>();
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Blueprint.Service.Storage.IInstanceStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.EfCoreInstanceStore).FullName!,
+        "postgres");
 }
 else
 {
     builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IActionStore, Sorcha.Blueprint.Service.Storage.InMemoryActionStore>();
+    storageLog.RegisterInMemory(
+        typeof(Sorcha.Blueprint.Service.Storage.IActionStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.InMemoryActionStore).FullName!,
+        "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres");
+
     builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IInstanceStore, Sorcha.Blueprint.Service.Storage.InMemoryInstanceStore>();
+    storageLog.RegisterInMemory(
+        typeof(Sorcha.Blueprint.Service.Storage.IInstanceStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.InMemoryInstanceStore).FullName!,
+        "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres");
 }
 
 // Add Orchestration services (Sprint 6)
