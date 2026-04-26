@@ -544,9 +544,9 @@ await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
 
 ---
 
-## Citizen Wallet PWA API (Feature 114) — server-side surface
+## Citizen Wallet PWA (Feature 114) — server + PWA + reference verifier surface
 
-Server-side endpoints + cryptographic primitives for the citizen-facing Blazor WASM wallet (in flight on branch `114-citizen-wallet-pwa`, PR #420). The wallet PWA + reference verifier projects do not yet exist; everything documented below is *server-side* and live in `src`.
+End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). Wallet PWA (`Sorcha.Citizen.Wallet`, Blazor WASM) and reference verifier (`Sorcha.Citizen.Verifier`, Blazor Server) are real projects in `src/Apps/`. The flow: sign in via Settings → Enrol device → credentials sync → present with full holder→device chain + issuer-signature verification → wallet auto-renews delegation 30 days before expiry. Demo-mint bridge (`/verify/demo/mint`) generates per-mint issuer keys for the demo until US4 ships real credential issuance.
 
 ### Endpoints
 
@@ -555,6 +555,9 @@ Server-side endpoints + cryptographic primitives for the citizen-facing Blazor W
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/api/v1/wallet/devices/enrol` | Enrol a device — derives holder key (slot 108), issues device-delegation SD-JWT VC, allocates status-list slot, registers device with Tenant Service. Strict rate limit. |
+| POST | `/api/v1/wallet/devices/renew-delegation` | Idempotent re-issuance of holder→device delegation, signed by holder key. Wallets call when within 30 days of expiry. 404 on cross-user / unknown / revoked device. (PR #435) |
+| GET | `/api/v1/wallet/credentials` | Full credential snapshot for fresh-wallet seeding. (PR #428) |
+| GET | `/api/v1/wallet/sync?since={cursor}` | Incremental delta. Cursor older than 30 days → 410 Gone (wallet falls back to /credentials). (PR #428) |
 
 #### Wallet Service — public (anonymous, verifier-facing)
 
@@ -567,6 +570,15 @@ Server-side endpoints + cryptographic primitives for the citizen-facing Blazor W
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/api/internal/platform-user-devices` | Bridge endpoint called by Wallet Service after issuing a delegation credential. Idempotent on `(PlatformUserId, DevicePublicJwkThumbprint)`. |
+| GET | `/api/internal/platform-user-devices/{id}?platformUserId={uid}` | Scoped device lookup for the renewal flow. Cross-user probes return 404 indistinguishably from non-existence. (PR #435) |
+
+#### Reference verifier — public (anonymous)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/verify/demo/mint` | Demo-only — mints SD-JWT VC + holder→device delegation bound to a posted device JWK. Registers the freshly-generated issuer key in `JwkRegistryIssuerKeyResolver` so subsequent presentations pass full signature verification. |
+| POST | `/verify/r/{sessionId}/response` | OID4VP `direct_post` ingest — wallet POSTs `{vpToken, delegation}` here. |
+| GET | `/verify/r/{sessionId}/status` | Polled by the verifier UI for outcome. |
 
 ### Key Models
 
@@ -582,9 +594,13 @@ Server-side endpoints + cryptographic primitives for the citizen-facing Blazor W
 - **`CitizenStatusListPublisherService`** (Wallet Service `BackgroundService`) — hourly tick, scans for lists within 1 h of `exp` and re-signs each via `RegenerateAsync`. Singleton with scoped deps via `IServiceScopeFactory`. Internal `RunOnceAsync` test seam. Closes the v1 freshness gap when no revocations occur.
 - **`IDeviceDelegationIssuer`** / `DeviceDelegationIssuer` (Wallet Service) — pure composition over `IHolderKeyService` + `ICitizenStatusListPublisher`. Issues the SD-JWT VC payload signed with the holder key.
 - **`IOrgStatusSigningWalletResolver`** / `OrgStatusSigningWalletResolver` (Wallet Service) — lazily provisions a per-org ED25519 system wallet (owner=`system:citizen-status:{orgId}`, tenant=`system`) on first call. Every list signed by this wallet's slot-109 key — verifiers pin one kid per org rather than per citizen.
-- **`IPlatformUserDeviceService`** / `PlatformUserDeviceService` (Tenant Service) — single `RegisterAsync`, idempotent on `(PlatformUserId, DevicePublicJwkThumbprint)`. Refreshes delegation fields on retry; preserves `Id` + `EnrolledAt` so the wallet's deviceId stays stable.
-- **`IPlatformUserDeviceClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.PlatformUserDevice`) — Wallet→Tenant service-to-service HTTP client. Uses `ServiceAuthClient` token.
-- **`ICitizenWalletClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.CitizenWallet`) — forward HTTP client for the citizen wallet PWA (and tests / reference verifier setup) to call Wallet Service. Caller-supplied JWT; no service-principal injection.
+- **`IPlatformUserDeviceService`** / `PlatformUserDeviceService` (Tenant Service) — `RegisterAsync` (idempotent on `(PlatformUserId, DevicePublicJwkThumbprint)` — refreshes delegation fields on retry, preserves `Id` + `EnrolledAt`); `GetByIdAsync(deviceId, platformUserId)` scoped lookup for renewal (PR #435).
+- **`IPlatformUserDeviceClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.PlatformUserDevice`) — Wallet→Tenant service-to-service HTTP client. `RegisterAsync` + `GetByIdAsync` (404→null). Uses `ServiceAuthClient` token.
+- **`ICitizenWalletClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.CitizenWallet`) — forward HTTP client for the PWA (and tests / reference verifier setup) to call Wallet Service. Methods: `EnrolDeviceAsync`, `SyncAsync` (410→null), `ListCredentialsAsync`, `RenewDelegationAsync` (404→null). Caller-supplied JWT; no service-principal injection.
+- **`ICitizenSyncService`** / `CitizenSyncService` (Wallet Service) — composes credential deltas + full snapshots; mints/validates the opaque sync cursor as an HMAC-SHA256 JWT carrying `{sub: holderKeyId, seq, iat}` per research §R-006. 30-day cursor lifetime → 410 → wallet falls back to /credentials (PR #428).
+- **`ICitizenCredentialEventStream`** + `EmptyCitizenCredentialEventStream` (Wallet Service) — abstraction over the not-yet-implemented citizen credential issuance pipeline. Empty stub means sync returns no deltas now and stays stable when real events flow in (US4 / Phase 6). Replace the registration to ship US4.
+- **`IDelegationRenewalService`** / `DelegationRenewalService` (Wallet Service) — composes `IPlatformUserDeviceClient.GetByIdAsync` → `IDeviceDelegationIssuer.IssueAsync` → `IPlatformUserDeviceClient.RegisterAsync` (refresh in place, idempotent on thumbprint). Always re-issues; status-list slot stays the same. Rejects renewals for revoked devices (PR #435).
+- **`IIssuerKeyResolver`** (verifier) + `OptOutIssuerKeyResolver` (default — preserves v1 contract) + `JwkRegistryIssuerKeyResolver` (in-memory, used by tests + demo-mint to register per-mint issuer keys). `VerifiablePresentationValidator` step 4b verifies credential JWS when key resolved; `RequireIssuerSignature: true` flips to fail-closed when no resolver hit (PR #434). Production hardening swaps in a DID-resolver-backed impl that reads tenant register verification methods.
 
 ### Derivation slots (`SorchaDerivationPaths`)
 
@@ -609,13 +625,19 @@ Hub URL `/hubs/wallet`. `[Authorize(AuthenticationSchemes = "Bearer")]`. On conn
 | `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenStatusListPublisherService.cs` | Hourly freshness BackgroundService |
 | `src/Services/Sorcha.Wallet.Service/Services/Implementation/DeviceDelegationIssuer.cs` | SD-JWT VC composition |
 | `src/Services/Sorcha.Wallet.Service/Services/Implementation/OrgStatusSigningWalletResolver.cs` | Lazy per-org system-wallet provisioner |
-| `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` | `/api/v1/wallet/devices/enrol` |
+| `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` | `/api/v1/wallet/devices/{enrol,renew-delegation}`, `/credentials`, `/sync` |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenSyncService.cs` | Sync delta composer + JWT cursor mint/validate |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/DelegationRenewalService.cs` | Renewal orchestrator (lookup → re-issue → tenant refresh) |
 | `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenStatusListEndpoints.cs` | Public status-list JWT endpoint |
 | `src/Services/Sorcha.Wallet.Service/Hubs/WalletHub.cs` | SignalR hub at `/hubs/wallet` |
 | `src/Services/Sorcha.Tenant.Service/Services/PlatformUserDeviceService.cs` | Tenant device registry |
 | `src/Services/Sorcha.Tenant.Service/Endpoints/InternalEndpoints.cs` | `/api/internal/platform-user-devices` bridge |
-| `src/Common/Sorcha.ServiceClients.Http/PlatformUserDevice/` | Wallet → Tenant s2s client |
-| `src/Common/Sorcha.ServiceClients.Http/CitizenWallet/` | PWA → Wallet client |
+| `src/Common/Sorcha.ServiceClients.Http/PlatformUserDevice/` | Wallet → Tenant s2s client (`RegisterAsync`, `GetByIdAsync`) |
+| `src/Common/Sorcha.ServiceClients.Http/CitizenWallet/` | PWA → Wallet client (enrol, sync, list-credentials, renew-delegation) |
+| `src/Apps/Sorcha.Citizen.Wallet/` | Blazor WASM PWA (mounted at `/wallet/` via gateway `PathRemovePrefix`). Pages: Index/Enrol/Present/CredentialDetail/Settings/Devices/Activity. Components: ConsentSheet/CredentialPickerDialog/NoMatchingCredentialDialog. wwwroot/js: webcrypto-bridge.js, indexeddb-bridge.js. |
+| `src/Apps/Sorcha.Citizen.Wallet/Services/` | All PWA services: WebCryptoDeviceKeyService, IndexedDb{Credential,Delegation,StatusList,DeviceMeta,SyncCursor,AccessToken}Store, AuthService, EnrolmentService, SyncService, DelegationRenewalClient, BearerTokenHandler, ServerClockHandler, ServerClockObserver |
+| `src/Apps/Sorcha.Citizen.Verifier/` | Blazor Server reference verifier (mounted at `/verify/`). Pages: Index/VerifierSession/Outcome. Endpoints: PresentationResponseEndpoints, DemoMintEndpoint. |
+| `src/Apps/Sorcha.Citizen.Verifier/Services/IIssuerKeyResolver.cs` | Issuer-signature verification seam — OptOut + JwkRegistry impls |
 | `specs/114-citizen-wallet-pwa/` | Spec, plan, contracts, data model, tasks |
 | `docs/superpowers/specs/2026-04-26-citizen-wallet-pwa-design.md` | Brainstorm design doc |
 
@@ -624,6 +646,28 @@ Hub URL `/hubs/wallet`. `[Authorize(AuthenticationSchemes = "Bearer")]`. On conn
 - **`TestCitizenWalletDbContext`** (`tests/Sorcha.Wallet.Service.Tests/Services/`) — inherits `WalletDbContext` and `modelBuilder.Ignore<T>()`s every base entity (jsonb columns are Npgsql-only). Reuse this pattern for any future Wallet Service citizen-only tests using the InMemory provider.
 - **`HolderKeyService` mock gotcha** — when mocking `IKeyManagementService.DeriveKeyAtPathAsync`, return a fresh `byte[].Clone()` each call. The publisher zeroises the private key after signing; a shared array reference is wiped between invocations.
 - **Endpoint handler tests** — follow the established reflection-based static-handler invocation pattern (`PresentationEndpointTests`, `CitizenWalletEnrolEndpointTests`). No `WebApplicationFactory` needed for handler-level coverage.
+- **PWA service tests** — extract IJSRuntime-touching state behind small interfaces (e.g. `ISyncCursorStore`, `IDeviceMetaStore`, `IAccessTokenStore`) so unit tests use the in-memory variant and never mock IJSRuntime directly. Each interface ships with both impls in the same file. Mocking IJSRuntime generic InvokeAsync<T> is brittle — avoid.
+
+### Sync + renewal flow (cross-cutting)
+
+The PWA's two background loops on every Home load:
+
+1. **Sync** — `SyncService.SyncAsync` reads cursor from `ISyncCursorStore`, calls `/sync?since=`, applies adds/revokes/replacements to `ICredentialCache`, persists new cursor, updates `IDelegationStore` if server piggybacked a renewal. On 410 → `ListCredentialsAsync` snapshot fallback then fresh `/sync` to bootstrap a usable cursor.
+2. **Delegation renewal** — `DelegationRenewalClient.RenewIfDueAsync` reads `IDeviceMetaStore`, checks `DelegationExpiresAt - now > 30 days`. If due, calls `/devices/renew-delegation`, persists fresh JWT + refreshed expiry. Five outcomes: `NotEnrolled`, `NotDue`, `Renewed`, `DeviceNotFound` (server 404 → device revoked elsewhere), `Failed`.
+
+Sync cursor is an HMAC-SHA256 JWT carrying `{sub: holderKeyId, seq, iat}` per research §R-006. 30-day cursor lifetime. `EmptyCitizenCredentialEventStream` is the v1 stub — replace its DI registration to wire real credential events when US4 ships. The whole sync surface is exercisable end-to-end now even though no real credentials flow through it yet.
+
+### Issuer-signature trust (verifier)
+
+`VerifiablePresentationValidator` step 4b verifies the credential JWT against the issuer key returned by `IIssuerKeyResolver.ResolveAsync(iss)`. Behaviour matrix:
+
+| Resolver returns | `RequireIssuerSignature` | Outcome |
+|---|---|---|
+| Public JWK | (any) | Verify signature; reject if mismatch. |
+| `null` | `false` (v1 default) | Log warning; accept on holder→device chain alone. |
+| `null` | `true` (production hardening) | Reject with "RequireIssuerSignature is enabled". |
+
+The seam is shipped (PR #434); production hardening swaps `OptOutIssuerKeyResolver` for a DID-based resolver that reads tenant register verification methods and resolves `did:sorcha:org:...` to the issuer's signing key. The demo flow uses `JwkRegistryIssuerKeyResolver` — `DemoMintEndpoint` registers each freshly-generated issuer JWK on every mint so subsequent presentations of that credential pass full signature verification.
 
 ---
 
