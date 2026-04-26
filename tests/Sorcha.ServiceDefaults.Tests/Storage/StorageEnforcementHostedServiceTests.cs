@@ -15,10 +15,10 @@ namespace Sorcha.ServiceDefaults.Tests.Storage;
 /// </summary>
 public class StorageEnforcementHostedServiceTests
 {
-    private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.IWalletRepository";
+    private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository";
 
     private static StorageRegistrationLog NewLog() =>
-        new(NullLogger<StorageRegistrationLog>.Instance);
+        new();
 
     private static IHostEnvironment Env(string envName, string app = "Sorcha.Test.Service") =>
         new FakeHostEnvironment { EnvironmentName = envName, ApplicationName = app };

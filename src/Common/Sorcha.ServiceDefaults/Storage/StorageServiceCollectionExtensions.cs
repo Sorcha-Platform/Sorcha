@@ -20,12 +20,21 @@ public static class StorageServiceCollectionExtensions
     /// <see cref="StorageEnforcementHostedService"/>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Idempotent — safe to call multiple times. The first call wires the
     /// log, metrics, health check, and enforcement hosted service; subsequent
-    /// calls are no-ops. Services should resolve
-    /// <see cref="IStorageRegistrationLog"/> via DI in their storage-wiring
-    /// helpers and call <c>RegisterPersistent</c> / <c>RegisterInMemory</c>
-    /// at the matching <c>AddScoped</c> / <c>AddSingleton</c> sites.
+    /// calls are no-ops.
+    /// </para>
+    /// <para>
+    /// Services call <see cref="GetStorageRegistrationLog"/> from inside
+    /// their storage-wiring extension methods (e.g.,
+    /// <c>AddWalletDatabase</c>) to obtain the log instance and call
+    /// <c>RegisterPersistent</c> / <c>RegisterInMemory</c> at the matching
+    /// <c>AddScoped</c> / <c>AddSingleton</c> site. The log is registered as
+    /// an instance (eagerly constructed) so it is resolvable before the DI
+    /// container is built — necessary because storage wiring runs at
+    /// <see cref="IServiceCollection"/>-extension time.
+    /// </para>
     /// </remarks>
     public static IServiceCollection AddStorageRegistration(this IServiceCollection services)
     {
@@ -39,7 +48,9 @@ public static class StorageServiceCollectionExtensions
             return services;
         }
 
-        services.AddSingleton<IStorageRegistrationLog, StorageRegistrationLog>();
+        // Eager-construct so service-side AddXxxDatabase extensions can call
+        // GetStorageRegistrationLog at IServiceCollection-extension time.
+        services.AddSingleton<IStorageRegistrationLog>(new StorageRegistrationLog());
         services.AddSingleton<StorageRegistrationMetrics>();
 
         // Force eager construction of the metrics class so its observable instruments are registered
@@ -59,6 +70,43 @@ public static class StorageServiceCollectionExtensions
         services.AddHostedService<StorageEnforcementHostedService>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Returns the <see cref="IStorageRegistrationLog"/> instance registered
+    /// by <see cref="AddStorageRegistration"/>. Service-side storage wiring
+    /// (e.g., <c>AddWalletDatabase</c>) calls this from inside an
+    /// <see cref="IServiceCollection"/> extension method to register
+    /// persistent or in-memory entries before the DI container is built.
+    /// </summary>
+    /// <remarks>
+    /// Defensive: if <see cref="AddStorageRegistration"/> has not yet been
+    /// called on the service collection, this method calls it first. That
+    /// keeps service-extension methods independently unit-testable —
+    /// callers do not have to remember the prerequisite. In production,
+    /// <c>builder.AddServiceDefaults()</c> always wires the log first, so
+    /// the defensive call is a no-op via the idempotency sentinel.
+    /// </remarks>
+    public static IStorageRegistrationLog GetStorageRegistrationLog(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddStorageRegistration();
+
+        var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(IStorageRegistrationLog))
+            ?? throw new InvalidOperationException(
+                $"{nameof(AddStorageRegistration)} was called but no {nameof(IStorageRegistrationLog)} " +
+                $"descriptor was found in the service collection. This is a bug — please report.");
+
+        if (descriptor.ImplementationInstance is IStorageRegistrationLog instance)
+        {
+            return instance;
+        }
+
+        throw new InvalidOperationException(
+            $"{nameof(IStorageRegistrationLog)} is registered without an instance. " +
+            $"This indicates {nameof(AddStorageRegistration)} was bypassed by a custom " +
+            "factory or type-based registration that does not match the eager-construction pattern.");
     }
 
     /// <summary>

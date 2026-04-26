@@ -15,10 +15,10 @@ namespace Sorcha.ServiceDefaults.Tests.Storage;
 /// </summary>
 public class StorageRegistrationEnforcementTests
 {
-    private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.IWalletRepository";
+    private const string AuditedInterface = "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository";
 
     private static StorageRegistrationLog NewLog() =>
-        new(NullLogger<StorageRegistrationLog>.Instance);
+        new();
 
     private static IHostEnvironment Env(string envName, string app = "Sorcha.Test.Service") =>
         new FakeHostEnvironment { EnvironmentName = envName, ApplicationName = app };
@@ -117,14 +117,14 @@ public class StorageRegistrationEnforcementTests
     public void ThrownMessage_ListsAllOffendingInterfaces()
     {
         var log = NewLog();
-        log.RegisterInMemory("Sorcha.Wallet.Core.Repositories.IWalletRepository", "InMemoryWalletRepository", "no postgres");
+        log.RegisterInMemory("Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository", "InMemoryWalletRepository", "no postgres");
         log.RegisterInMemory("Sorcha.Blueprint.Service.Storage.IInstanceStore", "InMemoryInstanceStore", "no postgres");
 
         var act = () => StorageRegistrationEnforcement.EnforcePersistentStorageInProduction(
             log, Env(Environments.Production), allowInMemoryOverride: false, NullLogger.Instance);
 
         var ex = act.Should().Throw<InvalidOperationException>().Which;
-        ex.Message.Should().Contain("Sorcha.Wallet.Core.Repositories.IWalletRepository");
+        ex.Message.Should().Contain("Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository");
         ex.Message.Should().Contain("Sorcha.Blueprint.Service.Storage.IInstanceStore");
         ex.Message.Should().Contain("InMemoryWalletRepository");
         ex.Message.Should().Contain("InMemoryInstanceStore");

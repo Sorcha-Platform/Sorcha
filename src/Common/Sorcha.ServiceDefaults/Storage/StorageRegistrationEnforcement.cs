@@ -91,6 +91,27 @@ public static class StorageRegistrationEnforcement
         IHostEnvironment environment,
         ILogger logger)
     {
+        // Emit one log line per registration first so operators see exactly which
+        // interface landed on which implementation, then a summary banner.
+        // Persistent registrations log at Information; in-memory registrations log at
+        // Warning with the greppable [STORAGE-FALLBACK] banner that tooling / log
+        // searches key off.
+        foreach (var record in snapshot)
+        {
+            if (record.IsInMemory)
+            {
+                logger.LogWarning(
+                    "[STORAGE-FALLBACK] {Interface} → {Implementation} — DATA WILL NOT SURVIVE RESTART. Reason: {Reason}",
+                    record.InterfaceName, record.ImplementationName, record.Reason);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Storage registration: {Interface} → {Implementation} ({Backend})",
+                    record.InterfaceName, record.ImplementationName, record.Backend);
+            }
+        }
+
         var persistent = snapshot.Count(r => !r.IsInMemory);
         var inMemory = snapshot.Count(r => r.IsInMemory);
         var auditedInMemory = snapshot.Count(r => r.IsAudited && r.IsInMemory);
