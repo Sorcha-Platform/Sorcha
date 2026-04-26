@@ -36,6 +36,10 @@ jobs:
             dockerfile: src/Apps/Sorcha.McpServer/Dockerfile
           - service: ui-web
             dockerfile: src/Apps/Sorcha.UI/Sorcha.UI.Web/Dockerfile
+          - service: citizen-wallet
+            dockerfile: src/Apps/Sorcha.Citizen.Wallet/Dockerfile
+          - service: citizen-verifier
+            dockerfile: src/Apps/Sorcha.Citizen.Verifier/Dockerfile
 
     name: Build ${{ matrix.service }}
     steps:
