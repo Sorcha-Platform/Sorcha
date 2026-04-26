@@ -106,29 +106,27 @@ if (storageType.Equals("MongoDB", StringComparison.OrdinalIgnoreCase))
         var logger = sp.GetRequiredService<ILogger<MongoRegisterRepository>>();
         return new MongoRegisterRepository(client, options, logger);
     });
-
-    // Register the same instance as IReadOnlyRegisterRepository
-    builder.Services.AddSingleton<IReadOnlyRegisterRepository>(sp =>
-        sp.GetRequiredService<IRegisterRepository>());
-
     storageLog.RegisterPersistent(
         registerInterfaceName,
         typeof(MongoRegisterRepository).FullName!,
         "mongo");
+
+    // Register the same instance as IReadOnlyRegisterRepository
+    builder.Services.AddSingleton<IReadOnlyRegisterRepository>(sp =>
+        sp.GetRequiredService<IRegisterRepository>());
 }
 else
 {
     // Use in-memory storage (default)
     builder.Services.AddSingleton<IRegisterRepository, InMemoryRegisterRepository>();
-
-    // Register the same instance as IReadOnlyRegisterRepository
-    builder.Services.AddSingleton<IReadOnlyRegisterRepository>(sp =>
-        sp.GetRequiredService<IRegisterRepository>());
-
     storageLog.RegisterInMemory(
         registerInterfaceName,
         typeof(InMemoryRegisterRepository).FullName!,
         "RegisterStorage:Type is not 'MongoDB' (default 'InMemory'). Set RegisterStorage:Type=MongoDB to enable persistent storage.");
+
+    // Register the same instance as IReadOnlyRegisterRepository
+    builder.Services.AddSingleton<IReadOnlyRegisterRepository>(sp =>
+        sp.GetRequiredService<IRegisterRepository>());
 }
 
 // Event infrastructure: Redis Streams for durable event publishing/subscribing
