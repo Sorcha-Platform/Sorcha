@@ -34,8 +34,13 @@
     else if (_credentials.Count == 0)
     {
         <MudAlert Severity="Severity.Info" Class="mb-3">
-            No credentials yet. Load a demo credential or wait for US2 enrolment.
+            No credentials yet. Enrol this device to load yours, or try the demo card.
         </MudAlert>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PhoneIphone"
+                   OnClick="@(() => Nav.NavigateTo("/enrol"))" FullWidth="true" Class="mb-2">
+            Enrol this device
+        </MudButton>
     }
     else
     {
