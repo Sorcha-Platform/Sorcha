@@ -111,6 +111,25 @@ public class AddWalletDatabaseStorageRegistrationTests
     }
 
     [Fact]
+    public async Task Staging_NoConnectionString_StorageEnforcementThrows()
+    {
+        // Staging is treated identically to Production for the audited-interface
+        // fail-fast. Mirrors the Production test to pin that contract.
+        var services = NewServicesWithStorageRegistration();
+        services.AddWalletDatabase(Config());
+
+        var hostedService = new StorageEnforcementHostedService(
+            services.GetStorageRegistrationLog(),
+            FakeEnv(Environments.Staging),
+            Config(),
+            NullLogger<StorageEnforcementHostedService>.Instance);
+
+        var assertion = await hostedService.Invoking(s => s.StartAsync(CancellationToken.None))
+            .Should().ThrowAsync<InvalidOperationException>();
+        assertion.Which.Message.Should().Contain(AuditedInterface);
+    }
+
+    [Fact]
     public async Task Production_WithBypassFlag_DoesNotThrow()
     {
         var services = NewServicesWithStorageRegistration();

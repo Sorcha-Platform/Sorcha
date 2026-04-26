@@ -93,7 +93,11 @@ public static class StorageServiceCollectionExtensions
 
         services.AddStorageRegistration();
 
-        var descriptor = services.First(d => d.ServiceType == typeof(IStorageRegistrationLog));
+        var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(IStorageRegistrationLog))
+            ?? throw new InvalidOperationException(
+                $"{nameof(AddStorageRegistration)} was called but no {nameof(IStorageRegistrationLog)} " +
+                $"descriptor was found in the service collection. This is a bug — please report.");
+
         if (descriptor.ImplementationInstance is IStorageRegistrationLog instance)
         {
             return instance;
@@ -102,7 +106,7 @@ public static class StorageServiceCollectionExtensions
         throw new InvalidOperationException(
             $"{nameof(IStorageRegistrationLog)} is registered without an instance. " +
             $"This indicates {nameof(AddStorageRegistration)} was bypassed by a custom " +
-            "registration that does not match the eager-construction pattern.");
+            "factory or type-based registration that does not match the eager-construction pattern.");
     }
 
     /// <summary>

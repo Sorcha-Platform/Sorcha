@@ -104,9 +104,9 @@ public static class WalletServiceExtensions
             ? configuration.GetSorchaPostgresConnectionString("Wallet", "sorcha_wallet") + ";Timeout=30;Command Timeout=30"
             : null;
 
-        // Feature 113 — record the storage choice in the registration log so operators see what
-        // backend is active (boot log + health check + OTel metrics) and Production/Staging
-        // fail-fast when this audited interface falls through to in-memory.
+        // Record the storage choice so operators see the active backend in boot logs, the
+        // storage-providers health check, and OTel metrics, and so Production/Staging fail-fast
+        // when this audited interface falls through to in-memory.
         var storageLog = services.GetStorageRegistrationLog();
         var interfaceName = typeof(IWalletRepository).FullName!;
 

@@ -31,24 +31,23 @@ internal static class AuditedStorageInterfaces
     public static readonly IReadOnlySet<string> Names = new HashSet<string>(StringComparer.Ordinal)
     {
         // Wallet Service — user wallets, HD-derived keys, signing material.
-        // FQN matches typeof(Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository).FullName.
+        // Verified: matches typeof(Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository).FullName.
         "Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository",
 
-        // Register Service — register documents and transaction stream.
-        // Will be verified at adoption time (PR 3) — placeholder, refine if FQN differs.
+        // TODO(audit-fqn): Verify against typeof(IRegisterRepository).FullName at adoption time.
+        // Wrong FQN here = silent fail-fast bypass for this interface.
         "Sorcha.Register.Storage.IRegisterRepository",
 
-        // Blueprint Service — workflow instances and per-action state.
-        // Will be verified at adoption time (PR 4) — placeholder, refine if FQN differs.
+        // TODO(audit-fqn): Verify against typeof(IInstanceStore).FullName at adoption time.
         "Sorcha.Blueprint.Service.Storage.IInstanceStore",
+
+        // TODO(audit-fqn): Verify against typeof(IActionStore).FullName at adoption time.
         "Sorcha.Blueprint.Service.Storage.IActionStore",
 
-        // Validator Service — verified-but-not-yet-sealed mempool.
-        // Will be verified at adoption time (PR 7/8) — placeholder, refine if FQN differs.
+        // TODO(audit-fqn): Verify against typeof(IVerifiedTransactionQueue).FullName at adoption time.
         "Sorcha.Validator.Service.Storage.IVerifiedTransactionQueue",
 
-        // HAIP and other consumers — atomic distributed cache for replay-protection state.
-        // Will be verified at adoption time (PR 5/6) — placeholder, refine if FQN differs.
+        // TODO(audit-fqn): Verify against typeof(IAtomicDistributedCache).FullName at adoption time.
         "Sorcha.AtomicCache.IAtomicDistributedCache",
     };
 
