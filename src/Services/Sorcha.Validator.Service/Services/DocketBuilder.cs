@@ -59,12 +59,19 @@ public class DocketBuilder : IDocketBuilder
         _logger.LogInformation("Building docket for register {RegisterId} (forced: {ForceBuild})",
             registerId, forceBuild);
 
-        IReadOnlyList<VerifiedTransaction> verifiedEntries = [];
+        IReadOnlyList<VerifiedTransactionLease> leases = [];
 
         try
         {
-            // Dequeue verified transactions
-            verifiedEntries = _verifiedQueue.Dequeue(registerId, _buildConfig.MaxTransactionsPerDocket);
+            // Claim verified transactions under a lease. If the build crashes or this
+            // process dies before ConfirmAsync, the lease auto-releases on the next
+            // ClaimAsync (default 60s — see ValidatorMempool:LeaseDurationSeconds).
+            leases = await _verifiedQueue.ClaimAsync(
+                registerId,
+                _buildConfig.MaxTransactionsPerDocket,
+                TimeSpan.FromSeconds(_buildConfig.LeaseDurationSeconds),
+                cancellationToken);
+            var verifiedEntries = leases.Select(l => l.Transaction).ToList();
 
             // Check if register needs genesis docket
             var needsGenesis = await _genesisManager.NeedsGenesisDocketAsync(registerId, cancellationToken);
@@ -179,18 +186,40 @@ public class DocketBuilder : IDocketBuilder
             _logger.LogInformation("Built docket {DocketNumber} for register {RegisterId} with hash {DocketHash}",
                 docketNumber, registerId, docketHash);
 
+            // Confirm the lease — transactions are now committed to the docket.
+            // Today's behaviour matches the previous Dequeue semantics: confirmation
+            // happens at build success, not at downstream seal success. A future PR
+            // can move ConfirmAsync to the seal-success callback site for stronger
+            // crash safety; for now the build-success path matches the prior contract.
+            await _verifiedQueue.ConfirmAsync(
+                registerId,
+                leases.Select(l => l.TransactionId),
+                cancellationToken);
+
             return docket;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to build docket for register {RegisterId}", registerId);
 
-            // Return dequeued transactions to the verified queue so they aren't lost
-            if (verifiedEntries is { Count: > 0 })
+            // Release the claim so the transactions return to the available pool
+            // and another build cycle can pick them up.
+            if (leases is { Count: > 0 })
             {
-                _verifiedQueue.ReturnToQueue(registerId, verifiedEntries);
-                _logger.LogInformation("Returned {Count} transactions to verified queue after build failure for register {RegisterId}",
-                    verifiedEntries.Count, registerId);
+                try
+                {
+                    await _verifiedQueue.ReleaseAsync(
+                        registerId,
+                        leases.Select(l => l.TransactionId),
+                        cancellationToken);
+                    _logger.LogInformation("Released {Count} transactions back to verified queue after build failure for register {RegisterId}",
+                        leases.Count, registerId);
+                }
+                catch (Exception releaseEx)
+                {
+                    // Lease will auto-release on next ClaimAsync; log and continue.
+                    _logger.LogWarning(releaseEx, "ReleaseAsync failed after build failure — lease will auto-release on next claim");
+                }
             }
 
             return null;

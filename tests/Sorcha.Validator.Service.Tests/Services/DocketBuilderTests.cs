@@ -38,6 +38,17 @@ public class DocketBuilderTests
     public DocketBuilderTests()
     {
         _mockVerifiedQueue = new Mock<IVerifiedTransactionQueue>();
+        // Default no-op setups for the lease lifecycle methods. Tests that need
+        // to assert on Confirm/Release call these via Verify on top of the defaults.
+        _mockVerifiedQueue
+            .Setup(q => q.ConfirmAsync(
+                It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _mockVerifiedQueue
+            .Setup(q => q.ReleaseAsync(
+                It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
         _mockRegisterClient = new Mock<IRegisterServiceClient>();
         _mockWalletClient = new Mock<IWalletServiceClient>();
         _mockGenesisManager = new Mock<IGenesisManager>();
@@ -156,8 +167,8 @@ public class DocketBuilderTests
             .ReturnsAsync(true);
 
         _mockVerifiedQueue
-            .Setup(q => q.Dequeue(registerId, _buildConfig.MaxTransactionsPerDocket))
-            .Returns(WrapAsVerified(transactions));
+            .Setup(q => q.ClaimAsync(registerId, _buildConfig.MaxTransactionsPerDocket, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(WrapAsLeases(registerId, transactions));
 
         _mockGenesisManager
             .Setup(g => g.CreateGenesisDocketAsync(registerId, transactions, It.IsAny<CancellationToken>()))
@@ -188,8 +199,8 @@ public class DocketBuilderTests
             .ReturnsAsync(true);
 
         _mockVerifiedQueue
-            .Setup(q => q.Dequeue(registerId, _buildConfig.MaxTransactionsPerDocket))
-            .Returns(WrapAsVerified(new List<Transaction>()));
+            .Setup(q => q.ClaimAsync(registerId, _buildConfig.MaxTransactionsPerDocket, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(WrapAsLeases(registerId, new List<Transaction>()));
 
         _mockGenesisManager
             .Setup(g => g.CreateGenesisDocketAsync(registerId, It.IsAny<List<Transaction>>(), It.IsAny<CancellationToken>()))
@@ -253,8 +264,8 @@ public class DocketBuilderTests
             .ReturnsAsync(false);
 
         _mockVerifiedQueue
-            .Setup(q => q.Dequeue(registerId, _buildConfig.MaxTransactionsPerDocket))
-            .Returns(WrapAsVerified(new List<Transaction>()));
+            .Setup(q => q.ClaimAsync(registerId, _buildConfig.MaxTransactionsPerDocket, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(WrapAsLeases(registerId, new List<Transaction>()));
 
         // Act
         var result = await _builder.BuildDocketAsync(registerId);
@@ -399,8 +410,8 @@ public class DocketBuilderTests
             .ReturnsAsync(false);
 
         _mockVerifiedQueue
-            .Setup(q => q.Dequeue(registerId, _buildConfig.MaxTransactionsPerDocket))
-            .Returns(WrapAsVerified(transactions));
+            .Setup(q => q.ClaimAsync(registerId, _buildConfig.MaxTransactionsPerDocket, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(WrapAsLeases(registerId, transactions));
 
         _mockRegisterClient
             .Setup(r => r.ReadLatestDocketAsync(registerId, It.IsAny<CancellationToken>()))
@@ -646,8 +657,8 @@ public class DocketBuilderTests
             .ReturnsAsync(false);
 
         _mockVerifiedQueue
-            .Setup(q => q.Dequeue(registerId, _buildConfig.MaxTransactionsPerDocket))
-            .Returns(WrapAsVerified(transactions));
+            .Setup(q => q.ClaimAsync(registerId, _buildConfig.MaxTransactionsPerDocket, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(WrapAsLeases(registerId, transactions));
 
         // Convert internal Docket to DocketModel for RegisterServiceClient mock
         DocketModel? docketModel = previousDocket == null ? null : CreateTestDocketModel(previousDocket.DocketNumber, previousDocket.PreviousHash);
@@ -680,6 +691,22 @@ public class DocketBuilderTests
     /// <summary>
     /// Wraps transactions into VerifiedTransaction records for mock setups
     /// </summary>
+    private static IReadOnlyList<VerifiedTransactionLease> WrapAsLeases(string registerId, List<Transaction> transactions)
+    {
+        return transactions.Select(t => new VerifiedTransactionLease
+        {
+            RegisterId = registerId,
+            Transaction = new VerifiedTransaction
+            {
+                Transaction = t,
+                EnqueuedAt = DateTimeOffset.UtcNow,
+                Priority = 0,
+                ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
+            },
+            LeaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1)
+        }).ToList();
+    }
+
     private static IReadOnlyList<VerifiedTransaction> WrapAsVerified(List<Transaction> transactions)
     {
         return transactions.Select(t => new VerifiedTransaction
