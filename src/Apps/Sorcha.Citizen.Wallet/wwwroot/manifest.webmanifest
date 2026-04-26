@@ -1,0 +1,29 @@
+{
+  "name": "Sorcha Wallet",
+  "short_name": "Sorcha Wallet",
+  "id": "/wallet/",
+  "start_url": "/wallet/",
+  "scope": "/wallet/",
+  "display": "standalone",
+  "background_color": "#1a1f3a",
+  "theme_color": "#1a1f3a",
+  "description": "Sorcha citizen wallet — hold and present verifiable credentials.",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "icons/icon-192-maskable.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    }
+  ]
+}
