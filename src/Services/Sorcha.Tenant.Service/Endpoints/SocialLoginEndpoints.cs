@@ -94,9 +94,11 @@ public static class SocialLoginEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        // Build redirect URI for the callback
+        // Build redirect URI for the callback. This MUST match the registered
+        // redirect URI at the OAuth provider (see docs/guides/SOCIAL-LOGIN-SETUP.md).
+        // Single canonical path per environment per feature 115 FR-021.
         var baseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
-        var redirectUri = $"{baseUrl}/api/auth/social/callback-redirect";
+        var redirectUri = $"{baseUrl}/auth/social/callback";
 
         try
         {
@@ -166,10 +168,29 @@ public static class SocialLoginEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        // Resolve or create PlatformUser
-        var (platformUser, isNew) = await platformUserService.ResolveOrCreateSocialUserAsync(
-            request.Provider, callbackResult.Subject,
-            callbackResult.Email, callbackResult.DisplayName, ct);
+        // Resolve or create PlatformUser under the strict link policy (feature 115)
+        var resolveResult = await platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, ct);
+        if (resolveResult.Refusal != SocialLoginRefusal.None)
+        {
+            var problemMessage = resolveResult.Refusal switch
+            {
+                SocialLoginRefusal.ProviderUnverified =>
+                    $"Your {request.Provider} account hasn't verified this email address. Please verify it with the provider and try again.",
+                SocialLoginRefusal.ExistingUnverified =>
+                    "An account exists for this email but isn't verified. Sign in with your password and verify your email first.",
+                _ => "Social login was refused.",
+            };
+
+            SocialLoginMetrics.RecordRefusal(request.Provider, resolveResult.Refusal);
+            logger.LogWarning(
+                "Social login refused via API: provider={Provider}, reason={Reason}",
+                request.Provider, resolveResult.Refusal);
+
+            return TypedResults.Problem(problemMessage, statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var platformUser = resolveResult.User!;
+        var isNew = resolveResult.IsNew;
 
         // Ensure UserIdentity exists in the public org
         var publicOrgId = WellKnownIds.PublicOrgId;

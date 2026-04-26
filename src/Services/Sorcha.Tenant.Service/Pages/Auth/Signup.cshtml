@@ -61,21 +61,27 @@
             </div>
 
             @* --- Tab 2: Social Login --- *@
+            @* Buttons render only for providers configured with non-empty credentials *@
+            @* on this environment. Feature 115 FR-001/FR-002. *@
             <div id="tab-social" class="tab-content" style="display: @(Model.ActiveTab == "social" ? "block" : "none");">
-                <div class="d-grid gap-2">
-                    <button type="button" class="social-btn" data-provider="Google">
-                        Continue with Google
-                    </button>
-                    <button type="button" class="social-btn" data-provider="Microsoft">
-                        Continue with Microsoft
-                    </button>
-                    <button type="button" class="social-btn" data-provider="GitHub">
-                        Continue with GitHub
-                    </button>
-                    <button type="button" class="social-btn" data-provider="Apple">
-                        Continue with Apple
-                    </button>
-                </div>
+                @if (Model.AvailableProviders.Count == 0)
+                {
+                    <p class="text-muted small mb-0">
+                        No social sign-in providers are configured for this environment.
+                        Use the Passkey or Email tab instead.
+                    </p>
+                }
+                else
+                {
+                    <div class="d-grid gap-2">
+                        @foreach (var provider in Model.AvailableProviders)
+                        {
+                            <button type="button" class="social-btn" data-provider="@provider">
+                                Continue with @provider
+                            </button>
+                        }
+                    </div>
+                }
             </div>
 
             @* --- Tab 3: Email & Password --- *@
@@ -165,15 +171,13 @@
         });
 
         // --- Social login ---
+        // The CSRF state and PKCE code-verifier are generated and validated
+        // server-side in SocialLoginService; the JS just sends the chosen
+        // provider name and redirects to the URL the server returns. The
+        // OAuth provider then redirects back to /auth/social/callback.
         document.querySelectorAll('.social-btn[data-provider]').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var provider = this.getAttribute('data-provider');
-                var returnUrl = '@(Model.ReturnUrl != null ? Uri.EscapeDataString(Model.ReturnUrl) : "")';
-                var redirectUri = window.location.origin + '/auth/social-callback';
-                var nonce = crypto.randomUUID();
-                var state = btoa(JSON.stringify({ nonce: nonce, returnUrl: returnUrl }));
-                // Store nonce for CSRF validation on callback
-                sessionStorage.setItem('social_login_nonce', nonce);
 
                 fetch('/api/auth/social/initiate', {
                     method: 'POST',

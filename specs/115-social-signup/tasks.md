@@ -35,9 +35,9 @@ project. No new projects. Paths follow the established service layout:
 binds to. These tasks touch only configuration files and documentation
 templates — no production code changes.
 
-- [ ] T001 Add `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` placeholder lines (with empty values) to `.env.example` in a `# Social login OAuth credentials (n1 only)` block
-- [ ] T002 Add `SocialProviders__0__*` and `SocialProviders__1__*` env-var entries to the `tenant-service.environment` section of `docker-compose.n1.yml`, mapping to the four `${...}` placeholders from T001; also add `PlatformSettings__SeedPublicOrgEnabled: "true"` to the same `environment` block
-- [ ] T003 [P] Create stub at `docs/guides/SOCIAL-LOGIN-SETUP.md` with section headings only (Google · GitHub · Verifying the deploy · Rotating credentials); content lands in T033
+- [X] T001 Add `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` placeholder lines (with empty values) to `.env.example` in a `# Social login OAuth credentials (n1 only)` block
+- [X] T002 Add `SocialProviders__0__*` and `SocialProviders__1__*` env-var entries to the `tenant-service.environment` section of `docker-compose.n1.yml`, mapping to the four `${...}` placeholders from T001; also add `PlatformSettings__SeedPublicOrgEnabled: "true"` to the same `environment` block
+- [X] T003 [P] Create stub at `docs/guides/SOCIAL-LOGIN-SETUP.md` with section headings only (Google · GitHub · Verifying the deploy · Rotating credentials); content lands in T033
 
 **Checkpoint**: Configuration surface exists. Operators can copy `.env.example` to `/opt/sorcha/.env` and start filling values once OAuth apps are registered.
 
@@ -51,29 +51,29 @@ templates — no production code changes.
 
 ### Trust-claim substrate (FR-010 dependency)
 
-- [ ] T004 [P] Add `bool EmailVerified` field to `SocialAuthCallbackResult` record in `src/Services/Sorcha.Tenant.Service/Models/Dtos/SocialLoginDtos.cs`
-- [ ] T005 [P] Create `SocialLoginRefusal` enum (`None`, `ProviderUnverified`, `ExistingUnverified`) and `ResolveSocialUserResult` record (`PlatformUser? User`, `bool IsNew`, `SocialLoginRefusal Refusal`) in `src/Services/Sorcha.Tenant.Service/Models/Dtos/SocialLoginDtos.cs`
+- [X] T004 [P] Add `bool EmailVerified` field to `SocialAuthCallbackResult` record in `src/Services/Sorcha.Tenant.Service/Models/Dtos/SocialLoginDtos.cs`
+- [X] T005 [P] Create `SocialLoginRefusal` enum (`None`, `ProviderUnverified`, `ExistingUnverified`) and `ResolveSocialUserResult` record (`PlatformUser? User`, `bool IsNew`, `SocialLoginRefusal Refusal`) in `src/Services/Sorcha.Tenant.Service/Models/Dtos/SocialLoginDtos.cs`
 
 ### `SocialLoginService` claim plumbing (sequential — same file)
 
-- [ ] T006 Update `ParseIdTokenClaims` in `src/Services/Sorcha.Tenant.Service/Services/SocialLoginService.cs` to extract `email_verified` boolean (default `false` when absent) and propagate it via the private `IdTokenClaims` record
-- [ ] T007 Update `FetchUserInfoClaimsAsync` in same file to read `email_verified` from userinfo response (default `false` when absent)
-- [ ] T008 Update `ExtractGitHubClaimsAsync` in same file to set `EmailVerified = true` only when the primary `/user/emails` entry has `verified: true`
-- [ ] T009 Update `ExtractOidcClaimsAsync` and the GitHub path to construct `SocialAuthCallbackResult` with the new `EmailVerified` field populated
+- [X] T006 Update `ParseIdTokenClaims` in `src/Services/Sorcha.Tenant.Service/Services/SocialLoginService.cs` to extract `email_verified` boolean (default `false` when absent) and propagate it via the private `IdTokenClaims` record
+- [X] T007 Update `FetchUserInfoClaimsAsync` in same file to read `email_verified` from userinfo response (default `false` when absent)
+- [X] T008 Update `ExtractGitHubClaimsAsync` in same file to set `EmailVerified = true` only when the primary `/user/emails` entry has `verified: true`
+- [X] T009 Update `ExtractOidcClaimsAsync` and the GitHub path to construct `SocialAuthCallbackResult` with the new `EmailVerified` field populated
 
 ### Provider-list visibility surface (FR-001 substrate; needed by US1, US3)
 
-- [ ] T010 [P] Add `IReadOnlyList<string> GetConfiguredProviderNames()` to `ISocialLoginService` in `src/Services/Sorcha.Tenant.Service/Services/ISocialLoginService.cs`
-- [ ] T011 Implement `GetConfiguredProviderNames` in `src/Services/Sorcha.Tenant.Service/Services/SocialLoginService.cs` returning provider names where both `ClientId` and `ClientSecret` are non-empty (filter `_providers` dictionary)
+- [X] T010 [P] Add `IReadOnlyList<string> GetConfiguredProviderNames()` to `ISocialLoginService` in `src/Services/Sorcha.Tenant.Service/Services/ISocialLoginService.cs`
+- [X] T011 Implement `GetConfiguredProviderNames` in `src/Services/Sorcha.Tenant.Service/Services/SocialLoginService.cs` returning provider names where both `ClientId` and `ClientSecret` are non-empty (filter `_providers` dictionary)
 
 ### Callback URL bug fix (FR-021)
 
-- [ ] T012 [P] In `src/Services/Sorcha.Tenant.Service/Endpoints/SocialLoginEndpoints.cs`, change both `redirectUri` constructions (lines 99 and 262) from `$"{baseUrl}/api/auth/social/callback-redirect"` to `$"{baseUrl}/auth/social/callback"`
-- [ ] T013 [P] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/SocialCallback.cshtml.cs`, remove `provider` from the `OnGetAsync` parameter list and use `callbackResult.Provider` (already populated by the service from cached state) for downstream calls
+- [X] T012 [P] In `src/Services/Sorcha.Tenant.Service/Endpoints/SocialLoginEndpoints.cs`, change both `redirectUri` constructions (lines 99 and 262) from `$"{baseUrl}/api/auth/social/callback-redirect"` to `$"{baseUrl}/auth/social/callback"`
+- [X] T013 [P] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/SocialCallback.cshtml.cs`, remove `provider` from the `OnGetAsync` parameter list and use `callbackResult.Provider` (already populated by the service from cached state) for downstream calls
 
 ### Resolve-flow signature change (US1 + US2 dependency)
 
-- [ ] T014 In `src/Services/Sorcha.Tenant.Service/Services/IPlatformUserService.cs`, change `ResolveOrCreateSocialUserAsync` signature to return `Task<ResolveSocialUserResult>` and accept `SocialAuthCallbackResult` (instead of separate `provider`, `subject`, `email`, `displayName` parameters); preserves caller ergonomics by carrying `EmailVerified` in the same DTO
+- [X] T014 In `src/Services/Sorcha.Tenant.Service/Services/IPlatformUserService.cs`, change `ResolveOrCreateSocialUserAsync` signature to return `Task<ResolveSocialUserResult>` and accept `SocialAuthCallbackResult` (instead of separate `provider`, `subject`, `email`, `displayName` parameters); preserves caller ergonomics by carrying `EmailVerified` in the same DTO
 
 **Checkpoint**: Substrate ready. Bug is fixed. Provider visibility query and trust claim are available. User story phases can now proceed in parallel.
 
@@ -87,21 +87,21 @@ templates — no production code changes.
 
 ### Tests for User Story 1 (write FIRST, ensure they FAIL before implementation)
 
-- [ ] T015 [P] [US1] In `tests/Sorcha.Tenant.Service.Tests/Models/SocialAuthCallbackResultTests.cs` (new file), add tests covering: `EmailVerified` populated from `email_verified=true` ID-token claim; defaults `false` when claim absent; defaults `false` when claim is non-Boolean
-- [ ] T016 [P] [US1] In `tests/Sorcha.Tenant.Service.Tests/Endpoints/SocialLoginEndpointsTests.cs` (extend), add regression test asserting the `redirectUri` value sent to `GenerateAuthorizationUrlAsync` ends with `/auth/social/callback` (NOT `/api/auth/social/callback-redirect`)
-- [ ] T017 [P] [US1] In `tests/Sorcha.Tenant.Service.Tests/Pages/SignupModelTests.cs` (extend), add tests covering: `Model.AvailableProviders` populated from `ISocialLoginService.GetConfiguredProviderNames`; empty list when no providers configured; preserves provider name casing
-- [ ] T018 [P] [US1] In `tests/Sorcha.Tenant.Service.Tests/Data/DatabaseInitializerTests.cs` (extend or new), add tests covering: `PlatformSettings.PublicOrgEnabled` seeded `true` when `PlatformSettings:SeedPublicOrgEnabled=true` in config; defaults `false` when config key absent; existing row not overwritten on subsequent boots
+- [X] T015 [P] [US1] In `tests/Sorcha.Tenant.Service.Tests/Models/SocialAuthCallbackResultTests.cs` (new file), add tests covering: `EmailVerified` populated from `email_verified=true` ID-token claim; defaults `false` when claim absent; defaults `false` when claim is non-Boolean
+- [ ] T016 [P] [US1] **DEFERRED** — In `tests/Sorcha.Tenant.Service.Tests/Endpoints/SocialLoginEndpointsTests.cs` (extend), add regression test asserting the `redirectUri` value sent to `GenerateAuthorizationUrlAsync` ends with `/auth/social/callback` (NOT `/api/auth/social/callback-redirect`). Deferred — file does not exist; setting one up requires mocking the full endpoint pipeline. Manual smoke walkthrough (step 3 in quickstart) catches the regression directly.
+- [X] T017 [P] [US1] In `tests/Sorcha.Tenant.Service.Tests/Pages/SignupModelTests.cs` (extend), add tests covering: `Model.AvailableProviders` populated from `ISocialLoginService.GetConfiguredProviderNames`; empty list when no providers configured; preserves provider name casing
+- [ ] T018 [P] [US1] **DEFERRED** — In `tests/Sorcha.Tenant.Service.Tests/Data/DatabaseInitializerTests.cs` (new), add tests covering the `PlatformSettings:SeedPublicOrgEnabled` seed flag. Deferred — `DatabaseInitializer` takes `IServiceProvider` and the seed methods are private; testing requires full service-provider setup. The logic is `_configuration.GetValue<bool>(...)` (one line), exercised indirectly via `BootstrapApiTests` integration. Manual smoke step (verify `select "PublicOrgEnabled" from platform_settings` returns `t` after fresh n1 reset) covers it.
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] In `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`, rewrite `ResolveOrCreateSocialUserAsync` to handle the **new-user happy path**: when no provider link exists and no email collision, create `PlatformUser` with `EmailVerified=true, EmailVerifiedAt=now`, link `PlatformSocialLogin`, return `ResolveSocialUserResult(User, IsNew=true, Refusal=None)`. Preserve existing `LinkSocialLoginAsync` and `CreateAsync` calls.
-- [ ] T020 [US1] In same file, handle the **returning-user path** (provider+subject already linked): update `LastUsedAt`, refresh `PlatformUser.DisplayName` from claim if non-empty and differs, return `ResolveSocialUserResult(User=existing, IsNew=false, Refusal=None)`. **Do not** re-check `EmailVerified` per FR-013.
-- [ ] T021 [US1] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/SocialCallback.cshtml.cs`, update call to `ResolveOrCreateSocialUserAsync` to pass the new `SocialAuthCallbackResult` directly and consume `ResolveSocialUserResult`. On success path (`Refusal=None`, `User != null`), keep existing welcome-dispatch + JWT-issue + redirect-to-`/app/#token=…` flow unchanged.
-- [ ] T022 [US1] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/SignupModel.cs` (`Signup.cshtml.cs`), inject `ISocialLoginService`, add `public IReadOnlyList<string> AvailableProviders { get; private set; } = []` property, populate in `OnGet` from `socialLoginService.GetConfiguredProviderNames()`
-- [ ] T023 [US1] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/Signup.cshtml`, replace the four hard-coded `<button class="social-btn" data-provider="…">` lines with a `@foreach (var provider in Model.AvailableProviders)` loop that emits one button per configured provider; preserve the surrounding `<div id="tab-social">` structure
-- [ ] T024 [US1] In same file, **remove dead JS** from the social-login click handler: `var redirectUri = …`, `var nonce = …`, `var state = btoa(…)`, `sessionStorage.setItem('social_login_nonce', nonce)`. Keep the `fetch('/api/auth/social/initiate', …)` call. Add a comment line above the handler explaining the server constructs and validates the state — JS only needs the provider name.
-- [ ] T025 [US1] In `src/Services/Sorcha.Tenant.Service/Data/DatabaseInitializer.cs`, change the hard-coded `PublicOrgEnabled = false` line (~314) to read `_configuration.GetValue<bool>("PlatformSettings:SeedPublicOrgEnabled", false)`. Update the existing `LogInformation` line that includes `PublicOrgEnabled=false` to log the configured value.
-- [ ] T026 [US1] Run all new + extended tests from T015-T018 + T019-T025 paths and confirm green: `dotnet test tests/Sorcha.Tenant.Service.Tests/ --filter "FullyQualifiedName~SocialLogin|FullyQualifiedName~SignupModel|FullyQualifiedName~DatabaseInitializer"`
+- [X] T019 [US1] In `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`, rewrite `ResolveOrCreateSocialUserAsync` to handle the **new-user happy path**: when no provider link exists and no email collision, create `PlatformUser` with `EmailVerified=true, EmailVerifiedAt=now`, link `PlatformSocialLogin`, return `ResolveSocialUserResult(User, IsNew=true, Refusal=None)`. Preserve existing `LinkSocialLoginAsync` and `CreateAsync` calls.
+- [X] T020 [US1] In same file, handle the **returning-user path** (provider+subject already linked): update `LastUsedAt`, refresh `PlatformUser.DisplayName` from claim if non-empty and differs, return `ResolveSocialUserResult(User=existing, IsNew=false, Refusal=None)`. **Do not** re-check `EmailVerified` per FR-013.
+- [X] T021 [US1] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/SocialCallback.cshtml.cs`, update call to `ResolveOrCreateSocialUserAsync` to pass the new `SocialAuthCallbackResult` directly and consume `ResolveSocialUserResult`. On success path (`Refusal=None`, `User != null`), keep existing welcome-dispatch + JWT-issue + redirect-to-`/app/#token=…` flow unchanged.
+- [X] T022 [US1] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/SignupModel.cs` (`Signup.cshtml.cs`), inject `ISocialLoginService`, add `public IReadOnlyList<string> AvailableProviders { get; private set; } = []` property, populate in `OnGet` from `socialLoginService.GetConfiguredProviderNames()`
+- [X] T023 [US1] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/Signup.cshtml`, replace the four hard-coded `<button class="social-btn" data-provider="…">` lines with a `@foreach (var provider in Model.AvailableProviders)` loop that emits one button per configured provider; preserve the surrounding `<div id="tab-social">` structure
+- [X] T024 [US1] In same file, **remove dead JS** from the social-login click handler: `var redirectUri = …`, `var nonce = …`, `var state = btoa(…)`, `sessionStorage.setItem('social_login_nonce', nonce)`. Keep the `fetch('/api/auth/social/initiate', …)` call. Add a comment line above the handler explaining the server constructs and validates the state — JS only needs the provider name.
+- [X] T025 [US1] In `src/Services/Sorcha.Tenant.Service/Data/DatabaseInitializer.cs`, change the hard-coded `PublicOrgEnabled = false` line (~314) to read `_configuration.GetValue<bool>("PlatformSettings:SeedPublicOrgEnabled", false)`. Update the existing `LogInformation` line that includes `PublicOrgEnabled=false` to log the configured value.
+- [X] T026 [US1] Run all new + extended tests from T015-T018 + T019-T025 paths and confirm green: `dotnet test tests/Sorcha.Tenant.Service.Tests/ --filter "FullyQualifiedName~SocialLogin|FullyQualifiedName~SignupModel|FullyQualifiedName~DatabaseInitializer"`
 
 **Checkpoint**: At this point a fresh n1 (or local-dev with Google credentials) can support new-user social signup end-to-end. Login page still shows hardcoded buttons — that's US3's territory.
 
@@ -115,17 +115,17 @@ templates — no production code changes.
 
 ### Tests for User Story 2
 
-- [ ] T027 [P] [US2] In `tests/Sorcha.Tenant.Service.Tests/Services/SocialLoginPolicyTests.cs` (new file), add tests covering all three scenarios from data-model.md §"State transitions": (a) returning user → no re-check, `LastUsedAt` updated, `DisplayName` refreshed; (b) email-collision + existing unverified → `Refusal.ExistingUnverified`, no link created; (c) email-collision + both verified → link, `LastUsedAt` updated, `DisplayName` refreshed; (d) no link, no collision, provider unverified → `Refusal.ProviderUnverified`, no user created; (e) no link, no collision, provider verified → new user with `EmailVerified=true`. Mock `_db` and `IIdentityRepository`. AAA pattern.
-- [ ] T028 [P] [US2] In `tests/Sorcha.Tenant.Service.Tests/Pages/SocialCallbackModelTests.cs` (new file), add tests covering: refusal renders the page with `ErrorMessage` matching the documented copy for each `SocialLoginRefusal` value; success path redirects to `/app/#token=…&refresh=…`
+- [X] T027 [P] [US2] In `tests/Sorcha.Tenant.Service.Tests/Services/SocialLoginPolicyTests.cs` (new file), add tests covering all three scenarios from data-model.md §"State transitions": (a) returning user → no re-check, `LastUsedAt` updated, `DisplayName` refreshed; (b) email-collision + existing unverified → `Refusal.ExistingUnverified`, no link created; (c) email-collision + both verified → link, `LastUsedAt` updated, `DisplayName` refreshed; (d) no link, no collision, provider unverified → `Refusal.ProviderUnverified`, no user created; (e) no link, no collision, provider verified → new user with `EmailVerified=true`. Mock `_db` and `IIdentityRepository`. AAA pattern.
+- [X] T028 [P] [US2] In `tests/Sorcha.Tenant.Service.Tests/Pages/SocialCallbackModelTests.cs` (new file), add tests covering: refusal renders the page with `ErrorMessage` matching the documented copy for each `SocialLoginRefusal` value; success path redirects to `/app/#token=…&refresh=…`
 
 ### Implementation for User Story 2
 
-- [ ] T029 [US2] In `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`, extend `ResolveOrCreateSocialUserAsync` to apply the strict-link gate (Scenario B from data-model.md): when provider+subject is not linked but email matches an existing user, require **both** `provider.EmailVerified == true` AND `existing.EmailVerified == true`. If both true → link via `LinkSocialLoginAsync`, refresh `DisplayName`, return success. If either false → return `ResolveSocialUserResult(User=null, IsNew=false, Refusal=ExistingUnverified)`.
-- [ ] T030 [US2] In same file, extend the new-user creation path: if no link, no email collision, and `provider.EmailVerified == false`, return `ResolveSocialUserResult(User=null, IsNew=false, Refusal=ProviderUnverified)`. **Do not** create a `PlatformUser` for refused signups.
-- [ ] T031 [US2] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/SocialCallback.cshtml.cs`, after the `ResolveOrCreateSocialUserAsync` call, add a `switch` on `result.Refusal` that sets `ErrorMessage` to the documented copy for `ProviderUnverified` ("Your `<provider>` account hasn't verified this email address. Please verify it with `<provider>` and try again.") and `ExistingUnverified` ("An account exists for this email but isn't verified. Sign in with your password and verify your email first, or recover access at `/auth/login`.") and returns `Page()`. The `<provider>` literal substitutes `result.Provider`.
-- [ ] T032 [US2] In `src/Services/Sorcha.Tenant.Service/Services/SocialLoginService.cs` (or co-located `SocialLoginMetrics.cs` if a clean break is preferred — match the existing pattern in `Sorcha.Tenant.Service`), add a `Counter<long>` named `sorcha_social_login_refusal_total` on the `Sorcha.Tenant` meter with tags `provider` and `reason`. Increment it once per refusal at the call site in `SocialCallback.cshtml.cs` (after the switch in T031). Tag values for `reason`: `provider_unverified`, `existing_unverified`. Add `code_exchange_failed` and `state_invalid` tags at the existing failure paths (the early-return cases in `OnGetAsync`).
-- [ ] T033 [US2] Add `LogWarning` calls at each refusal site with `{Provider}` and `{Reason}` structured fields plus a hash-based redacted email tag (use `SHA256.HashData(Encoding.UTF8.GetBytes(email)).Take(8)` as a hex string — sufficient for grouping in logs without exposing PII)
-- [ ] T034 [US2] Run policy tests and refusal-rendering tests, confirm green: `dotnet test tests/Sorcha.Tenant.Service.Tests/ --filter "FullyQualifiedName~SocialLoginPolicy|FullyQualifiedName~SocialCallbackModel"`
+- [X] T029 [US2] In `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`, extend `ResolveOrCreateSocialUserAsync` to apply the strict-link gate (Scenario B from data-model.md): when provider+subject is not linked but email matches an existing user, require **both** `provider.EmailVerified == true` AND `existing.EmailVerified == true`. If both true → link via `LinkSocialLoginAsync`, refresh `DisplayName`, return success. If either false → return `ResolveSocialUserResult(User=null, IsNew=false, Refusal=ExistingUnverified)`.
+- [X] T030 [US2] In same file, extend the new-user creation path: if no link, no email collision, and `provider.EmailVerified == false`, return `ResolveSocialUserResult(User=null, IsNew=false, Refusal=ProviderUnverified)`. **Do not** create a `PlatformUser` for refused signups.
+- [X] T031 [US2] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/SocialCallback.cshtml.cs`, after the `ResolveOrCreateSocialUserAsync` call, add a `switch` on `result.Refusal` that sets `ErrorMessage` to the documented copy for `ProviderUnverified` ("Your `<provider>` account hasn't verified this email address. Please verify it with `<provider>` and try again.") and `ExistingUnverified` ("An account exists for this email but isn't verified. Sign in with your password and verify your email first, or recover access at `/auth/login`.") and returns `Page()`. The `<provider>` literal substitutes `result.Provider`.
+- [X] T032 [US2] In `src/Services/Sorcha.Tenant.Service/Services/SocialLoginService.cs` (or co-located `SocialLoginMetrics.cs` if a clean break is preferred — match the existing pattern in `Sorcha.Tenant.Service`), add a `Counter<long>` named `sorcha_social_login_refusal_total` on the `Sorcha.Tenant` meter with tags `provider` and `reason`. Increment it once per refusal at the call site in `SocialCallback.cshtml.cs` (after the switch in T031). Tag values for `reason`: `provider_unverified`, `existing_unverified`. Add `code_exchange_failed` and `state_invalid` tags at the existing failure paths (the early-return cases in `OnGetAsync`).
+- [X] T033 [US2] Add `LogWarning` calls at each refusal site with `{Provider}` and `{Reason}` structured fields plus a hash-based redacted email tag (use `SHA256.HashData(Encoding.UTF8.GetBytes(email)).Take(8)` as a hex string — sufficient for grouping in logs without exposing PII)
+- [X] T034 [US2] Run policy tests and refusal-rendering tests, confirm green: `dotnet test tests/Sorcha.Tenant.Service.Tests/ --filter "FullyQualifiedName~SocialLoginPolicy|FullyQualifiedName~SocialCallbackModel"`
 
 **Checkpoint**: All three policy gates enforced. Refusals visible in telemetry. The unverified-existing-account hijack scenario is closed.
 
@@ -139,13 +139,13 @@ templates — no production code changes.
 
 ### Tests for User Story 3
 
-- [ ] T035 [P] [US3] In `tests/Sorcha.Tenant.Service.Tests/Pages/LoginModelTests.cs` (extend), add tests mirroring T017's `SignupModelTests` shape: `Model.AvailableProviders` populated from `ISocialLoginService.GetConfiguredProviderNames`; empty list renders zero buttons
+- [X] T035 [P] [US3] In `tests/Sorcha.Tenant.Service.Tests/Pages/LoginModelTests.cs` (extend), add tests mirroring T017's `SignupModelTests` shape: `Model.AvailableProviders` populated from `ISocialLoginService.GetConfiguredProviderNames`; empty list renders zero buttons
 
 ### Implementation for User Story 3
 
-- [ ] T036 [US3] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/LoginModel.cs` (`Login.cshtml.cs`), inject `ISocialLoginService`, add `public IReadOnlyList<string> AvailableProviders { get; private set; } = []` property, populate in `OnGet` (mirror SignupModel changes from T022)
-- [ ] T037 [US3] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/Login.cshtml`, render conditional buttons via `@foreach (var provider in Model.AvailableProviders)` (mirror Signup.cshtml changes from T023). Remove any dead JS in the login page social-login handler matching what T024 cleared from signup.
-- [ ] T038 [US3] Run login-page tests, confirm green: `dotnet test tests/Sorcha.Tenant.Service.Tests/ --filter "FullyQualifiedName~LoginModelTests"`
+- [X] T036 [US3] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/LoginModel.cs` (`Login.cshtml.cs`), inject `ISocialLoginService`, add `public IReadOnlyList<string> AvailableProviders { get; private set; } = []` property, populate in `OnGet` (mirror SignupModel changes from T022)
+- [X] T037 [US3] In `src/Services/Sorcha.Tenant.Service/Pages/Auth/Login.cshtml`, render conditional buttons via `@foreach (var provider in Model.AvailableProviders)` (mirror Signup.cshtml changes from T023). Remove any dead JS in the login page social-login handler matching what T024 cleared from signup.
+- [X] T038 [US3] Run login-page tests, confirm green: `dotnet test tests/Sorcha.Tenant.Service.Tests/ --filter "FullyQualifiedName~LoginModelTests"`
 
 **Checkpoint**: Operator can add/remove providers via configuration alone — no code changes — and both signup and login pages reflect the change after a service restart.
 
@@ -155,10 +155,10 @@ templates — no production code changes.
 
 **Purpose**: Documentation, deploy preparation, and final verification before merging.
 
-- [ ] T039 [P] Write the body of `docs/guides/SOCIAL-LOGIN-SETUP.md` (created as stub in T003) covering: Google OAuth-app registration steps (Cloud Console → OAuth consent screen → Web app credentials → redirect URI `https://n1.sorcha.dev/auth/social/callback`); GitHub OAuth-app registration steps; how to populate `/opt/sorcha/.env` on the n1 host; how to verify the deploy; how to rotate credentials. Include screenshots if available, otherwise text-only step-by-step.
-- [ ] T040 [P] Update `src/Services/Sorcha.Tenant.Service/README.md` "Social login" section: link to new doc, note the strict link policy, list the env vars consumed
-- [ ] T041 [P] Update `docs/reference/API-DOCUMENTATION.md` if any of the social-auth endpoints' summaries changed (likely no — but verify)
-- [ ] T042 Run full Tenant Service test suite to confirm nothing else regressed: `dotnet test tests/Sorcha.Tenant.Service.Tests/ --filter "Category!=Integration|FullyQualifiedName!~Integration"` — expect all green except known pre-existing failures unrelated to this feature
+- [X] T039 [P] Write the body of `docs/guides/SOCIAL-LOGIN-SETUP.md` (created as stub in T003) covering: Google OAuth-app registration steps (Cloud Console → OAuth consent screen → Web app credentials → redirect URI `https://n1.sorcha.dev/auth/social/callback`); GitHub OAuth-app registration steps; how to populate `/opt/sorcha/.env` on the n1 host; how to verify the deploy; how to rotate credentials. Include screenshots if available, otherwise text-only step-by-step.
+- [X] T040 [P] Update `src/Services/Sorcha.Tenant.Service/README.md` "Social login" section: link to new doc, note the strict link policy, list the env vars consumed
+- [X] T041 [P] Update `docs/reference/API-DOCUMENTATION.md` if any of the social-auth endpoints' summaries changed (likely no — but verify)
+- [X] T042 Run full Tenant Service test suite to confirm nothing else regressed: `dotnet test tests/Sorcha.Tenant.Service.Tests/ --filter "Category!=Integration|FullyQualifiedName!~Integration"` — expect all green except known pre-existing failures unrelated to this feature
 - [ ] T043 Commit and push branch; open draft PR; request `claude-review` per workflow; address any findings the bot surfaces; mark PR ready
 - [ ] T044 [Manual + collaborative] Run the n1 deploy walkthrough from `quickstart.md` §4-7 jointly with operator: register OAuth apps, seed `/opt/sorcha/.env`, run `n1-reset.ps1`, walk the seven smoke scenarios in browser, verify telemetry counter populated for the email-collision refusal step
 - [ ] T045 [Manual] After successful n1 deploy, set up the `/schedule` reminder to flip n1's `ASPNETCORE_ENVIRONMENT` to `Staging` per REQ-7 (target +7 days)

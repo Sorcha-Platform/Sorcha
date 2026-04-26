@@ -54,6 +54,22 @@ services:
       # so visitors know the environment may be reset without notice. Plain
       # informational notice; no consent gate, no friction.
       DemoEnvironment__Enabled: "true"
+      # Public organisation is enabled at first DB seed so a freshly-reset n1
+      # supports social signup without an admin manually flipping the toggle.
+      # After first seed the value persists in tenant.platform_settings; this
+      # env var is only consulted when seeding a fresh database. Feature 115.
+      PlatformSettings__SeedPublicOrgEnabled: "true"
+      # Social login providers — feature 115. ClientId/ClientSecret are
+      # interpolated from the host's /opt/sorcha/.env file (gitignored).
+      # Buttons for unconfigured providers are hidden client-side, so leaving
+      # any of these blank cleanly disables that provider on this environment.
+      # Setup runbook: docs/guides/SOCIAL-LOGIN-SETUP.md
+      SocialProviders__0__Name: Google
+      SocialProviders__0__ClientId: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      SocialProviders__0__ClientSecret: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      SocialProviders__1__Name: GitHub
+      SocialProviders__1__ClientId: ${GITHUB_OAUTH_CLIENT_ID:-}
+      SocialProviders__1__ClientSecret: ${GITHUB_OAUTH_CLIENT_SECRET:-}
 
   peer-service:
     image: sorchadev/peer-service:latest

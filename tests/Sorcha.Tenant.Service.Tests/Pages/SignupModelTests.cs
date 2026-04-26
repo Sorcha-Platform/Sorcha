@@ -21,19 +21,72 @@ namespace Sorcha.Tenant.Service.Tests.Pages;
 public class SignupModelTests
 {
     private readonly Mock<IRegistrationService> _registrationService = new();
+    private readonly Mock<ISocialLoginService> _socialLoginService = new();
 
     private SignupModel CreateModel()
     {
         var model = new SignupModel(
             _registrationService.Object,
             NullLogger<SignupModel>.Instance,
-            Options.Create(new DemoEnvironmentSettings()));
+            Options.Create(new DemoEnvironmentSettings()),
+            _socialLoginService.Object);
 
         var httpContext = new DefaultHttpContext();
         model.PageContext = new PageContext(new ActionContext(
             httpContext, new RouteData(), new PageActionDescriptor()));
 
         return model;
+    }
+
+    [Fact]
+    public void OnGet_PopulatesAvailableProvidersFromSocialLoginService()
+    {
+        // Arrange
+        _socialLoginService
+            .Setup(s => s.GetConfiguredProviderNames())
+            .Returns(new[] { "Google", "GitHub" });
+
+        var model = CreateModel();
+
+        // Act
+        model.OnGet();
+
+        // Assert
+        model.AvailableProviders.Should().Equal("Google", "GitHub");
+    }
+
+    [Fact]
+    public void OnGet_NoConfiguredProviders_AvailableProvidersEmpty()
+    {
+        // Arrange
+        _socialLoginService
+            .Setup(s => s.GetConfiguredProviderNames())
+            .Returns(Array.Empty<string>());
+
+        var model = CreateModel();
+
+        // Act
+        model.OnGet();
+
+        // Assert
+        model.AvailableProviders.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void OnGet_PreservesProviderNameCasingFromService()
+    {
+        // Arrange — provider names should be returned exactly as the service returns them.
+        _socialLoginService
+            .Setup(s => s.GetConfiguredProviderNames())
+            .Returns(new[] { "GitHub" });
+
+        var model = CreateModel();
+
+        // Act
+        model.OnGet();
+
+        // Assert
+        model.AvailableProviders.Should().ContainSingle().Which.Should().Be("GitHub");
     }
 
     [Fact]

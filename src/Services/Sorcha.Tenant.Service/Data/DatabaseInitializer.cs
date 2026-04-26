@@ -307,11 +307,22 @@ public class DatabaseInitializer
             return;
         }
 
-        _logger.LogInformation("Seeding PlatformSettings (PublicOrgEnabled=false, MaxOrgsPerUser=1)");
+        // Feature 115 FR-019: seed default for PublicOrgEnabled is configurable
+        // per-environment so a fresh n1 deploy can do social signup without a
+        // manual database edit. Read PlatformSettings:SeedPublicOrgEnabled, default
+        // to false (production-safe). Seed-time only — admin UI/API toggles win
+        // on subsequent boots because the existingSettings check above short-circuits.
+        var seedPublicOrgEnabled = _configuration.GetValue<bool>(
+            "PlatformSettings:SeedPublicOrgEnabled",
+            defaultValue: false);
+
+        _logger.LogInformation(
+            "Seeding PlatformSettings (PublicOrgEnabled={PublicOrgEnabled}, MaxOrgsPerUser=1)",
+            seedPublicOrgEnabled);
 
         var settings = new PlatformSettings
         {
-            PublicOrgEnabled = false,
+            PublicOrgEnabled = seedPublicOrgEnabled,
             MaxOrgsPerUser = 1,
             UpdatedAt = DateTimeOffset.UtcNow,
             UpdatedBy = WellKnownIds.DefaultAdminUserId

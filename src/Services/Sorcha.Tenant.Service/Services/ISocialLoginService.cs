@@ -18,6 +18,14 @@ public record SocialAuthInitiateResult(string AuthorizationUrl, string State);
 /// <param name="Subject">The provider's unique user identifier (sub claim).</param>
 /// <param name="Email">The user's email address from the provider.</param>
 /// <param name="DisplayName">The user's display name from the provider.</param>
+/// <param name="EmailVerified">
+/// Whether the provider asserts the email address is verified. For OIDC
+/// providers (Google, Microsoft, Apple) this is the <c>email_verified</c>
+/// claim from the ID token or userinfo response. For GitHub it is
+/// <c>true</c> only when the primary <c>/user/emails</c> entry has
+/// <c>verified: true</c>. Defaults to <c>false</c> when the claim is
+/// absent — never assume verified. Feature 115.
+/// </param>
 /// <param name="Provider">The provider name (e.g., "Google", "GitHub").</param>
 public record SocialAuthCallbackResult(
     bool Success,
@@ -25,6 +33,7 @@ public record SocialAuthCallbackResult(
     string? Subject,
     string? Email,
     string? DisplayName,
+    bool EmailVerified,
     string Provider);
 
 /// <summary>
@@ -62,4 +71,13 @@ public interface ISocialLoginService
         string code,
         string state,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the names of providers configured with non-empty
+    /// <c>ClientId</c> and <c>ClientSecret</c>. Drives the conditional
+    /// rendering of "Continue with..." buttons on signup and login pages
+    /// per feature 115 FR-001.
+    /// </summary>
+    /// <returns>Provider names (case as configured) for which the host has working credentials.</returns>
+    IReadOnlyList<string> GetConfiguredProviderNames();
 }
