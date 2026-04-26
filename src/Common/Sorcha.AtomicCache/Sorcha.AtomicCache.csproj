@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.AtomicCache</PackageId>
+    <Version>1.0.0</Version>
+    <Description>Distributed cache primitive exposing the atomic operations IDistributedCache does not — GETDEL (single round-trip get-and-remove) and Lua-backed compare-and-set. Used by HAIP nonce / pre-auth / presentation stores to close the GET+DEL TOCTOU window. Ships as a separate Common package so services that don't need it don't pick up the StackExchange.Redis transitive dependency.</Description>
+    <PackageTags>sorcha;cache;atomic;getdel;cas;redis</PackageTags>
+    <RootNamespace>Sorcha.AtomicCache</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Common\Sorcha.ServiceDefaults\Sorcha.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.AtomicCache.Tests" />
+  </ItemGroup>
+
+</Project>

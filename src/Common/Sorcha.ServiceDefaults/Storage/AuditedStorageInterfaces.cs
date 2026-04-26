@@ -49,7 +49,8 @@ internal static class AuditedStorageInterfaces
         // TODO(audit-fqn): Verify against typeof(IVerifiedTransactionQueue).FullName at adoption time.
         "Sorcha.Validator.Service.Storage.IVerifiedTransactionQueue",
 
-        // TODO(audit-fqn): Verify against typeof(IAtomicDistributedCache).FullName at adoption time.
+        // HAIP and other consumers — atomic distributed cache for replay-protection state.
+        // Verified: matches typeof(Sorcha.AtomicCache.IAtomicDistributedCache).FullName.
         "Sorcha.AtomicCache.IAtomicDistributedCache",
     };
 
