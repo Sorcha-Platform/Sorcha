@@ -27,4 +27,19 @@ public interface ICitizenWalletClient
     Task<DeviceEnrolmentResponse> EnrolDeviceAsync(
         DeviceEnrolmentRequest request,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Pulls credential and delegation deltas since the last sync. Calls
+    /// <c>GET /api/v1/wallet/sync?since=...</c>. On a stale cursor the server
+    /// returns 410; this method returns <c>null</c> to signal the caller should
+    /// fall back to <see cref="ListCredentialsAsync"/>.
+    /// </summary>
+    Task<SyncResponse?> SyncAsync(string? sinceToken, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the full credential snapshot for the authenticated citizen.
+    /// Calls <c>GET /api/v1/wallet/credentials</c>. Used to seed a fresh wallet
+    /// or to recover after a stale-cursor 410.
+    /// </summary>
+    Task<CredentialListResponse> ListCredentialsAsync(CancellationToken ct = default);
 }

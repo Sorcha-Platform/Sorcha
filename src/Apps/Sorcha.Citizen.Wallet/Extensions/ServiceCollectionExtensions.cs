@@ -24,6 +24,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICredentialCache, IndexedDbCredentialCache>();
         services.AddSingleton<IDelegationStore, IndexedDbDelegationStore>();
         services.AddSingleton<IStatusListService, IndexedDbStatusListService>();
+        services.AddSingleton<ISyncCursorStore, IndexedDbSyncCursorStore>();
+        services.AddSingleton<ISyncService, SyncService>();
         return services;
     }
 }

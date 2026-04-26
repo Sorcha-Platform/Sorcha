@@ -66,4 +66,29 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         return result ?? throw new InvalidOperationException(
             "Wallet Service returned an empty body for /devices/enrol.");
     }
+
+    /// <inheritdoc />
+    public async Task<SyncResponse?> SyncAsync(string? sinceToken, CancellationToken ct = default)
+    {
+        var path = string.IsNullOrEmpty(sinceToken)
+            ? "api/v1/wallet/sync"
+            : $"api/v1/wallet/sync?since={Uri.EscapeDataString(sinceToken)}";
+
+        var response = await _httpClient.GetAsync(path, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Gone) return null;
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<SyncResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Wallet Service returned an empty body for /sync.");
+    }
+
+    /// <inheritdoc />
+    public async Task<CredentialListResponse> ListCredentialsAsync(CancellationToken ct = default)
+    {
+        var response = await _httpClient.GetAsync("api/v1/wallet/credentials", ct);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<CredentialListResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Wallet Service returned an empty body for /credentials.");
+    }
 }
