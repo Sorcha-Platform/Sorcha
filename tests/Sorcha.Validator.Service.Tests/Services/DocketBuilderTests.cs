@@ -185,6 +185,13 @@ public class DocketBuilderTests
         _mockGenesisManager.Verify(
             g => g.CreateGenesisDocketAsync(registerId, transactions, It.IsAny<CancellationToken>()),
             Times.Once);
+
+        // Genesis path must confirm the lease so the transactions don't re-surface
+        // in a subsequent normal docket once the lease auto-releases. Bug found by
+        // claude-review on PR #416.
+        _mockVerifiedQueue.Verify(
+            q => q.ConfirmAsync(registerId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

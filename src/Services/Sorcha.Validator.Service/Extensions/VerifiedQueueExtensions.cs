@@ -37,7 +37,7 @@ public static class VerifiedQueueExtensions
         services.GetStorageRegistrationLog().RegisterInMemory(
             typeof(IVerifiedTransactionQueue).FullName!,
             typeof(InMemoryVerifiedTransactionQueue).FullName!,
-            "Redis-backed mempool not yet wired (PR 8 of feature 113). Mempool will not survive validator restart.");
+            "Validator mempool is in-process — does not survive restart and cannot share state across replicas. Configure a Redis-backed mempool to enable durability and HA-replica deployment.");
 
         // Register cleanup background service
         services.AddHostedService<VerifiedQueueCleanupService>();

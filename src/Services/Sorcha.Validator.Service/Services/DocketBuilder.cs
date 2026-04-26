@@ -79,7 +79,18 @@ public class DocketBuilder : IDocketBuilder
             {
                 _logger.LogInformation("Register {RegisterId} needs genesis docket", registerId);
                 var transactions = verifiedEntries.Select(v => v.Transaction).ToList();
-                return await _genesisManager.CreateGenesisDocketAsync(registerId, transactions, cancellationToken);
+                var genesisDocket = await _genesisManager.CreateGenesisDocketAsync(registerId, transactions, cancellationToken);
+
+                // Confirm the lease — transactions are now committed to the genesis docket.
+                // Without this, leases would auto-release on the next claim and the same
+                // transactions would re-surface in a subsequent normal docket, double-processing
+                // them. (caught by claude-review on PR #416)
+                await _verifiedQueue.ConfirmAsync(
+                    registerId,
+                    leases.Select(l => l.TransactionId),
+                    cancellationToken);
+
+                return genesisDocket;
             }
 
             // Unwrap verified transactions

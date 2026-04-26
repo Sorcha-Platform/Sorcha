@@ -159,12 +159,19 @@ public class InMemoryVerifiedTransactionQueue : IVerifiedTransactionQueue
             return Task.CompletedTask;
         }
 
-        var released = queue.Release(transactionIds);
-        if (released > 0)
+        var (released, expired) = queue.Release(transactionIds);
+        if (expired > 0)
+        {
+            // Caller asked to release a claim, but the transaction's TTL had elapsed
+            // while it was held. Count this against TotalExpired so the metric covers
+            // both passive (CleanupExpired) and active (Release-time) expiry paths.
+            Interlocked.Add(ref _totalExpired, expired);
+        }
+        if (released > 0 || expired > 0)
         {
             _logger.LogDebug(
-                "Released {Count} transactions back to the available pool for register {RegisterId}",
-                released, registerId);
+                "Released {Count} transactions back to the available pool for register {RegisterId} ({Expired} TTL-expired and dropped)",
+                released, registerId, expired);
         }
         return Task.CompletedTask;
     }
@@ -441,12 +448,13 @@ public class InMemoryVerifiedTransactionQueue : IVerifiedTransactionQueue
             }
         }
 
-        public int Release(IEnumerable<string> transactionIds)
+        public (int Released, int Expired) Release(IEnumerable<string> transactionIds)
         {
             lock (_lock)
             {
                 var now = DateTimeOffset.UtcNow;
                 var released = 0;
+                var expired = 0;
                 foreach (var txId in transactionIds)
                 {
                     if (_claimed.Remove(txId, out var entry))
@@ -454,13 +462,14 @@ public class InMemoryVerifiedTransactionQueue : IVerifiedTransactionQueue
                         if (entry.Transaction.ExpiresAt <= now)
                         {
                             _byId.Remove(txId);
+                            expired++;
                             continue;
                         }
                         _available.Add(entry.Transaction);
                         released++;
                     }
                 }
-                return released;
+                return (released, expired);
             }
         }
 

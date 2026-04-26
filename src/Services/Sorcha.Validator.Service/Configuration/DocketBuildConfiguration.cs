@@ -33,7 +33,9 @@ public class DocketBuildConfiguration
     /// If the build crashes or this process dies before ConfirmAsync, the
     /// lease auto-releases on the next ClaimAsync after this many seconds.
     /// Sized to docket-build worst-case plus margin; tune up if validator
-    /// builds take longer than 60s in your deployment.
+    /// builds take longer than 60s in your deployment. Range 1–3600.
     /// </summary>
+    [System.ComponentModel.DataAnnotations.Range(1, 3600,
+        ErrorMessage = "LeaseDurationSeconds must be between 1 and 3600 seconds.")]
     public int LeaseDurationSeconds { get; set; } = 60;
 }
