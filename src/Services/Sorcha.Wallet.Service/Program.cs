@@ -123,6 +123,10 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHaipIssuer
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderKeyService,
     Sorcha.Wallet.Service.Services.Implementation.HolderKeyService>();
 
+// Feature 114: Citizen device delegation revocation — IETF Token Status List 2024 publisher
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenStatusListPublisher,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenStatusListPublisher>();
+
 // Feature 114: SignalR for citizen wallet push notifications
 builder.Services.AddSignalR();
 
@@ -199,6 +203,9 @@ app.MapPresentationEndpoints();
 app.MapOrgKeyEndpoints();
 app.MapFileDownloadEndpoints();
 app.MapPersonaCryptoEndpoints();
+
+// Feature 114: Public citizen-device status list endpoint
+app.MapCitizenStatusListEndpoints();
 
 // Feature 114: Citizen wallet SignalR hub. Routed via API Gateway as `/hubs/wallet`.
 app.MapHub<Sorcha.Wallet.Service.Hubs.WalletHub>("/hubs/wallet");
