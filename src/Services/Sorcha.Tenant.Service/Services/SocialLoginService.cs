@@ -129,6 +129,20 @@ public class SocialLoginService : ISocialLoginService
                 }
 
                 _providers[config.Name] = config;
+
+                // Operator hint: a provider is registered in config but missing
+                // credentials on this host. The button will be hidden by
+                // GetConfiguredProviderNames(), but a startup warning helps
+                // operators spot a missing .env entry without staring at an
+                // empty signup tab. Feature 115.
+                if (string.IsNullOrWhiteSpace(config.ClientId)
+                    || string.IsNullOrWhiteSpace(config.ClientSecret))
+                {
+                    _logger.LogWarning(
+                        "Social provider {Provider} is registered but has empty {MissingField} — its button will be hidden. Set the credential in this environment's .env or appsettings to enable.",
+                        config.Name,
+                        string.IsNullOrWhiteSpace(config.ClientId) ? "ClientId" : "ClientSecret");
+                }
             }
         }
     }

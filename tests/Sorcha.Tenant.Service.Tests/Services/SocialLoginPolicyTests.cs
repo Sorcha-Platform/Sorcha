@@ -252,6 +252,30 @@ public class SocialLoginPolicyTests : IDisposable
     }
 
     [Fact]
+    public async Task NewUser_GitHubZeroVerifiedEmails_RefusesWithProviderUnverified()
+    {
+        // GitHub edge case: the user has a GitHub account but no primary email
+        // marked verified. ExtractGitHubClaimsAsync surfaces this as
+        // EmailVerified=false with a null/empty Email. The strict-link gate
+        // refuses the signup at Scenario C — no PlatformUser is created,
+        // no PlatformSocialLogin row appears.
+        var beforeCount = await _db.PlatformUsers.CountAsync();
+
+        // Act — simulate a GitHub claim with no verified primary email
+        var result = await _service.ResolveOrCreateSocialUserAsync(
+            Claim(provider: "GitHub", subject: "github-noverify-123",
+                  email: null, displayName: "octouser",
+                  emailVerified: false),
+            CancellationToken.None);
+
+        // Assert
+        result.Refusal.Should().Be(SocialLoginRefusal.ProviderUnverified);
+        result.User.Should().BeNull();
+        (await _db.PlatformUsers.CountAsync()).Should().Be(beforeCount);
+        (await _db.PlatformSocialLogins.CountAsync(s => s.Subject == "github-noverify-123")).Should().Be(0);
+    }
+
+    [Fact]
     public async Task NewUser_ProviderUnverified_RefusesWithProviderUnverified_NoUserCreated()
     {
         var beforeCount = await _db.PlatformUsers.CountAsync();
