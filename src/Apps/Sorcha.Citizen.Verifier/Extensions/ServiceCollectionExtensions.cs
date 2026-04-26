@@ -23,6 +23,13 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IVerifierSessionStore, InMemoryVerifierSessionStore>();
         services.AddSingleton<IPresentationRequestBuilder, PresentationRequestBuilder>();
+        // Issuer key resolver: in-memory JWK registry is the v1 default so the
+        // demo-mint endpoint can register the per-mint issuer key and the validator
+        // can verify the credential JWT signature end-to-end. Production swaps this
+        // for a DID-based resolver that reads tenant register verification methods.
+        services.AddSingleton<JwkRegistryIssuerKeyResolver>();
+        services.AddSingleton<IIssuerKeyResolver>(sp =>
+            sp.GetRequiredService<JwkRegistryIssuerKeyResolver>());
         services.AddSingleton<IVerifiablePresentationValidator, VerifiablePresentationValidator>();
         services.AddSingleton<QrRenderer>();
         return services;

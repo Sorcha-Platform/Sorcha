@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
+using Sorcha.Citizen.Verifier.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
@@ -33,13 +34,16 @@ public static class DemoMintEndpoint
             .WithSummary("Demo-only — mint a credential + delegation bound to a wallet's device key.")
             .WithDescription(
                 "Returns a freshly-signed SD-JWT VC + holder→device delegation credential " +
-                "with random demo keys. Used by the wallet PWA to seed its cache for the MVP demo.")
+                "with random demo keys. Used by the wallet PWA to seed its cache for the MVP demo. " +
+                "Registers the freshly-generated issuer JWK with the verifier's in-memory key " +
+                "registry so subsequent presentations of this credential pass full issuer-signature " +
+                "verification end-to-end.")
             .Accepts<DemoMintRequest>("application/json")
             .Produces<DemoMintResponse>();
         return routes;
     }
 
-    private static IResult Handle(DemoMintRequest body)
+    private static IResult Handle(DemoMintRequest body, JwkRegistryIssuerKeyResolver issuerKeys)
     {
         if (body.DeviceJwk.ValueKind != JsonValueKind.Object)
         {
@@ -75,6 +79,15 @@ public static class DemoMintEndpoint
         var credentialJwt = SignEs256(
             new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "vc+sd-jwt" },
             credentialPayload, issuer);
+
+        // Register the freshly-generated issuer JWK so the validator can verify
+        // this credential's signature on subsequent /response presentations.
+        // NOTE: production hardening replaces this with a DID-resolver-based
+        // resolver — the demo mints the issuer key here only because there is no
+        // real issuer infrastructure yet (US4 / Phase 6).
+        var issuerJwk = JwkOf(issuer);
+        var issuerJwkEl = JsonSerializer.Deserialize<JsonElement>(issuerJwk);
+        issuerKeys.Register("did:sorcha:org:demo", issuerJwkEl);
 
         var rawSdJwt = $"{credentialJwt}~{givenSeg}~{familySeg}~{dobSeg}";
 
