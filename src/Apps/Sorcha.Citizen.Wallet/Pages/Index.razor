@@ -2,16 +2,117 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Placeholder home page for the citizen wallet PWA. Replaced by Home.razor
-    + EnrolmentWizard.razor in Phase 3 / US2 (T109-T110).
+    Wallet home (Feature 114, T110 placeholder + demo-seed). v1 MVP: lists
+    cached credentials, exposes a Present button, and a "Load demo credential"
+    button that calls the verifier's /verify/demo/mint endpoint to seed the
+    cache without the full enrolment + issuance pipelines (which land with US2).
 *@
 @page "/"
+@layout MainLayout
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Text.Json
+@using Sorcha.Citizen.Wallet.Services
+@using Sorcha.Citizen.Wallet.Services.Presentation
+@inject ICredentialCache Credentials
+@inject IDelegationStore Delegation
+@inject IDeviceKeyService DeviceKey
+@inject HttpClient Http
+@inject NavigationManager Nav
 
 <PageTitle>Sorcha Wallet</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
-    <MudText Typo="Typo.h4">Sorcha Citizen Wallet</MudText>
-    <MudText Typo="Typo.body1" Class="mt-2">
-        Feature 114 PWA shell. Real UI lands in Phase 3.
-    </MudText>
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Your credentials</MudText>
+
+    @if (_credentials is null)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+    }
+    else if (_credentials.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">
+            No credentials yet. Load a demo credential or wait for US2 enrolment.
+        </MudAlert>
+    }
+    else
+    {
+        @foreach (var c in _credentials)
+        {
+            <MudCard Class="mb-3">
+                <MudCardContent>
+                    <MudText Typo="Typo.subtitle1">@(c.DisplayLabel ?? c.Vct)</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@c.Vct</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                        Claims: @string.Join(", ", c.AvailableClaimNames)
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        }
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-4">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Filled.QrCodeScanner"
+                   OnClick="@(() => Nav.NavigateTo("/present"))"
+                   Disabled="@(_credentials is null || _credentials.Count == 0)">
+            Present a credential
+        </MudButton>
+        <MudButton Color="Color.Secondary" Variant="Variant.Outlined"
+                   OnClick="LoadDemoAsync" Disabled="@_seeding">
+            @(_seeding ? "Loading…" : "Load demo credential")
+        </MudButton>
+    </MudStack>
+
+    @if (!string.IsNullOrEmpty(_seedError))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_seedError</MudAlert>
+    }
 </MudContainer>
+
+@code {
+    private IReadOnlyList<CachedCredential>? _credentials;
+    private bool _seeding;
+    private string? _seedError;
+
+    protected override async Task OnInitializedAsync()
+        => _credentials = await Credentials.ListAsync();
+
+    private async Task LoadDemoAsync()
+    {
+        _seedError = null;
+        _seeding = true;
+        try
+        {
+            var deviceJwk = await DeviceKey.GetPublicJwkAsync();
+            var mintUri = new Uri(new Uri(Nav.BaseUri), "../verify/demo/mint");
+            var resp = await Http.PostAsJsonAsync(mintUri, new { deviceJwk });
+            resp.EnsureSuccessStatusCode();
+            var minted = await resp.Content.ReadFromJsonAsync<DemoMintShape>();
+            if (minted is null) throw new InvalidOperationException("Empty mint response.");
+
+            await Credentials.UpsertAsync(new CachedCredential
+            {
+                Id = minted.CredentialId,
+                Vct = minted.Vct,
+                RawSdJwt = minted.RawSdJwt,
+                AvailableClaimNames = minted.AvailableClaimNames,
+                DisplayLabel = minted.DisplayLabel,
+                IssuerDid = "did:sorcha:org:demo",
+            });
+            await Delegation.SetAsync(minted.DelegationJwt);
+            _credentials = await Credentials.ListAsync();
+        }
+        catch (Exception ex) { _seedError = ex.Message; }
+        finally { _seeding = false; }
+    }
+
+    private sealed record DemoMintShape(
+        Guid CredentialId,
+        string Vct,
+        string DisplayLabel,
+        string RawSdJwt,
+        IReadOnlyList<string> AvailableClaimNames,
+        string DelegationJwt,
+        JsonElement HolderPublicJwk);
+}

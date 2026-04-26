@@ -46,7 +46,8 @@
       "Bash(grep -E --line-buffered \"^#[0-9]+ naming|DONE|ERROR|error:|failed|Successfully|CACHED|sha256.*$|Building [0-9]\")",
       "PowerShell(try { $r = Invoke-WebRequest -Uri \"https://n1.sorcha.dev/\" -TimeoutSec 10 -SkipHttpErrorCheck; \"HTTP $\\($r.StatusCode\\)\" } catch { \"ERROR: $\\($_.Exception.Message\\)\" })",
       "PowerShell(dotnet ef migrations)",
-      "PowerShell(dotnet ef migrations *)"
+      "PowerShell(dotnet ef migrations *)",
+      "Read(//c/Users/STUART~1/AppData/Local/Temp/claude/C--projects-Sorcha/a8c05a83-167a-4776-8fbd-e2d2224d5be7/tasks/**)"
     ],
     "deny": [],
     "ask": []

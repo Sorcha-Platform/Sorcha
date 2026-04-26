@@ -1,0 +1,72 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Verifier outcome page (Feature 114, T093). Single screen the operator sees
+    after the citizen wallet posts an outcome — accepted (with disclosed claims
+    table) or rejected (with reasons).
+*@
+@page "/s/{SessionId}/outcome"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Sorcha.Citizen.Verifier.Services
+@inject IVerifierSessionStore Store
+
+<PageTitle>Verifier outcome</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    @if (_session is null)
+    {
+        <MudAlert Severity="Severity.Warning">Session not found or expired.</MudAlert>
+    }
+    else if (_session.Outcome is null)
+    {
+        <MudAlert Severity="Severity.Info">Still pending — return to the QR page.</MudAlert>
+        <MudButton Class="mt-4" Variant="Variant.Outlined" Href="@($"s/{SessionId}")">Back to QR</MudButton>
+    }
+    else if (_session.Outcome.Accepted)
+    {
+        <MudAlert Severity="Severity.Success" Icon="@Icons.Material.Filled.VerifiedUser" Class="mb-4">
+            Presentation accepted.
+        </MudAlert>
+        <MudText Typo="Typo.h6" Class="mb-2">@_session.Purpose</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Disclosed claims from <code>@_session.RequiredVct</code>:
+        </MudText>
+        <MudPaper Elevation="1" Class="pa-4">
+            <MudList T="string" Dense="true">
+                @foreach (var (name, value) in _session.Outcome.DisclosedClaims)
+                {
+                    <MudListItem T="string">
+                        <strong>@name:</strong> @value?.ToString()
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error" Icon="@Icons.Material.Filled.Block" Class="mb-4">
+            Presentation rejected.
+        </MudAlert>
+        <MudPaper Elevation="1" Class="pa-4">
+            <MudList T="string" Dense="true">
+                @foreach (var err in _session.Outcome.Errors)
+                {
+                    <MudListItem T="string" Icon="@Icons.Material.Filled.ErrorOutline">@err</MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    }
+
+    <MudButton Class="mt-6" Variant="Variant.Outlined" Href="">Start a new verification</MudButton>
+</MudContainer>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+    private Models.VerifierSession? _session;
+
+    protected override void OnInitialized()
+    {
+        _session = Store.Get(SessionId);
+    }
+}
