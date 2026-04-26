@@ -69,6 +69,9 @@ if (!string.IsNullOrEmpty(blueprintDbConn))
         typeof(IBlueprintStore).FullName!,
         typeof(Sorcha.Blueprint.Service.Storage.EfCoreBlueprintStore).FullName!,
         "postgres");
+    // IDocumentStore<BlueprintTemplate, string> shares this branch's connection but is a
+    // generic abstraction (Sorcha.Storage.Abstractions), not a named audited interface —
+    // intentionally not logged.
     builder.Services.AddSingleton<Sorcha.Storage.Abstractions.IDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>,
         Sorcha.Blueprint.Service.Storage.EfCoreTemplateStore>();
 }
@@ -79,6 +82,8 @@ else
         typeof(IBlueprintStore).FullName!,
         typeof(InMemoryBlueprintStore).FullName!,
         "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres — IBlueprintStore is a cache reconstructable from the register transaction log on cold start");
+    // IDocumentStore<BlueprintTemplate, string> shares this branch but is a generic
+    // abstraction, not a named audited interface — intentionally not logged.
     builder.Services.AddSingleton<Sorcha.Storage.Abstractions.IDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>>(
         new Sorcha.Storage.InMemory.InMemoryDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>(t => t.Id));
 }

@@ -242,18 +242,26 @@ Snapshot fixtures for every template live at `tests/Sorcha.Tenant.Service.Tests/
 
 ### 10. Storage Registration Log (Feature 113)
 
-All storage interface registrations go through `IStorageRegistrationLog` from `Sorcha.ServiceDefaults.Storage`. Service-specific storage wiring (`AddWalletDatabase`, `AddRegisterStorage`, etc.) MUST call `RegisterPersistent` or `RegisterInMemory` immediately before the matching `AddScoped` / `AddSingleton`.
+All storage interface registrations go through `IStorageRegistrationLog` from `Sorcha.ServiceDefaults.Storage`. Service-specific storage wiring (`AddWalletDatabase`, Register/Blueprint Program.cs, etc.) MUST call `RegisterPersistent` or `RegisterInMemory` immediately after the matching `AddScoped` / `AddSingleton`. Resolve the log via `services.GetStorageRegistrationLog()` once at the top of the storage block; use `typeof(IFoo).FullName!` for interface and implementation names so namespace renames are caught at compile time.
 
 ```csharp
+var storageLog = services.GetStorageRegistrationLog();
+var interfaceName = typeof(IFooRepository).FullName!;
+
 if (!string.IsNullOrEmpty(connectionString))
 {
     services.AddScoped<IFooRepository, EfCoreFooRepository>();
-    storageLog.RegisterPersistent("IFooRepository", "EfCoreFooRepository", "postgres");
+    storageLog.RegisterPersistent(
+        interfaceName,
+        typeof(EfCoreFooRepository).FullName!,
+        "postgres");
 }
 else
 {
     services.AddSingleton<IFooRepository, InMemoryFooRepository>();
-    storageLog.RegisterInMemory("IFooRepository", "InMemoryFooRepository",
+    storageLog.RegisterInMemory(
+        interfaceName,
+        typeof(InMemoryFooRepository).FullName!,
         "no Postgres connection string in ConnectionStrings:Service:Postgres or ConnectionStrings:Sorcha:Postgres");
 }
 ```
