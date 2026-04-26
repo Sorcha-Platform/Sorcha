@@ -10,26 +10,32 @@ using Sorcha.Validator.Service.Services.Interfaces;
 namespace Sorcha.Validator.Service.Services;
 
 /// <summary>
-/// Thread-safe in-memory queue for validated transactions ready for docket building.
-/// Uses priority ordering and TTL-based expiry.
+/// In-process <see cref="IVerifiedTransactionQueue"/> implementation backed
+/// by per-register priority sets with lease-tracked claims. Used as the
+/// dev/test fallback; PR 8 ships a Redis-backed implementation that
+/// survives validator process restart.
 /// </summary>
-public class VerifiedTransactionQueue : IVerifiedTransactionQueue
+/// <remarks>
+/// On the audited storage list — Production / Staging refuse to start when
+/// this implementation is selected (unless overridden by
+/// <c>Storage:AllowInMemoryInProduction=true</c>).
+/// </remarks>
+public class InMemoryVerifiedTransactionQueue : IVerifiedTransactionQueue
 {
     private readonly VerifiedQueueConfiguration _config;
-    private readonly ILogger<VerifiedTransactionQueue> _logger;
+    private readonly ILogger<InMemoryVerifiedTransactionQueue> _logger;
 
-    // Per-register queues
+    // Per-register state.
     private readonly ConcurrentDictionary<string, RegisterQueue> _queues = new();
 
-    // Global statistics
+    // Global statistics.
     private long _totalEnqueued;
-    private long _totalDequeued;
+    private long _totalConfirmed;
     private long _totalExpired;
-    private readonly object _statsLock = new();
 
-    public VerifiedTransactionQueue(
+    public InMemoryVerifiedTransactionQueue(
         IOptions<VerifiedQueueConfiguration> config,
-        ILogger<VerifiedTransactionQueue> logger)
+        ILogger<InMemoryVerifiedTransactionQueue> logger)
     {
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -42,7 +48,6 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
         ArgumentNullException.ThrowIfNull(transaction);
         ArgumentException.ThrowIfNullOrWhiteSpace(transaction.TransactionId);
 
-        // Check global limits
         if (GetTotalCount() >= _config.MaxTotalTransactions)
         {
             _logger.LogWarning(
@@ -51,7 +56,6 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
             return false;
         }
 
-        // Check register limit
         if (_queues.Count >= _config.MaxRegisters && !_queues.ContainsKey(registerId))
         {
             _logger.LogWarning(
@@ -88,28 +92,88 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
     }
 
     /// <inheritdoc/>
-    public IReadOnlyList<VerifiedTransaction> Dequeue(string registerId, int maxCount)
+    public Task<IReadOnlyList<VerifiedTransactionLease>> ClaimAsync(
+        string registerId,
+        int maxCount,
+        TimeSpan leaseDuration,
+        CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
-        if (maxCount <= 0) return [];
+        if (maxCount <= 0)
+        {
+            return Task.FromResult<IReadOnlyList<VerifiedTransactionLease>>([]);
+        }
+        if (leaseDuration <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(leaseDuration), "Lease duration must be positive.");
+        }
+        ct.ThrowIfCancellationRequested();
 
         if (!_queues.TryGetValue(registerId, out var queue))
         {
-            return [];
+            return Task.FromResult<IReadOnlyList<VerifiedTransactionLease>>([]);
         }
 
-        var transactions = queue.Dequeue(maxCount);
-
-        if (transactions.Count > 0)
+        var leases = queue.Claim(registerId, maxCount, leaseDuration);
+        if (leases.Count > 0)
         {
-            Interlocked.Add(ref _totalDequeued, transactions.Count);
-
             _logger.LogDebug(
-                "Dequeued {Count} transactions for register {RegisterId}",
-                transactions.Count, registerId);
+                "Claimed {Count} transactions for register {RegisterId} (lease {LeaseSeconds}s)",
+                leases.Count, registerId, (int)leaseDuration.TotalSeconds);
+        }
+        return Task.FromResult<IReadOnlyList<VerifiedTransactionLease>>(leases);
+    }
+
+    /// <inheritdoc/>
+    public Task ConfirmAsync(string registerId, IEnumerable<string> transactionIds, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentNullException.ThrowIfNull(transactionIds);
+        ct.ThrowIfCancellationRequested();
+
+        if (!_queues.TryGetValue(registerId, out var queue))
+        {
+            return Task.CompletedTask;
         }
 
-        return transactions;
+        var confirmed = queue.Confirm(transactionIds);
+        if (confirmed > 0)
+        {
+            Interlocked.Add(ref _totalConfirmed, confirmed);
+            _logger.LogDebug(
+                "Confirmed {Count} transactions for register {RegisterId}",
+                confirmed, registerId);
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public Task ReleaseAsync(string registerId, IEnumerable<string> transactionIds, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentNullException.ThrowIfNull(transactionIds);
+        ct.ThrowIfCancellationRequested();
+
+        if (!_queues.TryGetValue(registerId, out var queue))
+        {
+            return Task.CompletedTask;
+        }
+
+        var (released, expired) = queue.Release(transactionIds);
+        if (expired > 0)
+        {
+            // Caller asked to release a claim, but the transaction's TTL had elapsed
+            // while it was held. Count this against TotalExpired so the metric covers
+            // both passive (CleanupExpired) and active (Release-time) expiry paths.
+            Interlocked.Add(ref _totalExpired, expired);
+        }
+        if (released > 0 || expired > 0)
+        {
+            _logger.LogDebug(
+                "Released {Count} transactions back to the available pool for register {RegisterId} ({Expired} TTL-expired and dropped)",
+                released, registerId, expired);
+        }
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc/>
@@ -124,42 +188,6 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
         }
 
         return queue.Peek(maxCount);
-    }
-
-    /// <inheritdoc/>
-    public void ReturnToQueue(string registerId, IReadOnlyList<VerifiedTransaction> transactions)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
-        ArgumentNullException.ThrowIfNull(transactions);
-
-        if (transactions.Count == 0) return;
-
-        var queue = _queues.GetOrAdd(registerId, _ => new RegisterQueue(_config.MaxTransactionsPerRegister));
-
-        var now = DateTimeOffset.UtcNow;
-        var returned = 0;
-
-        foreach (var tx in transactions)
-        {
-            // Don't return expired transactions
-            if (tx.ExpiresAt <= now)
-            {
-                Interlocked.Increment(ref _totalExpired);
-                continue;
-            }
-
-            if (queue.TryEnqueue(tx))
-            {
-                returned++;
-            }
-        }
-
-        // Adjust dequeue count since we returned them
-        Interlocked.Add(ref _totalDequeued, -returned);
-
-        _logger.LogDebug(
-            "Returned {Count} transactions to queue for register {RegisterId}",
-            returned, registerId);
     }
 
     /// <inheritdoc/>
@@ -194,20 +222,11 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
     public int GetCount(string registerId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
-
-        if (!_queues.TryGetValue(registerId, out var queue))
-        {
-            return 0;
-        }
-
-        return queue.Count;
+        return _queues.TryGetValue(registerId, out var queue) ? queue.Count : 0;
     }
 
     /// <inheritdoc/>
-    public int GetTotalCount()
-    {
-        return _queues.Values.Sum(q => q.Count);
-    }
+    public int GetTotalCount() => _queues.Values.Sum(q => q.Count);
 
     /// <inheritdoc/>
     public VerifiedQueueStats GetStats()
@@ -243,7 +262,7 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
             OldestTransaction = oldest,
             NewestTransaction = newest,
             TotalEnqueued = Interlocked.Read(ref _totalEnqueued),
-            TotalDequeued = Interlocked.Read(ref _totalDequeued),
+            TotalConfirmed = Interlocked.Read(ref _totalConfirmed),
             TotalExpired = Interlocked.Read(ref _totalExpired)
         };
     }
@@ -263,7 +282,6 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
         }
 
         var stats = queue.GetStats();
-
         return new RegisterQueueStats
         {
             RegisterId = registerId,
@@ -278,18 +296,14 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
     public int Clear(string registerId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
-
         if (!_queues.TryRemove(registerId, out var queue))
         {
             return 0;
         }
-
         var count = queue.Count;
-
         _logger.LogInformation(
             "Cleared {Count} transactions for register {RegisterId}",
             count, registerId);
-
         return count;
     }
 
@@ -298,9 +312,7 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
     {
         var total = GetTotalCount();
         _queues.Clear();
-
         _logger.LogInformation("Cleared all verified transaction queues ({Count} transactions)", total);
-
         return total;
     }
 
@@ -308,7 +320,6 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
     public int CleanupExpired()
     {
         var totalRemoved = 0;
-
         foreach (var kvp in _queues)
         {
             var removed = kvp.Value.RemoveExpired();
@@ -316,14 +327,12 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
             {
                 totalRemoved += removed;
                 Interlocked.Add(ref _totalExpired, removed);
-
                 _logger.LogDebug(
                     "Removed {Count} expired transactions from register {RegisterId}",
                     removed, kvp.Key);
             }
         }
 
-        // Remove empty queues
         var emptyQueues = _queues.Where(kvp => kvp.Value.Count == 0).Select(kvp => kvp.Key).ToList();
         foreach (var registerId in emptyQueues)
         {
@@ -334,112 +343,149 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
         {
             _logger.LogInformation("Cleaned up {Count} expired transactions across all registers", totalRemoved);
         }
-
         return totalRemoved;
     }
 
-
     /// <summary>
-    /// Thread-safe priority queue for a single register
+    /// Per-register thread-safe priority queue with lease tracking.
     /// </summary>
     private class RegisterQueue
     {
         private readonly int _maxCapacity;
         private readonly object _lock = new();
-        private readonly SortedSet<VerifiedTransaction> _queue;
+        // Available pool — sorted by priority (desc) then enqueue time (asc).
+        private readonly SortedSet<VerifiedTransaction> _available;
+        // Claimed transactions, keyed by tx id, with their lease expiry.
+        private readonly Dictionary<string, ClaimedEntry> _claimed = new();
+        // Index over both sets so Contains / Remove work uniformly.
         private readonly Dictionary<string, VerifiedTransaction> _byId = new();
 
         public RegisterQueue(int maxCapacity)
         {
             _maxCapacity = maxCapacity;
-            _queue = new SortedSet<VerifiedTransaction>(new PriorityComparer());
+            _available = new SortedSet<VerifiedTransaction>(new PriorityComparer());
         }
 
         public int Count
         {
-            get
-            {
-                lock (_lock)
-                {
-                    return _queue.Count;
-                }
-            }
+            get { lock (_lock) { return _available.Count + _claimed.Count; } }
         }
 
         public bool TryEnqueue(VerifiedTransaction tx)
         {
             lock (_lock)
             {
-                // Check capacity
-                if (_queue.Count >= _maxCapacity)
+                if (_available.Count + _claimed.Count >= _maxCapacity)
                     return false;
-
-                // Check for duplicate
                 if (_byId.ContainsKey(tx.TransactionId))
                     return false;
-
-                _queue.Add(tx);
+                _available.Add(tx);
                 _byId[tx.TransactionId] = tx;
                 return true;
             }
         }
 
-        public IReadOnlyList<VerifiedTransaction> Dequeue(int maxCount)
+        public IReadOnlyList<VerifiedTransactionLease> Claim(string registerId, int maxCount, TimeSpan leaseDuration)
         {
-            var result = new List<VerifiedTransaction>();
-
             lock (_lock)
             {
                 var now = DateTimeOffset.UtcNow;
-                var toRemove = new List<VerifiedTransaction>();
 
-                foreach (var tx in _queue)
+                // First, auto-release any leases that have expired since the last claim.
+                var expiredClaims = _claimed
+                    .Where(kvp => kvp.Value.LeaseExpiresAt <= now)
+                    .ToList();
+                foreach (var (txId, claimed) in expiredClaims)
                 {
-                    if (result.Count >= maxCount)
-                        break;
-
-                    // Skip expired
-                    if (tx.ExpiresAt <= now)
+                    _claimed.Remove(txId);
+                    if (_byId.TryGetValue(txId, out var tx))
                     {
-                        toRemove.Add(tx);
-                        continue;
+                        _available.Add(tx);
                     }
-
-                    result.Add(tx);
-                    toRemove.Add(tx);
                 }
 
-                foreach (var tx in toRemove)
+                // Skip TTL-expired transactions silently — they'll be removed by CleanupExpired.
+                var leaseExpiresAt = now.Add(leaseDuration);
+                var leases = new List<VerifiedTransactionLease>(maxCount);
+                var taken = new List<VerifiedTransaction>();
+                foreach (var tx in _available)
                 {
-                    _queue.Remove(tx);
-                    _byId.Remove(tx.TransactionId);
+                    if (leases.Count >= maxCount) break;
+                    if (tx.ExpiresAt <= now) continue;
+                    leases.Add(new VerifiedTransactionLease
+                    {
+                        RegisterId = registerId,
+                        Transaction = tx,
+                        LeaseExpiresAt = leaseExpiresAt
+                    });
+                    taken.Add(tx);
                 }
-            }
 
-            return result;
+                foreach (var tx in taken)
+                {
+                    _available.Remove(tx);
+                    _claimed[tx.TransactionId] = new ClaimedEntry(tx, leaseExpiresAt);
+                }
+
+                return leases;
+            }
+        }
+
+        public int Confirm(IEnumerable<string> transactionIds)
+        {
+            lock (_lock)
+            {
+                var confirmed = 0;
+                foreach (var txId in transactionIds)
+                {
+                    if (_claimed.Remove(txId))
+                    {
+                        _byId.Remove(txId);
+                        confirmed++;
+                    }
+                }
+                return confirmed;
+            }
+        }
+
+        public (int Released, int Expired) Release(IEnumerable<string> transactionIds)
+        {
+            lock (_lock)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var released = 0;
+                var expired = 0;
+                foreach (var txId in transactionIds)
+                {
+                    if (_claimed.Remove(txId, out var entry))
+                    {
+                        if (entry.Transaction.ExpiresAt <= now)
+                        {
+                            _byId.Remove(txId);
+                            expired++;
+                            continue;
+                        }
+                        _available.Add(entry.Transaction);
+                        released++;
+                    }
+                }
+                return (released, expired);
+            }
         }
 
         public IReadOnlyList<VerifiedTransaction> Peek(int maxCount)
         {
-            var result = new List<VerifiedTransaction>();
-
+            var result = new List<VerifiedTransaction>(maxCount);
             lock (_lock)
             {
                 var now = DateTimeOffset.UtcNow;
-
-                foreach (var tx in _queue)
+                foreach (var tx in _available)
                 {
-                    if (result.Count >= maxCount)
-                        break;
-
-                    // Skip expired
-                    if (tx.ExpiresAt <= now)
-                        continue;
-
+                    if (result.Count >= maxCount) break;
+                    if (tx.ExpiresAt <= now) continue;
                     result.Add(tx);
                 }
             }
-
             return result;
         }
 
@@ -449,8 +495,8 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
             {
                 if (!_byId.TryGetValue(transactionId, out var tx))
                     return false;
-
-                _queue.Remove(tx);
+                _available.Remove(tx);
+                _claimed.Remove(transactionId);
                 _byId.Remove(transactionId);
                 return true;
             }
@@ -458,10 +504,7 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
 
         public bool Contains(string transactionId)
         {
-            lock (_lock)
-            {
-                return _byId.ContainsKey(transactionId);
-            }
+            lock (_lock) { return _byId.ContainsKey(transactionId); }
         }
 
         public int RemoveExpired()
@@ -469,15 +512,22 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
             lock (_lock)
             {
                 var now = DateTimeOffset.UtcNow;
-                var expired = _queue.Where(tx => tx.ExpiresAt <= now).ToList();
-
-                foreach (var tx in expired)
+                var expiredAvailable = _available.Where(tx => tx.ExpiresAt <= now).ToList();
+                foreach (var tx in expiredAvailable)
                 {
-                    _queue.Remove(tx);
+                    _available.Remove(tx);
                     _byId.Remove(tx.TransactionId);
                 }
-
-                return expired.Count;
+                var expiredClaimed = _claimed
+                    .Where(kvp => kvp.Value.Transaction.ExpiresAt <= now)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                foreach (var txId in expiredClaimed)
+                {
+                    _claimed.Remove(txId);
+                    _byId.Remove(txId);
+                }
+                return expiredAvailable.Count + expiredClaimed.Count;
             }
         }
 
@@ -485,26 +535,25 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
         {
             lock (_lock)
             {
-                if (_queue.Count == 0)
-                    return (0, null, null, 0);
+                var entries = _available.Concat(_claimed.Values.Select(c => c.Transaction)).ToList();
+                if (entries.Count == 0) return (0, null, null, 0);
 
                 var now = DateTimeOffset.UtcNow;
-                var valid = _queue.Where(tx => tx.ExpiresAt > now).ToList();
-
-                if (valid.Count == 0)
-                    return (0, null, null, 0);
+                var valid = entries.Where(tx => tx.ExpiresAt > now).ToList();
+                if (valid.Count == 0) return (0, null, null, 0);
 
                 return (
                     valid.Count,
                     valid.Min(tx => tx.EnqueuedAt),
                     valid.Max(tx => tx.EnqueuedAt),
-                    valid.Average(tx => tx.Priority)
-                );
+                    valid.Average(tx => tx.Priority));
             }
         }
 
+        private sealed record ClaimedEntry(VerifiedTransaction Transaction, DateTimeOffset LeaseExpiresAt);
+
         /// <summary>
-        /// Comparer for priority ordering (higher priority first, then by enqueue time)
+        /// Comparer for priority ordering (higher priority first, then by enqueue time).
         /// </summary>
         private class PriorityComparer : IComparer<VerifiedTransaction>
         {
@@ -514,18 +563,14 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
                 if (x == null) return 1;
                 if (y == null) return -1;
 
-                // Higher priority first (descending)
                 var priorityCompare = y.Priority.CompareTo(x.Priority);
                 if (priorityCompare != 0) return priorityCompare;
 
-                // Earlier enqueue time first (ascending - FIFO within same priority)
                 var timeCompare = x.EnqueuedAt.CompareTo(y.EnqueuedAt);
                 if (timeCompare != 0) return timeCompare;
 
-                // Fallback to transaction ID for uniqueness
                 return string.Compare(x.TransactionId, y.TransactionId, StringComparison.Ordinal);
             }
         }
     }
-
 }

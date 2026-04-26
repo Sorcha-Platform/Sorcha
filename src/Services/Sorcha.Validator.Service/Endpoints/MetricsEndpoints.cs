@@ -128,7 +128,7 @@ public static class MetricsEndpoints
                 OldestTransaction = queueStats.OldestTransaction,
                 NewestTransaction = queueStats.NewestTransaction,
                 TotalEnqueued = queueStats.TotalEnqueued,
-                TotalDequeued = queueStats.TotalDequeued,
+                TotalDequeued = queueStats.TotalConfirmed,
                 TotalExpired = queueStats.TotalExpired
             },
             Caches = new CacheSummary
@@ -243,7 +243,7 @@ public static class MetricsEndpoints
                 OldestTransaction = stats.OldestTransaction,
                 NewestTransaction = stats.NewestTransaction,
                 TotalEnqueued = stats.TotalEnqueued,
-                TotalDequeued = stats.TotalDequeued,
+                TotalDequeued = stats.TotalConfirmed,
                 TotalExpired = stats.TotalExpired
             }
         };
