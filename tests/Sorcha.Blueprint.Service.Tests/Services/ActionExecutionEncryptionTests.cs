@@ -519,7 +519,7 @@ public class ActionExecutionEncryptionTests
             {
                 Signature = new byte[64],
                 PublicKey = new byte[32],
-                SignedBy = "wallet-sender",
+                SignedBy = "wallet-applicant",
                 Algorithm = "ED25519"
             });
 

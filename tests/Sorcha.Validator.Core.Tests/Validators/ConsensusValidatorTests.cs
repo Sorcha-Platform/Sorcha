@@ -647,7 +647,7 @@ public class ConsensusValidatorTests
 
         // Assert - Must be GREATER than threshold, not equal
         result.IsValid.Should().BeFalse();
-        result.Errors[0].Message.Should().Contain(">50.00%"); // Showing "greater than" symbol with percentage
+        result.Errors[0].Message.Should().Contain(">50.00%"); // Showing "greater than" symbol with percentage (deterministic, culture-invariant)
     }
 
     #endregion

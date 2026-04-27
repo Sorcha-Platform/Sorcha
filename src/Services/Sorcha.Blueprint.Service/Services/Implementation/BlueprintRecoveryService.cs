@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Sorcha.Blueprint.Service.Models;
+using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -65,11 +65,11 @@ public class BlueprintRecoveryService : BackgroundService
     internal async Task RunRecoveryAsync(CancellationToken cancellationToken)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
-        var httpClientFactory = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>();
+        var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
         var publishedStore = scope.ServiceProvider.GetRequiredService<IPublishedBlueprintStore>();
 
         // Step 1: Discover all registers
-        var registers = await DiscoverRegistersAsync(httpClientFactory, cancellationToken);
+        var registers = await DiscoverRegistersAsync(registerClient, cancellationToken);
         if (registers.Count == 0)
         {
             _logger.LogWarning("No registers discovered during recovery");
@@ -87,15 +87,27 @@ public class BlueprintRecoveryService : BackgroundService
                 RegisterName = registerName
             });
 
+            // After initial recovery, skip registers that have exceeded the retry cap.
+            // The cap does not apply during initial recovery — keep trying so a slow
+            // register still seeds blueprints once it comes online.
+            if (_recoveryState.IsComplete
+                && state.ConsecutiveFailures >= _options.MaxRetryAttempts)
+            {
+                _logger.LogDebug(
+                    "Skipping {RegisterId} ({RegisterName}): exceeded {MaxRetryAttempts} retries",
+                    registerId, registerName, _options.MaxRetryAttempts);
+                continue;
+            }
+
             state.LastCheckedAt = DateTimeOffset.UtcNow;
 
             try
             {
                 var result = await RecoverFromRegisterAsync(
-                    httpClientFactory, publishedStore, registerId, cancellationToken);
+                    registerClient, publishedStore, registerId, cancellationToken);
 
                 state.Status = RegisterHealthStatus.Online;
-                state.Height = result.Height;
+                state.Height = (int)result.Height;
                 state.RecoveredBlueprintCount = result.BlueprintCount;
                 state.LastSuccessAt = DateTimeOffset.UtcNow;
                 state.ConsecutiveFailures = 0;
@@ -122,22 +134,13 @@ public class BlueprintRecoveryService : BackgroundService
     }
 
     private async Task<List<(string Id, string Name)>> DiscoverRegistersAsync(
-        IHttpClientFactory httpClientFactory,
+        IRegisterServiceClient registerClient,
         CancellationToken cancellationToken)
     {
         try
         {
-            var client = httpClientFactory.CreateClient("RegisterService");
-            var response = await client.GetAsync("/api/internal/registers", cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Register discovery failed with status {StatusCode}", response.StatusCode);
-                return [];
-            }
-
-            var registers = await response.Content.ReadFromJsonAsync<List<RegisterInfo>>(cancellationToken: cancellationToken);
-            return registers?.Select(r => (r.Id, r.Name)).ToList() ?? [];
+            var registers = await registerClient.GetInternalRegistersAsync(cancellationToken);
+            return registers.Select(r => (r.Id, r.Name)).ToList();
         }
         catch (Exception ex)
         {
@@ -146,29 +149,35 @@ public class BlueprintRecoveryService : BackgroundService
         }
     }
 
-    private async Task<(int Height, int BlueprintCount)> RecoverFromRegisterAsync(
-        IHttpClientFactory httpClientFactory,
+    private async Task<(long Height, int BlueprintCount)> RecoverFromRegisterAsync(
+        IRegisterServiceClient registerClient,
         IPublishedBlueprintStore publishedStore,
         string registerId,
         CancellationToken cancellationToken)
     {
-        var client = httpClientFactory.CreateClient("RegisterService");
-        var response = await client.GetAsync(
-            $"/api/registers/{registerId}/blueprints/published",
-            cancellationToken);
+        var result = await registerClient.GetPublishedBlueprintsAsync(registerId, cancellationToken);
 
-        response.EnsureSuccessStatusCode();
-
-        var result = await response.Content.ReadFromJsonAsync<PublishedBlueprintsResponse>(
-            cancellationToken: cancellationToken);
-
-        if (result?.Blueprints is null || result.Blueprints.Count == 0)
+        // Typed client returns null on failure (network error, non-success status).
+        // Treat as failure so the caller marks the register Offline.
+        if (result is null)
         {
-            return (result?.RegisterHeight ?? 0, 0);
+            throw new InvalidOperationException(
+                $"Failed to fetch published blueprints for register {registerId}");
         }
 
+        if (result.Blueprints.Count == 0)
+        {
+            return (result.RegisterHeight, 0);
+        }
+
+        // Dedup by BlueprintId within the response — take the latest by PublishedAt.
+        // The register may carry multiple publish events for the same blueprint id.
+        var latestPerBlueprint = result.Blueprints
+            .GroupBy(b => b.BlueprintId)
+            .Select(g => g.OrderByDescending(b => b.PublishedAt).First());
+
         var count = 0;
-        foreach (var bp in result.Blueprints)
+        foreach (var bp in latestPerBlueprint)
         {
             try
             {
@@ -201,28 +210,5 @@ public class BlueprintRecoveryService : BackgroundService
         }
 
         return (result.RegisterHeight, count);
-    }
-
-    // DTOs for deserialization
-    private record RegisterInfo
-    {
-        public string Id { get; init; } = string.Empty;
-        public string Name { get; init; } = string.Empty;
-    }
-
-    private record PublishedBlueprintsResponse
-    {
-        public string RegisterId { get; init; } = string.Empty;
-        public List<PublishedBlueprintEntry> Blueprints { get; init; } = [];
-        public int RegisterHeight { get; init; }
-    }
-
-    private record PublishedBlueprintEntry
-    {
-        public string BlueprintId { get; init; } = string.Empty;
-        public string TransactionId { get; init; } = string.Empty;
-        public string PublishedBy { get; init; } = string.Empty;
-        public DateTimeOffset PublishedAt { get; init; }
-        public string BlueprintJson { get; init; } = "{}";
     }
 }
