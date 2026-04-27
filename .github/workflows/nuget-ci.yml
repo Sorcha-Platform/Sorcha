@@ -57,8 +57,10 @@ jobs:
             done
             if [[ "$skip" == "false" ]]; then
               echo "🧪 Testing $(basename $proj .csproj)..."
+              # MTP-native TRX flags. `--logger trx` is ignored under
+              # Microsoft.Testing.Platform; xunit.v3 exposes its own report flags.
               dotnet test "$proj" --no-build --configuration Release --verbosity normal \
-                --logger "trx;LogFileName=test-results.trx" || EXIT_CODE=1
+                -- --report-xunit-trx --report-xunit-trx-filename test-results.trx || EXIT_CODE=1
             fi
           done
           exit $EXIT_CODE
