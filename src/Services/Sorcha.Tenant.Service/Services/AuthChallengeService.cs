@@ -196,7 +196,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
         // identifies the active UserIdentity.
         var totpEnabled = await _db.TotpConfigurations
             .AsNoTracking()
-            .AnyAsync(t => t.UserId == context.UserIdentityId, cancellationToken);
+            .AnyAsync(t => t.UserId == context.UserIdentityId && t.IsEnabled, cancellationToken);
 
         var hasActivePasskey = await _db.PasskeyCredentials
             .AsNoTracking()

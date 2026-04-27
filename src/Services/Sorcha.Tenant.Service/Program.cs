@@ -178,6 +178,7 @@ app.MapParticipantEndpoints();
 app.MapAuthEndpoints();
 app.MapPasskeyEndpoints();
 app.MapAuthChallengeEndpoints();
+app.MapAuthMethodsEndpoints();
 app.MapPublicPasskeyEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();

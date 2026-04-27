@@ -48,6 +48,12 @@ public interface IAuthMethodService
     /// to compute per-row <c>canRemove</c> flags in one query.
     /// </summary>
     Task<AuthMethodCounts> GetCountsAsync(Guid platformUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Build the aggregate Accounts-tab read for a single user. Returns null
+    /// when the user is not found.
+    /// </summary>
+    Task<Models.Requests.AuthMethodsResponse?> GetAggregateAsync(Guid platformUserId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

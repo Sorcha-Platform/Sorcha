@@ -1,0 +1,92 @@
+@* Read-only passkeys section for the Accounts tab (Feature 116 US4).
+   Add / Rename / Remove actions get wired in US2. *@
+
+@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Services
+@inject ILocalizationService Loc
+
+<MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+    <MudText Typo="Typo.h6" Class="mb-1">
+        @Loc.T("settings.accounts.passkeys.title")
+    </MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        @Loc.T("settings.accounts.passkeys.description")
+    </MudText>
+
+    @if (Passkeys is null)
+    {
+        <MudSkeleton Width="100%" Height="60px" />
+    }
+    else if (Passkeys.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3 fst-italic">
+            @Loc.T("settings.accounts.passkeys.empty")
+        </MudText>
+    }
+    else
+    {
+        @foreach (var passkey in Passkeys)
+        {
+            <div class="d-flex align-center mb-2 pa-2" style="border:1px solid var(--mud-palette-divider);border-radius:4px;">
+                <MudIcon Icon="@Icons.Material.Filled.Key"
+                         Color="@(IsDisabled(passkey.Status) ? Color.Warning : Color.Default)"
+                         Class="mr-3" />
+                <div class="flex-grow-1">
+                    <MudText Typo="Typo.body1">@passkey.DisplayName</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @(passkey.DeviceType ?? Loc.T("settings.accounts.passkeys.unknownDevice"))
+                        · @Loc.T("settings.accounts.passkeys.added"): @passkey.CreatedAt.ToLocalTime().ToString("d MMM yyyy")
+                        @if (passkey.LastUsedAt.HasValue)
+                        {
+                            <span> · @Loc.T("settings.accounts.lastUsed"): @passkey.LastUsedAt.Value.ToLocalTime().ToString("d MMM yyyy")</span>
+                        }
+                        else
+                        {
+                            <span> · @Loc.T("settings.accounts.passkeys.neverUsed")</span>
+                        }
+                    </MudText>
+                    @if (IsDisabled(passkey.Status))
+                    {
+                        <MudTooltip Text="@(passkey.DisabledReason ?? "")">
+                            <MudText Typo="Typo.caption" Color="Color.Warning">
+                                @Loc.T("settings.accounts.passkeys.autoDisabled")
+                            </MudText>
+                        </MudTooltip>
+                    }
+                </div>
+                @if (passkey.CanRename)
+                {
+                    <MudButton Variant="Variant.Outlined" Disabled="true" Size="Size.Small" Class="mr-2">
+                        @Loc.T("settings.accounts.passkeys.rename")
+                    </MudButton>
+                }
+                @if (passkey.CanRemove)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="true" Size="Size.Small">
+                        @Loc.T("settings.accounts.passkeys.remove")
+                    </MudButton>
+                }
+                else
+                {
+                    <MudTooltip Text="@Loc.T("settings.accounts.lastMethodWarning")">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="true" Size="Size.Small">
+                            @Loc.T("settings.accounts.passkeys.remove")
+                        </MudButton>
+                    </MudTooltip>
+                }
+            </div>
+        }
+    }
+
+    <MudDivider Class="my-3" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="true" StartIcon="@Icons.Material.Filled.Add">
+        @Loc.T("settings.accounts.passkeys.add")
+    </MudButton>
+</MudPaper>
+
+@code {
+    [Parameter] public IReadOnlyList<AuthMethodsPasskey>? Passkeys { get; set; }
+
+    private static bool IsDisabled(string status) =>
+        string.Equals(status, "Disabled", StringComparison.OrdinalIgnoreCase);
+}

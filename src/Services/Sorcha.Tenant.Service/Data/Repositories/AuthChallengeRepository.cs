@@ -53,10 +53,20 @@ public sealed class AuthChallengeRepository : IAuthChallengeRepository
     }
 
     /// <inheritdoc />
-    public Task<int> PruneExpiredOlderThanAsync(DateTimeOffset olderThan, CancellationToken cancellationToken = default)
+    public async Task<int> PruneExpiredOlderThanAsync(DateTimeOffset olderThan, CancellationToken cancellationToken = default)
     {
-        return _db.AuthChallengeTokens
-            .Where(t => t.ExpiresAt < olderThan)
-            .ExecuteDeleteAsync(cancellationToken);
+        // Daily-cadence cleanup of a small N (consumed/expired auth challenge
+        // tokens). Materialising the full table and filtering in memory is
+        // portable across providers — SQLite test provider can't translate
+        // a parameterised DateTimeOffset comparison in a Where clause, while
+        // production Npgsql can. The performance hit is irrelevant at this
+        // table's expected size.
+        var all = await _db.AuthChallengeTokens.ToListAsync(cancellationToken);
+        var stale = all.Where(t => t.ExpiresAt < olderThan).ToList();
+        if (stale.Count == 0) return 0;
+
+        _db.AuthChallengeTokens.RemoveRange(stale);
+        await _db.SaveChangesAsync(cancellationToken);
+        return stale.Count;
     }
 }
