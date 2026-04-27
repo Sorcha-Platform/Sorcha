@@ -443,10 +443,11 @@ public class ActionExecutionServiceEncryptionTests
     private void SetupRoutingAndDisclosure(BlueprintModel blueprint, ActionModel action)
     {
         _mockExecutionEngine
-            .Setup(x => x.DetermineRoutingAsync(
+            .Setup(x => x.DetermineRoutingWithMappingAsync(
                 blueprint,
                 action,
                 It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<System.Text.Json.Nodes.JsonObject?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.RoutingResult.Complete());
 

@@ -527,10 +527,11 @@ public class ActionExecutionServiceTests
         };
 
         _mockExecutionEngine
-            .Setup(x => x.DetermineRoutingAsync(
+            .Setup(x => x.DetermineRoutingWithMappingAsync(
                 blueprint,
                 action,
                 It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<System.Text.Json.Nodes.JsonObject?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(engineRoutingResult);
 
@@ -644,7 +645,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.ValidationResult.Valid());
 
         _mockExecutionEngine
-            .Setup(x => x.DetermineRoutingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.DetermineRoutingWithMappingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<System.Text.Json.Nodes.JsonObject?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.RoutingResult.Complete());
 
         _mockExecutionEngine
@@ -690,7 +691,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.ValidationResult.Valid());
 
         _mockExecutionEngine
-            .Setup(x => x.DetermineRoutingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.DetermineRoutingWithMappingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<System.Text.Json.Nodes.JsonObject?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.RoutingResult.Complete());
 
         var disclosureResults = new List<Sorcha.Blueprint.Engine.Models.DisclosureResult>
@@ -730,7 +731,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.ValidationResult.Valid());
 
         _mockExecutionEngine
-            .Setup(x => x.DetermineRoutingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.DetermineRoutingWithMappingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<System.Text.Json.Nodes.JsonObject?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.RoutingResult.Complete());
 
         // Two different disclosures: applicant sees field1+field2, reviewer sees only field1
@@ -779,7 +780,7 @@ public class ActionExecutionServiceTests
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.ValidationResult.Valid());
 
         _mockExecutionEngine
-            .Setup(x => x.DetermineRoutingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.DetermineRoutingWithMappingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<System.Text.Json.Nodes.JsonObject?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.RoutingResult.Complete());
 
         // Wildcard disclosure: reviewer gets all fields
@@ -1086,7 +1087,7 @@ public class ActionExecutionServiceTests
         SetupWalletValidationMocks(userId, orgId, participantId, request.SenderWallet);
 
         _mockExecutionEngine
-            .Setup(x => x.DetermineRoutingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.DetermineRoutingWithMappingAsync(blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<System.Text.Json.Nodes.JsonObject?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Sorcha.Blueprint.Engine.Models.RoutingResult.Complete());
 
         _mockExecutionEngine
