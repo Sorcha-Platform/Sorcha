@@ -42,7 +42,7 @@ public class BlueprintToolExecutorTests
         var tools = _executor.GetToolDefinitions();
 
         // Assert
-        tools.Should().HaveCount(13);
+        tools.Should().HaveCount(16);
         tools.Select(t => t.Name).Should().BeEquivalentTo(new[]
         {
             "create_blueprint",
@@ -57,7 +57,10 @@ public class BlueprintToolExecutorTests
             "use_standard_schema",
             "search_templates",
             "require_credential",
-            "issue_credential"
+            "issue_credential",
+            "set_action_schema",
+            "set_action_routes",
+            "set_action_metadata"
         });
     }
 
@@ -683,16 +686,19 @@ public class BlueprintToolExecutorTests
     [Fact]
     public async Task ExecuteSearchSchemas_FiltersByCategory()
     {
-        // Arrange
-        var schemas = new List<SchemaIndexEntryDto>
+        // Arrange — the executor delegates filtering to ISchemaIndexService.SearchAsync.
+        // We assert the executor passes the category through as the `sectors` argument and
+        // returns whatever the service returns (one filtered entry).
+        var filtered = new List<SchemaIndexEntryDto>
         {
-            CreateSchemaIndexEntry("invoice-schema", "Invoice Schema", "finance"),
             CreateSchemaIndexEntry("health-record", "Health Record", "healthcare")
         };
 
         _schemaIndexServiceMock.Setup(s => s.SearchAsync(
-                "record", It.IsAny<string[]?>(), null, null, 50, null, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SchemaIndexSearchResponse(schemas.AsReadOnly(), schemas.Count, null, null));
+                "record",
+                It.Is<string[]?>(sectors => sectors != null && sectors.Contains("healthcare")),
+                null, null, 50, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SchemaIndexSearchResponse(filtered.AsReadOnly(), filtered.Count, null, null));
 
         var builder = BlueprintBuilder.Create();
         var args = CreateArgs(new { query = "record", category = "healthcare" });
@@ -1306,6 +1312,282 @@ public class BlueprintToolExecutorTests
             draft.Actions.First(a => a.Id == actionId).CredentialRequirements!.First().Type
                 .Should().Be("ProductPassport");
         }
+    }
+
+    #endregion
+
+    #region Escape-hatch tools
+
+    private async Task<BlueprintBuilder> SeedTwoParticipantOneAction()
+    {
+        var builder = BlueprintBuilder.Create();
+        await _executor.ExecuteAsync("create_blueprint",
+            CreateArgs(new { title = "Esc Hatch Test", description = "Coverage for escape hatch tools" }), builder);
+        await _executor.ExecuteAsync("add_participant",
+            CreateArgs(new { id = "applicant", name = "Applicant" }), builder);
+        await _executor.ExecuteAsync("add_participant",
+            CreateArgs(new { id = "reviewer", name = "Reviewer" }), builder);
+        await _executor.ExecuteAsync("add_action",
+            CreateArgs(new { id = 0, title = "Submit", sender = "applicant", isStartingAction = true }), builder);
+        return builder;
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SetActionSchema_ReplacesWithRawJsonSchemaIncludingExtensions()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+
+        // Schema with x-pages and x-credential-offer — neither expressible via add_action.
+        var rawSchema = new
+        {
+            type = "object",
+            properties = new Dictionary<string, object>
+            {
+                ["credentialOffer"] = new Dictionary<string, object>
+                {
+                    ["type"] = "object",
+                    ["x-credential-offer"] = true,
+                    ["properties"] = new
+                    {
+                        credential_offer_uri = new { type = "string", format = "uri" }
+                    },
+                    ["required"] = new[] { "credential_offer_uri" }
+                }
+            },
+            required = new[] { "credentialOffer" }
+        };
+
+        var result = await _executor.ExecuteAsync("set_action_schema",
+            CreateArgs(new { actionId = 0, schema = rawSchema }), builder);
+
+        result.Success.Should().BeTrue();
+        result.BlueprintChanged.Should().BeTrue();
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.First(a => a.Id == 0);
+        action.DataSchemas.Should().HaveCount(1);
+        var doc = action.DataSchemas!.First();
+        doc.RootElement.GetProperty("properties").GetProperty("credentialOffer")
+            .GetProperty("x-credential-offer").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SetActionSchema_AppendModePreservesExisting()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+
+        await _executor.ExecuteAsync("set_action_schema",
+            CreateArgs(new { actionId = 0, schema = new { type = "object", properties = new { a = new { type = "string" } } } }),
+            builder);
+        var result = await _executor.ExecuteAsync("set_action_schema",
+            CreateArgs(new
+            {
+                actionId = 0,
+                mode = "append",
+                schema = new { type = "object", properties = new { b = new { type = "integer" } } }
+            }),
+            builder);
+
+        result.Success.Should().BeTrue();
+        var draft = builder.BuildDraft();
+        draft.Actions.First(a => a.Id == 0).DataSchemas.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SetActionSchema_RejectsNonObjectSchema()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+
+        var result = await _executor.ExecuteAsync("set_action_schema",
+            CreateArgs(new { actionId = 0, schema = "not-an-object" }), builder);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("JSON Schema object");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SetActionRoutes_SetsTerminalAndOutputMappingRoutes()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+        // Add an action 1 so routes can target it
+        await _executor.ExecuteAsync("add_action",
+            CreateArgs(new { id = 1, title = "Claim", sender = "applicant" }), builder);
+
+        var routes = new object[]
+        {
+            new
+            {
+                id = "approved-to-claim",
+                nextActionIds = new[] { 1 },
+                condition = new Dictionary<string, object>
+                {
+                    ["=="] = new object[]
+                    {
+                        new Dictionary<string, object> { ["var"] = "decision" },
+                        "approved"
+                    }
+                },
+                description = "Approved",
+                outputMapping = new Dictionary<string, string>
+                {
+                    ["/haip/credential_offer_uri"] = "/credentialOffer/credential_offer_uri"
+                }
+            },
+            new
+            {
+                id = "rejected-terminal",
+                nextActionIds = Array.Empty<int>(),
+                isDefault = true,
+                description = "Rejected — terminal"
+            }
+        };
+
+        var result = await _executor.ExecuteAsync("set_action_routes",
+            CreateArgs(new { actionId = 0, routes }), builder);
+
+        result.Success.Should().BeTrue();
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.First(a => a.Id == 0);
+        action.Routes.Should().HaveCount(2);
+        var approval = action.Routes!.First(r => r.Id == "approved-to-claim");
+        approval.NextActionIds.Should().BeEquivalentTo(new[] { 1 });
+        approval.Condition.Should().NotBeNull();
+        approval.OutputMapping.Should().ContainKey("/haip/credential_offer_uri");
+        var terminal = action.Routes!.First(r => r.Id == "rejected-terminal");
+        terminal.NextActionIds.Should().BeEmpty();
+        terminal.IsDefault.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SetActionRoutes_RejectsNonArrayInput()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+
+        var result = await _executor.ExecuteAsync("set_action_routes",
+            CreateArgs(new { actionId = 0, routes = "nope" }), builder);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("array");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SetActionMetadata_SetsRejectionConfigAndCredentialIssuanceWithHaip()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+
+        var result = await _executor.ExecuteAsync("set_action_metadata",
+            CreateArgs(new
+            {
+                actionId = 0,
+                isStartingAction = true,
+                requiredPriorActions = new[] { 0 },
+                rejectionConfig = new
+                {
+                    targetActionId = 0,
+                    isTerminal = true,
+                    requireReason = false
+                },
+                credentialIssuanceConfig = new
+                {
+                    credentialType = "AssuredIdentityCredential",
+                    claimMappings = new[]
+                    {
+                        new { claimName = "givenName", sourceField = "/givenName" }
+                    },
+                    recipientParticipantId = "applicant",
+                    targetAudience = "HaipExternalWallet"
+                }
+            }), builder);
+
+        result.Success.Should().BeTrue();
+        var action = builder.BuildDraft().Actions.First(a => a.Id == 0);
+        action.IsStartingAction.Should().BeTrue();
+        action.RequiredPriorActions.Should().BeEquivalentTo(new[] { 0 });
+        action.RejectionConfig.Should().NotBeNull();
+        action.RejectionConfig!.IsTerminal.Should().BeTrue();
+        action.RejectionConfig.RequireReason.Should().BeFalse();
+        action.CredentialIssuanceConfig.Should().NotBeNull();
+        action.CredentialIssuanceConfig!.TargetAudience.Should().Be(TargetAudience.HaipExternalWallet);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SetActionMetadata_SetsCredentialRequirementWithHaipPresentationSource()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+
+        var result = await _executor.ExecuteAsync("set_action_metadata",
+            CreateArgs(new
+            {
+                actionId = 0,
+                credentialRequirements = new[]
+                {
+                    new
+                    {
+                        type = "AssuredIdentityCredential",
+                        presentationSource = "HaipExternalWallet",
+                        requiredClaims = new[]
+                        {
+                            new { claimName = "dateOfBirth" }
+                        }
+                    }
+                }
+            }), builder);
+
+        result.Success.Should().BeTrue();
+        var action = builder.BuildDraft().Actions.First(a => a.Id == 0);
+        action.CredentialRequirements.Should().HaveCount(1);
+        action.CredentialRequirements!.First().PresentationSource
+            .Should().Be(PresentationSource.HaipExternalWallet);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SetActionMetadata_NullClearsExistingConfig()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+        await _executor.ExecuteAsync("set_action_metadata",
+            CreateArgs(new
+            {
+                actionId = 0,
+                rejectionConfig = new { targetActionId = 0, isTerminal = true }
+            }), builder);
+        builder.BuildDraft().Actions.First(a => a.Id == 0).RejectionConfig.Should().NotBeNull();
+
+        var clear = await _executor.ExecuteAsync("set_action_metadata",
+            CreateArgs(new { actionId = 0, rejectionConfig = (object?)null }), builder);
+
+        clear.Success.Should().BeTrue();
+        builder.BuildDraft().Actions.First(a => a.Id == 0).RejectionConfig.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SetActionMetadata_RejectsEmptyUpdate()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+
+        var result = await _executor.ExecuteAsync("set_action_metadata",
+            CreateArgs(new { actionId = 0 }), builder);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("at least one");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_EscapeHatchTools_FailGracefullyOnUnknownAction()
+    {
+        var builder = await SeedTwoParticipantOneAction();
+
+        var schemaResult = await _executor.ExecuteAsync("set_action_schema",
+            CreateArgs(new { actionId = 999, schema = new { type = "object" } }), builder);
+        var routesResult = await _executor.ExecuteAsync("set_action_routes",
+            CreateArgs(new { actionId = 999, routes = Array.Empty<object>() }), builder);
+        var metaResult = await _executor.ExecuteAsync("set_action_metadata",
+            CreateArgs(new { actionId = 999, isStartingAction = true }), builder);
+
+        schemaResult.Success.Should().BeFalse();
+        routesResult.Success.Should().BeFalse();
+        metaResult.Success.Should().BeFalse();
+        schemaResult.Error.Should().Contain("999");
+        routesResult.Error.Should().Contain("999");
+        metaResult.Error.Should().Contain("999");
     }
 
     #endregion
