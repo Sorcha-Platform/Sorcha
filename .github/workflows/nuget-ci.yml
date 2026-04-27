@@ -30,41 +30,52 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test (unit + in-memory integration)
+        shell: bash
         run: |
-          # Infrastructure-dependent test projects require Docker, databases,
-          # or browsers not available on the CI runner. Skip them here;
-          # run locally or in a dedicated integration test workflow.
-          INFRA_PROJECTS=(
-            "tests/Sorcha.UI.E2E.Tests/Sorcha.UI.E2E.Tests.csproj"
-            "tests/Sorcha.Gateway.Integration.Tests/Sorcha.Gateway.Integration.Tests.csproj"
-            "tests/Sorcha.Validator.Service.IntegrationTests/Sorcha.Validator.Service.IntegrationTests.csproj"
-            "tests/Sorcha.Tenant.Service.IntegrationTests/Sorcha.Tenant.Service.IntegrationTests.csproj"
-            "tests/Sorcha.Wallet.Service.IntegrationTests/Sorcha.Wallet.Service.IntegrationTests.csproj"
-            "tests/Sorcha.Blueprint.Service.IntegrationTests/Sorcha.Blueprint.Service.IntegrationTests.csproj"
-            "tests/Sorcha.Register.Service.IntegrationTests/Sorcha.Register.Service.IntegrationTests.csproj"
-            "tests/Sorcha.Register.Storage.MongoDB.Tests/Sorcha.Register.Storage.MongoDB.Tests.csproj"
+          # Bypass `dotnet test` and invoke each test exe directly via its xunit.v3
+          # Microsoft.Testing.Platform entry point. `dotnet test --no-build` was
+          # non-deterministically dispatching VSTest target on a subset of projects
+          # whose binaries are MTP-native, producing
+          #   "The argument …Tests.dll is invalid"
+          # at host startup. Direct invocation sidesteps the MSBuild target heuristic.
+          #
+          # Infrastructure-dependent test projects require Docker, databases, or
+          # browsers not available on the CI runner — skipped here, run locally or
+          # in a dedicated integration test workflow.
+          INFRA=(
+            "Sorcha.UI.E2E.Tests"
+            "Sorcha.Gateway.Integration.Tests"
+            "Sorcha.Validator.Service.IntegrationTests"
+            "Sorcha.Tenant.Service.IntegrationTests"
+            "Sorcha.Wallet.Service.IntegrationTests"
+            "Sorcha.Blueprint.Service.IntegrationTests"
+            "Sorcha.Register.Service.IntegrationTests"
+            "Sorcha.Register.Storage.MongoDB.Tests"
           )
+          is_infra() {
+            local n=$1
+            for i in "${INFRA[@]}"; do [[ "$i" == "$n" ]] && return 0; done
+            return 1
+          }
 
           EXIT_CODE=0
-          for proj in tests/**/*.csproj; do
-            skip=false
-            for infra in "${INFRA_PROJECTS[@]}"; do
-              if [[ "$proj" == "$infra" ]]; then
-                echo "⏭️  Skipping $(basename $proj .csproj) (requires infrastructure)"
-                skip=true
-                break
-              fi
-            done
-            if [[ "$skip" == "false" ]]; then
-              echo "🧪 Testing $(basename $proj .csproj)..."
-              # Force MTP runner on the command line as well as via Directory.Build.props,
-              # because some projects' MSBuild eval ignores the props during `dotnet test`.
-              # MTP-native TRX flags follow `--`; xunit.v3 exposes its own report flags.
-              dotnet test "$proj" --no-build --configuration Release --verbosity normal \
-                -p:UseMicrosoftTestingPlatformRunner=true \
-                -p:TestingPlatformDotnetTestSupport=true \
-                -- --report-xunit-trx --report-xunit-trx-filename test-results.trx || EXIT_CODE=1
+          shopt -s globstar nullglob
+          for proj in tests/*/*.csproj; do
+            name=$(basename "$proj" .csproj)
+            if is_infra "$name"; then
+              echo "⏭️  Skipping $name (requires infrastructure)"
+              continue
             fi
+            dll="tests/$name/bin/Release/net10.0/$name.dll"
+            if [[ ! -f "$dll" ]]; then
+              echo "⚠️  $name — no built dll at $dll, skipping"
+              continue
+            fi
+            echo "🧪 Testing $name..."
+            # xunit.v3 MTP-native flags. TRX lands next to the dll under TestResults/.
+            dotnet "$dll" \
+              --report-xunit-trx --report-xunit-trx-filename test-results.trx \
+              || EXIT_CODE=1
           done
           exit $EXIT_CODE
 
