@@ -21,6 +21,15 @@ public class SocialLoginInitiateRequest
     /// </summary>
     [JsonPropertyName("returnUrl")]
     public string? ReturnUrl { get; set; }
+
+    /// <summary>
+    /// Flow intent: <c>"login"</c> (default — anonymous flow that resolves
+    /// or creates a PlatformUser) or <c>"link"</c> (signed-in flow that
+    /// adds the social provider to the caller's existing PlatformUser).
+    /// Feature 116 / Q6.
+    /// </summary>
+    [JsonPropertyName("intent")]
+    public string? Intent { get; set; }
 }
 
 /// <summary>
