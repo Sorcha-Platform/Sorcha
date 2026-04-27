@@ -10,6 +10,10 @@ on:
       - 'Directory.Packages.props'
       - '.github/workflows/nuget-ci.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest

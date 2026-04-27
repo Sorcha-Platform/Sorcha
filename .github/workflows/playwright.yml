@@ -1,14 +1,5 @@
 name: Playwright Tests
 on:
-  push:
-    branches: [ master ]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'playwright.config.*'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/playwright.yml'
   pull_request:
     branches: [ master ]
     paths:
@@ -18,6 +9,11 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/playwright.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     timeout-minutes: 60
