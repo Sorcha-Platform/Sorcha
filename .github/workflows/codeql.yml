@@ -1,19 +1,12 @@
 name: CodeQL Security Analysis
 
 on:
-  push:
-    branches: [ master ]
-    # No paths filter: we want a security baseline on every master commit.
-  pull_request:
-    branches: [ master ]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - '*.sln'
-      - 'Directory.Packages.props'
-      - '.github/workflows/codeql.yml'
+  # Schedule-only — every Monday at midnight catches newly-disclosed CVEs.
+  # PR and master push triggers were dropped: the weekly run is sufficient
+  # for this codebase and keeps CI minutes down. Re-add a push trigger if
+  # branch protection ever requires CodeQL as a status check.
   schedule:
-    - cron: '0 0 * * 1'  # Run every Monday at midnight — catches newly-disclosed CVEs
+    - cron: '0 0 * * 1'
 
 jobs:
   analyze:

@@ -19,6 +19,12 @@ on:
         type: boolean
         default: false
 
+# Serialize master pushes — never overlap a publish run with itself.
+# Don't cancel-in-progress on master: a tag push mid-build should still finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
