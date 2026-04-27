@@ -540,21 +540,22 @@ public class ChatOrchestrationServiceTests
     [Fact]
     public async Task BuildSystemPrompt_IncludesSchemaTable()
     {
-        // Arrange — set up schema store to return schemas
-        var schemas = new List<Sorcha.Blueprint.Schemas.Models.SchemaEntry>
+        // Arrange — return one schema from the index so the prompt builder writes a row for it.
+        var entries = new List<Sorcha.Blueprint.Service.Models.SchemaIndexEntryDto>
         {
-            new()
-            {
-                Identifier = "invoice-schema",
-                Title = "Invoice Schema",
-                Description = "Standard invoice fields",
-                Version = "1.0.0",
-                Category = Sorcha.Blueprint.Schemas.Models.SchemaCategory.Custom,
-                Source = Sorcha.Blueprint.Schemas.Models.SchemaSource.Internal(),
-                Content = System.Text.Json.JsonDocument.Parse("{}"),
-                SectorTags = new[] { "finance" },
-                FieldCount = 5
-            }
+            new(
+                ShortCode: "invoice-schema",
+                SourceProvider: "internal",
+                SourceUri: "urn:sorcha:schema:invoice-schema",
+                Title: "Invoice Schema",
+                Description: "Standard invoice fields",
+                SectorTags: new[] { "finance" },
+                FieldCount: 5,
+                RequiredFieldCount: 0,
+                SchemaVersion: "1.0.0",
+                Status: "Active",
+                LastFetchedAt: DateTimeOffset.UtcNow,
+                FieldNames: null)
         };
 
         _schemaIndexServiceMock
@@ -568,8 +569,8 @@ public class ChatOrchestrationServiceTests
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Blueprint.Service.Models.SchemaIndexSearchResponse(
-                Results: Array.Empty<Sorcha.Blueprint.Service.Models.SchemaIndexEntryDto>(),
-                TotalCount: 0,
+                Results: entries,
+                TotalCount: entries.Count,
                 NextCursor: null,
                 LoadingProviders: null));
 

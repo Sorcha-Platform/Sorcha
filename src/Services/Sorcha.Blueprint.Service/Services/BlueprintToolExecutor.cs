@@ -64,6 +64,9 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 "search_templates" => ExecuteSearchTemplatesAsync(arguments, builder, cancellationToken),
                 "require_credential" => Task.FromResult(ExecuteRequireCredential(arguments, builder)),
                 "issue_credential" => Task.FromResult(ExecuteIssueCredential(arguments, builder)),
+                "set_action_schema" => Task.FromResult(ExecuteSetActionSchema(arguments, builder)),
+                "set_action_routes" => Task.FromResult(ExecuteSetActionRoutes(arguments, builder)),
+                "set_action_metadata" => Task.FromResult(ExecuteSetActionMetadata(arguments, builder)),
                 _ => Task.FromResult(ToolResult.Failed(Guid.NewGuid().ToString(), $"Unknown tool: {toolName}"))
             });
         }
@@ -855,6 +858,269 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
             blueprintChanged: true);
     }
 
+    /// <summary>
+    /// Escape-hatch: replaces or appends a full raw JSON Schema document on the action's
+    /// <c>dataSchemas</c>. Lets the AI emit shapes the typed tools cannot — nested objects,
+    /// arrays, <c>$ref</c>, <c>x-pages</c>/<c>x-sections</c>/<c>x-introduction</c>/<c>x-width</c>,
+    /// <c>x-persona</c>, <c>x-credential-offer</c>, <c>x-review</c>, <c>x-file</c>,
+    /// <c>formatMinimum</c>/<c>formatMaximum</c>, etc.
+    /// </summary>
+    private ToolResult ExecuteSetActionSchema(JsonDocument arguments, BlueprintBuilder builder)
+    {
+        var root = arguments.RootElement;
+        var actionId = root.GetProperty("actionId").GetInt32();
+        var schemaElem = root.GetProperty("schema");
+        var mode = root.TryGetProperty("mode", out var modeProp)
+            ? (modeProp.GetString() ?? "replace").ToLowerInvariant()
+            : "replace";
+
+        if (schemaElem.ValueKind != JsonValueKind.Object)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                "schema must be a JSON Schema object (with at minimum a 'type' property).");
+        }
+
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action == null)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"Action with ID {actionId} not found");
+        }
+
+        var doc = JsonDocument.Parse(schemaElem.GetRawText());
+        var schemas = mode == "append"
+            ? (action.DataSchemas?.ToList() ?? [])
+            : new List<JsonDocument>();
+        schemas.Add(doc);
+        action.DataSchemas = schemas;
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                message = $"{(mode == "append" ? "Appended" : "Replaced")} schema on action '{action.Title}'",
+                actionId,
+                mode,
+                schemaCount = schemas.Count
+            },
+            blueprintChanged: true);
+    }
+
+    /// <summary>
+    /// Escape-hatch: replaces the action's full <c>routes</c> array. Supports terminal routes
+    /// (empty <c>nextActionIds</c>), parallel branches (multiple ids), raw JSON Logic conditions,
+    /// <c>branchDeadline</c>, and <c>outputMapping</c> for payload carry-forward (Feature 104).
+    /// </summary>
+    private ToolResult ExecuteSetActionRoutes(JsonDocument arguments, BlueprintBuilder builder)
+    {
+        var root = arguments.RootElement;
+        var actionId = root.GetProperty("actionId").GetInt32();
+        var routesElem = root.GetProperty("routes");
+
+        if (routesElem.ValueKind != JsonValueKind.Array)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                "routes must be an array (use [] to clear all routes).");
+        }
+
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action == null)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"Action with ID {actionId} not found");
+        }
+
+        var routes = new List<Sorcha.Blueprint.Models.Route>();
+        var index = 0;
+        foreach (var routeElem in routesElem.EnumerateArray())
+        {
+            var id = routeElem.TryGetProperty("id", out var idProp) && idProp.ValueKind == JsonValueKind.String
+                ? idProp.GetString()!
+                : $"route_{index}";
+
+            var nextActionIds = routeElem.TryGetProperty("nextActionIds", out var nextProp)
+                && nextProp.ValueKind == JsonValueKind.Array
+                ? nextProp.EnumerateArray().Select(n => n.GetInt32()).ToList()
+                : new List<int>();
+
+            var route = new Sorcha.Blueprint.Models.Route
+            {
+                Id = id,
+                NextActionIds = nextActionIds,
+                IsDefault = routeElem.TryGetProperty("isDefault", out var defProp) && defProp.GetBoolean()
+            };
+
+            if (routeElem.TryGetProperty("description", out var descProp)
+                && descProp.ValueKind == JsonValueKind.String)
+            {
+                route.Description = descProp.GetString();
+            }
+
+            if (routeElem.TryGetProperty("branchDeadline", out var deadlineProp)
+                && deadlineProp.ValueKind == JsonValueKind.String)
+            {
+                route.BranchDeadline = deadlineProp.GetString();
+            }
+
+            if (routeElem.TryGetProperty("condition", out var condProp)
+                && condProp.ValueKind != JsonValueKind.Null
+                && condProp.ValueKind != JsonValueKind.Undefined)
+            {
+                route.Condition = System.Text.Json.Nodes.JsonNode.Parse(condProp.GetRawText());
+            }
+
+            if (routeElem.TryGetProperty("outputMapping", out var omProp)
+                && omProp.ValueKind == JsonValueKind.Object)
+            {
+                var map = new Dictionary<string, string>();
+                foreach (var prop in omProp.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        map[prop.Name] = prop.Value.GetString()!;
+                    }
+                }
+                if (map.Count > 0)
+                {
+                    route.OutputMapping = map;
+                }
+            }
+
+            routes.Add(route);
+            index++;
+        }
+
+        action.Routes = routes;
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                message = $"Set {routes.Count} route(s) on action '{action.Title}'",
+                actionId,
+                routeCount = routes.Count,
+                hasTerminal = routes.Any(r => !r.NextActionIds.Any()),
+                hasOutputMapping = routes.Any(r => r.OutputMapping != null && r.OutputMapping.Count > 0)
+            },
+            blueprintChanged: true);
+    }
+
+    /// <summary>
+    /// Escape-hatch: sparse update of action metadata that the typed tools cannot fully express —
+    /// <c>isStartingAction</c>, <c>instructions</c>, <c>requiredPriorActions</c>, <c>rejectionConfig</c>,
+    /// and the full <c>credentialRequirements</c> / <c>credentialIssuanceConfig</c> shapes including
+    /// <c>presentationSource</c> and <c>targetAudience</c>. Only provided fields are updated.
+    /// </summary>
+    private ToolResult ExecuteSetActionMetadata(JsonDocument arguments, BlueprintBuilder builder)
+    {
+        var root = arguments.RootElement;
+        var actionId = root.GetProperty("actionId").GetInt32();
+
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action == null)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"Action with ID {actionId} not found");
+        }
+
+        var updated = new List<string>();
+
+        if (root.TryGetProperty("isStartingAction", out var startProp)
+            && (startProp.ValueKind == JsonValueKind.True || startProp.ValueKind == JsonValueKind.False))
+        {
+            action.IsStartingAction = startProp.GetBoolean();
+            updated.Add("isStartingAction");
+        }
+
+        if (root.TryGetProperty("instructions", out var instrProp)
+            && instrProp.ValueKind == JsonValueKind.String)
+        {
+            action.Instructions = instrProp.GetString();
+            updated.Add("instructions");
+        }
+
+        if (root.TryGetProperty("requiredPriorActions", out var rpaProp)
+            && rpaProp.ValueKind == JsonValueKind.Array)
+        {
+            action.RequiredPriorActions = rpaProp.EnumerateArray().Select(n => n.GetInt32()).ToList();
+            updated.Add("requiredPriorActions");
+        }
+
+        if (root.TryGetProperty("rejectionConfig", out var rejProp))
+        {
+            if (rejProp.ValueKind == JsonValueKind.Null)
+            {
+                action.RejectionConfig = null;
+                updated.Add("rejectionConfig (cleared)");
+            }
+            else if (rejProp.ValueKind == JsonValueKind.Object)
+            {
+                var rc = JsonSerializer.Deserialize<Sorcha.Blueprint.Models.RejectionConfig>(rejProp.GetRawText())
+                    ?? throw new InvalidOperationException("Failed to deserialize rejectionConfig");
+                action.RejectionConfig = rc;
+                updated.Add("rejectionConfig");
+            }
+        }
+
+        if (root.TryGetProperty("credentialRequirements", out var crProp))
+        {
+            if (crProp.ValueKind == JsonValueKind.Null)
+            {
+                action.CredentialRequirements = null;
+                updated.Add("credentialRequirements (cleared)");
+            }
+            else if (crProp.ValueKind == JsonValueKind.Array)
+            {
+                var reqs = JsonSerializer.Deserialize<List<CredentialRequirement>>(crProp.GetRawText())
+                    ?? new List<CredentialRequirement>();
+                action.CredentialRequirements = reqs;
+                updated.Add($"credentialRequirements ({reqs.Count})");
+            }
+        }
+
+        if (root.TryGetProperty("credentialIssuanceConfig", out var ciProp))
+        {
+            if (ciProp.ValueKind == JsonValueKind.Null)
+            {
+                action.CredentialIssuanceConfig = null;
+                updated.Add("credentialIssuanceConfig (cleared)");
+            }
+            else if (ciProp.ValueKind == JsonValueKind.Object)
+            {
+                var cfg = JsonSerializer.Deserialize<CredentialIssuanceConfig>(ciProp.GetRawText())
+                    ?? throw new InvalidOperationException("Failed to deserialize credentialIssuanceConfig");
+                action.CredentialIssuanceConfig = cfg;
+                updated.Add("credentialIssuanceConfig");
+            }
+        }
+
+        if (updated.Count == 0)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                "No metadata fields provided. Pass at least one of: isStartingAction, instructions, " +
+                "requiredPriorActions, rejectionConfig, credentialRequirements, credentialIssuanceConfig.");
+        }
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                message = $"Updated action '{action.Title}' metadata: {string.Join(", ", updated)}",
+                actionId,
+                updated
+            },
+            blueprintChanged: true);
+    }
+
     private ToolResult ExecuteValidateBlueprint(JsonDocument arguments, BlueprintBuilder builder)
     {
         var errors = new List<object>();
@@ -1293,6 +1559,206 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                         }
                     },
                     required = new[] { "actionId", "credentialType", "claimMappings", "recipientParticipantId" }
+                }),
+
+            ToolDefinition.Create(
+                "set_action_schema",
+                "Advanced. Replaces (or appends to) an action's data schema with a full raw JSON Schema document. " +
+                "Use this when add_action's flat fields cannot express the shape you need: nested objects, arrays, " +
+                "$ref to core components (PersonName/DateOfBirth/EmailAddress/PostalAddress), x-pages (wizard), " +
+                "x-sections / x-introduction / x-width (form layout), x-persona (autofill bindings), " +
+                "x-credential-offer (claim card — Feature 104), x-review (id-card summary), x-file " +
+                "(file uploads with chunking), or formatMinimum / formatMaximum date constraints with today / " +
+                "today+18Y tokens. Prefer add_action / use_standard_schema for simple flat shapes.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        actionId = new { type = "integer", description = "Action ID to attach the schema to" },
+                        schema = new
+                        {
+                            type = "object",
+                            description = "A full JSON Schema 2020-12 object. Pass through unchanged — the renderer and " +
+                                "validator will resolve $ref, x-pages, x-sections, x-persona, x-credential-offer, etc."
+                        },
+                        mode = new
+                        {
+                            type = "string",
+                            @enum = new[] { "replace", "append" },
+                            description = "replace (default) clears the action's existing dataSchemas; append adds this schema to the existing list."
+                        }
+                    },
+                    required = new[] { "actionId", "schema" }
+                }),
+
+            ToolDefinition.Create(
+                "set_action_routes",
+                "Advanced. Replaces an action's routes with the full Route[] shape. Use this when add_routing cannot " +
+                "express what you need: terminal routes (empty nextActionIds means workflow complete), parallel " +
+                "branches (multiple nextActionIds with branchDeadline), raw JSON Logic conditions (any operator, not " +
+                "just the five add_routing exposes), or outputMapping (Feature 104 payload carry-forward — required " +
+                "for credential claim flows). Prefer add_routing for simple linear conditional shapes.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        actionId = new { type = "integer", description = "Action ID whose routes will be replaced" },
+                        routes = new
+                        {
+                            type = "array",
+                            description = "Routes evaluated in order. First matching condition wins; the default route fires last.",
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    id = new { type = "string", description = "Unique id within the action (e.g., 'approved-to-claim'). Auto-generated if omitted." },
+                                    nextActionIds = new
+                                    {
+                                        type = "array",
+                                        items = new { type = "integer" },
+                                        description = "Action IDs to route to. Empty array [] terminates the workflow. Multiple IDs create parallel branches."
+                                    },
+                                    condition = new
+                                    {
+                                        type = "object",
+                                        description = "JSON Logic condition (e.g., { \"==\": [{ \"var\": \"decision\" }, \"approved\"] }). Omit for unconditional routes."
+                                    },
+                                    isDefault = new { type = "boolean", description = "Marks this as the fall-through route when no other condition matches." },
+                                    description = new { type = "string", description = "Human-readable note shown in tooling." },
+                                    branchDeadline = new { type = "string", description = "ISO 8601 duration (e.g., 'P7D'). Only meaningful when nextActionIds has multiple entries." },
+                                    outputMapping = new
+                                    {
+                                        type = "object",
+                                        description = "Map source JSON Pointer → target JSON Pointer. Source roots: /payload, /calculations, /haip. Target = next action's prepopulated payload. Required for the credential claim card hand-off in Feature 104.",
+                                        additionalProperties = new { type = "string" }
+                                    }
+                                },
+                                required = new[] { "nextActionIds" }
+                            }
+                        }
+                    },
+                    required = new[] { "actionId", "routes" }
+                }),
+
+            ToolDefinition.Create(
+                "set_action_metadata",
+                "Advanced. Sparse update of action metadata that the typed tools cannot fully express. Pass any " +
+                "subset of: isStartingAction (the open-participant flag), instructions (markdown guidance), " +
+                "requiredPriorActions, rejectionConfig (full shape with isTerminal / requireReason / " +
+                "targetParticipantId / rejectionSchema), credentialRequirements (full shape including " +
+                "presentationSource: HaipExternalWallet | SorchaInternal — typed require_credential cannot set this), " +
+                "credentialIssuanceConfig (full shape including targetAudience: HaipExternalWallet | SorchaLocalWallet — " +
+                "typed issue_credential cannot set this; required for HAIP credential issuance flows). Pass null on a " +
+                "field to clear it. Prefer require_credential / issue_credential for simple SorchaInternal cases.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        actionId = new { type = "integer", description = "Action ID to update" },
+                        isStartingAction = new
+                        {
+                            type = "boolean",
+                            description = "When true, the action is open: any wallet may submit, the first sender is " +
+                                "late-bound to the participant role for the instance. Participant referenced by sender " +
+                                "MUST have walletAddress null (publish-time guardrail VAL_BP_010)."
+                        },
+                        instructions = new { type = "string", description = "Markdown guidance shown to the participant (max 5000 chars)." },
+                        requiredPriorActions = new
+                        {
+                            type = "array",
+                            items = new { type = "integer" },
+                            description = "Action IDs whose data must be fetched and decrypted to build the accumulated state for routing evaluation. Defaults to immediately preceding action."
+                        },
+                        rejectionConfig = new
+                        {
+                            type = "object",
+                            description = "Where the workflow goes when this action is rejected. null clears it.",
+                            properties = new
+                            {
+                                targetActionId = new { type = "integer", description = "Action to route to on rejection" },
+                                targetParticipantId = new { type = "string", description = "Override sender for the rejection-target action. Optional." },
+                                requireReason = new { type = "boolean", description = "Whether a rejection reason is mandatory. Default true." },
+                                isTerminal = new { type = "boolean", description = "If true, rejection ends the workflow (Rejected state) instead of routing. Used by the credential claim card decline action." }
+                            }
+                        },
+                        credentialRequirements = new
+                        {
+                            type = "array",
+                            description = "Credentials the participant must present before executing this action. AND-combined. null clears.",
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    type = new { type = "string", description = "Credential type (e.g., 'AssuredIdentityCredential')" },
+                                    acceptedIssuers = new { type = "array", items = new { type = "string" }, description = "Trusted issuer DIDs/addresses. Empty = any issuer." },
+                                    requiredClaims = new
+                                    {
+                                        type = "array",
+                                        items = new
+                                        {
+                                            type = "object",
+                                            properties = new
+                                            {
+                                                claimName = new { type = "string" },
+                                                expectedValue = new { description = "Optional exact-match value." }
+                                            }
+                                        }
+                                    },
+                                    revocationCheckPolicy = new { type = "string", @enum = new[] { "FailClosed", "FailOpen" } },
+                                    presentationSource = new
+                                    {
+                                        type = "string",
+                                        @enum = new[] { "SorchaInternal", "HaipExternalWallet" },
+                                        description = "Where the presentation comes from. SorchaInternal (default) matches against on-platform credentials; HaipExternalWallet requires presentation via the HAIP OpenID4VP verifier — used for credential-bootstrapped open submissions and external wallet flows."
+                                    },
+                                    description = new { type = "string" }
+                                },
+                                required = new[] { "type" }
+                            }
+                        },
+                        credentialIssuanceConfig = new
+                        {
+                            type = "object",
+                            description = "Mints a verifiable credential when this action executes. null clears.",
+                            properties = new
+                            {
+                                credentialType = new { type = "string" },
+                                claimMappings = new
+                                {
+                                    type = "array",
+                                    items = new
+                                    {
+                                        type = "object",
+                                        properties = new
+                                        {
+                                            claimName = new { type = "string" },
+                                            sourceField = new { type = "string", description = "JSON Pointer to action data field" }
+                                        },
+                                        required = new[] { "claimName", "sourceField" }
+                                    }
+                                },
+                                recipientParticipantId = new { type = "string", description = "Participant ID who receives the credential" },
+                                expiryDuration = new { type = "string", description = "ISO 8601 (e.g., 'P365D')" },
+                                registerId = new { type = "string", description = "Optional public register to record on" },
+                                disclosable = new { type = "array", items = new { type = "string" }, description = "Selectively disclosable claim names. Omit = all disclosable." },
+                                usagePolicy = new { type = "string", @enum = new[] { "Reusable", "SingleUse", "LimitedUse" } },
+                                maxPresentations = new { type = "integer", description = "Required when usagePolicy is LimitedUse." },
+                                targetAudience = new
+                                {
+                                    type = "string",
+                                    @enum = new[] { "HaipExternalWallet", "SorchaLocalWallet" },
+                                    description = "Delivery channel. HaipExternalWallet emits an OpenID4VCI offer (Feature 104 — pair with a separate Claim action carrying x-credential-offer + outputMapping). SorchaLocalWallet (Feature 106) seals the encrypted credential into the action transaction for register-native delivery to an on-platform wallet. Avoid the deprecated SorchaInternal value."
+                                }
+                            },
+                            required = new[] { "credentialType", "claimMappings", "recipientParticipantId" }
+                        }
+                    },
+                    required = new[] { "actionId" }
                 })
         };
     }

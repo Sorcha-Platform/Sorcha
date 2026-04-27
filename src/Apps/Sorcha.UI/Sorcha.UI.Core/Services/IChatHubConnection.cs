@@ -75,11 +75,12 @@ public interface IChatHubConnection : IAsyncDisposable
     Task<string> StartSessionAsync(string? existingBlueprintId = null);
 
     /// <summary>
-    /// Sends a user message to the AI.
+    /// Sends a user message to the AI, optionally with image / PDF attachments.
     /// </summary>
     /// <param name="sessionId">Active session ID.</param>
-    /// <param name="message">User's message.</param>
-    Task SendMessageAsync(string sessionId, string message);
+    /// <param name="message">User's message (may be empty when <paramref name="attachments"/> is non-empty).</param>
+    /// <param name="attachments">Optional binary attachments — base64-encoded, mirrors the server record shape.</param>
+    Task SendMessageAsync(string sessionId, string message, IReadOnlyList<ChatAttachment>? attachments = null);
 
     /// <summary>
     /// Cancels the current AI generation.

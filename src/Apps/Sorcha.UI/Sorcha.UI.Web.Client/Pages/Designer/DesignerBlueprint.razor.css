@@ -1,5 +1,31 @@
 .designer-shell {
+    /* Top MudAppBar (64) + bottom StatusFooter MudAppBar (32) + MudContainer
+       my-4 vertical margins (32) + MainLayout padding-bottom (40). Tune via
+       this variable if layout chrome changes. */
+    --designer-chrome-height: 168px;
     display: grid;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto 1fr;
+    height: calc(100dvh - var(--designer-chrome-height));
+    min-height: 0;
+}
+
+/* Pass real height through MudTabs so the active panel fills the 1fr row.
+   Without this the panel collapses to content height, breaking the
+   pinned-composer layout in AiDesignerPane. */
+.designer-shell ::deep .mud-tabs {
+    display: flex;
+    flex-direction: column;
     height: 100%;
+    min-height: 0;
+}
+
+.designer-shell ::deep .mud-tabs-panels {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.designer-shell ::deep .mud-tab-panel {
+    height: 100%;
+    min-height: 0;
 }

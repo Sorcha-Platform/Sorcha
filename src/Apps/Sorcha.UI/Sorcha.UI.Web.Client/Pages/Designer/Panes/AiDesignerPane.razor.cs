@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using MudBlazor;
@@ -22,16 +24,22 @@ namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Panes;
 public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
 {
     private readonly List<ChatMessageModel> _messages = [];
+    private readonly List<ChatAttachment> _pendingAttachments = [];
     private AutoScrollController? _autoScroll;
     private string _messageInput = string.Empty;
     private string _currentAssistantMessage = string.Empty;
     private bool _isProcessing;
     private bool _connected;
+    private bool _isDragging;
     private string? _sessionId;
     private bool _initialised;
     private DotNetObjectReference<AiDesignerPane>? _testHookRef;
+    private DotNetObjectReference<AiDesignerPane>? _dropZoneRef;
 
     private const string MessagesElementId = "ai-pane-messages";
+    private const string PaneRootElementId = "ai-pane-root";
+    private const string FileInputElementId = "ai-pane-file-input";
+    private const int MaxAttachmentsPerMessage = 5;
 
     private bool IsConnected => _connected && ChatHub.State == ChatConnectionState.Connected;
 
@@ -68,7 +76,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
     {
         if (firstRender)
         {
-            // Register auto-scroll helper expected by AutoScrollController.
+            // Register auto-scroll + drop-zone helpers expected by the JS layer.
             // Data is always passed as arguments — never interpolated into JS.
             try
             {
@@ -76,7 +84,49 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
                     "window.sorcha = window.sorcha || {};" +
                     "window.sorcha.designer = window.sorcha.designer || {};" +
                     "window.sorcha.designer.scrollToBottom = window.sorcha.designer.scrollToBottom || function(id) {" +
-                    "var el = document.getElementById(id); if (el) { el.scrollTop = el.scrollHeight; } };");
+                    "var el = document.getElementById(id); if (el) { el.scrollTop = el.scrollHeight; } };" +
+
+                    // Programmatic file picker open (paperclip button).
+                    "window.sorcha.designer.openFilePicker = window.sorcha.designer.openFilePicker || function(id) {" +
+                    "var el = document.getElementById(id); if (el) { el.value = ''; el.click(); } };" +
+
+                    // Chunked ArrayBuffer → base64 (avoids call-stack overflow on large files).
+                    "window.sorcha.designer._toBase64 = window.sorcha.designer._toBase64 || function(buf) {" +
+                    "var bytes = new Uint8Array(buf), binary = '', chunk = 0x8000;" +
+                    "for (var i = 0; i < bytes.length; i += chunk) {" +
+                    "binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length))); }" +
+                    "return btoa(binary); };" +
+
+                    // Whole-pane drop zone with depth-counted enter/leave (children fire spurious leaves).
+                    "window.sorcha.designer.attachDropZone = window.sorcha.designer.attachDropZone || function(id, dotNetRef) {" +
+                    "var el = document.getElementById(id); if (!el) return;" +
+                    "if (el.__sorchaDrop) return; el.__sorchaDrop = true;" +
+                    "var depth = 0;" +
+                    "el.addEventListener('dragenter', function(e) {" +
+                    "if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;" +
+                    "e.preventDefault(); depth++;" +
+                    "if (depth === 1) dotNetRef.invokeMethodAsync('OnDragStart'); });" +
+                    "el.addEventListener('dragover', function(e) {" +
+                    "if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;" +
+                    "e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });" +
+                    "el.addEventListener('dragleave', function(e) {" +
+                    "if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;" +
+                    "depth = Math.max(0, depth - 1);" +
+                    "if (depth === 0) dotNetRef.invokeMethodAsync('OnDragEnd'); });" +
+                    "el.addEventListener('drop', async function(e) {" +
+                    "e.preventDefault(); depth = 0;" +
+                    "dotNetRef.invokeMethodAsync('OnDragEnd');" +
+                    "if (!e.dataTransfer || !e.dataTransfer.files) return;" +
+                    "var out = [];" +
+                    "for (var i = 0; i < e.dataTransfer.files.length; i++) {" +
+                    "var f = e.dataTransfer.files[i];" +
+                    "var buf = await f.arrayBuffer();" +
+                    "out.push({ fileName: f.name, mediaType: f.type || 'application/octet-stream'," +
+                    "base64Data: window.sorcha.designer._toBase64(buf) }); }" +
+                    "await dotNetRef.invokeMethodAsync('OnFilesDropped', JSON.stringify(out)); }); };");
+
+                _dropZoneRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("window.sorcha.designer.attachDropZone", PaneRootElementId, _dropZoneRef);
             }
             catch
             {
@@ -284,7 +334,8 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
                 {
                     Role = MessageRole.Assistant,
                     Content = "Hello! I'm your AI blueprint designer. Describe the workflow you want to create " +
-                              "and I'll help you build it step by step.",
+                              "and I'll help you build it step by step. Drop images or PDFs onto this pane to share " +
+                              "reference material with me.",
                     Timestamp = DateTime.UtcNow
                 });
             }
@@ -295,7 +346,8 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && !e.ShiftKey && !string.IsNullOrWhiteSpace(_messageInput))
+        if (e.Key == "Enter" && !e.ShiftKey
+            && (!string.IsNullOrWhiteSpace(_messageInput) || _pendingAttachments.Count > 0))
         {
             await SendMessageAsync();
         }
@@ -303,18 +355,23 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
 
     private async Task SendMessageAsync()
     {
-        if (string.IsNullOrWhiteSpace(_messageInput) || string.IsNullOrEmpty(_sessionId))
+        var hasText = !string.IsNullOrWhiteSpace(_messageInput);
+        var hasFiles = _pendingAttachments.Count > 0;
+        if ((!hasText && !hasFiles) || string.IsNullOrEmpty(_sessionId))
         {
             return;
         }
 
         var message = _messageInput;
+        var attachmentsToSend = _pendingAttachments.ToList();
         _messageInput = string.Empty;
+        _pendingAttachments.Clear();
 
         _messages.Add(new ChatMessageModel
         {
             Role = MessageRole.User,
             Content = message,
+            Attachments = attachmentsToSend.ToList(),
             Timestamp = DateTime.UtcNow
         });
         _isProcessing = true;
@@ -322,7 +379,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
 
         try
         {
-            await ChatHub.SendMessageAsync(_sessionId, message);
+            await ChatHub.SendMessageAsync(_sessionId, message, attachmentsToSend);
         }
         catch (Exception ex)
         {
@@ -346,6 +403,178 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         {
             Snackbar.Add($"Failed to cancel: {ex.Message}", Severity.Error);
         }
+    }
+
+    private async Task OpenFilePicker()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("window.sorcha.designer.openFilePicker", FileInputElementId);
+        }
+        catch
+        {
+            // Ignore — JS layer will reattach on next render.
+        }
+    }
+
+    private async Task OnInputFilesChanged(InputFileChangeEventArgs e)
+    {
+        // Click-to-pick path mirrors the drag-drop path: read each file, validate,
+        // base64-encode, and feed the same _pendingAttachments list.
+        foreach (var file in e.GetMultipleFiles(MaxAttachmentsPerMessage))
+        {
+            if (_pendingAttachments.Count >= MaxAttachmentsPerMessage)
+            {
+                Snackbar.Add($"Maximum {MaxAttachmentsPerMessage} attachments per message.", Severity.Warning);
+                break;
+            }
+
+            try
+            {
+                var attachment = await ReadBrowserFileAsync(file);
+                if (attachment != null)
+                {
+                    _pendingAttachments.Add(attachment);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Could not attach {file.Name}: {ex.Message}", Severity.Error);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task<ChatAttachment?> ReadBrowserFileAsync(IBrowserFile file)
+    {
+        var (kind, ok) = ClassifyMediaType(file.ContentType);
+        if (!ok)
+        {
+            Snackbar.Add($"Unsupported file type: {file.ContentType}", Severity.Warning);
+            return null;
+        }
+
+        var maxSize = kind == ChatAttachmentKind.Image ? 5 * 1024 * 1024L : 32 * 1024 * 1024L;
+        if (file.Size > maxSize)
+        {
+            var limit = kind == ChatAttachmentKind.Image ? "5 MB" : "32 MB";
+            Snackbar.Add($"{file.Name} is too large (max {limit}).", Severity.Warning);
+            return null;
+        }
+
+        await using var stream = file.OpenReadStream(maxAllowedSize: maxSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var base64 = Convert.ToBase64String(ms.ToArray());
+
+        return new ChatAttachment
+        {
+            Kind = kind,
+            MediaType = file.ContentType,
+            Base64Data = base64,
+            FileName = file.Name
+        };
+    }
+
+    private static (ChatAttachmentKind kind, bool ok) ClassifyMediaType(string? mediaType)
+    {
+        return (mediaType ?? string.Empty).ToLowerInvariant() switch
+        {
+            "image/jpeg" or "image/png" or "image/webp" or "image/gif" => (ChatAttachmentKind.Image, true),
+            "application/pdf" => (ChatAttachmentKind.Pdf, true),
+            _ => (ChatAttachmentKind.Image, false)
+        };
+    }
+
+    private void RemoveAttachment(ChatAttachment att)
+    {
+        _pendingAttachments.Remove(att);
+        StateHasChanged();
+    }
+
+    /// <summary>JS callback: drag entered the pane (file payload).</summary>
+    [JSInvokable]
+    public void OnDragStart()
+    {
+        InvokeAsync(() =>
+        {
+            _isDragging = true;
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>JS callback: drag left the pane or drop fired.</summary>
+    [JSInvokable]
+    public void OnDragEnd()
+    {
+        InvokeAsync(() =>
+        {
+            _isDragging = false;
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>
+    /// JS callback: files dropped on the pane. JSON payload is an array of
+    /// <c>{ fileName, mediaType, base64Data }</c>. We classify, validate size,
+    /// and append to <see cref="_pendingAttachments"/>.
+    /// </summary>
+    [JSInvokable]
+    public void OnFilesDropped(string filesJson)
+    {
+        InvokeAsync(() =>
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(filesJson);
+                foreach (var item in doc.RootElement.EnumerateArray())
+                {
+                    if (_pendingAttachments.Count >= MaxAttachmentsPerMessage)
+                    {
+                        Snackbar.Add($"Maximum {MaxAttachmentsPerMessage} attachments per message.", Severity.Warning);
+                        break;
+                    }
+
+                    var fileName = item.TryGetProperty("fileName", out var n) ? n.GetString() : null;
+                    var mediaType = item.TryGetProperty("mediaType", out var mt) ? mt.GetString() : null;
+                    var data = item.TryGetProperty("base64Data", out var d) ? d.GetString() : null;
+
+                    if (string.IsNullOrEmpty(data) || string.IsNullOrEmpty(mediaType))
+                    {
+                        continue;
+                    }
+
+                    var (kind, ok) = ClassifyMediaType(mediaType);
+                    if (!ok)
+                    {
+                        Snackbar.Add($"Unsupported file type: {mediaType}", Severity.Warning);
+                        continue;
+                    }
+
+                    // Server enforces hard limits; reject obvious fails client-side too.
+                    var maxBase64 = kind == ChatAttachmentKind.Image ? 7_000_000 : 45_000_000;
+                    if (data.Length > maxBase64)
+                    {
+                        Snackbar.Add($"{fileName ?? "Attachment"} exceeds the size limit.", Severity.Warning);
+                        continue;
+                    }
+
+                    _pendingAttachments.Add(new ChatAttachment
+                    {
+                        Kind = kind,
+                        MediaType = mediaType,
+                        Base64Data = data,
+                        FileName = fileName
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to read dropped files: {ex.Message}", Severity.Error);
+            }
+            StateHasChanged();
+        });
     }
 
 #if DEBUG || E2E_TEST_HOOKS
@@ -432,5 +661,6 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         }
 
         _testHookRef?.Dispose();
+        _dropZoneRef?.Dispose();
     }
 }

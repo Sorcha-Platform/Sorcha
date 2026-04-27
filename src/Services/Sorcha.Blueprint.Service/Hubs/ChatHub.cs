@@ -136,18 +136,20 @@ public class ChatHub : Hub
     }
 
     /// <summary>
-    /// Sends a user message to the AI assistant.
+    /// Sends a user message to the AI assistant. May include image / PDF attachments.
     /// </summary>
     /// <param name="sessionId">Active session ID.</param>
-    /// <param name="message">User's natural language input (max 10000 chars).</param>
-    public async Task SendMessage(string sessionId, string message)
+    /// <param name="message">User's natural language input (max 10000 chars; may be empty when <paramref name="attachments"/> is non-empty).</param>
+    /// <param name="attachments">Optional binary attachments (images, PDFs) — base64-encoded.</param>
+    public async Task SendMessage(string sessionId, string message, IReadOnlyList<ChatAttachment>? attachments = null)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
             throw new HubException("Session ID is required");
         }
 
-        if (string.IsNullOrWhiteSpace(message))
+        var hasAttachments = attachments is { Count: > 0 };
+        if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
         {
             throw new HubException("Message cannot be empty");
         }
@@ -184,6 +186,7 @@ public class ChatHub : Hub
                 {
                     await Clients.Caller.SendAsync("BlueprintUpdated", blueprint, validation);
                 },
+                attachments: attachments,
                 cancellationToken: cts.Token);
 
             // Message complete

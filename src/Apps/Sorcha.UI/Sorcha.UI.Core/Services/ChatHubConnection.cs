@@ -215,10 +215,12 @@ public class ChatHubConnection : IChatHubConnection
     }
 
     /// <inheritdoc />
-    public async Task SendMessageAsync(string sessionId, string message)
+    public async Task SendMessageAsync(string sessionId, string message, IReadOnlyList<ChatAttachment>? attachments = null)
     {
         EnsureConnected();
-        await _connection.InvokeAsync("SendMessage", sessionId, message);
+        // Pass attachments as a non-null payload so SignalR's parameter binding sees three args.
+        // An empty list is fine — the server treats null and empty equivalently.
+        await _connection.InvokeAsync("SendMessage", sessionId, message, attachments ?? Array.Empty<ChatAttachment>());
     }
 
     /// <inheritdoc />

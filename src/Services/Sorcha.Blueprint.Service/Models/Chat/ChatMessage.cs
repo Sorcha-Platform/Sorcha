@@ -39,6 +39,13 @@ public record ChatMessage
     public List<ToolResult>? ToolResults { get; init; }
 
     /// <summary>
+    /// Binary attachments (images, PDFs) the user dropped onto the chat. Forwarded to the AI
+    /// provider as content blocks alongside <see cref="Content"/>. Null on assistant messages
+    /// and on user messages with no attachments.
+    /// </summary>
+    public List<ChatAttachment>? Attachments { get; init; }
+
+    /// <summary>
     /// When the message was created.
     /// </summary>
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
