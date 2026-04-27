@@ -2,5 +2,14 @@
   <PropertyGroup>
     <LangVersion>14</LangVersion>
     <NoWarn>$(NoWarn);xUnit1051;CS1591</NoWarn>
+    <!--
+      Pin every test project to Microsoft.Testing.Platform so `dotnet test` dispatches the
+      same way for all projects. Without this, MSBuild's heuristic on Linux dotnet 10 SDK
+      picks VSTest invocation for some xunit.v3 projects whose exe entry point is MTP-only,
+      producing "The argument …Tests.dll is invalid" at host startup. Forcing MTP makes the
+      runner choice deterministic across the suite.
+    -->
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 </Project>
