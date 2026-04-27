@@ -16,7 +16,7 @@ const srcDir = path.join(root, 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot')
 const destDir = path.join(root, 'docs/site')
 
 // Files copied verbatim (no rewrites).
-const verbatim = ['landing.css', 'landing.js']
+const verbatim = ['landing.css', 'landing.js', 'consent-banner.js']
 
 // Link rewrites applied to index.html only. The LHS is what appears in the UI
 // source (served under the API gateway); the RHS is the public URL used on
