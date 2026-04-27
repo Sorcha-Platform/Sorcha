@@ -2,6 +2,7 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Panes
+@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.JSInterop
 @using MudBlazor
 @using Sorcha.UI.Core.Models.Chat
@@ -15,7 +16,16 @@
 @inject ISnackbar Snackbar
 @implements IAsyncDisposable
 
-<div class="ai-pane" data-testid="ai-tab-panel">
+<div class="ai-pane" id="ai-pane-root" data-testid="ai-tab-panel">
+    @if (_isDragging)
+    {
+        <div class="ai-pane-drop-overlay" data-testid="chat-drop-overlay">
+            <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" />
+            <MudText Typo="Typo.h6">Drop files to attach</MudText>
+            <MudText Typo="Typo.caption">Images (JPG / PNG / WebP / GIF up to 5 MB) or PDFs (up to 32 MB) — max @MaxAttachmentsPerMessage per message</MudText>
+        </div>
+    }
+
     <div class="ai-pane-messages" data-testid="chat-message-list" id="ai-pane-messages">
         <div class="ai-pane-messages-inner">
             @foreach (var message in _messages)
@@ -34,8 +44,38 @@
     </div>
 
     <div class="ai-pane-input" data-testid="chat-input-area">
+        @if (_pendingAttachments.Count > 0)
+        {
+            <div class="ai-pane-attachment-chips" data-testid="chat-attachment-chips">
+                @foreach (var att in _pendingAttachments)
+                {
+                    <MudChip T="string"
+                             Color="Color.Primary"
+                             Variant="Variant.Outlined"
+                             Icon="@(att.Kind == ChatAttachmentKind.Image ? Icons.Material.Filled.Image : Icons.Material.Filled.PictureAsPdf)"
+                             OnClose="@(() => RemoveAttachment(att))"
+                             CloseIcon="@Icons.Material.Filled.Close">
+                        @(att.FileName ?? att.MediaType)
+                    </MudChip>
+                }
+            </div>
+        }
+
         <MudPaper Elevation="2" Class="pa-2">
             <div class="d-flex align-center gap-2">
+                <InputFile id="@FileInputElementId"
+                           OnChange="OnInputFilesChanged"
+                           multiple
+                           accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                           class="ai-pane-file-input-hidden" />
+
+                <MudIconButton Icon="@Icons.Material.Filled.AttachFile"
+                               Color="Color.Default"
+                               Disabled="@(!IsConnected || _isProcessing)"
+                               OnClick="OpenFilePicker"
+                               Title="Attach files"
+                               data-testid="chat-attach-button" />
+
                 <MudTextField @bind-Value="_messageInput"
                               Placeholder="@(IsConnected ? "Describe your workflow..." : "Connecting...")"
                               Variant="Variant.Outlined"
@@ -60,7 +100,7 @@
                     <MudButton Color="Color.Primary"
                                Variant="Variant.Filled"
                                OnClick="SendMessageAsync"
-                               Disabled="@(string.IsNullOrWhiteSpace(_messageInput) || !IsConnected)"
+                               Disabled="@((string.IsNullOrWhiteSpace(_messageInput) && _pendingAttachments.Count == 0) || !IsConnected)"
                                StartIcon="@Icons.Material.Filled.Send"
                                data-testid="chat-send-button">
                         Send

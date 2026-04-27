@@ -33,6 +33,7 @@ public interface IChatOrchestrationService
     /// <param name="onChunk">Callback for each text chunk.</param>
     /// <param name="onToolResult">Callback when a tool is executed.</param>
     /// <param name="onBlueprintUpdate">Callback when the blueprint changes.</param>
+    /// <param name="attachments">Optional binary attachments (images, PDFs) the user dropped onto the chat.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task ProcessMessageAsync(
         string sessionId,
@@ -40,6 +41,7 @@ public interface IChatOrchestrationService
         Func<string, Task> onChunk,
         Func<string, ToolResult, Task> onToolResult,
         Func<BlueprintModel, ValidationResultDto, Task> onBlueprintUpdate,
+        IReadOnlyList<ChatAttachment>? attachments = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

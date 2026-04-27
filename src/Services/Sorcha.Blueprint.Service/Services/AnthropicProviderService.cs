@@ -179,11 +179,52 @@ public class AnthropicProviderService : IAIProviderService
             }
             else
             {
-                // Regular text message
+                // Regular text message — possibly with image / PDF attachments.
+                var contents = new List<ContentBase>();
+
+                if (msg.Attachments is { Count: > 0 })
+                {
+                    foreach (var att in msg.Attachments)
+                    {
+                        switch (att.Kind)
+                        {
+                            case ChatAttachmentKind.Image:
+                                contents.Add(new ImageContent
+                                {
+                                    Source = new ImageSource
+                                    {
+                                        Type = SourceType.base64,
+                                        MediaType = att.MediaType,
+                                        Data = att.Base64Data
+                                    }
+                                });
+                                break;
+                            case ChatAttachmentKind.Pdf:
+                                contents.Add(new DocumentContent
+                                {
+                                    Source = new DocumentSource
+                                    {
+                                        Type = SourceType.base64,
+                                        MediaType = att.MediaType,
+                                        Data = att.Base64Data
+                                    }
+                                });
+                                break;
+                        }
+                    }
+                }
+
+                // Anthropic requires at least one content block; pad empty messages with
+                // a single space so an attachment-only user message still validates.
+                contents.Add(new TextContent
+                {
+                    Text = string.IsNullOrEmpty(msg.Content) && contents.Count > 0 ? " " : msg.Content
+                });
+
                 result.Add(new Message
                 {
                     Role = role,
-                    Content = [new TextContent { Text = msg.Content }]
+                    Content = contents
                 });
             }
         }

@@ -29,6 +29,11 @@ public record ChatMessage
     public List<ToolExecutionResult> ToolResults { get; init; } = [];
 
     /// <summary>
+    /// Binary attachments displayed alongside the text. Set on user messages with file drops.
+    /// </summary>
+    public List<ChatAttachment> Attachments { get; init; } = [];
+
+    /// <summary>
     /// When the message was created.
     /// </summary>
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
