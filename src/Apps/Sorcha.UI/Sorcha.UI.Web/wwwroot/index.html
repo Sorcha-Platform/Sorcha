@@ -35,6 +35,24 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="landing.css">
+
+    <!-- Google Analytics gtag.js — measurement ID is public.
+         Configured in Consent Mode v2 default-denied; banner.js
+         flips analytics_storage to 'granted' on user opt-in. -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-B2MKVEP45T"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('consent', 'default', {
+            ad_storage: 'denied',
+            ad_user_data: 'denied',
+            ad_personalization: 'denied',
+            analytics_storage: 'denied',
+            wait_for_update: 500
+        });
+        gtag('js', new Date());
+        gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });
+    </script>
 </head>
 <body>
     <!-- Navigation -->
@@ -800,5 +818,6 @@
     </footer>
 
     <script src="landing.js"></script>
+    <script src="consent-banner.js"></script>
 </body>
 </html>

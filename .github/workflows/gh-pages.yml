@@ -11,6 +11,7 @@ on:
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/index.html'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/landing.css'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/landing.js'
+      - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/consent-banner.js'
       - 'scripts/copy-landing-to-site.js'
       - '.github/workflows/gh-pages.yml'
   workflow_dispatch:
