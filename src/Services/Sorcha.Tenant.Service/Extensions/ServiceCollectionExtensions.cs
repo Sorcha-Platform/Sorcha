@@ -10,6 +10,7 @@ using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Service.Telemetry;
 using StackExchange.Redis;
 
 namespace Sorcha.Tenant.Service.Extensions;
@@ -37,6 +38,28 @@ public static class WebApplicationExtensions
     public static IServiceCollection AddAuditCleanup(this IServiceCollection services)
     {
         services.AddHostedService<AuditCleanupService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Feature 116: registers the re-authentication challenge primitive
+    /// (entity repository, ladder service, OpenTelemetry meter, and the
+    /// daily cleanup BackgroundService) and the last-method floor service
+    /// shared across every Remove endpoint and the aggregate read.
+    /// </summary>
+    public static IServiceCollection AddTenantAccountManagement(this IServiceCollection services)
+    {
+        services.AddScoped<IAuthChallengeRepository, AuthChallengeRepository>();
+        services.AddScoped<IAuthChallengeService, AuthChallengeService>();
+        services.AddScoped<IAuthMethodService, AuthMethodService>();
+
+        // AuthMetrics is a singleton wrapper around the OpenTelemetry meter —
+        // counters are process-wide and must outlive any individual scope.
+        services.AddSingleton<AuthMetrics>();
+
+        // Daily prune of consumed/expired challenge tokens (7-day retention).
+        services.AddHostedService<AuthChallengeTokenCleanupService>();
+
         return services;
     }
 }
