@@ -51,6 +51,7 @@ jobs:
             "Sorcha.Blueprint.Service.IntegrationTests"
             "Sorcha.Register.Service.IntegrationTests"
             "Sorcha.Register.Storage.MongoDB.Tests"
+            "Sorcha.Peer.Service.Integration.Tests"
           )
 
           # Projects with known pre-existing test failures (tracked as separate
