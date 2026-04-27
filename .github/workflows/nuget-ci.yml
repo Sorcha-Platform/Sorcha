@@ -117,22 +117,10 @@ jobs:
           done
           exit $EXIT_CODE
 
-      - name: Pack NuGet packages (validation only)
-        run: |
-          dotnet pack src/Common/ --no-build --configuration Release -o ./nupkg
-          dotnet pack src/Core/ --no-build --configuration Release -o ./nupkg
-
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
           path: '**/test-results.trx'
-          retention-days: 7
-
-      - name: Upload NuGet packages
-        uses: actions/upload-artifact@v4
-        with:
-          name: nuget-packages
-          path: ./nupkg/*.nupkg
           retention-days: 7
