@@ -267,14 +267,25 @@ A single helper substitutes tokens at evaluation time. The same component shape 
 
 If your blueprint asks the user for a name, date of birth, email, or postal address, **`$ref` the core component** instead of inlining the JSON Schema. You get validation, layout, persona autofill, and (for postcode) address lookup for free, and your blueprint stays short and focused on the *novel* fields it actually owns.
 
-## Blueprint Validation Rules
+## Blueprint Validation Codes
 
-1. **Participant references**: Every `action.sender` must reference a valid `participant.id`
-2. **Action count**: At least 1 action required
-3. **Participant count**: At least 2 participants required (enforced by `BlueprintBuilder.Build()`)
-4. **Description length**: Min 5 characters
-5. **Title length**: Min 3 characters
-6. **Cycles**: Detected but allowed — produce warnings, not errors
+Publish-time validation runs in `Sorcha.Validator.Service`. Errors block publication; warnings publish but surface in the response.
+
+| Code | Severity | Trigger |
+|------|----------|---------|
+| `MIN_PARTICIPANTS` | error | Fewer than 2 participants |
+| `MIN_ACTIONS` | error | Zero actions |
+| `INVALID_TITLE` | error | Title missing or `<3` chars |
+| `INVALID_DESCRIPTION` | error | Description missing or `<5` chars |
+| `INVALID_PARTICIPANT_REF` | error | An action's sender (or routing target) does not match any `participant.id` |
+| `VAL_BP_010` | error | Starting action's `sender` participant has a non-null `walletAddress` — defeats open submission |
+| `VAL_BP_011` | error | An `outputMapping` target pointer's top-level field is not declared on any next action's schema |
+| `VAL_BP_012` | error | `x-credential-offer: true` on a non-object field |
+| `INVALID_CREDENTIAL_RECIPIENT` | warning | `credentialIssuanceConfig.recipientParticipantId` references an unknown participant |
+| `OPEN_CREDENTIAL_ISSUER` | warning | `credentialRequirements[].acceptedIssuers` empty (any issuer accepted) — usually too permissive |
+| `WARN_BP_006` | warning | An `x-credential-offer` object should declare `credential_offer_uri` in its `required` list |
+| `NO_STARTING_ACTION` | warning | No action marked `isStartingAction: true` |
+| Cycle warning | warning | Cyclic route detected — publish proceeds; set `metadata.hasCycles = "true"` for clarity |
 
 ## Route Types
 
@@ -342,6 +353,40 @@ A route MAY carry data from the current action's execution result into the next 
 
 Route-based routing (via `Action.Routes`) takes precedence over legacy condition-based routing (via `Action.Participants`). Always use `routes` for new blueprints.
 
+## Calculations (JSON Logic)
+
+Per-action computed values evaluated by the engine after schema validation, before routing. Calculations are referenced from routing conditions and `outputMapping` source paths under `/calculations/*`.
+
+```jsonc
+{
+  "id": 0,
+  "title": "Submit",
+  "calculations": {
+    "requiresApproval": { ">": [{ "var": "amount" }, 10000] },
+    "isOverseas":       { "!=": [{ "var": "country" }, "GB"] }
+  },
+  "routes": [
+    { "id": "exec",    "condition": { "var": "requiresApproval" }, "nextActionIds": [2] },
+    { "id": "manager", "isDefault": true, "nextActionIds": [1] }
+  ]
+}
+```
+
+Key names are unrestricted; values are JSON Logic expressions referencing payload fields via `{ "var": "fieldName" }`. Calculations from prior actions listed in `requiredPriorActions` are merged into scope at routing time.
+
+## Required Prior Actions
+
+By default, the engine reconstructs accumulated state from only the immediately preceding action. To make data from earlier actions available for routing or `outputMapping`, list them in `requiredPriorActions`:
+
+```jsonc
+{
+  "id": 5,
+  "requiredPriorActions": [1, 3]
+}
+```
+
+The engine fetches and decrypts those transactions at execution time and merges their disclosed fields into the routing scope.
+
 ## DataSchema Patterns
 
 ### String Field with Validation
@@ -363,6 +408,187 @@ Route-based routing (via `Action.Routes`) takes precedence over legacy condition
 ```json
 { "type": "number", "minimum": 0, "title": "Amount" }
 ```
+
+## Form UX Layout
+
+Beyond JSON Schema's basic shape, Sorcha extends action data schemas with `x-` keywords that drive form rendering. Use these inline on dataSchemas, or rely on transclusion when `$ref`-ing a core component (see Reusable Schema Components).
+
+### Wizard pages (`x-pages`)
+
+Split a single Sorcha action's form into multiple wizard pages. Each page is one screen with Next/Back navigation, but **all pages submit together as one signed transaction**. A new Action is required only when the **sender** changes.
+
+```jsonc
+{
+  "type": "object",
+  "x-pages": [
+    {
+      "title": "Eligibility",
+      "x-sections": [{ "title": "Check eligibility", "fields": ["propertyOwner", "workType"] }]
+    },
+    {
+      "title": "About You",
+      "x-sections": [{ "title": "Your details", "fields": ["givenName", "familyName", "dateOfBirth"] }]
+    },
+    {
+      "title": "Check Your Answers",
+      "description": "Review before submitting."
+    }
+  ],
+  "properties": { /* ... */ }
+}
+```
+
+The final page conventionally titled "Check Your Answers" cues the renderer to show a summary view rather than collecting new fields.
+
+### Sections (`x-sections`)
+
+Group fields under a heading on a single page. `layout: "horizontal"` arranges fields side-by-side; default is vertical.
+
+```jsonc
+"x-sections": [
+  { "title": "Address", "layout": "horizontal", "fields": ["line1", "town", "postcode"] }
+]
+```
+
+### Introduction (`x-introduction`) and width (`x-width`)
+
+`x-introduction` renders Markdown copy at the top of the form (or page). `x-width` controls form max-width: `"narrow"` (480px), `"normal"` (720px, default), `"wide"` (960px), `"full"` (no max).
+
+```jsonc
+{
+  "type": "object",
+  "x-introduction": "Tell us about the work you plan to do. **Most applications take 5 minutes.**",
+  "x-width": "narrow",
+  "properties": { /* ... */ }
+}
+```
+
+### Persona autofill (`x-persona`)
+
+Bind a property to a Sorcha persona attribute (Feature 092). When the citizen has filled their profile, recognised fields auto-populate with a cream tint and a `self` provenance tick. Edit releases the autofill claim.
+
+```jsonc
+"properties": {
+  "applicantEmail": { "type": "string", "format": "email", "x-persona": "defaultEmail" },
+  "dateOfBirth":    { "type": "string", "format": "date", "x-persona": "dateOfBirth" }
+}
+```
+
+Use `"x-persona": false` on a property whose name *would* match a heuristic but should never autofill (e.g. `nextOfKinEmail`). Without an explicit `x-persona`, the inference allowlist applies (`format: email` → defaultEmail, `format: tel` → defaultPhone, `dateOfBirth`/`dob`/`birthDate` → dateOfBirth, postal-address shape → defaultAddress).
+
+### Postcode address lookup (`x-address-lookup`)
+
+Set `"x-address-lookup": true` on a `postcode`-typed string field to enable the lookup control. Most blueprints get this for free by `$ref`-ing `https://schemas.sorcha.dev/core/PostalAddress/v1`.
+
+### File uploads (`x-file`)
+
+Mark a property as a file reference with `format: "file-reference"` and an `x-file` extension. The runtime handles transparent chunking (≤4MB chunks), per-chunk HKDF key derivation, and recipient key wrapping.
+
+```jsonc
+"sitePhoto": {
+  "type": "string",
+  "format": "file-reference",
+  "x-file": {
+    "accept": ["image/jpeg", "image/png"],
+    "maxSizePerFile": "16MB",
+    "maxChunks": 10,
+    "capture": "user",
+    "embedAs": "image-token-jpeg-240x320"
+  }
+}
+```
+
+`capture: "user"` requests the front-facing camera on mobile; `embedAs` triggers the client-side resizer to produce a base64 token at `{fieldPointer}/tokenImageBase64` alongside the chunked original. Full chunking/encryption pipeline lives in the **sorcha-architecture** skill — *Stored Data Transactions API*.
+
+### Review summary (`x-review`)
+
+Mark a wizard page as a read-only summary that renders as a credential id-card preview.
+
+```jsonc
+{
+  "title": "Review your details",
+  "x-review": {
+    "layout": "id-card",
+    "editable": true,
+    "header": {
+      "issuerName": "Acme Verification Co.",
+      "credentialName": "Assured Identity",
+      "colourTheme": "identity-navy"
+    }
+  }
+}
+```
+
+Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `credentialRequirements + credentialIssuanceConfig` actions, and portrait capture details live in the **sorcha-architecture** skill — *Cross-Cutting Pattern: Review Summary*.
+
+## Credential Requirements & Issuance
+
+### Requiring a credential to perform an action
+
+```jsonc
+"credentialRequirements": [
+  {
+    "type": "AssuredIdentityCredential",
+    "presentationSource": "HaipExternalWallet",
+    "acceptedIssuers": ["did:sorcha:org:ws1abc..."],
+    "requiredClaims": [
+      { "claimName": "givenName" },
+      { "claimName": "dateOfBirth" }
+    ],
+    "revocationCheckPolicy": "FailClosed",
+    "description": "You must be a verified citizen to start a driving licence application."
+  }
+]
+```
+
+- `presentationSource: "SorchaInternal"` (default) matches against the holder's on-platform Sorcha credentials.
+- `presentationSource: "HaipExternalWallet"` runs the OpenID4VP `direct_post` flow (Feature 098) — required for citizen-facing services that accept external wallets and for credential-bootstrapped open submissions.
+- Empty `acceptedIssuers` accepts any issuer (`OPEN_CREDENTIAL_ISSUER` warning at publish time).
+- Multiple requirements are AND-combined.
+
+### Issuing a credential on action completion
+
+```jsonc
+"credentialIssuanceConfig": {
+  "credentialType": "PlanningPermit",
+  "claimMappings": [
+    { "claimName": "applicantName", "sourceField": "/applicantName" },
+    { "claimName": "siteAddress",   "sourceField": "/siteAddress"   }
+  ],
+  "recipientParticipantId": "applicant",
+  "expiryDuration": "P5Y",
+  "registerId": "planning-decisions",
+  "disclosable": ["applicantName", "siteAddress"],
+  "usagePolicy": "Reusable",
+  "targetAudience": "SorchaLocalWallet"
+}
+```
+
+- `targetAudience: "SorchaLocalWallet"` (Feature 106): the engine seals an X25519-wrapped, AEAD-encrypted SD-JWT VC into the action transaction; the credential peer-replicates and is detected by the holder's Wallet Service regardless of node. Default for on-platform issuance.
+- `targetAudience: "HaipExternalWallet"` (Feature 104): mints an OpenID4VCI offer instead of writing to a wallet. **MUST be paired with a separate Claim action** carrying `x-credential-offer` and `outputMapping` from the issuing route — see Credential Claim Actions below.
+- `targetAudience: "SorchaInternal"` is **deprecated** — bypasses the register and breaks on multi-node deployments. Always prefer `SorchaLocalWallet`.
+- `usagePolicy: "LimitedUse"` requires `maxPresentations: <int>`.
+- `expiryDuration` is ISO 8601 (`P5Y`, `P365D`, `PT24H`); omit for non-expiring credentials.
+
+## Rejection Configuration
+
+Defines what happens when a participant rejects the inbound data on an action.
+
+```jsonc
+"rejectionConfig": {
+  "targetActionId": 1,
+  "targetParticipantId": "applicant",
+  "requireReason": true,
+  "isTerminal": false
+}
+```
+
+- `targetActionId` — action to route to on rejection.
+- `targetParticipantId` (optional) — overrides the target action's default sender; useful when bouncing back to a different participant than the one who originally submitted.
+- `requireReason` (default `true`) — rejections must include a reason string.
+- `isTerminal` — when `true`, rejection ends the workflow in a `Rejected` state instead of routing. Used by the credential claim card's Decline button.
+
+If `rejectionConfig` is omitted, rejection is not allowed for the action.
 
 ## Credential Claim Actions (Feature 104 — wave 14b)
 
@@ -550,6 +776,27 @@ Body: {
 
 Engine pipeline: **validate** (schema check) → **calculate** (JSON Logic) → **route** (determine next) → **disclose** (visibility rules)
 
+## Disclosure Rules
+
+Every action MUST declare at least one `disclosure`. Each disclosure binds a participant to a list of JSON Pointer paths that participant can read on the action's payload.
+
+```jsonc
+"disclosures": [
+  { "participantAddress": "applicant", "dataPointers": ["/*"] },
+  { "participantAddress": "case-officer", "dataPointers": ["/applicantName", "/dateOfBirth", "/siteAddress"] },
+  { "participantAddress": "public-registry", "dataPointers": ["/decision", "/issuedAt"] }
+]
+```
+
+**Rules:**
+- The sender of an action always needs `/*` on their own submitted data — they're the author.
+- Default to **minimal disclosure**. Share only what each participant needs to act.
+- Sensitive fields (NI numbers, bank details, medical data, contact info) should be restricted by default. Approvers may need a summary, not the full document.
+- Use `/*` only when a participant genuinely needs to see everything.
+- Field-level encryption to participant wallets (X25519 wrap + XChaCha20-Poly1305) is automatic — do not add explicit encryption config to the blueprint.
+
+`participantAddress` accepts a participant `id` from the blueprint's `participants` list. The runtime resolves it to the participant's wallet at execution time (or to the late-bound wallet for open participants).
+
 ## Common Patterns
 
 ### Approval Chain (Linear)
@@ -588,7 +835,8 @@ Both → Complete
 
 ## Related Skills
 
-- **dotnet** - .NET 10 / C# 13 patterns
-- **minimal-apis** - Blueprint Service endpoint definitions
-- **xunit** - Testing blueprint validation
-- **blazor** - Template library UI pages
+- **sorcha-architecture** — Cross-cutting feature patterns: Stored Data file uploads (chunking + encryption pipeline), Review Summary id-card watermark states + portrait capture, Timebound Presentation Lifecycle (Feature 111 — Initiated/Outcome/Abandoned events), HAIP credential issuance/presentation internals, Open Participants late-binding runtime details.
+- **dotnet** — .NET 10 / C# 14 patterns
+- **minimal-apis** — Blueprint Service endpoint definitions
+- **xunit** — Testing blueprint validation
+- **blazor** — Template library UI pages
