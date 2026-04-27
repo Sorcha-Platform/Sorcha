@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
+using Sorcha.Tenant.Service.Filters;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
@@ -64,45 +65,62 @@ public static class SocialLoginEndpoints
         var group = app.MapGroup("/api/auth/social")
             .WithTags("Social Login");
 
-        group.MapPost("/initiate", InitiateSocialLogin)
+        group.MapPost("/initiate", InitiateSocialFlow)
             .WithName("InitiateSocialLogin")
-            .WithSummary("Start social login flow")
+            .WithSummary("Start social login or link flow")
             .WithDescription("Generates an OAuth authorization URL for the specified provider. "
-                + "The public organisation must be enabled and the provider must be configured.")
+                + "Pass intent=login (default) for the anonymous signup/login flow, or "
+                + "intent=link from a signed-in session to add the provider to the caller's "
+                + "existing PlatformUser. Feature 116 / Q6.")
             .AllowAnonymous()
             .RequireRateLimiting("platform-auth")
             .Produces<SocialLoginInitiateResponse>()
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status400BadRequest);
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized);
 
-        group.MapPost("/callback", CompleteSocialLogin)
+        group.MapPost("/callback", CompleteSocialFlow)
             .WithName("CompleteSocialLogin")
-            .WithSummary("Complete social login with authorization code")
-            .WithDescription("Exchanges the authorization code for user claims, resolves or creates a PlatformUser, "
-                + "creates UserIdentity in the public org if new, and issues a JWT.")
+            .WithSummary("Complete social login or link with authorization code")
+            .WithDescription("Exchanges the authorization code for user claims and dispatches "
+                + "on the intent recovered from the cached state token. login → resolve/create "
+                + "PlatformUser + JWT; link → verify caller matches captured PlatformUser + "
+                + "ISocialLinkService.LinkAsync.")
             .AllowAnonymous()
             .RequireRateLimiting("platform-auth")
             .Produces<TokenResponse>()
+            .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status400BadRequest);
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status409Conflict);
 
-        group.MapPost("/link", LinkSocialProvider)
-            .WithName("LinkSocialProvider")
-            .WithSummary("Link additional social provider to current user")
-            .WithDescription("Initiates an OAuth flow for linking an additional social provider "
-                + "to the currently authenticated PlatformUser.")
+        // Feature 116 US1 — unlink. Challenge-gated + last-method-floor protected.
+        // The orphaned POST /api/auth/social/link initiate-only endpoint was
+        // removed in this PR; UI now calls /initiate directly with intent=link.
+        group.MapDelete("/{linkId:guid}", UnlinkSocialProvider)
+            .WithName("UnlinkSocialProvider")
+            .WithSummary("Unlink a social provider from the signed-in user")
+            .WithDescription("Hard-deletes the PlatformSocialLogin row. Requires a valid "
+                + "X-Auth-Challenge header scoped to RemoveAuthMethod. Returns 409 if removing "
+                + "would leave the user with zero sign-in methods. Feature 116 US1.")
             .RequireAuthorization()
-            .Produces<SocialLoginInitiateResponse>()
-            .ProducesValidationProblem()
-            .Produces(StatusCodes.Status401Unauthorized);
+            .RequireAuthChallenge(ScopedOperation.RemoveAuthMethod)
+            .RequireRateLimiting("platform-auth")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
 
         return app;
     }
 
     /// <summary>
-    /// POST /api/auth/social/initiate — start social login flow.
+    /// POST /api/auth/social/initiate — start a social login or link flow.
+    /// Feature 116 / Q6: intent=link requires authentication and captures the
+    /// caller's PlatformUserId into the cached state for callback validation.
     /// </summary>
-    private static async Task<IResult> InitiateSocialLogin(
+    private static async Task<IResult> InitiateSocialFlow(
         SocialLoginInitiateRequest request,
         ISocialLoginService socialLoginService,
         IPlatformSettingsService platformSettingsService,
@@ -122,13 +140,44 @@ public static class SocialLoginEndpoints
             });
         }
 
-        // Check public org is enabled
-        var settings = await platformSettingsService.GetAsync(ct);
-        if (!settings.PublicOrgEnabled)
+        // Validate intent. Empty / null defaults to "login" for backward-compat
+        // with the existing public-signup callers. Anything else is a 400.
+        var intent = ParseIntent(request.Intent);
+        if (intent is null)
         {
-            return TypedResults.Problem(
-                "Public organisation is not enabled. Social login is unavailable.",
-                statusCode: StatusCodes.Status400BadRequest);
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["intent"] = ["intent must be 'login' or 'link'"]
+            });
+        }
+
+        // For link flow: require authentication and capture the caller's
+        // PlatformUserId into the cached state. The callback handler will
+        // verify the active bearer matches this id before persisting.
+        Guid? targetPlatformUserId = null;
+        if (intent == SocialFlowIntent.Link)
+        {
+            var pidClaim = httpContext.User.FindFirst("platform_user_id")?.Value
+                           ?? httpContext.User.FindFirst("pid")?.Value;
+            if (!Guid.TryParse(pidClaim, out var pid))
+            {
+                return TypedResults.Unauthorized();
+            }
+            targetPlatformUserId = pid;
+        }
+        else
+        {
+            // Existing constraint: public-org must be enabled for the anonymous
+            // signup/login flow. Link is a no-op against PublicOrg state — it
+            // adds a method to an existing PlatformUser regardless of whether
+            // the public org is currently accepting new signups.
+            var settings = await platformSettingsService.GetAsync(ct);
+            if (!settings.PublicOrgEnabled)
+            {
+                return TypedResults.Problem(
+                    "Public organisation is not enabled. Social login is unavailable.",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
         }
 
         // Resolve callback URL (config-first, falls back to Request scheme/host).
@@ -139,9 +188,11 @@ public static class SocialLoginEndpoints
         try
         {
             var result = await socialLoginService.GenerateAuthorizationUrlAsync(
-                request.Provider, redirectUri, ct);
+                request.Provider, redirectUri, intent.Value, targetPlatformUserId, ct);
 
-            logger.LogInformation("Social login initiated for provider {Provider}", request.Provider);
+            logger.LogInformation(
+                "Social {Intent} flow initiated for provider {Provider}",
+                intent.Value, request.Provider);
 
             return TypedResults.Ok(new SocialLoginInitiateResponse
             {
@@ -151,25 +202,41 @@ public static class SocialLoginEndpoints
         }
         catch (ArgumentException ex)
         {
-            logger.LogWarning(ex, "Social login initiate failed: provider not configured");
+            logger.LogWarning(ex, "Social initiate failed: provider not configured");
             return TypedResults.Problem(
                 $"Social provider '{request.Provider}' is not configured.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
     }
 
+    private static SocialFlowIntent? ParseIntent(string? intent)
+    {
+        if (string.IsNullOrWhiteSpace(intent)) return SocialFlowIntent.Login;
+        return intent.Trim().ToLowerInvariant() switch
+        {
+            "login" => SocialFlowIntent.Login,
+            "link" => SocialFlowIntent.Link,
+            _ => null,
+        };
+    }
+
     /// <summary>
-    /// POST /api/auth/social/callback — complete social login with authorization code.
+    /// POST /api/auth/social/callback — complete a social login or link flow.
+    /// Feature 116 / Q6: dispatches on the cached intent. login → existing
+    /// resolve-or-create + JWT path; link → verify caller matches the
+    /// captured PlatformUser id then call ISocialLinkService.LinkAsync.
     /// </summary>
-    private static async Task<IResult> CompleteSocialLogin(
+    private static async Task<IResult> CompleteSocialFlow(
         SocialLoginCallbackRequest request,
         ISocialLoginService socialLoginService,
+        ISocialLinkService socialLinkService,
         IPlatformUserService platformUserService,
         IPlatformSettingsService platformSettingsService,
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         ITokenService tokenService,
         TenantDbContext db,
+        HttpContext httpContext,
         ILogger<Program> logger,
         CancellationToken ct)
     {
@@ -190,8 +257,8 @@ public static class SocialLoginEndpoints
 
         if (!callbackResult.Success)
         {
-            logger.LogWarning("Social login callback failed for {Provider}: {Error}",
-                request.Provider, callbackResult.Error);
+            logger.LogWarning("Social {Intent} callback failed for {Provider}: {Error}",
+                callbackResult.Intent, request.Provider, callbackResult.Error);
             return TypedResults.Problem(
                 callbackResult.Error ?? "Social login failed.",
                 statusCode: StatusCodes.Status400BadRequest);
@@ -202,6 +269,15 @@ public static class SocialLoginEndpoints
             return TypedResults.Problem(
                 "Could not determine user identity from provider.",
                 statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Feature 116 dispatch: link flow short-circuits before the
+        // resolve-or-create path. Returns 204 on success — no JWT issued
+        // because the caller is already authenticated.
+        if (callbackResult.Intent == SocialFlowIntent.Link)
+        {
+            return await HandleLinkCallbackAsync(
+                callbackResult, socialLinkService, httpContext, logger, ct);
         }
 
         // Resolve or create PlatformUser under the strict link policy (feature 115).
@@ -292,60 +368,115 @@ public static class SocialLoginEndpoints
     }
 
     /// <summary>
-    /// POST /api/auth/social/link — link additional social provider to current user.
+    /// Handles the link branch of <see cref="CompleteSocialFlow"/>. Verifies
+    /// the active bearer matches the PlatformUser id captured at initiate
+    /// time, then delegates to <see cref="ISocialLinkService.LinkAsync"/>.
+    /// Returns 204 on success, 401 on session-swap, 409 on collision.
     /// </summary>
-    private static async Task<IResult> LinkSocialProvider(
-        SocialLoginInitiateRequest request,
-        ISocialLoginService socialLoginService,
-        IConfiguration configuration,
+    private static async Task<IResult> HandleLinkCallbackAsync(
+        SocialAuthCallbackResult callbackResult,
+        ISocialLinkService socialLinkService,
         HttpContext httpContext,
         ILogger<Program> logger,
         CancellationToken ct)
     {
-        // Validate provider
-        var validProviders = new[] { "google", "github", "microsoft", "apple" };
-        if (string.IsNullOrWhiteSpace(request.Provider) ||
-            !validProviders.Contains(request.Provider.ToLowerInvariant()))
+        // Defence against session swap mid-flight: the PlatformUser id captured
+        // when /initiate ran must match the bearer that returns to /callback.
+        if (callbackResult.TargetPlatformUserId is null)
         {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["provider"] = [$"Provider must be one of: {string.Join(", ", validProviders)}"]
-            });
+            logger.LogWarning("Social link callback: cached state lacked TargetPlatformUserId");
+            return TypedResults.Problem(
+                "Link state is invalid.", statusCode: StatusCodes.Status400BadRequest);
         }
 
-        // Verify user is authenticated
-        var platformUserIdClaim = httpContext.User.FindFirst("platform_user_id")?.Value;
-        if (string.IsNullOrEmpty(platformUserIdClaim))
+        var pidClaim = httpContext.User.FindFirst("platform_user_id")?.Value
+                       ?? httpContext.User.FindFirst("pid")?.Value;
+        if (!Guid.TryParse(pidClaim, out var callerPlatformUserId))
         {
             return TypedResults.Unauthorized();
         }
 
-        // Build redirect URI — same canonical path as the new-signup flow.
-        // ResolveCallbackUrl honours OAuth:CallbackBaseUrl when set, falling
-        // back to the request scheme/host for local development.
-        var redirectUri = ResolveCallbackUrl(httpContext, configuration);
-
-        try
+        if (callerPlatformUserId != callbackResult.TargetPlatformUserId.Value)
         {
-            var result = await socialLoginService.GenerateAuthorizationUrlAsync(
-                request.Provider, redirectUri, ct);
+            logger.LogWarning(
+                "Social link callback: bearer {Caller} does not match captured target {Target}",
+                callerPlatformUserId, callbackResult.TargetPlatformUserId);
+            return TypedResults.Unauthorized();
+        }
 
-            logger.LogInformation(
-                "Social provider link initiated for PlatformUser {PlatformUserId}, provider {Provider}",
-                platformUserIdClaim, request.Provider);
+        var outcome = await socialLinkService.LinkAsync(
+            callerPlatformUserId,
+            callbackResult.Provider,
+            callbackResult.Subject!,
+            callbackResult.Email,
+            callbackResult.DisplayName,
+            ct);
 
-            return TypedResults.Ok(new SocialLoginInitiateResponse
+        return outcome switch
+        {
+            SocialLinkOutcome.Linked => TypedResults.NoContent(),
+            SocialLinkOutcome.AlreadyLinkedToCaller => TypedResults.NoContent(),
+            SocialLinkOutcome.AlreadyLinkedToDifferentUser => TypedResults.Problem(
+                $"This {callbackResult.Provider} account is linked to a different Sorcha account.",
+                statusCode: StatusCodes.Status409Conflict),
+            SocialLinkOutcome.EmailCollision => TypedResults.Problem(
+                $"This {callbackResult.Provider} account uses an email that belongs to a different Sorcha account.",
+                statusCode: StatusCodes.Status409Conflict),
+            _ => TypedResults.Problem(
+                "Social link failed.", statusCode: StatusCodes.Status500InternalServerError),
+        };
+    }
+
+    /// <summary>
+    /// DELETE /api/auth/social/{linkId} — unlink a social provider from the
+    /// signed-in user (Feature 116 US1). Challenge-gated via the
+    /// <see cref="RequireAuthChallengeAttribute"/> filter on the route map;
+    /// last-method floor enforced server-side via
+    /// <see cref="IAuthMethodService.WouldRemovingLeaveZeroAsync"/>.
+    /// </summary>
+    private static async Task<IResult> UnlinkSocialProvider(
+        Guid linkId,
+        ISocialLinkService socialLinkService,
+        IIdentityRepository identityRepository,
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        var pidClaim = httpContext.User.FindFirst("platform_user_id")?.Value
+                       ?? httpContext.User.FindFirst("pid")?.Value;
+        Guid platformUserId;
+        if (Guid.TryParse(pidClaim, out var pidFromClaim))
+        {
+            platformUserId = pidFromClaim;
+        }
+        else
+        {
+            // Fallback for sessions that pre-date the platform_user_id claim:
+            // resolve via UserIdentity.Id from the sub claim.
+            var sub = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                      ?? httpContext.User.FindFirst("sub")?.Value;
+            if (!Guid.TryParse(sub, out var userIdentityId))
             {
-                AuthorizationUrl = result.AuthorizationUrl,
-                State = result.State
-            });
+                return TypedResults.Unauthorized();
+            }
+            var user = await identityRepository.GetUserByIdAsync(userIdentityId, ct);
+            if (user is null || user.PlatformUserId == Guid.Empty)
+            {
+                return TypedResults.Unauthorized();
+            }
+            platformUserId = user.PlatformUserId;
         }
-        catch (ArgumentException ex)
+
+        var outcome = await socialLinkService.UnlinkAsync(platformUserId, linkId, ct);
+        return outcome switch
         {
-            logger.LogWarning(ex, "Social provider link failed: provider not configured");
-            return TypedResults.Problem(
-                $"Social provider '{request.Provider}' is not configured.",
-                statusCode: StatusCodes.Status400BadRequest);
-        }
+            SocialUnlinkOutcome.Unlinked => TypedResults.NoContent(),
+            SocialUnlinkOutcome.NotFound => TypedResults.NotFound(),
+            SocialUnlinkOutcome.FloorViolation => TypedResults.Problem(
+                "You must keep at least one sign-in method.",
+                statusCode: StatusCodes.Status409Conflict),
+            _ => TypedResults.Problem(
+                "Unlink failed.", statusCode: StatusCodes.Status500InternalServerError),
+        };
     }
 }

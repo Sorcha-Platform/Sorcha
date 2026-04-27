@@ -148,13 +148,34 @@ public class SocialLoginService : ISocialLoginService
     }
 
     /// <inheritdoc />
+    public Task<SocialAuthInitiateResult> GenerateAuthorizationUrlAsync(
+        string provider,
+        string redirectUri,
+        CancellationToken cancellationToken = default)
+        => GenerateAuthorizationUrlAsync(
+            provider, redirectUri, SocialFlowIntent.Login, targetPlatformUserId: null, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<SocialAuthInitiateResult> GenerateAuthorizationUrlAsync(
         string provider,
         string redirectUri,
+        SocialFlowIntent intent,
+        Guid? targetPlatformUserId,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(redirectUri);
+
+        // Defence in depth: link flows must carry the captured PlatformUser id
+        // through to the callback. A null here would silently degrade to a
+        // login-style match by the callback handler, which would be a real
+        // security failure (account takeover via session swap).
+        if (intent == SocialFlowIntent.Link && targetPlatformUserId is null)
+        {
+            throw new ArgumentException(
+                "Link flow requires a non-null targetPlatformUserId.",
+                nameof(targetPlatformUserId));
+        }
 
         var config = GetProviderConfig(provider);
         var (authEndpoint, _, _) = GetEndpoints(provider, config);
@@ -175,7 +196,9 @@ public class SocialLoginService : ISocialLoginService
         {
             CodeVerifier = codeVerifier,
             RedirectUri = redirectUri,
-            Provider = provider
+            Provider = provider,
+            Intent = intent,
+            TargetPlatformUserId = targetPlatformUserId,
         });
 
         var cacheKey = $"social:state:{state}";
@@ -265,13 +288,18 @@ public class SocialLoginService : ISocialLoginService
                 return new SocialAuthCallbackResult(false, "Token exchange failed.", null, null, null, false, provider);
             }
 
-            // Extract claims — GitHub uses user info endpoint, others use ID token
-            if (string.Equals(provider, "GitHub", StringComparison.OrdinalIgnoreCase))
-            {
-                return await ExtractGitHubClaimsAsync(tokenResponse.Value, userInfoEndpoint, provider, cancellationToken);
-            }
+            // Extract claims — GitHub uses user info endpoint, others use ID token.
+            // Then thread the cached intent + targetPlatformUserId through so the
+            // callback handler can branch on link vs login without re-reading state.
+            var baseResult = string.Equals(provider, "GitHub", StringComparison.OrdinalIgnoreCase)
+                ? await ExtractGitHubClaimsAsync(tokenResponse.Value, userInfoEndpoint, provider, cancellationToken)
+                : await ExtractOidcClaimsAsync(tokenResponse.Value, userInfoEndpoint, provider, cancellationToken);
 
-            return await ExtractOidcClaimsAsync(tokenResponse.Value, userInfoEndpoint, provider, cancellationToken);
+            return baseResult with
+            {
+                Intent = stateData.Intent,
+                TargetPlatformUserId = stateData.TargetPlatformUserId,
+            };
         }
         catch (Exception ex)
         {
@@ -571,6 +599,15 @@ public class SocialLoginService : ISocialLoginService
         public string? CodeVerifier { get; init; }
         public string RedirectUri { get; init; } = string.Empty;
         public string Provider { get; init; } = string.Empty;
+
+        // Feature 116 / Q6: link-vs-login dispatch encoded into the cached state.
+        // Default = Login keeps the wire shape backwards-compatible — older state
+        // entries still in cache from before this change deserialise as Login.
+        public SocialFlowIntent Intent { get; init; } = SocialFlowIntent.Login;
+
+        // Captured at initiate time when Intent=Link. Callback verifies the
+        // active bearer matches this id before persisting the link.
+        public Guid? TargetPlatformUserId { get; init; }
     }
 
     private readonly record struct TokenExchangeResult(string AccessToken, string? IdToken);

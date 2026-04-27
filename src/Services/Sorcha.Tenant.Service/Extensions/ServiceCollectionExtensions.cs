@@ -52,6 +52,7 @@ public static class WebApplicationExtensions
         services.AddScoped<IAuthChallengeRepository, AuthChallengeRepository>();
         services.AddScoped<IAuthChallengeService, AuthChallengeService>();
         services.AddScoped<IAuthMethodService, AuthMethodService>();
+        services.AddScoped<ISocialLinkService, SocialLinkService>();
 
         // AuthMetrics is a singleton wrapper around the OpenTelemetry meter —
         // counters are process-wide and must outlive any individual scope.

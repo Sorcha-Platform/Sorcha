@@ -11,6 +11,18 @@ namespace Sorcha.Tenant.Service.Services;
 public record SocialAuthInitiateResult(string AuthorizationUrl, string State);
 
 /// <summary>
+/// Flow intent encoded into the social login state token. Feature 116 / Q6.
+/// </summary>
+public enum SocialFlowIntent
+{
+    /// <summary>Anonymous flow — resolve or create a PlatformUser and issue a JWT.</summary>
+    Login = 0,
+
+    /// <summary>Signed-in flow — add the social provider to the caller's existing PlatformUser.</summary>
+    Link = 1,
+}
+
+/// <summary>
 /// Result of exchanging an authorization code for user claims via a social login provider.
 /// </summary>
 /// <param name="Success">Whether the exchange completed successfully.</param>
@@ -27,6 +39,18 @@ public record SocialAuthInitiateResult(string AuthorizationUrl, string State);
 /// absent — never assume verified. Feature 115.
 /// </param>
 /// <param name="Provider">The provider name (e.g., "Google", "GitHub").</param>
+/// <param name="Intent">
+/// Flow intent recovered from the cached state token (Feature 116 Q6).
+/// <see cref="SocialFlowIntent.Login"/> for the anonymous signup/login
+/// flow; <see cref="SocialFlowIntent.Link"/> for the signed-in
+/// link-to-existing-PlatformUser flow.
+/// </param>
+/// <param name="TargetPlatformUserId">
+/// When <see cref="Intent"/> is <see cref="SocialFlowIntent.Link"/>, the
+/// PlatformUser id captured at initiate time. The callback handler MUST
+/// verify that the active bearer matches this id before persisting the
+/// link — defence against a session swap mid-flight.
+/// </param>
 public record SocialAuthCallbackResult(
     bool Success,
     string? Error,
@@ -34,7 +58,9 @@ public record SocialAuthCallbackResult(
     string? Email,
     string? DisplayName,
     bool EmailVerified,
-    string Provider);
+    string Provider,
+    SocialFlowIntent Intent = SocialFlowIntent.Login,
+    Guid? TargetPlatformUserId = null);
 
 /// <summary>
 /// Service for public user social login via OAuth2/OIDC providers (Google, Microsoft, GitHub, Apple).
@@ -46,6 +72,7 @@ public interface ISocialLoginService
     /// <summary>
     /// Generates an authorization URL for the specified social provider with PKCE and state parameter.
     /// The state and PKCE code verifier are cached for validation during the callback.
+    /// Default <see cref="SocialFlowIntent.Login"/> intent.
     /// </summary>
     /// <param name="provider">The social provider name (e.g., "Google", "Microsoft", "GitHub", "Apple").</param>
     /// <param name="redirectUri">The client's redirect URI to receive the authorization code.</param>
@@ -55,6 +82,20 @@ public interface ISocialLoginService
     Task<SocialAuthInitiateResult> GenerateAuthorizationUrlAsync(
         string provider,
         string redirectUri,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Generates an authorization URL with explicit flow intent. Use this overload
+    /// when starting a <see cref="SocialFlowIntent.Link"/> flow — pass the active
+    /// PlatformUser's id as <paramref name="targetPlatformUserId"/> so the callback
+    /// can verify the session has not swapped between initiate and callback.
+    /// Feature 116 Q6.
+    /// </summary>
+    Task<SocialAuthInitiateResult> GenerateAuthorizationUrlAsync(
+        string provider,
+        string redirectUri,
+        SocialFlowIntent intent,
+        Guid? targetPlatformUserId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
