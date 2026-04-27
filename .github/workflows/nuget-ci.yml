@@ -84,6 +84,12 @@ jobs:
               echo "⚠️  $name — no built dll at $dll, skipping"
               continue
             fi
+            # Skip library projects under tests/ that aren't runnable executables
+            # (e.g. Sorcha.Testing — shared test-helper library, no runtimeconfig).
+            if [[ ! -f "tests/$name/bin/Release/net10.0/$name.runtimeconfig.json" ]]; then
+              echo "📚 $name — library project (no runtimeconfig), skipping"
+              continue
+            fi
             echo "🧪 Testing $name..."
             # xunit.v3 MTP-native flags. TRX lands next to the dll under TestResults/.
             if is_in "$name" "${KNOWN_BROKEN[@]}"; then
