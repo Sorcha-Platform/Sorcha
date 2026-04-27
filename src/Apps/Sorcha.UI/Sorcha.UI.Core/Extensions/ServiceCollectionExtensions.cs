@@ -408,6 +408,16 @@ public static class ServiceCollectionExtensions
             return new TotpClientService(httpClient, logger);
         });
 
+        // Feature 116: Auth Methods aggregate-read client (Accounts tab US4)
+        services.AddScoped<IAuthMethodsClientService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<AuthMethodsClientService>>();
+            return new AuthMethodsClientService(httpClient, logger);
+        });
+
         // Time Format Service (043 - T045)
         services.AddScoped<ITimeFormatService>(sp =>
         {

@@ -1,0 +1,113 @@
+openapi: 3.0.3
+info:
+  title: Sorcha — Social Provider Linking
+  version: "1.0.0"
+  description: |
+    Post-login OAuth linking flow plus unlink. Reuses the existing
+    `/api/auth/social/initiate` and `/callback` URLs by adding an
+    `intent` field encoded in the server-signed `state` parameter.
+    Unlink is challenge-gated and floor-protected.
+servers:
+  - url: https://api.sorcha.dev
+paths:
+  /api/auth/social/initiate:
+    post:
+      operationId: InitiateSocialFlow
+      tags: [Social]
+      summary: Begin an OAuth flow (login or link)
+      description: |
+        Modified to accept an `intent` field. When `intent=link`, the
+        request requires authentication and the signed `state` carries
+        the target `PlatformUserId`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, intent]
+              properties:
+                provider:
+                  type: string
+                  enum: [google, github, microsoft, apple]
+                intent:
+                  type: string
+                  enum: [login, link]
+      security:
+        # Auth required only for intent=link — endpoint accepts anonymous for login
+        - bearerAuth: []
+        - {}
+      responses:
+        "200":
+          description: Authorization URL prepared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorizationUrl, state]
+                properties:
+                  authorizationUrl: { type: string, format: uri }
+                  state: { type: string, description: HMAC-signed }
+        "401": { description: Anonymous request when intent=link }
+  /api/auth/social/callback:
+    post:
+      operationId: CompleteSocialFlow
+      tags: [Social]
+      summary: Complete an OAuth flow (login or link)
+      description: |
+        Branches on the decoded `intent`. For `link`, requires the
+        bearer's `PlatformUserId` to match `state.targetPlatformUserId`,
+        runs the email-collision check, and inserts the new
+        `PlatformSocialLogin` row. For `login`, executes the existing
+        login behaviour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, state]
+              properties:
+                code: { type: string }
+                state: { type: string }
+      responses:
+        "200":
+          description: Login completed (token returned) OR link completed (no body)
+        "400":
+          description: |
+            State HMAC verification failed (tampering), or callback
+            decoded with an intent that is not allowed for the current
+            session state.
+        "409":
+          description: |
+            (link only) The OAuth provider's account is linked to a
+            different Sorcha account.
+  /api/auth/social/{linkId}:
+    delete:
+      operationId: UnlinkSocialProvider
+      tags: [Social]
+      summary: Unlink a social provider
+      description: |
+        Hard-delete. Last-method floor enforced server-side.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: linkId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: X-Auth-Challenge
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Unlinked }
+        "401": { description: Challenge missing or invalid }
+        "404": { description: Link not found or not owned by caller }
+        "409": { description: Removing would violate the last-method floor }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

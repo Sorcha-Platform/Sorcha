@@ -35,6 +35,7 @@ public class TenantDbContext : DbContext
     public DbSet<PlatformUserDevice> PlatformUserDevices => Set<PlatformUserDevice>();
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
+    public DbSet<AuthChallengeToken> AuthChallengeTokens => Set<AuthChallengeToken>();
     public DbSet<ServicePrincipal> ServicePrincipals => Set<ServicePrincipal>();
     public DbSet<OrgRecoveryConfig> OrgRecoveryConfigs => Set<OrgRecoveryConfig>();
     public DbSet<OrganizationRegisterSubscription> OrganizationRegisterSubscriptions => Set<OrganizationRegisterSubscription>();
@@ -160,6 +161,9 @@ public class TenantDbContext : DbContext
 
         // Configure PlatformUserDevice entity (public schema) — Feature 114
         ConfigurePlatformUserDevice(modelBuilder);
+
+        // Configure AuthChallengeToken entity (public schema) — Feature 116
+        ConfigureAuthChallengeToken(modelBuilder);
     }
 
     private void ConfigureOrganization(ModelBuilder modelBuilder)
@@ -1055,6 +1059,70 @@ public class TenantDbContext : DbContext
 
             // Many-to-one with PlatformUser. Cascade delete keeps device records
             // in lock-step with the owning identity.
+            entity.HasOne(e => e.PlatformUser)
+                .WithMany()
+                .HasForeignKey(e => e.PlatformUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    // Feature 116: Re-authentication challenge tokens — single-use, scoped, 5-min TTL.
+    // Hash-only storage (raw token never persisted). Atomic consume via
+    // UPDATE … WHERE ConsumedAt IS NULL in IAuthChallengeRepository.TryConsumeAsync.
+    private void ConfigureAuthChallengeToken(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<AuthChallengeToken>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("AuthChallengeTokens");
+            else
+                entity.ToTable("AuthChallengeTokens", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.TokenHash)
+                .IsRequired()
+                .HasMaxLength(64); // SHA-256 hex output is exactly 64 chars
+
+            entity.Property(e => e.Method)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(16);
+
+            entity.Property(e => e.ScopedOperation)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(24);
+
+            entity.Property(e => e.IssuedAt).IsRequired();
+            entity.Property(e => e.ExpiresAt).IsRequired();
+
+            // Lookup by SHA-256(headerValue) on every gated mutation.
+            entity.HasIndex(e => e.TokenHash)
+                .IsUnique()
+                .HasDatabaseName("UQ_AuthChallengeToken_TokenHash");
+
+            // Filtered index for the "list active challenges for user X" debug path.
+            // InMemory lacks filtered-index support; fall back to a regular composite.
+            if (isInMemory)
+            {
+                entity.HasIndex(e => new { e.PlatformUserId, e.ConsumedAt })
+                    .HasDatabaseName("IX_AuthChallengeToken_User_Active");
+            }
+            else
+            {
+                entity.HasIndex(e => new { e.PlatformUserId, e.ConsumedAt })
+                    .HasFilter("\"ConsumedAt\" IS NULL")
+                    .HasDatabaseName("IX_AuthChallengeToken_User_Active");
+            }
+
+            // Drives the daily prune query in AuthChallengeTokenCleanupService.
+            entity.HasIndex(e => e.ExpiresAt)
+                .HasDatabaseName("IX_AuthChallengeToken_ExpiresAt");
+
             entity.HasOne(e => e.PlatformUser)
                 .WithMany()
                 .HasForeignKey(e => e.PlatformUserId)

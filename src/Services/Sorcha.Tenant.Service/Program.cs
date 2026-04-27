@@ -89,6 +89,10 @@ builder.Services.AddDatabaseInitializer();
 // Add audit cleanup background service (daily purge of expired audit entries)
 builder.Services.AddAuditCleanup();
 
+// Feature 116: account-linking + auth-method management
+// (challenge primitive, last-method floor, telemetry, daily token cleanup)
+builder.Services.AddTenantAccountManagement();
+
 // Add activity event services (event log and cleanup)
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.Interfaces.IEventService,
     Sorcha.Tenant.Service.Services.EventService>();
@@ -173,6 +177,8 @@ app.MapOrganizationEndpoints();
 app.MapParticipantEndpoints();
 app.MapAuthEndpoints();
 app.MapPasskeyEndpoints();
+app.MapAuthChallengeEndpoints();
+app.MapAuthMethodsEndpoints();
 app.MapPublicPasskeyEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();

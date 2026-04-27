@@ -1,0 +1,92 @@
+@* Accounts tab body (Feature 116 US4). Loads /api/me/auth-methods on init
+   and renders the four sections: account email + password + linked
+   providers + passkeys. Read-only in US4; mutations get wired in
+   US1 (social link/unlink), US2 (passkey lifecycle), US3 (password). *@
+
+@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Web.Client.Components.Settings.AuthMethods
+@inject IAuthMethodsClientService AuthMethodsClient
+@inject ILocalizationService Loc
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h6" Class="mb-1">
+    @Loc.T("settings.accounts.title")
+</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    @Loc.T("settings.accounts.subtitle")
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Class="mb-4" />
+    <MudSkeleton Width="100%" Height="80px" Class="mb-4" />
+    <MudSkeleton Width="100%" Height="80px" Class="mb-4" />
+    <MudSkeleton Width="100%" Height="80px" Class="mb-4" />
+}
+else if (_methods is null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        @Loc.T("settings.accounts.loadFailed")
+    </MudAlert>
+    <MudButton Variant="Variant.Outlined" OnClick="LoadAsync">@Loc.T("common.retry")</MudButton>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+        <MudText Typo="Typo.h6" Class="mb-1">
+            @Loc.T("settings.accounts.email.title")
+        </MudText>
+        <div class="d-flex align-center">
+            <MudIcon Icon="@Icons.Material.Filled.Email" Class="mr-3" />
+            <div class="flex-grow-1">
+                <MudText Typo="Typo.body1">@_methods.Email</MudText>
+            </div>
+            @if (_methods.EmailVerified)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
+                    @Loc.T("settings.accounts.email.verified")
+                </MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">
+                    @Loc.T("settings.accounts.email.unverified")
+                </MudChip>
+            }
+        </div>
+    </MudPaper>
+
+    <PasswordSection Password="_methods.Password" />
+    <SocialLinksSection Socials="_methods.Socials" />
+    <PasskeysSection Passkeys="_methods.Passkeys" />
+}
+
+@code {
+    private AuthMethodsResponse? _methods;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _methods = await AuthMethodsClient.GetAuthMethodsAsync();
+            if (_methods is null)
+            {
+                Snackbar.Add(Loc.T("settings.accounts.loadFailed"), Severity.Error);
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,83 @@
+openapi: 3.0.3
+info:
+  title: Sorcha — Auth Methods Aggregate Read
+  version: "1.0.0"
+  description: |
+    Single round-trip aggregate of every sign-in method attached to the
+    signed-in PlatformUser. Powers the entire Accounts tab UI in one call.
+servers:
+  - url: https://api.sorcha.dev
+paths:
+  /api/me/auth-methods:
+    get:
+      operationId: GetMyAuthMethods
+      tags: [Auth Methods]
+      summary: List all sign-in methods for the signed-in user
+      description: |
+        Returns the user's email + verification status, password presence
+        (with `canRemove` floor flag), every linked social provider, and
+        every Active or Disabled passkey (Revoked passkeys are excluded).
+        `canRemove` is computed server-side from the same helper used by
+        the mutation endpoints — UI and server share one source of truth.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Aggregate of the user's sign-in methods
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthMethodsResponse"
+        "401":
+          description: Missing or invalid bearer token
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthMethodsResponse:
+      type: object
+      required: [email, emailVerified, password, socials, passkeys]
+      properties:
+        email: { type: string, format: email }
+        emailVerified: { type: boolean }
+        password: { $ref: "#/components/schemas/AuthMethodsPassword" }
+        socials:
+          type: array
+          items: { $ref: "#/components/schemas/AuthMethodsSocial" }
+        passkeys:
+          type: array
+          items: { $ref: "#/components/schemas/AuthMethodsPasskey" }
+    AuthMethodsPassword:
+      type: object
+      required: [isSet, canRemove]
+      properties:
+        isSet: { type: boolean }
+        lastChangedAt: { type: string, format: date-time, nullable: true }
+        canRemove: { type: boolean, description: "False iff removing would leave zero methods" }
+    AuthMethodsSocial:
+      type: object
+      required: [linkId, provider, linkedAt, canRemove]
+      properties:
+        linkId: { type: string, format: uuid }
+        provider: { type: string, enum: [google, github, microsoft, apple] }
+        email: { type: string, format: email, nullable: true }
+        displayName: { type: string, nullable: true }
+        linkedAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        canRemove: { type: boolean }
+    AuthMethodsPasskey:
+      type: object
+      required: [id, displayName, status, createdAt, canRemove, canRename]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string, minLength: 1, description: "Server applies fallback 'Unnamed passkey' for legacy empty rows" }
+        deviceType: { type: string, nullable: true }
+        status: { type: string, enum: [Active, Disabled] }
+        disabledReason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        canRemove: { type: boolean }
+        canRename: { type: boolean, description: "False for Disabled passkeys" }

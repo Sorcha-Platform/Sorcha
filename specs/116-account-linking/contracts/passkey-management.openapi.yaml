@@ -1,0 +1,74 @@
+openapi: 3.0.3
+info:
+  title: Sorcha — Passkey Management
+  version: "1.0.0"
+  description: |
+    Adds Rename. Modifies Delete to soft-revoke (`Status=Revoked` +
+    `DisabledReason="user-removed"`) and to require a re-authentication
+    challenge unless the passkey is already Disabled (already non-
+    functional). Existing register endpoints are reused unchanged.
+servers:
+  - url: https://api.sorcha.dev
+paths:
+  /api/passkeys/credentials/{id}:
+    put:
+      operationId: RenamePasskey
+      tags: [Passkeys]
+      summary: Rename a passkey
+      description: |
+        Updates the passkey display name. Disabled passkeys cannot be
+        renamed (returns 409). No re-authentication challenge required.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName]
+              properties:
+                displayName: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "204": { description: Renamed }
+        "401": { description: Bearer missing }
+        "404": { description: Passkey not found or not owned by caller }
+        "409": { description: Passkey is Disabled — rename refused }
+    delete:
+      operationId: RemovePasskey
+      tags: [Passkeys]
+      summary: Soft-revoke a passkey
+      description: |
+        Transitions an Active passkey to Revoked (preserving the row
+        for audit). Requires `X-Auth-Challenge` for Active passkeys;
+        Disabled passkeys (already non-functional) bypass the challenge
+        requirement. Last-method floor enforced server-side for Active
+        removal.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: X-Auth-Challenge
+          in: header
+          required: false
+          schema: { type: string }
+          description: Required when removing an Active passkey; ignored when removing a Disabled one.
+      responses:
+        "204": { description: Revoked }
+        "401": { description: Challenge missing or invalid (when removing an Active passkey) }
+        "404": { description: Passkey not found or not owned by caller }
+        "409": { description: Removing would violate the last-method floor }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

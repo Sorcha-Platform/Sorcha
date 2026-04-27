@@ -1,0 +1,101 @@
+@* Read-only linked-providers section for the Accounts tab (Feature 116 US4).
+   Add-pill / Unlink actions get wired in US1 (SocialLinkService). *@
+
+@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Services
+@inject ILocalizationService Loc
+
+<MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+    <MudText Typo="Typo.h6" Class="mb-1">
+        @Loc.T("settings.accounts.socials.title")
+    </MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        @Loc.T("settings.accounts.socials.description")
+    </MudText>
+
+    @if (Socials is null)
+    {
+        <MudSkeleton Width="100%" Height="60px" />
+    }
+    else if (Socials.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3 fst-italic">
+            @Loc.T("settings.accounts.socials.empty")
+        </MudText>
+    }
+    else
+    {
+        @foreach (var social in Socials)
+        {
+            <div class="d-flex align-center mb-2 pa-2" style="border:1px solid var(--mud-palette-divider);border-radius:4px;">
+                <MudIcon Icon="@ProviderIcon(social.Provider)" Class="mr-3" />
+                <div class="flex-grow-1">
+                    <MudText Typo="Typo.body1">@FormatProvider(social.Provider)</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @(social.Email ?? Loc.T("settings.accounts.socials.noEmail"))
+                        · @Loc.T("settings.accounts.linkedAt"): @social.LinkedAt.ToLocalTime().ToString("d MMM yyyy")
+                        @if (social.LastUsedAt.HasValue)
+                        {
+                            <span> · @Loc.T("settings.accounts.lastUsed"): @social.LastUsedAt.Value.ToLocalTime().ToString("d MMM yyyy")</span>
+                        }
+                    </MudText>
+                </div>
+                @if (social.CanRemove)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="true" Size="Size.Small">
+                        @Loc.T("settings.accounts.socials.unlink")
+                    </MudButton>
+                }
+                else
+                {
+                    <MudTooltip Text="@Loc.T("settings.accounts.lastMethodWarning")">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="true" Size="Size.Small">
+                            @Loc.T("settings.accounts.socials.unlink")
+                        </MudButton>
+                    </MudTooltip>
+                }
+            </div>
+        }
+    }
+
+    <MudDivider Class="my-3" />
+    <div class="d-flex flex-wrap align-center" style="gap:6px;">
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mr-2">
+            @Loc.T("settings.accounts.socials.add"):
+        </MudText>
+        @foreach (var provider in AllProviders)
+        {
+            var isLinked = Socials?.Any(s => string.Equals(s.Provider, provider, StringComparison.OrdinalIgnoreCase)) == true;
+            <MudChip T="string" Color="@(isLinked ? Color.Default : Color.Primary)"
+                     Disabled="true"
+                     Variant="@(isLinked ? Variant.Outlined : Variant.Filled)"
+                     Style="@(isLinked ? "text-decoration:line-through;opacity:0.5;" : "")">
+                @FormatProvider(provider)
+            </MudChip>
+        }
+    </div>
+</MudPaper>
+
+@code {
+    [Parameter] public IReadOnlyList<AuthMethodsSocial>? Socials { get; set; }
+
+    private static readonly string[] AllProviders = new[] { "google", "github", "microsoft", "apple" };
+
+    private static string FormatProvider(string provider) => provider switch
+    {
+        "google" => "Google",
+        "github" => "GitHub",
+        "microsoft" => "Microsoft",
+        "apple" => "Apple",
+        _ => provider
+    };
+
+    private static string ProviderIcon(string provider) => provider switch
+    {
+        "google" => Icons.Custom.Brands.Google,
+        "github" => Icons.Custom.Brands.GitHub,
+        "microsoft" => Icons.Custom.Brands.Microsoft,
+        "apple" => Icons.Custom.Brands.Apple,
+        _ => Icons.Material.Filled.Public
+    };
+}
