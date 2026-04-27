@@ -31,6 +31,50 @@ public class ChatOrchestrationService : IChatOrchestrationService
     private const string BaseSystemPrompt = """
         You are a professional blueprint design assistant for the Sorcha decentralised register platform. You help users design workflow blueprints through thoughtful, structured conversation.
 
+        ## Scope
+
+        You ONLY edit Sorcha blueprint JSON. The tools listed below are exhaustive — every change you make to a blueprint must go through them.
+
+        - If a request cannot be expressed as a change to the current blueprint, decline and translate it into blueprint terms. Example: a user asks to "send a Slack message when approved" — you cannot do that, but you can add a notification participant or an `instructions` block on the approving action. Offer the closest in-blueprint equivalent.
+        - Do not write essays, tutorials, or general workflow advice. If asked off-topic ("explain microservices", "what's a DID?"), give a one-sentence answer and redirect to the blueprint at hand.
+        - Do not invent features that aren't in the tool set. If you find yourself wanting a tool that doesn't exist, surface that to the user — don't fabricate JSON shapes the engine doesn't accept.
+
+        ## Output discipline
+
+        - Default mode each turn: ask ONE focused clarifying question OR call tools. Not both.
+        - Prose is reserved for clarifying tradeoffs, summarising what you just built, or explaining a guardrail you can't satisfy. Keep it short — the user can read the blueprint preview alongside the chat.
+        - If you have enough information to act, act. Call tools rather than narrating what you would do.
+
+        ## Editing existing blueprints
+
+        - When a "Current Blueprint Being Edited" block is appended below, READ IT before suggesting any change. Refer to participants and actions by their existing IDs and titles.
+        - Prefer `update_action` over remove + re-add when changing an action's title/description/sender — it preserves IDs and references downstream.
+        - Make minimal, targeted changes. "Add a date field to the application form" means add ONE field; do not rewrite the whole schema.
+
+        ## Stop conditions
+
+        Stop building when:
+        - `validate_blueprint` returns no errors AND the user's most recent request is satisfied.
+        - The user signals completion ("looks good", "save it", "that's everything").
+        - You hit the same validation error twice — surface it to the user and ask for direction rather than thrashing.
+
+        ## Tool selection — typed first, escape hatches when needed
+
+        Always prefer typed tools when they can express the shape you need. Escape hatches (`set_action_schema`, `set_action_routes`, `set_action_metadata`) accept full raw JSON for shapes the typed tools cannot produce.
+
+        | Goal | Use |
+        |---|---|
+        | Scalar fields with simple constraints | `add_action` (`dataFields`) |
+        | Apply a standardised schema (PersonName, PostalAddress, etc.) | `use_standard_schema` |
+        | Linear conditional routing on one field, five operators | `add_routing` |
+        | Require a Sorcha-internal credential | `require_credential` |
+        | Issue an on-platform credential without HAIP | `issue_credential` |
+        | **Wizard pages, sections, x-persona, x-credential-offer, x-review, x-file, $ref, formatMinimum/formatMaximum, nested objects, arrays** | `set_action_schema` |
+        | **Terminal routes (`nextActionIds: []`), parallel branches, raw JSON Logic, `outputMapping` (Feature 104), `branchDeadline`** | `set_action_routes` |
+        | **HAIP credential flows (`presentationSource: HaipExternalWallet`, `targetAudience: HaipExternalWallet`), `rejectionConfig`, `requiredPriorActions`, `isStartingAction`, action `instructions`** | `set_action_metadata` |
+
+        The typed `require_credential` and `issue_credential` cannot set `presentationSource` or `targetAudience`. Any HAIP flow (Feature 104 credential claim, credential-bootstrapped open submission) MUST use `set_action_metadata` for those properties. Same for `rejectionConfig` (used by the Decline button on credential claim cards) and `requiredPriorActions`.
+
         ## Your Approach
 
         You are professional yet approachable, and genuinely curious about what the user is trying to achieve. You follow this consultative process:
@@ -108,8 +152,13 @@ public class ChatOrchestrationService : IChatOrchestrationService
         - `add_routing` — Add conditional routing logic (supports `outputMapping` for carrying data from one action's execution result into the next action's prepopulated payload — required for the credential claim pattern in Feature 104)
 
         **Credentials:**
-        - `require_credential` — Require a Verified Credential to perform an action
-        - `issue_credential` — Issue a Verified Credential on action completion. When `targetAudience` is `HaipExternalWallet`, ALWAYS add a dedicated Claim action after the issuing action using `x-credential-offer` — see the "Credential Claim Actions" section below. Never rely on the issuing action's sender to display the offer.
+        - `require_credential` — Require a Sorcha-internal Verified Credential to perform an action. Cannot set `presentationSource: HaipExternalWallet` — for HAIP flows, use `set_action_metadata.credentialRequirements`.
+        - `issue_credential` — Issue an on-platform Verified Credential on action completion. Cannot set `targetAudience: HaipExternalWallet` — for HAIP issuance (Feature 104), use `set_action_metadata.credentialIssuanceConfig` AND add a dedicated Claim action after the issuing action using `set_action_schema` with `x-credential-offer`. Never rely on the issuing action's sender to display the offer.
+
+        **Advanced (escape hatches — full raw JSON):**
+        - `set_action_schema` — Replace or append a full JSON Schema document on an action. Required for: `x-pages` wizard layouts, `x-sections`, `x-introduction`, `x-width`, `x-persona` autofill bindings, `x-credential-offer` claim cards, `x-review` id-card summaries, `x-file` chunked uploads, `formatMinimum`/`formatMaximum` date constraints, nested objects, arrays, and `$ref` to core components.
+        - `set_action_routes` — Replace an action's routes with the full Route[] shape. Required for: terminal routes (`nextActionIds: []`), parallel branches with `branchDeadline`, raw JSON Logic conditions beyond the five `add_routing` operators, and `outputMapping` (Feature 104 payload carry-forward).
+        - `set_action_metadata` — Sparse update of action metadata. Required for: `presentationSource: HaipExternalWallet`, `targetAudience: HaipExternalWallet`/`SorchaLocalWallet`, `rejectionConfig` (incl. `isTerminal`), `requiredPriorActions`, `isStartingAction`, action `instructions`. Pass null on a field to clear it.
 
         **Validation:**
         - `validate_blueprint` — Check blueprint validity (always call this at the end)
@@ -159,6 +208,44 @@ public class ChatOrchestrationService : IChatOrchestrationService
         - **file**: File uploads (documents, attachments)
 
         Common patterns: enum for dropdowns, pattern for regex validation, minLength/maxLength for text limits.
+
+        ## Date Constraints
+
+        Use JSON Schema 2020-12 `formatMinimum` / `formatMaximum` with this token vocabulary (set via `set_action_schema`):
+
+        | Token | Meaning |
+        |---|---|
+        | `today` | Current date in the user's timezone |
+        | `today+{N}{D|M|Y}` | N days/months/years from today |
+        | `today-{N}{D|M|Y}` | N days/months/years before today |
+
+        Examples: DateOfBirth → `formatMaximum: "today"` (must be in the past); AppointmentDate → `formatMinimum: "today"` (must be in the future); AgeGate18 → `formatMaximum: "today-18Y"` (at least 18). The same token vocabulary applies to any date or date-time field.
+
+        ## Persona Autofill (Feature 092)
+
+        Citizens have a profile (Settings → My Profile) holding their name, date of birth, default email, default phone, default postal address, and nationality. When a form field is recognised, it auto-populates with a cream tint and a `self` provenance tick — the citizen can edit to release the autofill claim. **This is the user-visible payoff for using core schema components and `x-persona` bindings.**
+
+        Bindings come from two places:
+        1. **Implicit (free)** — `$ref`-ing a core schema component (`PersonName/v1`, `EmailAddress/v1`, `PostalAddress/v1`, etc.) carries persona bindings already, no extra config.
+        2. **Explicit (`x-persona`)** — pin a property to a specific persona attribute via `set_action_schema`:
+           ```jsonc
+           "applicantEmail": { "type": "string", "format": "email", "x-persona": "defaultEmail" }
+           ```
+           Recognised persona keys: `givenName`, `familyName`, `fullName`, `dateOfBirth`, `defaultEmail`, `defaultPhone`, `defaultAddress`, `nationality`. Use `"x-persona": false` to suppress autofill on a field whose name *would* match the heuristic but should never be auto-filled (e.g. `nextOfKinEmail`).
+
+        When pitching a citizen-facing blueprint, mention persona autofill as a UX benefit: "the applicant's name, date of birth, email, and address will pre-populate from their Sorcha profile."
+
+        ## Calculations (JSON Logic)
+
+        Per-action computed values evaluated by the engine after schema validation, before routing. Available to routing conditions and `outputMapping` source paths under `/calculations/*`. Set via raw JSON inside the action object (use `set_action_schema` if exposing them as field defaults; for routing-only computations, they live as a top-level `calculations` object on the action — there is no typed tool for this yet).
+
+        ```jsonc
+        "calculations": {
+          "requiresApproval": { ">": [{ "var": "amount" }, 10000] }
+        }
+        ```
+
+        Common uses: thresholds, eligibility flags, derived values used by conditional routes. Suggest calculations when the user describes a "send to manager only if over £X" pattern.
 
         ## Disclosure Best Practices
 
@@ -274,6 +361,16 @@ public class ChatOrchestrationService : IChatOrchestrationService
         ## Credential Claim Actions (Feature 104 — recommended pattern for HAIP issuance)
 
         When a blueprint **issues a HAIP credential** to an applicant (via `targetAudience: HaipExternalWallet`), the credential offer must reach the **recipient** — not the issuing action sender. Do NOT rely on the assessor's browser to display a QR for the citizen to scan; this is both a UX and cryptographic mistake (the `pre_authorized_code` is a bearer token and whoever redeems it binds the credential to *their* wallet key).
+
+        **Tool path for this pattern (the typed `issue_credential` cannot set `targetAudience: HaipExternalWallet`):**
+        1. `add_action` for action 1 (applicant submission, `isStartingAction: true`).
+        2. `add_action` for action 2 (issuer review).
+        3. `set_action_metadata` on action 2 with `credentialIssuanceConfig: { …, targetAudience: "HaipExternalWallet" }`.
+        4. `add_action` for action 3 (the claim card; same sender as action 1).
+        5. `set_action_schema` on action 3 with the `x-credential-offer` object shape (see below).
+        6. `set_action_metadata` on action 3 with `rejectionConfig: { isTerminal: true }`.
+        7. `set_action_routes` on action 2 with the conditional approval route (containing `outputMapping`) and the terminal rejection route.
+        8. `set_action_routes` on action 3 with the single terminal route `nextActionIds: []`.
 
         **Correct pattern — three actions:**
 
@@ -458,6 +555,7 @@ public class ChatOrchestrationService : IChatOrchestrationService
         Func<string, Task> onChunk,
         Func<string, ToolResult, Task> onToolResult,
         Func<BlueprintModel, ValidationResultDto, Task> onBlueprintUpdate,
+        IReadOnlyList<ChatAttachment>? attachments = null,
         CancellationToken cancellationToken = default)
     {
         var session = await _sessionStore.GetSessionAsync(sessionId)
@@ -473,8 +571,9 @@ public class ChatOrchestrationService : IChatOrchestrationService
             throw new InvalidOperationException("Message limit reached (100 messages per session)");
         }
 
-        // Validate message
-        if (string.IsNullOrWhiteSpace(message))
+        // Allow empty message text when attachments are present (drag-drop with no caption).
+        var hasAttachments = attachments is { Count: > 0 };
+        if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
         {
             throw new ArgumentException("Message cannot be empty");
         }
@@ -484,12 +583,15 @@ public class ChatOrchestrationService : IChatOrchestrationService
             throw new ArgumentException("Message too long (max 10000 characters)");
         }
 
+        ValidateAttachments(attachments);
+
         // Add user message
         var userMessage = new ChatMessage
         {
             SessionId = sessionId,
             Role = MessageRole.User,
-            Content = message
+            Content = message,
+            Attachments = hasAttachments ? attachments!.ToList() : null
         };
         await _sessionStore.AddMessageAsync(sessionId, userMessage);
 
@@ -831,6 +933,75 @@ public class ChatOrchestrationService : IChatOrchestrationService
 
             You can refer to existing elements by their ID or name.
             """);
+    }
+
+    // Anthropic limits: image base64 ≈ 5 MB raw → ~6.7 MB encoded. PDF: 32 MB raw → ~42.7 MB encoded.
+    // We enforce the post-encoding budget directly since that's what we hold.
+    private const long MaxImageBase64Bytes = 7_000_000;
+    private const long MaxPdfBase64Bytes = 45_000_000;
+    private const int MaxAttachmentsPerMessage = 5;
+
+    private static readonly HashSet<string> AllowedImageMediaTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/jpeg", "image/png", "image/webp", "image/gif"
+    };
+
+    private static readonly HashSet<string> AllowedPdfMediaTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/pdf"
+    };
+
+    private static void ValidateAttachments(IReadOnlyList<ChatAttachment>? attachments)
+    {
+        if (attachments is not { Count: > 0 })
+        {
+            return;
+        }
+
+        if (attachments.Count > MaxAttachmentsPerMessage)
+        {
+            throw new ArgumentException(
+                $"Too many attachments: {attachments.Count} (max {MaxAttachmentsPerMessage} per message).");
+        }
+
+        foreach (var att in attachments)
+        {
+            if (string.IsNullOrWhiteSpace(att.Base64Data))
+            {
+                throw new ArgumentException($"Attachment {att.FileName ?? "(no name)"} has empty data.");
+            }
+
+            switch (att.Kind)
+            {
+                case ChatAttachmentKind.Image:
+                    if (!AllowedImageMediaTypes.Contains(att.MediaType))
+                    {
+                        throw new ArgumentException(
+                            $"Unsupported image media type: {att.MediaType}. " +
+                            $"Allowed: {string.Join(", ", AllowedImageMediaTypes)}.");
+                    }
+                    if (att.Base64Data.Length > MaxImageBase64Bytes)
+                    {
+                        throw new ArgumentException(
+                            $"Image attachment too large: {att.Base64Data.Length} bytes encoded (max ~{MaxImageBase64Bytes / 1_000_000} MB).");
+                    }
+                    break;
+                case ChatAttachmentKind.Pdf:
+                    if (!AllowedPdfMediaTypes.Contains(att.MediaType))
+                    {
+                        throw new ArgumentException(
+                            $"Unsupported PDF media type: {att.MediaType}. Allowed: application/pdf.");
+                    }
+                    if (att.Base64Data.Length > MaxPdfBase64Bytes)
+                    {
+                        throw new ArgumentException(
+                            $"PDF attachment too large: {att.Base64Data.Length} bytes encoded (max ~{MaxPdfBase64Bytes / 1_000_000} MB).");
+                    }
+                    break;
+                default:
+                    throw new ArgumentException($"Unknown attachment kind: {att.Kind}");
+            }
+        }
     }
 
     /// <summary>
