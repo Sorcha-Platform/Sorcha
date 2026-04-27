@@ -27,15 +27,15 @@
 
 @code {
     /// <summary>List of file references to display. Populated from the action payload — no API calls made on render.</summary>
-    [Parameter] public List<FileReferenceInfo> Files { get; set; } = [];
+    [Parameter] public List<FileReferenceInfo> Files { get; set; } = new();
 
     /// <summary>Raised with the zero-based file index when the user clicks the download button for that file.</summary>
     [Parameter] public EventCallback<int> OnDownload { get; set; }
 
-    private static string FormatSize(long bytes) => bytes switch
+    private static string FormatSize(long bytes)
     {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
-        _ => $"{bytes / (1024.0 * 1024.0):F1} MB"
-    };
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
 }
