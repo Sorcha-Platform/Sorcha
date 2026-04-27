@@ -156,13 +156,16 @@ public class CredentialStore : ICredentialStore
         CredentialStatus newStatus,
         CancellationToken ct = default)
     {
+        // Wallet-scoped lookup — credential IDs are not globally unique when a
+        // credential exists on both the issuer's wallet (Active at issuance)
+        // and the recipient's wallet (PendingAcceptance via
+        // InboundCredentialDetector). Filtering by both keys at the EF query
+        // is the only safe way to find the row a holder is operating on.
         var credential = await _db.Credentials
-            .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
+            .FirstOrDefaultAsync(
+                c => c.Id == credentialId && c.WalletAddress == walletAddress, ct);
 
         if (credential is null)
-            return null;
-
-        if (!string.Equals(credential.WalletAddress, walletAddress, StringComparison.OrdinalIgnoreCase))
             return null;
 
         // Idempotent no-op (data-model INV-2 discussion): patching to the same status
