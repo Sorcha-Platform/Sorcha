@@ -2,11 +2,17 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
+using Sorcha.Tenant.Service.Data.Repositories;
+using Sorcha.Tenant.Service.Filters;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
+using Sorcha.Tenant.Service.Models.Requests;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Service.Telemetry;
 
 namespace Sorcha.Tenant.Service.Endpoints;
 
@@ -56,16 +62,32 @@ public static class PasskeyEndpoints
             .Produces<PasskeyCredentialListResponse>()
             .Produces(StatusCodes.Status401Unauthorized);
 
-        group.MapDelete("/credentials/{id:guid}", DeleteCredential)
-            .WithName("PasskeyDeleteCredential")
-            .WithSummary("Revoke a passkey credential")
-            .WithDescription("Revokes a passkey credential, preventing its future use for authentication. "
-                + "Cannot revoke the last authentication method (must have TOTP or other passkeys).")
+        group.MapPut("/credentials/{id:guid}", RenameCredential)
+            .WithName("PasskeyRenameCredential")
+            .WithSummary("Rename a passkey credential")
+            .WithDescription("Updates the user-visible display name of an Active passkey credential. "
+                + "Disabled or Revoked credentials cannot be renamed (returns 409). No re-authentication "
+                + "challenge is required for rename.")
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
+
+        group.MapDelete("/credentials/{id:guid}", DeleteCredential)
+            .WithName("PasskeyDeleteCredential")
+            .WithSummary("Soft-revoke a passkey credential")
+            .WithDescription("Transitions an Active passkey to Revoked (preserving the audit row). "
+                + "Active passkeys require a fresh re-authentication challenge in the X-Auth-Challenge "
+                + "header. Disabled passkeys (already non-functional) bypass the challenge requirement. "
+                + "Removing a credential that would leave the user with zero sign-in methods is rejected with 409.")
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
 
         // Feature 060: Service-to-service endpoint for recovery key wrapping
         app.MapGet("/api/users/{userId}/passkeys/recovery-key", GetRecoveryPublicKey)
@@ -202,28 +224,32 @@ public static class PasskeyEndpoints
     /// </summary>
     private static async Task<IResult> ListCredentials(
         IPasskeyService passkeyService,
-        ClaimsPrincipal user,
+        HttpContext httpContext,
+        IIdentityRepository identityRepository,
         CancellationToken cancellationToken)
     {
-        var platformUserIdClaim = user.FindFirst("platform_user_id")?.Value;
-        if (platformUserIdClaim is null || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
-        {
-            return TypedResults.Unauthorized();
-        }
+        var resolvedId = await ResolvePlatformUserIdAsync(httpContext, identityRepository, cancellationToken);
+        if (resolvedId is null) return TypedResults.Unauthorized();
+        var platformUserId = resolvedId.Value;
 
         var credentials = await passkeyService.GetCredentialsByOwnerAsync(platformUserId, cancellationToken);
 
+        // Feature 116 US2 (T054): exclude soft-revoked rows from the list. The
+        // service stays inclusive so callers like LoginService/PublicPasskeyEndpoints
+        // can still resolve historical rows when needed.
         var response = new PasskeyCredentialListResponse
         {
-            Credentials = credentials.Select(c => new PasskeyCredentialResponse
-            {
-                Id = c.Id,
-                DisplayName = c.DisplayName,
-                DeviceType = c.DeviceType,
-                Status = c.Status.ToString(),
-                CreatedAt = c.CreatedAt,
-                LastUsedAt = c.LastUsedAt
-            }).ToList(),
+            Credentials = credentials
+                .Where(c => c.Status != CredentialStatus.Revoked)
+                .Select(c => new PasskeyCredentialResponse
+                {
+                    Id = c.Id,
+                    DisplayName = c.DisplayName,
+                    DeviceType = c.DeviceType,
+                    Status = c.Status.ToString(),
+                    CreatedAt = c.CreatedAt,
+                    LastUsedAt = c.LastUsedAt
+                }).ToList(),
             MaxCredentials = MaxCredentialsPerUser
         };
 
@@ -270,47 +296,209 @@ public static class PasskeyEndpoints
     }
 
     /// <summary>
-    /// DELETE /api/passkey/credentials/{id} — revoke a passkey credential.
+    /// PUT /api/passkey/credentials/{id} — rename a passkey credential (Feature 116 US2).
     /// </summary>
-    private static async Task<IResult> DeleteCredential(
+    private static async Task<IResult> RenameCredential(
         Guid id,
+        PasskeyRenameRequest request,
         IPasskeyService passkeyService,
-        ITotpService totpService,
-        ClaimsPrincipal user,
-        ILogger<Program> logger,
+        HttpContext httpContext,
+        IIdentityRepository identityRepository,
         CancellationToken cancellationToken)
     {
-        var platformUserIdClaim = user.FindFirst("platform_user_id")?.Value;
-        if (platformUserIdClaim is null || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
-        {
-            return TypedResults.Unauthorized();
-        }
+        var platformUserId = await ResolvePlatformUserIdAsync(httpContext, identityRepository, cancellationToken);
+        if (platformUserId is null) return TypedResults.Unauthorized();
 
-        // Check if this would leave the user with no auth methods.
-        // Note: check-then-act is not fully atomic but rate limiting (5/min/IP) mitigates concurrent abuse.
-        var credentials = await passkeyService.GetCredentialsByOwnerAsync(platformUserId, cancellationToken);
-        var activeCredentials = credentials.Where(c => c.Status == CredentialStatus.Active).ToList();
-        var totpStatus = await totpService.GetStatusAsync(platformUserId, cancellationToken);
-
-        // If this is the only active passkey and TOTP is not enabled, prevent deletion
-        var isTargetActive = activeCredentials.Any(c => c.Id == id);
-        if (isTargetActive && activeCredentials.Count == 1 && !totpStatus.IsEnabled)
+        if (request is null || string.IsNullOrWhiteSpace(request.DisplayName))
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["credentials"] = ["Cannot revoke the last authentication method. Enable TOTP or register another passkey first."]
+                ["display_name"] = ["Display name is required"]
             });
         }
 
-        var revoked = await passkeyService.RevokeCredentialAsync(id, platformUserId, cancellationToken);
+        var trimmed = request.DisplayName.Trim();
+        if (trimmed.Length > 100)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["display_name"] = ["Display name must be 100 characters or fewer"]
+            });
+        }
 
-        if (!revoked)
+        var outcome = await passkeyService.RenameCredentialAsync(id, platformUserId.Value, trimmed, cancellationToken);
+        return outcome switch
+        {
+            PasskeyRenameOutcome.NotFound => TypedResults.NotFound(),
+            PasskeyRenameOutcome.BlockedByDisabled => TypedResults.Conflict(new { error = "Disabled passkeys cannot be renamed." }),
+            PasskeyRenameOutcome.BlockedByRevoked => TypedResults.NotFound(),
+            PasskeyRenameOutcome.Renamed => TypedResults.NoContent(),
+            _ => TypedResults.Problem("Unexpected rename outcome.", statusCode: StatusCodes.Status500InternalServerError),
+        };
+    }
+
+    /// <summary>
+    /// DELETE /api/passkey/credentials/{id} — soft-revoke a passkey credential (Feature 116 US2).
+    /// </summary>
+    /// <remarks>
+    /// Active passkeys require a fresh re-authentication challenge token in the
+    /// <c>X-Auth-Challenge</c> header (validated and consumed inline so the gating
+    /// can branch on credential status — Disabled passkeys are already non-functional
+    /// and bypass the challenge requirement per design §6.4 / contract §delete).
+    /// </remarks>
+    private static async Task<IResult> DeleteCredential(
+        Guid id,
+        IPasskeyService passkeyService,
+        IAuthChallengeRepository authChallengeRepository,
+        AuthMetrics metrics,
+        HttpContext httpContext,
+        IIdentityRepository identityRepository,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var platformUserId = await ResolvePlatformUserIdAsync(httpContext, identityRepository, cancellationToken);
+        if (platformUserId is null) return TypedResults.Unauthorized();
+
+        // Read prior status to decide whether the challenge gate applies. This
+        // read intentionally races with concurrent Active→Disabled transitions;
+        // the service layer re-reads under its own SaveChanges so the audit
+        // reason string always reflects the actual state at revocation time.
+        var existing = await passkeyService.GetCredentialAsync(id, platformUserId.Value, cancellationToken);
+        if (existing is null || existing.Status == CredentialStatus.Revoked)
         {
             return TypedResults.NotFound();
         }
 
-        logger.LogInformation("Passkey credential {CredentialId} revoked for PlatformUser {PlatformUserId}", id, platformUserId);
+        if (existing.Status == CredentialStatus.Active)
+        {
+            var challengeError = await ValidateAndConsumeChallengeAsync(
+                httpContext,
+                authChallengeRepository,
+                metrics,
+                logger,
+                platformUserId.Value,
+                ScopedOperation.RemoveAuthMethod,
+                cancellationToken);
 
-        return TypedResults.NoContent();
+            if (challengeError is not null) return challengeError;
+        }
+
+        var outcome = await passkeyService.RevokeCredentialAsync(id, platformUserId.Value, cancellationToken);
+        return outcome switch
+        {
+            PasskeyRevocationOutcome.NotFound or
+            PasskeyRevocationOutcome.AlreadyRevoked => TypedResults.NotFound(),
+            PasskeyRevocationOutcome.BlockedByFloor => TypedResults.Conflict(new
+            {
+                error = "Cannot remove the last remaining sign-in method. Add a password, social login, or another passkey first."
+            }),
+            PasskeyRevocationOutcome.RevokedFromActive or
+            PasskeyRevocationOutcome.RevokedFromDisabled => TypedResults.NoContent(),
+            _ => TypedResults.Problem("Unexpected revocation outcome.", statusCode: StatusCodes.Status500InternalServerError),
+        };
+    }
+
+    /// <summary>
+    /// Resolves the calling user's PlatformUserId from the bearer token.
+    /// Falls back to the canonical sub claim → IIdentityRepository lookup
+    /// when the custom <c>platform_user_id</c> claim is absent (matches the
+    /// helper used in <see cref="AuthMethodsEndpoints"/> so test JWT shapes
+    /// missing the custom claim still resolve correctly).
+    /// </summary>
+    private static async Task<Guid?> ResolvePlatformUserIdAsync(
+        HttpContext httpContext,
+        IIdentityRepository identityRepository,
+        CancellationToken cancellationToken)
+    {
+        var pidClaim = httpContext.User.FindFirst("platform_user_id")?.Value
+                       ?? httpContext.User.FindFirst("pid")?.Value;
+        if (Guid.TryParse(pidClaim, out var pid)) return pid;
+
+        var sub = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                  ?? httpContext.User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(sub, out var userIdentityId)) return null;
+
+        var user = await identityRepository.GetUserByIdAsync(userIdentityId, cancellationToken);
+        return user?.PlatformUserId;
+    }
+
+    /// <summary>
+    /// Inline implementation of the <see cref="RequireAuthChallengeFilter"/>
+    /// pipeline for endpoints that gate conditionally on resource state. The
+    /// 5-step protocol matches the filter (header → lookup → owner+scope →
+    /// expiry → atomic consume) and emits the same telemetry. Returns null
+    /// on success and the failure <see cref="IResult"/> otherwise.
+    /// </summary>
+    private static async Task<IResult?> ValidateAndConsumeChallengeAsync(
+        HttpContext httpContext,
+        IAuthChallengeRepository repository,
+        AuthMetrics metrics,
+        ILogger logger,
+        Guid callerPlatformUserId,
+        ScopedOperation expectedOperation,
+        CancellationToken cancellationToken)
+    {
+        var rawHeader = httpContext.Request.Headers[RequireAuthChallengeAttribute.HeaderName].ToString();
+        if (string.IsNullOrEmpty(rawHeader))
+        {
+            metrics.RecordChallengeConsumed(default, expectedOperation, ChallengeConsumeOutcome.Missing);
+            logger.LogWarning("Missing X-Auth-Challenge on passkey delete scope={Scope}", expectedOperation);
+            return TypedResults.Problem(
+                detail: "Missing X-Auth-Challenge header.",
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var tokenHash = ComputeSha256Hex(rawHeader);
+        var token = await repository.FindByHashAsync(tokenHash, cancellationToken);
+        if (token is null)
+        {
+            metrics.RecordChallengeConsumed(default, expectedOperation, ChallengeConsumeOutcome.Mismatch);
+            return TypedResults.Problem(
+                detail: "Challenge token not recognised.",
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        if (token.PlatformUserId != callerPlatformUserId)
+        {
+            metrics.RecordChallengeConsumed(token.Method, expectedOperation, ChallengeConsumeOutcome.Mismatch);
+            return TypedResults.Problem(
+                detail: "Challenge token does not belong to the calling user.",
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        if (token.ScopedOperation != expectedOperation)
+        {
+            metrics.RecordChallengeConsumed(token.Method, expectedOperation, ChallengeConsumeOutcome.Mismatch);
+            return TypedResults.Problem(
+                detail: "Challenge token was issued for a different operation.",
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        if (token.ExpiresAt < DateTimeOffset.UtcNow)
+        {
+            metrics.RecordChallengeConsumed(token.Method, expectedOperation, ChallengeConsumeOutcome.Expired);
+            return TypedResults.Problem(
+                detail: "Challenge token has expired.",
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var consumed = await repository.TryConsumeAsync(token.Id, DateTimeOffset.UtcNow, cancellationToken);
+        if (!consumed)
+        {
+            metrics.RecordChallengeConsumed(token.Method, expectedOperation, ChallengeConsumeOutcome.Replay);
+            return TypedResults.Problem(
+                detail: "Challenge token has already been used.",
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        metrics.RecordChallengeConsumed(token.Method, expectedOperation, ChallengeConsumeOutcome.Success);
+        return null;
+    }
+
+    private static string ComputeSha256Hex(string raw)
+    {
+        Span<byte> hash = stackalloc byte[32];
+        SHA256.HashData(Encoding.UTF8.GetBytes(raw), hash);
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

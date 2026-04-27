@@ -104,14 +104,46 @@ public interface IPasskeyService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes a passkey credential, preventing its future use for authentication.
-    /// The credential must belong to the specified platform user.
+    /// Soft-revokes a passkey credential (Feature 116 US2). Transitions
+    /// <see cref="CredentialStatus.Active"/> → <see cref="CredentialStatus.Revoked"/>
+    /// with reason <c>"user-removed"</c>, or <see cref="CredentialStatus.Disabled"/> →
+    /// <see cref="CredentialStatus.Revoked"/> with reason <c>"user-removed-after-disable"</c>.
+    /// Active revocation enforces the last-method floor inside the same transaction
+    /// via <see cref="IAuthMethodService.WouldRemovingLeaveZeroAsync"/>.
     /// </summary>
     /// <param name="credentialId">ID of the credential to revoke.</param>
     /// <param name="platformUserId">The platform user ID that owns the credential.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>True if the credential was found and revoked; false if not found.</returns>
-    Task<bool> RevokeCredentialAsync(
+    /// <returns>An outcome enum describing the disposition of the request.</returns>
+    Task<PasskeyRevocationOutcome> RevokeCredentialAsync(
+        Guid credentialId,
+        Guid platformUserId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Renames the display name of a passkey credential (Feature 116 US2).
+    /// Disabled and Revoked credentials cannot be renamed — the row is preserved
+    /// for forensic audit and its identity should not drift after revocation.
+    /// </summary>
+    /// <param name="credentialId">ID of the credential to rename.</param>
+    /// <param name="platformUserId">The platform user ID that owns the credential.</param>
+    /// <param name="newDisplayName">New display name; expected to be trimmed and non-empty.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An outcome enum describing the disposition of the request.</returns>
+    Task<PasskeyRenameOutcome> RenameCredentialAsync(
+        Guid credentialId,
+        Guid platformUserId,
+        string newDisplayName,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Loads a single passkey credential owned by <paramref name="platformUserId"/>.
+    /// Returns null if the credential does not exist or is not owned by the caller.
+    /// </summary>
+    /// <param name="credentialId">Credential id to load.</param>
+    /// <param name="platformUserId">Owning platform user.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<PasskeyCredential?> GetCredentialAsync(
         Guid credentialId,
         Guid platformUserId,
         CancellationToken cancellationToken = default);

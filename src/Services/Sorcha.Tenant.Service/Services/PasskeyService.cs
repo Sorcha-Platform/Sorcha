@@ -27,6 +27,7 @@ public class PasskeyService : IPasskeyService
     private readonly IFido2 _fido2;
     private readonly IDistributedCache _cache;
     private readonly TenantDbContext _db;
+    private readonly IAuthMethodService _authMethodService;
     private readonly ILogger<PasskeyService> _logger;
 
     /// <summary>
@@ -35,21 +36,25 @@ public class PasskeyService : IPasskeyService
     /// <param name="fido2">FIDO2 library for credential operations.</param>
     /// <param name="cache">Distributed cache for storing challenge state.</param>
     /// <param name="db">Tenant database context.</param>
+    /// <param name="authMethodService">Floor service used during revocation to enforce the last-method floor (Feature 116 US2).</param>
     /// <param name="logger">Logger instance.</param>
     public PasskeyService(
         IFido2 fido2,
         IDistributedCache cache,
         TenantDbContext db,
+        IAuthMethodService authMethodService,
         ILogger<PasskeyService> logger)
     {
         ArgumentNullException.ThrowIfNull(fido2);
         ArgumentNullException.ThrowIfNull(cache);
         ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(authMethodService);
         ArgumentNullException.ThrowIfNull(logger);
 
         _fido2 = fido2;
         _cache = cache;
         _db = db;
+        _authMethodService = authMethodService;
         _logger = logger;
     }
 
@@ -306,11 +311,29 @@ public class PasskeyService : IPasskeyService
     }
 
     /// <inheritdoc />
-    public async Task<bool> RevokeCredentialAsync(
+    public async Task<PasskeyCredential?> GetCredentialAsync(
         Guid credentialId,
         Guid platformUserId,
         CancellationToken cancellationToken = default)
     {
+        return await _db.PasskeyCredentials
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                c => c.Id == credentialId && c.PlatformUserId == platformUserId,
+                cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<PasskeyRevocationOutcome> RevokeCredentialAsync(
+        Guid credentialId,
+        Guid platformUserId,
+        CancellationToken cancellationToken = default)
+    {
+        // Tracking read inside the same SaveChanges batch as the mutation so the
+        // floor check, the status flip, and the audit-reason write all commit
+        // atomically. The endpoint does its own status read for challenge-gating
+        // decisions; the prior status seen here is authoritative for the reason
+        // string regardless of any intervening Active→Disabled flip.
         var credential = await _db.PasskeyCredentials
             .FirstOrDefaultAsync(
                 c => c.Id == credentialId && c.PlatformUserId == platformUserId,
@@ -319,21 +342,96 @@ public class PasskeyService : IPasskeyService
         if (credential is null)
         {
             _logger.LogWarning(
-                "Credential {CredentialId} not found for PlatformUser {PlatformUserId} during revocation",
+                "Passkey credential {CredentialId} not found for PlatformUser {PlatformUserId} during revocation",
                 credentialId, platformUserId);
-            return false;
+            return PasskeyRevocationOutcome.NotFound;
+        }
+
+        if (credential.Status == CredentialStatus.Revoked)
+        {
+            // Idempotency: a previously revoked row is treated as not-found by
+            // the API surface to avoid leaking the existence of revoked rows.
+            return PasskeyRevocationOutcome.AlreadyRevoked;
+        }
+
+        var priorStatus = credential.Status;
+
+        if (priorStatus == CredentialStatus.Active)
+        {
+            // Floor enforcement only fires for Active passkeys — Disabled rows
+            // do not count toward the active-method total in
+            // AuthMethodService.GetCountsAsync, so removing one cannot violate
+            // the floor.
+            var leavesZero = await _authMethodService.WouldRemovingLeaveZeroAsync(
+                platformUserId,
+                AuthMethodKind.Passkey,
+                credentialId,
+                cancellationToken);
+
+            if (leavesZero)
+            {
+                _logger.LogWarning(
+                    "Passkey revocation blocked by floor for PlatformUser {PlatformUserId} CredentialId {CredentialId}",
+                    platformUserId, credentialId);
+                return PasskeyRevocationOutcome.BlockedByFloor;
+            }
         }
 
         credential.Status = CredentialStatus.Revoked;
         credential.DisabledAt = DateTimeOffset.UtcNow;
-        credential.DisabledReason = "Revoked by owner";
+        credential.DisabledReason = priorStatus == CredentialStatus.Active
+            ? "user-removed"
+            : "user-removed-after-disable";
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Passkey credential {CredentialId} revoked for PlatformUser {PlatformUserId}",
+            "Passkey credential {CredentialId} revoked for PlatformUser {PlatformUserId} prior={PriorStatus}",
+            credentialId, platformUserId, priorStatus);
+
+        return priorStatus == CredentialStatus.Active
+            ? PasskeyRevocationOutcome.RevokedFromActive
+            : PasskeyRevocationOutcome.RevokedFromDisabled;
+    }
+
+    /// <inheritdoc />
+    public async Task<PasskeyRenameOutcome> RenameCredentialAsync(
+        Guid credentialId,
+        Guid platformUserId,
+        string newDisplayName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(newDisplayName);
+
+        var credential = await _db.PasskeyCredentials
+            .FirstOrDefaultAsync(
+                c => c.Id == credentialId && c.PlatformUserId == platformUserId,
+                cancellationToken);
+
+        if (credential is null)
+        {
+            return PasskeyRenameOutcome.NotFound;
+        }
+
+        // Disabled / Revoked rows are read-only by design — the audit row's
+        // identity is anchored in time. The contract returns 409 from the
+        // endpoint to make this explicit to API consumers.
+        if (credential.Status == CredentialStatus.Disabled)
+        {
+            return PasskeyRenameOutcome.BlockedByDisabled;
+        }
+        if (credential.Status == CredentialStatus.Revoked)
+        {
+            return PasskeyRenameOutcome.BlockedByRevoked;
+        }
+
+        credential.DisplayName = newDisplayName.Trim();
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Passkey credential {CredentialId} renamed for PlatformUser {PlatformUserId}",
             credentialId, platformUserId);
 
-        return true;
+        return PasskeyRenameOutcome.Renamed;
     }
 
     /// <summary>

@@ -10,7 +10,7 @@ info:
 servers:
   - url: https://api.sorcha.dev
 paths:
-  /api/passkeys/credentials/{id}:
+  /api/passkey/credentials/{id}:
     put:
       operationId: RenamePasskey
       tags: [Passkeys]
