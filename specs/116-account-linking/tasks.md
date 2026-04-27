@@ -24,10 +24,10 @@ description: "Task list for Feature 116 — Account Linking & Auth-Method Manage
 
 **Purpose**: Pre-existing project — minimal setup. Just create empty folders for the new file groups so subsequent `Write` calls succeed.
 
-- [ ] T001 Create directory `src/Services/Sorcha.Tenant.Service/Models/Requests/` for new request DTOs
-- [ ] T002 [P] Create directory `src/Services/Sorcha.Tenant.Service/Filters/` for `RequireAuthChallengeAttribute`
-- [ ] T003 [P] Create directory `src/Services/Sorcha.Tenant.Service/Telemetry/` for the new OpenTelemetry meter wrapper
-- [ ] T004 [P] Create directory `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/AuthMethods/` for the four new Razor components
+- [X] T001 Create directory `src/Services/Sorcha.Tenant.Service/Models/Requests/` for new request DTOs
+- [X] T002 [P] Create directory `src/Services/Sorcha.Tenant.Service/Filters/` for `RequireAuthChallengeAttribute`
+- [X] T003 [P] Create directory `src/Services/Sorcha.Tenant.Service/Telemetry/` for the new OpenTelemetry meter wrapper
+- [X] T004 [P] Create directory `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/AuthMethods/` for the four new Razor components
 
 ---
 
@@ -39,28 +39,28 @@ description: "Task list for Feature 116 — Account Linking & Auth-Method Manage
 
 ### Backend — entities & DB
 
-- [ ] T005 [P] Create `AuthChallengeToken` entity at `src/Services/Sorcha.Tenant.Service/Models/AuthChallengeToken.cs` per data-model.md §"New entity"
-- [ ] T006 [P] Create `ChallengeMethod` + `ScopedOperation` enums at `src/Services/Sorcha.Tenant.Service/Models/AuthChallengeEnums.cs` per data-model.md §"Enums"
-- [ ] T007 Update `src/Services/Sorcha.Tenant.Service/Data/TenantDbContext.cs` — add `DbSet<AuthChallengeToken> AuthChallengeTokens` + `OnModelCreating` configuration with the four indexes from data-model.md §"Indexes" (depends on T005, T006)
-- [ ] T008 Squash migration: delete `src/Services/Sorcha.Tenant.Service/Migrations/20260425152258_InitialCreate.cs` + `.Designer.cs`, then run `dotnet ef migrations add InitialCreate` per quickstart.md §1; verify the regenerated file references `auth_challenge_tokens` (depends on T007)
+- [X] T005 [P] Create `AuthChallengeToken` entity at `src/Services/Sorcha.Tenant.Service/Models/AuthChallengeToken.cs` per data-model.md §"New entity"
+- [X] T006 [P] Create `ChallengeMethod` + `ScopedOperation` enums at `src/Services/Sorcha.Tenant.Service/Models/AuthChallengeEnums.cs` per data-model.md §"Enums"
+- [X] T007 Update `src/Services/Sorcha.Tenant.Service/Data/TenantDbContext.cs` — add `DbSet<AuthChallengeToken> AuthChallengeTokens` + `OnModelCreating` configuration with the four indexes from data-model.md §"Indexes" (depends on T005, T006)
+- [X] T008 Squash migration: delete `src/Services/Sorcha.Tenant.Service/Migrations/20260425152258_InitialCreate.cs` + `.Designer.cs`, then run `dotnet ef migrations add InitialCreate` per quickstart.md §1; verify the regenerated file references `auth_challenge_tokens` (depends on T007)
 
 ### Backend — repositories & services
 
-- [ ] T009 [P] Create `IAuthChallengeRepository` + `AuthChallengeRepository` at `src/Services/Sorcha.Tenant.Service/Data/Repositories/AuthChallengeRepository.cs` (`InsertAsync`, `FindByHashAsync`, atomic `TryConsumeAsync` using `UPDATE … WHERE consumed_at IS NULL` returning rows-affected, `PruneExpiredOlderThanAsync`)
-- [ ] T010 [P] Create `IAuthMethodService` interface + `AuthMethodService` implementation at `src/Services/Sorcha.Tenant.Service/Services/AuthMethodService.cs` — implements `WouldRemovingLeaveZero(platformUserId, methodKind, methodId)` per data-model.md §"CanRemove computation"; uses `SELECT … FOR UPDATE` on `PlatformUser` when called inside a mutation transaction
-- [ ] T011 Create `IAuthChallengeService` + `AuthChallengeService` at `src/Services/Sorcha.Tenant.Service/Services/AuthChallengeService.cs` — `IssueAsync(platformUserId, scopedOperation, preferredMethod?)` runs the ladder per research.md R-003 (TOTP → password → passkey → re-OAuth) and returns `(challengeId, method, payload?)`; `VerifyAsync(challengeId, proof)` validates proof per method, persists `AuthChallengeToken` with `SHA-256(token)`, returns raw token + 300s TTL (depends on T009)
-- [ ] T012 Create `RequireAuthChallengeAttribute` endpoint filter at `src/Services/Sorcha.Tenant.Service/Filters/RequireAuthChallengeAttribute.cs` — reads `X-Auth-Challenge` header, performs the 5-step verification from design §6.4, atomic-consumes via `IAuthChallengeRepository.TryConsumeAsync`, rejects with appropriate 401 codes (depends on T009)
-- [ ] T013 Create `AuthChallengeTokenCleanupService` BackgroundService at `src/Services/Sorcha.Tenant.Service/Services/AuthChallengeTokenCleanupService.cs` — daily tick (24h interval), prunes via `IAuthChallengeRepository.PruneExpiredOlderThanAsync(TimeSpan.FromDays(7))`, structured log per tick (depends on T009)
+- [X] T009 [P] Create `IAuthChallengeRepository` + `AuthChallengeRepository` at `src/Services/Sorcha.Tenant.Service/Data/Repositories/AuthChallengeRepository.cs` (`InsertAsync`, `FindByHashAsync`, atomic `TryConsumeAsync` using `UPDATE … WHERE consumed_at IS NULL` returning rows-affected, `PruneExpiredOlderThanAsync`)
+- [X] T010 [P] Create `IAuthMethodService` interface + `AuthMethodService` implementation at `src/Services/Sorcha.Tenant.Service/Services/AuthMethodService.cs` — implements `WouldRemovingLeaveZero(platformUserId, methodKind, methodId)` per data-model.md §"CanRemove computation"; uses `SELECT … FOR UPDATE` on `PlatformUser` when called inside a mutation transaction
+- [X] T011 Create `IAuthChallengeService` + `AuthChallengeService` at `src/Services/Sorcha.Tenant.Service/Services/AuthChallengeService.cs` — `IssueAsync(platformUserId, scopedOperation, preferredMethod?)` runs the ladder per research.md R-003 (TOTP → password → passkey → re-OAuth) and returns `(challengeId, method, payload?)`; `VerifyAsync(challengeId, proof)` validates proof per method, persists `AuthChallengeToken` with `SHA-256(token)`, returns raw token + 300s TTL (depends on T009)
+- [X] T012 Create `RequireAuthChallengeAttribute` endpoint filter at `src/Services/Sorcha.Tenant.Service/Filters/RequireAuthChallengeAttribute.cs` — reads `X-Auth-Challenge` header, performs the 5-step verification from design §6.4, atomic-consumes via `IAuthChallengeRepository.TryConsumeAsync`, rejects with appropriate 401 codes (depends on T009)
+- [X] T013 Create `AuthChallengeTokenCleanupService` BackgroundService at `src/Services/Sorcha.Tenant.Service/Services/AuthChallengeTokenCleanupService.cs` — daily tick (24h interval), prunes via `IAuthChallengeRepository.PruneExpiredOlderThanAsync(TimeSpan.FromDays(7))`, structured log per tick (depends on T009)
 
 ### Backend — telemetry
 
-- [ ] T014 [P] Create OpenTelemetry meter at `src/Services/Sorcha.Tenant.Service/Telemetry/AuthMetrics.cs` exposing the six counters from data-model.md §"Telemetry surface" on the `Sorcha.Tenant.Auth` meter
+- [X] T014 [P] Create OpenTelemetry meter at `src/Services/Sorcha.Tenant.Service/Telemetry/AuthMetrics.cs` exposing the six counters from data-model.md §"Telemetry surface" on the `Sorcha.Tenant.Auth` meter
 
 ### Backend — challenge endpoints
 
-- [ ] T015 Create `AuthChallengeEndpoints` at `src/Services/Sorcha.Tenant.Service/Endpoints/AuthChallengeEndpoints.cs` — `POST /api/auth/challenge/initiate` + `/verify` per `contracts/auth-challenge.openapi.yaml`; `.WithName/Summary/Description`, `.Produces<T>()`, `[Authorize]`, `RateLimitPolicies.PlatformAuth` (depends on T011, T014)
-- [ ] T016 Wire DI in `src/Services/Sorcha.Tenant.Service/Extensions/ServiceCollectionExtensions.cs` — new `AddTenantAccountManagement(this IServiceCollection)` registers repository, services, filter, BackgroundService, meter; called from `Program.cs` (depends on T009-T015)
-- [ ] T017 Map endpoints in `src/Services/Sorcha.Tenant.Service/Program.cs` — call `app.MapAuthChallengeEndpoints()` (depends on T015)
+- [X] T015 Create `AuthChallengeEndpoints` at `src/Services/Sorcha.Tenant.Service/Endpoints/AuthChallengeEndpoints.cs` — `POST /api/auth/challenge/initiate` + `/verify` per `contracts/auth-challenge.openapi.yaml`; `.WithName/Summary/Description`, `.Produces<T>()`, `[Authorize]`, `RateLimitPolicies.PlatformAuth` (depends on T011, T014)
+- [X] T016 Wire DI in `src/Services/Sorcha.Tenant.Service/Extensions/ServiceCollectionExtensions.cs` — new `AddTenantAccountManagement(this IServiceCollection)` registers repository, services, filter, BackgroundService, meter; called from `Program.cs` (depends on T009-T015)
+- [X] T017 Map endpoints in `src/Services/Sorcha.Tenant.Service/Program.cs` — call `app.MapAuthChallengeEndpoints()` (depends on T015)
 
 ### Backend — foundational tests
 
