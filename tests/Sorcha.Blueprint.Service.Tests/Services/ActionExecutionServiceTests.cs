@@ -333,7 +333,7 @@ public class ActionExecutionServiceTests
         {
             BlueprintId = "blueprint-1",
             ActionId = "1",
-            SenderWallet = "wallet-sender",
+            SenderWallet = "wallet-applicant",
             RegisterAddress = "register-1",
             PayloadData = new Dictionary<string, object>()
         };
@@ -594,7 +594,7 @@ public class ActionExecutionServiceTests
         {
             BlueprintId = "blueprint-1",
             ActionId = "1",
-            SenderWallet = "wallet-sender",
+            SenderWallet = "wallet-applicant",
             RegisterAddress = "register-1",
             PayloadData = new Dictionary<string, object>() // Missing required fields
         };
@@ -1332,7 +1332,7 @@ public class ActionExecutionServiceTests
         {
             BlueprintId = "blueprint-1",
             ActionId = "1",
-            SenderWallet = "wallet-sender",
+            SenderWallet = "wallet-applicant",
             RegisterAddress = "register-1",
             PayloadData = new Dictionary<string, object>
             {

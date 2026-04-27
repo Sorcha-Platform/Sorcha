@@ -158,7 +158,8 @@ public class ConsensusValidator : IConsensusValidator
         {
             return ValidationResult.Failure(
                 "CV_012",
-                $"Quorum not met. Approval: {approvalPercentage:P2} ({approvalCount}/{totalValidators}), Required: >{requiredThreshold:P2}",
+                FormattableString.Invariant(
+                    $"Quorum not met. Approval: {approvalPercentage * 100:F2}% ({approvalCount}/{totalValidators}), Required: >{requiredThreshold * 100:F2}%"),
                 "Quorum");
         }
 

@@ -274,14 +274,14 @@ public class ActionExecutionServiceEncryptionTests
             .Setup(x => x.EncryptDisclosedPayloadsAsync(
                 It.IsAny<DisclosureGroup[]>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(EncryptionResult.Failed("AES key wrap failed", "wallet-sender"));
+            .ReturnsAsync(EncryptionResult.Failed("AES key wrap failed", "wallet-applicant"));
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ExecuteAsync(instanceId, actionId, request, delegationToken));
 
         ex.Message.Should().Contain("Encryption failed");
-        ex.Message.Should().Contain("wallet-sender");
+        ex.Message.Should().Contain("wallet-applicant");
         ex.Message.Should().Contain("AES key wrap failed");
     }
 
@@ -340,7 +340,7 @@ public class ActionExecutionServiceEncryptionTests
         {
             BlueprintId = "blueprint-1",
             ActionId = "1",
-            SenderWallet = "wallet-sender",
+            SenderWallet = "wallet-applicant",
             RegisterAddress = "register-1",
             PayloadData = new Dictionary<string, object>
             {
@@ -349,7 +349,7 @@ public class ActionExecutionServiceEncryptionTests
             },
             ExternalRecipientKeys = new Dictionary<string, ExternalKeyInfo>
             {
-                ["wallet-sender"] = new ExternalKeyInfo
+                ["wallet-applicant"] = new ExternalKeyInfo
                 {
                     PublicKey = Convert.ToBase64String(new byte[32]),
                     Algorithm = "INVALID_ALGO" // Unrecognized algorithm
@@ -469,7 +469,7 @@ public class ActionExecutionServiceEncryptionTests
             {
                 Signature = new byte[64],
                 PublicKey = new byte[32],
-                SignedBy = "wallet-sender",
+                SignedBy = "wallet-applicant",
                 Algorithm = "ED25519"
             });
 
@@ -510,7 +510,7 @@ public class ActionExecutionServiceEncryptionTests
         {
             BlueprintId = "blueprint-1",
             ActionId = "1",
-            SenderWallet = "wallet-sender",
+            SenderWallet = "wallet-applicant",
             RegisterAddress = "register-1",
             PayloadData = new Dictionary<string, object>
             {
@@ -526,7 +526,7 @@ public class ActionExecutionServiceEncryptionTests
         {
             BlueprintId = "blueprint-1",
             ActionId = "1",
-            SenderWallet = "wallet-sender",
+            SenderWallet = "wallet-applicant",
             RegisterAddress = "register-1",
             PayloadData = new Dictionary<string, object>
             {
@@ -535,7 +535,7 @@ public class ActionExecutionServiceEncryptionTests
             },
             ExternalRecipientKeys = new Dictionary<string, ExternalKeyInfo>
             {
-                ["wallet-sender"] = new ExternalKeyInfo
+                ["wallet-applicant"] = new ExternalKeyInfo
                 {
                     PublicKey = publicKeyBase64,
                     Algorithm = "ED25519"
@@ -613,7 +613,7 @@ public class ActionExecutionServiceEncryptionTests
                 [
                     new WrappedKey
                     {
-                        WalletAddress = "wallet-sender",
+                        WalletAddress = "wallet-applicant",
                         EncryptedKey = new byte[48],
                         Algorithm = WalletNetworks.ED25519
                     }
