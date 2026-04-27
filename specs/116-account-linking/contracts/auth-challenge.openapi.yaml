@@ -1,0 +1,114 @@
+openapi: 3.0.3
+info:
+  title: Sorcha — Re-authentication Challenge Primitive
+  version: "1.0.0"
+  description: |
+    Two-step challenge mechanism gating every sensitive auth-method
+    mutation. Initiate picks a method per the ladder
+    (TOTP → Password → Passkey → ReOAuth); verify accepts the proof
+    and issues a single-use, scoped, 5-minute token presented via the
+    `X-Auth-Challenge` header on the subsequent mutation call.
+servers:
+  - url: https://api.sorcha.dev
+paths:
+  /api/auth/challenge/initiate:
+    post:
+      operationId: InitiateAuthChallenge
+      tags: [Auth Challenge]
+      summary: Begin a re-authentication challenge
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChallengeInitiateRequest" }
+      responses:
+        "200":
+          description: Challenge prepared
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChallengeInitiateResponse" }
+        "400":
+          description: |
+            User has no enrolled method capable of producing a proof
+            (only reachable in bootstrap; SetPassword path bypasses)
+        "401": { description: Missing or invalid bearer token }
+  /api/auth/challenge/verify:
+    post:
+      operationId: VerifyAuthChallenge
+      tags: [Auth Challenge]
+      summary: Submit the challenge proof and receive a one-shot token
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChallengeVerifyRequest" }
+      responses:
+        "200":
+          description: Proof accepted; token issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChallengeVerifyResponse" }
+        "401": { description: Proof rejected }
+        "410": { description: Challenge expired or already verified }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ScopedOperation:
+      type: string
+      enum: [RemoveAuthMethod, ChangePassword, SetPassword, RemovePassword, Disable2Fa]
+    ChallengeMethod:
+      type: string
+      enum: [Totp, Password, Passkey, ReOAuth]
+    ChallengeInitiateRequest:
+      type: object
+      required: [scopedOperation]
+      properties:
+        scopedOperation: { $ref: "#/components/schemas/ScopedOperation" }
+        preferredMethod:
+          $ref: "#/components/schemas/ChallengeMethod"
+          nullable: true
+          description: "Optional. Server still validates the choice is enrolled."
+    ChallengeInitiateResponse:
+      type: object
+      required: [challengeId, method]
+      properties:
+        challengeId: { type: string, format: uuid }
+        method: { $ref: "#/components/schemas/ChallengeMethod" }
+        payload:
+          type: object
+          nullable: true
+          description: |
+            Method-specific payload. For `Passkey`, the WebAuthn assertion
+            options JSON. For `ReOAuth`, a signed state + list of still-
+            linked providers. Null for `Totp` and `Password`.
+          additionalProperties: true
+    ChallengeVerifyRequest:
+      type: object
+      required: [challengeId, proof]
+      properties:
+        challengeId: { type: string, format: uuid }
+        proof:
+          type: object
+          description: |
+            Method-specific proof body. `Totp`: { code: "123456" }.
+            `Password`: { password: "..." }. `Passkey`: WebAuthn
+            assertion response. `ReOAuth`: { provider, code, state }.
+          additionalProperties: true
+    ChallengeVerifyResponse:
+      type: object
+      required: [token, expiresIn]
+      properties:
+        token:
+          type: string
+          description: Opaque token. Present in `X-Auth-Challenge` header on the subsequent mutation.
+        expiresIn:
+          type: integer
+          description: Seconds until expiry. Always 300.
