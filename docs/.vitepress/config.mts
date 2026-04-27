@@ -12,6 +12,22 @@ export default withMermaid(
 
     head: [
       ['link', { rel: 'icon', href: '/favicon.png' }],
+
+      // Google Analytics gtag.js — measurement ID is public by design.
+      // Configured in Consent Mode v2 default-denied; flip to 'granted'
+      // when a future consent banner records explicit user opt-in.
+      ['script', { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-B2MKVEP45T' }],
+      ['script', {}, `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('consent', 'default', {
+  ad_storage: 'denied',
+  ad_user_data: 'denied',
+  ad_personalization: 'denied',
+  analytics_storage: 'denied',
+  wait_for_update: 500
+});
+gtag('js', new Date());
+gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });`],
     ],
 
     srcExclude: [
