@@ -60,9 +60,18 @@ jobs:
           # the underlying issues are resolved. Remove from this list as each
           # project is cleaned up so regressions are caught from then on.
           KNOWN_BROKEN=(
-            "Sorcha.Blueprint.Service.Tests"   # 44 fail — issue #444 (planned)
-            "Sorcha.Validator.Core.Tests"      # 1 fail — issue #445 (planned)
-            "Sorcha.Validator.Service.Tests"   # 30 fail — issue #446 (planned)
+            "Sorcha.Blueprint.Service.Tests"   # 44 fail — issue #444
+            "Sorcha.Validator.Core.Tests"      # 1 fail — issue #445
+            "Sorcha.Validator.Service.Tests"   # 30 fail — issue #446
+          )
+
+          # Test projects still on xunit v2 — direct dll invocation expects
+          # xunit.v3's Microsoft.Testing.Platform CLI flags, which v2 doesn't
+          # recognise (fails with FormatException on --report-xunit-trx-*).
+          # Skip until migrated to xunit.v3.
+          XUNIT_V2_PENDING_MIGRATION=(
+            "Sorcha.Performance.Tests"
+            "Sorcha.Wallet.Providers.Azure.Tests"
           )
 
           is_in() {
@@ -77,6 +86,10 @@ jobs:
             name=$(basename "$proj" .csproj)
             if is_in "$name" "${INFRA[@]}"; then
               echo "⏭️  Skipping $name (requires infrastructure)"
+              continue
+            fi
+            if is_in "$name" "${XUNIT_V2_PENDING_MIGRATION[@]}"; then
+              echo "⏭️  Skipping $name (xunit v2 — pending migration to v3)"
               continue
             fi
             dll="tests/$name/bin/Release/net10.0/$name.dll"
