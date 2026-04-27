@@ -64,10 +64,10 @@ description: "Task list for Feature 116 — Account Linking & Auth-Method Manage
 
 ### Backend — foundational tests
 
-- [ ] T018 [P] Unit tests `tests/Sorcha.Tenant.Service.Tests/Services/AuthChallengeServiceTests.cs` — initiate, verify, ladder selection across enrolment combinations, expired/consumed/wrong-operation rejection, atomic-consume race (concurrent `VerifyAsync` calls — exactly one winner) (depends on T011)
-- [ ] T019 [P] Unit tests `tests/Sorcha.Tenant.Service.Tests/Services/AuthMethodServiceTests.cs` — `WouldRemovingLeaveZero` across the seven `{password?, socials, passkeys}` combinations; Disabled passkey not counting (depends on T010)
+- [X] T018 [P] Unit tests `tests/Sorcha.Tenant.Service.Tests/Services/AuthChallengeServiceTests.cs` — initiate, verify, ladder selection across enrolment combinations, expired/consumed/wrong-operation rejection, atomic-consume race (concurrent `VerifyAsync` calls — exactly one winner) (depends on T011)
+- [X] T019 [P] Unit tests `tests/Sorcha.Tenant.Service.Tests/Services/AuthMethodServiceTests.cs` — `WouldRemovingLeaveZero` across the seven `{password?, socials, passkeys}` combinations; Disabled passkey not counting (depends on T010)
 - [ ] T020 [P] Unit tests `tests/Sorcha.Tenant.Service.Tests/Filters/RequireAuthChallengeAttributeTests.cs` — header missing → 401, hash miss → 401, wrong owner → 401, wrong scope → 401, expired → 401, consumed → 401, success path passes through (depends on T012)
-- [ ] T021 [P] Integration tests `tests/Sorcha.Tenant.Service.Tests/Endpoints/AuthChallengeEndpointTests.cs` — full initiate → verify → mutation → re-use 401 cycle via `WebApplicationFactory` with Redis mocked per project convention (depends on T015)
+- [X] T021 [P] Integration tests `tests/Sorcha.Tenant.Service.Tests/Endpoints/AuthChallengeEndpointTests.cs` — full initiate → verify → mutation → re-use 401 cycle via `WebApplicationFactory` with Redis mocked per project convention (depends on T015)
 
 ### UI — shared scaffolding
 
@@ -90,22 +90,22 @@ description: "Task list for Feature 116 — Account Linking & Auth-Method Manage
 
 ### Backend — aggregate read
 
-- [ ] T026 [P] [US4] Create `AuthMethodsResponse` + `AuthMethodsPassword` + `AuthMethodsSocial` + `AuthMethodsPasskey` records at `src/Services/Sorcha.Tenant.Service/Models/Requests/AuthMethodsResponse.cs` matching `contracts/auth-methods.openapi.yaml` §components/schemas
-- [ ] T027 [US4] Implement `IAuthMethodService.GetAggregateAsync(platformUserId, ct)` in `AuthMethodService.cs` — single LINQ query joining `PlatformUser` ⨝ `PlatformSocialLogin` ⨝ `PasskeyCredential` filtered to `Status != Revoked`; populate `CanRemove` per row using the floor helper; apply "Unnamed passkey" fallback for empty `DisplayName` rows (depends on T010, T026)
-- [ ] T028 [US4] Create `AuthMethodsEndpoints` at `src/Services/Sorcha.Tenant.Service/Endpoints/AuthMethodsEndpoints.cs` — `GET /api/me/auth-methods` per `contracts/auth-methods.openapi.yaml`; `[Authorize]`, `.WithName/Summary/Description`, `.Produces<AuthMethodsResponse>()` (depends on T027)
-- [ ] T029 [US4] Map endpoints in `Program.cs` — `app.MapAuthMethodsEndpoints()` (depends on T028)
+- [X] T026 [P] [US4] Create `AuthMethodsResponse` + `AuthMethodsPassword` + `AuthMethodsSocial` + `AuthMethodsPasskey` records at `src/Services/Sorcha.Tenant.Service/Models/Requests/AuthMethodsResponse.cs` matching `contracts/auth-methods.openapi.yaml` §components/schemas
+- [X] T027 [US4] Implement `IAuthMethodService.GetAggregateAsync(platformUserId, ct)` in `AuthMethodService.cs` — single LINQ query joining `PlatformUser` ⨝ `PlatformSocialLogin` ⨝ `PasskeyCredential` filtered to `Status != Revoked`; populate `CanRemove` per row using the floor helper; apply "Unnamed passkey" fallback for empty `DisplayName` rows (depends on T010, T026)
+- [X] T028 [US4] Create `AuthMethodsEndpoints` at `src/Services/Sorcha.Tenant.Service/Endpoints/AuthMethodsEndpoints.cs` — `GET /api/me/auth-methods` per `contracts/auth-methods.openapi.yaml`; `[Authorize]`, `.WithName/Summary/Description`, `.Produces<AuthMethodsResponse>()` (depends on T027)
+- [X] T029 [US4] Map endpoints in `Program.cs` — `app.MapAuthMethodsEndpoints()` (depends on T028)
 
 ### UI — read-only shell
 
-- [ ] T030 [US4] Create `AccountsTab.razor` at `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/AccountsTab.razor` — top-level shell loading `/api/me/auth-methods` on init; renders an Account-email card and the four section components below (depends on T022)
-- [ ] T031 [P] [US4] Create read-only `PasswordSection.razor` at `Components/Settings/AuthMethods/PasswordSection.razor` — displays `Set` / `Not set` + last-changed; no actions wired yet (filled by US3)
-- [ ] T032 [P] [US4] Create read-only `SocialLinksSection.razor` at `Components/Settings/AuthMethods/SocialLinksSection.razor` — displays linked-providers list + empty-state; pills rendered visually but inert (filled by US1)
-- [ ] T033 [P] [US4] Create read-only `PasskeysSection.razor` at `Components/Settings/AuthMethods/PasskeysSection.razor` — displays passkey rows including Disabled-warning state with cloned-authenticator tooltip; no actions wired (filled by US2)
-- [ ] T034 [US4] Mount `<AccountsTab />` in the new `MudTabPanel` from T024 (depends on T030)
+- [X] T030 [US4] Create `AccountsTab.razor` at `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/AccountsTab.razor` — top-level shell loading `/api/me/auth-methods` on init; renders an Account-email card and the four section components below (depends on T022)
+- [X] T031 [P] [US4] Create read-only `PasswordSection.razor` at `Components/Settings/AuthMethods/PasswordSection.razor` — displays `Set` / `Not set` + last-changed; no actions wired yet (filled by US3)
+- [X] T032 [P] [US4] Create read-only `SocialLinksSection.razor` at `Components/Settings/AuthMethods/SocialLinksSection.razor` — displays linked-providers list + empty-state; pills rendered visually but inert (filled by US1)
+- [X] T033 [P] [US4] Create read-only `PasskeysSection.razor` at `Components/Settings/AuthMethods/PasskeysSection.razor` — displays passkey rows including Disabled-warning state with cloned-authenticator tooltip; no actions wired (filled by US2)
+- [X] T034 [US4] Mount `<AccountsTab />` in the new `MudTabPanel` from T024 (depends on T030)
 
 ### Tests
 
-- [ ] T035 [P] [US4] Integration test `tests/Sorcha.Tenant.Service.Tests/Endpoints/AuthMethodsEndpointTests.cs` — aggregation correctness across the seven `{password?, socials, passkeys}` shapes; `CanRemove` accuracy; Revoked passkeys excluded; Disabled passkeys included with warning fields populated (depends on T028)
+- [X] T035 [P] [US4] Integration test `tests/Sorcha.Tenant.Service.Tests/Endpoints/AuthMethodsEndpointTests.cs` — aggregation correctness across the seven `{password?, socials, passkeys}` shapes; `CanRemove` accuracy; Revoked passkeys excluded; Disabled passkeys included with warning fields populated (depends on T028)
 - [ ] T036 [P] [US4] Playwright E2E `tests/Sorcha.UI.E2E.Tests/Docker/AccountsTabTests.cs::AccountsTab_ShowsAllMethods` — seed a user with password + Google + 2 passkeys, open Settings → Accounts, assert all rows render with accurate metadata (depends on T034)
 
 **Checkpoint**: User can view all methods in one place. US1, US2, US3 can now begin in parallel.
