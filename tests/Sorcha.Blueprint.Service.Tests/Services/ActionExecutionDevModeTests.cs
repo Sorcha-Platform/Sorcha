@@ -340,7 +340,7 @@ public class ActionExecutionDevModeTests
             {
                 Signature = new byte[64],
                 PublicKey = new byte[32],
-                SignedBy = "wallet-sender",
+                SignedBy = "wallet-applicant",
                 Algorithm = "ED25519"
             });
 
@@ -378,7 +378,7 @@ public class ActionExecutionDevModeTests
         {
             BlueprintId = "blueprint-1",
             ActionId = "1",
-            SenderWallet = "wallet-sender",
+            SenderWallet = "wallet-applicant",
             RegisterAddress = "register-1",
             PayloadData = new Dictionary<string, object>
             {
@@ -387,7 +387,7 @@ public class ActionExecutionDevModeTests
             },
             ExternalRecipientKeys = new Dictionary<string, ExternalKeyInfo>
             {
-                ["wallet-sender"] = new ExternalKeyInfo
+                ["wallet-applicant"] = new ExternalKeyInfo
                 {
                     PublicKey = publicKeyBase64,
                     Algorithm = "ED25519"
@@ -465,7 +465,7 @@ public class ActionExecutionDevModeTests
                 [
                     new WrappedKey
                     {
-                        WalletAddress = "wallet-sender",
+                        WalletAddress = "wallet-applicant",
                         EncryptedKey = new byte[48],
                         Algorithm = WalletNetworks.ED25519
                     }
