@@ -34,11 +34,14 @@ services:
     image: sorchadev/register-service:latest
     environment:
       <<: *jwt-env
-      # n1 is the seed node for this network — bootstrap the system register
-      # from the embedded genesis. Other federated nodes use SyncOnly and
-      # pull from n1 (subscriptions wired up by SystemRegisterBootstrapper
-      # in PR #462).
-      SystemRegister__BootstrapMode: Auto
+      # SyncOnly until federation onboarding is designed (#461 phase 3+).
+      # Auto attempts genesis ingest, but n1's validator-service uses
+      # wallet 'local-validator' which is not in the embedded genesis's
+      # validator roster (the genesis names ws11qpej4g…). Without a
+      # multi-wallet validator or a re-run of the genesis ceremony per
+      # deployment, the genesis ingest leaves the system register stub-
+      # state with no docket sealed.
+      SystemRegister__BootstrapMode: SyncOnly
 
   tenant-service:
     image: sorchadev/tenant-service:latest
