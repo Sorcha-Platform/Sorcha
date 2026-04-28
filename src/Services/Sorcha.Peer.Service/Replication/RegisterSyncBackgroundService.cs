@@ -76,8 +76,7 @@ public class RegisterSyncBackgroundService : BackgroundService
         // Load existing subscriptions from database
         await LoadSubscriptionsAsync(stoppingToken);
 
-        using var timer = new PeriodicTimer(
-            TimeSpan.FromMinutes(_syncConfig.PeriodicSyncIntervalMinutes));
+        var periodicInterval = TimeSpan.FromMinutes(_syncConfig.PeriodicSyncIntervalMinutes);
 
         // Establish reverse stream to seed node before processing subscriptions
         Task? reverseStreamTask = null;
@@ -103,11 +102,31 @@ public class RegisterSyncBackgroundService : BackgroundService
                 {
                     await ProcessSubscriptionsAsync(stoppingToken);
 
-                    // Wait for either the periodic timer or an immediate sync signal
-                    var timerTask = timer.WaitForNextTickAsync(stoppingToken).AsTask();
-                    var signalTask = Task.Run(() => _immediateSyncSignal.Wait(stoppingToken), stoppingToken);
-                    await Task.WhenAny(timerTask, signalTask);
+                    // Wait for either the periodic interval or an immediate sync signal.
+                    //
+                    // The earlier implementation used a single PeriodicTimer shared across
+                    // iterations and Task.WhenAny(timer.WaitForNextTickAsync(), signalTask).
+                    // When the signal won the race, the timer's pending WaitForNextTickAsync
+                    // was orphaned but PeriodicTimer holds internal "wait in progress" state
+                    // — the next iteration's WaitForNextTickAsync threw InvalidOperationException
+                    // and the loop never made another pass. (PeriodicTimer disallows concurrent
+                    // or interleaved waiters by design.)
+                    //
+                    // Fresh linked CTS per iteration ensures whichever side loses the race is
+                    // cancelled cleanly before the next iteration starts; Task.Delay is
+                    // stateless across iterations, so no leaked state survives.
+                    using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    var delayTask = Task.Delay(periodicInterval, waitCts.Token);
+                    var signalTask = Task.Run(
+                        () => _immediateSyncSignal.Wait(waitCts.Token),
+                        waitCts.Token);
+                    await Task.WhenAny(delayTask, signalTask);
                     _immediateSyncSignal.Reset();
+                    waitCts.Cancel();
+                    // Drain both tasks so cancellation completes before next iteration —
+                    // expected OperationCanceledException is swallowed.
+                    try { await delayTask.ConfigureAwait(false); } catch (OperationCanceledException) { }
+                    try { await signalTask.ConfigureAwait(false); } catch (OperationCanceledException) { }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {

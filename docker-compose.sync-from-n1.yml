@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Local-from-n1 sync override.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.sync-from-n1.yml up -d
+#
+# Effect:
+#   - peer-service learns about n1.sorcha.dev:50051 as a bootstrap node
+#   - register-service switches BootstrapMode to SyncOnly so it waits for
+#     peer replication to deliver the system register instead of falling
+#     back to the embedded genesis (which would create a divergent local
+#     network).
+#
+# Caveats:
+#   - n1 must be running and the peer-service must be healthy.
+#   - Cross-instance system-register replication via the Peer.Service
+#     replication path is unverified; if local does not receive the
+#     register within the SyncOnly fast-retry window, check peer-service
+#     logs for connection / discovery / subscription errors.
+#   - Same network ID required on both sides — local's embedded genesis
+#     hash must match n1's. (Currently they do — both bootstrap from
+#     src/Common/Sorcha.Register.Models/Resources/system-register-genesis.json.)
+
+services:
+  peer-service:
+    environment:
+      # Tell peer discovery to try n1 on first connect.
+      PeerService__PeerDiscovery__BootstrapNodes__0__NodeId: "n1.sorcha.dev"
+      PeerService__PeerDiscovery__BootstrapNodes__0__Hostname: "n1.sorcha.dev"
+      PeerService__PeerDiscovery__BootstrapNodes__0__Port: "50051"
+      PeerService__PeerDiscovery__BootstrapNodes__0__Priority: "1"
+      # Plaintext h2c — Caddy on n1 terminates TLS and forwards as h2c
+      PeerService__EnableTls: "false"
+
+  register-service:
+    environment:
+      # Wait for peer sync instead of self-bootstrapping with the embedded
+      # genesis. SyncOnly polls fast for FastRetryDurationSeconds (default
+      # 60s), then backs off to BackoffIntervalSeconds (default 30s)
+      # indefinitely, so the service stays alive while peers come online.
+      SystemRegister__BootstrapMode: "SyncOnly"
