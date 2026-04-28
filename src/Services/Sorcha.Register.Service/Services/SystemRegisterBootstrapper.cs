@@ -7,6 +7,7 @@ using Sorcha.Register.Core.Managers;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Genesis;
+using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceDefaults;
 
@@ -120,6 +121,12 @@ public class SystemRegisterBootstrapper : BackgroundService
         var backoffInterval = TimeSpan.FromSeconds(_options.BackoffIntervalSeconds);
         var startTime = DateTimeOffset.UtcNow;
         var attempt = 0;
+
+        // Tell peer-service to start pulling the system register from any peer
+        // that advertises it. Without this, peer-service has no subscription and
+        // RegisterSyncBackgroundService loads zero subscriptions, so the register
+        // never arrives locally and the wait loop below polls forever.
+        await EnsureSystemRegisterPeerSubscriptionAsync(cancellationToken);
 
         // Phase 1: Fast retries
         while (DateTimeOffset.UtcNow - startTime < fastRetryDuration)
@@ -342,6 +349,56 @@ public class SystemRegisterBootstrapper : BackgroundService
 
         var systemRegisterService = scope.ServiceProvider.GetRequiredService<SystemRegisterService>();
         await SeedBlueprintsIfMissingAsync(systemRegisterService, cancellationToken);
+
+        // Ensure peer-service knows to advertise the system register for sync.
+        // Idempotent — SubscribeToRegisterAsync logs a warning and returns the
+        // existing subscription if one already exists. Required for federation:
+        // without this call, downstream peers in SyncOnly mode get NotFound when
+        // querying GetRegisterSyncStatus on this node.
+        await EnsureSystemRegisterPeerSubscriptionAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Tells the local peer-service to subscribe to the system register so it
+    /// is replicated from peers (when joining an existing network) and
+    /// advertised to peers (when this node is part of an established network).
+    /// </summary>
+    /// <remarks>
+    /// Failure is logged but not fatal — bootstrap proceeds. If peer-service is
+    /// unavailable at startup, the operation is dropped; a future restart of
+    /// register-service or a manual subscribe call recovers state.
+    /// </remarks>
+    private async Task EnsureSystemRegisterPeerSubscriptionAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var peerClient = scope.ServiceProvider.GetService<IPeerServiceClient>();
+            if (peerClient is null)
+            {
+                _logger.LogWarning(
+                    "IPeerServiceClient not registered — skipping system register peer subscription. " +
+                    "Federation (cross-instance sync) will not work for the system register.");
+                return;
+            }
+
+            await peerClient.SubscribeToRegisterAsync(
+                SystemRegisterConstants.SystemRegisterId,
+                "full-replica",
+                cancellationToken);
+
+            _logger.LogInformation(
+                "Subscribed peer-service to system register {RegisterId} for replication",
+                SystemRegisterConstants.SystemRegisterId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to subscribe peer-service to system register. Bootstrap will continue, " +
+                "but cross-instance sync of the system register will not function until the " +
+                "subscription is created (restart this service or call /api/registers/{0}/subscribe).",
+                SystemRegisterConstants.SystemRegisterId);
+        }
     }
 
     /// <summary>
