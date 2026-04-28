@@ -34,6 +34,26 @@ public interface IWalletServiceClient
         string validatorId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Recovers (imports) a system wallet for a validator from a supplied BIP39 mnemonic.
+    /// </summary>
+    /// <param name="validatorId">Validator ID — must match the running Validator Service's <c>Validator__ValidatorId</c> config.</param>
+    /// <param name="mnemonic">Space-separated BIP39 mnemonic words from the genesis ceremony's validator key file.</param>
+    /// <param name="algorithm">Signing algorithm. Defaults to ED25519 (matches the docket-signing default).</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>System wallet address.</returns>
+    /// <remarks>
+    /// Used by <c>sorcha system-register import-validator-key</c> to seat the genesis-ceremony
+    /// validator on a node. Returns 409 Conflict if a system wallet already exists for this
+    /// validator id — overwriting silently would invalidate every register whose roster contains
+    /// the existing pubkey.
+    /// </remarks>
+    Task<string> RecoverSystemWalletAsync(
+        string validatorId,
+        string mnemonic,
+        string algorithm = "ED25519",
+        CancellationToken cancellationToken = default);
+
     // =========================================================================
     // Signing Operations (Validator Service, Blueprint Service)
     // =========================================================================

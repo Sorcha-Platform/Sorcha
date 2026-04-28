@@ -27,6 +27,16 @@ public interface IWalletServiceClient
         [Header("Authorization")] string authorization);
 
     /// <summary>
+    /// Recovers a system wallet (validator identity) from a BIP39 mnemonic.
+    /// Used to seat the genesis-ceremony validator on a node so the Validator
+    /// Service can sign system register dockets.
+    /// </summary>
+    [Post("/api/v1/wallets/system/recover")]
+    Task<RecoverSystemWalletResponse> RecoverSystemWalletAsync(
+        [Body] RecoverSystemWalletApiRequest request,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
     /// Lists all wallets for the current user.
     /// </summary>
     [Get("/api/v1/wallets")]
