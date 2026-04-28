@@ -139,25 +139,79 @@ Save the service principal client ID and secret from the output.
 
 **Note:** The subdomain `dev` is reserved. Use `sorcha-dev` or similar.
 
-### Step 5: Import Validator Key
+### Step 5: Import Validator Key — must use the SYSTEM wallet endpoint
 
-The CLI `import-validator-key` command has console issues in non-interactive contexts. Use the API directly instead:
+**CRITICAL: ordering matters.** The validator-service eagerly calls
+`CreateOrRetrieveSystemWalletAsync` on first signing operation, and that
+endpoint will silently **generate a fresh wallet** if none exists for
+`Validator__ValidatorId`. That fresh wallet's pubkey is not in the genesis
+roster, so dockets cannot seal. Recovery from this state requires manual
+SQL surgery on `wallet."Wallets"` plus a tear-down — much easier to get
+the order right the first time.
+
+**Order:**
+1. Bring up `wallet-service` only (not the full stack)
+2. Wait for healthy
+3. POST the mnemonic to `/api/v1/wallets/system/recover` (PR #465)
+4. Bring up the rest of the stack
+
+Do NOT use `/api/v1/wallets/recover` — that creates a USER wallet under
+the caller's owner/tenant, which `CreateOrRetrieveSystemWalletAsync` does
+not see. (This was the trap that wasted a session diagnosing in
+April 2026; see issue #461.)
+
+**The endpoint to use:** `POST /api/v1/wallets/system/recover` — added in
+PR #465. Recovers a wallet directly into `tenant=system,
+owner=validator:{validatorId}, name=system-wallet-{validatorId}` so
+validator-service finds it. Currently `AllowAnonymous`, so no auth
+header needed.
+
+**Procedure:**
 
 ```bash
-# Get service principal token
-TOKEN=$(curl -s --ssl-no-revoke -X POST "https://n1.sorcha.dev/api/service-auth/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials&client_id=<SP_CLIENT_ID>&client_secret=<SP_SECRET>" \
-  | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+# Step 5a: tear down with volumes wiped
+ssh sorcha@<n1-ip> 'cd /opt/sorcha && docker compose \
+  -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml \
+  down -v'
 
-# Import validator wallet from genesis mnemonic
-curl -s --ssl-no-revoke -X POST "https://n1.sorcha.dev/api/wallet/wallets/recover" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"mnemonicWords":[<WORDS_FROM_genesis-validator-key.json>],"name":"genesis-validator-sorcha-dev","algorithm":"ED25519"}'
+# Step 5b: bring up wallet-service ALONE
+ssh sorcha@<n1-ip> 'cd /opt/sorcha && docker compose \
+  -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml \
+  up -d wallet-service'
+
+# Step 5c: wait healthy
+until ssh sorcha@<n1-ip> "docker ps --filter name=sorcha-wallet-service --format '{{.Status}}'" | grep -q healthy; do sleep 5; done
+
+# Step 5d: import via curl on the sorcha network. The wallet-service
+# container has no shell, so docker exec sh won't work — use a one-shot
+# curl container on the same compose network.
+MNEMONIC=$(python3 -c "import json; print(json.load(open('genesis-validator-key.json'))['mnemonic'])")
+ssh sorcha@<n1-ip> "docker run --rm --network=sorcha_sorcha-network curlimages/curl:latest \
+  -sk -X POST http://wallet-service:8080/api/v1/wallets/system/recover \
+  -H 'Content-Type: application/json' \
+  -d '{\"validatorId\":\"local-validator\",\"mnemonic\":\"$MNEMONIC\",\"algorithm\":\"ED25519\"}'"
+# Expected response: {"address":"ws11q…"}
+
+# Step 5e: bring up the rest of the stack
+ssh sorcha@<n1-ip> 'cd /opt/sorcha && docker compose \
+  -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml \
+  up -d'
 ```
 
-The mnemonic words come from `genesis-validator-key.json`. The root wallet address will differ from the genesis validator address — this is expected. The Wallet Service derives the docket-signing key internally.
+**Note on wallet address:** the address returned by `/system/recover`
+will NOT match the `walletAddress` in `genesis-validator-key.json`.
+That's expected — the address is derived from a different BIP path than
+the docket-signing key. The roster check uses the
+`m/44'/0'/0'/0/102` (`sorcha:docket-signing`) pubkey, which IS the same
+across the two derivations from the same mnemonic.
+
+**409 Conflict behaviour:** the endpoint refuses to overwrite an
+existing system wallet. If you see `409 Conflict`, validator-service
+already auto-generated the wrong wallet. Recovery: stop register +
+validator services, delete `wallet."Wallets"` rows where
+`"Owner"='validator:local-validator'` (plus any `WalletAddresses`
+referencing them), then redo step 5. Or just `down -v` and restart
+from step 5a.
 
 ### Step 6: Restart Register Service
 
