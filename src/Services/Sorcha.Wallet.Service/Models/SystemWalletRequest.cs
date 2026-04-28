@@ -24,3 +24,20 @@ public class SystemWalletResponse
     /// </summary>
     public required string Address { get; set; }
 }
+
+/// <summary>
+/// Request to recover (import) a system wallet from a BIP39 mnemonic.
+/// Used to seat the genesis-ceremony validator on a node so the Validator
+/// Service can sign system register dockets.
+/// </summary>
+public class RecoverSystemWalletRequest
+{
+    /// <summary>Validator ID to recover the system wallet under (matches Validator__ValidatorId).</summary>
+    public required string ValidatorId { get; set; }
+
+    /// <summary>BIP39 mnemonic words (space-separated).</summary>
+    public required string Mnemonic { get; set; }
+
+    /// <summary>Signing algorithm. Defaults to ED25519 (validator docket-signing default).</summary>
+    public string Algorithm { get; set; } = "ED25519";
+}

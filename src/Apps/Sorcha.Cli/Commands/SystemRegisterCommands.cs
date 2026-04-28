@@ -500,12 +500,20 @@ public class SystemRegisterImportValidatorKeyCommand : Command
             Description = "Path to the genesis-validator-key.json file",
             Required = true
         };
+        var validatorIdOption = new Option<string>("--validator-id")
+        {
+            Description = "Validator ID — must match the running Validator Service's Validator__ValidatorId config. Defaults to 'local-validator' (the docker-compose default).",
+            Required = false,
+            DefaultValueFactory = _ => "local-validator"
+        };
 
         Options.Add(keyOption);
+        Options.Add(validatorIdOption);
 
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             var keyFilePath = parseResult.GetValue(keyOption)!;
+            var validatorId = parseResult.GetValue(validatorIdOption)!;
 
             try
             {
@@ -545,18 +553,20 @@ public class SystemRegisterImportValidatorKeyCommand : Command
 
                 var walletClient = await clientFactory.CreateWalletServiceClientAsync(profileName);
 
-                // 3. Recover wallet from mnemonic
-                var mnemonicWords = keyFile.Mnemonic.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                var recoverRequest = new Models.RecoverWalletRequest
+                // 3. Recover the SYSTEM wallet from mnemonic (tenant=system,
+                //    owner=validator:{validatorId}, name=system-wallet-{validatorId})
+                //    so Validator Service's CreateOrRetrieveSystemWalletAsync finds it.
+                var recoverRequest = new Models.RecoverSystemWalletApiRequest
                 {
-                    MnemonicWords = mnemonicWords,
-                    Name = $"genesis-validator-{keyFile.NetworkId}",
-                    Algorithm = keyFile.Algorithm
+                    ValidatorId = validatorId,
+                    Mnemonic = keyFile.Mnemonic,
+                    Algorithm = keyFile.Algorithm ?? "ED25519"
                 };
 
-                ConsoleHelper.WriteInfo($"Recovering wallet from mnemonic for network '{keyFile.NetworkId}'...");
+                ConsoleHelper.WriteInfo(
+                    $"Recovering system wallet for validator '{validatorId}' on network '{keyFile.NetworkId}'...");
 
-                var wallet = await walletClient.RecoverWalletAsync(
+                var response = await walletClient.RecoverSystemWalletAsync(
                     recoverRequest,
                     $"Bearer {token}");
 
@@ -564,12 +574,15 @@ public class SystemRegisterImportValidatorKeyCommand : Command
                 Console.WriteLine();
                 ConsoleHelper.WriteSuccess("Validator key imported successfully.");
                 Console.WriteLine();
-                Console.WriteLine($"  Wallet Address: {wallet?.Address ?? "unknown"}");
+                Console.WriteLine($"  Wallet Address: {response.Address}");
+                Console.WriteLine($"  Validator ID:   {validatorId}");
                 Console.WriteLine($"  Network ID:     {keyFile.NetworkId}");
                 Console.WriteLine($"  Algorithm:      {keyFile.Algorithm}");
                 Console.WriteLine($"  Fingerprint:    {keyFile.Fingerprint}");
                 Console.WriteLine();
-                ConsoleHelper.WriteInfo("The local validator can now seal genesis dockets for this network.");
+                ConsoleHelper.WriteInfo(
+                    "The Validator Service can now seal system register dockets — restart it (or wait for " +
+                    "the next CreateOrRetrieveSystemWalletAsync cache refresh) to pick up the new wallet.");
 
                 return ExitCodes.Success;
             }

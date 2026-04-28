@@ -50,6 +50,20 @@ public static class WalletEndpoints
             .Produces<SystemWalletResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem();
 
+        // POST /api/v1/wallets/system/recover - Recover system wallet from a BIP39 mnemonic
+        walletGroup.MapPost("/system/recover", RecoverSystemWallet)
+            .WithName("RecoverSystemWallet")
+            .WithSummary("Recover a system wallet from a mnemonic")
+            .WithDescription("Recovers (or imports) a system wallet for a validator from a provided BIP39 mnemonic. " +
+                "Used by 'sorcha system-register import-validator-key' to seat the genesis-ceremony validator wallet so " +
+                "the Validator Service can sign system register dockets. Idempotent only when the existing wallet's seed " +
+                "already matches the supplied mnemonic — otherwise returns 409 Conflict.")
+            .AllowAnonymous() // Service-to-service via the CLI's authenticated session; admin-only at the CLI layer
+            .Produces<SystemWalletResponse>(StatusCodes.Status200OK)
+            .Produces<SystemWalletResponse>(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status409Conflict)
+            .ProducesValidationProblem();
+
         // POST /api/v1/wallets - Create new wallet
         walletGroup.MapPost("/", CreateWallet)
             .WithName("CreateWallet")
@@ -1560,6 +1574,103 @@ public static class WalletEndpoints
             return Results.Problem(
                 title: "System Wallet Creation Failed",
                 detail: "An error occurred while creating the system wallet",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    /// <summary>
+    /// Recovers a system wallet from a BIP39 mnemonic. Used to seat the
+    /// genesis-ceremony validator on a node so the Validator Service can sign
+    /// system register dockets that match the embedded genesis roster.
+    /// </summary>
+    /// <remarks>
+    /// Lookup uses the same (tenant=system, owner=validator:{id}, name=system-wallet-{id})
+    /// keying as <see cref="CreateOrRetrieveSystemWallet"/>. If a system wallet for the
+    /// validator already exists, the recover request is rejected with 409 Conflict
+    /// — wiping a system wallet is destructive (existing rosters reference its pubkey)
+    /// and should be done explicitly via reset, not silently.
+    /// </remarks>
+    private static async Task<IResult> RecoverSystemWallet(
+        [FromBody] RecoverSystemWalletRequest request,
+        WalletManager walletManager,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.ValidatorId))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["validatorId"] = ["ValidatorId is required."]
+            });
+        }
+        if (string.IsNullOrWhiteSpace(request.Mnemonic))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["mnemonic"] = ["Mnemonic is required."]
+            });
+        }
+
+        var validatorId = request.ValidatorId;
+        var systemWalletName = $"system-wallet-{validatorId}";
+        var systemTenant = "system";
+        var systemOwner = $"validator:{validatorId}";
+
+        try
+        {
+            var existing = await walletManager.GetWalletsByOwnerAsync(
+                systemOwner, systemTenant, cancellationToken);
+            var match = existing.FirstOrDefault(w =>
+                w.Name == systemWalletName && w.Status == Wallet.Core.Domain.WalletStatus.Active);
+
+            if (match != null)
+            {
+                logger.LogWarning(
+                    "Refusing to recover system wallet for validator {ValidatorId} — one already exists ({Address})",
+                    validatorId, match.Address);
+                return Results.Conflict(new
+                {
+                    message = $"System wallet for validator '{validatorId}' already exists at {match.Address}. " +
+                              "Recover would silently replace it; this is rejected to protect existing register rosters. " +
+                              "Reset the wallet store explicitly if a re-import is needed.",
+                });
+            }
+
+            // WalletManager.RecoverWalletAsync takes the project's own
+            // Sorcha.Wallet.Core.Domain.ValueObjects.Mnemonic, which is
+            // constructed from the space-separated phrase string.
+            var mnemonic = new Mnemonic(request.Mnemonic);
+            var wallet = await walletManager.RecoverWalletAsync(
+                mnemonic,
+                systemWalletName,
+                request.Algorithm,
+                systemOwner,
+                systemTenant,
+                passphrase: null,
+                cancellationToken);
+
+            logger.LogInformation(
+                "Recovered system wallet {Address} for validator {ValidatorId} from supplied mnemonic",
+                wallet.Address, validatorId);
+
+            return Results.Created(
+                $"/api/v1/wallets/{wallet.Address}",
+                new SystemWalletResponse { Address = wallet.Address });
+        }
+        catch (FormatException ex)
+        {
+            logger.LogWarning(ex, "Invalid mnemonic supplied for system wallet recovery");
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["mnemonic"] = [$"Invalid BIP39 mnemonic: {ex.Message}"]
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to recover system wallet for validator {ValidatorId}", validatorId);
+            return Results.Problem(
+                title: "System Wallet Recovery Failed",
+                detail: "An error occurred while recovering the system wallet",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     }

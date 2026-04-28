@@ -79,6 +79,45 @@ public class WalletServiceClient : IWalletServiceClient
         }
     }
 
+    public async Task<string> RecoverSystemWalletAsync(
+        string validatorId,
+        string mnemonic,
+        string algorithm = "ED25519",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Recovering system wallet for validator {ValidatorId} from mnemonic", validatorId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var request = new { validatorId, mnemonic, algorithm };
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/v1/wallets/system/recover", request, JsonOptions, cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                var conflictBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new InvalidOperationException(
+                    $"System wallet for validator '{validatorId}' already exists. {conflictBody}");
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<SystemWalletResponse>(cancellationToken);
+            return result?.Address ?? throw new InvalidOperationException("Recover response missing address");
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to recover system wallet for validator {ValidatorId}", validatorId);
+            throw;
+        }
+    }
+
     // =========================================================================
     // Signing Operations
     // =========================================================================

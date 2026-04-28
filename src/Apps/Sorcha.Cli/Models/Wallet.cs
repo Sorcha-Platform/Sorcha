@@ -92,6 +92,32 @@ public class RecoverWalletRequest
 }
 
 /// <summary>
+/// Request model for recovering a system (validator) wallet from a mnemonic.
+/// The wallet is created in tenant=system with owner=validator:{validatorId}
+/// so the Validator Service finds it via CreateOrRetrieveSystemWalletAsync.
+/// </summary>
+public class RecoverSystemWalletApiRequest
+{
+    [JsonPropertyName("validatorId")]
+    public string ValidatorId { get; set; } = string.Empty;
+
+    [JsonPropertyName("mnemonic")]
+    public string Mnemonic { get; set; } = string.Empty;
+
+    [JsonPropertyName("algorithm")]
+    public string Algorithm { get; set; } = "ED25519";
+}
+
+/// <summary>
+/// Response from RecoverSystemWalletAsync.
+/// </summary>
+public class RecoverSystemWalletResponse
+{
+    [JsonPropertyName("address")]
+    public string Address { get; set; } = string.Empty;
+}
+
+/// <summary>
 /// Request model for signing a transaction
 /// </summary>
 public class SignTransactionRequest
