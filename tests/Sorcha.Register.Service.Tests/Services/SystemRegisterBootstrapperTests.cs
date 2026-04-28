@@ -10,7 +10,6 @@ using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Register.Core.Events;
 using Sorcha.Register.Core.Managers;
-using Sorcha.Cryptography.Interfaces;
 using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Genesis;
@@ -194,6 +193,98 @@ public class SystemRegisterBootstrapperTests
                     s.BlueprintId == GenesisConstants.BlueprintId),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task GenesisIngestionService_EnsureRow_PreCreatesRegisterWithControlRecord()
+    {
+        // Arrange: registry has no system register; genesis payload carries a
+        // valid RegisterControlRecord so the pre-create can stash it.
+        Register.Models.Register? captured = null;
+        _mockRepository
+            .Setup(r => r.GetRegisterAsync(SystemRegisterConstants.SystemRegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Register.Models.Register?)null);
+        _mockRepository
+            .Setup(r => r.InsertRegisterAsync(It.IsAny<Register.Models.Register>(), It.IsAny<CancellationToken>()))
+            .Callback<Register.Models.Register, CancellationToken>((reg, _) => captured = reg)
+            .ReturnsAsync((Register.Models.Register reg, CancellationToken _) => reg);
+
+        var registerManager = new RegisterManager(_mockRepository.Object, _mockEventPublisher.Object);
+        var options = Options.Create(new SystemRegisterOptions());
+        var service = new GenesisIngestionService(
+            options, _validatorClient.Object, _cryptoModule.Object, _ingestionLogger.Object);
+
+        var genesis = CreateTestGenesisWithValidControlRecord();
+
+        // Act
+        await service.EnsureSystemRegisterRowAsync(genesis, registerManager, CancellationToken.None);
+
+        // Assert: register row inserted, InitialControlRecord stashed with roster
+        captured.Should().NotBeNull();
+        captured!.Id.Should().Be(SystemRegisterConstants.SystemRegisterId);
+        captured.Purpose.Should().Be(Register.Models.Enums.RegisterPurpose.System);
+        captured.InitialControlRecord.Should().NotBeNull();
+        captured.InitialControlRecord!.Validators.Should().NotBeNull();
+        captured.InitialControlRecord.Validators!.Validators.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task GenesisIngestionService_EnsureRow_IsIdempotentWhenRegisterExists()
+    {
+        // Arrange: register already exists locally
+        var existingRegister = new Register.Models.Register
+        {
+            Id = SystemRegisterConstants.SystemRegisterId,
+            Name = SystemRegisterConstants.SystemRegisterName,
+            Height = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _mockRepository
+            .Setup(r => r.GetRegisterAsync(SystemRegisterConstants.SystemRegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingRegister);
+
+        var registerManager = new RegisterManager(_mockRepository.Object, _mockEventPublisher.Object);
+        var options = Options.Create(new SystemRegisterOptions());
+        var service = new GenesisIngestionService(
+            options, _validatorClient.Object, _cryptoModule.Object, _ingestionLogger.Object);
+
+        var genesis = CreateTestGenesisWithValidControlRecord();
+
+        // Act
+        await service.EnsureSystemRegisterRowAsync(genesis, registerManager, CancellationToken.None);
+
+        // Assert: no insert attempted
+        _mockRepository.Verify(
+            r => r.InsertRegisterAsync(It.IsAny<Register.Models.Register>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GenesisIngestionService_EnsureRow_SkipsOnUnparseablePayload()
+    {
+        // Arrange: payload isn't valid JSON for RegisterControlRecord
+        _mockRepository
+            .Setup(r => r.GetRegisterAsync(SystemRegisterConstants.SystemRegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Register.Models.Register?)null);
+
+        var registerManager = new RegisterManager(_mockRepository.Object, _mockEventPublisher.Object);
+        var options = Options.Create(new SystemRegisterOptions());
+        var service = new GenesisIngestionService(
+            options, _validatorClient.Object, _cryptoModule.Object, _ingestionLogger.Object);
+
+        var genesis = CreateTestGenesis(); // Payload is `{"registerId":"test"}` — not a control record but valid JSON
+        // Force a hard parse failure by putting non-JSON in the payload
+        genesis.GenesisTransaction.Payload = Convert.ToBase64String(
+            System.Text.Encoding.UTF8.GetBytes("not json at all"));
+
+        // Act — should not throw
+        await service.EnsureSystemRegisterRowAsync(genesis, registerManager, CancellationToken.None);
+
+        // Assert: no insert attempted (decode failed → skip)
+        _mockRepository.Verify(
+            r => r.InsertRegisterAsync(It.IsAny<Register.Models.Register>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -526,6 +617,56 @@ public class SystemRegisterBootstrapperTests
                 RequiredSignatures = 1,
                 Version = 1
             },
+            GenesisPublicKeyFingerprint = GenesisFileLoader.ComputeFingerprint(publicKey)
+        };
+    }
+
+    private static SystemRegisterGenesis CreateTestGenesisWithValidControlRecord()
+    {
+        var publicKey = new byte[32];
+        Array.Fill(publicKey, (byte)0x02);
+
+        var controlRecord = new Register.Models.RegisterControlRecord
+        {
+            Validators = new Register.Models.ValidatorRoster
+            {
+                Validators =
+                [
+                    new Register.Models.ValidatorRosterEntry
+                    {
+                        ValidatorId = "test-validator",
+                        PublicKey = Convert.ToBase64String(publicKey),
+                        Algorithm = Register.Models.SignatureAlgorithm.ED25519,
+                        DerivationContext = "sorcha:docket-signing",
+                        Status = Register.Models.ValidatorKeyStatus.Active,
+                        AuthorizedAt = DateTimeOffset.UtcNow
+                    }
+                ],
+                RequiredSignatures = 1,
+                Version = 1
+            }
+        };
+        var payloadBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(controlRecord);
+
+        return new SystemRegisterGenesis
+        {
+            Version = 1,
+            NetworkId = "test-network",
+            GenesisTransaction = new GenesisTransactionData
+            {
+                TxId = GenesisSignatureVerifier.ComputeGenesisTxId(),
+                Payload = Convert.ToBase64String(payloadBytes),
+                PayloadHash = Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(payloadBytes)).ToLowerInvariant(),
+                Signature = new GenesisSignature
+                {
+                    PublicKey = Convert.ToBase64String(publicKey),
+                    SignatureValue = Convert.ToBase64String(new byte[64]),
+                    Algorithm = "ED25519",
+                    SignedAt = DateTimeOffset.UtcNow
+                }
+            },
+            ValidatorRoster = controlRecord.Validators!,
             GenesisPublicKeyFingerprint = GenesisFileLoader.ComputeFingerprint(publicKey)
         };
     }

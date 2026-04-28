@@ -5,7 +5,10 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
+using Sorcha.Register.Core.Managers;
+using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
+using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Models.Genesis;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceDefaults;
@@ -163,5 +166,74 @@ public class GenesisIngestionService
     public bool VerifyGenesisFingerprint(byte[] publicKey, string trustedFingerprint)
     {
         return GenesisSignatureVerifier.MatchesFingerprint(publicKey, trustedFingerprint);
+    }
+
+    /// <summary>
+    /// Pre-creates the system register row with the genesis control record stashed in
+    /// <see cref="Register.InitialControlRecord"/> before genesis ingest.
+    /// </summary>
+    /// <remarks>
+    /// Breaks the validator-enrolment deadlock: <c>RegisterLocalRelationshipService</c>
+    /// derives the local roster relationship from <c>InitialControlRecord</c> when no
+    /// genesis docket is yet sealed, which lets <c>RegisterMonitoringBootstrap</c> in
+    /// validator-service enrol for the system register on its 30s reconcile cycle —
+    /// without this, the validator never sees the register and docket 0 is never
+    /// sealed, so the row never appears.
+    ///
+    /// Idempotent: returns silently if the register already exists locally.
+    /// </remarks>
+    public async Task EnsureSystemRegisterRowAsync(
+        SystemRegisterGenesis genesis,
+        RegisterManager registerManager,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(genesis);
+        ArgumentNullException.ThrowIfNull(registerManager);
+
+        var existing = await registerManager.GetRegisterAsync(
+            SystemRegisterConstants.SystemRegisterId, cancellationToken);
+        if (existing is not null)
+        {
+            _logger.LogDebug(
+                "System register row already exists (Height={Height}); skipping pre-create",
+                existing.Height);
+            return;
+        }
+
+        RegisterControlRecord? controlRecord;
+        try
+        {
+            var payloadBytes = Convert.FromBase64String(genesis.GenesisTransaction.Payload);
+            controlRecord = JsonSerializer.Deserialize<RegisterControlRecord>(payloadBytes);
+        }
+        catch (Exception ex) when (ex is FormatException or JsonException)
+        {
+            _logger.LogWarning(ex,
+                "Failed to decode genesis payload into RegisterControlRecord — " +
+                "skipping pre-create. Validator enrolment will rely on docket-0 seal.");
+            return;
+        }
+
+        if (controlRecord is null)
+        {
+            _logger.LogWarning(
+                "Genesis payload decoded to null RegisterControlRecord — skipping pre-create");
+            return;
+        }
+
+        await registerManager.CreateRegisterAsync(
+            name: SystemRegisterConstants.SystemRegisterName,
+            advertise: true,
+            isFullReplica: true,
+            registerId: SystemRegisterConstants.SystemRegisterId,
+            description: "Sorcha platform system register — root of trust for blueprints and governance.",
+            purpose: RegisterPurpose.System,
+            initialControlRecord: controlRecord,
+            cancellationToken: cancellationToken);
+
+        _logger.LogInformation(
+            "Pre-created system register row with stashed control record " +
+            "(roster size={RosterSize}) — validator can now enrol pre-seal",
+            controlRecord.Validators?.Validators.Count ?? 0);
     }
 }
