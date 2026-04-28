@@ -74,6 +74,11 @@ public class RegisterCreationPolicyTests
             .Setup(s => s.Add(It.IsAny<string>(), It.IsAny<PendingRegistration>()))
             .Callback<string, PendingRegistration>((_, pending) => _capturedPending = pending);
 
+        var relationshipNotifier = new RelationshipChangeNotifier(
+            Mock.Of<Sorcha.Register.Core.LocalRelationship.IRegisterLocalRelationshipService>(),
+            Mock.Of<Sorcha.Register.Core.Events.IEventPublisher>(),
+            Mock.Of<ILogger<RelationshipChangeNotifier>>());
+
         _orchestrator = new RegisterCreationOrchestrator(
             _mockLogger.Object,
             mockRegisterManager.Object,
@@ -86,7 +91,8 @@ public class RegisterCreationPolicyTests
             _mockPendingStore.Object,
             mockPeerClient.Object,
             Mock.Of<ITenantSubscriptionClient>(),
-            mockBloomRebuilder.Object);
+            mockBloomRebuilder.Object,
+            relationshipNotifier);
     }
 
     [Fact]

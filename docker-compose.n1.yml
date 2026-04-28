@@ -34,14 +34,14 @@ services:
     image: sorchadev/register-service:latest
     environment:
       <<: *jwt-env
-      # SyncOnly until federation onboarding is designed (#461 phase 3+).
-      # Auto attempts genesis ingest, but n1's validator-service uses
-      # wallet 'local-validator' which is not in the embedded genesis's
-      # validator roster (the genesis names ws11qpej4g…). Without a
-      # multi-wallet validator or a re-run of the genesis ceremony per
-      # deployment, the genesis ingest leaves the system register stub-
-      # state with no docket sealed.
-      SystemRegister__BootstrapMode: SyncOnly
+      # n1 is the seed node for the sorcha-dev network. Auto mode runs the
+      # genesis-ingest path on first boot when no peer is available. PR #465
+      # added /api/v1/wallets/system/recover so the genesis-ceremony key can
+      # be imported into the validator's system wallet pre-deploy, and this
+      # PR pre-creates the register row with the genesis control record so
+      # validator-service enrols on its 30s reconcile cycle and seals docket 0.
+      # Replicas joining the network use SyncOnly via per-deployment overrides.
+      SystemRegister__BootstrapMode: Auto
 
   tenant-service:
     image: sorchadev/tenant-service:latest

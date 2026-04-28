@@ -239,6 +239,13 @@ public class SystemRegisterBootstrapper : BackgroundService
                 "Genesis loaded: Network={NetworkId}, Fingerprint={Fingerprint}",
                 genesis.NetworkId, genesis.GenesisPublicKeyFingerprint);
 
+            // Pre-create the register row with the control record stashed so the
+            // validator can derive its roster relationship and enrol BEFORE docket 0
+            // is sealed. Without this the validator never enrols → docket never seals
+            // → register row never appears (chicken-and-egg).
+            await genesisIngestion.EnsureSystemRegisterRowAsync(
+                genesis, registerManager, cancellationToken);
+
             var ingested = await genesisIngestion.IngestGenesisAsync(genesis, cancellationToken);
             if (!ingested)
             {
@@ -297,6 +304,11 @@ public class SystemRegisterBootstrapper : BackgroundService
                         "Set BootstrapMode to SyncOnly to join an existing network instead. " +
                         "(Network={NetworkId}, Fingerprint={Fingerprint})",
                         genesis.NetworkId, genesis.GenesisPublicKeyFingerprint);
+
+                    // Pre-create the register row so the validator can enrol pre-seal
+                    // (see EnsureSystemRegisterRowAsync remarks).
+                    await genesisIngestion.EnsureSystemRegisterRowAsync(
+                        genesis, registerManager, cancellationToken);
 
                     var ingested = await genesisIngestion.IngestGenesisAsync(genesis, cancellationToken);
                     if (!ingested)

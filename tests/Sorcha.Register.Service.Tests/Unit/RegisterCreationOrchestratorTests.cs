@@ -134,6 +134,11 @@ public class RegisterCreationOrchestratorTests
             .Setup(b => b.RebuildAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BloomFilterStats(0, 1024, 3, DateTimeOffset.UtcNow));
 
+        var relationshipNotifier = new RelationshipChangeNotifier(
+            Mock.Of<Sorcha.Register.Core.LocalRelationship.IRegisterLocalRelationshipService>(),
+            Mock.Of<Sorcha.Register.Core.Events.IEventPublisher>(),
+            Mock.Of<ILogger<RelationshipChangeNotifier>>());
+
         _orchestrator = new RegisterCreationOrchestrator(
             _mockLogger.Object,
             _mockRegisterManager.Object,
@@ -146,7 +151,8 @@ public class RegisterCreationOrchestratorTests
             _mockPendingStore.Object,
             _mockPeerClient.Object,
             _mockTenantSubscriptionClient.Object,
-            _mockBloomFilterRebuilder.Object);
+            _mockBloomFilterRebuilder.Object,
+            relationshipNotifier);
     }
 
     #region InitiateAsync Tests
@@ -358,7 +364,8 @@ public class RegisterCreationOrchestratorTests
                 It.IsAny<string?>(),
                 It.IsAny<bool>(),
                 It.IsAny<RegisterPurpose>(),
-                It.IsAny<string?>(),
+                It.IsAny<RegisterSyncState?>(),
+                It.IsAny<RegisterControlRecord?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(createdRegister);
 
@@ -454,7 +461,8 @@ public class RegisterCreationOrchestratorTests
             .Setup(m => m.CreateRegisterAsync(
                 It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
                 It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
-                It.IsAny<RegisterPurpose>(), It.IsAny<string?>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<RegisterSyncState?>(),
+                It.IsAny<RegisterControlRecord?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.Register
             {
@@ -523,7 +531,8 @@ public class RegisterCreationOrchestratorTests
             .Setup(m => m.CreateRegisterAsync(
                 It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
                 It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
-                It.IsAny<RegisterPurpose>(), It.IsAny<string?>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<RegisterSyncState?>(),
+                It.IsAny<RegisterControlRecord?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.Register
             {
@@ -696,7 +705,8 @@ public class RegisterCreationOrchestratorTests
             .Setup(m => m.CreateRegisterAsync(
                 It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
                 It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
-                It.IsAny<RegisterPurpose>(), It.IsAny<string?>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<RegisterSyncState?>(),
+                It.IsAny<RegisterControlRecord?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.Register
             {
@@ -759,7 +769,8 @@ public class RegisterCreationOrchestratorTests
             .Setup(m => m.CreateRegisterAsync(
                 It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
                 It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
-                It.IsAny<RegisterPurpose>(), It.IsAny<string?>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<RegisterSyncState?>(),
+                It.IsAny<RegisterControlRecord?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.Register
             {
@@ -844,7 +855,8 @@ public class RegisterCreationOrchestratorTests
                 It.IsAny<string?>(),
                 It.IsAny<bool>(),
                 It.IsAny<RegisterPurpose>(),
-                It.IsAny<string?>(),
+                It.IsAny<RegisterSyncState?>(),
+                It.IsAny<RegisterControlRecord?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.Register
             {
