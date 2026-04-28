@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using System.IO;
+using FluentAssertions;
+using NBitcoin;
+using Sorcha.Cryptography.Core;
+using Sorcha.Cryptography.Enums;
+using Xunit;
+
+namespace Sorcha.Wallet.Core.Tests;
+
+/// <summary>
+/// Numerical regression test for the federation deadlock (#461 phase 4):
+/// the genesis-ceremony's docket-signing pubkey MUST match the pubkey that
+/// wallet-service's runtime sign-with-derivationPath produces for the same
+/// mnemonic. If they diverge, the validator can never enrol on the system
+/// register's roster and docket 0 never seals.
+/// </summary>
+/// <remarks>
+/// Skipped silently if genesis-validator-key.json isn't on disk (CI / fresh checkout).
+/// Run locally after a re-ceremony:
+///   dotnet exec tests/Sorcha.Wallet.Core.Tests/bin/Debug/net10.0/Sorcha.Wallet.Core.Tests.dll \
+///     --filter-method "*GenesisDerivationProof*"
+/// </remarks>
+public class GenesisDerivationProofTests
+{
+    private static string? FindGenesisKeyFile()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (int i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, "genesis-validator-key.json");
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    private static (string Mnemonic, string RosterPubKey)? Load()
+    {
+        var keyPath = FindGenesisKeyFile();
+        if (keyPath is null) return null;
+
+        // Resolve genesis file relative to the key file (repo root sibling)
+        var repoRoot = new FileInfo(keyPath).Directory!.FullName;
+        var genesisPath = Path.Combine(repoRoot,
+            "src", "Common", "Sorcha.Register.Models", "Resources", "system-register-genesis.json");
+        if (!File.Exists(genesisPath)) return null;
+
+        using var keyDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(keyPath));
+        using var genDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(genesisPath));
+
+        var mnemonic = keyDoc.RootElement.GetProperty("mnemonic").GetString()!;
+        var payloadB64 = genDoc.RootElement.GetProperty("genesisTransaction").GetProperty("payload").GetString()!;
+        var payload = Convert.FromBase64String(payloadB64);
+        using var ctrlDoc = System.Text.Json.JsonDocument.Parse(payload);
+        var rosterPubKey = ctrlDoc.RootElement
+            .GetProperty("validators").GetProperty("validators")[0].GetProperty("publicKey").GetString()!;
+
+        return (mnemonic, rosterPubKey);
+    }
+
+    [Fact]
+    public async Task WalletServiceRuntimeChain_MatchesGenesisRosterPubKey()
+    {
+        var loaded = Load();
+        if (loaded is null) return; // genesis files not on disk — skip
+
+        var (mnemonicWords, expectedRosterPubKey) = loaded.Value;
+        var crypto = new CryptoModule();
+
+        // Replicate the wallet-service runtime chain — the path that
+        // ValidatorKeyProvider walks when asking for the validator's
+        // docket-signing public key:
+        //
+        // 1. Mnemonic.DeriveSeed() returns mnemonic.DeriveExtKey().PrivateKey.ToBytes()
+        //    — the master ExtKey's 32-byte private key (NOT the BIP39 PBKDF2 seed).
+        var mnemonic = new Mnemonic(mnemonicWords);
+        var masterKey = mnemonic.DeriveExtKey().PrivateKey.ToBytes();
+
+        // 2. RecoverWalletAsync derives the BIP44 0/0/0/0 primary leaf via
+        //    ExtKey.CreateFromSeed(masterKey) — this WRAPS the master priv as
+        //    a fresh seed (extra HMAC-SHA512 layer) — and stores the resulting
+        //    ED25519 private key as EncryptedPrivateKey.
+        var fakeMaster1 = ExtKey.CreateFromSeed(masterKey);
+        var primaryLeafBytes = fakeMaster1.Derive(new KeyPath("m/44'/0'/0'/0/0")).PrivateKey.ToBytes();
+        var primaryKey = await crypto.GenerateKeySetAsync(WalletNetworks.ED25519, seed: primaryLeafBytes);
+        primaryKey.IsSuccess.Should().BeTrue();
+        var storedPrivateKey = primaryKey.Value!.PrivateKey.Key!;
+
+        // 3. SignTransactionAsync with derivationPath="sorcha:docket-signing"
+        //    decrypts the leaf and runs ExtKey.CreateFromSeed(leaf) again,
+        //    deriving m/44'/0'/0'/0/102 from this fake-fresh master.
+        var fakeMaster2 = ExtKey.CreateFromSeed(storedPrivateKey);
+        var docketSigningSeed = fakeMaster2.Derive(new KeyPath("m/44'/0'/0'/0/102")).PrivateKey.ToBytes();
+        var docketKey = await crypto.GenerateKeySetAsync(WalletNetworks.ED25519, seed: docketSigningSeed);
+        docketKey.IsSuccess.Should().BeTrue();
+
+        var pubBase64 = Convert.ToBase64String(docketKey.Value!.PublicKey.Key!);
+        Console.WriteLine($"Wallet-runtime chain pubkey: {pubBase64}");
+        Console.WriteLine($"Genesis roster pubkey:       {expectedRosterPubKey}");
+
+        pubBase64.Should().Be(expectedRosterPubKey,
+            "the genesis ceremony must produce a roster matching the wallet-service " +
+            "runtime derivation, otherwise the validator can never enrol pre-seal.");
+    }
+}
