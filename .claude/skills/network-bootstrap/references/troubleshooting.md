@@ -169,3 +169,67 @@ Understanding the flow prevents debugging the wrong component:
 **If step 4 fails:** Validator key not imported. Import via Wallet Service API.
 **If step 5 fails:** Check Register Service for auto-create errors (DI scoping, missing register).
 **If step 6 fails:** Check blueprint seeding errors — usually indicates missing Wallet Service system wallet.
+
+---
+
+## System Register: Genesis ingested but docket never seals
+
+**Symptom:** Register Service logs show `Genesis transaction accepted by Validator Service: TxId=…` followed by `Timed out waiting for genesis docket on system register after 30s`. The `registers` collection in MongoDB never gets a row for `aebf26362e079087571ac0932d4db973` at Height>0.
+
+**Two distinct root causes — diagnose first:**
+
+### Cause A — Wrong validator wallet (most common)
+
+`validator-service` started before the genesis validator key was imported,
+auto-generated a fresh wallet via `CreateOrRetrieveSystemWalletAsync`, and
+that wallet's `m/44'/0'/0'/0/102` pubkey is not in the embedded genesis's
+roster. Validator can't seal because the roster check fails.
+
+**How to confirm:**
+```sql
+-- Postgres (sorcha_wallet)
+SELECT "Address" FROM wallet."Wallets"
+WHERE "Owner"='validator:local-validator';
+```
+
+If the address starts with anything other than what the imported wallet
+returned (the `/system/recover` response), this is your cause.
+
+**Fix:**
+1. Stop register-service + validator-service (so nothing else writes to the wallet store)
+2. Delete the wrong wallet:
+   ```sql
+   DELETE FROM wallet."WalletAddresses"
+   WHERE "ParentWalletAddress" IN
+     (SELECT "Address" FROM wallet."Wallets" WHERE "Owner"='validator:local-validator');
+   DELETE FROM wallet."Wallets"
+   WHERE "Owner"='validator:local-validator';
+   ```
+3. Call `POST /api/v1/wallets/system/recover` with the genesis mnemonic
+4. Restart register-service + validator-service
+5. **If the genesis tx-id is now `MEMPOOL_FULL/duplicate`**, the validator's
+   unverified pool has the previous attempt cached. The cleanest fix is
+   `docker compose down -v` and start over from a clean state — see
+   network-bootstrap SKILL.md "Step 5: Import Validator Key" for the
+   correct ordering (wallet-service alone → import → bring up rest).
+
+### Cause B — Validator not enrolled for the system register
+
+Validator-service maintains an in-memory `IRegisterMonitoringRegistry`
+populated at startup + on Redis `register:relationship-changed` events +
+every 5 minutes. The system register is special — it doesn't exist in
+MongoDB until the docket seals, and the docket can't seal until validator
+is enrolled. Chicken-and-egg.
+
+**How to confirm:**
+- Validator log shows `Validating transaction … for register aebf263…`
+  (transactions arrive)
+- But no `Registering validator local-validator for register aebf263…`
+  log line for the system register
+- 5-minute periodic poll doesn't pick it up either
+
+**Status:** Open architectural question tracked in #461 phase 4.
+Workaround: post-PR-#465, the genesis ingest now succeeds end-to-end on
+fresh nodes when the import order is correct (wallet-service alone →
+import → bring up rest). If the wallet is right but the docket still
+doesn't seal, this is the gap to escalate.
