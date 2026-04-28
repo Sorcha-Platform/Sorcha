@@ -415,77 +415,53 @@ public class DocketFinalizationService
     /// </summary>
     private bool TryExtractValidatorRosterFromDocket(string registerId, CachedDocket genesisDocket)
     {
-        try
+        // CachedDocket.Data is JSON-serialised Sorcha.Register.Models.Docket which carries
+        // only TransactionIds (no inline transactions). Look up the Control transaction
+        // via the register cache instead — that's where full TransactionModel JSON lands
+        // after RegisterReplicationService pulls transactions in parallel with the docket.
+        var controlTx = GenesisControlTransactionLookup.TryFindControl(
+            registerId, genesisDocket, _registerCache, _logger);
+        if (controlTx is null)
         {
-            // The genesis docket data is serialized DocketModel JSON containing transactions.
-            // Each transaction may have Base64Url-encoded payloads with RegisterControlRecord.
-            using var doc = JsonDocument.Parse(genesisDocket.Data);
-            var root = doc.RootElement;
-
-            // Look for transactions array in the docket data
-            JsonElement txArray;
-            if (!root.TryGetProperty("Transactions", out txArray) &&
-                !root.TryGetProperty("transactions", out txArray))
-            {
-                return false;
-            }
-
-            foreach (var tx in txArray.EnumerateArray())
-            {
-                // Only process Control transactions (TransactionType == 0)
-                if ((tx.TryGetProperty("MetaData", out var meta) || tx.TryGetProperty("metaData", out meta))
-                    && meta.ValueKind == JsonValueKind.Object)
-                {
-                    if (meta.TryGetProperty("TransactionType", out var txType) ||
-                        meta.TryGetProperty("transactionType", out txType))
-                    {
-                        if (txType.ValueKind == JsonValueKind.Number && txType.GetInt32() != 0)
-                            continue;
-                    }
-                }
-
-                // Look for payloads
-                JsonElement payloads;
-                if (!tx.TryGetProperty("Payloads", out payloads) &&
-                    !tx.TryGetProperty("payloads", out payloads))
-                    continue;
-
-                foreach (var payload in payloads.EnumerateArray())
-                {
-                    JsonElement dataElement;
-                    if (!payload.TryGetProperty("Data", out dataElement) &&
-                        !payload.TryGetProperty("data", out dataElement))
-                        continue;
-
-                    var payloadData = dataElement.GetString();
-                    if (string.IsNullOrEmpty(payloadData)) continue;
-
-                    try
-                    {
-                        var controlRecordBytes = DecodeBase64Url(payloadData);
-                        if (_validatorKeyCache.ExtractFromControlRecord(registerId, controlRecordBytes))
-                        {
-                            _logger.LogInformation(
-                                "Extracted validator roster from cached genesis docket for register {RegisterId}",
-                                registerId);
-                            return true;
-                        }
-                    }
-                    catch (FormatException)
-                    {
-                        // Not valid Base64Url — try next payload
-                    }
-                }
-            }
-
+            _logger.LogDebug(
+                "No cached Control transaction yet for register {RegisterId} genesis docket — " +
+                "Strategy 1 cannot extract roster, falling through",
+                registerId);
             return false;
         }
-        catch (JsonException ex)
+
+        if (controlTx.Payloads is null || controlTx.Payloads.Length == 0)
         {
-            _logger.LogDebug(ex,
-                "Failed to parse genesis docket transactions for register {RegisterId}", registerId);
+            _logger.LogDebug(
+                "Cached Control transaction {TxId} for register {RegisterId} has no payloads — falling through",
+                controlTx.TxId, registerId);
             return false;
         }
+
+        foreach (var payload in controlTx.Payloads)
+        {
+            if (string.IsNullOrEmpty(payload.Data)) continue;
+
+            byte[] controlRecordBytes;
+            try
+            {
+                controlRecordBytes = DecodeBase64Url(payload.Data);
+            }
+            catch (FormatException)
+            {
+                continue; // Try next payload
+            }
+
+            if (_validatorKeyCache.ExtractFromControlRecord(registerId, controlRecordBytes))
+            {
+                _logger.LogInformation(
+                    "Extracted validator roster from cached genesis Control transaction for register {RegisterId}",
+                    registerId);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool VerifyChainIntegrity(string registerId, CachedDocket docket)
