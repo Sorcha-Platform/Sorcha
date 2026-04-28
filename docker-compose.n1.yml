@@ -34,7 +34,11 @@ services:
     image: sorchadev/register-service:latest
     environment:
       <<: *jwt-env
-      SystemRegister__BootstrapMode: SyncOnly
+      # n1 is the seed node for this network — bootstrap the system register
+      # from the embedded genesis. Other federated nodes use SyncOnly and
+      # pull from n1 (subscriptions wired up by SystemRegisterBootstrapper
+      # in PR #462).
+      SystemRegister__BootstrapMode: Auto
 
   tenant-service:
     image: sorchadev/tenant-service:latest
