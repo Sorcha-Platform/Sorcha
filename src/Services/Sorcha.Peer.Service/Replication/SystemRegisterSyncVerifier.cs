@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
-using Sorcha.Peer.Service.Models;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Genesis;
 using Sorcha.ServiceDefaults;
@@ -40,20 +38,20 @@ public interface ISystemRegisterSyncVerifier
 /// <inheritdoc />
 public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
 {
-    /// <summary>TransactionType.Control = 0 — register governance transactions.</summary>
-    private const int ControlTransactionType = 0;
-
     private readonly ICryptoModule _cryptoModule;
+    private readonly RegisterCache _registerCache;
     private readonly ILogger<SystemRegisterSyncVerifier> _logger;
     private readonly Lazy<SystemRegisterGenesis?> _trustedGenesis;
 
     public SystemRegisterSyncVerifier(
         IOptions<SystemRegisterOptions> options,
         ICryptoModule cryptoModule,
+        RegisterCache registerCache,
         ILogger<SystemRegisterSyncVerifier> logger)
     {
-        _cryptoModule = cryptoModule;
-        _logger = logger;
+        _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
+        _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _trustedGenesis = new Lazy<SystemRegisterGenesis?>(() =>
         {
             try
@@ -91,41 +89,58 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
             return false;
         }
 
-        // Extract both payload and signature from the control transaction in a single parse
-        var extracted = TryExtractControlTransaction(genesisDocket);
-        if (extracted is null)
+        // Locate the control transaction via the register cache. The docket itself
+        // only carries TransactionIds — full transactions are pulled separately and
+        // stored in the cache by RegisterReplicationService.
+        var controlTx = GenesisControlTransactionLookup.TryFindControl(
+            registerId, genesisDocket, _registerCache, _logger);
+
+        if (controlTx is null)
         {
-            _logger.LogWarning("System register genesis docket has no valid control transaction — rejecting");
+            _logger.LogWarning(
+                "System register genesis docket has no resolvable control transaction in cache " +
+                "(register {RegisterId}, docket {Docket}, transactionIds={Count}) — rejecting",
+                registerId, genesisDocket.Version, genesisDocket.TransactionIds?.Count ?? 0);
             return false;
         }
 
-        var (controlPayload, peerPublicKey, peerSignatureValue, peerAlgorithm) = extracted.Value;
+        var encodedPayload = controlTx.Payloads is { Length: > 0 } ? controlTx.Payloads[0].Data : null;
+        var encodedSignature = controlTx.Signature;
+        if (string.IsNullOrEmpty(encodedPayload) || string.IsNullOrEmpty(encodedSignature))
+        {
+            _logger.LogWarning(
+                "System register genesis control tx {TxId} for register {RegisterId} " +
+                "is missing payload or signature — rejecting",
+                controlTx.TxId, registerId);
+            return false;
+        }
 
         try
         {
-            // Step 1: Verify the peer's genesis public key matches our trusted fingerprint.
-            // Fingerprint is SHA-256 truncated to 128 bits (32 hex chars). This is sufficient
-            // for collision resistance as a pre-filter; the full cryptographic signature
-            // verification in Step 2 provides the actual security guarantee.
-            var peerPublicKeyBytes = Convert.FromBase64String(peerPublicKey);
-            var trusted = GenesisSignatureVerifier.MatchesFingerprint(
-                peerPublicKeyBytes,
-                trustedGenesis.GenesisPublicKeyFingerprint);
+            // Persisted TransactionModel doesn't carry the signing pubkey or algorithm
+            // (the validator strips them down to a Base64Url signature string + sender
+            // wallet at seal time). Verification therefore uses the trusted genesis
+            // pubkey/algorithm directly — a forged transaction would fail this check
+            // because no peer can produce a valid signature without the genesis private
+            // key, which is destroyed after ceremony.
+            var trustedPubKey = Convert.FromBase64String(
+                trustedGenesis.GenesisTransaction.Signature.PublicKey);
+            var trustedAlgorithm = trustedGenesis.GenesisTransaction.Signature.Algorithm;
 
-            if (!trusted)
+            if (!Enum.TryParse<WalletNetworks>(trustedAlgorithm, ignoreCase: true, out var network))
             {
-                var peerFingerprint = GenesisFileLoader.ComputeFingerprint(peerPublicKeyBytes);
                 _logger.LogError(
-                    "Peer system register rejected: genesis signed by unknown key. " +
-                    "Expected fingerprint: {Expected}, got: {Actual}",
-                    trustedGenesis.GenesisPublicKeyFingerprint, peerFingerprint);
+                    "Trusted genesis algorithm {Algorithm} is not a recognised WalletNetworks value",
+                    trustedAlgorithm);
                 return false;
             }
 
-            // Step 2: Verify the cryptographic signature over the payload.
-            // Fingerprint alone is insufficient — a compromised peer could present
-            // the real public key with a tampered control record.
-            var peerPayloadBytes = Convert.FromBase64String(controlPayload);
+            // Recompute the signed-data hash the same way the CLI ceremony did:
+            //   payloadHash    = SHA256(decoded_control_record_bytes)
+            //   dataToSign     = SHA256(UTF8("{txId}:{payloadHash}"))
+            // The ContentEncoding on docket payloads is "base64url" (see
+            // DocketBuildTriggerService:583), so decode accordingly.
+            var peerPayloadBytes = DecodeBase64Auto(encodedPayload);
             var peerPayloadHash = Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(peerPayloadBytes)).ToLowerInvariant();
             var peerTxId = GenesisSignatureVerifier.ComputeGenesisTxId();
@@ -133,88 +148,59 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
             var signedDataHash = System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(dataToSign));
 
-            var peerSignatureBytes = Convert.FromBase64String(peerSignatureValue);
-
-            if (!Enum.TryParse<WalletNetworks>(peerAlgorithm, ignoreCase: true, out var network))
-            {
-                _logger.LogError("Unsupported algorithm in peer genesis: {Algorithm}", peerAlgorithm);
-                return false;
-            }
+            // Validator persists the signature as Base64Url; ceremony emits Base64.
+            // Try both — same DecodeBase64Auto helper accepts either form.
+            var peerSignatureBytes = DecodeBase64Auto(encodedSignature);
 
             var verifyResult = await _cryptoModule.VerifyAsync(
-                peerSignatureBytes, signedDataHash, (byte)network, peerPublicKeyBytes, cancellationToken);
+                peerSignatureBytes, signedDataHash, (byte)network, trustedPubKey, cancellationToken);
 
             if (verifyResult != CryptoStatus.Success)
             {
                 _logger.LogError(
-                    "Peer system register rejected: genesis signature verification failed ({Status}). " +
-                    "The control record may have been tampered with.",
-                    verifyResult);
+                    "Peer system register rejected: genesis signature verification failed " +
+                    "({Status}) — register {RegisterId}. The control record may have been " +
+                    "tampered with, or the peer's genesis key does not match this network's " +
+                    "trust anchor (fingerprint={Fingerprint}).",
+                    verifyResult, registerId, trustedGenesis.GenesisPublicKeyFingerprint);
                 return false;
             }
 
             _logger.LogInformation(
-                "Peer system register genesis verified: fingerprint={Fingerprint}, signature=VALID",
-                trustedGenesis.GenesisPublicKeyFingerprint);
+                "Peer system register genesis verified for register {RegisterId} " +
+                "(trustedFingerprint={Fingerprint}, signature=VALID)",
+                registerId, trustedGenesis.GenesisPublicKeyFingerprint);
             return true;
         }
         catch (FormatException ex)
         {
-            _logger.LogError(ex, "Failed to decode peer system register genesis data");
+            _logger.LogError(ex,
+                "Failed to decode peer system register genesis data for register {RegisterId}",
+                registerId);
             return false;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to verify peer system register genesis signature");
+            _logger.LogError(ex,
+                "Failed to verify peer system register genesis signature for register {RegisterId}",
+                registerId);
             return false;
         }
     }
 
     /// <summary>
-    /// Extracts payload and signature from the control transaction in a single JSON parse.
-    /// Returns null if the docket has no valid control transaction.
+    /// Tries Base64Url decoding first then standard Base64.
+    /// CLI ceremony writes Base64; validator persists Base64Url. Either may reach us.
     /// </summary>
-    private static (string payload, string publicKey, string signatureValue, string algorithm)?
-        TryExtractControlTransaction(CachedDocket docket)
+    private static byte[] DecodeBase64Auto(string encoded)
     {
-        if (docket.Data is null || docket.Data.Length == 0)
-            return null;
-
-        try
+        var s = encoded.Replace('-', '+').Replace('_', '/');
+        switch (s.Length % 4)
         {
-            using var doc = JsonDocument.Parse(docket.Data);
-            var root = doc.RootElement;
-
-            if (!root.TryGetProperty("transactions", out var transactions))
-                return null;
-
-            foreach (var tx in transactions.EnumerateArray())
-            {
-                if (!tx.TryGetProperty("transactionType", out var txType) ||
-                    txType.GetInt32() != ControlTransactionType)
-                    continue;
-
-                var payload = tx.TryGetProperty("payload", out var p) ? p.GetString() : null;
-                if (payload is null)
-                    continue;
-
-                if (!tx.TryGetProperty("signature", out var sig))
-                    continue;
-
-                var pk = sig.TryGetProperty("publicKey", out var pkEl) ? pkEl.GetString() : null;
-                var sv = sig.TryGetProperty("signatureValue", out var svEl) ? svEl.GetString() : null;
-                var algo = sig.TryGetProperty("algorithm", out var algoEl) ? algoEl.GetString() : null;
-
-                if (pk is not null && sv is not null && algo is not null)
-                    return (payload, pk, sv, algo);
-            }
+            case 2: s += "=="; break;
+            case 3: s += "="; break;
         }
-        catch (JsonException ex)
-        {
-            // Docket JSON is malformed — caller will log and reject
-            _ = ex;
-        }
-
-        return null;
+        return Convert.FromBase64String(s);
     }
+
 }
