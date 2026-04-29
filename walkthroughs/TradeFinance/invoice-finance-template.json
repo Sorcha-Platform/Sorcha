@@ -29,10 +29,10 @@
     },
     "participants": [
       {
-        "id": "finance-director",
-        "name": "Finance Director",
+        "id": "sales-mgr",
+        "name": "Sales Manager",
         "organisation": "Highland Timber Supplies",
-        "description": "Requests invoice financing by presenting a VerifiedInvoiceCredential from the procurement register."
+        "description": "Holds the VerifiedInvoiceCredential issued from the procurement register and the optional ForestProductDPPCredential from forestry certification. Submits the financing request, presenting both credentials, and receives the resulting TradeFinanceCredential on approval."
       },
       {
         "id": "assessment-svc",
@@ -47,18 +47,18 @@
         "description": "Evaluates the financing application against credit assessment data and approves or declines with financing terms."
       },
       {
-        "id": "sales-mgr",
-        "name": "Sales Manager",
+        "id": "finance-director",
+        "name": "Finance Director",
         "organisation": "Highland Timber Supplies",
-        "description": "Observer who receives the financing outcome and approved terms."
+        "description": "Observes the financing outcome and approved terms for internal finance oversight."
       }
     ],
     "actions": [
       {
         "id": 1,
         "title": "Request Financing",
-        "description": "Finance director submits an invoice financing request. A VerifiedInvoiceCredential from the procurement register is required as proof of a legitimate, verified invoice.",
-        "sender": "finance-director",
+        "description": "Sales Manager submits an invoice financing request. A VerifiedInvoiceCredential from the procurement register is required as proof of a legitimate, verified invoice. An optional ForestProductDPPCredential — when presented with a sustainability score of 70 or higher — unlocks a preferential advance-rate uplift in the evaluation step.",
+        "sender": "sales-mgr",
         "isStartingAction": true,
         "credentialRequirements": [
           {
@@ -522,7 +522,7 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "TradeFinanceCredential",
-          "recipientParticipantId": "finance-director",
+          "recipientParticipantId": "sales-mgr",
           "expiryDuration": "P180D",
           "claimMappings": [
             { "claimName": "financingReference", "sourceField": "/financingReference" },
