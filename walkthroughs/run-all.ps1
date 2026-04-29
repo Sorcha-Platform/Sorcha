@@ -48,9 +48,9 @@ $walkthroughs = @(
     @{ Name = "ConstructionPermit"; Category = "Multi-Org"; HasSetupRun = $true }
     @{ Name = "SelfBuildHouse"; Category = "Multi-Org"; HasSetupRun = $true }
 
-    # HAIP (External Wallet) — must run in order (licence depends on identity)
-    @{ Name = "HaipVerifiedCitizen"; Category = "HAIP"; HasSetupRun = $true }
-    @{ Name = "HaipDrivingLicence"; Category = "HAIP"; HasSetupRun = $true }
+    # Credential Issuance & Reuse — AssuredIdentity replaces the legacy
+    # HaipVerifiedCitizen + HaipDrivingLicence walkthroughs (Feature 107).
+    @{ Name = "AssuredIdentity"; Category = "Credential"; HasSetupRun = $true }
 )
 
 if (-not $SkipAdvanced) {
