@@ -71,6 +71,18 @@
             ],
             "revocationCheckPolicy": "FailOpen",
             "description": "A verified invoice credential from the procurement register is required to request financing"
+          },
+          {
+            "type": "ForestProductDPPCredential",
+            "requiredClaims": [
+              { "claimName": "certificationScheme" },
+              { "claimName": "sustainabilityScore" },
+              { "claimName": "embodiedCarbonKgCO2e" },
+              { "claimName": "expiryDate" }
+            ],
+            "revocationCheckPolicy": "FailOpen",
+            "optional": true,
+            "description": "Optional Digital Product Passport for sustainably-sourced goods. When presented with a sustainability score of 70 or higher, the funder applies a preferential advance-rate uplift in the evaluation step."
           }
         ],
         "dataSchemas": [
@@ -102,6 +114,13 @@
                 "type": "string",
                 "title": "Urgency",
                 "enum": ["standard", "express"]
+              },
+              "dppSustainabilityScore": {
+                "type": "number",
+                "title": "DPP Sustainability Score",
+                "description": "Sustainability score (0-100) read from the presented ForestProductDPPCredential. Leave blank if no DPP is presented. A score of 70 or higher unlocks a preferential advance-rate uplift at evaluation.",
+                "minimum": 0,
+                "maximum": 100
               }
             },
             "required": [
@@ -176,6 +195,11 @@
                   "type": "Selection",
                   "scope": "/urgency",
                   "title": "Urgency"
+                },
+                {
+                  "type": "Numeric",
+                  "scope": "/dppSustainabilityScore",
+                  "title": "DPP Sustainability Score"
                 }
               ]
             }
@@ -352,10 +376,20 @@
           }
         ],
         "calculations": {
+          "sustainabilityUpliftApplied": {
+            ">=": [{ "var": ["dppSustainabilityScore", 0] }, 70]
+          },
+          "effectiveAdvancePercentage": {
+            "if": [
+              { ">=": [{ "var": ["dppSustainabilityScore", 0] }, 70] },
+              { "*": [{ "var": "advancePercentage" }, 1.10] },
+              { "var": "advancePercentage" }
+            ]
+          },
           "advanceAmount": {
             "*": [
               { "var": "invoiceAmount" },
-              { "/": [{ "var": "advancePercentage" }, 100] }
+              { "/": [{ "var": "effectiveAdvancePercentage" }, 100] }
             ]
           },
           "feeAmount": {

@@ -1,15 +1,17 @@
 {
   "name": "Scenario A: Golden Path",
-  "description": "Full procurement-to-pay with approved invoice financing",
+  "description": "Full procurement-to-pay with approved invoice financing. Highland Timber additionally presents a ForestProductDPPCredential (sustainability score 87) which triggers a +10% advance-rate uplift at evaluation, raising the effective advance from 90% to 99%.",
   "expectedProcurementPath": [1, 2, 3, 4, 5, 6],
   "expectedFinancePath": [1, 2, 3, 4],
   "expectedDispute": false,
   "expectedRejection": false,
   "expectedInvoiceTotal": 10248.00,
   "expectedDaysSinceDelivery": 3,
-  "expectedAdvanceAmount": 9223.20,
-  "expectedFeeAmount": 230.58,
-  "expectedNetAdvance": 8992.62,
+  "expectedSustainabilityUpliftApplied": true,
+  "expectedEffectiveAdvancePercentage": 99,
+  "expectedAdvanceAmount": 10145.52,
+  "expectedFeeAmount": 253.638,
+  "expectedNetAdvance": 9891.882,
   "procurement": {
     "1": {
       "poReference": "PO-CAIRN-2026-00142",
@@ -79,7 +81,8 @@
       "invoiceAmount": 10248.00,
       "buyerName": "Cairngorm Construction Ltd",
       "requestedAdvancePercentage": 90,
-      "urgency": "standard"
+      "urgency": "standard",
+      "dppSustainabilityScore": 87
     },
     "2": {
       "buyerCreditScore": 85,
@@ -91,16 +94,16 @@
       "assessmentNotes": "Strong payment history. No defaults. Established Highland contractor."
     },
     "3": {
-      "evaluationNotes": "Verified invoice credential confirmed. Buyer credit score 85/100 — well above threshold. Invoice amount within credit limit.",
+      "evaluationNotes": "Verified invoice credential confirmed. Buyer credit score 85/100 — well above threshold. Invoice amount within credit limit. ForestProductDPPCredential present with sustainability score 87/100 — preferential 10% advance-rate uplift applied (effective advance 99%).",
       "advancePercentage": 90,
       "feeRate": 2.5
     },
     "4": {
       "decision": "approve",
-      "advanceAmount": 9223.20,
-      "feeAmount": 230.58,
-      "netAdvance": 8992.62,
-      "repaymentTerms": "Net 30 from original invoice due date",
+      "advanceAmount": 10145.52,
+      "feeAmount": 253.638,
+      "netAdvance": 9891.882,
+      "repaymentTerms": "Net 30 from original invoice due date — preferential terms reflect verified sustainable sourcing.",
       "repaymentDate": "2026-05-17",
       "financingReference": "STF-FIN-2026-00291"
     }
