@@ -1,8 +1,8 @@
 # Sorcha Walkthroughs
 
-End-to-end integration tests and demos for the Sorcha platform. Each walkthrough runs against Docker services and exercises a distinct slice of functionality — from single-org wallet operations to multi-org encrypted workflows with conditional routing and verifiable credential issuance.
+End-to-end integration tests and demos for the Sorcha platform. Each walkthrough runs against Docker services and exercises a distinct slice of functionality — from single-org wallet operations to multi-org encrypted workflows with conditional routing, verifiable credential issuance, file uploads, AI-agent autonomy, and cross-machine P2P replication.
 
-All walkthroughs share a PowerShell module (`modules/SorchaWalkthrough/`) for idempotent, repeatable execution. Credentials are externalized to `.secrets/passwords.json` (git-ignored).
+All walkthroughs share a PowerShell module (`modules/SorchaWalkthrough/`) for idempotent, repeatable execution. Credentials are externalised to `.secrets/passwords.json` (git-ignored). Most walkthroughs follow a `setup.ps1` + `run.ps1` pattern, save state to `state.json`, and are safe to re-run.
 
 ```powershell
 # Prerequisites: Docker Desktop, PowerShell 7.5+
@@ -23,159 +23,287 @@ pwsh walkthroughs/ConstructionPermit/run.ps1
 
 ## Walkthrough Index
 
-### Foundation
+| Category | Walkthroughs |
+|----------|--------------|
+| Foundation | AdminIntegration · McpServerBasics |
+| Single-Org | RegisterCreationFlow · WalletVerification · RegisterMongoDB · FormCoverage · HealthDeclaration |
+| Multi-Org Workflows | ConstructionPermit · SelfBuildHouse · PropertyInspection · PayloadTests |
+| Credential Issuance & Reuse | AssuredIdentity · ForestryCertification |
+| Agent-Driven | TradeFinance |
+| Distributed (Multi-Node) | DistributedRegister · PingPongN1 |
+| Performance | PerformanceBenchmark |
 
-Verify infrastructure, UI gateway routing, and tooling integration.
+A shared **`council/`** demo universe (fictional Strathcarron Council, Scotland) provides reusable orgs, places, and personas for ConstructionPermit, SelfBuildHouse, and PropertyInspection. See `council/README.md`.
 
-| Walkthrough | What It Tests |
-|-------------|--------------|
-| [AdminIntegration](./AdminIntegration/) | Blazor WASM admin UI served behind the YARP API Gateway. Validates `/admin` subpath routing, nginx static file serving, SPA deep-link handling, and JWT auth in the browser. Single self-contained script. |
-| [McpServerBasics](./McpServerBasics/) | MCP (Model Context Protocol) server for AI assistants (Claude Desktop, etc.). Tests JWT-based authentication, role-based tool filtering across 36 tools, and stdio transport. Single self-contained script. |
+---
 
-### Single-Org
+## Foundation
 
-One organization exercising wallets, registers, and crypto primitives.
+Verify infrastructure, UI gateway routing, and tooling integration. Single-script tests, no `state.json`.
 
-| Walkthrough | What It Tests |
-|-------------|--------------|
-| [RegisterCreationFlow](./RegisterCreationFlow/) | Full register lifecycle: two-phase creation (initiate → sign attestation → finalize), CLI commands (`sorcha register create`), docket inspection, OData queries against the Register Service, and genesis transaction verification. |
-| [WalletVerification](./WalletVerification/) | Multi-algorithm wallet testing across ED25519, P-256, and RSA-4096. Covers wallet creation, data signing, pre-hashed signing, and explicit signature verification. Ensures all three crypto backends produce valid, verifiable signatures. |
-| [RegisterMongoDB](./RegisterMongoDB/) | MongoDB storage backend integration. Validates connection establishment, repository DI wiring, collection/index creation, and storage mode switching between InMemory and MongoDB providers. |
-| [FormCoverage](./FormCoverage/) | **SorchaFormRenderer smoke test.** Single-org, 2 participants, 1 blueprint that exercises every `ControlTypes` value (Layout, Label, TextLine, TextArea, Numeric, DateTime, File, Choice, Checkbox, Selection), all three layout modes (`x-pages` wizard + `x-sections` + explicit `form.elements`), `x-width` hints, `x-rule` conditional visibility, `x-introduction`, and the `x-persona` autofill extension from Feature 092. `run.ps1 -Rounds N` loops the submit → acknowledge cycle N times as a lightweight form-pipeline smoke test. |
+### [AdminIntegration](./AdminIntegration/)
 
-### Multi-Org
+**Scenario.** Validate that the Sorcha.Admin Blazor WASM application can be served behind the YARP API Gateway at the `/admin` subpath, with deep-links, static assets, and JWT-authenticated API calls all working through the gateway.
 
-Multiple organizations with cross-org participants, encrypted transactions, and complex workflow routing.
+**Technical capabilities.** YARP reverse-proxy routing for SPA + API on a shared origin, nginx static-file serving with subpath base-href rewriting, JWT bearer auth flowing from a Blazor WASM client through the gateway to backend services.
 
-| Walkthrough | What It Tests |
-|-------------|--------------|
-| [ConstructionPermit](./ConstructionPermit/) | **Primary multi-org integration test.** 4 organizations, 5 participants (including 2 users in the same org), per-user authentication, encrypted transactions, JSON Logic calculations (risk score, permit fee), conditional routing (high-risk → environmental review, low-risk → skip), rejection paths, and verifiable credential issuance. Three scenarios exercise the full pipeline: **A** low-risk residential (5 actions, skips environmental), **B** high-risk commercial (6 actions, triggers environmental review), **C** rejection at planning review. Each scenario creates a fresh workflow instance, authenticates each participant individually, executes actions through the async encrypted transaction pipeline (validator → docket → confirmation), and verifies instance advancement. |
-| [SelfBuildHouse](./SelfBuildHouse/) | **Advanced multi-register workflow.** 6 organizations, 7 participants, **2 separate registers** with a planning permission blueprint (8 actions) and a building warrant blueprint (6 actions). Exercises cross-register verifiable credentials (3 VCs issued), credential chains (building warrant requires presenting the planning permission VC), credential-gated actions, document uploads, staged inspections (foundation → structure → final), conditional routing (protected species triggers ecological survey), rejection loops, and 5+ JSON Logic calculations. Three scenarios: standard approval, ecological branch, and rejection. |
+**Benefit.** Proves that operators can host the platform behind a single ingress without exposing per-service ports — a pre-requisite for production deployment behind any load balancer or CDN.
 
-### Agent-Driven
+### [McpServerBasics](./McpServerBasics/)
 
-AI agent-operated walkthroughs using MCP Server connections for autonomous execution.
+**Scenario.** Boot the platform, mint a JWT for a platform user, run the Sorcha MCP (Model Context Protocol) Server with that token, and exercise role-filtered tools through stdio. Designed to be the canonical "Claude Desktop talks to Sorcha" smoke test.
 
-| Walkthrough | What It Tests |
-|-------------|--------------|
-| [TradeFinance](./TradeFinance/) | **Agent-driven multi-register workflow.** 4 organisations, 6 participants, **2 registers** with a procurement-to-pay blueprint (6 actions) and an invoice finance blueprint (4 actions). Exercises cross-register verifiable credentials (VerifiedInvoiceCredential required on Register 2), credential chains, selective disclosure under field-level encryption, AI agent coordination via MCP Server (2 Claude Code sessions on separate machines), scripted and persona execution modes, DevMode-to-FLE transition, and 5 JSON Logic calculations. Three scenarios: golden path (approved), disputed invoice (rejection + resubmission), and declined financing (low credit score). |
+**Technical capabilities.** JWT-based authentication for AI assistants, role-based tool filtering across 36 MCP tools (admin, operator, consumer slices), stdio transport, refresh-token handling.
 
-### HAIP (External Wallet)
+**Benefit.** Sorcha exposes its full surface area — registers, blueprints, instances, wallets, credentials — to AI assistants in a single secure, role-aware contract. This walkthrough proves the contract works end-to-end against real services rather than stubs.
 
-Credential issuance and verification with external HAIP wallets via OpenID4VCI/OpenID4VP.
+---
 
-| Walkthrough | What It Tests |
-|-------------|--------------|
-| [AssuredIdentity](./AssuredIdentity/) | **Feature 107 — canonical citizen-identity workflow.** Acme Verification Co. issues an AssuredIdentityCredential to a public-org citizen via a polished 5-page wizard (name + DOB, address, contact, optional portrait, id-card review). Acme Licensing Co. consumes the credential in Phase 2 via HAIP OpenID4VP presentation and issues a DrivingLicenceCredential with the holder's identity carried forward. Also ships rules-mode sorcha-agent configs (`verification-analyst`, `licensing-officer`) for unattended runs, and a cross-peer smoke harness (`run-multi-peer.ps1` + `docker-compose.federation.yml`) that measures register-native delivery latency across two peers. Replaces the earlier `HaipVerifiedCitizen` + `HaipDrivingLicence` walkthroughs. |
+## Single-Org
 
-**Playwright screenshot tests:** `tests/Sorcha.UI.E2E.Tests/Docker/HaipWalkthroughScreenshotTests.cs` captures UI state after the citizen-identity walkthrough runs — admin, issuer, and citizen views of credentials, wallets, organisations, and presentation requests. Run the AssuredIdentity walkthrough first, then execute the screenshot tests against the Docker stack.
+One organisation exercising wallets, registers, crypto primitives, and form rendering — the focused unit tests of the walkthrough family.
 
-### Advanced
+### [RegisterCreationFlow](./RegisterCreationFlow/)
 
-Specialized infrastructure scenarios requiring additional setup beyond `docker-compose up -d`.
+**Scenario.** Walk the full register lifecycle through the Sorcha CLI: two-phase creation (initiate → sign attestation → finalise), genesis transaction processing, OData inspection of the resulting docket, and validation against multiple cryptographic backends.
 
-| Walkthrough | What It Tests |
-|-------------|--------------|
-| [DistributedRegister](./DistributedRegister/) | Cross-machine register replication across a 2-node P2P network. Tests peer discovery via gRPC, register advertisement and subscription (full-replica), service principal registration and revocation, cross-machine JWT using client_credentials grant, and SSL certificate generation with LAN SANs. Requires two machines on the same network. |
-| [PerformanceBenchmark](./PerformanceBenchmark/) | Quantitative platform performance: payload size benchmarks (1 KB – 1 MB), sustained throughput (TPS), latency percentiles (P50/P95/P99), concurrency scaling (1–25+ workers), docket building rate, and Docker resource monitoring. Results are stored as JSON metrics for trend analysis. |
+**Technical capabilities.** Two-phase register creation with cryptographic attestation, genesis docket sealing, CLI ergonomics (`sorcha register create`), OData querying against `Sorcha.Register.Service`, multi-algorithm support (`-Algorithm ED25519|NISTP256|RSA4096`).
+
+**Benefit.** Anyone learning the platform can build and inspect their first ledger in under a minute, and verify that every signing algorithm Sorcha advertises actually round-trips through register creation.
+
+### [WalletVerification](./WalletVerification/)
+
+**Scenario.** Create wallets across all three supported algorithms, sign arbitrary data, sign pre-hashed digests, verify signatures, and use a freshly created wallet to attest a register-creation transaction end-to-end.
+
+**Technical capabilities.** Multi-algorithm HD wallets (ED25519, NIST P-256, RSA-4096), data and pre-hashed signing endpoints, signature verification, integration of Wallet Service with Register Service via the canonical attestation flow.
+
+**Benefit.** The cryptographic foundation of the platform is exercised in isolation — if this walkthrough is green, every downstream feature that relies on signing has a known-good baseline.
+
+### [RegisterMongoDB](./RegisterMongoDB/)
+
+**Scenario.** Switch the Register Service backend from in-memory to MongoDB, restart, and prove that connection establishment, repository DI wiring, collection/index creation, and CRUD round-trips all work against a real Mongo container.
+
+**Technical capabilities.** `Sorcha.Register.Storage.MongoDB` repository, smart storage selection driven by connection strings, the storage-registration log audit trail (Feature 113), index creation on first start.
+
+**Benefit.** Regression-locks the only durable storage backend for the Register Service. Pairs with the storage-audit fail-fast: if the audit is misconfigured, this walkthrough is the first to fail.
+
+### [FormCoverage](./FormCoverage/)
+
+**Scenario.** Single org, two participants, one blueprint deliberately constructed to render every kind of form control Sorcha supports. The submitter walks the form, the recipient acknowledges. `run.ps1 -Rounds N` repeats the cycle so the form pipeline can be soaked.
+
+**Technical capabilities.** Every `ControlTypes` value (Layout, Label, TextLine, TextArea, Numeric, DateTime, File, Choice, Checkbox, Selection); all three layout modes (`x-pages` wizard, `x-sections`, flat `form.elements`); `x-width` hints, `x-rule` conditional visibility, `x-introduction` copy blocks, `x-persona` autofill (Feature 092).
+
+**Benefit.** Every UI change to `SorchaFormRenderer` can be eyeball-verified in one run. Catches layout regressions before they reach the workflow walkthroughs.
+
+### [HealthDeclaration](./HealthDeclaration/)
+
+**Scenario.** A demo clinic onboards a single patient, who completes a multi-page health declaration covering medical history, current medications, allergies, and consent. The form exercises the layout extensions added in Feature 091.
+
+**Technical capabilities.** Single-org, single-participant baseline; `x-pages` wizard layout; `x-sections` grouping; `x-rule` conditional visibility (e.g. show "list medications" only when "taking medications = Yes"); `x-introduction` per-section guidance; `x-width` responsive hints. Idempotent setup designed to drop onto any node — including `n1.sorcha.dev` via `-Profile n1`.
+
+**Benefit.** The smallest multi-page form demo in the platform. Useful for sales/UX walkthroughs where the audience cares about the form experience, not the consensus mechanics. Doubles as the n1 smoke test for the form pipeline.
+
+---
+
+## Multi-Org Workflows
+
+Multiple organisations with cross-org participants, encrypted transactions, conditional routing, file uploads, and verifiable credential issuance.
+
+### [ConstructionPermit](./ConstructionPermit/)
+
+**Scenario.** Stoniebridge Construction submits plans for a new development to Strathcarron Council. The application is routed through Murchison Engineering for structural assessment, the council's Planning Officer for review, optionally Heatherbank Environmental for environmental review, the council's Building Control Inspector, and finally back to the Planning Officer for permit issuance — producing a **Building Permit Verifiable Credential**. Three scenarios drive the branching: **(A)** low-risk residential skips environmental review, **(B)** high-risk commercial triggers it, **(C)** Planning Officer rejects.
+
+**Technical capabilities.** 4 organisations, 5 participants (2 sharing one org), per-user authentication, encrypted transactions through the validator → docket → confirmation pipeline, JSON-Logic calculations (risk score, permit fee), conditional routing, rejection paths, end-of-flow VC issuance, both `run.ps1` (scripted) and `run-agents.ps1` (autonomous actor) execution modes.
+
+**Benefit.** This is the platform's primary multi-org integration test. If a feature touches workflow execution, encryption, or routing, this walkthrough proves the change against a realistic public-sector permit process.
+
+### [SelfBuildHouse](./SelfBuildHouse/)
+
+**Scenario.** A member of the public builds a house in Scotland: planning permission application (Register 1) → planning approval → building warrant application (Register 2, gated on the planning VC) → staged inspections (foundation → structure → final) → completion certificate. Three scenarios cover the standard approval, the ecological-survey branch (protected species detected), and a rejection loop.
+
+**Technical capabilities.** 6 organisations, 7 participants, **two separate registers**, **cross-register VC chains** (Planning Permission VC presented as a prerequisite on Register 2; Building Warrant VC presented for the Completion Certificate), credential-gated actions, document uploads, staged inspections, conditional routing, 5+ JSON-Logic calculations, rejection loops.
+
+**Benefit.** Demonstrates the platform's most complete capability stack in one workflow — particularly how verifiable credentials issued on one register become unforgeable prerequisites on another, modelling the real legal sequencing of construction approvals.
+
+### [PropertyInspection](./PropertyInspection/)
+
+**Scenario.** A council tenant in fictional Strathcarron Council reports a maintenance problem with photo evidence. The Housing Officer triages, allocates a contractor, and issues a **JobAssignmentCredential** that the tenant uses to verify the operative's identity at the door before granting access. The contractor completes the repair with photo evidence and a delivery note. The Housing Officer reviews and either accepts or sends back for rework. Emergency-severity jobs require a Building Inspector sign-off before tenant satisfaction is confirmed and a **ServiceCompletionCredential** is issued.
+
+**Technical capabilities.** File uploads (Feature 085) with photo evidence at two stages, **mid-flow VC issuance and verification** (issued at action 1, verified by holder at action 2), Consumer Persona autofill (Feature 092), conditional routing on severity, **cyclic rework** (action 4 → 3 and action 5 → 3), operative-verification rejection forcing re-allocation.
+
+**Benefit.** Models a real safeguarding control — verifying the identity of a worker entering a vulnerable resident's home — using cryptographic credentials instead of laminated photo cards. Also the canonical demo for cyclic rework and mid-flow credential gating.
+
+### [PayloadTests](./PayloadTests/)
+
+**Scenario.** Sender Corp uploads encrypted file payloads to Receiver Corp through a minimal two-action transfer blueprint. Multiple file sizes (1KB → 40MB) exercise chunking, multi-session continuity, and download reassembly.
+
+**Technical capabilities.** Feature 085 chunked encrypted file upload via Blueprint Service (`POST /api/file-chunks`), decrypted file download via Wallet Service (`GET /api/v1/wallets/{address}/files/download`), FLE-compatible file fields, validator enforcement of file-field encryption rules. Includes `cross-node-setup.ps1` for two-node runs and `stress-test.ps1` for sustained-load profiling.
+
+**Benefit.** Targeted regression coverage for the file-attachment subsystem. Detects breakage in chunking, key wrapping, or reassembly without dragging in the workflow complexity of the larger demos.
+
+---
+
+## Credential Issuance & Reuse
+
+Walkthroughs whose primary purpose is issuing a verifiable credential and proving it composes into other flows.
+
+### [AssuredIdentity](./AssuredIdentity/)
+
+**Scenario.** Acme Verification Co. issues an **AssuredIdentityCredential** to a public-org citizen via a polished 5-page wizard (name + DOB, address, contact, optional portrait, id-card review). In Phase 2, Acme Licensing Co. consumes that credential via HAIP OpenID4VP presentation and issues a **DrivingLicenceCredential** with the holder's verified identity carried forward.
+
+**Technical capabilities.** Feature 107's canonical citizen-identity workflow; the `x-review` schema extension for the id-card page; `x-file.capture` + `x-file.embedAs` for camera capture and client-side token-image resize; client-bound DoB picker (`formatMaximum: "today"`); server-side portrait-size gate (`WARN_CRED_PORTRAIT_OVERSIZE_001`); full HAIP OpenID4VCI issuance; **open-participant late binding** (the citizen is not pre-baked in `$walletMap` — the first authenticated wallet to submit becomes the bound applicant); rules-mode `sorcha-agent` configs (`verification-analyst`, `licensing-officer`) for unattended runs; cross-peer smoke harness (`run-multi-peer.ps1` + `docker-compose.federation.yml`).
+
+**Benefit.** The reference implementation for citizen-facing flows. Demonstrates how an identity-verification provider can act as the trust root for downstream credentials (driving licence today; benefits, professional registration, age verification tomorrow) without ever sharing PII directly between issuers — only signed, selectively disclosable credentials. Replaces the older `HaipVerifiedCitizen` / `HaipDrivingLicence` walkthroughs.
+
+> **Playwright screenshot tests.** `tests/Sorcha.UI.E2E.Tests/Docker/HaipWalkthroughScreenshotTests.cs` captures admin, issuer, and citizen views after this walkthrough has run.
+
+### [ForestryCertification](./ForestryCertification/)
+
+**Scenario.** Highland Timber Supplies submits a timber batch (species, volume, forest of origin, chain-of-custody evidence) to Forestry Certification, an independent auditor. The auditor reviews and either issues a **ForestProductDPPCredential** with verified sustainability claims or declines with a reason. The DPP credential is portable: re-running Trade Finance against the same stack lets the buyer apply preferential terms for verifiably-sustainable products.
+
+**Technical capabilities.** 2 orgs, 2 actions, single register; the Sales Manager is an **open participant** late-bound at submission; SD-JWT VC issuance with 12 selectively disclosable claims (9 of which are flagged `disclosable` so a downstream verifier presents only what it needs); auditor-overrides-supplier on safety-critical fields (e.g. embodied carbon); 365-day credential validity window; cross-walkthrough composition with TradeFinance via shared org subdomain (`highland-timber`).
+
+**Benefit.** Demonstrates the **Digital Product Passport** pattern: a credential that travels with goods through downstream commercial workflows, cryptographically proving sustainability claims without re-doing the audit. The smallest end-to-end VC walkthrough in the suite — a useful copy-paste starting point for new credential types.
+
+---
+
+## Agent-Driven
+
+AI-agent–operated walkthroughs using the Sorcha MCP Server for autonomous execution. Each participant runs as an independent `sorcha-agent` process that authenticates, connects via SignalR (with polling fallback), and responds to pending actions on its own.
+
+### [TradeFinance](./TradeFinance/)
+
+**Scenario.** A realistic SME procurement-to-pay cycle plus invoice financing. **Register 1** (owned by the buyer): purchase order → supplier acknowledgement → delivery confirmation → goods received → invoice → buyer approval, issuing a **VerifiedInvoiceCredential**. **Register 2** (owned by the funder): credential presentation → credit-bureau assessment → funder evaluation (advance/fee auto-calculated via JSON Logic) → approval, issuing a **TradeFinanceCredential**. Three scenarios: golden path (approved), disputed invoice (rejection + resubmission), declined financing (low credit score).
+
+**Technical capabilities.** 4 organisations, 6 participants, **2 registers**, cross-register VC dependency, **field-level encryption with selective disclosure** (the supplier's confidential cost breakdown is visible to the Finance Director but not the buyer), revocation policy `FailClosed` (revoking the invoice credential auto-rejects any in-flight financing request), 5+ JSON-Logic calculations, **AI-agent coordination via MCP Server** (two Claude Code sessions on separate machines coordinate **entirely through register replication** with no side channels), persona-driven kickoff (`once` trigger fires the starting Raise-PO action; `interval` trigger generates 20 randomised invoices for soak testing), DevMode-to-FLE transition for staged demos.
+
+**Benefit.** The platform's most comprehensive single demo. Proves three of Sorcha's hardest claims simultaneously: cryptographically-verifiable cross-organisational data flow, AI agents acting as principals (not orchestrators), and revocation as an enforceable gate rather than an advisory signal. Pairs with ForestryCertification to show DPP-driven rate uplift.
+
+---
+
+## Distributed (Multi-Node)
+
+Walkthroughs that exercise cross-machine peer replication. Require additional setup beyond `docker-compose up -d`.
+
+### [DistributedRegister](./DistributedRegister/)
+
+**Scenario.** Create a register on machine A, advertise it to the peer network, have machine B discover the advertisement via heartbeat, subscribe full-replica, and verify that genesis docket and subsequent transactions replicate. The included `sync-test.ps1` runs a four-phase Feature-071 P2P sync regression: connectivity, discovery, subscription, finalisation.
+
+**Technical capabilities.** Peer discovery via gRPC, register advertisement and subscription (full-replica), service-principal registration and revocation for cross-machine service-to-service auth, `client_credentials` grant flow, SSL certificate generation with LAN SANs, streaming relay, heartbeat advertisements, docket finalisation, live streaming, resilience under restart.
+
+**Benefit.** The canonical proof that Sorcha is a distributed ledger and not just a clustered web app. Without a green run here, no claim about decentralisation, replication, or multi-validator operation can be trusted.
+
+### [PingPongN1](./PingPongN1/)
+
+**Scenario.** Two orgs on two machines (local Docker behind NAT and `n1.sorcha.dev` on Azure) share one public register hosted on n1. Pong Corp on n1 owns the register and creates a blueprint instance; Ping Labs (local) subscribes full-replica; both sides exchange ping-pong actions over P2P. The register lives on n1 because local is NAT'd — pulls run in the direction NAT allows.
+
+**Technical capabilities.** Cross-machine register subscription with FullReplica, advertisement → heartbeat discovery, genesis docket pull-through, blueprint publish + instance creation across nodes, both-sides participant publishing on a shared register. Tracks the platform's progress on Features 071 and 108 (NAT-traversal / register-local relationships).
+
+**Benefit.** The most realistic cross-network test in the suite — one node on the public internet, one behind a home/office NAT, talking only over the documented P2P paths. This walkthrough is also where the team has historically pinned reverse-direction replication issues; its `README.md` documents Findings A and B and the fixes that resolved them.
+
+---
+
+## Performance
+
+### [PerformanceBenchmark](./PerformanceBenchmark/)
+
+**Scenario.** Quantitative benchmark of the Register Service: payload-size sweeps (1 KB – 1 MB), sustained throughput (TPS), latency percentiles (P50/P95/P99), concurrency scaling (1–25+ workers), docket-building rate, and Docker resource monitoring. Results are written as JSON metrics for trend analysis.
+
+**Technical capabilities.** NBomber-style throughput driver, percentile latency tracking, parameterised concurrency, docker-stats sampling, JSON-result archival for regression comparison.
+
+**Benefit.** The only walkthrough that produces *numbers* rather than pass/fail. Used for regression trend analysis between releases and as the baseline for any "is the change faster?" question.
 
 ---
 
 ## How Walkthroughs Work
 
-### setup.ps1 + run.ps1 Pattern
+### setup.ps1 + run.ps1 pattern
 
 Most walkthroughs follow a two-script pattern:
 
-1. **`setup.ps1`** — Creates organizations, users, wallets, participants, registers, subscriptions, and publishes the blueprint. Writes all IDs and credentials to `state.json` so `run.ps1` can execute without repeating setup.
+1. **`setup.ps1`** — Creates organisations, users, wallets, participants, registers, subscriptions, and publishes the blueprint. Writes all IDs and credentials to `state.json` so `run.ps1` can execute without repeating setup.
 2. **`run.ps1`** — Loads `state.json`, authenticates each participant, creates workflow instances, executes actions through the transaction pipeline, and reports pass/fail.
 
 Both scripts are idempotent — safe to re-run. Setup detects existing resources and skips or updates.
 
-### Parameters
-
-| Parameter | Script | Default | Description |
-|-----------|--------|---------|-------------|
-| `-Profile` | setup.ps1 | `gateway` | URL profile: `gateway` (port 80), `direct` (per-service ports), `aspire` (HTTPS 7xxx) |
-| `-SkipHealthCheck` | setup.ps1 | off | Skip Docker container health verification |
-| `-ShowJson` | run.ps1 | off | Print full JSON request/response for debugging |
-| `-Scenario` | run.ps1 | `all` | Run a specific scenario: `A`, `B`, `C`, or `all` |
-
-### Single-Script Pattern
+### Single-script pattern
 
 Foundation walkthroughs use one standalone script (no `state.json`):
 - `AdminIntegration/test-admin-integration.ps1`
 - `McpServerBasics/test-mcp-server.ps1`
 - `RegisterMongoDB/test-mongodb-integration.ps1`
 
-### Actor-Based Execution (sorcha-agent)
+### Common parameters
+
+| Parameter | Script | Default | Description |
+|-----------|--------|---------|-------------|
+| `-Profile` | setup.ps1 | `gateway` | URL profile: `gateway` (port 80), `direct` (per-service ports), `aspire` (HTTPS 7xxx), `n1` (n1.sorcha.dev) |
+| `-SkipHealthCheck` | setup.ps1 | off | Skip Docker container health verification |
+| `-Force` | setup.ps1 | off | Recreate state even if existing state.json validates |
+| `-ShowJson` | run.ps1 | off | Print full JSON request/response for debugging |
+| `-Scenario` | run.ps1 | `all` | Run a specific scenario (`A`, `B`, `C`, `golden-path`, `decline`, …) |
+
+### Actor-based execution (`sorcha-agent`)
 
 An alternative to the single-threaded `run.ps1` pattern. Each participant runs as an independent `sorcha-agent` process that autonomously discovers and responds to pending actions.
 
 ```powershell
-# Setup is the same
 pwsh walkthroughs/ConstructionPermit/setup.ps1
-
-# Run with autonomous actors instead of run.ps1
 pwsh walkthroughs/ConstructionPermit/run-agents.ps1
 ```
 
-**How it works:**
-- Each actor is defined by a JSON file (`actors/*.json`) specifying identity, connection, and decision rules
-- The actor process authenticates, connects via SignalR (with polling fallback), and responds to pending actions
-- Two decision modes: **rules** (JSON Logic conditions) and **ai** (Claude API with persona prompts)
-- Actors can run on different machines — copy the actor JSON + `state.json` to deploy remotely
+- Each actor is defined by a JSON file (`actors/*.json`) specifying identity, connection, and decision rules.
+- The actor process authenticates, connects via SignalR (with polling fallback), and responds to pending actions.
+- Two decision modes: **rules** (JSON Logic conditions) and **ai** (Claude API with persona prompts).
+- Actors can run on different machines — copy the actor JSON + `state.json` to deploy remotely.
 
-**Actor files for ConstructionPermit:** `walkthroughs/ConstructionPermit/actors/`
+See `src/Apps/Sorcha.Agent/` for the agent CLI tool.
 
-See `src/Apps/Sorcha.Agent/` for the agent CLI tool and `walkthroughs/ConstructionPermit/actors/README.md` for usage details.
+### Persona-driven agents (Feature 110)
+
+Agents support **personas** — JSON files that let an agent *initiate* a workflow rather than only react. A persona declares a trigger (`once` or `interval`), a target (blueprint + instance + action), and a payload template.
+
+- **One-shot kickoff.** A `once` trigger fires a starting action on agent launch. TradeFinance uses `procurement-mgr-kickoff.persona.json` so `run-agents.ps1` produces a Raise-PO submission with no manual step.
+- **Scenario data generation.** An `interval` trigger with `maxIterations` and optional `until` timestamp fires varied payloads repeatedly. `walkthroughs/TradeFinance/personas/invoice-generator.persona.json` generates 20 invoices with randomised amounts and currencies.
+
+Payload tokens, resolved per fire: `${now}`, `${uuid}`, `${counter}`, `${random.int(min,max)}`, `${random.decimal(min,max,precision)}`, `${random.choice([…])}`. A string that is exactly `"${token}"` preserves typed JSON; embedded tokens like `"INV-${counter}"` produce string interpolation.
+
+See [`specs/110-agent-persona-mode/quickstart.md`](../specs/110-agent-persona-mode/quickstart.md).
 
 ---
 
 ## Open Participants & Late Binding (Feature 103)
 
-Citizen-facing walkthroughs (e.g. `AssuredIdentity`)
-use the **open starting action** pattern: the first authenticated wallet
-to submit becomes the bound applicant for the life of the instance.
-This is the right pattern for any flow where the citizen / applicant is
-walking in off the street with no pre-existing participant record.
+Citizen-facing walkthroughs (`AssuredIdentity`, `ForestryCertification`, `PropertyInspection`) use the **open starting action** pattern: the first authenticated wallet to submit becomes the bound applicant for the life of the instance. Three rules enforce the contract:
 
-Three rules enforce the contract end-to-end:
-
-1. The action carries `isStartingAction: true`. The validator skips the
-   strict wallet check for these and the runtime late-binds the first
-   submitter to the action's `Sender` participant. A second submission
-   from a different wallet is rejected.
-2. The participant referenced by `Action.Sender` on the open action MUST
-   have `Participant.WalletAddress = null` in the published blueprint.
-   Pre-baking a wallet is the foot-gun the publish-time guardrail
-   `VAL_BP_010` exists to catch.
-3. Walkthrough authors MUST NOT include the open participant in their
-   `$walletMap`. The correct shape is to omit the citizen / applicant
-   entry entirely and let the runtime late-bind:
+1. The action carries `isStartingAction: true`. The validator skips the strict wallet check for these and the runtime late-binds the first submitter to the action's `Sender` participant. A second submission from a different wallet is rejected.
+2. The participant referenced by `Action.Sender` on the open action MUST have `Participant.WalletAddress = null` in the published blueprint. Pre-baking a wallet is the foot-gun the publish-time guardrail `VAL_BP_010` exists to catch.
+3. Walkthrough authors MUST NOT include the open participant in `$walletMap`:
 
    ```powershell
-   # CORRECT for citizen-facing walkthroughs:
    $walletMap = @{
        "verification-analyst" = $analystWallet.Address
        # "citizen" intentionally absent — late-bound at runtime
    }
    ```
 
-Credential-bootstrapped flows (Driving Licence requires a Verified
-Citizen credential) layer `credentialRequirements` on the open starting
-action. The HAIP presentation gate fires *before* the late-bind block,
-so only credential holders can become the bound applicant.
+Credential-bootstrapped flows (e.g. Driving Licence requires a Verified Citizen credential) layer `credentialRequirements` on the open starting action. The HAIP presentation gate fires **before** the late-bind block, so only credential holders can become the bound applicant.
 
-See the `blueprint-builder` skill ("Open Participants & Late Binding"
-section) for the runtime details and the `verifiable-credentials` skill
-for the issuance side.
+See the `blueprint-builder` skill ("Open Participants & Late Binding") and the `verifiable-credentials` skill.
+
+---
+
+## Strathcarron Council Demo Universe
+
+A shared fictional Scottish council area used across `ConstructionPermit`, `SelfBuildHouse`, and `PropertyInspection`. Reusable orgs (Strathcarron Council, Stoniebridge Construction, Murchison Engineering, Heatherbank Environmental, Caledonian Water), places (Carronbridge SC4, Dalreoch SC6, Invercarron SC2, Loch Morach), and roles. No real councils, utility companies, or identifiable organisations are used.
+
+See `walkthroughs/council/README.md` and `walkthroughs/council/setup-council.ps1`.
 
 ---
 
 ## run-all.ps1
 
-Runs all walkthroughs in dependency order (Foundation → Single-Org → Multi-Org → Advanced):
+Runs the canonical walkthroughs in dependency order:
 
 ```powershell
 pwsh walkthroughs/run-all.ps1                    # Run everything
@@ -184,6 +312,8 @@ pwsh walkthroughs/run-all.ps1 -OnlySetup         # Run setup.ps1 only (create re
 pwsh walkthroughs/run-all.ps1 -Profile direct    # Use direct service ports instead of API Gateway
 ```
 
+Newer walkthroughs (`HealthDeclaration`, `PayloadTests`, `ForestryCertification`, `PropertyInspection`, `TradeFinance`, `PingPongN1`) can be run individually; not all are wired into `run-all.ps1` yet.
+
 ---
 
 ## Secrets
@@ -191,11 +321,8 @@ pwsh walkthroughs/run-all.ps1 -Profile direct    # Use direct service ports inst
 Credentials are stored in `walkthroughs/.secrets/passwords.json` (git-ignored). All walkthroughs share the platform seed admin (`admin@sorcha.local` / `Dev_Pass_2025!`). Multi-org walkthroughs add per-role credentials.
 
 ```powershell
-# Generate (first time)
-pwsh walkthroughs/initialize-secrets.ps1
-
-# Regenerate (overwrite)
-pwsh walkthroughs/initialize-secrets.ps1 -Force
+pwsh walkthroughs/initialize-secrets.ps1            # Generate (first time)
+pwsh walkthroughs/initialize-secrets.ps1 -Force     # Regenerate (overwrite)
 ```
 
 Override any walkthrough's secrets via environment variable: `SORCHA_WT_SECRETS_<NAME>` (JSON string).
@@ -211,7 +338,7 @@ $modulePath = Join-Path $PSScriptRoot "../modules/SorchaWalkthrough/SorchaWalkth
 Import-Module $modulePath -Force
 ```
 
-### Console Output
+### Console output
 
 | Function | Purpose |
 |----------|---------|
@@ -222,7 +349,7 @@ Import-Module $modulePath -Force
 | `Write-WtInfo $text` | Info message (white) |
 | `Write-WtWarn $text` | Warning message (yellow) |
 
-### HTTP, Auth & JWT
+### HTTP, auth & JWT
 
 | Function | Purpose |
 |----------|---------|
@@ -230,14 +357,14 @@ Import-Module $modulePath -Force
 | `Get-SorchaErrorBody $exception` | Extract HTTP error body from failed response |
 | `Decode-SorchaJwt $token` | Decode JWT payload (base64url → hashtable) |
 
-### Environment & Secrets
+### Environment & secrets
 
 | Function | Purpose |
 |----------|---------|
 | `Initialize-SorchaEnvironment -Profile [-SkipHealthCheck]` | Docker health check + profile URL resolution → `@{ TenantUrl, RegisterUrl, WalletUrl, BlueprintUrl }` |
 | `Get-SorchaSecrets -WalkthroughName` | Load credentials from `.secrets/passwords.json` |
 
-### Auth & Users
+### Auth & users
 
 | Function | Purpose |
 |----------|---------|
@@ -248,7 +375,7 @@ Import-Module $modulePath -Force
 | `New-SorchaOrganization -TenantUrl -Name -Subdomain -AdminEmail -Headers` | Create private org via platform admin API |
 | `Get-OrCreateUser -TenantUrl -OrganizationId -Email -DisplayName -Headers -Roles` | Idempotent user creation/addition to org |
 
-### Wallets & Participants
+### Wallets & participants
 
 | Function | Purpose |
 |----------|---------|
@@ -256,11 +383,12 @@ Import-Module $modulePath -Force
 | `Register-SorchaParticipant -TenantUrl -WalletUrl -OrganizationId -WalletAddress -DisplayName -Headers` | Self-register participant + challenge-sign-verify wallet link |
 | `Publish-SorchaParticipant -TenantUrl -OrganizationId -RegisterId -ParticipantName -OrganizationName -WalletAddress -PublicKey -Headers` | Publish participant record to register |
 
-### Registers & Blueprints
+### Registers & blueprints
 
 | Function | Purpose |
 |----------|---------|
 | `New-SorchaRegister -RegisterUrl -WalletUrl -Name -Description -TenantId -OwnerUserId -OwnerWalletAddress -Headers` | Three-phase register creation (initiate → sign attestation → finalize) |
+| `Get-SorchaRegisterByName -RegisterUrl -Name -Headers` | Idempotent register lookup (avoids orphan registers on re-run) |
 | `New-SorchaRegisterSubscription -TenantUrl -OrganizationId -RegisterId -RegisterName -SubscriptionType -Headers` | Subscribe org to register (Owner/Public/Invited) |
 | `Publish-SorchaBlueprint -BlueprintUrl -TemplatePath -WalletMap -Headers -IdPrefix -RegisterId` | Load JSON template, patch wallet addresses, create + publish blueprint |
 | `Invoke-SorchaAction -BlueprintUrl -InstanceId -ActionId -BlueprintId -SenderWallet -RegisterId -Token [-PayloadData] [-Reject] [-RejectionReason]` | Execute or reject a workflow action |
@@ -278,8 +406,9 @@ walkthroughs/
 │   └── passwords.json
 ├── modules/
 │   └── SorchaWalkthrough/
-│       ├── SorchaWalkthrough.psd1     # Module manifest
-│       └── SorchaWalkthrough.psm1     # Shared module
+│       ├── SorchaWalkthrough.psd1
+│       └── SorchaWalkthrough.psm1
+├── council/                           # Shared Strathcarron demo universe
 │
 ├── AdminIntegration/                  # Foundation — Blazor WASM + YARP
 ├── McpServerBasics/                   # Foundation — MCP Server
@@ -287,36 +416,23 @@ walkthroughs/
 ├── RegisterCreationFlow/              # Single-Org — Register lifecycle + CLI
 ├── WalletVerification/                # Single-Org — Multi-algorithm crypto
 ├── RegisterMongoDB/                   # Single-Org — MongoDB backend
+├── FormCoverage/                      # Single-Org — Every form control
+├── HealthDeclaration/                 # Single-Org — Form layout extensions (Feature 091)
 │
-├── ConstructionPermit/                # Multi-Org — 4 orgs, routing, encryption
-│   ├── config.json
-│   ├── construction-permit-template.json
-│   ├── setup.ps1
-│   ├── run.ps1
-│   ├── data/
-│   │   ├── scenario-a-low-risk.json
-│   │   ├── scenario-b-high-risk.json
-│   │   └── scenario-c-rejection.json
-│   ├── state.json                     # Generated by setup.ps1
-│   └── README.md
+├── ConstructionPermit/                # Multi-Org — 4 orgs, routing, encryption, VC
+├── SelfBuildHouse/                    # Multi-Org — 6 orgs, 2 registers, VC chain
+├── PropertyInspection/                # Multi-Org — file uploads, mid-flow VC, cyclic rework
+├── PayloadTests/                      # Multi-Org — chunked encrypted file transfer
 │
-├── SelfBuildHouse/                    # Multi-Org — 6 orgs, 2 registers, VCs
+├── AssuredIdentity/                   # Credential — Feature 107 citizen identity + driving licence
+├── ForestryCertification/             # Credential — Digital Product Passport (composes into TradeFinance)
 │
-├── AssuredIdentity/                    # Feature 107 — canonical citizen identity + driving licence chain
-│   ├── setup.ps1                       # Provisions Acme Verification, Acme Licensing, citizen
-│   ├── run.ps1                         # Full Phase 1 + Phase 2 orchestrator
-│   ├── run-phase1-identity.ps1         # AssuredIdentityCredential issuance
-│   ├── run-phase2-licence.ps1          # Driving Licence credential chain
-│   ├── run-agents.ps1                  # Unattended verification-analyst + licensing-officer
-│   ├── run-multi-peer.ps1              # Cross-peer smoke (FR-039 — non-blocking)
-│   ├── actors/                         # citizen + verification-analyst + licensing-officer
-│   ├── blueprints/                     # assured-identity.json + driving-licence.json
-│   ├── wallet/                         # Holder key + both credentials
-│   ├── multi-peer-findings.md          # Cross-peer smoke baseline
-│   └── state.json
+├── TradeFinance/                      # Agent-Driven — procurement-to-pay + invoice finance, FLE, MCP agents
 │
-├── DistributedRegister/               # Advanced — P2P replication
-└── PerformanceBenchmark/              # Advanced — TPS, latency, concurrency
+├── DistributedRegister/               # Distributed — P2P replication
+├── PingPongN1/                        # Distributed — local ↔ n1.sorcha.dev cross-NAT
+│
+└── PerformanceBenchmark/              # Performance — TPS, latency, concurrency
 ```
 
 ---
@@ -324,31 +440,20 @@ walkthroughs/
 ## Creating a New Walkthrough
 
 1. Create directory: `walkthroughs/YourWalkthrough/`
-2. Add `config.json` with name, description, category, organization details
+2. Add `config.json` with name, description, category, organisation details
 3. Add `setup.ps1` — import module, bootstrap orgs/users/wallets, create register, publish blueprint, save `state.json`
 4. Add `run.ps1` — import module, load `state.json`, authenticate users, execute scenarios, report pass/fail
 5. Add secrets entry to `initialize-secrets.ps1`
-6. Add entry to `run-all.ps1` walkthroughs array
+6. Add entry to `run-all.ps1` walkthroughs array (if part of the canonical run)
 7. Update this README
 
-## Persona-driven agents (Feature 110)
-
-Agents support **personas** — JSON files that let an agent initiate a workflow rather than only react. A persona declares a trigger (`once` or `interval`), a target (blueprint + instance + action), and a payload template. Personas live in `personas/` next to the walkthrough's `actors/` folder and are referenced via `"personaFile": "../personas/<name>.persona.json"` on the actor config.
-
-- **One-shot kickoff**: a `once` trigger fires a starting action on agent launch. TradeFinance uses `procurement-mgr-kickoff.persona.json` so `run-agents.ps1` produces a Raise-PO submission with no manual step. Downstream agents pick up the flow reactively.
-- **Scenario data generation**: an `interval` trigger with `maxIterations` (and optional `until` timestamp) fires a varied payload repeatedly. `walkthroughs/TradeFinance/personas/invoice-generator.persona.json` is an example that generates 20 invoices with randomised amounts and currencies.
-
-Payload tokens, resolved per fire: `${now}`, `${uuid}`, `${counter}`, `${random.int(min, max)}`, `${random.decimal(min, max, precision)}`, `${random.choice([…])}`. A string that is *exactly* `"${token}"` preserves typed JSON (number, string); embedded tokens like `"INV-${counter}"` produce string interpolation.
-
-See [`specs/110-agent-persona-mode/quickstart.md`](../specs/110-agent-persona-mode/quickstart.md) for the complete guide, schema, and troubleshooting.
-
-### config.json Template
+### config.json template
 
 ```json
 {
   "name": "YourWalkthrough",
   "description": "Brief description of what this tests.",
-  "category": "foundation|single-org|multi-org|advanced",
+  "category": "foundation|single-org|multi-org|credential|agent|distributed|performance",
   "organizations": [
     { "name": "Org Name", "subdomain": "org-subdomain", "role": "purpose" }
   ],
