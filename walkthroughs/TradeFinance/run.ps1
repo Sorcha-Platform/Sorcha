@@ -85,9 +85,14 @@ $procurementSenderMap = @{
     6 = "procurement-mgr"   # Approve/Dispute Invoice
 }
 
-# Action-to-sender mapping for INVOICE FINANCE blueprint
+# Action-to-sender mapping for INVOICE FINANCE blueprint.
+# Sales Manager submits Action 1 because they hold both the VerifiedInvoiceCredential
+# (issued by procurement R1 to sales-mgr) and the optional ForestProductDPPCredential
+# (issued by ForestryCertification to sales-mgr). Keeping presenter and credential
+# holder on the same wallet lets the UI's New Submissions / CredentialGatePanel
+# render the financing workflow without a delegation step.
 $financeSenderMap = @{
-    1 = "finance-director"  # Request Financing
+    1 = "sales-mgr"         # Request Financing — presents VerifiedInvoiceCredential + optional DPP
     2 = "assessment-svc"    # Buyer Assessment
     3 = "credit-analyst"    # Evaluate Application
     4 = "credit-analyst"    # Approve/Decline
@@ -432,8 +437,11 @@ foreach ($sid in $scenariosToRun) {
                 -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials?status=PendingAcceptance" `
                 -Headers $credHeaders
 
-            foreach ($p in ($pending | Where-Object { $_.type -eq "VerifiedInvoiceCredential" })) {
-                Write-WtInfo "  Accepting pending credential $($p.id)..."
+            # Auto-accept any pending credentials we plan to present (invoice + DPP)
+            # before fetching the active list, so they appear as Active downstream.
+            $autoAcceptTypes = @("VerifiedInvoiceCredential", "ForestProductDPPCredential")
+            foreach ($p in ($pending | Where-Object { $autoAcceptTypes -contains $_.type })) {
+                Write-WtInfo "  Accepting pending $($p.type) $($p.id)..."
                 $null = Invoke-SorchaApi -Method PATCH `
                     -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials/$($p.id)" `
                     -Body @{ status = "Active" } `
@@ -472,6 +480,39 @@ foreach ($sid in $scenariosToRun) {
                 Write-WtInfo "  Presenting VerifiedInvoiceCredential: $($invoiceCred.id)"
             } else {
                 Write-WtWarn "  No VerifiedInvoiceCredential found in sales-mgr wallet"
+            }
+
+            # Optional ForestProductDPPCredential — issued by the ForestryCertification
+            # walkthrough to sales-mgr. When present, the financing template's calc
+            # applies a +10% advance-rate uplift if sustainabilityScore >= 70.
+            $dppCred = $creds | Where-Object { $_.type -eq "ForestProductDPPCredential" } | Select-Object -First 1
+            if ($dppCred) {
+                Write-WtInfo "  Found DPP credential: $($dppCred.id)"
+
+                $dppExported = Invoke-SorchaApi -Method GET `
+                    -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials/$($dppCred.id)/export" `
+                    -Headers $credHeaders
+
+                $dppToken = if ($dppExported.sdJwt) { $dppExported.sdJwt } elseif ($dppExported.rawToken) { $dppExported.rawToken } else { $dppExported.token }
+
+                # The platform verifies against rawPresentation (the signed SD-JWT).
+                # The disclosedClaims hash is informational for the audit log; pin
+                # the values to what ForestryCertification's golden-path issues so
+                # logs read cleanly. If you change the Forestry scenario, update here.
+                $credPresentations += @{
+                    credentialId    = $dppCred.id
+                    disclosedClaims = @{
+                        type                  = "ForestProductDPPCredential"
+                        certificationScheme   = "FSC"
+                        sustainabilityScore   = 87
+                        embodiedCarbonKgCO2e  = 36.4
+                        expiryDate            = "2027-04-15"
+                    }
+                    rawPresentation = $dppToken
+                }
+                Write-WtInfo "  Presenting ForestProductDPPCredential: $($dppCred.id) (sustainabilityScore=87 — uplift will apply)"
+            } else {
+                Write-WtInfo "  No ForestProductDPPCredential in sales-mgr wallet — skipping DPP presentation (sustainability uplift will not apply). Run ForestryCertification golden-path before TradeFinance to enable the cross-register uplift demo."
             }
         } catch {
             Write-WtWarn "  Could not fetch credentials: $($_.Exception.Message)"

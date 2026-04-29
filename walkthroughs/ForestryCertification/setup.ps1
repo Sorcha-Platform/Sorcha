@@ -281,12 +281,79 @@ $salesMgrUser = New-ParticipantUserSession `
     -OrgAdminHeaders $htAdminSession.Headers
 Write-WtSuccess "Sales Manager user: $($salesMgrUser.Email)"
 
-$salesMgrWallet = New-SorchaWallet `
-    -WalletUrl $sorchaEnv.WalletUrl `
-    -Name "Sales Manager" `
-    -Headers $salesMgrUser.Headers `
-    -FetchPublicKey
-Write-WtSuccess "Sales Manager wallet: $($salesMgrWallet.Address) (owned by $($salesMgrUser.Email))"
+# Idempotent wallet lookup: reuse the user's existing wallet if they already
+# have one. Cross-walkthrough composition relies on the DPP credential issued
+# here landing in the SAME wallet that TradeFinance's run.ps1 fetches
+# credentials from. If we always created a fresh wallet, the credential would
+# be invisible to downstream walkthroughs and the cross-register uplift demo
+# would silently fail.
+#
+# Selection precedence:
+#   1. The wallet TradeFinance recorded in walkthroughs/TradeFinance/state.json
+#      (under wallets["sales-mgr"]) — highest fidelity for cross-walkthrough
+#      runs since it pins the DPP to the exact wallet TradeFinance will look at.
+#   2. Otherwise, the first wallet returned by /v1/wallets for this user — keeps
+#      Forestry standalone runs idempotent across re-runs of -Force setup.
+#   3. Otherwise, mint a fresh wallet.
+$existingWallets = @()
+try {
+    $existingWallets = @(Invoke-SorchaApi -Method GET `
+        -Uri "$($sorchaEnv.WalletUrl)/v1/wallets" `
+        -Headers $salesMgrUser.Headers)
+} catch {
+    # User has no wallets yet — fall through to create
+}
+
+$preferredWalletAddress = $null
+$tradeFinanceStatePath = Join-Path (Split-Path -Parent $scriptDir) "TradeFinance/state.json"
+if (Test-Path $tradeFinanceStatePath) {
+    try {
+        $tfState = Get-Content -Path $tradeFinanceStatePath -Raw | ConvertFrom-Json
+        if ($tfState.wallets -and $tfState.wallets.'sales-mgr') {
+            $preferredWalletAddress = $tfState.wallets.'sales-mgr'
+            Write-WtInfo "TradeFinance state.json present — preferring sales-mgr wallet $preferredWalletAddress for cross-register credential composition"
+        }
+    } catch {
+        # Couldn't parse — fall through
+    }
+}
+
+$selectedWallet = $null
+if ($preferredWalletAddress) {
+    $selectedWallet = $existingWallets | Where-Object { $_.address -eq $preferredWalletAddress } | Select-Object -First 1
+}
+if (-not $selectedWallet -and $existingWallets.Count -gt 0) {
+    $selectedWallet = $existingWallets[0]
+}
+
+if ($selectedWallet) {
+    Write-WtInfo "Reusing existing Sales Manager wallet: $($selectedWallet.address)"
+
+    # Fetch public key via signing probe so participant publish has it.
+    # Body shape matches New-SorchaWallet -FetchPublicKey (transactionData + isPreHashed).
+    $probeBody = @{
+        transactionData = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("key-probe"))
+        isPreHashed     = $false
+    }
+    $signResp = Invoke-SorchaApi -Method POST `
+        -Uri "$($sorchaEnv.WalletUrl)/v1/wallets/$($selectedWallet.address)/sign" `
+        -Body $probeBody `
+        -Headers $salesMgrUser.Headers
+
+    $salesMgrWallet = @{
+        Address   = $selectedWallet.address
+        Mnemonic  = $null
+        PublicKey = $signResp.publicKey
+    }
+    Write-WtSuccess "Sales Manager wallet (reused): $($salesMgrWallet.Address) (owned by $($salesMgrUser.Email))"
+} else {
+    $salesMgrWallet = New-SorchaWallet `
+        -WalletUrl $sorchaEnv.WalletUrl `
+        -Name "Sales Manager" `
+        -Headers $salesMgrUser.Headers `
+        -FetchPublicKey
+    Write-WtSuccess "Sales Manager wallet: $($salesMgrWallet.Address) (owned by $($salesMgrUser.Email))"
+}
 
 $null = Register-SorchaParticipant `
     -TenantUrl $sorchaEnv.TenantUrl `
