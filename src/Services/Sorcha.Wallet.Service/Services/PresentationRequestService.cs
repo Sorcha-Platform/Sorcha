@@ -246,8 +246,13 @@ public class PresentationRequestService : IPresentationRequestService
     {
         var errors = new List<VerificationError>();
 
-        // 1. Look up credential
-        var credential = await _credentialStore.GetByIdAsync(credentialId, ct);
+        // 1. Look up credential — prefer wallet-scoped lookup when the presentation request
+        //    carries a TargetWalletAddress so we never accidentally verify the issuer's copy
+        //    instead of the holder's (Feature 106: same credential id can appear in both wallets).
+        var credential = request.TargetWalletAddress is not null
+            ? await _credentialStore.GetByIdForWalletAsync(credentialId, request.TargetWalletAddress, ct)
+            : await _credentialStore.GetByIdAsync(credentialId, ct);
+
         if (credential == null)
         {
             errors.Add(new VerificationError

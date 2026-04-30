@@ -260,13 +260,11 @@ public static class CredentialEndpoints
         ICredentialStore store,
         CancellationToken cancellationToken = default)
     {
-        var credential = await store.GetByIdForWalletAsync(credentialId, walletAddress, cancellationToken);
-
-        if (credential == null)
-            return Results.NotFound();
-
-        await store.DeleteAsync(credentialId, cancellationToken);
-        return Results.NoContent();
+        // Wallet-scoped delete — credential IDs are not globally unique (Feature 106).
+        // DeleteAsync(credentialId, walletAddress) performs the composite-key lookup and
+        // delete atomically, removing the TOCTOU window of the former pre-check + delete pair.
+        var deleted = await store.DeleteAsync(credentialId, walletAddress, cancellationToken);
+        return deleted ? Results.NoContent() : Results.NotFound();
     }
 
     private static async Task<IResult> ExportCredential(
@@ -355,7 +353,7 @@ public static class CredentialEndpoints
             return Results.NotFound();
 
         var previousStatus = credential.Status;
-        var updated = await store.UpdateStatusAsync(credentialId, targetStatus, cancellationToken);
+        var updated = await store.UpdateStatusAsync(credentialId, walletAddress, targetStatus, cancellationToken);
 
         if (!updated)
             return Results.BadRequest(new { error = $"Invalid status transition from {previousStatus} to {targetStatus}" });
