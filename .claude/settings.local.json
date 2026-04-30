@@ -52,7 +52,13 @@
       "Read(//c/Users/StuartFraser/.claude/projects/C--projects-Sorcha/memory/**)",
       "PowerShell(& .specify/scripts/powershell/setup-plan.ps1 -Json)",
       "PowerShell(& .specify/scripts/powershell/check-prerequisites.ps1 -Json)",
-      "PowerShell(& .specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)"
+      "PowerShell(& .specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)",
+      "PowerShell(.specify/scripts/powershell/create-new-feature.ps1 -Json -Number 112 -ShortName \"email-sweep\" \"Transactional email verification sweep for Tenant Service\")",
+      "PowerShell(pwsh -ExecutionPolicy Bypass -File .specify/scripts/powershell/create-new-feature.ps1 -Json -Number 112 -ShortName \"email-sweep\" \"Transactional email verification sweep for Tenant Service\")",
+      "PowerShell(pwsh -ExecutionPolicy Bypass -File .specify/scripts/powershell/setup-plan.ps1 -Json)",
+      "PowerShell(pwsh -ExecutionPolicy Bypass -File .specify/scripts/powershell/update-agent-context.ps1 -AgentType claude)",
+      "PowerShell(pwsh -ExecutionPolicy Bypass -File .specify/scripts/powershell/check-prerequisites.ps1 -Json)",
+      "PowerShell(pwsh -ExecutionPolicy Bypass -File .specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)"
     ],
     "deny": [],
     "ask": []
