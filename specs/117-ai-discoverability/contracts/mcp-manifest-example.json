@@ -1,0 +1,39 @@
+{
+  "$schema": "https://github.com/Sorcha-Platform/Sorcha/specs/117-ai-discoverability/contracts/mcp-manifest.schema.json",
+  "name": "sorcha-mcp",
+  "version": "3.0.0",
+  "description": "Sorcha MCP server — drives credential issuance, blueprint design, and participant workflows for the Sorcha platform.",
+  "transports": [
+    {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["run", "--project", "src/Apps/Sorcha.McpServer"]
+    },
+    {
+      "type": "http+sse",
+      "url": "https://sorcha.example/mcp/sse"
+    }
+  ],
+  "authentication": {
+    "type": "jwt-bearer",
+    "issuer": "https://sorcha.example/auth",
+    "audience": "sorcha-mcp",
+    "acquisition_url": "https://github.com/Sorcha-Platform/Sorcha/blob/master/scripts/get-jwt-token.sh"
+  },
+  "tool_categories": {
+    "admin": {
+      "count": 13,
+      "description": "Platform-administration tools — health checks, log queries, tenant and user management, validator status. Use this slice when an agent has admin scope."
+    },
+    "designer": {
+      "count": 13,
+      "description": "Blueprint authoring tools — create, validate, simulate, diff, export blueprints. Use this slice for workflow authoring agents."
+    },
+    "participant": {
+      "count": 10,
+      "description": "Participant workflow tools — submit actions, query the inbox, sign transactions, query the register. Use this slice for end-user-facing agents."
+    }
+  },
+  "tool_catalogue_url": "https://sorcha.example/api/mcp/tools",
+  "documentation_url": "https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/mcp-server.md"
+}
