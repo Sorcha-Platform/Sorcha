@@ -2,7 +2,7 @@
   "$schema": "https://github.com/Sorcha-Platform/Sorcha/specs/117-ai-discoverability/contracts/mcp-manifest.schema.json",
   "name": "sorcha-mcp",
   "version": "3.0.0",
-  "description": "Sorcha MCP server — drives credential issuance, blueprint design, and participant workflows for the Sorcha platform.",
+  "description": "MCP server for Sorcha — cryptographic proof infrastructure for multi-party workflows. Tools drive verified credential issuance, blueprint design, and participant actions; every action signed, every state transition ledger-recorded, every disclosure cryptographically bounded.",
   "transports": [
     {
       "type": "stdio",

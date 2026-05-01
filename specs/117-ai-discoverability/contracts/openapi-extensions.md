@@ -80,6 +80,15 @@ The credential issuance endpoint (`POST /api/v1/wallets/{walletAddress}/credenti
 
 Examples are sourced from real walkthrough payloads (e.g. `walkthroughs/TradeFinance/`). They MUST be factual — not placeholder strings.
 
+## Tone & content guidance for `info.description` and operation `description`
+
+`info.description` and every operation `description` are read by AI agents reasoning about whether and how to integrate. Authoring source: `docs/strategic-context.md`. The framing rules:
+
+- **Frame Sorcha as cryptographic proof infrastructure for multi-party workflows.** Not "blockchain", not "data platform", not "workflow engine" — the strategic-context's "What Sorcha is" paragraph is the canonical lead.
+- **Be specific about what AI agents get from the operation.** What data does the agent submit? What signed evidence does it receive? What does the response let the agent do next?
+- **Name boundaries honestly.** If an endpoint is internal-path-only or HAIP-path-only, say so. If status is `partial`, the description can briefly note what is incomplete.
+- **Stay technical, not aspirational.** "Issues an SD-JWT VC bound to the recipient's wallet, signed by the issuer's key, with the credential id committed to the issuer's transaction history" is more useful than "industry-leading credential issuance."
+
 ## Marketing-adjective deny-list (Spectral rule `no-marketing-adjectives`)
 
 The following case-insensitive substrings are deny-listed across `info.description`, all `summary` fields, all `description` fields, and all `examples` text content:

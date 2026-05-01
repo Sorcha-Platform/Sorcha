@@ -15,6 +15,7 @@
 8. Source narratives for US6 — what exists in the planning folder and what needs writing
 9. CI workflow shape — single workflow vs split, runner constraints, failure surfacing on PRs
 10. Marketing-adjective deny-list — what list to ship and how to enforce it
+11. Strategic-context-driven content authoring — what voice and framing to use across machine-readable artefacts
 
 ---
 
@@ -287,6 +288,35 @@ Applied to: `llms.txt`, `docs/llms-full.txt`, `STANDARDS.md`, served `/.well-kno
 
 ---
 
+---
+
+## R11. Strategic-context-driven content authoring
+
+### Reference
+
+- `docs/strategic-context.md` — strategic and market context that is not derivable from the codebase. Authored by the platform team as the canonical voice and framing source for externally-facing content.
+
+### Decision
+
+Every authoring task in `tasks.md` that produces externally-visible machine-readable content cites `docs/strategic-context.md` as the source of voice, framing, and tone. Specifically:
+
+- **OpenAPI `info.description`** (T017) — frames Sorcha as cryptographic proof infrastructure for multi-party workflows. One paragraph, ≤ 1000 characters.
+- **`llms.txt`** (T044) — blockquote summary uses the strategic-context "What Sorcha is" frame.
+- **`docs/llms-full.txt`** (T045) — opens with the strategic frame (problem, AI fraud + AI decision-maker context, regulatory pull) before diving into specifics.
+- **MCP tool descriptions** (T039, all 36 tools) — describe what the tool *does* and *when an AI agent should call it*, per strategic-context's "How to Describe Sorcha to an AI Audience" section.
+- **`STANDARDS.md` introduction** (T049) — names what is core (ML-DSA, ML-KEM, BIP32/39/44, JSON Pointer selective disclosure, Merkle dockets) and the honest gaps (HAIP classical-only at boundary, SLH-DSA not implemented, BBS+ not implemented).
+- **Four `docs/` published documents** (T060-T063) — each leans on a specific strategic-context section: architecture.md ↔ "Architecture in One Paragraph", openid4vc-haip-integration.md ↔ "Sorcha is the workflow layer above GOV.UK Wallet / EUDIW", applicability.md ↔ "Target Markets and Regulatory Pull", security-model.md ↔ "Cryptographic Posture" + honest gaps.
+
+**Rationale**. The technical research above resolved *what shape* the artefacts take. Strategic-context resolves *what to say* in them. Without explicit reference, content authors default to README-style language that reads as marketing to an AI evaluator — or worse, fabricate positioning that contradicts the platform team's intended frame. Citing the source per-task makes drift visible at PR review.
+
+**Consequence**. Authors MUST read `docs/strategic-context.md` before authoring any of the artefacts above. CI cannot enforce voice; reviewers do.
+
+**Alternatives considered**.
+- Inline the strategic-context guidance into each task. Rejected — duplicates content that will drift, and dilutes the central reference.
+- Treat strategic-context as a `STANDARDS.md`-equivalent CI artefact. Rejected — it is a voice document, not a verifiable claim. CI checking voice is brittle.
+
+---
+
 ## Summary
 
-All NEEDS CLARIFICATION items resolved. No design blockers. Phase 1 may proceed.
+All NEEDS CLARIFICATION items resolved. No design blockers. Phase 1 may proceed. `docs/strategic-context.md` is the authoring source for all machine-readable content; every relevant task cites it.

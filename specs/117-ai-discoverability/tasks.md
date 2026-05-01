@@ -9,6 +9,8 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
 
 **Tests**: Included where the artefact is verifiable in code (OpenAPI lint, MCP tool description audit, standards cross-reference). Documentation tasks ship without unit tests but are gated by the CI workflow at FR-044.
 
+**Authoring source for content tasks**: `docs/strategic-context.md` is the canonical voice and framing source for every machine-readable artefact (OpenAPI `info.description`, `llms.txt`, MCP tool descriptions, `STANDARDS.md` intro, the four published `docs/` documents). Tasks that author externally-facing content cite it explicitly. Authors MUST read it before writing.
+
 ---
 
 ## Phase 1: Setup
@@ -47,7 +49,7 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
 
 - [ ] T015 [US1] Add the `/.well-known/openapi.json` route in `src/Services/Sorcha.ApiGateway/Program.cs` immediately after the existing `app.MapOpenApi()` line. The handler should fetch the same OpenAPI document the existing endpoint serves and return it under the well-known path with `Cache-Control: public, max-age=300`
 - [ ] T016 [US1] Add the `/.well-known/openapi.yaml` route. Convert the JSON document to YAML using `YamlDotNet` (already a transitive dependency) or `System.Text.Json` → `Yaml` adapter. Set `Content-Type: application/yaml`
-- [ ] T017 [US1] Extend `AddSorchaOpenApi` (in the shared service-defaults extension under `src/Common/Sorcha.ServiceDefaults/`) to add an `OpenApiDocumentTransformer` that injects `info.x-mcp-server`, `info.x-standards`, and `info.version` from a single canonical version source (assembly informational version)
+- [ ] T017 [US1] Extend `AddSorchaOpenApi` (in the shared service-defaults extension under `src/Common/Sorcha.ServiceDefaults/`) to add an `OpenApiDocumentTransformer` that injects `info.x-mcp-server`, `info.x-standards`, `info.description`, and `info.version` from a single canonical version source (assembly informational version). **`info.description` content is authored against `docs/strategic-context.md`** — frame Sorcha as cryptographic proof infrastructure for multi-party workflows, name AI-fraud and AI-decision-maker context, and avoid marketing adjectives (deny-listed). One paragraph, ≤ 1000 characters, factual
 - [ ] T018 [US1] Walk every endpoint in `src/Services/Sorcha.ApiGateway/Program.cs` and add missing `.WithName(...)`, `.WithSummary(...)`, `.WithDescription(...)`, `.WithTags(...)` per the audit at T007. Use PascalCase `<Resource><Verb>` `operationId` convention
 - [ ] T019 [US1] [P] Walk every endpoint in `src/Services/Sorcha.Blueprint.Service/Endpoints/` and add the same metadata
 - [ ] T020 [US1] [P] Walk every endpoint in `src/Services/Sorcha.Wallet.Service/Endpoints/` and add the same metadata. Pay special attention to `CredentialEndpoints.IssueCredential` — FR-006 requires it to carry an example
@@ -89,8 +91,8 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
   - **Admin (13 tools)**: T039a `AuditQueryTool.cs`, T039b `HealthCheckTool.cs`, T039c `LogQueryTool.cs`, T039d `MetricsTool.cs`, T039e `PeerStatusTool.cs`, T039f `RegisterStatsTool.cs`, T039g `TenantListTool.cs`, T039h `UserListTool.cs`, T039i `ValidatorStatusTool.cs`, T039j `TenantCreateTool.cs`, T039k `TenantUpdateTool.cs`, T039l `TokenRevokeTool.cs`, T039m `UserManageTool.cs`
   - **Designer (13 tools)**: T039n `BlueprintCreateTool.cs`, T039o `BlueprintGetTool.cs`, T039p `BlueprintListTool.cs`, T039q `JsonLogicTestTool.cs`, T039r `SchemaGenerateTool.cs`, T039s `SchemaValidateTool.cs`, T039t `BlueprintDiffTool.cs`, T039u `BlueprintExportTool.cs`, T039v `BlueprintSimulateTool.cs`, T039w `BlueprintUpdateTool.cs`, T039x `BlueprintValidateTool.cs`, T039y `DisclosureAnalysisTool.cs`, T039z `WorkflowInstancesTool.cs`
   - **Participant (10 tools)**: T039aa `ActionValidateTool.cs`, T039ab `InboxListTool.cs`, T039ac `TransactionHistoryTool.cs`, T039ad `ActionDetailsTool.cs`, T039ae `ActionSubmitTool.cs`, T039af `DisclosedDataTool.cs`, T039ag `RegisterQueryTool.cs`, T039ah `WalletInfoTool.cs`, T039ai `WalletSignTool.cs`, T039aj `WorkflowStatusTool.cs`
-  Each tool's revised description must be ≥ 2 sentences and include a disambiguating clue. Examples can be drawn from the worked TradeFinance walkthrough at T040
-- [ ] T040 [US2] Create `docs/mcp-server.md`. Sections: Overview · Connecting (stdio + http+sse with command snippets) · Authentication (JWT acquisition flow with the existing `scripts/get-jwt-token.sh` referenced) · Role slices (admin / designer / participant — when to use which) · Worked example (an agent transcript driving `walkthroughs/TradeFinance/` from start to finish — capture an actual transcript by running an MCP-aware agent against the walkthrough)
+  Each tool's revised description must be ≥ 2 sentences and include a disambiguating clue. **Tone authored against `docs/strategic-context.md`** — describe what the tool *does* and *when an AI agent should call it*, not what the feature is called. Stay specific about the data the tool produces or consumes (signed transactions, schema-validated payloads, register entries) so an AI consumer can reason about whether the tool fits its task. Examples can be drawn from the worked TradeFinance walkthrough at T040
+- [ ] T040 [US2] Create `docs/mcp-server.md`. **Tone authored against `docs/strategic-context.md`** — open with one paragraph framing what an AI agent gets from the Sorcha MCP server (verified workflow actions, signed transactions, ledger-backed audit trail). Sections: Overview · Connecting (stdio + http+sse with command snippets) · Authentication (JWT acquisition flow with the existing `scripts/get-jwt-token.sh` referenced) · Role slices (admin / designer / participant — when to use which) · Worked example (an agent transcript driving `walkthroughs/TradeFinance/` from start to finish — capture an actual transcript by running an MCP-aware agent against the walkthrough)
 - [ ] T041 [US2] Add the `mcp-server` GitHub topic to the repository (manual step — note in the PR description that the maintainer must add the topic via the GitHub UI; the spec's CI cannot enforce this)
 
 ## Phase 5: User Story 3 — `llms.txt` and project summary (Priority: P1)
@@ -109,7 +111,7 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
 
 ### Implementation
 
-- [ ] T044 [US3] Create `llms.txt` at the repo root. Structure:
+- [ ] T044 [US3] Create `llms.txt` at the repo root. **Authored against `docs/strategic-context.md`** — the blockquote summary uses the strategic frame ("Cryptographic proof infrastructure for multi-party workflows. Produces evidence — wallet signatures, Merkle dockets, immutable register entries — that any party can verify independently without trusting the platform."). Capabilities list draws from `STANDARDS.md` and the strategic-context Architecture and Cryptographic Posture sections. No marketing adjectives. Structure:
   ```
   # Sorcha
   > <one-paragraph factual summary>
@@ -125,7 +127,7 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
   - STANDARDS.md: <repo URL>/blob/master/STANDARDS.md
   ```
   Capabilities list draws from `STANDARDS.md` and `docs/architecture.md`. Standards list mirrors `STANDARDS.md` rows with status `full` or `partial` (cross-reference enforced by CI at T056)
-- [ ] T045 [US3] Create `docs/llms-full.txt`. ≤ 32 KB. Sections: Architecture summary · Quickstart pointer · MCP integration pointer · Security model summary · How to integrate (links into the four published docs from US6). Source content from the four `docs/` documents at US6; `llms-full.txt` is a digest, not a duplicate
+- [ ] T045 [US3] Create `docs/llms-full.txt`. ≤ 32 KB. **Authored against `docs/strategic-context.md`** — opens with the strategic frame (problem, AI fraud + AI decision-maker context, regulatory pull) before diving into specifics. Sections: Architecture summary · Quickstart pointer · MCP integration pointer · Security model summary (with honest gaps named: HAIP classical-only boundary, SLH-DSA not implemented, BBS+ not implemented) · How to integrate (links into the four published docs from US6). Source content from the four `docs/` documents at US6; `llms-full.txt` is a digest, not a duplicate
 - [ ] T046 [US3] Add a CI cross-reference check in `scripts/check-discoverability.sh`: every line in `llms.txt` `## Standards` and `docs/llms-full.txt` standards section must match a row in `STANDARDS.md` whose status is `full` or `partial`. Fails on any mismatch with a single-line message naming the missing standard
 
 ## Phase 6: User Story 4 — `STANDARDS.md` (Priority: P2)
@@ -139,7 +141,7 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
 
 ### Implementation
 
-- [ ] T049 [US4] Create `STANDARDS.md` at the repo root. Initial table content (each row: name | version | body | spec URL | component path(s) | status | notes):
+- [ ] T049 [US4] Create `STANDARDS.md` at the repo root. **Intro paragraph authored against `docs/strategic-context.md` Cryptographic Posture section** — name what is core (ML-DSA FIPS 204, ML-KEM FIPS 203, BIP32/39/44, JSON Pointer selective disclosure, Merkle dockets) and the honest gaps (HAIP classical-only at boundary, SLH-DSA not yet implemented, BBS+ not yet implemented). Then the table. Initial table content (each row: name | version | body | spec URL | component path(s) | status | notes):
   - **BIP32** | 2017 | Bitcoin Improvement Proposals | [BIP-0032](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) | `src/Core/Sorcha.Wallet.Core/Services/Implementation/KeyManagementService.cs` | full | NBitcoin-backed; BIP32 path-style derivation across all wallets
   - **BIP39** | 2013 | Bitcoin Improvement Proposals | [BIP-0039](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) | `src/Core/Sorcha.Wallet.Portable/Domain/ValueObjects/Mnemonic.cs` | full | English wordlist only
   - **BIP44** | 2014 | Bitcoin Improvement Proposals | [BIP-0044](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki) | `src/Core/Sorcha.Wallet.Portable/Constants/SorchaDerivationPaths.cs` | full | Sorcha-specific purpose namespace per slot
@@ -216,7 +218,7 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
 
 ### Implementation
 
-- [ ] T060 [US6] Create `docs/architecture.md`. Source content: the "Five Layers of Open" architecture narrative from the planning folder (located via T009). Adapt for public consumption — strip internal references, normalise terminology, ensure every spec reference points at a public spec URL. Frontmatter:
+- [ ] T060 [US6] Create `docs/architecture.md`. **Tone authored against `docs/strategic-context.md`** — the "Architecture in One Paragraph" framing in strategic-context is the lead. Source content: the "Five Layers of Open" architecture narrative from the planning folder (located via T009). Adapt for public consumption — strip internal references, normalise terminology, ensure every spec reference points at a public spec URL. Frontmatter:
   ```yaml
   ---
   title: Sorcha Architecture
@@ -231,12 +233,13 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
   last_updated: 2026-05-02
   ---
   ```
-- [ ] T061 [US6] Create `docs/openid4vc-haip-integration.md`. Source: planning-folder OpenID4VC + HAIP narrative. Adapt similarly. Frontmatter `standards`: `OpenID4VCI`, `OpenID4VP`, `HAIP 1.0`, `W3C VC Data Model 2.0`, `IETF Token Status List 2024 (RFC 9972)`, `ML-DSA (FIPS 204)`
-- [ ] T062 [US6] Create `docs/applicability.md`. Source: planning-folder applicability narrative. Adapt similarly. Cover at minimum DPP, trade finance, IPC-1782, municipal governance with one worked example each. Frontmatter `standards`: `W3C VC Data Model 2.0`, `OpenID4VCI`, `OpenID4VP`, `HAIP 1.0`
-- [ ] T063 [US6] Create `docs/security-model.md`. Synthesise from the architecture-evaluation and applicability narratives. Required sections:
-  - Selective disclosure — what SD-JWT VC gives, what it does not
+- [ ] T061 [US6] Create `docs/openid4vc-haip-integration.md`. **Tone authored against `docs/strategic-context.md`** — strategic-context's "Sorcha is the workflow layer above GOV.UK Wallet / EUDIW" framing is the lead. Be explicit that Sorcha does NOT replace those wallets and does NOT control the citizen experience. Source: planning-folder OpenID4VC + HAIP narrative. Adapt similarly. Frontmatter `standards`: `OpenID4VCI`, `OpenID4VP`, `HAIP 1.0`, `W3C VC Data Model 2.0`, `IETF Token Status List 2024 (RFC 9972)`, `ML-DSA (FIPS 204)`
+- [ ] T062 [US6] Create `docs/applicability.md`. **Tone authored against `docs/strategic-context.md` Target Markets section** — lead with the regulatory pull (EU ESPR / DPP deadlines, HAIP / EUDI / GOV.UK Wallet ecosystem, EU AI Act provenance requirements, SME trade finance) rather than the technology. Source: planning-folder applicability narrative. Adapt similarly. Cover at minimum DPP, trade finance, IPC-1782, municipal governance with one worked example each. Frontmatter `standards`: `W3C VC Data Model 2.0`, `OpenID4VCI`, `OpenID4VP`, `HAIP 1.0`
+- [ ] T063 [US6] Create `docs/security-model.md`. **Tone authored against `docs/strategic-context.md` Cryptographic Posture section** — name what is core (ML-DSA, ML-KEM, JSON Pointer selective disclosure, Merkle dockets) and the honest gaps verbatim. Synthesise from the architecture-evaluation and applicability narratives. Required sections:
+  - Selective disclosure — what SD-JWT VC gives, what it does not (the platform CANNOT see data it wasn't given the key for; this is architectural, not policy)
   - Aggregate inference threat — disclosed-attribute correlation across presentations
-  - Post-quantum posture — internal PQC, classical wire boundary at HAIP, what this protects and what it does not
+  - Post-quantum posture — internal PQC, classical wire boundary at HAIP (mandated by HAIP 1.0; bridged via classical co-key), what this protects and what it does not
+  - Honest gaps — SLH-DSA not yet implemented; BBS+ zero-knowledge proofs not yet implemented; current selective disclosure is show/hide, not zero-knowledge predicate proofs
   - mTLS gap — be explicit that service-to-service mTLS is not in production today; name it as a known gap
   - Trust anchor model — system register genesis (spec 099) and what it does and does not anchor
   Frontmatter `standards`: `ML-DSA (FIPS 204)`, `HAIP 1.0`, `W3C VC Data Model 2.0`, `OAuth 2.0`

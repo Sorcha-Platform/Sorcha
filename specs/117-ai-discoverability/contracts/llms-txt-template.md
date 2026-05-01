@@ -39,18 +39,19 @@ This is the template `llms.txt` (at the repo root) MUST follow. The shape is fro
 - Every `## Links` URL MUST resolve to HTTP 200 against the running instance (for instance-served URLs) or against the public repo (for repo-relative URLs).
 - **No marketing adjectives**. Deny-list (case-insensitive): `revolutionary`, `best-in-class`, `industry-leading`, `cutting-edge`, `world-class`, `seamless`.
 
-## Initial Sorcha content (illustrative, not verbatim)
+## Initial Sorcha content (illustrative — final wording authored against `docs/strategic-context.md`)
 
 ```text
 # Sorcha
-> Open proof infrastructure for the multi-party world — verifiable credentials, distributed registers, and standards-aligned credential exchange (OpenID4VCI / OpenID4VP / HAIP) on a post-quantum-internal foundation.
+> Cryptographic proof infrastructure for multi-party workflows. Sorcha produces evidence — wallet signatures, Merkle dockets, immutable register entries — that any party can verify independently without trusting the platform. Built for AI systems that need verified data inputs to make automated decisions, and for regulated workflows where assertion-based trust no longer holds.
 
 ## Capabilities
 - Verifiable credentials: SD-JWT VC issuance, presentation, and revocation per W3C VCDM 2.0
-- HAIP-aligned exchange: OpenID4VCI issuer, OpenID4VP verifier, IETF Token Status List 2024
-- Distributed registers: append-only transaction logs with peer replication and validator consensus
-- HD wallets: BIP32 / BIP39 / BIP44 with Sorcha-purpose derivation paths
-- Post-quantum cryptography: ML-DSA (FIPS 204) signing internally; classical wire boundary at HAIP
+- HAIP-aligned exchange: OpenID4VCI issuer, OpenID4VP verifier, IETF Token Status List 2024 (RFC 9972)
+- Distributed registers: append-only transaction logs with Merkle-chained dockets, peer replication, validator consensus
+- HD wallets: BIP32 / BIP39 / BIP44 with Sorcha-specific purpose derivation paths
+- Post-quantum cryptography: ML-DSA (NIST FIPS 204) and ML-KEM (FIPS 203) as core; classical co-key at the HAIP wire boundary per HAIP 1.0
+- Selective disclosure: JSON Pointer with per-recipient symmetric key wrapping; the platform cannot read data it wasn't given the key for (architectural, not policy)
 - MCP server: 36 tools across admin, designer, and participant slices for AI-driven workflow automation
 
 ## Standards
