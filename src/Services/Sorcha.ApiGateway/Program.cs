@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ApiGateway.Discoverability;
 using Sorcha.ApiGateway.Models;
 using Sorcha.ApiGateway.Services;
 
@@ -67,9 +68,13 @@ builder.Services.AddAuthorizationBuilder()
             policy.RequireAssertion(_ => true); // Allow anonymous
     });
 
-// Add OpenAPI documentation with standard Sorcha metadata
-builder.AddSorchaOpenApi("Sorcha API Gateway",
-    "Unified entry point for the Sorcha platform providing reverse proxy routing, aggregated health monitoring, and API documentation.");
+// Add OpenAPI documentation with standard Sorcha metadata.
+// The configureOptions callback registers OpenApiInfoTransformer (spec 117) which injects
+// info.x-mcp-server and info.x-standards from configuration onto the served document.
+builder.AddSorchaOpenApi(
+    "Sorcha API Gateway",
+    "Unified entry point for the Sorcha platform providing reverse proxy routing, aggregated health monitoring, and API documentation.",
+    options => options.AddDocumentTransformer<Sorcha.ApiGateway.Discoverability.OpenApiInfoTransformer>());
 
 // Add CORS for frontend - production restriction handled at infrastructure level
 builder.AddSorchaCors();
@@ -527,6 +532,11 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
 
 // Gateway's own OpenAPI spec
 app.MapOpenApi();
+
+// Spec 117 (AI Discoverability) — well-known aliases of the OpenAPI document
+// at /.well-known/openapi.{json,yaml}. Anonymous, cacheable, served from the
+// in-process IOpenApiDocumentProvider so the document is identical to /openapi/v1.json.
+app.MapWellKnownOpenApiEndpoints();
 
 // Aggregated OpenAPI from all services
 app.MapGet("/openapi/aggregated.json", async (OpenApiAggregationService openApiService) =>

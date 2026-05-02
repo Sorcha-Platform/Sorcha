@@ -1,0 +1,95 @@
+name: AI Discoverability Check
+
+# Spec 117 (AI Discoverability) — gates merge on the integrity of the
+# machine-readable surface every AI agent will consume:
+#   - /.well-known/openapi.json  (spectral lint + swagger-cli validate)
+#   - /.well-known/mcp.json      (JSON-schema validation)
+#   - llms.txt + docs/llms-full.txt
+#   - STANDARDS.md
+#   - cross-references between all of the above
+#
+# Each individual sub-check is wired by its own task in the spec; this
+# workflow boots the gateway and runs scripts/check-discoverability.sh
+# which dispatches each sub-check. Sub-checks that have not yet landed
+# emit SKIP rather than FAIL, so the workflow is meaningful from day one
+# and progressively tightens as later phases of spec 117 ship.
+
+on:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'src/Services/Sorcha.ApiGateway/**'
+      - 'src/Common/Sorcha.ServiceDefaults/**'
+      - 'src/Apps/Sorcha.McpServer/**'
+      - 'llms.txt'
+      - 'STANDARDS.md'
+      - 'docs/llms-full.txt'
+      - 'docs/architecture.md'
+      - 'docs/openid4vc-haip-integration.md'
+      - 'docs/applicability.md'
+      - 'docs/security-model.md'
+      - 'docs/quickstart.md'
+      - 'docs/mcp-server.md'
+      - '.spectral.yaml'
+      - 'scripts/check-discoverability.sh'
+      - '.github/workflows/ai-discoverability-check.yml'
+  push:
+    branches: [ master ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Run discoverability checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dev dependencies
+        run: npm ci || npm install
+        # Provides @stoplight/spectral-cli and swagger-cli (T003 added them
+        # to package.json devDependencies).
+
+      - name: Make orchestrator executable
+        run: chmod +x scripts/check-discoverability.sh
+
+      # Future steps will boot the gateway (docker compose up -d) and wait for
+      # /api/health to return 200. Today the orchestrator's sub-checks emit
+      # SKIP for every endpoint-dependent check — see scripts/check-discoverability.sh.
+      # Phase 3 task T014 will add the docker-compose boot + health-wait once the
+      # well-known endpoints have a stable smoke-test URL in this workflow.
+
+      - name: Run discoverability orchestrator
+        env:
+          SORCHA_GATEWAY: http://localhost
+        run: ./scripts/check-discoverability.sh
+
+      - name: Comment on PR (failure only)
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: [
+                ':rotating_light: AI discoverability check failed.',
+                '',
+                `See [workflow run](${url}) for the failing sub-check and offending file/line.`,
+                '',
+                'Reference: spec [117 AI Discoverability](../tree/master/specs/117-ai-discoverability/spec.md), FR-044, NFR-007.'
+              ].join('\n')
+            });
