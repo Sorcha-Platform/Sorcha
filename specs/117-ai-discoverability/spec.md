@@ -121,12 +121,12 @@ After this spec ships, the entire setup-to-first-call path is executable by an a
 
 **Why this priority**: AI coding agents can already follow instructions; the bar for *AI-runnable* is "no silent failures, every step verifiable." The current quickstart almost gets there. P2 because the cost is small (script hardening + a verify step + topology comments) and the payoff is that agent-led demos and POCs become possible.
 
-**Independent Test**: A fresh Linux VM with Docker Desktop ≥ 4 and PowerShell 7.5 installed, given only the repo URL and `docs/quickstart.md`, can complete the setup and run the verify-installation curl in under 15 minutes with no human input. If any prerequisite is missing, the setup script exits with a clear error and a remediation hint.
+**Independent Test**: A fresh Linux VM with Docker Engine ≥ 24 and PowerShell 7.5 installed, given only the repo URL and `docs/quickstart.md`, can complete the setup and run the verify-installation curl in under 15 minutes with no human input. If any prerequisite is missing, the setup script exits with a clear error and a remediation hint.
 
 **Acceptance Scenarios**:
 
-1. **Given** a fresh Linux VM with Docker Desktop and PowerShell installed, **When** an agent clones the repo and runs `./scripts/sorcha-setup.sh`, **Then** the script exits with code 0 and the gateway becomes reachable on `http://localhost`.
-2. **Given** the same VM with Docker not running, **When** an agent runs `./scripts/sorcha-setup.sh`, **Then** the script exits with a non-zero code and an error message naming Docker as the missing prerequisite and pointing at the install instructions.
+1. **Given** a fresh Linux VM with Docker Engine and PowerShell installed, **When** an agent clones the repo and runs `./scripts/sorcha-setup.sh`, **Then** the script exits with code 0 and the gateway becomes reachable on `http://localhost`.
+2. **Given** the same VM with the Docker daemon not running, **When** an agent runs `./scripts/sorcha-setup.sh`, **Then** the script exits with a non-zero code and an error message naming Docker as the missing prerequisite and pointing at the install instructions.
 3. **Given** a successful setup, **When** an agent runs the documented verify-installation curl (`curl -s http://localhost/api/health`), **Then** the response is HTTP 200 with the expected aggregated-health JSON shape.
 4. **Given** `docker-compose.yml`, **When** an agent reads the file, **Then** a comment block within the first 30 lines names every service, its port, and its purpose in one line each.
 5. **Given** `docs/quickstart.md`, **When** an agent reads it, **Then** every prerequisite is named with a minimum version, every command is copy-pasteable, every common failure mode has a documented fix, and the verify-installation step is present.
@@ -180,7 +180,7 @@ After this spec ships, every document carries `title`, `description`, `standards
 
 **OpenAPI 3.1 specification surface (US1):**
 - **FR-001**: The API Gateway MUST serve a valid OpenAPI 3.1 document at `GET /.well-known/openapi.json` with `Content-Type: application/json` and `Cache-Control: public, max-age=300`.
-- **FR-002**: The same document, in YAML form, MUST be served at `GET /.well-known/openapi.yaml` with `Content-Type: application/yaml` (or `text/yaml`).
+- **FR-002**: The same document, in YAML form, MUST be served at `GET /.well-known/openapi.yaml` with `Content-Type: application/yaml`.
 - **FR-003**: The OpenAPI document MUST be auto-generated from ASP.NET Core endpoint metadata via `Microsoft.AspNetCore.OpenApi` (the .NET 10 built-in). No hand-maintained OpenAPI source file is permitted as the canonical source.
 - **FR-004**: Every endpoint MUST carry `operationId`, `summary`, `description`, and `tags`. `operationId` MUST be PascalCase and follow `<Resource><Verb>` convention (e.g. `WalletGet`, `CredentialIssue`, `RegisterStatusGet`).
 - **FR-005**: Every request body schema, response body schema, and parameter MUST carry a non-empty `description`.

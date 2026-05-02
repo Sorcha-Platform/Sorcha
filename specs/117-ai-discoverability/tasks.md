@@ -41,14 +41,14 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
 ### Tests for US1
 
 - [ ] T012 [P] [US1] Add Spectral rule unit tests under `.spectral.tests/operationId-pascalcase.spec.yaml`, `description-required-on-properties.spec.yaml`, `examples-required-on-credential-issuance.spec.yaml`, `info-x-mcp-server-required.spec.yaml`, `info-x-standards-required.spec.yaml`, `no-marketing-adjectives.spec.yaml`
-- [ ] T013 [P] [US1] Add integration test methods to `tests/Sorcha.Gateway.Integration.Tests/OpenApiWellKnownTests.cs`: `GET_WellKnownOpenapiJson_Returns200`, `GET_WellKnownOpenapiYaml_Returns200`, `OpenApiDocument_ContainsXMcpServer`, `OpenApiDocument_ContainsXStandards`, `OpenApiDocument_VersionMatchesAssemblyVersion`
+- [ ] T013 [P] [US1] Add integration test methods to `tests/Sorcha.Gateway.Integration.Tests/OpenApiWellKnownTests.cs`: `GET_WellKnownOpenapiJson_Returns200`, `GET_WellKnownOpenapiYaml_Returns200_WithApplicationYamlContentType` (asserts `Content-Type: application/yaml` exactly per FR-002), `OpenApiDocument_ContainsXMcpServer`, `OpenApiDocument_ContainsXStandards`, `OpenApiDocument_VersionMatchesAssemblyVersion`, `OpenApiDocument_InfoTitleNonEmpty` (FR-007), `OpenApiDocument_InfoContactUrlIsGitHubOrg` (FR-007), `OpenApiDocument_ExcludesAdminAndIgnoredEndpoints` (NFR-008 — asserts no path is marked `[ApiExplorerSettings(IgnoreApi = true)]` or `.ExcludeFromDescription()` reaches the served document)
 - [ ] T014 [P] [US1] Add CI step in `.github/workflows/ai-discoverability-check.yml` running `spectral lint <served-openapi-url>` against the gateway booted in the workflow, failing on any violation
 
 ### Implementation for US1
 
 - [ ] T015 [US1] Add `/.well-known/openapi.json` route handler to `src/Services/Sorcha.ApiGateway/Discoverability/WellKnownOpenApiEndpoints.cs` returning the same document `app.MapOpenApi()` serves with `Cache-Control: public, max-age=300` and `Content-Type: application/json`
 - [ ] T016 [US1] Add `/.well-known/openapi.yaml` route handler to `src/Services/Sorcha.ApiGateway/Discoverability/WellKnownOpenApiEndpoints.cs` converting the JSON document to YAML via `YamlDotNet` with `Content-Type: application/yaml`
-- [ ] T017 [US1] Create `src/Services/Sorcha.ApiGateway/Discoverability/OpenApiInfoTransformer.cs` implementing `IOpenApiDocumentTransformer` that injects `info.x-mcp-server`, `info.x-standards`, `info.description`, and `info.version` from `IConfiguration` and assembly informational version. **`info.description` content authored against `docs/strategic-context.md`** — frame Sorcha as cryptographic proof infrastructure for multi-party workflows, name AI-fraud and AI-decision-maker context, no marketing adjectives, ≤ 1000 characters
+- [ ] T017 [US1] Create `src/Services/Sorcha.ApiGateway/Discoverability/OpenApiInfoTransformer.cs` implementing `IOpenApiDocumentTransformer` that injects `info.title`, `info.version`, `info.description`, `info.contact.url` (GitHub organisation URL — `https://github.com/Sorcha-Platform`), `info.x-mcp-server`, and `info.x-standards` from `IConfiguration` and assembly informational version (covers FR-007 + FR-008 + FR-009). **`info.description` content authored against `docs/strategic-context.md`** — frame Sorcha as cryptographic proof infrastructure for multi-party workflows, name AI-fraud and AI-decision-maker context, no marketing adjectives, ≤ 1000 characters
 - [ ] T018 [US1] Register `OpenApiInfoTransformer` in `src/Common/Sorcha.ServiceDefaults/OpenApi/SorchaOpenApiExtensions.cs` `AddSorchaOpenApi` extension so every service gets the transform
 - [ ] T019 [US1] Wire the well-known routes in `src/Services/Sorcha.ApiGateway/Program.cs` immediately after the existing `app.MapOpenApi()` call (currently line ~529)
 - [ ] T020 [US1] [P] Annotate every endpoint in `src/Services/Sorcha.ApiGateway/Program.cs` with `WithName` (PascalCase `<Resource><Verb>`), `WithSummary`, `WithDescription`, and `WithTags` per the audit at T007
@@ -184,7 +184,7 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
 
 **Goal**: `scripts/sorcha-setup.sh` exits non-zero on any prerequisite failure with a remediation hint. `docker-compose.yml` carries a topology comment block. `docs/quickstart.md` exists with a verify-installation step.
 
-**Independent Test**: A fresh `ubuntu-latest` runner with Docker Desktop and PowerShell installed, given only the repo URL and `docs/quickstart.md`, completes setup and runs the verify-installation curl in under 15 minutes with no human input.
+**Independent Test**: A fresh `ubuntu-latest` runner with Docker Engine ≥ 24 and PowerShell 7.5 installed, given only the repo URL and `docs/quickstart.md`, completes setup and runs the verify-installation curl in under 15 minutes with no human input.
 
 ### Tests for US5
 
