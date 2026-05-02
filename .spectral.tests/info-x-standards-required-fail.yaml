@@ -1,0 +1,7 @@
+openapi: "3.1.0"
+info:
+  title: x-standards fail
+  version: "1.0.0"
+  description: Synthetic fixture; info.x-standards is missing.
+  x-mcp-server: "https://example.com/.well-known/mcp.json"
+paths: {}

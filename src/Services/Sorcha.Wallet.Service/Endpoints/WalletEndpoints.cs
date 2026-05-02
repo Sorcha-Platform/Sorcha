@@ -222,11 +222,31 @@ public static class WalletEndpoints
         walletGroup.MapPost("/{address}/sign", SignTransaction)
             .WithName("SignTransaction")
             .WithSummary("Sign a transaction")
-            .WithDescription("Sign transaction data with the wallet's private key")
+            .WithDescription("Sign transaction data with the wallet's private key. Returns a base64 signature plus the algorithm identifier so a verifier can pick the correct verify path.")
             .Produces<SignTransactionResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            .WithOpenApi(operation =>
+            {
+                // Spec 117 FR-006 — wallet signing MUST carry at least one example for
+                // request and response. Payload modelled on a typical action-payload
+                // signature submitted to a register.
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "transactionData": "eyJhY3Rpb25JZCI6Imluc3RhbmNlOjQ3OS9hY3Rpb246c3VibWl0LWludm9pY2UiLCJyZWdpc3RlcklkIjoidHJhZGUtZmluYW5jZS1uMSIsInBheWxvYWQiOnsidmVyaWZpZWRJbnZvaWNlVmNJZCI6InVybjp1dWlkOjhlMmMxYjk0LTdhMzEtNGYxMi05YmI4LWEzZTJmNWMxNGE5OSJ9LCJ0aW1lc3RhbXAiOiIyMDI2LTA1LTAyVDExOjMyOjAwWiJ9",
+                      "isPreHashed": false
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "200", """
+                    {
+                      "signature": "g0Y8N+lQbZ3wF8fTjP9c5sJrK4mE2nU1vR7QwI3xY6sBxA8Q9aL2hM5fZpW1dC4JtR8eX0gN3vP7sJrK9oF=",
+                      "algorithm": "ED25519",
+                      "publicKeyBase64": "u9gN3vP7sJrK9oF8sJrK4mE2nU1vR7QwI3xY6sBxA8Q="
+                    }
+                    """);
+                return operation;
+            });
 
         // POST /api/v1/wallets/{address}/decrypt - Decrypt payload
         walletGroup.MapPost("/{address}/decrypt", DecryptPayload)

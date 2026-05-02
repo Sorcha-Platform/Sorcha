@@ -16,6 +16,7 @@ public record ConfigureCustomDomainRequest
     [Required]
     [RegularExpression(@"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$",
         ErrorMessage = "Invalid domain name format.")]
+    /// <summary>The domain.</summary>
     public required string Domain { get; init; }
 }
 

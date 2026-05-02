@@ -1,0 +1,33 @@
+openapi: "3.1.0"
+info:
+  title: operationId pascalcase pass
+  version: "1.0.0"
+  description: Synthetic fixture; operationIds follow PascalCase Resource+Verb.
+  x-mcp-server: "https://example.com/.well-known/mcp.json"
+  x-standards: ["BIP32"]
+paths:
+  /widgets:
+    get:
+      operationId: WidgetList
+      summary: List widgets
+      description: Lists every widget.
+      tags: [widgets]
+      responses:
+        '200':
+          description: OK
+  /widgets/{id}:
+    get:
+      operationId: WidgetGet
+      summary: Get a widget
+      description: Returns a widget by id.
+      tags: [widgets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The widget identifier.
+      responses:
+        '200':
+          description: OK

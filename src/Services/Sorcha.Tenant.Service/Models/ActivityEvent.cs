@@ -9,18 +9,31 @@ namespace Sorcha.Tenant.Service.Models;
 /// </summary>
 public class ActivityEvent
 {
+    /// <summary>Unique identifier for the resource.</summary>
     public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>Identifier of the organization that owns this resource.</summary>
     public Guid OrganizationId { get; set; }
+    /// <summary>Identifier of the user.</summary>
     public Guid UserId { get; set; }
+    /// <summary>The event type.</summary>
     public required string EventType { get; set; }
+    /// <summary>The severity.</summary>
     public EventSeverity Severity { get; set; }
+    /// <summary>Human-readable title.</summary>
     public required string Title { get; set; }
+    /// <summary>Human-readable message.</summary>
     public required string Message { get; set; }
+    /// <summary>The source service.</summary>
     public required string SourceService { get; set; }
+    /// <summary>Identifier of the entity.</summary>
     public string? EntityId { get; set; }
+    /// <summary>The entity type.</summary>
     public string? EntityType { get; set; }
+    /// <summary>Indicates whether read.</summary>
     public bool IsRead { get; set; }
+    /// <summary>Server timestamp when the record was created (UTC).</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Timestamp at which the record expires (UTC).</summary>
     public DateTime ExpiresAt { get; set; }
 }
 

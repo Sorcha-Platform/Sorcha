@@ -34,21 +34,27 @@ public record CreateRegisterInvitationRequest
 /// </summary>
 public record InvitationCreatedResponse
 {
+    /// <summary>Identifier of the invitation.</summary>
     [JsonPropertyName("invitation_id")]
     public required string InvitationId { get; init; }
 
+    /// <summary>The invitation token.</summary>
     [JsonPropertyName("invitation_token")]
     public required string InvitationToken { get; init; }
 
+    /// <summary>Identifier of the register.</summary>
     [JsonPropertyName("register_id")]
     public required string RegisterId { get; init; }
 
+    /// <summary>Identifier of the target org did.</summary>
     [JsonPropertyName("target_org_did")]
     public required string TargetOrgDid { get; init; }
 
+    /// <summary>Timestamp at which the record expires (UTC).</summary>
     [JsonPropertyName("expires_at")]
     public required DateTimeOffset ExpiresAt { get; init; }
 
+    /// <summary>Server timestamp when the record was created (UTC).</summary>
     [JsonPropertyName("created_at")]
     public required DateTimeOffset CreatedAt { get; init; }
 }
@@ -70,24 +76,31 @@ public record AcceptInvitationRequest
 /// </summary>
 public record InvitationAcceptedResponse
 {
+    /// <summary>Identifier of the subscription.</summary>
     [JsonPropertyName("subscription_id")]
     public required Guid SubscriptionId { get; init; }
 
+    /// <summary>Identifier of the register.</summary>
     [JsonPropertyName("register_id")]
     public required string RegisterId { get; init; }
 
+    /// <summary>The register name.</summary>
     [JsonPropertyName("register_name")]
     public string? RegisterName { get; init; }
 
+    /// <summary>Identifier of the source org did.</summary>
     [JsonPropertyName("source_org_did")]
     public required string SourceOrgDid { get; init; }
 
+    /// <summary>The source org name.</summary>
     [JsonPropertyName("source_org_name")]
     public string? SourceOrgName { get; init; }
 
+    /// <summary>The subscription status.</summary>
     [JsonPropertyName("subscription_status")]
     public required string SubscriptionStatus { get; init; }
 
+    /// <summary>Timestamp at which accepted occurred (UTC).</summary>
     [JsonPropertyName("accepted_at")]
     public required DateTimeOffset AcceptedAt { get; init; }
 }
@@ -97,36 +110,47 @@ public record InvitationAcceptedResponse
 /// </summary>
 public record InvitationSummary
 {
+    /// <summary>Identifier of the invitation.</summary>
     [JsonPropertyName("invitation_id")]
     public required string InvitationId { get; init; }
 
+    /// <summary>Identifier of the register.</summary>
     [JsonPropertyName("register_id")]
     public required string RegisterId { get; init; }
 
+    /// <summary>The register name.</summary>
     [JsonPropertyName("register_name")]
     public string? RegisterName { get; init; }
 
+    /// <summary>Identifier of the source org did.</summary>
     [JsonPropertyName("source_org_did")]
     public required string SourceOrgDid { get; init; }
 
+    /// <summary>The source org name.</summary>
     [JsonPropertyName("source_org_name")]
     public string? SourceOrgName { get; init; }
 
+    /// <summary>Identifier of the target org did.</summary>
     [JsonPropertyName("target_org_did")]
     public required string TargetOrgDid { get; init; }
 
+    /// <summary>The target org name.</summary>
     [JsonPropertyName("target_org_name")]
     public string? TargetOrgName { get; init; }
 
+    /// <summary>The direction.</summary>
     [JsonPropertyName("direction")]
     public required string Direction { get; init; }
 
+    /// <summary>Current status of the resource.</summary>
     [JsonPropertyName("status")]
     public required string Status { get; init; }
 
+    /// <summary>Timestamp at which the record expires (UTC).</summary>
     [JsonPropertyName("expires_at")]
     public required DateTimeOffset ExpiresAt { get; init; }
 
+    /// <summary>Server timestamp when the record was created (UTC).</summary>
     [JsonPropertyName("created_at")]
     public required DateTimeOffset CreatedAt { get; init; }
 }
@@ -136,9 +160,11 @@ public record InvitationSummary
 /// </summary>
 public record InvitationListResponse
 {
+    /// <summary>Collection of invitations associated with this resource.</summary>
     [JsonPropertyName("invitations")]
     public required IReadOnlyList<InvitationSummary> Invitations { get; init; }
 
+    /// <summary>Total number of items available.</summary>
     [JsonPropertyName("total_count")]
     public required int TotalCount { get; init; }
 }
@@ -148,27 +174,35 @@ public record InvitationListResponse
 /// </summary>
 public record InvitationPayload
 {
+    /// <summary>Identifier of the register.</summary>
     [JsonPropertyName("register_id")]
     public required string RegisterId { get; init; }
 
+    /// <summary>Identifier of the source org did.</summary>
     [JsonPropertyName("source_org_did")]
     public required string SourceOrgDid { get; init; }
 
+    /// <summary>Identifier of the target org did.</summary>
     [JsonPropertyName("target_org_did")]
     public required string TargetOrgDid { get; init; }
 
+    /// <summary>Identifier of the invitation.</summary>
     [JsonPropertyName("invitation_id")]
     public required string InvitationId { get; init; }
 
+    /// <summary>Timestamp at which the record expires (UTC).</summary>
     [JsonPropertyName("expires_at")]
     public required DateTimeOffset ExpiresAt { get; init; }
 
+    /// <summary>The nonce.</summary>
     [JsonPropertyName("nonce")]
     public required string Nonce { get; init; }
 
+    /// <summary>The register name.</summary>
     [JsonPropertyName("register_name")]
     public string? RegisterName { get; init; }
 
+    /// <summary>The source org name.</summary>
     [JsonPropertyName("source_org_name")]
     public string? SourceOrgName { get; init; }
 }

@@ -104,33 +104,42 @@ public class DelegationTokenClient : IDelegationTokenClient
 
     private sealed class DelegationRequest
     {
+        /// <summary>The service token.</summary>
         [JsonPropertyName("service_token")]
         public required string ServiceToken { get; set; }
 
+        /// <summary>The user access token.</summary>
         [JsonPropertyName("user_access_token")]
         public required string UserAccessToken { get; set; }
 
+        /// <summary>OAuth scopes granted or requested.</summary>
         [JsonPropertyName("scopes")]
         public required string[] Scopes { get; set; }
     }
 
     private sealed class DelegationResponse
     {
+        /// <summary>OAuth access token.</summary>
         [JsonPropertyName("access_token")]
         public string? AccessToken { get; set; }
 
+        /// <summary>The token type.</summary>
         [JsonPropertyName("token_type")]
         public string? TokenType { get; set; }
 
+        /// <summary>Numeric value for expires in.</summary>
         [JsonPropertyName("expires_in")]
         public int ExpiresIn { get; set; }
 
+        /// <summary>Identifier of the delegated user.</summary>
         [JsonPropertyName("delegated_user_id")]
         public string? DelegatedUserId { get; set; }
 
+        /// <summary>Identifier of the delegated org.</summary>
         [JsonPropertyName("delegated_org_id")]
         public string? DelegatedOrgId { get; set; }
 
+        /// <summary>The scope.</summary>
         [JsonPropertyName("scope")]
         public string? Scope { get; set; }
     }

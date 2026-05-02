@@ -44,6 +44,10 @@ public interface IHaipServiceClient
 }
 
 /// <summary>Result of creating a credential offer.</summary>
+/// <param name="OfferId">Identifier of the offer.</param>
+/// <param name="CredentialOfferUri">The credential offer uri.</param>
+/// <param name="PreAuthorizedCode">The pre authorized code.</param>
+/// <param name="ExpiresAt">Timestamp at which the record expires (UTC).</param>
 public record CreateOfferResult(
     Guid OfferId,
     string CredentialOfferUri,
@@ -51,6 +55,11 @@ public record CreateOfferResult(
     DateTimeOffset ExpiresAt);
 
 /// <summary>Result of creating a presentation request.</summary>
+/// <param name="RequestId">Identifier of this request.</param>
+/// <param name="AuthorizationRequestUri">The authorization request uri.</param>
+/// <param name="RequestUri">The request uri.</param>
+/// <param name="Nonce">The nonce.</param>
+/// <param name="ExpiresAt">Timestamp at which the record expires (UTC).</param>
 public record CreatePresentationRequestResult(
     Guid RequestId,
     string AuthorizationRequestUri,
@@ -59,6 +68,11 @@ public record CreatePresentationRequestResult(
     DateTimeOffset ExpiresAt);
 
 /// <summary>Status of a credential offer.</summary>
+/// <param name="OfferId">Identifier of the offer.</param>
+/// <param name="CredentialType">The credential type.</param>
+/// <param name="Status">Current status of the resource.</param>
+/// <param name="CreatedAt">Server timestamp when the record was created (UTC).</param>
+/// <param name="ExpiresAt">Timestamp at which the record expires (UTC).</param>
 public record OfferStatusResult(
     Guid OfferId,
     string CredentialType,
@@ -67,6 +81,11 @@ public record OfferStatusResult(
     DateTimeOffset ExpiresAt);
 
 /// <summary>Verification result for a presentation request.</summary>
+/// <param name="RequestId">Identifier of this request.</param>
+/// <param name="State">Current state of the resource.</param>
+/// <param name="IsValid">Indicates whether validation passed.</param>
+/// <param name="VerifiedClaims">Map of verified claims keyed by string.</param>
+/// <param name="Errors">Collection of error details when the operation did not succeed.</param>
 public record VerificationResultResponse(
     Guid RequestId,
     string State,

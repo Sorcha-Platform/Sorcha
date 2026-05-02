@@ -56,6 +56,10 @@ public static class OpenApiExtensions
                 return Task.CompletedTask;
             });
 
+            // Spec 117 FR-010 — register the x-status operation transformer for every service
+            // so any endpoint marked with [OpenApiStatus("partial")] surfaces in the served document.
+            options.AddOperationTransformer<OpenApiStatusOperationTransformer>();
+
             // Apply any additional configuration (e.g., operation transformers for examples)
             configureOptions?.Invoke(options);
         });

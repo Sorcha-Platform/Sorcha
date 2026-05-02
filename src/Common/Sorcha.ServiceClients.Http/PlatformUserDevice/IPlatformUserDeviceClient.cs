@@ -44,6 +44,17 @@ public sealed record PlatformUserDeviceRegistrationResult(
     DateTimeOffset EnrolledAt);
 
 /// <summary>Result of <see cref="IPlatformUserDeviceClient.GetByIdAsync"/>.</summary>
+/// <param name="DeviceId">Identifier of the device.</param>
+/// <param name="PlatformUserId">Identifier of the platform user.</param>
+/// <param name="Label">The label.</param>
+/// <param name="DevicePublicJwkThumbprint">The device public jwk thumbprint.</param>
+/// <param name="DevicePublicJwkJson">The device public jwk json.</param>
+/// <param name="Platform">The platform.</param>
+/// <param name="Status">Current status of the resource.</param>
+/// <param name="EnrolledAt">Timestamp at which enrolled occurred (UTC).</param>
+/// <param name="DelegationExpiresAt">Timestamp at which delegation expires occurred (UTC).</param>
+/// <param name="DelegationCredentialJti">The delegation credential jti.</param>
+/// <param name="StatusListIndex">Numeric value for status list index.</param>
 public sealed record PlatformUserDeviceLookupResult(
     Guid DeviceId,
     Guid PlatformUserId,

@@ -1408,28 +1408,43 @@ public class RegisterServiceClient : IRegisterServiceClient
 
     private record WriteDocketRequest
     {
+        /// <summary>Identifier of the docket.</summary>
         public required string DocketId { get; init; }
+        /// <summary>Numeric value for docket number.</summary>
         public required long DocketNumber { get; init; }
+        /// <summary>The previous hash.</summary>
         public string? PreviousHash { get; init; }
+        /// <summary>The docket hash.</summary>
         public required string DocketHash { get; init; }
+        /// <summary>Server timestamp when the record was created (UTC).</summary>
         public required DateTimeOffset CreatedAt { get; init; }
+        /// <summary>Collection of transaction ids associated with this resource.</summary>
         public required List<string> TransactionIds { get; init; }
+        /// <summary>Identifier of the proposer validator.</summary>
         public required string ProposerValidatorId { get; init; }
+        /// <summary>The merkle root.</summary>
         public required string MerkleRoot { get; init; }
+        /// <summary>Collection of transactions associated with this resource.</summary>
         public List<Sorcha.Register.Models.TransactionModel>? Transactions { get; init; }
     }
 
     private record CreateRegisterRequest
     {
+        /// <summary>Human-readable name.</summary>
         public required string Name { get; init; }
+        /// <summary>Flag indicating advertise.</summary>
         public bool Advertise { get; init; } = false;
+        /// <summary>Indicates whether full replica.</summary>
         public bool IsFullReplica { get; init; } = true;
     }
 
     private record PublishBlueprintRequest
     {
+        /// <summary>Identifier of the blueprint.</summary>
         public required string BlueprintId { get; init; }
+        /// <summary>The blueprint json.</summary>
         public required string BlueprintJson { get; init; }
+        /// <summary>The published by.</summary>
         public required string PublishedBy { get; init; }
     }
 
@@ -1571,21 +1586,33 @@ public class RegisterServiceClient : IRegisterServiceClient
 
     private record PrevTxIdQueryResponse
     {
+        /// <summary>Collection of items in the result set.</summary>
         public List<TransactionModel> Items { get; init; } = [];
+        /// <summary>One-based page number for paginated results.</summary>
         public int Page { get; init; }
+        /// <summary>Number of items per page.</summary>
         public int PageSize { get; init; }
+        /// <summary>Total number of items available.</summary>
         public int TotalCount { get; init; }
+        /// <summary>Numeric value for total pages.</summary>
         public int TotalPages { get; init; }
     }
 
     private record DocketResponse
     {
+        /// <summary>Unique identifier for the resource.</summary>
         public ulong Id { get; init; }
+        /// <summary>Identifier of the register.</summary>
         public string RegisterId { get; init; } = string.Empty;
+        /// <summary>The previous hash.</summary>
         public string PreviousHash { get; init; } = string.Empty;
+        /// <summary>Cryptographic hash of the payload.</summary>
         public string Hash { get; init; } = string.Empty;
+        /// <summary>Collection of transaction ids associated with this resource.</summary>
         public List<string> TransactionIds { get; init; } = [];
+        /// <summary>Timestamp associated with this record (UTC).</summary>
         public DateTimeOffset TimeStamp { get; init; }
+        /// <summary>The votes.</summary>
         public string? Votes { get; init; }
     }
 

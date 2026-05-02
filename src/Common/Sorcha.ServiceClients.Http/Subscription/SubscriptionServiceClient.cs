@@ -138,15 +138,19 @@ public class SubscriptionServiceClient : ISubscriptionServiceClient
     /// </summary>
     private record SubscriptionListResponse
     {
+        /// <summary>Collection of items in the result set.</summary>
         [JsonPropertyName("items")]
         public List<SubscriptionItem>? Items { get; init; }
 
+        /// <summary>Total number of items available.</summary>
         [JsonPropertyName("total_count")]
         public int TotalCount { get; init; }
 
+        /// <summary>One-based page number for paginated results.</summary>
         [JsonPropertyName("page")]
         public int Page { get; init; }
 
+        /// <summary>Number of items per page.</summary>
         [JsonPropertyName("page_size")]
         public int PageSize { get; init; }
     }
@@ -156,9 +160,11 @@ public class SubscriptionServiceClient : ISubscriptionServiceClient
     /// </summary>
     private record SubscriptionItem
     {
+        /// <summary>Identifier of the register.</summary>
         [JsonPropertyName("register_id")]
         public string? RegisterId { get; init; }
 
+        /// <summary>Current status of the resource.</summary>
         [JsonPropertyName("status")]
         public string? Status { get; init; }
     }
