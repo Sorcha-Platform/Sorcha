@@ -64,7 +64,7 @@ public class CredentialLifecycleTests : IDisposable
         var cred = CreateCredential();
         await _store.StoreAsync(cred);
 
-        var result = await _store.UpdateStatusAsync("cred-1", CredentialStatus.Suspended);
+        var result = await _store.UpdateStatusAsync("cred-1", "wallet-1", CredentialStatus.Suspended);
 
         result.Should().BeTrue();
         var updated = await _store.GetByIdAsync("cred-1");
@@ -77,7 +77,7 @@ public class CredentialLifecycleTests : IDisposable
         var cred = CreateCredential(status: CredentialStatus.Suspended);
         await _store.StoreAsync(cred);
 
-        var result = await _store.UpdateStatusAsync("cred-1", CredentialStatus.Active);
+        var result = await _store.UpdateStatusAsync("cred-1", "wallet-1", CredentialStatus.Active);
 
         result.Should().BeTrue();
         var updated = await _store.GetByIdAsync("cred-1");
@@ -90,7 +90,7 @@ public class CredentialLifecycleTests : IDisposable
         var cred = CreateCredential();
         await _store.StoreAsync(cred);
 
-        var result = await _store.UpdateStatusAsync("cred-1", CredentialStatus.Revoked);
+        var result = await _store.UpdateStatusAsync("cred-1", "wallet-1", CredentialStatus.Revoked);
 
         result.Should().BeTrue();
     }
@@ -101,7 +101,7 @@ public class CredentialLifecycleTests : IDisposable
         var cred = CreateCredential(status: CredentialStatus.Suspended);
         await _store.StoreAsync(cred);
 
-        var result = await _store.UpdateStatusAsync("cred-1", CredentialStatus.Revoked);
+        var result = await _store.UpdateStatusAsync("cred-1", "wallet-1", CredentialStatus.Revoked);
 
         result.Should().BeTrue();
     }
@@ -112,7 +112,7 @@ public class CredentialLifecycleTests : IDisposable
         var cred = CreateCredential(status: CredentialStatus.Revoked);
         await _store.StoreAsync(cred);
 
-        var result = await _store.UpdateStatusAsync("cred-1", CredentialStatus.Active);
+        var result = await _store.UpdateStatusAsync("cred-1", "wallet-1", CredentialStatus.Active);
 
         result.Should().BeFalse();
         var unchanged = await _store.GetByIdAsync("cred-1");
@@ -125,7 +125,7 @@ public class CredentialLifecycleTests : IDisposable
         var cred = CreateCredential(status: CredentialStatus.Expired);
         await _store.StoreAsync(cred);
 
-        var result = await _store.UpdateStatusAsync("cred-1", CredentialStatus.Active);
+        var result = await _store.UpdateStatusAsync("cred-1", "wallet-1", CredentialStatus.Active);
 
         result.Should().BeFalse();
     }
@@ -136,7 +136,7 @@ public class CredentialLifecycleTests : IDisposable
         var cred = CreateCredential(status: CredentialStatus.Consumed);
         await _store.StoreAsync(cred);
 
-        var result = await _store.UpdateStatusAsync("cred-1", CredentialStatus.Active);
+        var result = await _store.UpdateStatusAsync("cred-1", "wallet-1", CredentialStatus.Active);
 
         result.Should().BeFalse();
     }

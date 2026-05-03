@@ -16,10 +16,10 @@ public interface ICredentialStore
     Task<IReadOnlyList<CredentialEntity>> GetByWalletAsync(string walletAddress, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets a credential by its ID. Returns the first match across wallets — use
-    /// <see cref="GetByIdForWalletAsync"/> when a specific wallet's copy is required
-    /// (e.g. Feature 106 InboundCredentialDetector dedup, where both issuer and
-    /// recipient hold rows with the same credential id on single-node deployments).
+    /// Gets a credential by its ID. When a single row matches, returns it. When multiple rows
+    /// share the same ID (issuer and recipient wallets on the same node — see Feature 106),
+    /// returns the first Active copy and logs a warning; callers that have a wallet address
+    /// MUST prefer <see cref="GetByIdForWalletAsync"/> for deterministic results.
     /// </summary>
     Task<CredentialEntity?> GetByIdAsync(string credentialId, CancellationToken ct = default);
 
@@ -38,15 +38,20 @@ public interface ICredentialStore
     Task StoreAsync(CredentialEntity credential, CancellationToken ct = default);
 
     /// <summary>
-    /// Deletes a credential from the wallet store.
+    /// Deletes a credential from the wallet store. Scoped to the given wallet address so that
+    /// only the matching <c>(credentialId, walletAddress)</c> row is removed — credential IDs
+    /// are not globally unique when the same credential is held by both issuer and recipient.
+    /// Returns <c>false</c> if no matching row exists.
     /// </summary>
-    Task<bool> DeleteAsync(string credentialId, CancellationToken ct = default);
+    Task<bool> DeleteAsync(string credentialId, string walletAddress, CancellationToken ct = default);
 
     /// <summary>
-    /// Updates the status of a credential (e.g., Active → Revoked). Enforces the state machine
-    /// defined on <see cref="CredentialStatus"/>; returns false on disallowed transitions.
+    /// Updates the status of a credential (e.g., Active → Revoked). Scoped to the given wallet
+    /// address so that only the <c>(credentialId, walletAddress)</c> row is modified. Enforces
+    /// the state machine defined on <see cref="CredentialStatus"/>; returns false on disallowed
+    /// transitions or if no matching row exists.
     /// </summary>
-    Task<bool> UpdateStatusAsync(string credentialId, CredentialStatus status, CancellationToken ct = default);
+    Task<bool> UpdateStatusAsync(string credentialId, string walletAddress, CredentialStatus status, CancellationToken ct = default);
 
     /// <summary>
     /// Feature 106 — transitions a credential's status and returns the updated row.
@@ -76,7 +81,10 @@ public interface ICredentialStore
     /// <summary>
     /// Records a credential presentation, incrementing the count and consuming
     /// the credential if its usage policy limit has been reached.
-    /// Returns true if the credential was consumed by this presentation.
+    /// Returns <c>true</c> if the credential was consumed by this presentation.
+    /// When multiple rows share the same ID (issuer and recipient on the same node),
+    /// operates on the first Active copy and logs a warning; callers that have wallet
+    /// context should use <see cref="GetByIdForWalletAsync"/> and update state directly.
     /// </summary>
     Task<bool> RecordPresentationAsync(string credentialId, CancellationToken ct = default);
 }
