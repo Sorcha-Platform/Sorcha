@@ -9,7 +9,7 @@ last_updated: 2026-05-04
 
 The Sorcha Model Context Protocol (MCP) server is the entry point that lets an AI agent **act** on the platform — not just read about it. It exposes 36 tools across three role slices, all driven by the same workflows that human operators and SDK callers use.
 
-If you have the platform running, the manifest at [`/.well-known/mcp.json`](/.well-known/mcp.json) is the canonical machine-readable description: name, version, transports, authentication, per-slice counts, and a link to the flat tool catalogue. This document is the human companion.
+If you have the platform running, the manifest at `/.well-known/mcp.json` (relative to your gateway host) is the canonical machine-readable description: name, version, transports, authentication, per-slice counts, and a link to the flat tool catalogue. This document is the human companion.
 
 ## Overview
 
