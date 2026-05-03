@@ -33,21 +33,21 @@ public class FileSchemaExtension
     /// An empty array means all MIME types are permitted.
     /// </summary>
     [JsonPropertyName("accept")]
-    public string[] Accept { get; set; } = [];
+    public string[] Accept { get; init; } = [];
 
     /// <summary>
     /// Human-readable maximum file size string (e.g. <c>"16MB"</c>, <c>"512KB"</c>).
     /// Parse the numeric byte limit with <see cref="ParseMaxSizeBytes"/>.
     /// </summary>
     [JsonPropertyName("maxSizePerFile")]
-    public string MaxSizePerFile { get; set; } = string.Empty;
+    public string MaxSizePerFile { get; init; } = string.Empty;
 
     /// <summary>
     /// Maximum number of chunks allowed per file upload.
     /// Defaults to <see cref="PlatformMaxChunks"/> (10) and may not exceed it.
     /// </summary>
     [JsonPropertyName("maxChunks")]
-    public int MaxChunks { get; set; } = PlatformMaxChunks;
+    public int MaxChunks { get; init; } = PlatformMaxChunks;
 
     /// <summary>
     /// Recognised values for the <see cref="Capture"/> hint.
@@ -75,7 +75,7 @@ public class FileSchemaExtension
     /// than silently coercing; see <see cref="IsValidCapture"/>.
     /// </remarks>
     [JsonPropertyName("capture")]
-    public string? Capture { get; set; }
+    public string? Capture { get; init; }
 
     /// <summary>
     /// Client-side embedding hint. <c>"image-token-jpeg-240x320"</c> advises
@@ -89,7 +89,7 @@ public class FileSchemaExtension
     /// <c>specs/107-assured-identity-v1/contracts/portrait-claim-format.md</c>.
     /// </remarks>
     [JsonPropertyName("embedAs")]
-    public string? EmbedAs { get; set; }
+    public string? EmbedAs { get; init; }
 
     /// <summary>
     /// True when <paramref name="value"/> is a recognised <see cref="Capture"/>
