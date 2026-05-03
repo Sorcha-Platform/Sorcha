@@ -347,7 +347,12 @@ public class DocketBuilderTests
         result.Should().NotBeNull();
 
         _mockWalletClient.Verify(
-            w => w.SignDataAsync(_validatorConfig.SystemWalletAddress!, It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            w => w.SignTransactionAsync(
+                _validatorConfig.SystemWalletAddress!,
+                It.IsAny<byte[]>(),
+                "sorcha:docket-signing",
+                true,
+                It.IsAny<CancellationToken>()),
             Times.Once);
 
         result!.ProposerSignature.PublicKey.Should().BeEquivalentTo(System.Text.Encoding.UTF8.GetBytes(_validatorConfig.SystemWalletAddress!));
@@ -684,9 +689,16 @@ public class DocketBuilderTests
     {
         // Since we're using real MerkleTree and DocketHasher instances,
         // we only need to mock the wallet client for signing
+        // SUT now calls SignTransactionAsync (with derivationPath + isPreHashed) instead of
+        // the old SignDataAsync — match the current contract.
         _mockWalletClient
-            .Setup(w => w.SignDataAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string walletAddress, string data, CancellationToken ct) => new WalletSignResult
+            .Setup(w => w.SignTransactionAsync(
+                It.IsAny<string>(),
+                It.IsAny<byte[]>(),
+                It.IsAny<string?>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string walletAddress, byte[] _, string? __, bool ___, CancellationToken ____) => new WalletSignResult
             {
                 Signature = System.Text.Encoding.UTF8.GetBytes(signature),
                 PublicKey = System.Text.Encoding.UTF8.GetBytes(string.IsNullOrEmpty(walletAddress) ? "test-wallet-address" : walletAddress),
