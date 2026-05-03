@@ -356,7 +356,7 @@ public class RegisterSyncBackgroundService : BackgroundService
         return sub;
     }
 
-    private async Task ProcessSubscriptionsAsync(CancellationToken cancellationToken)
+    internal async Task ProcessSubscriptionsAsync(CancellationToken cancellationToken)
     {
         foreach (var (registerId, subscription) in _subscriptions.ToList())
         {
@@ -381,10 +381,18 @@ public class RegisterSyncBackgroundService : BackgroundService
         switch (subscription.SyncState)
         {
             case RegisterSyncState.Subscribing:
-                // Transition based on mode
+                // Transition based on mode (FullReplica → Syncing, ForwardOnly → Active).
                 subscription.TransitionToNextState();
                 await PersistSubscriptionAsync(subscription, cancellationToken);
                 await ReportSyncStatusAsync(subscription.RegisterId, subscription.SyncState, cancellationToken);
+
+                // #473: re-fire the immediate-sync signal so the new state is
+                // processed in the same iteration burst rather than waiting a
+                // full PeriodicSyncIntervalMinutes (default 5 min). Without
+                // this, a fresh subscription stutters: iteration 1 transitions
+                // Subscribing→Syncing and returns; the actual PullFullReplica
+                // doesn't happen until iteration 2, after the periodic delay.
+                _immediateSyncSignal.Set();
                 break;
 
             case RegisterSyncState.Syncing:
@@ -398,6 +406,9 @@ public class RegisterSyncBackgroundService : BackgroundService
                         "Register {RegisterId} fully replicated ({Dockets} dockets, {Txs} transactions)",
                         subscription.RegisterId, result.DocketsSynced, result.TransactionsSynced);
                     await ReportSyncStatusAsync(subscription.RegisterId, subscription.SyncState, cancellationToken);
+                    // Same rationale as Subscribing → kick the loop so EnsureLiveSubscription
+                    // for the FullyReplicated state runs without another 5-min wait.
+                    _immediateSyncSignal.Set();
                 }
                 await PersistSubscriptionAsync(subscription, cancellationToken);
                 break;
@@ -417,9 +428,22 @@ public class RegisterSyncBackgroundService : BackgroundService
                         subscription.RegisterId, subscription.ConsecutiveFailures);
                     subscription.SyncState = RegisterSyncState.Subscribing;
                     await PersistSubscriptionAsync(subscription, cancellationToken);
+                    _immediateSyncSignal.Set();
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// Test seam: returns true and resets the immediate-sync signal if it was
+    /// set, otherwise returns false. Used by regression tests for #473 to
+    /// assert the signal is re-fired on state transitions.
+    /// </summary>
+    internal bool ConsumeImmediateSyncSignal()
+    {
+        if (!_immediateSyncSignal.IsSet) return false;
+        _immediateSyncSignal.Reset();
+        return true;
     }
 
     /// <summary>
