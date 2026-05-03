@@ -516,11 +516,16 @@ public static class CredentialEndpoints
         // Anything baked into a signed credential is unfixable — the signature covers
         // it and the credential is permanently broken if a value is malformed.
         if (!string.IsNullOrWhiteSpace(request.StatusListUrl)
-            && !Uri.TryCreate(request.StatusListUrl, UriKind.Absolute, out _))
+            && (!Uri.TryCreate(request.StatusListUrl, UriKind.Absolute, out var statusListUri)
+                || statusListUri.Scheme != Uri.UriSchemeHttps))
         {
+            // Spec 093 data-model: statusListCredential MUST be an absolute HTTPS
+            // URL resolvable by external parties. The value is signed into the
+            // credential, so a non-HTTPS URL is permanently broken for any
+            // wallet that enforces HTTPS-only (the standard case in production).
             return Results.BadRequest(new
             {
-                error = "statusListUrl must be an absolute URI when supplied"
+                error = "statusListUrl must be an absolute HTTPS URL when supplied"
             });
         }
 
