@@ -32,9 +32,15 @@ on:
       - 'docs/mcp-server.md'
       - '.spectral.yaml'
       - 'scripts/check-discoverability.sh'
+      - 'scripts/sorcha-setup.sh'
       - '.github/workflows/ai-discoverability-check.yml'
   push:
     branches: [ master ]
+  schedule:
+    # T090 — nightly clean-VM run of the quickstart against ubuntu-latest with
+    # Docker Engine, asserting the verify-installation curl returns 200.
+    # Runs at 04:00 UTC; reports success / failure to the workflow run history.
+    - cron: '0 4 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -93,3 +99,47 @@ jobs:
                 'Reference: spec [117 AI Discoverability](../tree/master/specs/117-ai-discoverability/spec.md), FR-044, NFR-007.'
               ].join('\n')
             });
+
+  # T090 — nightly clean-VM run of the quickstart. Boots the full stack on
+  # an ubuntu-latest runner (which ships with Docker Engine), runs the setup
+  # script, then asserts the verify-installation curl returns 200 with every
+  # service Healthy. Confirms the agent-runnable claim for SC-010.
+  quickstart-on-clean-vm:
+    name: Nightly clean-VM quickstart
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Confirm Docker Engine is available
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Run sorcha-setup.sh in quiet mode
+        run: |
+          chmod +x scripts/sorcha-setup.sh
+          ./scripts/sorcha-setup.sh --quiet
+
+      - name: Verify installation
+        run: |
+          set -euo pipefail
+          # Quickstart's documented verify-installation curl. Asserts HTTP 200
+          # AND that the body parses as JSON with status == Healthy.
+          response=$(curl -sf -w '\nHTTP_STATUS:%{http_code}' http://localhost/api/health)
+          status=$(echo "$response" | grep '^HTTP_STATUS:' | cut -d: -f2)
+          body=$(echo "$response" | sed '/^HTTP_STATUS:/d')
+          echo "Body:    $body"
+          echo "Status:  $status"
+          [ "$status" = "200" ] || { echo "Expected HTTP 200, got $status"; exit 1; }
+          echo "$body" | python -c 'import sys, json; d = json.load(sys.stdin); assert d.get("status") == "Healthy", d' || {
+            echo "Aggregated health response did not report Healthy"
+            exit 1
+          }
+
+      - name: Capture container logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
