@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -51,14 +50,16 @@ public static class DateTimeFieldBoundResolver
             return false;
 
         // Contract: callers pass the literal strings "formatMinimum" /
-        // "formatMaximum". A Debug.Assert surfaces caller-side typos as a
-        // test-visible failure rather than a silent no-op on a production
-        // build — which matters because a silent no-op would un-bound the
-        // picker and let the citizen pick a forbidden date with no
-        // client-side signal.
-        Debug.Assert(
-            boundName is "formatMinimum" or "formatMaximum",
-            $"Unknown boundName '{boundName}' — expected 'formatMinimum' or 'formatMaximum'.");
+        // "formatMaximum". Throw on typo so the bug surfaces in Release
+        // builds (Blazor WASM ships Release; Debug.Assert is stripped) —
+        // a silent no-op would un-bound the picker and let the citizen
+        // pick a forbidden date with no client-side signal.
+        if (boundName is not ("formatMinimum" or "formatMaximum"))
+        {
+            throw new ArgumentException(
+                $"Unknown boundName '{boundName}' — expected 'formatMinimum' or 'formatMaximum'.",
+                nameof(boundName));
+        }
 
         if (!propertySchema.TryGetProperty(boundName, out var boundElement))
             return false;
