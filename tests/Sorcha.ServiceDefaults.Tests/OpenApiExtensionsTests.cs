@@ -145,7 +145,7 @@ public class OpenApiExtensionsTests : IAsyncLifetime
 
         // Assert
         var contactUrl = doc.GetProperty("info").GetProperty("contact").GetProperty("url").GetString();
-        contactUrl.Should().Be("https://github.com/sorcha-platform/sorcha");
+        contactUrl.Should().Be("https://github.com/Sorcha-Platform/Sorcha");
     }
 
     [Fact]
