@@ -61,7 +61,82 @@ check_marketing_adjectives() {
 
 check_standards_md_parse() {
   # Wired by T086.
-  log_skip "standards-md-parse" "not yet implemented (lands with task T086)"
+  #
+  # Verifies STANDARDS.md exists, contains a single Markdown table with the seven
+  # required columns (Standard, Version, Body, Spec URL, Components, Status, Notes),
+  # every Status cell is one of `full`/`partial`/`planned`, and every Components-cell
+  # path resolves to a real path in the repository (FR-026 + spec 117 audit).
+
+  local file="$REPO_ROOT/STANDARDS.md"
+  local check="standards-md-parse"
+
+  if [ ! -f "$file" ]; then
+    log_fail "$check" "STANDARDS.md not found at repo root"
+    return
+  fi
+
+  # Pull the table header line; require all seven canonical column names in order.
+  local header
+  header=$(grep -E '^\| *Standard *\| *Version *\| *Body *\| *Spec URL *\| *Components *\| *Status *\| *Notes *\|' "$file" | head -n 1)
+  if [ -z "$header" ]; then
+    log_fail "$check" "STANDARDS.md table header missing one or more required columns (Standard|Version|Body|Spec URL|Components|Status|Notes)"
+    return
+  fi
+
+  # Iterate body rows. Skip the header line and the divider line beneath it.
+  local rownum=0
+  local errors=0
+  while IFS= read -r line; do
+    case "$line" in
+      '|'*'|') ;;
+      *) continue ;;
+    esac
+    rownum=$((rownum + 1))
+    # Skip the header itself and the alignment divider row.
+    case "$line" in
+      *Standard*Version*Body*Spec\ URL*Components*Status*Notes*) continue ;;
+      *---*---*---*---*---*---*---*) continue ;;
+    esac
+
+    # Split the row into cells. Strip leading/trailing pipes, then split on '|'.
+    local trimmed=${line#|}
+    trimmed=${trimmed%|}
+    IFS='|' read -ra cells <<< "$trimmed"
+    if [ "${#cells[@]}" -lt 7 ]; then
+      log_fail "$check" "STANDARDS.md row $rownum has ${#cells[@]} columns; expected 7"
+      errors=$((errors + 1))
+      continue
+    fi
+
+    # Status is column 6 (index 5). Trim spaces and any backticks.
+    local status="${cells[5]}"
+    status=$(echo "$status" | sed -e 's/[[:space:]]*//g' -e 's/`//g')
+    case "$status" in
+      full|partial|planned) ;;
+      *)
+        log_fail "$check" "STANDARDS.md row $rownum has invalid Status '$status' (must be full|partial|planned)"
+        errors=$((errors + 1))
+        ;;
+    esac
+
+    # Components is column 5 (index 4). Skip checking when it's "n/a".
+    local components="${cells[4]}"
+    components=$(echo "$components" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    if [ -n "$components" ] && [ "$components" != "n/a" ]; then
+      # Components may be a comma-separated list of `path`-quoted entries. Extract every backtick-wrapped path.
+      while IFS= read -r path; do
+        [ -z "$path" ] && continue
+        if [ ! -e "$REPO_ROOT/$path" ]; then
+          log_fail "$check" "STANDARDS.md row $rownum references missing path: $path"
+          errors=$((errors + 1))
+        fi
+      done < <(echo "$components" | grep -oE '`[^`]+`' | tr -d '`')
+    fi
+  done < "$file"
+
+  if [ "$errors" = "0" ] && [ "$rownum" -gt 0 ]; then
+    log_pass "$check ($rownum rows verified)"
+  fi
 }
 
 check_standards_cross_reference() {
