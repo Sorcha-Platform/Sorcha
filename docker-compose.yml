@@ -1,6 +1,23 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 
+# Sorcha service topology — spec 117 FR-034 (T093)
+#   gateway          :80    YARP API gateway, /.well-known/* + Scalar /openapi
+#   blueprint        :5000  Workflow management, SignalR notifications
+#   wallet           (int)  Crypto operations, HD wallets (BIP32/39/44)
+#   register         :5290  Distributed ledger, OData query surface
+#   tenant           :5110  Multi-tenant auth, JWT issuer, Participant Identity
+#   peer             :5002  P2P network, gRPC inter-peer transport
+#   validator        (int)  Consensus, chain integrity
+#   mcp-server       (int)  MCP tool surface (36 tools across 3 categories)
+#   postgres         :5432  Relational store (per-service databases)
+#   mongodb          :27017 Document store (Register transactions)
+#   redis            :6379  Cache + SignalR backplane
+#   aspire-dashboard :18888 OpenTelemetry visualisation UI
+# Public entry: http://localhost (gateway) — every other port is internal-only.
+# UI mounts:    http://localhost/app (Sorcha.UI), /wallet, /verify.
+# Verify install: curl -s http://localhost/api/health
+
 # OpenTelemetry configuration for sending traces/metrics to Aspire Dashboard
 # The OTLP endpoint points to the aspire-dashboard container's gRPC port
 x-otel-env: &otel-env

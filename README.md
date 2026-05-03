@@ -32,24 +32,35 @@ Sorcha implements **DAD** (Disclosure, Alteration, Destruction):
 
 ## Quick Start
 
+For the full quickstart (every prerequisite with version constraint, every common failure mode with documented fix, the verify-installation curl), see **[`docs/quickstart.md`](docs/quickstart.md)**. That document is agent-runnable end-to-end and is the canonical setup reference.
+
+The short version:
+
 ### Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) (required)
-- [Git](https://git-scm.com/)
+- Docker Engine ≥ 24 (or Docker Desktop on macOS / Windows)
+- Docker Compose v2 (the `docker compose` plugin — v1 standalone is end-of-life and rejected by the setup script)
+- OpenSSL **or** Python 3 (for JWT key generation)
+- Git
+- PowerShell 7.5+ (optional — only needed for `walkthroughs/`)
+
+Ports `80`, `443`, and `8080` must be free.
 
 ### Setup
 
 ```bash
-git clone https://github.com/sorcha-platform/sorcha.git
-cd sorcha
+git clone https://github.com/Sorcha-Platform/Sorcha.git
+cd Sorcha
 
-# Interactive setup — generates .env, pulls images, starts services
+# Interactive setup — checks prerequisites, generates .env, pulls images, starts services
 ./scripts/sorcha-setup.sh
 
 # Or manual setup:
 cp .env.example .env          # Edit with your settings
-docker-compose up -d          # Start all services
+docker compose up -d          # Start all services
 ```
+
+On success the script prints `[sorcha-setup] success — gateway reachable at http://localhost`. Verify with `curl -s http://localhost/api/health` — every service should report `Healthy`.
 
 ### Access Points
 
