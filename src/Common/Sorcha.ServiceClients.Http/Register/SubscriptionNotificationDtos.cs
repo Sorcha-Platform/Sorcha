@@ -11,18 +11,23 @@ namespace Sorcha.ServiceClients.Register;
 /// </summary>
 public class SubscriptionNotificationRequest
 {
+    /// <summary>Identifier of the organization that owns this resource.</summary>
     [JsonPropertyName("organizationId")]
     public Guid OrganizationId { get; set; }
 
+    /// <summary>Identifier of the register.</summary>
     [JsonPropertyName("registerId")]
     public string RegisterId { get; set; } = string.Empty;
 
+    /// <summary>The register name.</summary>
     [JsonPropertyName("registerName")]
     public string? RegisterName { get; set; }
 
+    /// <summary>Free-text description of the resource.</summary>
     [JsonPropertyName("description")]
     public string? Description { get; set; }
 
+    /// <summary>The action.</summary>
     [JsonPropertyName("action")]
     public string Action { get; set; } = string.Empty;
 }
@@ -33,12 +38,15 @@ public class SubscriptionNotificationRequest
 /// </summary>
 public class SyncStatusReport
 {
+    /// <summary>Identifier of the register.</summary>
     [JsonPropertyName("registerId")]
     public string RegisterId { get; set; } = string.Empty;
 
+    /// <summary>The sync state.</summary>
     [JsonPropertyName("syncState")]
     public string SyncState { get; set; } = string.Empty;
 
+    /// <summary>Flag indicating peer connection active.</summary>
     [JsonPropertyName("peerConnectionActive")]
     public bool PeerConnectionActive { get; set; } = true;
 }
@@ -48,15 +56,19 @@ public class SyncStatusReport
 /// </summary>
 public class SubscriptionNotificationResponse
 {
+    /// <summary>Identifier of the register.</summary>
     [JsonPropertyName("registerId")]
     public string RegisterId { get; set; } = string.Empty;
 
+    /// <summary>The action.</summary>
     [JsonPropertyName("action")]
     public string Action { get; set; } = string.Empty;
 
+    /// <summary>The sync state.</summary>
     [JsonPropertyName("syncState")]
     public string? SyncState { get; set; }
 
+    /// <summary>Human-readable message.</summary>
     [JsonPropertyName("message")]
     public string Message { get; set; } = string.Empty;
 }

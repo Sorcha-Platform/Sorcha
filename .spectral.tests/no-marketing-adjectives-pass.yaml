@@ -1,0 +1,17 @@
+openapi: "3.1.0"
+info:
+  title: no marketing adjectives pass
+  version: "1.0.0"
+  description: Sorcha is cryptographic proof infrastructure for multi-party workflows.
+  x-mcp-server: "https://example.com/.well-known/mcp.json"
+  x-standards: ["BIP32"]
+paths:
+  /widgets:
+    get:
+      operationId: WidgetList
+      summary: List widgets
+      description: Returns every widget known to the platform.
+      tags: [widgets]
+      responses:
+        '200':
+          description: OK

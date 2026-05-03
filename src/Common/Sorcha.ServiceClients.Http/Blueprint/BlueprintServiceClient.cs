@@ -297,8 +297,11 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     /// </summary>
     private record ValidateRequest
     {
+        /// <summary>Identifier of the blueprint.</summary>
         public required string BlueprintId { get; init; }
+        /// <summary>Identifier of the action.</summary>
         public required string ActionId { get; init; }
+        /// <summary>Payload data for this response.</summary>
         public required JsonElement Data { get; init; }
     }
 
@@ -307,7 +310,9 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     /// </summary>
     private record ValidateResponse
     {
+        /// <summary>Indicates whether validation passed.</summary>
         public bool IsValid { get; init; }
+        /// <summary>Collection of error details when the operation did not succeed.</summary>
         public List<string> Errors { get; init; } = [];
     }
 
@@ -316,12 +321,19 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     /// </summary>
     private record FileChunkSubmissionRequest
     {
+        /// <summary>The sender wallet.</summary>
         public required string SenderWallet { get; init; }
+        /// <summary>The register address.</summary>
         public required string RegisterAddress { get; init; }
+        /// <summary>Numeric value for chunk index.</summary>
         public required int ChunkIndex { get; init; }
+        /// <summary>Numeric value for total chunks.</summary>
         public required int TotalChunks { get; init; }
+        /// <summary>The file hash.</summary>
         public required string FileHash { get; init; }
+        /// <summary>The content type.</summary>
         public required string ContentType { get; init; }
+        /// <summary>The content base64.</summary>
         public required string ContentBase64 { get; init; }
     }
 
@@ -330,8 +342,11 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     /// </summary>
     private record FileChunkSubmissionResponse
     {
+        /// <summary>Identifier of the chunk transaction.</summary>
         public required string ChunkTransactionId { get; init; }
+        /// <summary>Numeric value for chunk index.</summary>
         public required int ChunkIndex { get; init; }
+        /// <summary>Timestamp associated with this record (UTC).</summary>
         public required DateTimeOffset Timestamp { get; init; }
     }
 
@@ -340,9 +355,13 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     /// </summary>
     private record FileChunkRetrievalResponse
     {
+        /// <summary>Identifier of the chunk.</summary>
         public required string ChunkId { get; init; }
+        /// <summary>The content base64.</summary>
         public required string ContentBase64 { get; init; }
+        /// <summary>The content type.</summary>
         public required string ContentType { get; init; }
+        /// <summary>Numeric value for size.</summary>
         public required int Size { get; init; }
     }
 }

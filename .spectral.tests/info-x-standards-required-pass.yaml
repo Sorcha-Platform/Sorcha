@@ -1,0 +1,8 @@
+openapi: "3.1.0"
+info:
+  title: x-standards pass
+  version: "1.0.0"
+  description: Synthetic fixture; info.x-standards is a non-empty array of strings.
+  x-mcp-server: "https://example.com/.well-known/mcp.json"
+  x-standards: ["BIP32", "ML-DSA (NIST FIPS 204)"]
+paths: {}

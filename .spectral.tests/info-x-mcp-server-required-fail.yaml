@@ -1,0 +1,7 @@
+openapi: "3.1.0"
+info:
+  title: x-mcp-server fail
+  version: "1.0.0"
+  description: Synthetic fixture; info.x-mcp-server is missing.
+  x-standards: ["BIP32"]
+paths: {}

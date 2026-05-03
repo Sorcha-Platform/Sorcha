@@ -1,0 +1,112 @@
+# Spectral OpenAPI lint ruleset for Sorcha
+#
+# Spec 117 (AI Discoverability) ships this ruleset. The CI workflow
+# `ai-discoverability-check.yml` runs `spectral lint` against the
+# served `/.well-known/openapi.json` document on every PR to master.
+#
+# Rule sources:
+#   - extends `spectral:oas` for the standard OpenAPI 3.x lint pack
+#   - the rules below are Sorcha-specific, drawn from FR-004, FR-005,
+#     FR-006, FR-007, FR-008, FR-009, FR-045 (no marketing adjectives)
+#
+# Local install: `npm install` (from package.json devDependencies).
+# Run: `npx spectral lint http://localhost/.well-known/openapi.json`
+
+extends: spectral:oas
+
+functions:
+  - operationIdPascalCase
+  - noMarketingAdjectives
+
+functionsDir: ".spectral/functions"
+
+rules:
+  # ---- Sorcha rules (additive) ----
+
+  operationId-pascalcase:
+    description: "Every operationId MUST be PascalCase and follow <Resource><Verb> convention (e.g. WalletGet, CredentialIssue, RegisterStatusGet)."
+    message: "{{property}} '{{value}}' is not PascalCase <Resource><Verb>"
+    severity: error
+    given: "$.paths[*][get,put,post,delete,patch].operationId"
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[A-Z][a-zA-Z0-9]+[A-Z][a-zA-Z0-9]*$"
+
+  description-required-on-properties:
+    description: "Every schema property MUST carry a non-empty description."
+    message: "Schema property at {{path}} has no description"
+    severity: error
+    given: "$..properties[*]"
+    then:
+      field: description
+      function: truthy
+
+  examples-required-on-credential-issuance:
+    description: "Credential issuance and wallet signing endpoints MUST carry at least one example for request and response (FR-006)."
+    message: "Operation {{property}} is missing required example values for request and/or response"
+    severity: error
+    given:
+      - "$.paths['/api/credentials/issue'][post]"
+      - "$.paths['/api/wallets/{address}/sign-transaction'][post]"
+    then:
+      - field: "requestBody.content.application/json.example"
+        function: truthy
+      - field: "responses.200.content.application/json.example"
+        function: truthy
+
+  info-x-mcp-server-required:
+    description: "info MUST include x-mcp-server extension pointing at /.well-known/mcp.json (FR-008)."
+    message: "info.x-mcp-server is missing or empty"
+    severity: error
+    given: "$.info"
+    then:
+      field: "x-mcp-server"
+      function: truthy
+
+  info-x-standards-required:
+    description: "info MUST include x-standards array of standard names (FR-009)."
+    message: "info.x-standards is missing or not a non-empty array"
+    severity: error
+    given: "$.info"
+    then:
+      field: "x-standards"
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+
+  info-title-required:
+    description: "info.title MUST be non-empty (FR-007)."
+    severity: error
+    given: "$.info"
+    then:
+      field: title
+      function: truthy
+
+  info-contact-url-required:
+    description: "info.contact.url MUST be the GitHub organisation URL (FR-007)."
+    severity: error
+    given: "$.info.contact"
+    then:
+      field: url
+      function: truthy
+
+  no-marketing-adjectives:
+    description: "Machine-readable artefacts MUST be factual. Marketing adjectives are deny-listed (FR-045, NFR-003)."
+    message: "Marketing adjective detected: '{{error}}'. Rewrite factually."
+    severity: error
+    given:
+      - "$.info.description"
+      - "$.info.title"
+      - "$.paths[*][get,put,post,delete,patch].description"
+      - "$.paths[*][get,put,post,delete,patch].summary"
+      - "$..properties[*].description"
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: "(?i)\\b(revolutionary|best-in-class|industry-leading|cutting-edge|world-class|seamless|game-changing|next-generation|state-of-the-art)\\b"

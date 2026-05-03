@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,12 +29,14 @@ public static class OpenApiExtensions
         Action<Microsoft.AspNetCore.OpenApi.OpenApiOptions>? configureOptions = null)
         where TBuilder : IHostApplicationBuilder
     {
+        var version = ResolveAssemblyInformationalVersion();
+
         builder.Services.AddOpenApi(options =>
         {
             options.AddDocumentTransformer((document, context, cancellationToken) =>
             {
                 document.Info.Title = title;
-                document.Info.Version = "1.0.0";
+                document.Info.Version = version;
                 document.Info.Description = description;
 
                 if (document.Info.Contact == null)
@@ -41,7 +44,7 @@ public static class OpenApiExtensions
                     document.Info.Contact = new();
                 }
                 document.Info.Contact.Name = "Sorcha Contributors";
-                document.Info.Contact.Url = new Uri("https://github.com/sorcha-platform/sorcha");
+                document.Info.Contact.Url = new Uri("https://github.com/Sorcha-Platform/Sorcha");
 
                 if (document.Info.License == null)
                 {
@@ -53,11 +56,28 @@ public static class OpenApiExtensions
                 return Task.CompletedTask;
             });
 
+            // Spec 117 FR-010 — register the x-status operation transformer for every service
+            // so any endpoint marked with [OpenApiStatus("partial")] surfaces in the served document.
+            options.AddOperationTransformer<OpenApiStatusOperationTransformer>();
+
             // Apply any additional configuration (e.g., operation transformers for examples)
             configureOptions?.Invoke(options);
         });
 
         return builder;
+    }
+
+    /// <summary>
+    /// Returns the entry assembly's informational version, stripped of any "+commitHash" suffix.
+    /// Falls back to "1.0.0" when no entry assembly or attribute is available (rare; e.g. unit-test hosts).
+    /// Single source of truth for FR-046 — both OpenAPI info.version and MCP manifest version must read from this.
+    /// </summary>
+    private static string ResolveAssemblyInformationalVersion()
+    {
+        var assembly = Assembly.GetEntryAssembly() ?? Assembly.GetCallingAssembly();
+        var raw = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "1.0.0";
+        var plusIdx = raw.IndexOf('+');
+        return plusIdx > 0 ? raw[..plusIdx] : raw;
     }
 
     /// <summary>

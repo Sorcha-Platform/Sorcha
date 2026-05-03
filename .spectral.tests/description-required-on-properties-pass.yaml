@@ -1,0 +1,29 @@
+openapi: "3.1.0"
+info:
+  title: description on properties pass
+  version: "1.0.0"
+  description: Synthetic fixture; every schema property carries a description.
+  x-mcp-server: "https://example.com/.well-known/mcp.json"
+  x-standards: ["BIP32"]
+paths:
+  /widgets:
+    post:
+      operationId: WidgetCreate
+      summary: Create a widget
+      description: Creates a new widget.
+      tags: [widgets]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Human-readable widget name.
+                quantity:
+                  type: integer
+                  description: Number of widgets to create in this batch.
+      responses:
+        '201':
+          description: Created

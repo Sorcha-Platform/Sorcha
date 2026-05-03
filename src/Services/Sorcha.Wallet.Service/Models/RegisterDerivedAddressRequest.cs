@@ -27,6 +27,7 @@ public class RegisterDerivedAddressRequest
     [Required]
     [RegularExpression(@"^m/44'/\d+'/\d+'/[01]/\d+$",
         ErrorMessage = "Derivation path must be valid BIP44 format: m/44'/cointype'/account'/change/index")]
+    /// <summary>The derivation path.</summary>
     public required string DerivationPath { get; set; }
 
     /// <summary>

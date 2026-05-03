@@ -556,14 +556,23 @@ public class TransactionPage
 /// </remarks>
 public class DocketModel
 {
+    /// <summary>Identifier of the docket.</summary>
     public required string DocketId { get; init; }
+    /// <summary>Identifier of the register.</summary>
     public required string RegisterId { get; init; }
+    /// <summary>Numeric value for docket number.</summary>
     public required long DocketNumber { get; init; }
+    /// <summary>The previous hash.</summary>
     public string? PreviousHash { get; init; }
+    /// <summary>The docket hash.</summary>
     public required string DocketHash { get; init; }
+    /// <summary>Server timestamp when the record was created (UTC).</summary>
     public required DateTimeOffset CreatedAt { get; init; }
+    /// <summary>Collection of transactions associated with this resource.</summary>
     public required List<TransactionModel> Transactions { get; init; }
+    /// <summary>Identifier of the proposer validator.</summary>
     public required string ProposerValidatorId { get; init; }
+    /// <summary>The merkle root.</summary>
     public required string MerkleRoot { get; init; }
 }
 
@@ -572,10 +581,15 @@ public class DocketModel
 /// </summary>
 public class GovernanceRosterResponse
 {
+    /// <summary>Identifier of the register.</summary>
     public string RegisterId { get; set; } = string.Empty;
+    /// <summary>Collection of members associated with this resource.</summary>
     public List<RosterMember> Members { get; set; } = [];
+    /// <summary>Numeric value for member count.</summary>
     public int MemberCount { get; set; }
+    /// <summary>Numeric value for control transaction count.</summary>
     public int ControlTransactionCount { get; set; }
+    /// <summary>Identifier of the last control tx.</summary>
     public string? LastControlTxId { get; set; }
 }
 
@@ -584,9 +598,13 @@ public class GovernanceRosterResponse
 /// </summary>
 public class RosterMember
 {
+    /// <summary>The subject.</summary>
     public string Subject { get; set; } = string.Empty;
+    /// <summary>The role.</summary>
     public string Role { get; set; } = string.Empty;
+    /// <summary>Cryptographic algorithm identifier.</summary>
     public string Algorithm { get; set; } = string.Empty;
+    /// <summary>Timestamp at which granted occurred (UTC).</summary>
     public DateTimeOffset GrantedAt { get; set; }
 }
 
@@ -678,9 +696,13 @@ public class PolicyVersionEntry
 /// </summary>
 public class InternalRegisterInfo
 {
+    /// <summary>Unique identifier for the resource.</summary>
     public string Id { get; set; } = string.Empty;
+    /// <summary>Human-readable name.</summary>
     public string Name { get; set; } = string.Empty;
+    /// <summary>Numeric value for height.</summary>
     public long Height { get; set; }
+    /// <summary>Current status of the resource.</summary>
     public string Status { get; set; } = string.Empty;
 }
 
@@ -689,9 +711,13 @@ public class InternalRegisterInfo
 /// </summary>
 public class PublishedBlueprintsResponse
 {
+    /// <summary>Identifier of the register.</summary>
     public string RegisterId { get; set; } = string.Empty;
+    /// <summary>Collection of blueprints associated with this resource.</summary>
     public List<PublishedBlueprintEntry> Blueprints { get; set; } = [];
+    /// <summary>Numeric value for register height.</summary>
     public long RegisterHeight { get; set; }
+    /// <summary>Timestamp at which queried occurred (UTC).</summary>
     public DateTimeOffset QueriedAt { get; set; }
 }
 
@@ -700,9 +726,14 @@ public class PublishedBlueprintsResponse
 /// </summary>
 public class PublishedBlueprintEntry
 {
+    /// <summary>Identifier of the blueprint.</summary>
     public string BlueprintId { get; set; } = string.Empty;
+    /// <summary>Identifier of the transaction.</summary>
     public string TransactionId { get; set; } = string.Empty;
+    /// <summary>The published by.</summary>
     public string PublishedBy { get; set; } = string.Empty;
+    /// <summary>Timestamp at which published occurred (UTC).</summary>
     public DateTimeOffset PublishedAt { get; set; }
+    /// <summary>The blueprint json.</summary>
     public string BlueprintJson { get; set; } = string.Empty;
 }

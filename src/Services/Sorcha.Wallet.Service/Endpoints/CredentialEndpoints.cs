@@ -141,7 +141,42 @@ public static class CredentialEndpoints
             .Produces<IssuedCredentialResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            .WithOpenApi(operation =>
+            {
+                // Spec 117 FR-006 — credential issuance MUST carry at least one example for
+                // request and response. Payload modelled on the trade-finance walkthrough's
+                // VerifiedInvoiceCredential issued by the audited supplier wallet.
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "credentialType": "VerifiedInvoiceCredential",
+                      "claims": {
+                        "invoiceNumber": "INV-2026-00482",
+                        "issuedTo": "did:sorcha:org:sorcha1buyer012345...",
+                        "amount": 47500.00,
+                        "currency": "EUR",
+                        "dueDate": "2026-06-15",
+                        "purchaseOrderRef": "PO-ACME-9921"
+                      },
+                      "recipientWallet": "sorcha1recipient67890abcdef...",
+                      "expiryDuration": "P90D",
+                      "disclosableClaims": ["invoiceNumber", "amount", "currency", "dueDate"]
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "200", """
+                    {
+                      "id": "urn:uuid:8e2c1b94-7a31-4f12-9bb8-a3e2f5c14a99",
+                      "type": "VerifiedInvoiceCredential",
+                      "issuerDid": "did:sorcha:org:sorcha1supplier789ghi012...",
+                      "subjectDid": "did:sorcha:org:sorcha1buyer012345...",
+                      "issuedAt": "2026-05-02T11:30:00Z",
+                      "expiresAt": "2026-07-31T11:30:00Z",
+                      "rawToken": "eyJhbGciOiJFZERTQSIsInR5cCI6InZjK3NkLWp3dCJ9.eyJpc3MiOiJkaWQ6c29yY2hhOm9yZzpzb3JjaGExc3VwcGxpZXI3ODlnaGkwMTIuLi4iLCJpYXQiOjE3NjI4MzQwMDAsImV4cCI6MTc3MDYxMDAwMCwidmN0IjoiVmVyaWZpZWRJbnZvaWNlQ3JlZGVudGlhbCIsImNuZiI6e319.SIGNATURE",
+                      "status": "Active"
+                    }
+                    """);
+                return operation;
+            });
 
         return app;
     }

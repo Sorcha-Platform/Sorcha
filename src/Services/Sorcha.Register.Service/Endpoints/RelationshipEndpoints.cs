@@ -69,6 +69,7 @@ public static class RelationshipEndpoints
         .WithName("GetRegisterSyncState")
         .WithTags("Registers — Feature 108")
         .WithSummary("Get typed sync state for a register with the inputs that derived it (Feature 108)")
+        .WithDescription("Returns the resolved sync state for a register (synced, recovering, stalled) along with the inputs the resolver used: local docket height, recent peer-height observations within the staleness window, the latest validator sealing observation, and the persisted state. AI agents call this to decide whether a register is current enough to read from before consuming transactions or generating verification bundles.")
         .RequireAuthorization(AuthorizationPolicies.CanWriteDockets)
         .Produces<RegisterSyncStateView>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)

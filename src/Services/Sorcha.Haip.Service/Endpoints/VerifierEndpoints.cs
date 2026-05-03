@@ -63,6 +63,11 @@ public static class VerifierEndpoints
             .WithName("GetVerificationResult")
             .WithTags("HAIP Verifier")
             .WithSummary("Get verification result (service-to-service)")
+            .WithDescription(
+                "Returns the verification outcome for a presentation request once the wallet has " +
+                "submitted its vp_token via direct_post — the verified claims, accepted/rejected state, " +
+                "and any failure reasons. Blueprint Service polls this to gate the next workflow step on " +
+                "successful presentation.")
             .Produces<VerificationResult>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
             .RequireAuthorization(AuthorizationPolicies.RequireService); // SEC-013
