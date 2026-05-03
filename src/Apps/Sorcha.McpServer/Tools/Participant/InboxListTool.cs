@@ -54,7 +54,7 @@ public sealed class InboxListTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of pending actions.</returns>
     [McpServerTool(Name = "sorcha_inbox_list")]
-    [Description("List pending actions in your inbox. Shows workflow actions that are waiting for your input or approval.")]
+    [Description("List the workflow actions currently assigned to the authenticated participant, optionally filtered by status and paginated. Returns one row per outstanding action with its instance id, workflow context, and assignment state — the entry point an agent should use to discover what work is waiting. Call this when an agent first wakes up on behalf of a participant and needs to know what to act on; use sorcha_action_details rather than this tool when you already have an actionInstanceId and need its schema, and prefer sorcha_workflow_status when investigating a specific workflow instance rather than a participant's whole queue.")]
     public async Task<InboxListResult> ListInboxAsync(
         [Description("Status filter: Pending, InProgress, or leave empty for all")] string? status = null,
         [Description("Page number (1-based, default: 1)")] int page = 1,

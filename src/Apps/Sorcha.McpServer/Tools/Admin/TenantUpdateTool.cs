@@ -55,7 +55,7 @@ public sealed class TenantUpdateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Update result.</returns>
     [McpServerTool(Name = "sorcha_tenant_update")]
-    [Description("Update a tenant's settings or status. Can rename or suspend/activate a tenant. Use with caution as suspending affects all users.")]
+    [Description("Mutates an existing tenant — renames it, or moves it between Active and Suspended — and returns the updated tenant record. Call this when you need to rebrand an organisation or to disable platform access for every user under that tenant in a single action; prefer this over sorcha_user_manage when the action should affect every user in the organisation rather than a single user, and prefer it over sorcha_token_revoke when the goal is durable suspension rather than a one-off forced re-authentication. Suspending propagates to all users under the tenant — verify the target with sorcha_tenant_list first.")]
     public async Task<TenantUpdateResult> UpdateTenantAsync(
         [Description("The tenant/organization ID to update")] string tenantId,
         [Description("New tenant name (optional)")] string? name = null,

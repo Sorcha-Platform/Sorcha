@@ -55,7 +55,7 @@ public sealed class TokenRevokeTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Revocation result.</returns>
     [McpServerTool(Name = "sorcha_token_revoke")]
-    [Description("Revoke authentication tokens for a user or tenant. Forces re-authentication. Use for security incidents, user lockouts, or when a user leaves an organization.")]
+    [Description("Invalidates outstanding JWT access and refresh tokens for a single user or for every user under a tenant, recording the supplied reason for audit, and returns the count of tokens revoked. Call this when responding to a credential compromise, an offboarded user, or any incident that requires immediate forced re-authentication; prefer this over sorcha_user_manage Lock when you need to invalidate sessions already in flight rather than only block future logins, and prefer it over sorcha_tenant_update Suspend when you want to force re-authentication without changing the tenant's status. Call after sorcha_audit_query so the revocation has a documented trigger.")]
     public async Task<TokenRevokeResult> RevokeTokensAsync(
         [Description("Revoke tokens for this user ID")] string? userId = null,
         [Description("Revoke tokens for all users in this tenant")] string? tenantId = null,

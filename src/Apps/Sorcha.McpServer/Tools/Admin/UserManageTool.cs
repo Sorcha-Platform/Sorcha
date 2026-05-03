@@ -55,7 +55,7 @@ public sealed class UserManageTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Management result.</returns>
     [McpServerTool(Name = "sorcha_user_manage")]
-    [Description("Manage a user's status or roles. Can activate, deactivate, lock, or unlock users. Can also add or remove roles. Use with caution.")]
+    [Description("Applies a single state mutation to one user — Activate, Deactivate, Lock, Unlock, AddRole, or RemoveRole — and returns the updated user record. Call this when changing a single user's access level or role membership; prefer this over sorcha_tenant_update when the action should affect one user rather than every user in the organisation, prefer it over sorcha_token_revoke when the goal is to gate future logins rather than invalidate sessions already in flight, and call after sorcha_user_list to confirm the userId and current state before mutating.")]
     public async Task<UserManageResult> ManageUserAsync(
         [Description("The user ID to manage")] string userId,
         [Description("Action: Activate, Deactivate, Lock, Unlock, AddRole, RemoveRole")] string action,

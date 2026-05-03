@@ -52,7 +52,7 @@ public sealed class WorkflowStatusTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Workflow status and progress.</returns>
     [McpServerTool(Name = "sorcha_workflow_status")]
-    [Description("Check the status of a workflow instance. Shows current progress, completed actions, and pending actions.")]
+    [Description("Return the current state of a single workflow instance: which actions have completed, which are pending, who they are assigned to, and where the instance sits in its blueprint. Gives an agent a real-time snapshot of progress across all participants in the workflow, not just the caller. Call this when investigating one specific workflow instance the agent already knows the id of; use sorcha_inbox_list rather than this tool when you want the participant's pending work across all workflows, and prefer sorcha_transaction_history when you need the immutable signed audit log instead of the live status view.")]
     public async Task<WorkflowStatusResult> GetWorkflowStatusAsync(
         [Description("The workflow instance ID")] string workflowInstanceId,
         CancellationToken cancellationToken = default)

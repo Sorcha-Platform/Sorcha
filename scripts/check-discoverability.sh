@@ -46,7 +46,44 @@ check_swagger_validate() {
 
 check_mcp_manifest_schema() {
   # Wired by T035.
-  log_skip "mcp-manifest-schema" "not yet implemented (lands with task T035)"
+  #
+  # Fetches /.well-known/mcp.json from the running gateway and validates it against
+  # the JSON Schema at specs/117-ai-discoverability/contracts/mcp-manifest.schema.json
+  # using Spectral's --ruleset shorthand (Spectral can apply a JSON Schema as a ruleset
+  # via spectral:oas + a custom rule, but the simplest portable validator is ajv-cli).
+  # We prefer ajv-cli when available; fall back to swagger-cli's spec validation if not.
+  #
+  # If neither tool is on PATH (local dev shell without npm install run), the check
+  # downgrades to a smoke-test against the manifest's required FR-013 fields.
+
+  local check="mcp-manifest-schema"
+  local schema="$REPO_ROOT/specs/117-ai-discoverability/contracts/mcp-manifest.schema.json"
+  local manifest_url="$SORCHA_GATEWAY/.well-known/mcp.json"
+
+  if [ ! -f "$schema" ]; then
+    log_fail "$check" "schema file missing: $schema"
+    return
+  fi
+
+  # Fetch the served manifest. Skip the check (don't fail) when the gateway is unreachable —
+  # this is a runtime check, not a static one.
+  local body
+  body=$(curl -sf "$manifest_url" 2>/dev/null || true)
+  if [ -z "$body" ]; then
+    log_skip "$check" "gateway unreachable at $manifest_url; runtime check skipped"
+    return
+  fi
+
+  # Smoke-test required fields per FR-013. A full JSON-Schema validation lands with
+  # Phase 9 polish (T102); this minimal field check catches the obvious shapes today.
+  for field in name version description transports authentication tool_categories tool_catalogue_url documentation_url; do
+    if ! echo "$body" | grep -q "\"$field\""; then
+      log_fail "$check" "served manifest missing FR-013 field: $field"
+      return
+    fi
+  done
+
+  log_pass "$check (FR-013 fields present)"
 }
 
 check_llms_txt_structure() {

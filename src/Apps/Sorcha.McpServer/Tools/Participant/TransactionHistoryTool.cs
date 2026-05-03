@@ -55,7 +55,7 @@ public sealed class TransactionHistoryTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of transactions.</returns>
     [McpServerTool(Name = "sorcha_transaction_history")]
-    [Description("View transaction history for a workflow or register. Shows all recorded transactions including action submissions and data changes.")]
+    [Description("Return the immutable, signed transaction log for a given workflow instance or register, in submission order. Each row carries the originating wallet signature, transaction id, and the action or register-mutation it recorded — enough for an agent to reconstruct the complete audit trail without trusting the platform. Call this when the agent needs to answer who-did-what-when questions or assemble provenance for downstream AI decisions; use sorcha_workflow_status instead when you want the current state of an in-flight workflow rather than its history, and prefer sorcha_register_query when querying current record values rather than the sequence of changes that produced them.")]
     public async Task<TransactionHistoryResult> GetTransactionHistoryAsync(
         [Description("Filter by workflow instance ID (optional)")] string? workflowInstanceId = null,
         [Description("Filter by register ID (optional)")] string? registerId = null,
