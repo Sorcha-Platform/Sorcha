@@ -55,7 +55,7 @@ public sealed class BlueprintListTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Paginated list of blueprint summaries.</returns>
     [McpServerTool(Name = "sorcha_blueprint_list")]
-    [Description("List blueprints with filtering and pagination. Returns blueprint summaries including ID, title, description, participant count, and action count. Supports search by title/description and status filtering.")]
+    [Description("Returns a paginated list of blueprint summaries (ID, title, description, participant count, action count) with optional filtering by status (Draft, Published, Archived) and free-text search across title and description. Call this when you need to discover blueprints by name or status without yet knowing their IDs; use sorcha_blueprint_get instead once you have a specific ID and want the full definition, and prefer this over sorcha_workflow_instances when you are looking for blueprint definitions rather than running workflow executions.")]
     public async Task<BlueprintListResult> ListBlueprintsAsync(
         [Description("Page number (1-based, default: 1)")] int page = 1,
         [Description("Items per page (default: 20, max: 100)")] int pageSize = 20,

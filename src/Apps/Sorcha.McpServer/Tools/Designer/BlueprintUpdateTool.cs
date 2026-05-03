@@ -54,7 +54,7 @@ public sealed class BlueprintUpdateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Result of the update operation.</returns>
     [McpServerTool(Name = "sorcha_blueprint_update")]
-    [Description("Update an existing blueprint. Provide the blueprint ID and the complete updated definition in JSON format. The blueprint must include title, description, at least 2 participants, and at least 1 action.")]
+    [Description("Replaces an existing blueprint's definition with a new complete JSON document and increments its version, returning the updated blueprint summary. Call this when revising a blueprint already registered under a known ID; use sorcha_blueprint_create instead for a brand-new blueprint that does not yet exist, and call sorcha_blueprint_diff before this rather than after to confirm the proposed change matches intent. The submitted JSON must be a full definition including title, description, at least 2 participants, and at least 1 action — partial patches are not supported.")]
     public async Task<BlueprintUpdateResult> UpdateBlueprintAsync(
         [Description("The ID of the blueprint to update")] string blueprintId,
         [Description("Updated blueprint definition in JSON format")] string blueprintJson,

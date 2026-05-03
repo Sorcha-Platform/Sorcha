@@ -59,7 +59,7 @@ public sealed class AuditQueryTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Audit log entries.</returns>
     [McpServerTool(Name = "sorcha_audit_query")]
-    [Description("Query audit logs for security and compliance. Track user actions, access patterns, and system changes. Essential for security investigations.")]
+    [Description("Returns paged audit-log entries describing who took which administrative action against which resource and when, filtered by tenant, user, event type, resource type, or time window. Call this when investigating a security incident, building a compliance report, or reconstructing a sequence of admin or user actions; prefer this over sorcha_log_query when the question is about user or admin behaviour rather than service-level diagnostic output, and call before sorcha_token_revoke or sorcha_user_manage so any remediation has a documented trigger.")]
     public async Task<AuditQueryResult> QueryAuditLogsAsync(
         [Description("Filter by tenant/organization ID")] string? tenantId = null,
         [Description("Filter by user ID")] string? userId = null,

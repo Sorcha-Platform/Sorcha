@@ -76,6 +76,11 @@ builder.AddSorchaOpenApi(
     "Unified entry point for the Sorcha platform providing reverse proxy routing, aggregated health monitoring, and API documentation.",
     options => options.AddDocumentTransformer<Sorcha.ApiGateway.Discoverability.OpenApiInfoTransformer>());
 
+// Spec 117 Phase 4 (US2 MCP discovery) — bind manifest options + tool-catalogue provider.
+builder.Services.Configure<Sorcha.ApiGateway.Discoverability.McpManifestOptions>(
+    builder.Configuration.GetSection(Sorcha.ApiGateway.Discoverability.McpManifestOptions.SectionName));
+builder.Services.AddSingleton<Sorcha.ApiGateway.Discoverability.ToolCatalogueProvider>();
+
 // Add CORS for frontend - production restriction handled at infrastructure level
 builder.AddSorchaCors();
 
@@ -537,6 +542,12 @@ app.MapOpenApi();
 // at /.well-known/openapi.{json,yaml}. Anonymous, cacheable, served from the
 // in-process IOpenApiDocumentProvider so the document is identical to /openapi/v1.json.
 app.MapWellKnownOpenApiEndpoints();
+
+// Spec 117 Phase 4 (US2 MCP discovery).
+// /.well-known/mcp.json — anonymous, cacheable, FR-012/013/014/015/016/046.
+// /api/mcp/tools         — flat tool catalogue referenced by the manifest.
+app.MapMcpManifestEndpoint();
+app.MapMcpToolCatalogueEndpoint();
 
 // Aggregated OpenAPI from all services
 app.MapGet("/openapi/aggregated.json", async (OpenApiAggregationService openApiService) =>

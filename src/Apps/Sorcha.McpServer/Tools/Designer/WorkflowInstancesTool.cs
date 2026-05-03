@@ -55,7 +55,7 @@ public sealed class WorkflowInstancesTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of workflow instances.</returns>
     [McpServerTool(Name = "sorcha_workflow_instances")]
-    [Description("List workflow instances (running or completed workflows). Filter by blueprint ID and status. Useful for monitoring workflow execution and debugging issues.")]
+    [Description("Returns a paginated list of workflow instances — concrete executions of a blueprint, each with their own state, current action, and participants — filterable by blueprint ID and lifecycle status (Active, Completed, Suspended). Call this when monitoring running workflows, locating a specific instance for debugging, or auditing recently completed workflows for a given blueprint; use sorcha_blueprint_list instead when you need blueprint definitions rather than running executions, and prefer this over sorcha_blueprint_get when the question is about runtime activity rather than design-time structure.")]
     public async Task<WorkflowInstancesResult> ListWorkflowInstancesAsync(
         [Description("Blueprint ID to filter instances (optional)")] string? blueprintId = null,
         [Description("Status filter: Active, Completed, or Suspended (optional)")] string? status = null,

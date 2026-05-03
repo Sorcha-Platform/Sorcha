@@ -46,7 +46,7 @@ public sealed class JsonLogicTestTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The evaluation result.</returns>
     [McpServerTool(Name = "sorcha_jsonlogic_test")]
-    [Description("Test a JSON Logic expression against sample data. Evaluates the rule and returns the result. Useful for testing routing conditions, calculations, and disclosure rules in blueprints.")]
+    [Description("Evaluates a standalone JSON Logic expression against a sample data document and returns the computed result, letting you verify routing predicates, calculation formulas, or disclosure conditions in isolation. Call this when iterating on a rule before pasting it into a blueprint, or when debugging why a rule produced an unexpected value; use sorcha_blueprint_simulate instead when you need the rule evaluated in the context of an actual action with its schema and routing, and prefer this over sorcha_blueprint_validate when the question is about logic rather than schema conformance.")]
     public Task<JsonLogicTestResult> TestJsonLogicAsync(
         [Description("The JSON Logic rule to test")] string ruleJson,
         [Description("The data to evaluate the rule against")] string dataJson,

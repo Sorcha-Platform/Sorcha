@@ -54,7 +54,7 @@ public sealed class BlueprintDiffTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Differences between the two versions.</returns>
     [McpServerTool(Name = "sorcha_blueprint_diff")]
-    [Description("Compare two versions of a blueprint to see what changed. Useful for reviewing changes before publishing or understanding version history.")]
+    [Description("Compares two numbered versions of the same blueprint and returns a structured delta covering title, description, participants, actions, schemas, and routing rules. Call this when reviewing what changed between revisions before publishing, or when reconstructing version history for an audit; use sorcha_blueprint_get instead when you only need a single version's full definition, and call this before sorcha_blueprint_update rather than after to confirm the proposed delta is intentional.")]
     public async Task<BlueprintDiffResult> CompareBlueprintVersionsAsync(
         [Description("The ID of the blueprint to compare")] string blueprintId,
         [Description("Source version number to compare from")] int fromVersion,

@@ -55,7 +55,7 @@ public sealed class TenantListTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of tenants.</returns>
     [McpServerTool(Name = "sorcha_tenant_list")]
-    [Description("List all tenants/organizations in the system. Filter by status or search by name. Useful for tenant management and auditing.")]
+    [Description("Returns a paged list of tenants (organisations) with id, name, status, and basic metadata, filtered by status or by name/id text search. Call this when you need to discover a tenant ID, audit which organisations exist, or check whether an organisation is already provisioned before creating a new one; prefer this over sorcha_tenant_create when you only need to look up or audit existing tenants rather than create one, and call before sorcha_tenant_update or sorcha_token_revoke so subsequent mutations target the correct tenant ID.")]
     public async Task<TenantListResult> ListTenantsAsync(
         [Description("Filter by status: Active, Suspended, Inactive")] string? status = null,
         [Description("Search text in tenant name or ID")] string? search = null,

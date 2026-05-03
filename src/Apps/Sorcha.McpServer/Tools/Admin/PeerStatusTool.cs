@@ -51,7 +51,7 @@ public sealed class PeerStatusTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Peer network status including connected peers, statistics, and health.</returns>
     [McpServerTool(Name = "sorcha_peer_status")]
-    [Description("Query peer network status. Returns connected peers count, network statistics, connection quality metrics, and overall network health status.")]
+    [Description("Returns the state of the peer-replication network: connected peer count, per-peer connection quality, gossip statistics, and an aggregate network health verdict. Call this when a register is failing to replicate, a participant reports stale data, or after sorcha_health_check has flagged the Peer service as Degraded; prefer this over sorcha_validator_status when the concern is cross-node state propagation rather than consensus or docket sealing, and prefer it over sorcha_register_stats when you need to know whether peers can talk to each other at all rather than how much data each register holds.")]
     public async Task<PeerStatusResult> GetPeerStatusAsync(CancellationToken cancellationToken = default)
     {
         // Authorization check
