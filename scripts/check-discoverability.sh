@@ -51,12 +51,90 @@ check_mcp_manifest_schema() {
 
 check_llms_txt_structure() {
   # Wired by T081.
-  log_skip "llms-txt-structure" "not yet implemented (lands with task T081)"
+  #
+  # Structural rules from llms-txt-template.md / FR-020:
+  #   - file exists at repo root
+  #   - size <= 8192 bytes
+  #   - exactly one H1 line (^# )
+  #   - exactly one blockquote summary line (^> ) immediately under the H1
+  #   - sections present: ## Capabilities, ## Standards, ## Links
+
+  local file="$REPO_ROOT/llms.txt"
+  local check="llms-txt-structure"
+
+  if [ ! -f "$file" ]; then
+    log_fail "$check" "llms.txt not found at repo root"
+    return
+  fi
+
+  local size
+  size=$(wc -c < "$file" | tr -d ' ')
+  if [ "$size" -gt 8192 ]; then
+    log_fail "$check" "llms.txt is $size bytes; max 8192"
+    return
+  fi
+
+  local h1_count
+  h1_count=$(grep -c '^# ' "$file")
+  if [ "$h1_count" != "1" ]; then
+    log_fail "$check" "llms.txt must have exactly one H1 line (found $h1_count)"
+    return
+  fi
+
+  local bq_count
+  bq_count=$(grep -c '^> ' "$file")
+  if [ "$bq_count" != "1" ]; then
+    log_fail "$check" "llms.txt must have exactly one blockquote line (found $bq_count)"
+    return
+  fi
+
+  for section in '## Capabilities' '## Standards' '## Links'; do
+    if ! grep -qF "$section" "$file"; then
+      log_fail "$check" "llms.txt missing required section: $section"
+      return
+    fi
+  done
+
+  log_pass "$check (size=$size bytes)"
 }
 
 check_marketing_adjectives() {
   # Wired by T082.
-  log_skip "marketing-adjectives" "not yet implemented (lands with task T082)"
+  #
+  # FR-045 deny-list scan across every machine-readable artefact. The scan is
+  # case-insensitive and matches whole words only. Targets:
+  #   - llms.txt
+  #   - docs/llms-full.txt
+  #   - STANDARDS.md
+  #
+  # The served /.well-known/openapi.json and /.well-known/mcp.json are scanned
+  # by the dedicated CI step that runs `spectral lint` against the live document
+  # (no-marketing-adjectives rule in .spectral.yaml). They are not re-scanned here
+  # to avoid duplicate flagging.
+
+  local check="marketing-adjectives"
+  local pattern='\b(revolutionary|best-in-class|industry-leading|cutting-edge|world-class|seamless|game-changing|next-generation|state-of-the-art)\b'
+  local errors=0
+
+  for file in llms.txt docs/llms-full.txt STANDARDS.md; do
+    local path="$REPO_ROOT/$file"
+    [ ! -f "$path" ] && continue
+
+    local hits
+    hits=$(grep -niE "$pattern" "$path" || true)
+    if [ -n "$hits" ]; then
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        local linenum=${line%%:*}
+        log_fail "$check" "$file:$linenum contains a deny-listed marketing adjective"
+        errors=$((errors + 1))
+      done <<< "$hits"
+    fi
+  done
+
+  if [ "$errors" = "0" ]; then
+    log_pass "$check"
+  fi
 }
 
 check_standards_md_parse() {
@@ -87,10 +165,8 @@ check_standards_md_parse() {
   local rownum=0
   local errors=0
   while IFS= read -r line; do
-    case "$line" in
-      '|'*'|') ;;
-      *) continue ;;
-    esac
+    # Only process lines that look like Markdown table rows (start with `|`).
+    [[ "$line" =~ ^\| ]] || continue
     rownum=$((rownum + 1))
     # Skip the header itself and the alignment divider row.
     case "$line" in
@@ -141,7 +217,68 @@ check_standards_md_parse() {
 
 check_standards_cross_reference() {
   # Wired by T085.
-  log_skip "standards-cross-reference" "not yet implemented (lands with task T085)"
+  #
+  # FR-025 — every standard named in `llms.txt` ## Standards section and the
+  # docs/llms-full.txt standards lines MUST match a row in STANDARDS.md whose
+  # Status is `full` or `partial`. A `planned` row is not a valid citation
+  # because it does not yet exist in code.
+  #
+  # We cite-match on the standard *name* (the text before the first colon on a
+  # bullet line in llms.txt) against the first column of STANDARDS.md.
+
+  local check="standards-cross-reference"
+  local llms="$REPO_ROOT/llms.txt"
+  local standards="$REPO_ROOT/STANDARDS.md"
+
+  if [ ! -f "$llms" ] || [ ! -f "$standards" ]; then
+    log_skip "$check" "requires both llms.txt and STANDARDS.md to be present"
+    return
+  fi
+
+  # Build the set of acceptable standard names (full or partial only) from STANDARDS.md.
+  # Acceptable rows have status in column 6 == full|partial.
+  local accepted
+  accepted=$(awk -F'|' '
+    /^\| *Standard *\|/ { next }
+    /^\| *---/ { next }
+    /^\|/ {
+      name=$2; gsub(/^[ \t]+|[ \t]+$/, "", name);
+      status=$7; gsub(/[ \t`]/, "", status);
+      if (status == "full" || status == "partial") print name
+    }
+  ' "$standards")
+
+  if [ -z "$accepted" ]; then
+    log_fail "$check" "STANDARDS.md has no full/partial rows to cite"
+    return
+  fi
+
+  # Pull the ## Standards section of llms.txt — bullets between '## Standards' and the next header.
+  local cited
+  cited=$(awk '
+    /^## Standards$/ { in_section=1; next }
+    /^## / { in_section=0 }
+    in_section && /^- / {
+      line=$0; sub(/^- /, "", line);
+      colon=index(line, ":");
+      if (colon > 0) print substr(line, 1, colon-1)
+    }
+  ' "$llms")
+
+  local errors=0
+  while IFS= read -r name; do
+    [ -z "$name" ] && continue
+    if ! echo "$accepted" | grep -Fxq "$name"; then
+      log_fail "$check" "llms.txt cites '$name' which is not a full/partial row in STANDARDS.md"
+      errors=$((errors + 1))
+    fi
+  done <<< "$cited"
+
+  if [ "$errors" = "0" ]; then
+    local count
+    count=$(echo "$cited" | grep -cv '^$' || true)
+    log_pass "$check ($count cited standards verified)"
+  fi
 }
 
 check_published_docs_frontmatter() {
