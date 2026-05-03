@@ -16,6 +16,7 @@ using Sorcha.ServiceClients.Register.Models;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Haip;
 using Sorcha.Blueprint.Engine.Credentials;
+using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Engine.Interfaces;
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Blueprint.Service.Models;
@@ -1706,7 +1707,7 @@ public class ActionExecutionService : IActionExecutionService
                         "({ActualChars} chars); dropping claim and issuing credential without portrait. " +
                         "Warning code: {WarningCode}",
                         mapping.ClaimName, PortraitTokenMaxBase64Chars, portraitBase64.Length,
-                        PortraitOversizeWarningCode);
+                        ValidationWarningCodes.CredentialPortraitOversize);
                     continue;
                 }
 
@@ -1737,14 +1738,6 @@ public class ActionExecutionService : IActionExecutionService
     /// ships in the SD-JWT.
     /// </summary>
     private const int PortraitTokenMaxBase64Chars = 27_000;
-
-    /// <summary>
-    /// Local duplicate of <c>ValidationErrorCodes.CredentialPortraitOversize</c>
-    /// (defined in <c>Sorcha.Validator.Service</c>). Blueprint.Service does not
-    /// reference Validator.Service, so the code is stringified here with this
-    /// explicit comment binding the two — if either side is renamed, fix both.
-    /// </summary>
-    private const string PortraitOversizeWarningCode = "WARN_CRED_PORTRAIT_OVERSIZE_001";
 
     /// <summary>
     /// Treats any claim mapping whose source pointer ends in
