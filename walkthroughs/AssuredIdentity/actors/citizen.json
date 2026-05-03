@@ -18,6 +18,8 @@
     "polling": { "enabled": true, "intervalSeconds": 30 }
   },
   "mode": "rules",
+  // Empty rules array is intentional — citizen is script-driven (see actor.description).
+  // Polling intervalSeconds (30) is moot for the same reason; the citizen is never actually polled.
   "rules": [],
   "logging": {
     "level": "Information",

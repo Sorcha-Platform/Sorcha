@@ -20,6 +20,10 @@
   "mode": "rules",
   "rules": [
     {
+      // The two 'decision' fields below are intentional and map to different layers:
+      //   - rule.decision ('approve')      → agent's verdict on the inbox item
+      //   - rule.payload.decision ('approved') → blueprint action's own field
+      // Do not collapse.
       "actionName": "Verify Assured Identity Application",
       "decision": "approve",
       "payload": {
