@@ -104,9 +104,7 @@ else
         // config, and only on a review page. Any one of these being absent
         // falls back to single-card review.
         var requirementList = ActionCredentialRequirements?.ToList();
-        var hasRequirements = requirementList is { Count: > 0 };
-        var hasIssuance = ActionCredentialIssuanceConfig is not null;
-        _isStackedMode = hasRequirements && hasIssuance;
+        _isStackedMode = ShouldEnableStackedMode(requirementList, ActionCredentialIssuanceConfig);
 
         if (_isStackedMode && FormContext is not null && Page.ReviewExtension is not null)
         {
@@ -120,6 +118,21 @@ else
         }
     }
 
+    /// <summary>
+    /// Stacked-mode toggle predicate, factored out for direct unit testing (#345 item 4).
+    /// Returns true iff the action declares both a non-empty credential requirement set
+    /// (the credential the citizen presented) AND a credential-issuance config (the
+    /// credential the citizen will receive). Either being absent disables stacked mode.
+    /// </summary>
+    internal static bool ShouldEnableStackedMode(
+        IReadOnlyList<CredentialRequirement>? requirements,
+        Sorcha.Blueprint.Models.Credentials.CredentialIssuanceConfig? issuanceConfig)
+    {
+        var hasRequirements = requirements is { Count: > 0 };
+        var hasIssuance = issuanceConfig is not null;
+        return hasRequirements && hasIssuance;
+    }
+
     private IdCardLayoutConfig BuildPresentedCardConfig(IReadOnlyList<CredentialRequirement> requirementList)
     {
         // Top card shows the claims the DLA requested from the citizen's
@@ -128,6 +141,11 @@ else
         // shows claim NAMES with a "Verified" badge so the DLA officer
         // sees that the presentation happened. Withheld-optional claims
         // render as faded "— — —".
+        //
+        // v1 limitation (#345 item 2): only the first credential requirement
+        // is rendered. If multiple requirements become a real authoring
+        // pattern, support a stack of presented cards or a multi-credential
+        // top section. Tracked alongside #345.
         var requirement = requirementList[0];
         var sections = new List<IdCardSection>();
         var fieldValues = new Dictionary<string, object?>(StringComparer.Ordinal);
@@ -149,8 +167,13 @@ else
 
         return new IdCardLayoutConfig
         {
-            IssuerName = requirement.AcceptedIssuers?.FirstOrDefault() ?? "Acme Verification Co.",
-            CredentialName = requirement.Type ?? "Assured Identity",
+            // #345 item 1: avoid coupling the generic renderer to one walkthrough's
+            // issuer name. When AcceptedIssuers is null, fall back to a neutral label
+            // rather than a hardcoded organisation name. CredentialName falls back to
+            // a generic "Credential" rather than a specific credential type, for the
+            // same reason.
+            IssuerName = requirement.AcceptedIssuers?.FirstOrDefault() ?? "Unknown Issuer",
+            CredentialName = requirement.Type ?? "Credential",
             ColourTheme = XReviewColourTheme.IdentityNavy,
             Watermark = IdCardWatermark.Issued,
             FieldValues = fieldValues,
