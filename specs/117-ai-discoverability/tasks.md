@@ -223,7 +223,7 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
 ## Phase 9: Polish & cross-cutting
 
 - [x] T102 Workflow `.github/workflows/ai-discoverability-check.yml` created in Phase 1 (PR #482) with PR-comment-on-failure step. Sub-checks tighten progressively as later phases land — current state: spectral-lint and swagger-validate still SKIP pending T014, every other sub-check active.
-- [ ] T103 Mark `ai-discoverability-check` job as required in the `master` branch protection ruleset (manual GitHub UI step — record in PR description)
+- [x] T103 Marked `ai-discoverability-check` (`Run discoverability checks` job) as required in the `master` branch ruleset on 2026-05-04. Verified: PRs cannot merge until the check passes green.
 - [x] T104 [P] Update `docs/README.md` to list new published documents
 - [x] T105 [P] Update `README.md` root with a new "For AI agents and integrators" section
 - [x] T106 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` with AI Discoverability Surface pointer
