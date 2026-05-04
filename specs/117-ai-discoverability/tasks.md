@@ -209,14 +209,14 @@ description: "Task list for spec 117: AI Discoverability & Machine-Readable Mark
 
 ### Tests for US6
 
-- [ ] T097 [P] [US6] Add structural check to `scripts/check-discoverability.sh`: each of the four documents exists at its required path, each has YAML frontmatter with `title`, `description`, `standards[]`, `last_updated` fields, every `standards[]` entry corresponds to a `STANDARDS.md` row with status `full` or `partial`, `last_updated` is a valid ISO date
+- [x] T097 [P] [US6] Add structural check to `scripts/check-discoverability.sh`: each of the four documents exists at its required path, each has YAML frontmatter with `title`, `description`, `standards[]`, `last_updated` fields, every `standards[]` entry corresponds to a `STANDARDS.md` row with status `full` or `partial`, `last_updated` is a valid ISO date
 
 ### Implementation for US6
 
-- [ ] T098 [US6] Create `docs/architecture.md` with frontmatter (`title: Sorcha Architecture`, `description`, `standards: [BIP32, BIP44, W3C VC Data Model 2.0, HAIP 1.0, OpenID4VCI, OpenID4VP]`, `last_updated`). **Tone authored against `docs/strategic-context.md`** — the "Architecture in One Paragraph" framing leads. Source: planning-folder `sorcha-architecture-narrative.md` (located at T009). Strip internal references; ensure every spec reference points at a public spec URL
-- [ ] T099 [US6] Create `docs/openid4vc-haip-integration.md` with frontmatter (`standards: [OpenID4VCI, OpenID4VP, HAIP 1.0, W3C VC Data Model 2.0, IETF Token Status List 2024 (RFC 9972), ML-DSA (FIPS 204)]`). **Tone authored against `docs/strategic-context.md`** — Sorcha is the workflow layer above GOV.UK Wallet / EUDIW; it does NOT replace those wallets and does NOT control the citizen experience. Source: planning-folder `sorcha-openid4vc-mdl-integration.md`
-- [ ] T100 [US6] Create `docs/applicability.md` with frontmatter (`standards: [W3C VC Data Model 2.0, OpenID4VCI, OpenID4VP, HAIP 1.0]`). **Tone authored against `docs/strategic-context.md` Target Markets section** — lead with regulatory pull (EU ESPR / DPP, HAIP / EUDI / GOV.UK Wallet, EU AI Act, SME trade finance) before the technology. Source: planning-folder `sorcha-applicability.md`. Cover at minimum DPP, trade finance, IPC-1782, municipal governance with one worked example each
-- [ ] T101 [US6] Create `docs/security-model.md` with frontmatter (`standards: [ML-DSA (FIPS 204), HAIP 1.0, W3C VC Data Model 2.0, OAuth 2.0]`). **Tone authored against `docs/strategic-context.md` Cryptographic Posture section**. Sections: Selective disclosure (architectural not policy) · Aggregate inference threat · Post-quantum posture (internal PQC, classical wire boundary at HAIP) · Honest gaps (SLH-DSA not implemented; BBS+ not implemented) · mTLS gap (named explicitly) · Trust anchor model (system register genesis, spec 099). Source: planning-folder `sorcha-architecture-evaluation.md` sections 4 and 7
+- [x] T098 [US6] Create `docs/architecture.md` with frontmatter. Authored against `docs/strategic-context.md` per the T009 fresh-author mitigation (planning-folder narratives absent).
+- [x] T099 [US6] Create `docs/openid4vc-haip-integration.md`. Authored against `docs/strategic-context.md` and specs 094/097/098 per T009 mitigation.
+- [x] T100 [US6] Create `docs/applicability.md`. Authored against `docs/strategic-context.md` Target Markets section + walkthroughs/{TradeFinance,AssuredIdentity,ConstructionPermit}.
+- [x] T101 [US6] Create `docs/security-model.md`. Authored against `docs/strategic-context.md` Cryptographic Posture section + .specify/constitution.md + spec 099.
 
 ---
 
