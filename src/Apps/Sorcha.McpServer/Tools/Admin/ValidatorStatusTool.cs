@@ -52,7 +52,7 @@ public sealed class ValidatorStatusTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Validator status including consensus state, docket processing, and memory pool info.</returns>
     [McpServerTool(Name = "sorcha_validator_status")]
-    [Description("Query validator consensus status. Optionally provide a registerId to get detailed validator status for that register, including consensus state, docket processing metrics, and memory pool information.")]
+    [Description("Returns validator-service consensus status — quorum state, docket processing throughput, and memory-pool depth — either platform-wide or for a single register when registerId is supplied. Call this when transactions are accepted but not sealed into dockets, or after sorcha_health_check flags the Validator service as Degraded; prefer this over sorcha_peer_status when the concern is consensus and docket sealing rather than cross-node state replication, and prefer it over sorcha_register_stats when you need to know whether new transactions are advancing chain height rather than what is already on the ledger.")]
     public async Task<ValidatorStatusResult> GetValidatorStatusAsync(
         [Description("Optional register ID to query specific validator status")] string? registerId = null,
         CancellationToken cancellationToken = default)

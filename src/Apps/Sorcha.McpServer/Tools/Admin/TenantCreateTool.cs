@@ -55,7 +55,7 @@ public sealed class TenantCreateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Creation result with the new tenant ID.</returns>
     [McpServerTool(Name = "sorcha_tenant_create")]
-    [Description("Create a new tenant/organization. Sets up the tenant with an initial admin user. Use this to onboard new organizations.")]
+    [Description("Provisions a new tenant (organisation boundary) and creates an initial admin user identified by the supplied email, returning the new tenant ID and the created admin user record. Call this when onboarding a new organisation that does not yet exist on the platform; prefer this over sorcha_tenant_update when no tenant record exists at all, and call before sorcha_user_manage or sorcha_user_list (those tools require an existing tenant ID), and confirm absence first with sorcha_tenant_list to avoid creating a duplicate organisation.")]
     public async Task<TenantCreateResult> CreateTenantAsync(
         [Description("The tenant/organization name")] string name,
         [Description("Email address for the initial admin user")] string adminEmail,

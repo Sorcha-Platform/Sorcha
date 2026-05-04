@@ -55,7 +55,7 @@ public sealed class BlueprintExportTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The exported blueprint content.</returns>
     [McpServerTool(Name = "sorcha_blueprint_export")]
-    [Description("Export a blueprint to JSON or YAML format. Useful for backup, version control, or sharing blueprints between environments.")]
+    [Description("Exports a blueprint to a serialised JSON or YAML document suitable for committing to version control, backing up, or transferring to another environment. Call this when you need an offline, file-shaped representation of the blueprint; use sorcha_blueprint_get instead when you want the structured response object for programmatic inspection, and prefer this over manual reconstruction when round-tripping a blueprint between tenants or environments.")]
     public async Task<BlueprintExportResult> ExportBlueprintAsync(
         [Description("The ID of the blueprint to export")] string blueprintId,
         [Description("Export format: json or yaml (default: json)")] string format = "json",

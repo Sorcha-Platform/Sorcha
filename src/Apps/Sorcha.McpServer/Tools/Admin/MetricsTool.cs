@@ -53,7 +53,7 @@ public sealed class MetricsTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>System metrics.</returns>
     [McpServerTool(Name = "sorcha_metrics")]
-    [Description("Get system metrics for all services. Monitor performance, throughput, and error rates. Useful for capacity planning and troubleshooting.")]
+    [Description("Returns numeric performance, throughput, and error-rate metrics for one or all services, optionally filtered to a metric category (Performance, Throughput, Errors). Call this when you need quantitative trends to support capacity planning, latency analysis, or anomaly detection; prefer this over sorcha_health_check when you need rate-of-change or volumetric data rather than a binary up/down verdict, and call before sorcha_log_query so the log search can be narrowed by the time window where the metrics deviated.")]
     public async Task<MetricsResult> GetMetricsAsync(
         [Description("Filter by service name (e.g., Blueprint, Register, Wallet)")] string? service = null,
         [Description("Type of metrics: All, Performance, Throughput, Errors (default: All)")] string metricType = "All",

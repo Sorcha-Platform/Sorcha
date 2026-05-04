@@ -132,50 +132,153 @@ generate_jwt_key() {
 # Prerequisite checks
 # -----------------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
+# Prerequisite check helpers (spec 117 FR-032 / FR-033 — T092)
+#
+# Every required check returns 0 on success, non-zero on failure, and emits the
+# spec-mandated single-line error format on failure:
+#   [sorcha-setup] missing prerequisite: <name> (≥ <version>); install via <link>
+# Optional checks emit a [WARN] line and return 0.
+#
+# Exposed for unit testing (tests/scripts/sorcha-setup.bats — T091): when
+# SORCHA_SETUP_LIB_ONLY=1 is set the script exits before main(), leaving the
+# helper functions defined for the bats runner to invoke.
+# -----------------------------------------------------------------------------
+
+emit_missing_prereq() {
+    # Args: <name> <min-version> <install-link>
+    echo "[sorcha-setup] missing prerequisite: $1 (≥ $2); install via $3" >&2
+}
+
+check_docker_installed() {
+    if command -v docker &> /dev/null; then
+        local docker_version
+        docker_version=$(docker --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1)
+        success "Docker ${docker_version:-detected}"
+        return 0
+    fi
+    emit_missing_prereq "docker" "24.0" "https://docs.docker.com/engine/install/"
+    return 1
+}
+
+check_docker_daemon_running() {
+    if docker info &> /dev/null 2>&1; then
+        success "Docker daemon is running"
+        return 0
+    fi
+    emit_missing_prereq "docker-daemon" "running" "start your Docker engine (Docker Desktop on Win/macOS, 'systemctl start docker' on Linux)"
+    return 1
+}
+
+check_docker_compose_v2() {
+    if docker compose version &> /dev/null; then
+        local compose_version
+        compose_version=$(docker compose version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1)
+        # Gate on Compose v2 (v1 standalone is past EOL).
+        if [ -n "$compose_version" ]; then
+            local major
+            major=$(echo "$compose_version" | cut -d. -f1)
+            if [ "${major:-0}" -ge 2 ]; then
+                success "Docker Compose ${compose_version}"
+                return 0
+            fi
+        fi
+    fi
+    emit_missing_prereq "docker-compose-v2" "2.0" "https://docs.docker.com/compose/install/ (the v1 standalone 'docker-compose' is end-of-life — install Compose v2 plugin)"
+    return 1
+}
+
+check_port_available() {
+    # Args: <port>
+    local port="$1"
+    # Try multiple probes — different distros ship different tools.
+    if command -v ss &> /dev/null; then
+        if ss -tlnH 2>/dev/null | grep -qE "[:.]${port}\\s"; then
+            emit_missing_prereq "port-${port}-free" "free" "stop the process bound to port ${port} (try 'ss -tlnp | grep :${port}')"
+            return 1
+        fi
+    elif command -v netstat &> /dev/null; then
+        if netstat -tlnH 2>/dev/null | grep -qE "[:.]${port}\\s"; then
+            emit_missing_prereq "port-${port}-free" "free" "stop the process bound to port ${port}"
+            return 1
+        fi
+    elif command -v lsof &> /dev/null; then
+        if lsof -nP -iTCP:"${port}" -sTCP:LISTEN &> /dev/null; then
+            emit_missing_prereq "port-${port}-free" "free" "stop the process bound to port ${port} (try 'lsof -nP -iTCP:${port}')"
+            return 1
+        fi
+    else
+        # No probe available — soft-pass with a notice rather than failing.
+        warn "no port-probe tool (ss/netstat/lsof) available; cannot verify port ${port} is free"
+        return 0
+    fi
+    success "Port ${port} is available"
+    return 0
+}
+
+check_openssl_or_python() {
+    # JWT signing-key generation (line ~120 in this script) needs one of:
+    # openssl, python3 (with secrets module), or a working /dev/urandom.
+    if command -v openssl &> /dev/null; then
+        success "OpenSSL $(openssl version 2>/dev/null | awk '{print $2}')"
+        return 0
+    fi
+    if command -v python3 &> /dev/null; then
+        success "Python3 $(python3 --version 2>/dev/null | awk '{print $2}')"
+        return 0
+    fi
+    if [ -r /dev/urandom ]; then
+        warn "neither openssl nor python3 found; falling back to /dev/urandom for JWT key generation"
+        return 0
+    fi
+    emit_missing_prereq "openssl-or-python3" "any" "https://www.openssl.org/source/ or https://www.python.org/downloads/ (used to generate the JWT signing key)"
+    return 1
+}
+
+check_git() {
+    # Optional — needed for development, not setup. Emits a [WARN] only.
+    if command -v git &> /dev/null; then
+        success "Git $(git --version | grep -oP '\d+\.\d+\.\d+' | head -1)"
+        return 0
+    fi
+    warn "Git not found — optional for setup; required for clone-and-contribute. Install via https://git-scm.com/downloads"
+    return 0
+}
+
+check_powershell() {
+    # Optional — required for the PowerShell walkthroughs (TradeFinance, AssuredIdentity)
+    # but not for the basic gateway+services boot path. Emits a [WARN] only.
+    if command -v pwsh &> /dev/null; then
+        local pwsh_version
+        pwsh_version=$(pwsh --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1)
+        success "PowerShell ${pwsh_version:-detected}"
+        return 0
+    fi
+    warn "PowerShell 7.5+ not found — optional for setup; required to run walkthroughs/. Install via https://learn.microsoft.com/powershell/scripting/install/installing-powershell"
+    return 0
+}
+
 check_prerequisites() {
     info "Checking prerequisites..."
     local missing=0
 
-    # Docker
-    if command -v docker &> /dev/null; then
-        local docker_version
-        docker_version=$(docker --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1)
-        success "Docker $docker_version"
-    else
-        error "Docker is not installed. Get it at https://docker.com/products/docker-desktop"
-        missing=1
-    fi
+    # Required checks — increment $missing on failure, do not exit early so the
+    # operator sees every gap in one pass.
+    check_docker_installed       || missing=$((missing + 1))
+    check_docker_daemon_running  || missing=$((missing + 1))
+    check_docker_compose_v2      || missing=$((missing + 1))
+    check_port_available 80      || missing=$((missing + 1))
+    check_port_available 443     || missing=$((missing + 1))
+    check_port_available 8080    || missing=$((missing + 1))
+    check_openssl_or_python      || missing=$((missing + 1))
 
-    # Docker Compose
-    if docker compose version &> /dev/null; then
-        local compose_version
-        compose_version=$(docker compose version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1)
-        success "Docker Compose $compose_version"
-    elif command -v docker-compose &> /dev/null; then
-        success "Docker Compose (standalone)"
-    else
-        error "Docker Compose is not available"
-        missing=1
-    fi
-
-    # Docker running
-    if docker info &> /dev/null 2>&1; then
-        success "Docker daemon is running"
-    else
-        error "Docker daemon is not running. Start Docker Desktop first."
-        missing=1
-    fi
-
-    # Git (optional but useful)
-    if command -v git &> /dev/null; then
-        success "Git $(git --version | grep -oP '\d+\.\d+\.\d+' | head -1)"
-    else
-        warn "Git not found (optional, needed for development)"
-    fi
+    # Optional checks — never increment $missing.
+    check_git
+    check_powershell
 
     if [ $missing -ne 0 ]; then
         echo ""
-        error "Missing prerequisites. Install the items above and re-run this script."
+        echo "[sorcha-setup] $missing required prerequisite(s) missing — see lines above" >&2
         exit 1
     fi
 
@@ -416,8 +519,22 @@ main() {
     write_env_file
     pull_images
     start_services
-    wait_for_health
+    if ! wait_for_health; then
+        # Audit T010 finding — main() previously ignored wait_for_health's
+        # return code, so the success summary printed even when /api/health
+        # never came up. Honour the return code and exit non-zero so an
+        # AI-driven setup detects the failure (FR-032).
+        echo ""
+        error "Gateway did not become healthy in the allotted window. Inspect 'docker compose logs -f' for detail."
+        exit 1
+    fi
     print_summary
+    echo ""
+    echo "[sorcha-setup] success — gateway reachable at http://localhost. Verify with: curl -s http://localhost/api/health"
 }
 
-main "$@"
+# T091 — when sourced for unit tests (bats) with SORCHA_SETUP_LIB_ONLY=1,
+# define helpers but skip main() so the test runner can invoke them in isolation.
+if [ "${SORCHA_SETUP_LIB_ONLY:-0}" != "1" ]; then
+    main "$@"
+fi

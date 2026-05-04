@@ -54,7 +54,7 @@ public sealed class ActionValidateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Validation result.</returns>
     [McpServerTool(Name = "sorcha_action_validate")]
-    [Description("Validate action data before submitting. Checks the data against the action's input schema without actually submitting it.")]
+    [Description("Validate a candidate JSON payload against the input schema of a specific action without committing anything to the register. Returns a list of schema violations or a clean pass, leaving the action in its current pending state. Call this when an agent has drafted submission data and wants to confirm it will pass server-side schema validation; use this rather than sorcha_action_submit when you do not yet intend to advance the workflow, and call sorcha_action_details first when you need to see the schema itself before drafting input.")]
     public async Task<ActionValidateResult> ValidateActionDataAsync(
         [Description("The action instance ID")] string actionInstanceId,
         [Description("The action data in JSON format")] string dataJson,
