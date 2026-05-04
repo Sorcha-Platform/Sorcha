@@ -320,7 +320,123 @@ check_standards_cross_reference() {
 
 check_published_docs_frontmatter() {
   # Wired by T097.
-  log_skip "docs-frontmatter" "not yet implemented (lands with task T097)"
+  #
+  # T097 — each of the four published documents must:
+  #   - exist at its required path under docs/
+  #   - carry YAML frontmatter delimited by leading and trailing '---' lines
+  #   - declare title, description, standards (a list), and last_updated fields
+  #   - reference only standards whose STANDARDS.md row has status full|partial
+  #   - carry a last_updated value matching ISO date YYYY-MM-DD
+  #
+  # The four documents are fixed by spec 117 Phase 8 (T098-T101).
+
+  local check="docs-frontmatter"
+  local standards="$REPO_ROOT/STANDARDS.md"
+  local docs=(
+    "docs/architecture.md"
+    "docs/openid4vc-haip-integration.md"
+    "docs/applicability.md"
+    "docs/security-model.md"
+  )
+
+  if [ ! -f "$standards" ]; then
+    log_skip "$check" "STANDARDS.md not present; cannot validate frontmatter standards[]"
+    return
+  fi
+
+  # Acceptable standards row names — exact-match list of full|partial rows.
+  local accepted
+  accepted=$(awk -F'|' '
+    /^\| *Standard *\|/ { next }
+    /^\| *---/ { next }
+    /^\|/ {
+      name=$2; gsub(/^[ \t]+|[ \t]+$/, "", name);
+      status=$7; gsub(/[ \t`]/, "", status);
+      if (status == "full" || status == "partial") print name
+    }
+  ' "$standards")
+
+  local errors=0
+  for doc in "${docs[@]}"; do
+    local path="$REPO_ROOT/$doc"
+    if [ ! -f "$path" ]; then
+      log_fail "$check" "$doc missing"
+      errors=$((errors + 1))
+      continue
+    fi
+
+    # Extract frontmatter — lines between the first '---' (line 1) and the second '---'.
+    local first_line
+    first_line=$(head -n1 "$path")
+    if [ "$first_line" != "---" ]; then
+      log_fail "$check" "$doc must open with '---' frontmatter delimiter"
+      errors=$((errors + 1))
+      continue
+    fi
+
+    local fm
+    fm=$(awk 'NR==1 && /^---$/ { in_fm=1; next } in_fm && /^---$/ { exit } in_fm { print }' "$path")
+    if [ -z "$fm" ]; then
+      log_fail "$check" "$doc has no frontmatter body between '---' delimiters"
+      errors=$((errors + 1))
+      continue
+    fi
+
+    # Required scalar fields.
+    for field in title description last_updated; do
+      if ! echo "$fm" | grep -qE "^${field}:[[:space:]]+[^[:space:]]"; then
+        log_fail "$check" "$doc frontmatter missing required field: $field"
+        errors=$((errors + 1))
+      fi
+    done
+
+    # last_updated must be ISO date YYYY-MM-DD.
+    local last_updated
+    last_updated=$(echo "$fm" | awk -F': *' '/^last_updated:/ { print $2; exit }')
+    if [ -n "$last_updated" ] && ! echo "$last_updated" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+      log_fail "$check" "$doc last_updated '$last_updated' is not ISO YYYY-MM-DD"
+      errors=$((errors + 1))
+    fi
+
+    # standards: must be a YAML list — each item on its own line beginning with '  - '.
+    if ! echo "$fm" | grep -qE '^standards:[[:space:]]*$'; then
+      log_fail "$check" "$doc frontmatter must declare 'standards:' as a list (key on its own line)"
+      errors=$((errors + 1))
+      continue
+    fi
+
+    # Pull standards items: lines after 'standards:' that begin '  - ' (two-space indent + dash + space),
+    # stopping at the next top-level key.
+    local cited
+    cited=$(echo "$fm" | awk '
+      /^standards:[[:space:]]*$/ { in_list=1; next }
+      in_list && /^[A-Za-z]/ { in_list=0 }
+      in_list && /^[[:space:]]+-[[:space:]]+/ {
+        line=$0
+        sub(/^[[:space:]]+-[[:space:]]+/, "", line)
+        sub(/[[:space:]]+$/, "", line)
+        print line
+      }
+    ')
+
+    if [ -z "$cited" ]; then
+      log_fail "$check" "$doc standards[] is empty"
+      errors=$((errors + 1))
+      continue
+    fi
+
+    while IFS= read -r name; do
+      [ -z "$name" ] && continue
+      if ! echo "$accepted" | grep -Fxq "$name"; then
+        log_fail "$check" "$doc cites '$name' which is not a full/partial row in STANDARDS.md"
+        errors=$((errors + 1))
+      fi
+    done <<< "$cited"
+  done
+
+  if [ "$errors" = "0" ]; then
+    log_pass "$check (4 documents verified)"
+  fi
 }
 
 main() {
