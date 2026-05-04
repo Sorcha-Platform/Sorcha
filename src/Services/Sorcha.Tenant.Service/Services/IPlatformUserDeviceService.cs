@@ -60,4 +60,38 @@ public interface IPlatformUserDeviceService
         Guid deviceId,
         Guid platformUserId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// List every device enrolled by the supplied platform user, ordered by
+    /// <see cref="PlatformUserDevice.EnrolledAt"/> descending. Includes both
+    /// active and revoked devices — the citizen needs to see revoked devices
+    /// in their device list to confirm a revocation took effect.
+    /// </summary>
+    Task<IReadOnlyList<PlatformUserDevice>> ListAsync(
+        Guid platformUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes the device by setting <see cref="PlatformUserDevice.Status"/> to
+    /// <see cref="PlatformUserDeviceStatus.Revoked"/>, recording the revocation
+    /// timestamp and the platform user who triggered it. Idempotent: a
+    /// re-revocation against an already-revoked device is a successful no-op
+    /// (the original <c>RevokedAt</c> / <c>RevokedByPlatformUserId</c> are
+    /// preserved).
+    /// </summary>
+    /// <returns>
+    /// The device after the revocation, or <c>null</c> if the device does not
+    /// exist OR is not owned by <paramref name="platformUserId"/> (intentionally
+    /// indistinguishable — see <see cref="GetByIdAsync"/>).
+    /// </returns>
+    /// <remarks>
+    /// This implementation only flips the Tenant-side status. Propagation to the
+    /// Wallet Service status-list bit is performed by callers (the endpoint
+    /// layer) in PR2; keeping the service local-only here avoids tangling the
+    /// service-to-service call into the unit-of-work boundary.
+    /// </remarks>
+    Task<PlatformUserDevice?> RevokeAsync(
+        Guid deviceId,
+        Guid platformUserId,
+        CancellationToken ct = default);
 }
