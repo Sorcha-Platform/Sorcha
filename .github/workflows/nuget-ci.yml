@@ -64,7 +64,6 @@ jobs:
           # the underlying issues are resolved. Remove from this list as each
           # project is cleaned up so regressions are caught from then on.
           KNOWN_BROKEN=(
-            "Sorcha.Validator.Service.Tests"      # 30 fail — issue #446 (PR open)
             "Sorcha.TransactionHandler.Tests"     # 1 Linux-only flake — issue #453
           )
 
