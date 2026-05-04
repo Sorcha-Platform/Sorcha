@@ -31,7 +31,8 @@ public interface IPlatformUserDeviceService
     /// <param name="userAgent">Raw User-Agent header at enrolment.</param>
     /// <param name="delegationExpiresAt">Expiry of the device delegation credential.</param>
     /// <param name="delegationCredentialJti">JTI of the current delegation credential.</param>
-    /// <param name="statusListIndex">Bit position allocated in the org's citizen-devices status list.</param>
+    /// <param name="statusListId">Identifier of the status list (per-org; rolls over at capacity).</param>
+    /// <param name="statusListIndex">Bit position allocated within the status list.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>
     /// The persisted device record. On a duplicate <c>(PlatformUserId, Thumbprint)</c>
@@ -47,6 +48,7 @@ public interface IPlatformUserDeviceService
         string userAgent,
         DateTimeOffset delegationExpiresAt,
         string delegationCredentialJti,
+        int statusListId,
         int statusListIndex,
         CancellationToken ct = default);
 

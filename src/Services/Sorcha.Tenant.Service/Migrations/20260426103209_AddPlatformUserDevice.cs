@@ -30,6 +30,7 @@ namespace Sorcha.Tenant.Service.Migrations
                     LastSeenAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     DelegationExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     DelegationCredentialJti = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    StatusListId = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
                     StatusListIndex = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
