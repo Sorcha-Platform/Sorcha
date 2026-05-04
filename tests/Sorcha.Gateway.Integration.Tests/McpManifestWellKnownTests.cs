@@ -29,6 +29,20 @@ public class McpManifestWellKnownTests : GatewayIntegrationTestBase
     }
 
     [Fact]
+    public async Task HEAD_WellKnownMcpJson_Returns200_NoBody()
+    {
+        SkipIfInfrastructureUnavailable();
+
+        var response = await GatewayClient!.SendAsync(new HttpRequestMessage(HttpMethod.Head, ManifestPath));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/json");
+        response.Headers.CacheControl?.ToString().Should().Contain("max-age=300");
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().BeEmpty("HEAD must return no body");
+    }
+
+    [Fact]
     public async Task Manifest_ContainsRequiredFields()
     {
         SkipIfInfrastructureUnavailable();
