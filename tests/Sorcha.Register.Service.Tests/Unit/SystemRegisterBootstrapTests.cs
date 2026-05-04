@@ -167,7 +167,12 @@ public class SystemRegisterBootstrapTests
         await act.Should().NotThrowAsync();
     }
 
-    [Fact]
+    [Fact(Skip = "Obsolete: BootstrapMode.Auto no longer drives IRegisterCreationOrchestrator. " +
+        "SystemRegisterBootstrapper.BootstrapAutoAsync (Services/SystemRegisterBootstrapper.cs:266) " +
+        "now ingests a pre-signed genesis file via GenesisIngestionService instead of going through " +
+        "the orchestrator initiate→sign→finalize handshake. The orchestrator path still runs for the " +
+        "interactive Create-Register API and is covered by RegisterCreationApiTests + " +
+        "RegisterCreationOrchestratorTests.")]
     public async Task ExecuteAsync_WhenRegisterMissing_InitiatesAndFinalizes()
     {
         // Arrange — register does not exist
