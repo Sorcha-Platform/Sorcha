@@ -57,7 +57,7 @@ public sealed class UserListTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of users.</returns>
     [McpServerTool(Name = "sorcha_user_list")]
-    [Description("List users across the system or within a specific tenant. Filter by role, status, or search by name/email. Useful for user management and auditing.")]
+    [Description("Returns a paged list of users with id, email, display name, status, and roles, scoped to a specific tenant or platform-wide, with optional filters on role, status, and free-text name/email search. Call this when you need to discover a user ID, audit role assignments, or confirm a user exists before mutating them; prefer this over sorcha_user_manage when the goal is read-only enquiry rather than mutation, and call before sorcha_user_manage or sorcha_token_revoke so the subsequent mutation targets the correct user ID.")]
     public async Task<UserListResult> ListUsersAsync(
         [Description("Filter by tenant/organization ID")] string? tenantId = null,
         [Description("Filter by role: Admin, Designer, Participant")] string? role = null,

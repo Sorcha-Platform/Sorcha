@@ -44,6 +44,9 @@ public class OpenApiWellKnownTests : GatewayIntegrationTestBase
         var body = await response.Content.ReadAsStringAsync();
         body.Should().NotBeNullOrWhiteSpace();
         body.Should().Contain("openapi:", "YAML body should serialise the OpenAPI document");
+        body.Should().Contain("x-standards:",
+            "regression: ConvertJsonValue must handle CLR-string-backed JsonValues produced by " +
+            "OpenApiInfoTransformer when info.x-standards is configured non-empty");
     }
 
     [Fact]

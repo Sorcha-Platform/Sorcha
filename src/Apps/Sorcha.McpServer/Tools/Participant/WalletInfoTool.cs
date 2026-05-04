@@ -51,7 +51,7 @@ public sealed class WalletInfoTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Wallet information.</returns>
     [McpServerTool(Name = "sorcha_wallet_info")]
-    [Description("Get information about your wallet including addresses and key types. Useful for verifying your signing identity.")]
+    [Description("Return the metadata for the participant's BIP32/39/44 hierarchical deterministic wallet, including derived public addresses, key types (ED25519, P-256, ML-DSA), and address indices. No private key material or mnemonic is exposed — only the public surface needed to identify the signing wallet. Call this when an agent needs to confirm which signing identity a participant is operating under or pick an address index before invoking sorcha_wallet_sign; use sorcha_wallet_sign rather than this tool when you actually need to produce a signature, not just inspect the wallet.")]
     public async Task<WalletInfoResult> GetWalletInfoAsync(
         CancellationToken cancellationToken = default)
     {

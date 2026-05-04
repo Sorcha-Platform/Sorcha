@@ -56,7 +56,7 @@ public sealed class RegisterQueryTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Query results.</returns>
     [McpServerTool(Name = "sorcha_register_query")]
-    [Description("Query data from a register. Search and filter records stored on the distributed ledger. Supports OData-style filtering.")]
+    [Description("Query records from a specific register on the Sorcha distributed ledger using OData-style filter, docket, and pagination parameters. Returns the materialised record rows the participant is permitted to see, each anchored to a Merkle-chained docket entry. Call this when an agent needs to look up business data committed to a register (for example reading credentials, invoices, or product passport entries) rather than workflow state; prefer sorcha_workflow_status when you want in-flight workflow progress, and use sorcha_transaction_history instead when you want the audit trail of submissions rather than the current record set.")]
     public async Task<RegisterQueryResult> QueryRegisterAsync(
         [Description("The register ID to query")] string registerId,
         [Description("Filter by docket ID (optional)")] string? docketId = null,

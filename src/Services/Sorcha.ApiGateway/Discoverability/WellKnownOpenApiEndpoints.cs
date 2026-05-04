@@ -114,7 +114,7 @@ internal static class WellKnownOpenApiEndpoints
         }
     }
 
-    private static object? ConvertJsonNode(JsonNode? node) => node switch
+    internal static object? ConvertJsonNode(JsonNode? node) => node switch
     {
         JsonObject obj => obj.ToDictionary(p => p.Key, p => ConvertJsonNode(p.Value)),
         JsonArray arr => arr.Select(ConvertJsonNode).ToList(),
@@ -122,17 +122,30 @@ internal static class WellKnownOpenApiEndpoints
         _ => null
     };
 
-    private static object? ConvertJsonValue(JsonValue value)
+    internal static object? ConvertJsonValue(JsonValue value)
     {
-        var element = value.GetValue<JsonElement>();
-        return element.ValueKind switch
+        // JsonValue may be backed either by a JsonElement (when deserialised from JSON text)
+        // or by a CLR primitive (when built in code via JsonArray.Add(string) or similar).
+        // The OpenApiInfoTransformer populates info.x-standards with `arr.Add(string)`, so
+        // the resulting JsonValue is string-backed, not JsonElement-backed. Try CLR types
+        // first, fall back to JsonElement, then to raw JSON text.
+        if (value.TryGetValue<string>(out var s)) return s;
+        if (value.TryGetValue<bool>(out var b)) return b;
+        if (value.TryGetValue<long>(out var l)) return l;
+        if (value.TryGetValue<int>(out var i)) return (long)i;
+        if (value.TryGetValue<double>(out var d)) return d;
+        if (value.TryGetValue<JsonElement>(out var element))
         {
-            JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number => element.TryGetInt64(out var i) ? i : (object)element.GetDouble(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null => null,
-            _ => element.GetRawText()
-        };
+            return element.ValueKind switch
+            {
+                JsonValueKind.String => element.GetString(),
+                JsonValueKind.Number => element.TryGetInt64(out var ji) ? ji : (object)element.GetDouble(),
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => null,
+                _ => element.GetRawText()
+            };
+        }
+        return value.ToJsonString();
     }
 }

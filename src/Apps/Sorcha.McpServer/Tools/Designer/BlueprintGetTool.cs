@@ -53,7 +53,7 @@ public sealed class BlueprintGetTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The full blueprint details including participants, actions, and metadata.</returns>
     [McpServerTool(Name = "sorcha_blueprint_get")]
-    [Description("Get a blueprint by ID. Returns the full blueprint including title, description, participants, actions, data schemas, and metadata.")]
+    [Description("Retrieves a single blueprint by its ID and returns the full definition including title, description, participants, actions, action schemas, routing rules, and metadata. Call this when you have an exact blueprint ID and need the complete definition for inspection, simulation, or as input to a subsequent update; use sorcha_blueprint_list instead when you do not yet know the ID and need to search by title or status, and prefer sorcha_blueprint_diff over repeated gets when comparing two versions.")]
     public async Task<BlueprintGetResult> GetBlueprintAsync(
         [Description("The unique identifier of the blueprint to retrieve")] string blueprintId,
         CancellationToken cancellationToken = default)

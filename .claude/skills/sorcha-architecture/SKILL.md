@@ -800,3 +800,52 @@ The `Sorcha.Validator.Mempool` meter exposes `sorcha_validator_mempool_lease_exp
 ### Runtime source
 
 `src/Services/Sorcha.Validator.Service/Services/{In,}VerifiedTransactionQueue.cs` (in-memory + Redis impls embed Lua scripts as constants), `src/Services/Sorcha.Validator.Service/Services/ValidatorMempoolMetrics.cs`, `src/Services/Sorcha.Validator.Service/Extensions/VerifiedQueueExtensions.cs`. Single caller: `src/Services/Sorcha.Validator.Service/Services/DocketBuilder.cs` (claim → build → confirm; release on failure; **genesis path also confirms** — caught by claude-review on PR #416 as a real lease-leak bug).
+
+---
+
+## AI Discoverability Surface (Feature 117)
+
+The AI-agent-facing surface every external consumer reads. Every artefact below is gated by the `ai-discoverability-check` workflow on every PR to `master`. Touch any of these and the workflow re-runs the structural checks in `scripts/check-discoverability.sh`.
+
+### Well-known endpoints (served by the gateway)
+
+| Endpoint | Purpose | Source |
+|---|---|---|
+| `GET /.well-known/openapi.json` | Aggregated OpenAPI 3.1 with `info.x-mcp-server`, `info.x-standards`, version from assembly | `src/Services/Sorcha.ApiGateway/Discoverability/WellKnownOpenApiEndpoints.cs` |
+| `GET /.well-known/openapi.yaml` | YAML form of the same document | (same handler) |
+| `GET /.well-known/mcp.json` | MCP server manifest — transports, authentication, tool catalogue | `src/Services/Sorcha.ApiGateway/Discoverability/McpManifestEndpoint.cs` |
+| `GET /api/mcp/tools` | Full MCP tool catalogue (36 tools across admin/designer/participant slices) | `src/Services/Sorcha.ApiGateway/Discoverability/McpToolCatalogueEndpoint.cs` |
+
+### Repo-root files
+
+| File | Purpose | Notes |
+|---|---|---|
+| `llms.txt` | One-screen factual summary, llmstxt.org-conforming, ≤ 8192 bytes | Structural check enforces single H1 / single blockquote / `## Capabilities` / `## Standards` / `## Links` |
+| `STANDARDS.md` | Single source of truth for every implemented standard | Cross-referenced by `llms.txt`, `docs/llms-full.txt`, and every published doc's `standards[]` frontmatter |
+
+### Published documents under `docs/`
+
+| File | Purpose |
+|---|---|
+| `docs/architecture.md` | Architectural overview — services, evidence flow, discovery surface |
+| `docs/openid4vc-haip-integration.md` | Wallet ecosystem boundary (OpenID4VCI / OpenID4VP / HAIP 1.0) |
+| `docs/applicability.md` | Regulatory-pull domains (DPP, trade finance, IPC-1782, municipal) |
+| `docs/security-model.md` | Selective disclosure, post-quantum posture, honest gaps |
+| `docs/quickstart.md` | Agent-runnable setup against a clean Docker host |
+| `docs/mcp-server.md` | Connecting an AI agent via MCP (transports, auth, role slices, worked example) |
+| `docs/llms-full.txt` | Long-form machine-readable narrative, ≤ 32 KB |
+
+Each published doc carries YAML frontmatter (`title`, `description`, `standards[]`, `last_updated` ISO date). The `standards[]` entries must match a `full|partial` row in `STANDARDS.md` verbatim — abbreviations like "W3C VC Data Model 2.0" will fail the check; use the full row name "W3C Verifiable Credentials Data Model 2.0".
+
+### Tooling
+
+| Path | Purpose |
+|---|---|
+| `scripts/check-discoverability.sh` | Local + CI orchestrator, runs every structural sub-check |
+| `.spectral.yaml` | OpenAPI lint rules including the marketing-adjective deny-list |
+| `.github/workflows/ai-discoverability-check.yml` | CI workflow — runs the orchestrator on every PR |
+| `.github/pull_request_template.md` § *Standards & discoverability* | Author-facing reminder to update `STANDARDS.md` / bump `last_updated` / review `llms.txt` when standards change |
+
+### Tone source for any new content
+
+`docs/strategic-context.md` — canonical voice and framing for every machine-readable artefact. Read before writing or revising `info.description`, `llms.txt`, MCP tool descriptions, or any of the published docs. Marketing adjectives (revolutionary, best-in-class, industry-leading, cutting-edge, world-class, seamless, game-changing, next-generation, state-of-the-art) are deny-listed and CI-enforced.

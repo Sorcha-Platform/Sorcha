@@ -54,7 +54,7 @@ public sealed class WalletSignTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The signature.</returns>
     [McpServerTool(Name = "sorcha_wallet_sign")]
-    [Description("Sign data with your wallet. Creates a cryptographic signature that proves you authorized the data. Used for action submissions and identity verification.")]
+    [Description("Produce a cryptographic signature over the supplied bytes or JSON using the participant's wallet key at the chosen address index, returning the signature plus the public key needed to verify it. The signature is what makes a participant's act non-repudiable on the Sorcha register. Call this when an agent needs a detached signature for an out-of-band proof, identity challenge, or pre-built submission envelope; prefer sorcha_action_submit rather than this tool when the goal is to complete a normal action — submit signs implicitly as part of the workflow and avoids manual signature handling.")]
     public async Task<WalletSignResult> SignDataAsync(
         [Description("The data to sign (message or JSON)")] string dataToSign,
         [Description("Address index to use for signing (default: 0 for primary)")] int addressIndex = 0,

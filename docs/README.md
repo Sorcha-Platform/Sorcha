@@ -27,6 +27,20 @@ Build on the Sorcha platform.
 - **[Guides](#guides)** — Feature-specific integration guides
 - **[Reference](#reference)** — Architecture, status, and specifications
 
+### AI Agents and Integrators
+Machine-readable surfaces for AI agents, AI coding assistants, and integrators picking up the platform without prior context.
+- **[Architecture](architecture.md)** — Entry-point overview: services, data flows, the discovery surface
+- **[OpenID4VC / HAIP Integration](openid4vc-haip-integration.md)** — How Sorcha issues to and verifies from HAIP-conformant holder wallets
+- **[Applicability](applicability.md)** — The four near-term regulatory-pull domains, each with a worked example
+- **[Security Model](security-model.md)** — Selective disclosure, post-quantum posture, and honest gaps
+- **[Quickstart](quickstart.md)** — Agent-runnable setup against a clean Docker host
+- **[MCP Server](mcp-server.md)** — Connecting an AI agent via the Model Context Protocol
+- **[`llms-full.txt`](llms-full.txt)** — Long-form machine-readable summary
+- **[`STANDARDS.md`](../STANDARDS.md)** *(repo root)* — Single source of truth for every standard the platform implements
+- **[`llms.txt`](../llms.txt)** *(repo root)* — One-screen factual summary, llmstxt.org-conforming
+- **`GET /.well-known/openapi.json`** + **`GET /.well-known/openapi.yaml`** — Aggregated OpenAPI 3.1 surface
+- **`GET /.well-known/mcp.json`** — MCP server manifest
+
 ---
 
 ## Getting Started

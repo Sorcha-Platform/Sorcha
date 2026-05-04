@@ -54,7 +54,7 @@ public sealed class BlueprintCreateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created blueprint details including the assigned ID.</returns>
     [McpServerTool(Name = "sorcha_blueprint_create")]
-    [Description("Create a new blueprint from JSON. The blueprint must include: title (3-200 chars), description (5-2000 chars), participants array (min 2), and actions array (min 1). Each participant needs: id, name, walletAddress. Each action needs: id (sequence number), title, sender.")]
+    [Description("Creates a new blueprint from a complete JSON definition and returns the assigned blueprint ID, version (starts at 1), and counts of participants and actions. Call this when you need to register a brand-new multi-party workflow definition; use sorcha_blueprint_update instead when revising an existing blueprint by ID, and prefer sorcha_schema_validate or sorcha_jsonlogic_test for checking individual action schemas or routing rules before assembling the full blueprint. Required fields: title (3-200 chars), description (5-2000 chars), participants (min 2 with id and name each), and actions (min 1 with title each).")]
     public async Task<BlueprintCreateResult> CreateBlueprintAsync(
         [Description("Blueprint definition in JSON format")] string blueprintJson,
         CancellationToken cancellationToken = default)

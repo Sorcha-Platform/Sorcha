@@ -55,7 +55,7 @@ public sealed class BlueprintSimulateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Simulation result including next actions, calculations, and any validation errors.</returns>
     [McpServerTool(Name = "sorcha_blueprint_simulate")]
-    [Description("Simulate blueprint action execution (dry-run). Validates data, applies calculations, and determines routing to next action(s) without actually executing the workflow. Useful for testing blueprint logic and previewing workflow paths.")]
+    [Description("Performs a dry-run of a single blueprint action against supplied JSON data and returns the resolved next-action routing, computed calculation values, and any validation errors, without committing anything to the register or signing a transaction. Call this when you need to preview which downstream actions a payload would trigger or to debug routing JsonLogic in context of a real action; use sorcha_blueprint_validate instead when you only need schema conformance without routing evaluation, and prefer sorcha_jsonlogic_test rather than this when testing a standalone rule outside any blueprint.")]
     public async Task<BlueprintSimulateResult> SimulateActionAsync(
         [Description("Blueprint ID containing the action")] string blueprintId,
         [Description("Action ID (sequence number) to simulate")] string actionId,

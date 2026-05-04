@@ -53,7 +53,7 @@ public sealed class DisclosedDataTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Data disclosed to the user.</returns>
     [McpServerTool(Name = "sorcha_disclosed_data")]
-    [Description("View data that has been disclosed to you in a workflow. Shows data from previous actions that you are permitted to see based on disclosure rules.")]
+    [Description("Return the upstream payload fields a participant has been granted access to within a workflow instance, decrypted under that participant's per-recipient symmetric key wrap. Disclosure is cryptographically bounded by the blueprint's selective-disclosure rules — fields not intended for this participant are not retrievable, by construction. Call this when an agent needs the contextual data carried forward from earlier steps (for example, to reason about an invoice or attestation before responding); prefer sorcha_action_details when you only need disclosures attached to one specific action, and use sorcha_register_query rather than this tool when the data lives in a register rather than as inline workflow state.")]
     public async Task<DisclosedDataResult> GetDisclosedDataAsync(
         [Description("The workflow instance ID")] string workflowInstanceId,
         [Description("The action instance ID (optional - returns all workflow disclosures if not specified)")] string? actionInstanceId = null,

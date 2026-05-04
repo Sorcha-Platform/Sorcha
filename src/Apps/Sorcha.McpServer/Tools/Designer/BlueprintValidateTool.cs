@@ -55,7 +55,7 @@ public sealed class BlueprintValidateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Validation result including any schema errors.</returns>
     [McpServerTool(Name = "sorcha_blueprint_validate")]
-    [Description("Validate action data against a blueprint action's JSON Schema. Use this to check if data conforms to the required schema before submitting to a workflow. Returns validation errors with paths to invalid fields.")]
+    [Description("Validates a JSON payload against a specific blueprint action's declared JSON Schema and returns a list of conformance errors with JSON Pointer paths to each invalid field. Call this before submitting data into a live workflow to catch schema violations early; use sorcha_blueprint_simulate instead when you also need routing and calculation results in addition to schema validation, and prefer sorcha_schema_validate rather than this when you want to validate the schema document itself rather than data against it.")]
     public async Task<BlueprintValidateResult> ValidateActionDataAsync(
         [Description("Blueprint ID containing the action")] string blueprintId,
         [Description("Action ID (sequence number) to validate against")] string actionId,

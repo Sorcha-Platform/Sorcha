@@ -1,0 +1,216 @@
+# Sorcha — long-form context for AI agents
+
+> Cryptographic proof infrastructure for multi-party workflows. Every action is wallet-signed, every record is Merkle-chained, every disclosure is cryptographically bounded. Built for AI systems that need verified data inputs to make automated decisions.
+
+This document is the longer companion to `llms.txt`. It exists for agents that have already
+decided Sorcha is in scope and want enough detail to plan an integration. The shorter
+`llms.txt` at the repo root is the entry point.
+
+---
+
+## Why this matters
+
+Digital systems were built on assertion, not proof. A document says it is real; a face
+matches a photo; a platform claims data came from a trusted source. None of that is
+cryptographically anchored — and when AI makes forgery cheap and fast, the entire
+edifice becomes unreliable.
+
+Two converging forces make Sorcha's timing significant:
+
+1. **AI-generated fraud is scaling.** Identity fraud losses exceeded $50bn globally in
+   2025; deepfake fraud attempts are up 58% year on year. Assertion-based identity and
+   document systems have no defence against high-quality forgery. Cryptographic proof does.
+2. **AI systems are becoming decision-makers.** Gartner projects 80% of governments will
+   deploy AI agents to automate routine decisions by 2028. The EU AI Act requires
+   documented provenance for data used in high-risk automated decisions. Sorcha is the
+   verified-data layer those systems can consume with confidence.
+
+---
+
+## Architecture summary
+
+Seven services, each with a single responsibility:
+
+- **Blueprint** — defines multi-step workflows with JSON-Schema validation and conditional
+  routing. The process logic. Workflows are JSON or YAML files; a fluent .NET API exists
+  for programmatic generation.
+- **Wallet** — holds cryptographic keys and signs every action. The identity and
+  accountability layer. HD wallets per BIP32/39/44 with Sorcha-specific derivation slots.
+  Multi-algorithm: ED25519, NIST P-256, RSA-4096, ML-DSA (FIPS 204).
+- **Register** — append-only ledger with Merkle-chained dockets. The tamper-evident
+  record. OData v4 query surface for compliance reporting; SignalR notifications for
+  real-time consumers.
+- **Validator** — runs quorum consensus to seal transactions into dockets. Threshold
+  signatures across the validator roster.
+- **Peer** — replicates state across participants over P2P gRPC. No central authority;
+  every participant runs the same software.
+- **Tenant** — multi-tenant authentication, JWT issuance, OAuth 2.0, role-based access
+  control, platform-org topology, Participant Identity, register invitations.
+- **HAIP Service** — the wire boundary to the OpenID4VC wallet ecosystem (EUDIW,
+  GOV.UK Wallet). OpenID4VCI issuer, OpenID4VP verifier, IETF Token Status List 2024
+  publishing.
+
+The **API Gateway** (YARP-based) is the single external surface. It aggregates the
+per-service OpenAPI documents into one well-known surface and proxies authenticated
+calls to the services behind it.
+
+The **MCP Server** exposes 36 tools across three role slices (admin, designer,
+participant) so AI agents can drive the platform end-to-end.
+
+Full architecture diagrams: `docs/architecture.md` (when published — Phase 8).
+Service-to-service reference: `docs/reference/architecture.md`. Port assignments:
+`docs/getting-started/PORT-CONFIGURATION.md`.
+
+---
+
+## Quickstart pointer
+
+Setup is documented in `docs/quickstart.md` (lands with Phase 7 of spec 117). For now:
+
+```
+docker-compose up -d
+curl -s http://localhost/api/health
+```
+
+The gateway is on port 80; the Aspire dashboard on 18888; per-service ports listed in
+`docs/getting-started/PORT-CONFIGURATION.md`. PowerShell 7.5+ is required for the
+walkthrough scripts (`walkthroughs/TradeFinance/`, `walkthroughs/AssuredIdentity/`).
+
+A walkthrough demonstrates the full flow: trade-finance invoice issuance → buyer
+wallet acceptance → digital-product-passport credential stack → R2 evaluation
+sustainability uplift → cryptographic-proof-of-acceptance to the lender. Run with
+`walkthroughs/TradeFinance/run.ps1`.
+
+---
+
+## MCP integration pointer
+
+The MCP server speaks the Model Context Protocol over both stdio (for local agent
+hosts) and http+sse (for hosted agents). Authentication is JWT Bearer; obtain a token
+from the Tenant Service via `POST /api/tenant/api/service-auth/token`.
+
+Tool catalogue (36 tools across three role slices):
+
+- **Admin slice (13 tools).** Audit query, health check, log query, metrics, peer
+  status, register stats, tenant list/create/update, user list/manage, validator
+  status, token revoke. Use these to inspect or operate a running instance.
+- **Designer slice (13 tools).** Blueprint create/update/get/list/diff/export/validate,
+  schema generate/validate, blueprint simulate, JsonLogic test, disclosure analysis,
+  workflow instances. Use these to author and refine blueprints before deployment.
+- **Participant slice (10 tools).** Action validate/submit, action details, inbox
+  list, transaction history, register query, wallet info/sign, disclosed data,
+  workflow status. Use these to drive a running workflow on behalf of a participant.
+
+The manifest at `/.well-known/mcp.json` (lands with Phase 4 of spec 117) names every
+transport, the JWT acquisition flow, and the per-slice tool count.
+
+A worked example session driving the TradeFinance walkthrough end-to-end via MCP
+will land in `docs/mcp-server.md` (Phase 4).
+
+---
+
+## Security model summary
+
+Sorcha is built on cryptographic proof, not platform assertion. Every state transition
+is signed; every record is Merkle-chained; every disclosure is bounded by who has the
+decryption key. The platform itself cannot read data it was not given the key for —
+this is architectural, not policy.
+
+What is core today:
+
+- **ML-DSA (NIST FIPS 204)** post-quantum signatures and **ML-KEM (FIPS 203)** key
+  encapsulation on the internal signing path. Not branch-feature — every internal
+  signature uses the PQC primary key.
+- **BIP32/39/44** hierarchical-deterministic wallets with Sorcha-specific purpose
+  namespaces per derivation slot. Portable, self-sovereign, recoverable from a mnemonic.
+- **JSON Pointer selective disclosure** inside SD-JWT VC envelopes; per-recipient
+  symmetric key wrapping means the platform never holds the full plaintext.
+- **Merkle-tree dockets** with SHA-256 previous-hash linkage. Tamper-evident without
+  requiring a public blockchain.
+- **OAuth 2.0 / JWT Bearer** for authentication, with role-based access control,
+  multi-tenant isolation, and rate limiting per shared policy names from
+  `Sorcha.ServiceDefaults`.
+
+Honest gaps named explicitly:
+
+- **HAIP 1.0 wire boundary is classical-only.** HAIP mandates ES256/EdDSA at the
+  wallet boundary. Sorcha bridges this with a classical co-key derived alongside the
+  PQC primary key. Internal-only paths use PQC; external HAIP-facing paths use
+  classical signatures by spec.
+- **SLH-DSA (FIPS 205)** is not yet implemented. It is on the roadmap for the
+  hash-based PQC diversity primitive that complements ML-DSA.
+- **BBS+ Signatures** are not yet implemented. Selective disclosure today is
+  show/hide via JSON Pointer + per-recipient encryption, not zero-knowledge predicate
+  proofs.
+- **mTLS on inter-service hops** is not yet enforced outside the gateway. Hops between
+  internal services rely on JWT and network isolation today.
+
+The full standards posture is in `STANDARDS.md` at the repo root. Every claim above
+is backed by a row in that file with a status of `full` or `partial`; a `planned`
+status row is excluded from this document by design.
+
+---
+
+## How to integrate
+
+For AI coding assistants planning an integration:
+
+1. **Discover the API surface.** `GET /.well-known/openapi.json` returns a complete,
+   aggregated OpenAPI 3.1 document covering every backend service. Pipe it into
+   `openapi-typescript` (or your generator of choice) to get a typed client. The
+   `info.x-mcp-server` extension points at the MCP manifest; the `info.x-standards`
+   extension lists every standard the platform implements.
+2. **Authenticate.** Most endpoints require a JWT Bearer token. Obtain one from the
+   Tenant Service (`POST /api/tenant/api/service-auth/token`) or use the platform-org
+   auth flow described in the OpenAPI document.
+3. **Pick the integration shape.** Two main patterns:
+   - *Workflow-as-data*: define a Blueprint (JSON or YAML), create an instance, submit
+     actions on behalf of participants. Best when the integration is a multi-step
+     business process.
+   - *Credential-as-data*: issue/verify W3C VCs via the HAIP service. Best when the
+     integration is a verifiable claim that needs to be presented to a wallet or
+     verifier outside Sorcha.
+4. **Drive it via MCP if you are an AI agent.** The MCP server's per-tool descriptions
+   tell you when to use each tool versus alternatives. Connect via stdio for local
+   agent hosts or http+sse for hosted agents.
+5. **Trust but verify.** Every record returned by the platform is independently
+   verifiable. Validate signatures with the issuer's public key from the system
+   register; recompute Merkle roots from leaves; check status via the IETF Token
+   Status List 2024 publisher. The platform produces evidence; the agent verifies it.
+
+For procurement / vendor due diligence: `STANDARDS.md` is the structured compliance
+claim. Every row links the spec, the implementation path in this repository, and the
+honest status (`full` / `partial` / `planned` with notes for the latter two).
+
+---
+
+## What Sorcha is not
+
+Be precise about scope. Sorcha is not:
+
+- a public blockchain (it is a permissioned proof network)
+- a messaging system or event bus (it is a ledger, not a queue)
+- an identity provider (it integrates with identity providers; it does not replace them)
+- a smart-contract platform (Blueprints are structured workflows with schema validation,
+  not Turing-complete programmes)
+- a data warehouse or analytics platform (the Register is an immutable audit ledger,
+  not a query-optimised data store)
+- a replacement for GOV.UK Wallet or EUDI Wallet (it is the workflow infrastructure
+  those wallets sit above)
+
+---
+
+## Where to read more
+
+- `STANDARDS.md` — full standards compliance table at the repo root.
+- `docs/architecture.md` — full architecture document (Phase 8 of spec 117).
+- `docs/openid4vc-haip-integration.md` — how Sorcha sits beside GOV.UK Wallet and
+  EUDIW (Phase 8).
+- `docs/applicability.md` — domain coverage: DPP, trade finance, IPC-1782, municipal
+  governance (Phase 8).
+- `docs/security-model.md` — selective disclosure, aggregate inference threat model,
+  PQC posture, mTLS gap, trust anchor model (Phase 8).
+- `docs/mcp-server.md` — MCP connection guide and worked example (Phase 4).
+- `docs/quickstart.md` — agent-runnable setup (Phase 7).
+- `walkthroughs/TradeFinance/` and `walkthroughs/AssuredIdentity/` — runnable
+  end-to-end demonstrations.
