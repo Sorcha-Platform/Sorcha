@@ -150,6 +150,46 @@ public class SdJwtServiceTests
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Invalid signature"));
+        // Issue #221 item 2: verify the typed ErrorKind populates in lock-step with the
+        // string list. Consumers can branch on Kind without substring-matching Message.
+        result.ErrorDetails.Should().ContainSingle(e => e.Kind == SdJwtErrorKind.SignatureInvalid)
+            .Which.Message.Should().Contain("Invalid signature");
+    }
+
+    [Fact]
+    public async Task VerifyTokenAsync_MalformedJwtSegments_ReportsInvalidFormat()
+    {
+        // Issue #221 item 2: structural-error coverage — token with wrong segment count
+        // routes through the InvalidFormat branch.
+        var (_, publicKey) = GenerateP256KeyPair();
+
+        var result = await _service.VerifyTokenAsync(
+            "not.a.valid.jwt.with.too.many.segments",
+            publicKey,
+            "ES256");
+
+        result.IsValid.Should().BeFalse();
+        result.ErrorDetails.Should().Contain(e => e.Kind == SdJwtErrorKind.InvalidFormat);
+    }
+
+    [Fact]
+    public async Task VerifyTokenAsync_ErrorDetailsParallelToErrors()
+    {
+        // Issue #221 item 2: backward-compat invariant — for every entry in Errors there
+        // is a corresponding entry in ErrorDetails with the same Message text.
+        var (_, publicKey) = GenerateP256KeyPair();
+
+        var result = await _service.VerifyTokenAsync(
+            "not.a.valid.jwt.with.too.many.segments",
+            publicKey,
+            "ES256");
+
+        result.Errors.Should().NotBeEmpty();
+        result.ErrorDetails.Should().HaveCount(result.Errors.Count,
+            "ErrorDetails and Errors must populate in lock-step for backward compat");
+        result.ErrorDetails.Select(e => e.Message)
+            .Should().BeEquivalentTo(result.Errors,
+                "every Errors entry has a matching ErrorDetails entry with the same Message");
     }
 
     [Fact]
