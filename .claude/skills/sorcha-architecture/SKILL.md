@@ -558,6 +558,7 @@ End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). W
 | POST | `/api/v1/wallet/devices/renew-delegation` | Idempotent re-issuance of holder→device delegation, signed by holder key. Wallets call when within 30 days of expiry. 404 on cross-user / unknown / revoked device. (PR #435) |
 | GET | `/api/v1/wallet/credentials` | Full credential snapshot for fresh-wallet seeding. (PR #428) |
 | GET | `/api/v1/wallet/sync?since={cursor}` | Incremental delta. Cursor older than 30 days → 410 Gone (wallet falls back to /credentials). (PR #428) |
+| DELETE | `/api/v1/wallet/devices/{deviceId}` | Citizen-initiated revoke from the PWA. Looks up `(listId, idx)` on Tenant via `IPlatformUserDeviceClient.GetByIdAsync`, calls `IDeviceRevocationService.RevokeAsync` (status-list flip + SignalR `DeviceRevoked`), then `IPlatformUserDeviceClient.RevokeAsync` to flip the Tenant row. 404 indistinguishable from non-existence. |
 
 #### Tenant Service — public (citizen JWT, recovery flows from main UI)
 
@@ -578,6 +579,13 @@ End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). W
 |--------|------|---------|
 | POST | `/api/internal/platform-user-devices` | Bridge endpoint called by Wallet Service after issuing a delegation credential. Idempotent on `(PlatformUserId, DevicePublicJwkThumbprint)`. |
 | GET | `/api/internal/platform-user-devices/{id}?platformUserId={uid}` | Scoped device lookup for the renewal flow. Cross-user probes return 404 indistinguishably from non-existence. (PR #435) |
+| DELETE | `/api/internal/platform-user-devices/{id}?platformUserId={uid}` | Tenant-row revoke called by Wallet Service after a PWA-initiated revoke. Pure local flip — does NOT call back to Wallet (caller has already done the status-list flip + SignalR). |
+
+#### Wallet Service — internal (service principal, `RequireService` policy)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/internal/citizen-status-list/revoke` | Status-list bit flip + SignalR `DeviceRevoked` broadcast called by Tenant Service after a web-UI-initiated revoke. Pure Wallet-side — does NOT call back to Tenant. Body: `{organizationId, listId, indexInList, deviceId, platformUserId}`. |
 
 #### Reference verifier — public (anonymous)
 

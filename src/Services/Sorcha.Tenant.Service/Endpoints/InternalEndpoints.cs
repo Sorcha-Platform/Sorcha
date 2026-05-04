@@ -46,6 +46,19 @@ public static class InternalEndpoints
                 + "query parameter scopes the lookup so cross-user device probing is impossible.")
             .RequireAuthorization("RequireService");
 
+        // Feature 114 (US3): device revocation propagation from Wallet Service.
+        // Used when the citizen revokes from the PWA — Wallet flips status-list +
+        // broadcasts SignalR, then calls here so the Tenant row reflects the
+        // revocation when the citizen views devices from the main UI.
+        group.MapDelete("/platform-user-devices/{deviceId:guid}", RevokePlatformUserDevice)
+            .WithName("RevokePlatformUserDevice")
+            .WithSummary("Mark a citizen wallet device as revoked (Tenant row only — no further S2S)")
+            .WithDescription("Called by Wallet Service after a PWA-initiated revoke. Idempotent on "
+                + "already-revoked devices. Does NOT call back to Wallet — the caller has already "
+                + "flipped the status-list bit, so a callback would loop. The platformUserId query "
+                + "parameter scopes the lookup so cross-user revocation is impossible (404 on mismatch).")
+            .RequireAuthorization("RequireService");
+
         return app;
     }
 
@@ -100,6 +113,16 @@ public static class InternalEndpoints
             device.DelegationCredentialJti,
             device.StatusListId,
             device.StatusListIndex));
+    }
+
+    private static async Task<Results<NoContent, NotFound>> RevokePlatformUserDevice(
+        Guid deviceId,
+        [FromQuery] Guid platformUserId,
+        IPlatformUserDeviceService deviceService,
+        CancellationToken ct)
+    {
+        var revoked = await deviceService.RevokeAsync(deviceId, platformUserId, ct);
+        return revoked is null ? TypedResults.NotFound() : TypedResults.NoContent();
     }
 
     /// <summary>Internal response for a single device lookup.</summary>

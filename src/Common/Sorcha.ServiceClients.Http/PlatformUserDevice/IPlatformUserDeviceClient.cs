@@ -35,6 +35,20 @@ public interface IPlatformUserDeviceClient
         Guid deviceId,
         Guid platformUserId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks a device as revoked on the Tenant Service. Idempotent. Used by
+    /// the Wallet Service after a PWA-initiated <c>DELETE /api/v1/wallet/devices/{id}</c>
+    /// has flipped the status-list bit on the wallet side, so the Tenant row
+    /// reflects the revocation when the citizen views it from the main UI.
+    /// Returns <c>false</c> when the device does not exist or is not owned by
+    /// the supplied platform user (404 from Tenant — intentionally
+    /// indistinguishable to avoid leaking device existence).
+    /// </summary>
+    Task<bool> RevokeAsync(
+        Guid deviceId,
+        Guid platformUserId,
+        CancellationToken ct = default);
 }
 
 /// <summary>Result of <see cref="IPlatformUserDeviceClient.RegisterAsync"/>.</summary>
