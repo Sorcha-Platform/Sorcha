@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Serialization;
+
 namespace Sorcha.CitizenWallet.Abstractions.Models;
 
 /// <summary>
 /// Status of an enrolled wallet device.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<DeviceStatus>))]
 public enum DeviceStatus
 {
     /// <summary>Device is enrolled and may make presentations.</summary>

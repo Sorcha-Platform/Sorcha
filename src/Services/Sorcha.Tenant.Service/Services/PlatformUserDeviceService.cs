@@ -123,4 +123,50 @@ public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
             .AsNoTracking()
             .FirstOrDefaultAsync(d => d.Id == deviceId && d.PlatformUserId == platformUserId, ct);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PlatformUserDevice>> ListAsync(
+        Guid platformUserId, CancellationToken ct = default)
+    {
+        return await _db.PlatformUserDevices
+            .AsNoTracking()
+            .Where(d => d.PlatformUserId == platformUserId)
+            .OrderByDescending(d => d.EnrolledAt)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<PlatformUserDevice?> RevokeAsync(
+        Guid deviceId, Guid platformUserId, CancellationToken ct = default)
+    {
+        var device = await _db.PlatformUserDevices
+            .FirstOrDefaultAsync(d => d.Id == deviceId && d.PlatformUserId == platformUserId, ct);
+
+        if (device is null)
+        {
+            return null;
+        }
+
+        if (device.Status == PlatformUserDeviceStatus.Revoked)
+        {
+            _logger.LogInformation(
+                "Revoke called against already-revoked PlatformUserDevice {DeviceId} " +
+                "(platformUser={PlatformUserId}) — idempotent no-op",
+                device.Id, platformUserId);
+            return device;
+        }
+
+        device.Status = PlatformUserDeviceStatus.Revoked;
+        device.RevokedAt = DateTimeOffset.UtcNow;
+        device.RevokedByPlatformUserId = platformUserId;
+
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Revoked PlatformUserDevice {DeviceId} (platformUser={PlatformUserId}, " +
+            "statusListIndex={StatusListIndex})",
+            device.Id, platformUserId, device.StatusListIndex);
+
+        return device;
+    }
 }
