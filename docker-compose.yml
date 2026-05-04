@@ -543,7 +543,13 @@ services:
       - "${VALIDATOR_HTTP_PORT:-5800}:8080"   # HTTP REST API and health checks
       - "${VALIDATOR_GRPC_PORT:-5801}:8081"   # gRPC endpoint
     environment:
-      <<: [*otel-env, *jwt-env]
+      # *sorcha-connections supplies ConnectionStrings__Sorcha__{Postgres,Mongo,Redis}
+      # for the cascade-aware resolver in VerifiedQueueExtensions / IRegisterRepository
+      # extensions. ConnectionStrings__Redis below stays for the Aspire-named
+      # AddRedisClient("redis") path until that's migrated. Required for
+      # IVerifiedTransactionQueue → RedisVerifiedTransactionQueue under Staging
+      # (Feature 113 storage audit / issue #498).
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: validator-service
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
@@ -689,7 +695,10 @@ services:
     mem_limit: 512m
     # No ports published - accessed via API Gateway
     environment:
-      <<: [*otel-env, *jwt-env]
+      # *sorcha-connections supplies ConnectionStrings__Sorcha__Redis for the
+      # IAtomicDistributedCache cascade — required if/when haip-service's
+      # ASPNETCORE_ENVIRONMENT is flipped to Staging (Feature 113 audit / issue #498).
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: haip-service
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
