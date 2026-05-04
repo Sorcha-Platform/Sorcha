@@ -72,6 +72,14 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
             RemoveHttpClientServices(services);
             AddMockHttpClients(services);
 
+            // Surface HubException messages from server to client during integration tests so
+            // assertions like `.WithMessage("*empty*")` can match. Production keeps the default
+            // (false) — see Program.cs AddSignalR — to avoid leaking server-side error detail.
+            services.Configure<Microsoft.AspNetCore.SignalR.HubOptions>(opt =>
+            {
+                opt.EnableDetailedErrors = true;
+            });
+
             // Remove existing authentication to replace with test authentication
             services.RemoveAll<IConfigureOptions<AuthenticationOptions>>();
             services.RemoveAll<IPostConfigureOptions<AuthenticationOptions>>();

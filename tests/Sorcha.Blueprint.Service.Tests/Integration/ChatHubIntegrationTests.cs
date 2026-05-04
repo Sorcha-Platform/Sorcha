@@ -179,7 +179,9 @@ public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var sessionId = await connection.InvokeAsync<string>("StartSession", (string?)null);
 
         // Act
-        var act = async () => await connection.InvokeAsync("SendMessage", sessionId, "");
+        // SUT signature: SendMessage(string sessionId, string message, IReadOnlyList<ChatAttachment>? attachments)
+        // SignalR ignores C# default values, so pass null explicitly.
+        var act = async () => await connection.InvokeAsync("SendMessage", sessionId, "", (object?)null);
 
         // Assert
         await act.Should().ThrowAsync<HubException>()
@@ -194,7 +196,7 @@ public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         await connection.StartAsync();
 
         // Act
-        var act = async () => await connection.InvokeAsync("SendMessage", "", "Hello");
+        var act = async () => await connection.InvokeAsync("SendMessage", "", "Hello", (object?)null);
 
         // Assert
         await act.Should().ThrowAsync<HubException>()
@@ -211,7 +213,7 @@ public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var longMessage = new string('x', 10001);
 
         // Act
-        var act = async () => await connection.InvokeAsync("SendMessage", sessionId, longMessage);
+        var act = async () => await connection.InvokeAsync("SendMessage", sessionId, longMessage, (object?)null);
 
         // Assert
         await act.Should().ThrowAsync<HubException>()
@@ -236,7 +238,7 @@ public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Act - Send a simple message (AI provider is mocked to return empty stream)
         try
         {
-            await connection.InvokeAsync("SendMessage", sessionId, "Create a simple blueprint");
+            await connection.InvokeAsync("SendMessage", sessionId, "Create a simple blueprint", (object?)null);
         }
         catch (HubException)
         {

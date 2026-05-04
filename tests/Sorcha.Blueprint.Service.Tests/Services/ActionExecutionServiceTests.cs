@@ -543,8 +543,9 @@ public class ActionExecutionServiceTests
         await Assert.ThrowsAnyAsync<Exception>(() =>
             _service.ExecuteAsync(instanceId, actionId, request, delegationToken));
 
-        _mockExecutionEngine.Verify(x => x.DetermineRoutingAsync(
-            blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()),
+        // SUT now uses DetermineRoutingWithMappingAsync (added the routed mapping output param).
+        _mockExecutionEngine.Verify(x => x.DetermineRoutingWithMappingAsync(
+            blueprint, action, It.IsAny<Dictionary<string, object>>(), It.IsAny<System.Text.Json.Nodes.JsonObject?>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

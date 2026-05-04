@@ -14,6 +14,7 @@ using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Events.Models;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.TransactionHandler.Encryption;
@@ -33,6 +34,10 @@ public class EncryptionBackgroundServiceTests
     private readonly Mock<IInstanceStore> _instanceStore = new();
     private readonly Mock<IEncryptionOperationStore> _operationStore = new();
     private readonly Mock<IEventServiceClient> _eventServiceClient = new();
+    // SUT now resolves IRegisterServiceClient from scope to look up the register's
+    // bloom filter / recipient routing during encryption. Without registering this,
+    // the pipeline throws on resolution and encryption fails before the success path.
+    private readonly Mock<IRegisterServiceClient> _registerClient = new();
 
     private EncryptionBackgroundService CreateService(Channel<EncryptionWorkItem> channel)
     {
@@ -45,6 +50,10 @@ public class EncryptionBackgroundServiceTests
         services.AddSingleton(_actionResolver.Object);
         services.AddSingleton(_instanceStore.Object);
         services.AddSingleton(_eventServiceClient.Object);
+        services.AddSingleton(_registerClient.Object);
+        // SUT now also resolves IOptions<TransactionConfirmationOptions> from scope.
+        services.AddSingleton<Microsoft.Extensions.Options.IOptions<Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions>>(
+            Microsoft.Extensions.Options.Options.Create(new Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions()));
         var serviceProvider = services.BuildServiceProvider();
 
         return new EncryptionBackgroundService(
