@@ -14,6 +14,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Moq;
 using Serilog;
 using Serilog.Events;
+using Sorcha.ServiceClients.CitizenStatusList;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.Tenant.Service.Data;
@@ -134,6 +135,22 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
                     Message = "Mock response"
                 });
             services.AddSingleton(mockRegisterClient.Object);
+
+            // Feature 114 (US3): Tenant→Wallet citizen status-list S2S client.
+            // Mocked so endpoint tests don't reach out to a real wallet service.
+            // Tests can override via Mock.Get(...) in their own setup.
+            services.RemoveAll<ICitizenStatusListClient>();
+            var mockStatusListClient = new Mock<ICitizenStatusListClient>();
+            mockStatusListClient
+                .Setup(c => c.RevokeAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<int>(),
+                    It.IsAny<int>(),
+                    It.IsAny<Guid>(),
+                    It.IsAny<Guid>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            services.AddSingleton(mockStatusListClient.Object);
 
             // Remove any existing wallet service client
             services.RemoveAll<IWalletServiceClient>();

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Blueprint;
+using Sorcha.ServiceClients.CitizenStatusList;
 using Sorcha.ServiceClients.CitizenWallet;
 using Sorcha.ServiceClients.Did;
 using Sorcha.ServiceClients.Events;
@@ -80,6 +81,11 @@ public static class HttpServiceCollectionExtensions
         // Caller-supplied JWT (no service-principal injection — citizen audience required).
         services.AddHttpClient<CitizenWalletClient>();
         services.AddScoped<ICitizenWalletClient, CitizenWalletClient>();
+
+        // Feature 114: Tenant→Wallet S2S client for citizen device revocation
+        // (status-list bit flip + SignalR DeviceRevoked broadcast).
+        services.AddHttpClient<CitizenStatusListClient>();
+        services.AddScoped<ICitizenStatusListClient, CitizenStatusListClient>();
 
         // DID resolvers
         services.AddDidResolvers();

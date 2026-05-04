@@ -2,7 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using Microsoft.Extensions.Logging;
 using Sorcha.CitizenWallet.Abstractions.Models;
+using Sorcha.ServiceClients.CitizenStatusList;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
@@ -83,6 +85,8 @@ public static class PlatformUserDeviceEndpoints
         HttpContext context,
         IPlatformUserDeviceService deviceService,
         IIdentityRepository identityRepository,
+        ICitizenStatusListClient statusListClient,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         var platformUserId = await ResolvePlatformUserIdAsync(context, identityRepository, ct);
@@ -92,7 +96,67 @@ public static class PlatformUserDeviceEndpoints
         }
 
         var revoked = await deviceService.RevokeAsync(deviceId, platformUserId.Value, ct);
-        return revoked is null ? TypedResults.NotFound() : TypedResults.NoContent();
+        if (revoked is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        // Tenant row flipped — now propagate to Wallet so the status-list bit is
+        // set and any wallet PWA still connected for this user receives the
+        // SignalR DeviceRevoked broadcast and locks itself.
+        var orgId = ResolveOrgId(context);
+        if (orgId is null)
+        {
+            // No org context on the JWT — Tenant row is revoked, but we cannot
+            // address the Wallet status list without orgId. Log + return success;
+            // the next periodic re-sign will not change this device's bit, but
+            // a citizen with no org context shouldn't have an enrolled wallet
+            // device in the first place. Treated as a soft data-integrity warning.
+            loggerFactory.CreateLogger("PlatformUserDeviceEndpoints").LogWarning(
+                "Revoked PlatformUserDevice {DeviceId} for platformUser={PlatformUserId} but JWT had " +
+                "no org_id claim — status-list bit NOT flipped. Investigate token issuance.",
+                deviceId, platformUserId.Value);
+            return TypedResults.NoContent();
+        }
+
+        try
+        {
+            await statusListClient.RevokeAsync(
+                orgId.Value,
+                revoked.StatusListId,
+                revoked.StatusListIndex,
+                deviceId,
+                platformUserId.Value,
+                ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            // Tenant row is revoked but Wallet flip failed — best-effort. The
+            // hourly CitizenStatusListPublisherService will not pick this up
+            // (it only re-signs existing state), so a follow-up reconciliation
+            // job is desirable. For now: log and surface 502 so the caller
+            // can retry — the Tenant flip is idempotent.
+            loggerFactory.CreateLogger("PlatformUserDeviceEndpoints").LogError(
+                ex,
+                "Wallet Service rejected status-list flip for deviceId={DeviceId} "
+                + "(platformUser={PlatformUserId}, org={OrgId}, list={ListId}#{Index}). "
+                + "Tenant row IS revoked; caller should retry.",
+                deviceId, platformUserId.Value, orgId.Value,
+                revoked.StatusListId, revoked.StatusListIndex);
+            return TypedResults.Problem(
+                title: "Status-list flip failed",
+                detail: "Tenant row is revoked but the wallet status-list bit could not be flipped. Retry to complete revocation.",
+                statusCode: StatusCodes.Status502BadGateway);
+        }
+
+        return TypedResults.NoContent();
+    }
+
+    private static Guid? ResolveOrgId(HttpContext context)
+    {
+        var raw = context.User.FindFirst("org_id")?.Value
+            ?? context.User.FindFirst("organization_id")?.Value;
+        return Guid.TryParse(raw, out var id) ? id : null;
     }
 
     private static DeviceSummary MapToSummary(PlatformUserDevice device) => new()
