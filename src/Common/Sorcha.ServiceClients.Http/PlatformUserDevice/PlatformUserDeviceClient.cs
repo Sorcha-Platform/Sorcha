@@ -56,6 +56,7 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
         string userAgent,
         DateTimeOffset delegationExpiresAt,
         string delegationCredentialJti,
+        int statusListId,
         int statusListIndex,
         CancellationToken ct = default)
     {
@@ -72,6 +73,7 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
             userAgent,
             delegationExpiresAt,
             delegationCredentialJti,
+            statusListId,
             statusListIndex
         };
 

@@ -34,6 +34,7 @@ public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
         string userAgent,
         DateTimeOffset delegationExpiresAt,
         string delegationCredentialJti,
+        int statusListId,
         int statusListIndex,
         CancellationToken ct = default)
     {
@@ -74,6 +75,7 @@ public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
             existing.UserAgent = userAgent;
             existing.DelegationExpiresAt = delegationExpiresAt;
             existing.DelegationCredentialJti = delegationCredentialJti;
+            existing.StatusListId = statusListId;
             existing.StatusListIndex = statusListIndex;
             existing.LastSeenAt = DateTimeOffset.UtcNow;
 
@@ -101,6 +103,7 @@ public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
             LastSeenAt = DateTimeOffset.UtcNow,
             DelegationExpiresAt = delegationExpiresAt,
             DelegationCredentialJti = delegationCredentialJti,
+            StatusListId = statusListId,
             StatusListIndex = statusListIndex
         };
 
@@ -109,8 +112,8 @@ public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
 
         _logger.LogInformation(
             "Registered new PlatformUserDevice {DeviceId} (platformUser={PlatformUserId}, " +
-            "platform={Platform}, statusListIndex={StatusListIndex}, exp={Exp:O})",
-            device.Id, platformUserId, platform, statusListIndex, delegationExpiresAt);
+            "platform={Platform}, statusList={StatusListId}#{StatusListIndex}, exp={Exp:O})",
+            device.Id, platformUserId, platform, statusListId, statusListIndex, delegationExpiresAt);
 
         return device;
     }

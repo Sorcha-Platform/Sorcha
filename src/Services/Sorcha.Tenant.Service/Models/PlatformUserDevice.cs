@@ -74,7 +74,16 @@ public class PlatformUserDevice
     /// <summary>JTI of the current delegation credential (rotates on renewal).</summary>
     public string DelegationCredentialJti { get; set; } = string.Empty;
 
-    /// <summary>Bit position allocated in the org's citizen-devices status list.</summary>
+    /// <summary>
+    /// Identifier of the citizen-devices status list this device's revocation bit
+    /// lives in. Lists are per-org and roll over at capacity (default 32 768 bits);
+    /// a single org therefore has multiple lists once it crosses that threshold.
+    /// Required for revoke-by-deviceId — <c>StatusListIndex</c> alone is ambiguous
+    /// across lists once <c>ListId &gt; 0</c> exists.
+    /// </summary>
+    public int StatusListId { get; set; }
+
+    /// <summary>Bit position allocated within the org's citizen-devices status list.</summary>
     public int StatusListIndex { get; set; }
 
     /// <summary>Navigation property to the owning PlatformUser.</summary>

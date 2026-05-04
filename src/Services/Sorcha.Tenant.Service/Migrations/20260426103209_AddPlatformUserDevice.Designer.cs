@@ -1008,6 +1008,9 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<int>("StatusListId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("StatusListIndex")
                         .HasColumnType("integer");
 

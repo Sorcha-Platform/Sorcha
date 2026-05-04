@@ -88,6 +88,7 @@ public sealed class DelegationRenewalService : IDelegationRenewalService
             userAgent: string.Empty, // unchanged on renewal
             fresh.ExpiresAt,
             fresh.Jti,
+            fresh.StatusListId,
             fresh.StatusListIndex,
             ct);
 

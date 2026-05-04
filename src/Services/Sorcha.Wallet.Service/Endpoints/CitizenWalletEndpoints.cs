@@ -201,6 +201,7 @@ public static class CitizenWalletEndpoints
                 request.UserAgent,
                 delegation.ExpiresAt,
                 delegation.Jti,
+                delegation.StatusListId,
                 delegation.StatusListIndex,
                 ct);
 
