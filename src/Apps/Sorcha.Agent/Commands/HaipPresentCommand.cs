@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Buffers.Text;
 using System.CommandLine;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -181,40 +182,44 @@ public class HaipPresentCommand : Command
     /// (legacy callers). Returns the payload as a <see cref="JsonElement"/>
     /// either way.
     /// </summary>
-    private static JsonElement ParseRequestObjectPayload(string responseText)
+    internal static JsonElement ParseRequestObjectPayload(string responseText)
     {
         var trimmed = responseText.Trim();
-        if (trimmed.Length > 0 && trimmed[0] == '{')
+
+        // Bare JSON object.
+        if (trimmed.StartsWith('{'))
         {
-            // Bare JSON object.
             return JsonSerializer.Deserialize<JsonElement>(trimmed);
         }
 
-        // JWT — extract the payload (middle segment).
-        // TODO(SEC): tracked in issue #344 — agent should verify the JWT
-        // signature against the verifier's JWKS per RFC 9101 §4 before
-        // acting on its claims. Today the agent is a demo/test tool
-        // against trusted localhost verifiers only; any production use
-        // must fetch jwks_uri from the verifier's well-known config and
-        // validate the signature before reaching this point.
-        var parts = trimmed.Split('.');
-        if (parts.Length < 2)
+        // JWT/JWS-compact: every base64url-encoded JOSE header that begins with
+        // '{"alg"' or '{"typ"' (i.e. any compliant JWS or JWE) base64url-encodes
+        // to a string starting with "eyJ". Anything else here is a server error
+        // page, redirect body, plain text, or other non-JOSE response.
+        if (trimmed.StartsWith("eyJ", StringComparison.Ordinal))
         {
-            throw new InvalidOperationException(
-                "Request object is neither a JSON body nor a JWT — cannot parse.");
+            // TODO(SEC): tracked in issue #344 — agent should verify the JWT
+            // signature against the verifier's JWKS per RFC 9101 §4 before
+            // acting on its claims. Today the agent is a demo/test tool
+            // against trusted localhost verifiers only; any production use
+            // must fetch jwks_uri from the verifier's well-known config and
+            // validate the signature before reaching this point.
+            var parts = trimmed.Split('.');
+            if (parts.Length < 2)
+            {
+                throw new InvalidOperationException(
+                    "Request object looks like a JWT (begins with 'eyJ') but does not have at least " +
+                    "two dot-separated segments — cannot extract payload.");
+            }
+            var payloadBytes = Base64Url.DecodeFromChars(parts[1].AsSpan());
+            return JsonSerializer.Deserialize<JsonElement>(payloadBytes);
         }
-        var payloadBytes = Base64UrlDecode(parts[1]);
-        return JsonSerializer.Deserialize<JsonElement>(payloadBytes);
-    }
 
-    private static byte[] Base64UrlDecode(string input)
-    {
-        var padded = input.Replace('-', '+').Replace('_', '/');
-        switch (padded.Length % 4)
-        {
-            case 2: padded += "=="; break;
-            case 3: padded += "="; break;
-        }
-        return Convert.FromBase64String(padded);
+        // Anything else — give the caller a quoted preview so they can see what
+        // came back (HTML error page, plaintext error, redirect body, etc.).
+        var preview = trimmed.Length <= 20 ? trimmed : trimmed[..20];
+        throw new InvalidOperationException(
+            $"Request object is neither a JSON body (starting '{{') nor a compact JWT (starting 'eyJ'). " +
+            $"First {preview.Length} chars of response: \"{preview}\"");
     }
 }
