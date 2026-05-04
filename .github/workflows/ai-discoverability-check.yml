@@ -15,25 +15,12 @@ name: AI Discoverability Check
 # and progressively tightens as later phases of spec 117 ship.
 
 on:
+  # Run on every PR to master. The discoverability orchestrator is fast (~10s)
+  # and the check is now a required status on the master ruleset — a path filter
+  # would skip the workflow on unrelated PRs, leaving the required-check signal
+  # absent and blocking merge. Run unconditionally instead.
   pull_request:
     branches: [ master ]
-    paths:
-      - 'src/Services/Sorcha.ApiGateway/**'
-      - 'src/Common/Sorcha.ServiceDefaults/**'
-      - 'src/Apps/Sorcha.McpServer/**'
-      - 'llms.txt'
-      - 'STANDARDS.md'
-      - 'docs/llms-full.txt'
-      - 'docs/architecture.md'
-      - 'docs/openid4vc-haip-integration.md'
-      - 'docs/applicability.md'
-      - 'docs/security-model.md'
-      - 'docs/quickstart.md'
-      - 'docs/mcp-server.md'
-      - '.spectral.yaml'
-      - 'scripts/check-discoverability.sh'
-      - 'scripts/sorcha-setup.sh'
-      - '.github/workflows/ai-discoverability-check.yml'
   push:
     branches: [ master ]
   schedule:
