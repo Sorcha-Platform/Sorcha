@@ -19,6 +19,12 @@ x-otel-env-b: &otel-env-b
 
 x-jwt-env-b: &jwt-env-b
   JwtSettings__InstallationName: ${INSTALLATION_NAME_B:-localhost-b}
+  # NOTE (#351): Peer B intentionally shares the same JWT signing key as Peer A
+  # via the unsuffixed ${JWT_SIGNING_KEY} variable. The two peers operate inside
+  # a single trust domain for the cross-peer credential delivery smoke test —
+  # tokens minted on Peer A must verify on Peer B and vice versa. When we add
+  # cross-tenant-JWT-rejection tests this needs a separate ${JWT_SIGNING_KEY_B}
+  # so a token from Peer A is rejected by Peer B's verifier.
   JwtSettings__SigningKey: ${JWT_SIGNING_KEY:-c29yY2hhLWRvY2tlci1kZXYta2V5LTIwMjUtbWluLTI1Ni1iaXRzLXNlY3VyZQ==}
 
 services:
@@ -267,6 +273,12 @@ services:
         condition: service_healthy
       mongodb-b:
         condition: service_healthy
+      # #351: declare haip-service-b dependency to match the
+      # ServiceClients__HaipService__Address wiring above. Without it,
+      # blueprint-service-b can start before haip-service-b is reachable
+      # and emit connection-error noise on first boot.
+      haip-service-b:
+        condition: service_started
     networks:
       - sorcha-network
     healthcheck:
@@ -336,6 +348,16 @@ services:
         condition: service_started
     networks:
       - sorcha-network
+    # #351: api-gateway-b lacked a healthcheck so run-multi-peer.ps1 polled
+    # blueprint-service-b as a proxy for peer-B readiness. The gateway on :8081
+    # could still be starting at that point. This healthcheck mirrors api-gateway
+    # in the base compose (the api-gateway image bundles busybox at /bin/busybox).
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:80/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   # ---------------- Peer A — override Peer:Seeds to include peer-b ----------------
   # The base peer-service points at the Azure router (n0) by default. In the
