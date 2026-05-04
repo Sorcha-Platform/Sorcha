@@ -229,8 +229,8 @@ public class TransactionPoolPollerTests
         // Arrange
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
-        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync(RedisValue.Null);
+        _mockDatabase.Setup(x => x.SortedSetPopAsync(It.IsAny<RedisKey>(), It.IsAny<Order>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((SortedSetEntry?)null);
 
         // Act
         var result = await poller.PollTransactionsAsync("register-1", 10);
@@ -248,11 +248,11 @@ public class TransactionPoolPollerTests
         var json = JsonSerializer.Serialize(transaction, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
         var callCount = 0;
-        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        _mockDatabase.Setup(x => x.SortedSetPopAsync(It.IsAny<RedisKey>(), It.IsAny<Order>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(() =>
             {
                 callCount++;
-                return callCount == 1 ? (RedisValue)"tx-1" : RedisValue.Null;
+                return callCount == 1 ? new SortedSetEntry("tx-1", 0) : (SortedSetEntry?)null;
             });
 
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
@@ -333,15 +333,15 @@ public class TransactionPoolPollerTests
         });
 
         var popCallCount = 0;
-        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        _mockDatabase.Setup(x => x.SortedSetPopAsync(It.IsAny<RedisKey>(), It.IsAny<Order>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(() =>
             {
                 popCallCount++;
                 return popCallCount switch
                 {
-                    1 => (RedisValue)"tx-1",  // First tx - data will be expired
-                    2 => (RedisValue)"tx-2",  // Second tx - data available
-                    _ => RedisValue.Null
+                    1 => new SortedSetEntry("tx-1", 0),  // First tx - data will be expired
+                    2 => new SortedSetEntry("tx-2", 0),  // Second tx - data available
+                    _ => (SortedSetEntry?)null
                 };
             });
 
@@ -387,16 +387,16 @@ public class TransactionPoolPollerTests
         var json3 = JsonSerializer.Serialize(tx3, jsonOptions);
 
         var popCallCount = 0;
-        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        _mockDatabase.Setup(x => x.SortedSetPopAsync(It.IsAny<RedisKey>(), It.IsAny<Order>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(() =>
             {
                 popCallCount++;
                 return popCallCount switch
                 {
-                    1 => (RedisValue)"tx-1",
-                    2 => (RedisValue)"tx-2",
-                    3 => (RedisValue)"tx-3",
-                    _ => RedisValue.Null
+                    1 => new SortedSetEntry("tx-1", 0),
+                    2 => new SortedSetEntry("tx-2", 0),
+                    3 => new SortedSetEntry("tx-3", 0),
+                    _ => (SortedSetEntry?)null
                 };
             });
 
@@ -446,11 +446,11 @@ public class TransactionPoolPollerTests
 
         // Queue has many items, but we only request 2
         var popCallCount = 0;
-        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        _mockDatabase.Setup(x => x.SortedSetPopAsync(It.IsAny<RedisKey>(), It.IsAny<Order>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(() =>
             {
                 popCallCount++;
-                return (RedisValue)$"tx-{popCallCount}";
+                return new SortedSetEntry($"tx-{popCallCount}", 0);
             });
 
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
@@ -480,7 +480,9 @@ public class TransactionPoolPollerTests
         // Arrange
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
-        _mockDatabase.Setup(x => x.ListLengthAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        _mockDatabase.Setup(x => x.SortedSetLengthAsync(
+                It.IsAny<RedisKey>(), It.IsAny<double>(), It.IsAny<double>(),
+                It.IsAny<Exclude>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(42);
 
         // Act
@@ -602,14 +604,18 @@ public class TransactionPoolPollerTests
         // Arrange
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
-        _mockDatabase.Setup(x => x.ListRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync(1);
-
-        _mockDatabase.Setup(x => x.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        // SUT uses _database.CreateTransaction() and pipelines three removes (SEC-AUDIT 4.9):
+        // SortedSetRemove queue, KeyDelete data, SortedSetRemove expiry. Mock the transaction
+        // so queueRemove and dataRemove both succeed → method returns true.
+        var mockTx = new Mock<ITransaction>();
+        mockTx.Setup(t => t.SortedSetRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
-
-        _mockDatabase.Setup(x => x.SortedSetRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+        mockTx.Setup(t => t.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
+        mockTx.Setup(t => t.ExecuteAsync(It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        _mockDatabase.Setup(x => x.CreateTransaction(It.IsAny<object>()))
+            .Returns(mockTx.Object);
 
         // Act
         var result = await poller.RemoveTransactionAsync("register-1", "tx-1");
@@ -694,7 +700,9 @@ public class TransactionPoolPollerTests
         // Arrange
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
-        _mockDatabase.Setup(x => x.ListLengthAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        _mockDatabase.Setup(x => x.SortedSetLengthAsync(
+                It.IsAny<RedisKey>(), It.IsAny<double>(), It.IsAny<double>(),
+                It.IsAny<Exclude>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(10);
 
         _mockDatabase.Setup(x => x.SortedSetRangeByRankWithScoresAsync(
@@ -746,7 +754,9 @@ public class TransactionPoolPollerTests
         var expiryScore1 = now.AddMinutes(30).ToUnixTimeSeconds();
         var expiryScore2 = now.AddMinutes(60).ToUnixTimeSeconds();
 
-        _mockDatabase.Setup(x => x.ListLengthAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        _mockDatabase.Setup(x => x.SortedSetLengthAsync(
+                It.IsAny<RedisKey>(), It.IsAny<double>(), It.IsAny<double>(),
+                It.IsAny<Exclude>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(2);
 
         // First call (0, 0) returns oldest entry only
@@ -897,14 +907,17 @@ public class TransactionPoolPollerTests
             It.IsAny<CommandFlags>()))
             .ReturnsAsync(expiredEntries.Select(e => e.Element).ToArray());
 
-        _mockDatabase.Setup(x => x.ListRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync(1);
-
-        _mockDatabase.Setup(x => x.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        // SUT now uses _database.CreateTransaction() per expired entry to remove atomically
+        // (SEC-AUDIT 4.9). Mock the transaction handle.
+        var mockCleanupTx = new Mock<ITransaction>();
+        mockCleanupTx.Setup(t => t.SortedSetRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
-
-        _mockDatabase.Setup(x => x.SortedSetRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+        mockCleanupTx.Setup(t => t.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
+        mockCleanupTx.Setup(t => t.ExecuteAsync(It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        _mockDatabase.Setup(x => x.CreateTransaction(It.IsAny<object>()))
+            .Returns(mockCleanupTx.Object);
 
         // Act
         var result = await poller.CleanupExpiredAsync("register-1");
@@ -975,7 +988,7 @@ public class TransactionPoolPollerTests
         // Arrange
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
-        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        _mockDatabase.Setup(x => x.SortedSetPopAsync(It.IsAny<RedisKey>(), It.IsAny<Order>(), It.IsAny<CommandFlags>()))
             .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
 
         // Act
@@ -1063,8 +1076,10 @@ public class TransactionPoolPollerTests
         // Arrange
         var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
 
-        // ListLength works for count
-        _mockDatabase.Setup(x => x.ListLengthAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+        // SortedSetLength (queue) works for count
+        _mockDatabase.Setup(x => x.SortedSetLengthAsync(
+                It.IsAny<RedisKey>(), It.IsAny<double>(), It.IsAny<double>(),
+                It.IsAny<Exclude>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(5);
 
         // SortedSet throws for stats
