@@ -182,6 +182,7 @@ app.MapAuthMethodsEndpoints();
 app.MapPublicPasskeyEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();
+app.MapPlatformUserDeviceEndpoints();
 app.MapPersonaEndpoints();
 app.MapAddressLookupEndpoints();
 app.MapTotpEndpoints();

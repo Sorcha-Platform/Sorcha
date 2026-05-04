@@ -559,6 +559,13 @@ End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). W
 | GET | `/api/v1/wallet/credentials` | Full credential snapshot for fresh-wallet seeding. (PR #428) |
 | GET | `/api/v1/wallet/sync?since={cursor}` | Incremental delta. Cursor older than 30 days → 410 Gone (wallet falls back to /credentials). (PR #428) |
 
+#### Tenant Service — public (citizen JWT, recovery flows from main UI)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/me/devices` | List the authenticated citizen's enrolled wallet devices (active + revoked, ordered by enrolment desc). Backs the additive MyDevices page in Sorcha.UI.Web. |
+| DELETE | `/api/v1/me/devices/{deviceId}` | Revoke a device. Tenant flips `Status=Revoked` + records `RevokedAt`/`RevokedByPlatformUserId`. Wallet status-list bit propagation is the Wallet Service's `DELETE /wallet/devices/{id}` endpoint, dispatched via service-to-service in PR2. 404 indistinguishable from non-existence to avoid device probing. |
+
 #### Wallet Service — public (anonymous, verifier-facing)
 
 | Method | Path | Purpose |
@@ -594,7 +601,7 @@ End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). W
 - **`CitizenStatusListPublisherService`** (Wallet Service `BackgroundService`) — hourly tick, scans for lists within 1 h of `exp` and re-signs each via `RegenerateAsync`. Singleton with scoped deps via `IServiceScopeFactory`. Internal `RunOnceAsync` test seam. Closes the v1 freshness gap when no revocations occur.
 - **`IDeviceDelegationIssuer`** / `DeviceDelegationIssuer` (Wallet Service) — pure composition over `IHolderKeyService` + `ICitizenStatusListPublisher`. Issues the SD-JWT VC payload signed with the holder key.
 - **`IOrgStatusSigningWalletResolver`** / `OrgStatusSigningWalletResolver` (Wallet Service) — lazily provisions a per-org ED25519 system wallet (owner=`system:citizen-status:{orgId}`, tenant=`system`) on first call. Every list signed by this wallet's slot-109 key — verifiers pin one kid per org rather than per citizen.
-- **`IPlatformUserDeviceService`** / `PlatformUserDeviceService` (Tenant Service) — `RegisterAsync` (idempotent on `(PlatformUserId, DevicePublicJwkThumbprint)` — refreshes delegation fields on retry, preserves `Id` + `EnrolledAt`); `GetByIdAsync(deviceId, platformUserId)` scoped lookup for renewal (PR #435).
+- **`IPlatformUserDeviceService`** / `PlatformUserDeviceService` (Tenant Service) — `RegisterAsync` (idempotent on `(PlatformUserId, DevicePublicJwkThumbprint)` — refreshes delegation fields on retry, preserves `Id` + `EnrolledAt`); `GetByIdAsync(deviceId, platformUserId)` scoped lookup for renewal (PR #435); `ListAsync` returns active+revoked ordered by enrolment desc; `RevokeAsync` flips `Status=Revoked`, records `RevokedAt`/`RevokedByPlatformUserId`, idempotent on already-revoked (US3 PR1).
 - **`IPlatformUserDeviceClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.PlatformUserDevice`) — Wallet→Tenant service-to-service HTTP client. `RegisterAsync` + `GetByIdAsync` (404→null). Uses `ServiceAuthClient` token.
 - **`ICitizenWalletClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.CitizenWallet`) — forward HTTP client for the PWA (and tests / reference verifier setup) to call Wallet Service. Methods: `EnrolDeviceAsync`, `SyncAsync` (410→null), `ListCredentialsAsync`, `RenewDelegationAsync` (404→null). Caller-supplied JWT; no service-principal injection.
 - **`ICitizenSyncService`** / `CitizenSyncService` (Wallet Service) — composes credential deltas + full snapshots; mints/validates the opaque sync cursor as an HMAC-SHA256 JWT carrying `{sub: holderKeyId, seq, iat}` per research §R-006. 30-day cursor lifetime → 410 → wallet falls back to /credentials (PR #428).
