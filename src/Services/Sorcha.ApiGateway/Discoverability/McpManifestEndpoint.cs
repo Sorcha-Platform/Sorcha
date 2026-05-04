@@ -28,7 +28,7 @@ internal static class McpManifestEndpoint
 
     public static IEndpointRouteBuilder MapMcpManifestEndpoint(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/.well-known/mcp.json", HandleAsync)
+        endpoints.MapMethods("/.well-known/mcp.json", new[] { "GET", "HEAD" }, HandleAsync)
             .ExcludeFromDescription();
         return endpoints;
     }

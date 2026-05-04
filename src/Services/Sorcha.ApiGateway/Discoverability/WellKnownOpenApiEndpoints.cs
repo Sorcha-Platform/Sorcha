@@ -39,14 +39,16 @@ internal static class WellKnownOpenApiEndpoints
 
     /// <summary>
     /// Wires both well-known routes. Call after the OpenAPI aggregation route has been
-    /// registered so the underlying service is in DI.
+    /// registered so the underlying service is in DI. Both routes accept GET and HEAD —
+    /// HEAD is RFC-required for any GET resource, and discovery clients (curl -I,
+    /// HTTP cache validators, link checkers) probe with HEAD before a full fetch.
     /// </summary>
     public static IEndpointRouteBuilder MapWellKnownOpenApiEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/.well-known/openapi.json", HandleJsonAsync)
+        endpoints.MapMethods("/.well-known/openapi.json", new[] { "GET", "HEAD" }, HandleJsonAsync)
             .ExcludeFromDescription();
 
-        endpoints.MapGet("/.well-known/openapi.yaml", HandleYamlAsync)
+        endpoints.MapMethods("/.well-known/openapi.yaml", new[] { "GET", "HEAD" }, HandleYamlAsync)
             .ExcludeFromDescription();
 
         return endpoints;
