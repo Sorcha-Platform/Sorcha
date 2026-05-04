@@ -95,7 +95,7 @@ public sealed class DelegationRenewalServiceTests
         _devices.Setup(c => c.RegisterAsync(
                 PlatformUserId, lookup.Label, lookup.DevicePublicJwkThumbprint,
                 lookup.DevicePublicJwkJson, lookup.Platform, string.Empty,
-                newExp, newJti, lookup.StatusListIndex, It.IsAny<CancellationToken>()))
+                newExp, newJti, lookup.StatusListId, lookup.StatusListIndex, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformUserDeviceRegistrationResult(DeviceId, lookup.EnrolledAt));
 
         var result = await _sut.RenewAsync(DeviceId, PlatformUserId, CitizenWallet, OrgId);
@@ -112,7 +112,7 @@ public sealed class DelegationRenewalServiceTests
         _devices.Verify(c => c.RegisterAsync(
             PlatformUserId, lookup.Label, lookup.DevicePublicJwkThumbprint,
             lookup.DevicePublicJwkJson, lookup.Platform, string.Empty,
-            newExp, newJti, lookup.StatusListIndex, It.IsAny<CancellationToken>()), Times.Once);
+            newExp, newJti, lookup.StatusListId, lookup.StatusListIndex, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private static PlatformUserDeviceLookupResult LookupResult(string status = "Active") => new(
@@ -126,5 +126,6 @@ public sealed class DelegationRenewalServiceTests
         EnrolledAt: DateTimeOffset.UtcNow.AddDays(-300),
         DelegationExpiresAt: DateTimeOffset.UtcNow.AddDays(20), // 20 days from expiry → renewal due
         DelegationCredentialJti: "old-jti",
+        StatusListId: 0,
         StatusListIndex: 7);
 }

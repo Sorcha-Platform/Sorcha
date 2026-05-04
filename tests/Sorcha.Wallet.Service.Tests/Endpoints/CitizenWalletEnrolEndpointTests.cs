@@ -129,7 +129,7 @@ public sealed class CitizenWalletEnrolEndpointTests
                 PlatformUserId, "Stuart's iPhone 16",
                 It.IsAny<string>(), It.IsAny<string>(),
                 "iOS 19 / Safari 19", "Mozilla/5.0 ...",
-                delegation.ExpiresAt, "jti-abc", 7,
+                delegation.ExpiresAt, "jti-abc", 0, 7,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformUserDeviceRegistrationResult(deviceId, DateTimeOffset.UtcNow));
 
@@ -202,7 +202,7 @@ public sealed class CitizenWalletEnrolEndpointTests
                 It.IsAny<Guid>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Tenant down"));
 

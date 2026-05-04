@@ -23,6 +23,7 @@ public interface IPlatformUserDeviceClient
         string userAgent,
         DateTimeOffset delegationExpiresAt,
         string delegationCredentialJti,
+        int statusListId,
         int statusListIndex,
         CancellationToken ct = default);
 
@@ -54,6 +55,7 @@ public sealed record PlatformUserDeviceRegistrationResult(
 /// <param name="EnrolledAt">Timestamp at which enrolled occurred (UTC).</param>
 /// <param name="DelegationExpiresAt">Timestamp at which delegation expires occurred (UTC).</param>
 /// <param name="DelegationCredentialJti">The delegation credential jti.</param>
+/// <param name="StatusListId">Identifier of the status list containing this device's revocation bit.</param>
 /// <param name="StatusListIndex">Numeric value for status list index.</param>
 public sealed record PlatformUserDeviceLookupResult(
     Guid DeviceId,
@@ -66,4 +68,5 @@ public sealed record PlatformUserDeviceLookupResult(
     DateTimeOffset EnrolledAt,
     DateTimeOffset DelegationExpiresAt,
     string DelegationCredentialJti,
+    int StatusListId,
     int StatusListIndex);

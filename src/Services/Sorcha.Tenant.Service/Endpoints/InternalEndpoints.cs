@@ -65,6 +65,7 @@ public static class InternalEndpoints
                 request.UserAgent,
                 request.DelegationExpiresAt,
                 request.DelegationCredentialJti,
+                request.StatusListId,
                 request.StatusListIndex,
                 ct);
 
@@ -97,6 +98,7 @@ public static class InternalEndpoints
             device.EnrolledAt,
             device.DelegationExpiresAt,
             device.DelegationCredentialJti,
+            device.StatusListId,
             device.StatusListIndex));
     }
 
@@ -112,6 +114,7 @@ public static class InternalEndpoints
         DateTimeOffset EnrolledAt,
         DateTimeOffset DelegationExpiresAt,
         string DelegationCredentialJti,
+        int StatusListId,
         int StatusListIndex);
 
     /// <summary>Internal request body for citizen device registration.</summary>
@@ -124,6 +127,7 @@ public static class InternalEndpoints
         string UserAgent,
         DateTimeOffset DelegationExpiresAt,
         string DelegationCredentialJti,
+        int StatusListId,
         int StatusListIndex);
 
     /// <summary>Internal response with persisted device id and enrolment timestamp.</summary>
