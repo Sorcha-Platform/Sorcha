@@ -2978,6 +2978,40 @@ public class PublishService(
             }
         }
 
+        // Rule 7d (Feature 107, Issue #337): x-review.layout typo detection.
+        //
+        //   WARN_BP_REVIEW_001 — non-blocking warning. SchemaLayoutParser silently falls
+        //                        back to id-card when an x-review.layout value isn't in
+        //                        the known set. Without this rule a blueprint author who
+        //                        types "hologram" instead of "id-card" gets no signal
+        //                        that their declaration was ignored.
+        //
+        // Implementation calls SchemaLayoutParser.EnumerateUnknownReviewLayouts so the
+        // canonical layout-name set lives in exactly one place.
+        foreach (var action in blueprint.Actions)
+        {
+            if (action.DataSchemas is null) continue;
+            foreach (var schemaDoc in action.DataSchemas)
+            {
+                try
+                {
+                    foreach (var unknownLayout in
+                        Sorcha.Blueprint.Models.SchemaLayoutParser.EnumerateUnknownReviewLayouts(schemaDoc.RootElement))
+                    {
+                        warnings.Add(
+                            $"[{Sorcha.Blueprint.Models.ValidationWarningCodes.ReviewLayoutUnknown}] " +
+                            $"Action {action.Id} ('{action.Title}'): x-review.layout value '{unknownLayout}' " +
+                            $"is not a recognised variant. Renderer falls back to 'id-card'. " +
+                            $"Known variants: {string.Join(", ", Sorcha.Blueprint.Models.SchemaLayoutParser.KnownReviewLayoutVariants)}.");
+                    }
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // Malformed schema — other rules will surface this
+                }
+            }
+        }
+
         // Rule 7c (Feature 106): credentialIssuanceConfig.targetAudience == SorchaLocalWallet
         // guardrails for register-native credential delivery.
         //
