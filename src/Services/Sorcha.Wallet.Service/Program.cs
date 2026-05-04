@@ -155,6 +155,11 @@ builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizen
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDelegationRenewalService,
     Sorcha.Wallet.Service.Services.Implementation.DelegationRenewalService>();
 
+// Feature 114 (US3): citizen device revocation. Shared between the public
+// PWA-facing DELETE endpoint and the internal Tenant→Wallet S2S endpoint.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceRevocationService,
+    Sorcha.Wallet.Service.Services.Implementation.DeviceRevocationService>();
+
 // Feature 114: FluentValidation for citizen wallet request DTOs
 builder.Services.AddValidatorsFromAssemblyContaining<
     Sorcha.CitizenWallet.Abstractions.Validators.DeviceEnrolmentRequestValidator>();
@@ -241,6 +246,7 @@ app.MapCitizenStatusListEndpoints();
 
 // Feature 114: Citizen wallet PWA endpoints (device enrolment, sync, etc.)
 app.MapCitizenWalletEndpoints();
+app.MapCitizenStatusListInternalEndpoints();
 
 // Feature 114: Citizen wallet SignalR hub. Routed via API Gateway as `/hubs/wallet`.
 app.MapHub<Sorcha.Wallet.Service.Hubs.WalletHub>("/hubs/wallet");

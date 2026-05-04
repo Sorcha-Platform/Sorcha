@@ -5,7 +5,9 @@ using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Sorcha.CitizenWallet.Abstractions.Models;
+using Sorcha.ServiceClients.CitizenStatusList;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Tests.Infrastructure;
@@ -143,6 +145,66 @@ public class PlatformUserDeviceEndpointsTests
     }
 
     [Fact]
+    public async Task Revoke_OwnedActiveDevice_DispatchesStatusListFlipToWalletService()
+    {
+        var device = await SeedDeviceAsync(
+            TestDataSeeder.MemberPlatformUserId,
+            "Old phone",
+            statusListId: 3,
+            statusListIndex: 9876);
+
+        var mock = Mock.Get(_factory.Services.GetRequiredService<ICitizenStatusListClient>());
+        mock.Invocations.Clear();
+
+        var response = await _memberClient.DeleteAsync($"/api/v1/me/devices/{device.Id}");
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        // Wallet S2S must be invoked exactly once with the (orgId, listId, idx) triple
+        // off the device row plus the deviceId + platformUserId for the SignalR group.
+        mock.Verify(c => c.RevokeAsync(
+            TestDataSeeder.TestOrganizationId,
+            3,
+            9876,
+            device.Id,
+            TestDataSeeder.MemberPlatformUserId,
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Revoke_WalletServiceFailure_Returns502_TenantRowStillRevoked()
+    {
+        var device = await SeedDeviceAsync(TestDataSeeder.MemberPlatformUserId, "Old phone");
+        var mock = Mock.Get(_factory.Services.GetRequiredService<ICitizenStatusListClient>());
+        mock.Setup(c => c.RevokeAsync(
+                It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Wallet down"));
+
+        try
+        {
+            var response = await _memberClient.DeleteAsync($"/api/v1/me/devices/{device.Id}");
+            response.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+
+            // Tenant row IS revoked even though Wallet propagation failed —
+            // caller can retry to complete; revoke is idempotent.
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+            var revoked = await db.PlatformUserDevices.FindAsync(device.Id);
+            revoked!.Status.Should().Be(PlatformUserDeviceStatus.Revoked);
+        }
+        finally
+        {
+            // Reset mock for subsequent tests in the shared fixture.
+            mock.Reset();
+            mock.Setup(c => c.RevokeAsync(
+                    It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(),
+                    It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+        }
+    }
+
+    [Fact]
     public async Task Revoke_OwnedActiveDevice_FlipsStatusAndReturnsNoContent()
     {
         var device = await SeedDeviceAsync(TestDataSeeder.MemberPlatformUserId, "Old phone");
@@ -191,7 +253,9 @@ public class PlatformUserDeviceEndpointsTests
     private async Task<Sorcha.Tenant.Service.Models.PlatformUserDevice> SeedDeviceAsync(
         Guid platformUserId,
         string label,
-        DateTimeOffset? enrolledAt = null)
+        DateTimeOffset? enrolledAt = null,
+        int? statusListId = null,
+        int? statusListIndex = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
@@ -210,7 +274,8 @@ public class PlatformUserDeviceEndpointsTests
             EnrolledAt = enrolled,
             DelegationExpiresAt = enrolled.AddDays(365),
             DelegationCredentialJti = Guid.NewGuid().ToString(),
-            StatusListIndex = Random.Shared.Next(0, 100_000)
+            StatusListId = statusListId ?? 0,
+            StatusListIndex = statusListIndex ?? Random.Shared.Next(0, 100_000)
         };
 
         db.PlatformUserDevices.Add(device);

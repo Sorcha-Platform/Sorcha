@@ -101,4 +101,19 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
 
         return await response.Content.ReadFromJsonAsync<PlatformUserDeviceLookupResult>(JsonOptions, ct);
     }
+
+    /// <inheritdoc />
+    public async Task<bool> RevokeAsync(
+        Guid deviceId, Guid platformUserId, CancellationToken ct = default)
+    {
+        await ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Tenant Service (PlatformUserDevice)", ct);
+
+        var response = await _httpClient.DeleteAsync(
+            $"api/internal/platform-user-devices/{deviceId}?platformUserId={platformUserId}", ct);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
 }

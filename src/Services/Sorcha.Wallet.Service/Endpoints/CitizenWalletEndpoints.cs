@@ -76,7 +76,64 @@ public static class CitizenWalletEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status410Gone);
 
+        group.MapDelete("/devices/{deviceId:guid}", RevokeDevice)
+            .WithName("RevokeCitizenDevice")
+            .WithSummary("Revoke a citizen wallet device (PWA-initiated)")
+            .WithDescription(
+                "Looks up the device on the Tenant Service, flips the citizen-devices " +
+                "status-list bit, broadcasts the SignalR DeviceRevoked event to the user's " +
+                "group, and marks the Tenant row revoked via the existing service-to-service " +
+                "channel. Returns 404 when the device does not exist or is not owned by the " +
+                "caller (intentionally indistinguishable to avoid leaking device existence).")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
+
         return app;
+    }
+
+    private static async Task<IResult> RevokeDevice(
+        Guid deviceId,
+        HttpContext context,
+        IPlatformUserDeviceClient deviceClient,
+        IDeviceRevocationService revocation,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        var (platformUserId, _, organizationId) = ResolveCitizenContext(context.User);
+        if (platformUserId is null || organizationId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var device = await deviceClient.GetByIdAsync(deviceId, platformUserId.Value, ct);
+        if (device is null)
+        {
+            return Results.NotFound();
+        }
+
+        await revocation.RevokeAsync(
+            organizationId.Value,
+            device.StatusListId,
+            device.StatusListIndex,
+            deviceId,
+            platformUserId.Value,
+            ct);
+
+        var tenantOk = await deviceClient.RevokeAsync(deviceId, platformUserId.Value, ct);
+        if (!tenantOk)
+        {
+            // Wallet side already revoked; Tenant lookup said the device exists but
+            // the revoke endpoint reported 404. Possible race (concurrent revoke
+            // from the web UI) — log and report success since the desired end-state
+            // is achieved.
+            logger.LogWarning(
+                "PWA-initiated revoke: Tenant returned 404 on RevokeAsync for deviceId={DeviceId} " +
+                "(platformUser={PlatformUserId}) after a successful GetByIdAsync — concurrent revoke?",
+                deviceId, platformUserId);
+        }
+
+        return Results.NoContent();
     }
 
     private static async Task<IResult> RenewDelegation(
