@@ -58,13 +58,41 @@ public class HealthAggregationService
             response.Services[serviceName] = health;
         }
 
-        // Determine overall status
-        var allHealthy = response.Services.Values.All(s => s.Status == "healthy");
-        var anyHealthy = response.Services.Values.Any(s => s.Status == "healthy");
-
-        response.Status = allHealthy ? "healthy" : anyHealthy ? "degraded" : "unhealthy";
+        response.Status = DetermineOverallStatus(response.Services.Values.Select(s => s.Status));
 
         return response;
+    }
+
+    /// <summary>
+    /// Maps the plain-text body of an Aspire <c>/health</c> response onto the canonical
+    /// gateway status strings. Aspire emits one of "Healthy", "Degraded", or "Unhealthy"
+    /// (case-insensitive); anything else maps to "unknown".
+    /// </summary>
+    internal static string ClassifyHealthResponseText(string responseBody)
+    {
+        var status = responseBody?.Trim().ToLowerInvariant() ?? string.Empty;
+        return status switch
+        {
+            "healthy" => "healthy",
+            "degraded" => "degraded",
+            "unhealthy" => "unhealthy",
+            _ => "unknown"
+        };
+    }
+
+    /// <summary>
+    /// Aggregates per-service statuses into a single overall status:
+    /// "healthy" iff every service is healthy; "unhealthy" if any service is
+    /// confirmed unhealthy; otherwise "degraded" (at least one service is
+    /// degraded or unknown but none are confirmed unhealthy).
+    /// </summary>
+    internal static string DetermineOverallStatus(IEnumerable<string> serviceStatuses)
+    {
+        var statuses = serviceStatuses.ToList();
+        if (statuses.Count == 0) return "unknown";
+        if (statuses.All(s => s == "healthy")) return "healthy";
+        if (statuses.Any(s => s == "unhealthy")) return "unhealthy";
+        return "degraded";
     }
 
     /// <summary>
@@ -120,13 +148,10 @@ public class HealthAggregationService
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-                // Aspire health endpoint returns plain text "Healthy" or "Unhealthy"
-                // Not JSON with a status property
-                var status = content.Trim().ToLowerInvariant();
-
+                // Aspire health endpoint returns plain text "Healthy", "Degraded", or "Unhealthy".
                 return new ServiceHealth
                 {
-                    Status = status == "healthy" ? "healthy" : status == "unhealthy" ? "unhealthy" : "unknown",
+                    Status = ClassifyHealthResponseText(content),
                     Endpoint = endpoint
                 };
             }
