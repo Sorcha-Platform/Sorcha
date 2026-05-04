@@ -54,7 +54,7 @@ public sealed class ActionSubmitTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Result of the submission.</returns>
     [McpServerTool(Name = "sorcha_action_submit")]
-    [Description("Submit data for an action to complete it and advance the workflow. The data must conform to the action's input schema.")]
+    [Description("Submit signed data for a specific action assigned to the participant, completing that action and advancing the multi-party workflow to its next step. Returns the resulting transaction id and any next actions triggered. Call this when the agent has the participant's input ready and intends to commit it to the register; call sorcha_action_validate first when you only want to dry-run the data against the input schema, and use sorcha_inbox_list rather than this tool when discovering which actions are pending.")]
     public async Task<ActionSubmitResult> SubmitActionAsync(
         [Description("The action instance ID")] string actionInstanceId,
         [Description("The action data in JSON format")] string dataJson,

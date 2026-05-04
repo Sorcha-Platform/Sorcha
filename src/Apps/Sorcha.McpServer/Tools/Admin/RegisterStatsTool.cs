@@ -52,7 +52,7 @@ public sealed class RegisterStatsTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Register statistics including counts, transaction metrics, and activity summary.</returns>
     [McpServerTool(Name = "sorcha_register_stats")]
-    [Description("Query register statistics. Returns overall register count and list, or detailed transaction statistics for a specific register if registerId is provided.")]
+    [Description("Returns either platform-wide register inventory (count plus the ten most recently created registers) or, when registerId is provided, transaction-level statistics for that single register including total transactions, unique wallets, sender and recipient counts, payload totals, and earliest/latest transaction timestamps. Call this when you need ledger volume and activity figures for capacity planning, billing analysis, or sizing a tenant's footprint; prefer this over sorcha_validator_status when the question is about how much data a register holds rather than whether consensus is healthy, and call before drilling into sorcha_log_query so the log window can be aligned to the register's actual activity span.")]
     public async Task<RegisterStatsResult> GetRegisterStatsAsync(
         [Description("Optional register ID for detailed transaction statistics")] string? registerId = null,
         CancellationToken cancellationToken = default)

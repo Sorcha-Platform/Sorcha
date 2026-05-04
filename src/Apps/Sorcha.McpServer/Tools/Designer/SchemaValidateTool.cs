@@ -42,7 +42,7 @@ public sealed class SchemaValidateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Validation result indicating if the schema is valid.</returns>
     [McpServerTool(Name = "sorcha_schema_validate")]
-    [Description("Validate a JSON Schema definition for correctness. Checks that the schema is well-formed and follows JSON Schema specification. Useful for verifying blueprint action schemas before deployment.")]
+    [Description("Parses a JSON Schema document and returns whether it is well-formed under the JSON Schema specification, along with structural metadata (root type, declared properties, required fields, and definition counts). Call this on any schema before embedding it in a blueprint action so authoring errors surface early; use sorcha_blueprint_validate instead when you want to validate a data payload against an already-deployed action schema, and prefer this over sorcha_schema_generate when you have a hand-authored schema and need to confirm it parses rather than build one from sample data.")]
     public Task<SchemaValidateResult> ValidateSchemaAsync(
         [Description("The JSON Schema to validate")] string schemaJson,
         CancellationToken cancellationToken = default)

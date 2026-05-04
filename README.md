@@ -32,24 +32,35 @@ Sorcha implements **DAD** (Disclosure, Alteration, Destruction):
 
 ## Quick Start
 
+For the full quickstart (every prerequisite with version constraint, every common failure mode with documented fix, the verify-installation curl), see **[`docs/quickstart.md`](docs/quickstart.md)**. That document is agent-runnable end-to-end and is the canonical setup reference.
+
+The short version:
+
 ### Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) (required)
-- [Git](https://git-scm.com/)
+- Docker Engine ≥ 24 (or Docker Desktop on macOS / Windows)
+- Docker Compose v2 (the `docker compose` plugin — v1 standalone is end-of-life and rejected by the setup script)
+- OpenSSL **or** Python 3 (for JWT key generation)
+- Git
+- PowerShell 7.5+ (optional — only needed for `walkthroughs/`)
+
+Ports `80`, `443`, and `8080` must be free.
 
 ### Setup
 
 ```bash
-git clone https://github.com/sorcha-platform/sorcha.git
-cd sorcha
+git clone https://github.com/Sorcha-Platform/Sorcha.git
+cd Sorcha
 
-# Interactive setup — generates .env, pulls images, starts services
+# Interactive setup — checks prerequisites, generates .env, pulls images, starts services
 ./scripts/sorcha-setup.sh
 
 # Or manual setup:
 cp .env.example .env          # Edit with your settings
-docker-compose up -d          # Start all services
+docker compose up -d          # Start all services
 ```
+
+On success the script prints `[sorcha-setup] success — gateway reachable at http://localhost`. Verify with `curl -s http://localhost/api/health` — every service should report `Healthy`.
 
 ### Access Points
 
@@ -196,6 +207,27 @@ Key settings:
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` | PostgreSQL credentials | `sorcha` / `sorcha_dev_password` |
 | `MONGO_USERNAME` / `MONGO_PASSWORD` | MongoDB credentials | `sorcha` / `sorcha_dev_password` |
 | `ANTHROPIC_API_KEY` | AI blueprint design (optional) | Empty |
+
+## For AI Agents and Integrators
+
+Sorcha publishes a machine-readable surface so AI agents, AI coding assistants, and integrators picking up the platform can find, parse, and reason over it without out-of-band documentation. The four published documents are the canonical agent-facing reference and live alongside the standards file and the well-known endpoints:
+
+| Surface | Purpose |
+|---------|---------|
+| [`llms.txt`](llms.txt) | One-screen factual summary, llmstxt.org-conforming |
+| [`STANDARDS.md`](STANDARDS.md) | Single source of truth for every standard the platform implements |
+| [`docs/quickstart.md`](docs/quickstart.md) | Agent-runnable setup against a clean Docker host |
+| [`docs/architecture.md`](docs/architecture.md) | Architectural overview — services, evidence flow, discovery surface |
+| [`docs/openid4vc-haip-integration.md`](docs/openid4vc-haip-integration.md) | Wallet ecosystem boundary (OpenID4VCI / OpenID4VP / HAIP 1.0) |
+| [`docs/applicability.md`](docs/applicability.md) | Regulatory-pull domains (DPP, trade finance, IPC-1782, municipal) |
+| [`docs/security-model.md`](docs/security-model.md) | Selective disclosure, post-quantum posture, honest gaps |
+| [`docs/mcp-server.md`](docs/mcp-server.md) | Connecting an AI agent via the Model Context Protocol |
+| [`docs/llms-full.txt`](docs/llms-full.txt) | Long-form machine-readable narrative |
+| `GET /.well-known/openapi.json` *(running gateway)* | Aggregated OpenAPI 3.1 surface with `info.x-mcp-server` and `info.x-standards` |
+| `GET /.well-known/openapi.yaml` *(running gateway)* | YAML form of the same document |
+| `GET /.well-known/mcp.json` *(running gateway)* | MCP server manifest — transports, authentication, tool catalogue |
+
+These surfaces are gated by the `ai-discoverability-check` CI workflow on every pull request to `master`.
 
 ## Documentation
 

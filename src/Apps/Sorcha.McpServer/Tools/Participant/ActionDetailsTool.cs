@@ -52,7 +52,7 @@ public sealed class ActionDetailsTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Action details including schema and disclosed data.</returns>
     [McpServerTool(Name = "sorcha_action_details")]
-    [Description("Get details of a specific action from your inbox. Returns action configuration, input schema, and any data disclosed to you.")]
+    [Description("Fetch the full configuration of a single action assigned to the participant, including its JSON input schema, prompt copy, and any upstream data selectively disclosed to this participant. Returns enough detail for an agent to construct a schema-valid submission payload. Call this when the agent has an actionInstanceId from sorcha_inbox_list and needs the schema before drafting input; prefer sorcha_inbox_list rather than this tool when only enumerating pending work, and use sorcha_disclosed_data instead when you want disclosures across an entire workflow rather than a single action.")]
     public async Task<ActionDetailsResult> GetActionDetailsAsync(
         [Description("The action instance ID")] string actionInstanceId,
         CancellationToken cancellationToken = default)

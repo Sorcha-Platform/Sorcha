@@ -42,7 +42,7 @@ public sealed class SchemaGenerateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Generated JSON Schema.</returns>
     [McpServerTool(Name = "sorcha_schema_generate")]
-    [Description("Generate a JSON Schema from sample JSON data. Analyzes the structure and types of the sample data to create a schema definition. Useful for quickly creating schemas for blueprint actions.")]
+    [Description("Infers a JSON Schema definition from a sample JSON document by analysing its structure and value types, optionally marking every property as required. Call this when bootstrapping a new blueprint action schema from an example payload, rather than authoring the schema by hand; use sorcha_schema_validate after this to confirm the generated schema is well-formed, and prefer hand-edited schemas over generated ones when you need constraints (enum values, formats, ranges) that cannot be inferred from a single sample.")]
     public Task<SchemaGenerateResult> GenerateSchemaAsync(
         [Description("Sample JSON data to generate schema from")] string sampleJson,
         [Description("Mark all properties as required (default: false)")] bool makeRequired = false,

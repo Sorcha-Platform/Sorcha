@@ -60,7 +60,7 @@ public sealed class HealthCheckTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Health status for all services.</returns>
     [McpServerTool(Name = "sorcha_health_check")]
-    [Description("Check the health status of all Sorcha microservices. Returns status for Blueprint, Register, Wallet, Tenant, Validator, Peer, and API Gateway services with response times and any error messages.")]
+    [Description("Returns a per-service health snapshot (Blueprint, Register, Wallet, Tenant, Validator, Peer, API Gateway) with response times and any error messages, plus an aggregate Healthy/Degraded/Unhealthy verdict. Call this first when a user reports unexpected failures or before any other admin tool to confirm the platform is reachable; prefer this over sorcha_metrics when you need a binary up/down signal rather than throughput or latency trends, and call before sorcha_peer_status or sorcha_validator_status to localise an outage to a specific subsystem.")]
     public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
     {
         // Authorization check

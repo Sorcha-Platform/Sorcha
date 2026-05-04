@@ -57,7 +57,7 @@ public sealed class LogQueryTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Log query results.</returns>
     [McpServerTool(Name = "sorcha_log_query")]
-    [Description("Query application logs across all services. Filter by service, log level, time range, or search text. Useful for troubleshooting and monitoring.")]
+    [Description("Returns application log entries from one or all Sorcha services, filtered by service name, log level, time window, or free-text search, ordered by timestamp. Call this when diagnosing a specific error or tracing a request through the platform after sorcha_health_check has flagged a degraded service; prefer this over sorcha_audit_query when the question is about service-level diagnostic output (exceptions, warnings, request traces) rather than user or admin behaviour, and prefer it over sorcha_metrics when you need the textual evidence behind an anomalous metric rather than the metric itself.")]
     public async Task<LogQueryResult> QueryLogsAsync(
         [Description("Filter by service name (e.g., Blueprint, Register, Wallet)")] string? service = null,
         [Description("Filter by log level: Debug, Info, Warning, Error")] string? level = null,
