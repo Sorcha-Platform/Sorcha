@@ -46,6 +46,7 @@ public class NotificationServiceEventsHubTests
         _service = new NotificationService(
             _actionsHubContext.Object,
             _eventsHubContext.Object,
+            new Mock<IBlueprintInboxWriter>().Object,
             NullLogger<NotificationService>.Instance);
     }
 

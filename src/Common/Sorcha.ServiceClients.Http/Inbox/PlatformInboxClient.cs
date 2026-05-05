@@ -78,7 +78,26 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
         return new InboxWriteOutcome(json.Entry?.Id ?? Guid.Empty, json.Idempotent);
     }
 
+    /// <inheritdoc />
+    public async Task<Guid?> ResolvePlatformUserIdAsync(Guid userIdentityId, CancellationToken ct = default)
+    {
+        await ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Tenant Service (Inbox identity resolution)", ct);
+
+        using var resp = await _httpClient.GetAsync($"api/internal/users/by-identity/{userIdentityId:D}", ct).ConfigureAwait(false);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        resp.EnsureSuccessStatusCode();
+
+        var body = await resp.Content.ReadFromJsonAsync<PlatformUserResolutionShape>(JsonOptions, ct).ConfigureAwait(false);
+        return body?.PlatformUserId;
+    }
+
     private sealed record InboxResponseEnvelope(InboxEntryShape? Entry, bool Idempotent);
 
     private sealed record InboxEntryShape(Guid Id);
+
+    private sealed record PlatformUserResolutionShape(Guid UserIdentityId, Guid PlatformUserId);
 }

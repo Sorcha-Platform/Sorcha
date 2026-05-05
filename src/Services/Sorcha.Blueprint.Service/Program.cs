@@ -277,6 +277,11 @@ builder.Services.Configure<HubOptions>(options =>
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.INotificationService,
     Sorcha.Blueprint.Service.Services.Implementation.NotificationService>();
 
+// Feature 118 / US3 follow-up — wire BlueprintInboxWriter so action-available
+// notifications also produce durable inbox entries via Tenant Service.
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Implementation.IBlueprintInboxWriter,
+    Sorcha.Blueprint.Service.Services.Implementation.BlueprintInboxWriter>();
+
 // Add AI-assisted Blueprint Chat services (Sprint 8)
 builder.Services.AddChatServices(builder.Configuration);
 

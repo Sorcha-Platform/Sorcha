@@ -42,6 +42,7 @@ public class EncryptionNotificationTests
         _service = new NotificationService(
             _hubContext.Object,
             _eventsHubContext.Object,
+            new Mock<IBlueprintInboxWriter>().Object,
             NullLogger<NotificationService>.Instance);
     }
 

@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Services;
@@ -77,6 +78,18 @@ public static class InternalEndpoints
             .WithDescription("Called by Wallet Service when the citizen renames a device "
                 + "from the PWA. Validates label length 1..120. 404 indistinguishable from "
                 + "non-existence on cross-user mismatch.")
+            .RequireAuthorization("RequireService");
+
+        // Feature 118 (US3 follow-up): resolve UserIdentity.Id → PlatformUser.Id.
+        // Used by inbox writers in other services (Blueprint, Wallet) that have a
+        // ParticipantInfo (which carries the org-scoped UserIdentity id) and need
+        // the cross-org PlatformUserId to address the inbox row.
+        group.MapGet("/users/by-identity/{userIdentityId:guid}", ResolvePlatformUserByIdentity)
+            .WithName("ResolvePlatformUserByIdentity")
+            .WithSummary("Resolve UserIdentity.Id to its owning PlatformUser.Id")
+            .WithDescription("Returns the cross-org PlatformUserId that owns the supplied UserIdentity. "
+                + "Used by inbox writers in other services that resolve participant by wallet but only "
+                + "see the org-scoped identity id in ParticipantInfo. 404 if the UserIdentity does not exist.")
             .RequireAuthorization("RequireService");
 
         return app;
@@ -247,4 +260,28 @@ public static class InternalEndpoints
     }
 
     internal record DomainResolutionResponse(string Subdomain);
+
+    /// <summary>Wire shape for <see cref="ResolvePlatformUserByIdentity"/>.</summary>
+    public sealed record PlatformUserResolution(Guid UserIdentityId, Guid PlatformUserId);
+
+    private static async Task<Results<Ok<PlatformUserResolution>, NotFound>> ResolvePlatformUserByIdentity(
+        Guid userIdentityId,
+        Sorcha.Tenant.Service.Data.TenantDbContext db,
+        CancellationToken ct)
+    {
+        // Single Postgres lookup against the public schema. UserIdentity.PlatformUserId
+        // is the foreign key to the cross-org PlatformUser table — exactly what the
+        // inbox addressing surface needs.
+        var platformUserId = await db.UserIdentities
+            .Where(u => u.Id == userIdentityId)
+            .Select(u => u.PlatformUserId)
+            .FirstOrDefaultAsync(ct);
+
+        if (platformUserId == Guid.Empty)
+        {
+            return TypedResults.NotFound();
+        }
+
+        return TypedResults.Ok(new PlatformUserResolution(userIdentityId, platformUserId));
+    }
 }
