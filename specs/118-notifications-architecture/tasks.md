@@ -23,11 +23,11 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 **Purpose**: Bring up the new shared namespaces and project references that every later phase depends on. No behaviour change in this phase.
 
-- [ ] T001 Create `src/Common/Sorcha.ServiceDefaults/Hubs/` folder and a `Hubs/_namespace.cs` file establishing the `Sorcha.ServiceDefaults.Hubs` namespace.
-- [ ] T002 [P] Add NuGet package reference `Microsoft.AspNetCore.SignalR.StackExchangeRedis` to `Directory.Packages.props` at the version aligned with the .NET 10 line currently in tree.
-- [ ] T003 [P] Add a `<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" />` to `src/Common/Sorcha.ServiceDefaults/Sorcha.ServiceDefaults.csproj`.
-- [ ] T004 [P] Create `tests/Sorcha.ServiceDefaults.Tests/Hubs/` folder for the new common-code unit tests.
-- [ ] T005 [P] Create `tests/Sorcha.Integration.Tests/MultiNode/` folder and add `docker-compose.multinode.yml` skeleton at repo root that brings up two Tenant Service replicas behind YARP with sticky-session affinity.
+- [X] T001 Create `src/Common/Sorcha.ServiceDefaults/Hubs/` folder and a `Hubs/_namespace.cs` file establishing the `Sorcha.ServiceDefaults.Hubs` namespace.
+- [X] T002 [P] Add NuGet package reference `Microsoft.AspNetCore.SignalR.StackExchangeRedis` to `Directory.Packages.props` at the version aligned with the .NET 10 line currently in tree.
+- [X] T003 [P] Add a `<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" />` to `src/Common/Sorcha.ServiceDefaults/Sorcha.ServiceDefaults.csproj`.
+- [X] T004 [P] Create `tests/Sorcha.ServiceDefaults.Tests/Hubs/` folder for the new common-code unit tests.
+- [X] T005 [P] Create `tests/Sorcha.Integration.Tests/MultiNode/` folder and add `docker-compose.multinode.yml` skeleton at repo root that brings up two Tenant Service replicas behind YARP with sticky-session affinity.
 
 ---
 
@@ -37,17 +37,17 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 **⚠️ CRITICAL**: No user story work begins until this phase is complete.
 
-- [ ] T006 Implement `HubSignal` thin-signal envelope record in `src/Common/Sorcha.ServiceDefaults/Hubs/HubSignal.cs` per `contracts/hub-signal.schema.json`.
-- [ ] T007 [P] Implement `SignalRMetrics` OpenTelemetry meter `Sorcha.SignalR` in `src/Common/Sorcha.ServiceDefaults/Hubs/SignalRMetrics.cs` exposing the five instruments listed in `data-model.md` § OpenTelemetry instruments.
-- [ ] T008 Implement `SorchaHubConventions` static helper in `src/Common/Sorcha.ServiceDefaults/Hubs/SorchaHubConventions.cs` that wires JWT Bearer auth (with `platform_user_id` claim guard), Redis backplane (per-service ChannelPrefix), reconnect policy, and OpenTelemetry instrumentation. Sources Redis connection via `SorchaConnectionsExtensions.GetSorchaRedisConnectionString()`.
-- [ ] T009 Implement `AddSorchaHubExtensions.AddSorchaHub<THub, TClient>(IServiceCollection, IConfiguration, string routePath, string serviceShortName)` in `src/Common/Sorcha.ServiceDefaults/Hubs/AddSorchaHubExtensions.cs`. Calls into `SorchaHubConventions`, registers the backplane with `ChannelPrefix = sorcha:signalr:{serviceShortName}`, records the registration via `IStorageRegistrationLog` from `Sorcha.ServiceDefaults.Storage`, fail-fast in Production/Staging if backplane resolves in-memory.
-- [ ] T010 [P] Implement `HubConnectionWithFallback<TClient>` wrapper in `src/Common/Sorcha.ServiceDefaults/Hubs/HubConnectionWithFallback.cs` exposing the typed hub client, a `ConnectionState` observable, and a poll-now hint. Default poll cadence 15 s ±20 % jitter, engages after 90 s of failed reconnect.
-- [ ] T011 Add reconnect jitter (±20 %, 100 ms floor) to `src/Common/Sorcha.ServiceClients.Http/Hub/SorchaHubConnectionBuilder.cs` per research R-003. Surface `ConnectionState` observable for use by `HubConnectionWithFallback<TClient>`.
-- [ ] T012 [P] Unit tests for `HubSignal` shape validation in `tests/Sorcha.ServiceDefaults.Tests/Hubs/HubSignalTests.cs` (round-trip JSON, required fields, max-length checks).
-- [ ] T013 [P] Unit tests for `SignalRMetrics` instruments in `tests/Sorcha.ServiceDefaults.Tests/Hubs/SignalRMetricsTests.cs` (instrument names, tags, gauge state values).
-- [ ] T014 [P] Unit tests for `AddSorchaHub` registration and fail-fast paths in `tests/Sorcha.ServiceDefaults.Tests/Hubs/AddSorchaHubExtensionsTests.cs`.
-- [ ] T015 [P] Unit tests for `HubConnectionWithFallback<TClient>` poll engagement and disengagement in `tests/Sorcha.ServiceDefaults.Tests/Hubs/HubConnectionWithFallbackTests.cs`.
-- [ ] T016 [P] Unit tests for jittered reconnect schedule in `tests/Sorcha.ServiceClients.Tests/Hub/SorchaHubConnectionBuilderTests.cs` (existing file, add jitter tests).
+- [X] T006 Implement `HubSignal` thin-signal envelope record in `src/Common/Sorcha.ServiceDefaults/Hubs/HubSignal.cs` per `contracts/hub-signal.schema.json`.
+- [X] T007 [P] Implement `SignalRMetrics` OpenTelemetry meter `Sorcha.SignalR` in `src/Common/Sorcha.ServiceDefaults/Hubs/SignalRMetrics.cs` exposing the five instruments listed in `data-model.md` § OpenTelemetry instruments.
+- [X] T008 Implement `SorchaHubConventions` static helper in `src/Common/Sorcha.ServiceDefaults/Hubs/SorchaHubConventions.cs` that wires JWT Bearer auth (with `platform_user_id` claim guard), Redis backplane (per-service ChannelPrefix), reconnect policy, and OpenTelemetry instrumentation. Sources Redis connection via `SorchaConnectionsExtensions.GetSorchaRedisConnectionString()`.
+- [X] T009 Implement `AddSorchaHubExtensions.AddSorchaHub<THub, TClient>(IServiceCollection, IConfiguration, string routePath, string serviceShortName)` in `src/Common/Sorcha.ServiceDefaults/Hubs/AddSorchaHubExtensions.cs`. Calls into `SorchaHubConventions`, registers the backplane with `ChannelPrefix = sorcha:signalr:{serviceShortName}`, records the registration via `IStorageRegistrationLog` from `Sorcha.ServiceDefaults.Storage`, fail-fast in Production/Staging if backplane resolves in-memory.
+- [X] T010 [P] Implement `HubConnectionWithFallback<TClient>` wrapper in `src/Common/Sorcha.ServiceDefaults/Hubs/HubConnectionWithFallback.cs` exposing the typed hub client, a `ConnectionState` observable, and a poll-now hint. Default poll cadence 15 s ±20 % jitter, engages after 90 s of failed reconnect.
+- [X] T011 Add reconnect jitter (±20 %, 100 ms floor) to `src/Common/Sorcha.ServiceClients.Http/Hub/SorchaHubConnectionBuilder.cs` per research R-003. Surface `ConnectionState` observable for use by `HubConnectionWithFallback<TClient>`.
+- [X] T012 [P] Unit tests for `HubSignal` shape validation in `tests/Sorcha.ServiceDefaults.Tests/Hubs/HubSignalTests.cs` (round-trip JSON, required fields, max-length checks).
+- [X] T013 [P] Unit tests for `SignalRMetrics` instruments in `tests/Sorcha.ServiceDefaults.Tests/Hubs/SignalRMetricsTests.cs` (instrument names, tags, gauge state values).
+- [X] T014 [P] Unit tests for `AddSorchaHub` registration and fail-fast paths in `tests/Sorcha.ServiceDefaults.Tests/Hubs/AddSorchaHubExtensionsTests.cs`.
+- [X] T015 [P] Unit tests for `HubConnectionWithFallback<TClient>` poll engagement and disengagement in `tests/Sorcha.ServiceDefaults.Tests/Hubs/HubConnectionWithFallbackTests.cs`.
+- [X] T016 [P] Unit tests for jittered reconnect schedule in `tests/Sorcha.ServiceClients.Tests/Hub/SorchaHubConnectionBuilderTests.cs` (existing file, add jitter tests).
 
 **Checkpoint**: Foundation ready. User-story phases can begin.
 

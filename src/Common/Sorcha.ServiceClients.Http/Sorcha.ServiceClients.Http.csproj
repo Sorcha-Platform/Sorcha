@@ -22,4 +22,8 @@
     <ProjectReference Include="..\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.ServiceClients.Tests" />
+  </ItemGroup>
+
 </Project>

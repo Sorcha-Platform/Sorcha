@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Multi-replica overlay for Feature 118 cross-replica correctness tests.
+# Layered onto the base docker-compose.yml:
+#   docker-compose -f docker-compose.yml -f docker-compose.multinode.yml up -d
+#
+# Brings up two replicas of selected hub-hosting services and instructs
+# YARP (in the api-gateway service) to use sticky-session affinity so
+# the cross-replica fixture can deterministically route different test
+# clients to different replicas via affinity headers.
+#
+# This file is referenced by:
+#   - tests/Sorcha.Integration.Tests/MultiNode/HubBackplaneCrossReplicaTests.cs
+#   - .github/workflows/multinode-correctness.yml
+#
+# Phase 1 scaffold — service replicas and YARP overrides land in Phase 3.
+
+services:
+  # Phase 1: skeleton only. Phase 3 (US1) populates with explicit
+  # tenant-service-1 / tenant-service-2 / blueprint-service-1 / blueprint-service-2
+  # replica definitions and the YARP cluster affinity rules.
+  api-gateway:
+    environment:
+      - ReverseProxy__Clusters__tenant-cluster__SessionAffinity__Enabled=true
+      - ReverseProxy__Clusters__tenant-cluster__SessionAffinity__Policy=Cookie
+      - ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__Enabled=true
+      - ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__Policy=Cookie

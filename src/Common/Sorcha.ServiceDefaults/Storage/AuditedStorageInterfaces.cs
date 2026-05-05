@@ -54,6 +54,12 @@ internal static class AuditedStorageInterfaces
         // HAIP and other consumers — atomic distributed cache for replay-protection state.
         // Verified: matches typeof(Sorcha.AtomicCache.IAtomicDistributedCache).FullName.
         "Sorcha.AtomicCache.IAtomicDistributedCache",
+
+        // Feature 118 — SignalR backplane synthetic registration. Production / Staging
+        // refuse to start when a hub-hosting service has no Redis backplane: silent
+        // multi-replica fan-out misses are a correctness bug, not a degraded mode.
+        // Value matches Sorcha.ServiceDefaults.Hubs.SorchaHubConventions.BackplaneRegistrationInterface.
+        "Sorcha.ServiceDefaults.Hubs.SignalRBackplane",
     };
 
     /// <summary>The literal backend label used for in-memory registrations.</summary>
