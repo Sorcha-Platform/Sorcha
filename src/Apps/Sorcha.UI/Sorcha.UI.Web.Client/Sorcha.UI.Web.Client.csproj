@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
     <ProjectReference Include="..\..\..\Core\Sorcha.Blueprint.Fluent\Sorcha.Blueprint.Fluent.csproj" />
     <ProjectReference Include="..\..\..\Core\Sorcha.Blueprint.Schemas.Client\Sorcha.Blueprint.Schemas.Client.csproj" />
+    <ProjectReference Include="..\..\..\Common\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>
