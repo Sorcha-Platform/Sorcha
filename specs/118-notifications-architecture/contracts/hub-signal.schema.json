@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sorcha.dev/schemas/118/hub-signal.schema.json",
+  "title": "HubSignal",
+  "description": "Conceptual envelope for every server-to-client SignalR event on a Sorcha notification hub. Hub method signatures take individual typed parameters matching this shape; this schema validates the conceptual envelope, not the literal wire payload.",
+  "type": "object",
+  "required": ["EventType", "Ids", "OccurredAt", "TraceId"],
+  "additionalProperties": false,
+  "properties": {
+    "EventType": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Z][A-Za-z0-9]*$",
+      "description": "PascalCase event type name. Must match the typed-client method name exactly."
+    },
+    "Ids": {
+      "type": "array",
+      "description": "Opaque identifiers carried by this event. No claim values, no descriptions, no balances. Each ID must be resolvable via an authenticated REST detail endpoint.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "minItems": 0,
+      "maxItems": 16
+    },
+    "OccurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-side timestamp at which the event occurred."
+    },
+    "TraceId": {
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 64,
+      "pattern": "^[a-f0-9]{32}(-[a-f0-9]{16})?$",
+      "description": "W3C trace-id (32 hex chars) or trace-id and parent span (32-16 with hyphen). Used to correlate the event across origin service, Redis backplane, and client receipt."
+    }
+  }
+}
