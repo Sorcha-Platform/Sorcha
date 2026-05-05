@@ -9,31 +9,33 @@ using Sorcha.ServiceClients.Participant;
 namespace Sorcha.Blueprint.Service.Hubs;
 
 /// <summary>
-/// SignalR hub for real-time action notifications.
+/// SignalR hub for real-time blueprint-domain notifications.
 /// </summary>
 /// <remarks>
-/// This hub enables real-time communication between the Blueprint Service and clients
-/// for action availability, confirmation, and rejection notifications.
+/// Renamed from <c>ActionsHub</c> in Feature 118 Phase 4 (US2 — topology consolidation).
+/// The legacy route <c>/actionshub</c> is preserved as an alias for one release cycle
+/// per spec FR-003 — old clients continue to connect; the deprecation Notice is logged
+/// at the alias-mapped endpoint.
 ///
-/// Connection URL: /actionshub
-/// Authentication: JWT token via query parameter ?access_token={jwt}
+/// Connection URL: <c>/hubs/blueprint</c> (preferred), <c>/actionshub</c> (deprecated alias).
+/// Authentication: JWT token via query parameter <c>?access_token={jwt}</c>.
 ///
-/// Client Methods (called by server):
-/// - ActionAvailable(notification): Notifies client when a new action is available
-/// - ActionConfirmed(notification): Notifies client when an action is confirmed
-/// - ActionRejected(notification): Notifies client when an action is rejected
+/// Server-to-client events live on <see cref="IBlueprintHubClient"/>. Encryption
+/// events on the typed client are scheduled to migrate to <c>WalletHub</c> in
+/// Phase 5 (US3) when wallet-domain inbox writers come online — they are kept
+/// here for the parallel-fire window.
 ///
 /// Server Methods (called by clients):
-/// - SubscribeToWallet(walletAddress): Subscribe to notifications for a wallet
-/// - UnsubscribeFromWallet(walletAddress): Unsubscribe from wallet notifications
+/// - <see cref="SubscribeToWallet"/>: Subscribe to notifications for a wallet
+/// - <see cref="UnsubscribeFromWallet"/>: Unsubscribe from wallet notifications
 /// </remarks>
 [Authorize]
-public class ActionsHub : Hub<IActionsHubClient>
+public class BlueprintHub : Hub<IBlueprintHubClient>
 {
-    private readonly ILogger<ActionsHub> _logger;
+    private readonly ILogger<BlueprintHub> _logger;
     private readonly IParticipantServiceClient _participantClient;
 
-    public ActionsHub(ILogger<ActionsHub> logger, IParticipantServiceClient participantClient)
+    public BlueprintHub(ILogger<BlueprintHub> logger, IParticipantServiceClient participantClient)
     {
         _logger = logger;
         _participantClient = participantClient;
@@ -48,7 +50,7 @@ public class ActionsHub : Hub<IActionsHubClient>
         var userIdentifier = Context.UserIdentifier;
 
         _logger.LogInformation(
-            "Client connected to ActionsHub. ConnectionId: {ConnectionId}, User: {User}",
+            "Client connected to BlueprintHub. ConnectionId: {ConnectionId}, User: {User}",
             connectionId,
             userIdentifier ?? "anonymous");
 
@@ -67,14 +69,14 @@ public class ActionsHub : Hub<IActionsHubClient>
         {
             _logger.LogWarning(
                 exception,
-                "Client disconnected from ActionsHub with error. ConnectionId: {ConnectionId}, User: {User}",
+                "Client disconnected from BlueprintHub with error. ConnectionId: {ConnectionId}, User: {User}",
                 connectionId,
                 userIdentifier ?? "anonymous");
         }
         else
         {
             _logger.LogInformation(
-                "Client disconnected from ActionsHub. ConnectionId: {ConnectionId}, User: {User}",
+                "Client disconnected from BlueprintHub. ConnectionId: {ConnectionId}, User: {User}",
                 connectionId,
                 userIdentifier ?? "anonymous");
         }
@@ -207,12 +209,11 @@ public class ActionsHub : Hub<IActionsHubClient>
     }
 
     /// <summary>
-    /// Get the SignalR group name for a wallet address.
+    /// Get the SignalR group name for a wallet address. Delegates to
+    /// <see cref="BlueprintHubGroups.Wallet"/>.
     /// </summary>
-    private static string GetWalletGroupName(string walletAddress)
-    {
-        return $"wallet:{walletAddress}";
-    }
+    private static string GetWalletGroupName(string walletAddress) =>
+        BlueprintHubGroups.Wallet(walletAddress);
 }
 
 /// <summary>

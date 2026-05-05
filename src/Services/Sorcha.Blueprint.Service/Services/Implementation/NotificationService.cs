@@ -15,13 +15,13 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// </summary>
 public class NotificationService : INotificationService
 {
-    private readonly IHubContext<ActionsHub> _hubContext;
+    private readonly IHubContext<BlueprintHub> _hubContext;
     private readonly IHubContext<EventsHub> _eventsHubContext;
     private readonly ILogger<NotificationService> _logger;
 
     /// <summary>Initialises a new instance of the <see cref="NotificationService"/> class.</summary>
     public NotificationService(
-        IHubContext<ActionsHub> hubContext,
+        IHubContext<BlueprintHub> hubContext,
         IHubContext<EventsHub> eventsHubContext,
         ILogger<NotificationService> logger)
     {
@@ -175,7 +175,7 @@ public class NotificationService : INotificationService
 
     /// <summary>
     /// Sends an EncryptionSignal to the EventsHub for the specified user.
-    /// Isolated in its own try/catch so ActionsHub delivery is never affected.
+    /// Isolated in its own try/catch so BlueprintHub delivery is never affected.
     /// </summary>
     private async Task SendEncryptionSignalToEventsHubAsync(
         string? userId, EncryptionSignal signal, CancellationToken ct)
@@ -208,7 +208,7 @@ public class NotificationService : INotificationService
     }
 
     /// <summary>
-    /// Send a signal to a wallet group via ActionsHub.
+    /// Send a signal to a wallet group via BlueprintHub.
     /// </summary>
     private async Task SendToWalletAsync(string walletAddress, string method, object signal, CancellationToken ct)
     {

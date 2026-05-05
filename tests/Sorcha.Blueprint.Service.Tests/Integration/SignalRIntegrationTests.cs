@@ -12,7 +12,7 @@ namespace Sorcha.Blueprint.Service.Tests.Integration;
 
 /// <summary>
 /// Integration tests for SignalR real-time notifications.
-/// Tests thin signal notification delivery via ActionsHub.
+/// Tests thin signal notification delivery via BlueprintHub.
 /// </summary>
 public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicationFactory>, IAsyncLifetime
 {

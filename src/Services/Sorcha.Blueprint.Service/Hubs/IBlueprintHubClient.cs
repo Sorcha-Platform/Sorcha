@@ -4,9 +4,9 @@
 namespace Sorcha.Blueprint.Service.Hubs;
 
 /// <summary>
-/// Typed client interface for <see cref="ActionsHub"/>. Bridge interface added
+/// Typed client interface for <see cref="BlueprintHub"/>. Bridge interface added
 /// in Feature 118 Phase 3 (US1 — multi-node correctness) so the hub can be
-/// registered through <c>services.AddSorchaHub&lt;ActionsHub, IActionsHubClient&gt;(...)</c>.
+/// registered through <c>services.AddSorchaHub&lt;ActionsHub, IBlueprintHubClient&gt;(...)</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,7 +22,7 @@ namespace Sorcha.Blueprint.Service.Hubs;
 /// <c>CredentialNotification</c>) carry descriptive fields; US4 strips them to opaque IDs.
 /// </para>
 /// </remarks>
-public interface IActionsHubClient
+public interface IBlueprintHubClient
 {
     /// <summary>A new action is available for the recipient wallet.</summary>
     Task ActionAvailable(SignalNotification notification);

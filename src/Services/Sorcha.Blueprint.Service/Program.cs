@@ -258,8 +258,8 @@ builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementati
 // ChatHub is the deliberate exception (FR-005, FR-019) — RPC-streaming wire shape;
 // it does not register through AddSorchaHub but still inherits the backplane because
 // AddStackExchangeRedis applies to every hub in the service.
-builder.Services.AddSorchaHub<ActionsHub, IActionsHubClient>(
-    builder.Configuration, "/actionshub", "blueprint");
+builder.Services.AddSorchaHub<BlueprintHub, IBlueprintHubClient>(
+    builder.Configuration, "/hubs/blueprint", "blueprint");
 builder.Services.AddSorchaHub<EventsHub, IEventsHubClient>(
     builder.Configuration, "/hubs/events", "blueprint");
 
@@ -453,9 +453,13 @@ app.UseRateLimiting();
 app.UseMiddleware<Sorcha.Blueprint.Service.Middleware.DelegationTokenMiddleware>();
 
 // Map SignalR hubs.
-// ActionsHub + EventsHub mapped via MapSorchaHubs from the AddSorchaHub registry above
-// (Feature 118 US1). ChatHub is the deliberate exception, mapped explicitly here.
+// BlueprintHub + EventsHub mapped via MapSorchaHubs from the AddSorchaHub registry above.
+// ChatHub is the deliberate exception (FR-005, FR-019), mapped explicitly.
+// Feature 118 Phase 4 (US2) — /actionshub kept as deprecated alias for one release
+// cycle per spec FR-003. Old clients still resolve here; new clients should use
+// /hubs/blueprint. The alias removes in Phase 10 polish after the release window.
 app.MapSorchaHubs();
+app.MapHub<Sorcha.Blueprint.Service.Hubs.BlueprintHub>("/actionshub").RequireAuthorization();
 app.MapHub<Sorcha.Blueprint.Service.Hubs.ChatHub>("/hubs/chat").RequireAuthorization();
 
 // Map Operations endpoints (045 Phase 7 - async encryption status)

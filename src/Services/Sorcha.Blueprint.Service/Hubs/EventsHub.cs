@@ -4,6 +4,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Sorcha.ServiceDefaults.Hubs;
 
 namespace Sorcha.Blueprint.Service.Hubs;
 
@@ -24,18 +25,28 @@ namespace Sorcha.Blueprint.Service.Hubs;
 /// - Unsubscribe(): Leave personal event group
 /// - UnsubscribeOrg(): Leave organisation event group
 /// </remarks>
+/// <remarks>
+/// Feature 118 Phase 4 (US2): retired in Phase 10 polish after the parallel-fire
+/// window has closed and <c>sorcha_signalr_events_hub_subscribers</c> has stayed at
+/// zero across all replicas for one full release cycle (FR-038). The
+/// connection-counter wired in <c>OnConnectedAsync</c> / <c>OnDisconnectedAsync</c>
+/// surfaces that gauge for operators.
+/// </remarks>
 [Authorize]
 public class EventsHub : Hub<IEventsHubClient>
 {
     private readonly ILogger<EventsHub> _logger;
+    private readonly SignalRMetrics _metrics;
 
-    public EventsHub(ILogger<EventsHub> logger)
+    public EventsHub(ILogger<EventsHub> logger, SignalRMetrics metrics)
     {
         _logger = logger;
+        _metrics = metrics;
     }
 
     public override async Task OnConnectedAsync()
     {
+        _metrics.IncrementEventsHubSubscribers();
         _logger.LogInformation(
             "Client connected to EventsHub. ConnectionId: {ConnectionId}, User: {User}",
             Context.ConnectionId,
@@ -46,6 +57,7 @@ public class EventsHub : Hub<IEventsHubClient>
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        _metrics.DecrementEventsHubSubscribers();
         if (exception != null)
         {
             _logger.LogWarning(exception,

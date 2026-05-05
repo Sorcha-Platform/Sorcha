@@ -7,7 +7,9 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Sorcha.AddressLookup;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Endpoints;
+using Sorcha.Tenant.Service.Hubs;
 using Sorcha.ServiceClients.Extensions;
+using Sorcha.ServiceDefaults.Hubs;
 using Sorcha.Tenant.Service.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -81,6 +83,14 @@ builder.Services.AddAntiforgery(options =>
 
 // Add health checks (PostgreSQL and Redis when configured)
 builder.Services.AddTenantHealthChecks(builder.Configuration);
+
+// Feature 118 — TenantHub for identity / membership / admin / inbox realtime events (US2).
+// Wires JWT auth + Redis backplane (ChannelPrefix=sorcha:signalr:tenant) +
+// reconnect-with-jitter + OpenTelemetry instrumentation. Inbox event methods
+// on ITenantHubClient land in Phase 5 (US3); the hub class is auth-only here
+// so US3 has the surface to emit on.
+builder.Services.AddSorchaHub<TenantHub, ITenantHubClient>(
+    builder.Configuration, "/hubs/tenant", "tenant");
 
 // Add database initializer for automatic migration and seeding
 // Creates default organization (sorcha.local) and admin user on startup
@@ -205,6 +215,9 @@ app.MapRegisterSubscriptionEndpoints();
 app.MapRegisterInvitationEndpoints();
 app.MapTrustEndpoints();
 app.MapRazorPages();
+
+// Feature 118 — map TenantHub at /hubs/tenant (US2). Routed via API Gateway.
+app.MapSorchaHubs();
 
 // Health check is provided by MapDefaultEndpoints() which maps /health and /alive
 // The standard Aspire health endpoint returns plain text "Healthy" or "Unhealthy"
