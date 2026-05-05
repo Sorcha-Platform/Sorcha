@@ -15,6 +15,7 @@
 @inject EventsHubConnection EventsHub
 @inject ActionsHubConnection ActionsHub
 @inject TenantHubConnection TenantHub
+@inject IInboxApiService InboxApi
 @inject ISnackbar Snackbar
 @inject ILocalizationService Loc
 @inject IPendingActionService PendingActionService
@@ -458,7 +459,12 @@
     {
         try
         {
-            _unreadCount = await ActivityLogService.GetUnreadCountAsync();
+            // Take the larger of the legacy activity-log unread count and the
+            // Feature 118 inbox unread count during the parallel-fire window.
+            // After EventsHub retires, this reduces to inbox-only.
+            var activityCount = await ActivityLogService.GetUnreadCountAsync();
+            var inboxCount = await InboxApi.GetUnreadCountAsync();
+            _unreadCount = Math.Max(activityCount, inboxCount);
             StateHasChanged();
         }
         catch (Exception)
