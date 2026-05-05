@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Phase 7 / US5 (Feature 118) — CI gate enforcing the "construct hub group
+# strings only via *HubGroups builders" rule. Runs on every PR that touches
+# SignalR-relevant code.
+
+name: group-name-builder-check
+
+on:
+  pull_request:
+    paths:
+      - "src/Services/*/Hubs/**"
+      - "src/Services/*/Services/Implementation/Notification*.cs"
+      - "src/Services/*/Services/Implementation/*Bridge*.cs"
+      - "src/Services/*/Services/RegisterEventBridge*.cs"
+      - "scripts/check-no-inline-group-strings.ps1"
+      - ".github/workflows/group-name-builder-check.yml"
+  workflow_dispatch:
+
+jobs:
+  no-inline-group-strings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run inline-group-string gate
+        shell: pwsh
+        run: ./scripts/check-no-inline-group-strings.ps1

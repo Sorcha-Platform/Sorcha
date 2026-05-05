@@ -22,4 +22,25 @@ public static class BlueprintHubGroups
 
     /// <summary>Per-organisation group. Hosts org-scoped workflow events.</summary>
     public static string Org(Guid orgId) => $"org:{orgId:N}";
+
+    // ---- Legacy EventsHub-shaped groups (parallel-fire window) ----
+
+    /// <summary>
+    /// Per-user group used by the legacy EventsHub during the parallel-fire window.
+    /// Identical shape to <c>TenantHubGroups.User</c> but lives here so EventsHub —
+    /// which physically resides in Blueprint Service — does not need a cross-service
+    /// project reference. Removed when EventsHub retires (spec FR-038).
+    /// </summary>
+    /// <remarks>
+    /// Accepts a string id without parsing because Blueprint's EventsHub reads the
+    /// claim as raw text and groups by it directly; the typed-Guid form is the
+    /// preferred shape for new code on TenantHub.
+    /// </remarks>
+    public static string LegacyEventsHubUser(string userId) => $"user:{userId}";
+
+    /// <summary>
+    /// Per-organisation group used by the legacy EventsHub during the parallel-fire
+    /// window. See <see cref="LegacyEventsHubUser"/> for rationale.
+    /// </summary>
+    public static string LegacyEventsHubOrg(string orgId) => $"org:{orgId}";
 }

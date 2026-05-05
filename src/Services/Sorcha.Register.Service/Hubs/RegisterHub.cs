@@ -38,7 +38,7 @@ public class RegisterHub : Hub<IRegisterHubClient>
             }
         }
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, $"register:{registerId}");
+        await Groups.AddToGroupAsync(Context.ConnectionId, RegisterHubGroups.Register(registerId));
     }
 
     /// <summary>
@@ -46,7 +46,7 @@ public class RegisterHub : Hub<IRegisterHubClient>
     /// </summary>
     public async Task UnsubscribeFromRegister(string registerId)
     {
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"register:{registerId}");
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, RegisterHubGroups.Register(registerId));
     }
 
     public override async Task OnConnectedAsync()

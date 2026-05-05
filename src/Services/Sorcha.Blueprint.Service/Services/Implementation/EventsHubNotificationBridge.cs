@@ -115,7 +115,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
                 var userId = doc.RootElement.TryGetProperty("userId", out var uid) ? uid.GetString() : null;
                 if (userId is not null)
                 {
-                    var groupName = $"user:{userId}";
+                    var groupName = BlueprintHubGroups.LegacyEventsHubUser(userId);
                     await _hubContext.Clients.Group(groupName)
                         .SendAsync("DigestNotificationReceived", json);
                 }
@@ -136,7 +136,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
 
             // Send thin signal to user's SignalR group — consumed by PendingActionInbox
             // and MainLayout for pending action count (separate from activity log)
-            var userGroup = $"user:{actionEvent.UserId}";
+            var userGroup = BlueprintHubGroups.LegacyEventsHubUser(actionEvent.UserId);
             var signal = new Hubs.SignalNotification
             {
                 SignalType = SignalTypes.InboundAction,
@@ -185,7 +185,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
                 return;
             }
 
-            var userGroup = $"user:{evt.UserId}";
+            var userGroup = BlueprintHubGroups.LegacyEventsHubUser(evt.UserId);
             await _hubContext.Clients.Group(userGroup)
                 .SendAsync("CredentialStatusChanged", evt);
 
@@ -329,7 +329,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         };
 
         var createdAt = DateTime.UtcNow;
-        var userGroup = $"user:{actionEvent.UserId}";
+        var userGroup = BlueprintHubGroups.LegacyEventsHubUser(actionEvent.UserId);
 
         // 1. Persist to Tenant Service activity log (best-effort)
         try
