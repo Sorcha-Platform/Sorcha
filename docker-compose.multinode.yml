@@ -55,7 +55,7 @@ services:
       - mongodb
       - redis
     networks:
-      - sorcha
+      - sorcha-network
 
   # ---- API Gateway with sticky-session affinity for Blueprint cluster ----
   # YARP routes /actionshub /hubs/events /hubs/chat to blueprint-cluster which
