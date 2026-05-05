@@ -77,6 +77,10 @@ public static class HttpServiceCollectionExtensions
         services.AddHttpClient<PlatformUserDeviceClient>();
         services.AddScoped<IPlatformUserDeviceClient, PlatformUserDeviceClient>();
 
+        // Feature 118 / US3: durable user inbox writer — POSTs entries to Tenant Service.
+        services.AddHttpClient<Inbox.PlatformInboxClient>();
+        services.AddScoped<Inbox.IPlatformInboxClient, Inbox.PlatformInboxClient>();
+
         // Feature 114: Citizen wallet client used by the PWA to call Wallet Service.
         // Caller-supplied JWT (no service-principal injection — citizen audience required).
         services.AddHttpClient<CitizenWalletClient>();

@@ -92,6 +92,10 @@ builder.Services.AddTenantHealthChecks(builder.Configuration);
 builder.Services.AddSorchaHub<TenantHub, ITenantHubClient>(
     builder.Configuration, "/hubs/tenant", "tenant");
 
+// Feature 118 / US3 — durable user inbox.
+builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IInboxService,
+    Sorcha.Tenant.Service.Services.InboxService>();
+
 // Add database initializer for automatic migration and seeding
 // Creates default organization (sorcha.local) and admin user on startup
 builder.Services.AddDatabaseInitializer();
@@ -218,6 +222,10 @@ app.MapRazorPages();
 
 // Feature 118 — map TenantHub at /hubs/tenant (US2). Routed via API Gateway.
 app.MapSorchaHubs();
+
+// Feature 118 / US3 — durable user inbox endpoints.
+app.MapMeInboxEndpoints();
+app.MapInternalInboxEndpoints();
 
 // Health check is provided by MapDefaultEndpoints() which maps /health and /alive
 // The standard Aspire health endpoint returns plain text "Healthy" or "Unhealthy"
