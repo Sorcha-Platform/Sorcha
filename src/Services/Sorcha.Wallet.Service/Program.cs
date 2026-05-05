@@ -60,6 +60,11 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationDeliveryService,
     Sorcha.Wallet.Service.Services.Implementation.NotificationDeliveryService>();
 
+// Feature 118 / US3 follow-up #2 — wire WalletInboxWriter so credential issuance
+// also produces durable inbox entries via Tenant Service.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter,
+    Sorcha.Wallet.Service.Services.Implementation.WalletInboxWriter>();
+
 // Singleton TrustServiceClient — 5-min cert cache must survive across requests,
 // so the HttpClient is captured once. PooledConnectionLifetime caps connection
 // age at 2 min so DNS / mTLS rotation lands via connection recycling.

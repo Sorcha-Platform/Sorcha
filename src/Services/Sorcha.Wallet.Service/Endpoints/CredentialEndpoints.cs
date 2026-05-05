@@ -536,6 +536,7 @@ public static class CredentialEndpoints
         ISdJwtService sdJwtService,
         ICredentialStore store,
         ILoggerFactory loggerFactory,
+        Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
         IOrgCertChainProvider? orgCertChainProvider = null,
         CancellationToken cancellationToken = default)
     {
@@ -742,6 +743,16 @@ public static class CredentialEndpoints
         logger.LogInformation(
             "Issued credential {CredentialId} of type {Type} from {Issuer} to {Recipient}",
             credentialId, request.CredentialType, walletAddress, request.RecipientWallet);
+
+        // Feature 118 / US3 follow-up #2: drop a durable inbox entry on the
+        // recipient's user. Fail-safe: any write error is swallowed by the
+        // writer so credential issuance is unaffected.
+        await inboxWriter.WriteCredentialReceivedAsync(
+            recipientWalletAddress: request.RecipientWallet,
+            credentialId: credentialId,
+            credentialType: request.CredentialType,
+            issuerOrgName: request.IssuerOrgName,
+            ct: cancellationToken).ConfigureAwait(false);
 
         return Results.Ok(new IssuedCredentialResponse
         {
