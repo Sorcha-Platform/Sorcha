@@ -89,7 +89,74 @@ public static class CitizenWalletEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapGet("/devices", ListDevices)
+            .WithName("ListCitizenDevices")
+            .WithSummary("List the authenticated citizen's enrolled wallet devices")
+            .WithDescription(
+                "Mirror of GET /api/v1/me/devices for the wallet PWA. Proxies through " +
+                "to the Tenant Service via service-to-service auth so the PWA only ever " +
+                "talks to the Wallet Service for citizen-wallet operations.")
+            .Produces<DeviceListResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapPut("/devices/{deviceId:guid}/label", UpdateDeviceLabel)
+            .WithName("UpdateCitizenDeviceLabel")
+            .WithSummary("Rename a citizen wallet device")
+            .WithDescription(
+                "Updates the citizen-visible device label (1..120 chars). 404 when " +
+                "the device does not exist or is not owned by the caller.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
+
         return app;
+    }
+
+    private static async Task<IResult> ListDevices(
+        HttpContext context,
+        IPlatformUserDeviceClient deviceClient,
+        CancellationToken ct)
+    {
+        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        if (platformUserId is null) return Results.Unauthorized();
+
+        var devices = await deviceClient.ListAsync(platformUserId.Value, ct);
+        var summaries = devices.Select(d => new DeviceSummary
+        {
+            DeviceId = d.DeviceId,
+            Label = d.Label,
+            Platform = d.Platform,
+            Status = string.Equals(d.Status, "Revoked", StringComparison.OrdinalIgnoreCase)
+                ? DeviceStatus.Revoked
+                : DeviceStatus.Active,
+            EnrolledAt = d.EnrolledAt,
+            DelegationExpiresAt = d.DelegationExpiresAt
+        }).ToList();
+
+        return Results.Ok(new DeviceListResponse { Devices = summaries });
+    }
+
+    private static async Task<IResult> UpdateDeviceLabel(
+        Guid deviceId,
+        [FromBody] DeviceLabelUpdateRequest request,
+        HttpContext context,
+        IPlatformUserDeviceClient deviceClient,
+        CancellationToken ct)
+    {
+        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        if (platformUserId is null) return Results.Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(request.Label) || request.Label.Length > 120)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["label"] = ["Label must be 1..120 characters."]
+            });
+        }
+
+        var ok = await deviceClient.UpdateLabelAsync(deviceId, platformUserId.Value, request.Label, ct);
+        return ok ? Results.NoContent() : Results.NotFound();
     }
 
     private static async Task<IResult> RevokeDevice(
