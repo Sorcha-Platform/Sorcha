@@ -28,7 +28,7 @@ namespace Sorcha.Blueprint.Service.Hubs;
 /// - UnsubscribeFromWallet(walletAddress): Unsubscribe from wallet notifications
 /// </remarks>
 [Authorize]
-public class ActionsHub : Hub
+public class ActionsHub : Hub<IActionsHubClient>
 {
     private readonly ILogger<ActionsHub> _logger;
     private readonly IParticipantServiceClient _participantClient;

@@ -1,28 +1,70 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
-# Multi-replica overlay for Feature 118 cross-replica correctness tests.
+# Multi-replica overlay for Feature 118 cross-replica hub fan-out correctness tests.
 # Layered onto the base docker-compose.yml:
 #   docker-compose -f docker-compose.yml -f docker-compose.multinode.yml up -d
 #
-# Brings up two replicas of selected hub-hosting services and instructs
-# YARP (in the api-gateway service) to use sticky-session affinity so
-# the cross-replica fixture can deterministically route different test
-# clients to different replicas via affinity headers.
+# Brings up two replicas of Blueprint Service behind a sticky-session YARP cluster.
+# The cross-replica integration test connects two SignalR clients via separate
+# affinity cookies (each pinned to a different replica) and asserts that an event
+# triggered on replica A reaches the client connected to replica B within 200ms p95
+# (Feature 118 spec NFR-001).
 #
-# This file is referenced by:
+# Tenant Service multi-replica fixture lands in Phase 4 (US2) when TenantHub is
+# created. Wallet/Register multi-replica fixtures lined up but not exercised in
+# this overlay — they share the same backplane keyspace and are covered by the
+# parameterised cross-replica test once they have their own multinode definitions.
+#
+# Referenced by:
 #   - tests/Sorcha.Integration.Tests/MultiNode/HubBackplaneCrossReplicaTests.cs
 #   - .github/workflows/multinode-correctness.yml
-#
-# Phase 1 scaffold — service replicas and YARP overrides land in Phase 3.
 
 services:
-  # Phase 1: skeleton only. Phase 3 (US1) populates with explicit
-  # tenant-service-1 / tenant-service-2 / blueprint-service-1 / blueprint-service-2
-  # replica definitions and the YARP cluster affinity rules.
+  # ---- Replica 1 of Blueprint Service ----
+  blueprint-service:
+    container_name: sorcha-blueprint-service-1
+    environment:
+      OTEL_SERVICE_NAME: blueprint-service-1
+      Hub__ReplicaId: blueprint-1
+
+  # ---- Replica 2 of Blueprint Service ----
+  blueprint-service-2:
+    build:
+      context: .
+      dockerfile: src/Services/Sorcha.Blueprint.Service/Dockerfile
+    image: sorchadev/blueprint-service:latest
+    container_name: sorcha-blueprint-service-2
+    restart: unless-stopped
+    mem_limit: 1g
+    environment:
+      ConnectionStrings__Sorcha__Postgres: Host=postgres;Username=sorcha;Password=sorcha_dev_password
+      ConnectionStrings__Sorcha__Mongo: mongodb://sorcha:sorcha_dev_password@mongodb:27017
+      ConnectionStrings__Sorcha__Redis: redis:6379
+      ConnectionStrings__redis: redis:6379
+      ConnectionStrings__mongodb: mongodb://sorcha:sorcha_dev_password@mongodb:27017
+      OTEL_SERVICE_NAME: blueprint-service-2
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Hub__ReplicaId: blueprint-2
+      ServiceClients__RegisterService__Address: http://register-service:8080
+      ServiceClients__WalletService__Address: http://wallet-service:8080
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+    depends_on:
+      - postgres
+      - mongodb
+      - redis
+    networks:
+      - sorcha
+
+  # ---- API Gateway with sticky-session affinity for Blueprint cluster ----
+  # YARP routes /actionshub /hubs/events /hubs/chat to blueprint-cluster which
+  # now has two destinations. The session-affinity cookie pins each connection
+  # to one replica for the duration of the SignalR session — required because
+  # SignalR negotiate/connect spans multiple HTTP requests.
   api-gateway:
     environment:
-      - ReverseProxy__Clusters__tenant-cluster__SessionAffinity__Enabled=true
-      - ReverseProxy__Clusters__tenant-cluster__SessionAffinity__Policy=Cookie
-      - ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__Enabled=true
-      - ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__Policy=Cookie
+      ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__Enabled: "true"
+      ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__Policy: Cookie
+      ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__AffinityKeyName: ".Sorcha.Affinity.Blueprint"
+      ReverseProxy__Clusters__blueprint-cluster__Destinations__blueprint-2__Address: http://blueprint-service-2:8080

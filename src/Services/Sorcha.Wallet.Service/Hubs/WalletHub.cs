@@ -28,7 +28,7 @@ namespace Sorcha.Wallet.Service.Hubs;
 /// pull-on-open <c>/api/v1/wallet/sync</c> endpoint remains the source of truth.
 /// </remarks>
 [Authorize(AuthenticationSchemes = "Bearer")]
-public sealed class WalletHub : Hub
+public sealed class WalletHub : Hub<IWalletHubClient>
 {
     private readonly ILogger<WalletHub> _logger;
 

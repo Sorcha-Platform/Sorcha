@@ -15,6 +15,7 @@ using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Service.Extensions;
 using Sorcha.Register.Service.Hubs;
+using Sorcha.ServiceDefaults.Hubs;
 using Sorcha.Register.Service.Services;
 using Microsoft.Extensions.Options;
 using Sorcha.Register.Storage.InMemory;
@@ -57,8 +58,13 @@ builder.AddRateLimiting();
 // Add input validation (SEC-003)
 builder.AddInputValidation();
 
-// Add SignalR for real-time notifications
-builder.Services.AddSignalR();
+// Feature 118 — multi-node hub fan-out via Redis backplane (US1).
+// Wires JWT auth + Redis backplane (ChannelPrefix=sorcha:signalr:register) +
+// reconnect-with-jitter + OpenTelemetry instrumentation.
+// RegisterHub does not yet have [Authorize] — that lands in Phase 6 (FR-011)
+// after the UI client ships token-passing one release earlier.
+builder.Services.AddSorchaHub<RegisterHub, IRegisterHubClient>(
+    builder.Configuration, "/hubs/register", "register");
 
 // Configure OData
 var modelBuilder = new ODataConventionModelBuilder();
@@ -284,8 +290,8 @@ app.UseInputValidation();
 // Configure OpenAPI and Scalar API documentation UI (development only)
 app.MapSorchaOpenApiUi("Register Service");
 
-// Map SignalR hub
-app.MapHub<RegisterHub>("/hubs/register");
+// Map SignalR hub via MapSorchaHubs from the AddSorchaHub registry (Feature 118 US1).
+app.MapSorchaHubs();
 
 // Feature 047: Map RegisterAddress gRPC service for bloom filter operations
 app.MapGrpcService<Sorcha.Register.Service.GrpcServices.RegisterAddressGrpcService>();

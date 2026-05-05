@@ -6,8 +6,10 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Sorcha.Wallet.Service.Extensions;
 using Sorcha.Wallet.Service.Endpoints;
 using Sorcha.Wallet.Service.GrpcServices;
+using Sorcha.Wallet.Service.Hubs;
 using Sorcha.Wallet.Service.Services;
 using Sorcha.ServiceClients.Extensions;
+using Sorcha.ServiceDefaults.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -164,8 +166,11 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceRevo
 builder.Services.AddValidatorsFromAssemblyContaining<
     Sorcha.CitizenWallet.Abstractions.Validators.DeviceEnrolmentRequestValidator>();
 
-// Feature 114: SignalR for citizen wallet push notifications
-builder.Services.AddSignalR();
+// Feature 118 — multi-node hub fan-out via Redis backplane (US1).
+// Wires JWT auth + Redis backplane (ChannelPrefix=sorcha:signalr:wallet) +
+// reconnect-with-jitter + OpenTelemetry instrumentation.
+builder.Services.AddSorchaHub<WalletHub, IWalletHubClient>(
+    builder.Configuration, "/hubs/wallet", "wallet");
 
 // File reassembly service (US2 — File Download)
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IFileReassemblyService,
@@ -249,7 +254,8 @@ app.MapCitizenWalletEndpoints();
 app.MapCitizenStatusListInternalEndpoints();
 
 // Feature 114: Citizen wallet SignalR hub. Routed via API Gateway as `/hubs/wallet`.
-app.MapHub<Sorcha.Wallet.Service.Hubs.WalletHub>("/hubs/wallet");
+// Mapped via MapSorchaHubs from the AddSorchaHub registry (Feature 118 US1).
+app.MapSorchaHubs();
 
 // ===========================
 // Statistics Endpoint (public, no auth)

@@ -15,6 +15,23 @@ namespace Sorcha.Blueprint.Service.Hubs;
 /// SignalR hub for AI-assisted blueprint design chat.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>Deliberate exception to one-hub-per-service rule (Feature 118 spec FR-005, FR-019).</b>
+/// ChatHub uses an RPC-streaming wire shape — <c>StartSession</c> /
+/// <c>SendMessage</c> / <c>ReceiveChunk</c> chunk-by-chunk, 3-minute keepalive
+/// for AI tool execution, no group fan-out — that does not match the
+/// notification-hub shape used by every other Sorcha hub. It is therefore
+/// exempt from the thin-signal contract (it streams content payloads by
+/// design) and from <c>AddSorchaHub</c> registration.
+/// </para>
+/// <para>
+/// ChatHub still inherits the SignalR Redis backplane configured by
+/// <c>SorchaHubConventions</c> via the service's first <c>AddSorchaHub</c>
+/// call, because <c>AddStackExchangeRedis</c> applies to every hub in the
+/// service. The exemption is from the typed-client + group-name + thin-signal
+/// contract, not from backplane fan-out.
+/// </para>
+///
 /// Connection URL: /hubs/chat
 /// Authentication: JWT token via query parameter ?access_token={jwt}
 ///

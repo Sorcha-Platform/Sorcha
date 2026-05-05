@@ -25,7 +25,7 @@ namespace Sorcha.Blueprint.Service.Hubs;
 /// - UnsubscribeOrg(): Leave organisation event group
 /// </remarks>
 [Authorize]
-public class EventsHub : Hub
+public class EventsHub : Hub<IEventsHubClient>
 {
     private readonly ILogger<EventsHub> _logger;
 
