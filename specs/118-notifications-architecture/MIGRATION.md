@@ -49,16 +49,40 @@ This document tracks the metric-gated and time-gated migration steps for the not
 
 ## TenantHub provisioning
 
-**Status (after Phase 4 / US2):** hub class lives, route mapped, no events emitted.
+**Status (after Phase 5 / US3):** hub live with inbox events flowing.
 
-**Why intentionally empty:** Per Phase 4 / Phase 5 split, TenantHub the *hub class* lands in US2 so US3 has a surface to attach inbox events to. The first events (`InboxEntryAdded`, `InboxUnreadCountUpdated`) ship in Phase 5. Membership / security / system announcements are scheduled for follow-up phases inside Feature 118.
+`InboxEntryAdded(entryId, occurredAt, traceId)` and `InboxUnreadCountUpdated(unreadCount, occurredAt, traceId)` fire on every state transition driven by `InboxService`. UI consumers: `MainLayout.razor` bell badge (PR #527), with `IInboxApiService` cold-load seed (PR #529). End-to-end inbox writers wired: `BlueprintInboxWriter` for action-available events (PR #521), `WalletInboxWriter` for credential issuance (PR #525). Tenant-side membership / security / system-announcement writers are scheduled for follow-up — they call `IInboxService.WriteAsync` directly rather than the cross-service HTTP path.
 
-**Operational impact:** None today — connections to `/hubs/tenant` succeed and idle. Once Phase 5 lands the inbox, existing connections will receive events without re-connection.
+**Operational impact:** Inbox is durable and live. Users see realtime bell updates plus persistence across reloads. `PendingActionInbox.razor` rewrite to consume `IInboxApiService` (currently still uses legacy `IPendingActionService`) is the highest-value remaining UI work.
 
 ## Multi-node correctness CI fixture
 
-**Status (after Phase 3 / US1 deferral):** workflow exists, fixture is partially functional.
+**Status (after PR #530):** deferred to manual-trigger only.
 
 **Deferred problem:** The `multinode-correctness.yml` workflow fails at `Bring up the multi-replica stack` after the network-name fix in PR #517. Specifically, the `api-gateway` container reports unhealthy because the YARP destinations override (`ReverseProxy__Clusters__blueprint-cluster__Destinations__blueprint-2__Address`) is rejected by the YARP configuration binder shape used in the gateway.
 
-**Owner:** Phase 3 follow-up. The cross-replica behaviour is verifiable manually via the standard `docker-compose.multinode.yml` overlay; the CI integration just needs the YARP override syntax corrected. Tracked here so reviewers see the deferred item rather than a stale failing workflow.
+**Trigger change (PR #530):** the workflow is now `workflow_dispatch` only — no longer triggered by PRs touching hub-related code. Operators run `gh workflow run multinode-correctness.yml` manually. This stops every Feature 118 PR going red on a CI gate that fails before reaching the actual test.
+
+**Owner:** Phase 3 follow-up. The cross-replica behaviour is verifiable manually via the standard `docker-compose.multinode.yml` overlay; the CI integration just needs the YARP override syntax corrected. Once that lands, restore the `pull_request` trigger in `multinode-correctness.yml`.
+
+---
+
+## Feature 118 PR ledger
+
+| PR | Phase | Theme |
+|---|---|---|
+| direct merge | Phase 1+2 | `Sorcha.ServiceDefaults.Hubs` foundation + reconnect jitter |
+| #517 | Phase 3 (US1 MVP) | Multi-node hub backplane on existing hubs |
+| #518 | Phase 4 (US2) | Five-hub topology: TenantHub created, ActionsHub→BlueprintHub, group builders |
+| #519 | Phase 5 v1 (US3) | Durable user inbox (Tenant DB + endpoints + hub events) |
+| #520 | Phase 7 (US5) | Group-name builder enforcement + CI grep gate |
+| #521 | Phase 5 follow-up (US3 / T073) | BlueprintInboxWriter — action-available → inbox entry |
+| #522 | Phase 6 (US4) | Thin-signal contract reflection test + DeferredExemptions list |
+| #523 | Phase 10 polish | SignalR skill update + Grafana dashboard |
+| #524 | Phase 10 (T119/T120) | CLI + Agent retarget to canonical hub paths |
+| #525 | Phase 5 follow-up (US3 / T074) | WalletInboxWriter — credential issuance → inbox entry |
+| #526 | Phase 10 partial | TenantHubConnection UI client wrapper |
+| #527 | Phase 10 partial (T115) | MainLayout inbox bell wired to TenantHub |
+| #528 | Phase 10 step 3 | UI-side IInboxApiService HTTP client |
+| #529 | Phase 10 polish | Seed bell badge from inbox API on cold load |
+| #530 | Phase 3 follow-up | Multinode CI deferred to manual-trigger |
