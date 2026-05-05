@@ -92,31 +92,31 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 ### Tests for User Story 2
 
 - [ ] T031 [P] [US2] Topology-enforcement unit test in `tests/Sorcha.ServiceDefaults.Tests/Hubs/HubTopologyTests.cs` that uses reflection across the loaded service assemblies to assert exactly five `Hub<>` types exist and the four non-Chat hubs use `AddSorchaHub`.
-- [ ] T032 [P] [US2] Existing `tests/Sorcha.Blueprint.Service.Tests/Integration/SignalRIntegrationTests.cs` updated for the rename (new hub class `BlueprintHub`, alias path semantics).
+- [X] T032 [P] [US2] Existing `tests/Sorcha.Blueprint.Service.Tests/Integration/SignalRIntegrationTests.cs` updated for the rename (new hub class `BlueprintHub`, alias path semantics).
 - [ ] T033 [P] [US2] New `tests/Sorcha.Tenant.Service.Tests/Hubs/TenantHubTests.cs` covering connect, claim guard, group membership for `user:{platformUserId:N}` on connect.
 - [ ] T034 [P] [US2] EventsHub retirement test in `tests/Sorcha.Blueprint.Service.Tests/Integration/EventsHubRetirementTests.cs` asserting the `410 Gone` response shape after retirement (initially `[Fact(Skip="awaiting decommission step")]`).
 
 ### Implementation for User Story 2
 
-- [ ] T035 [US2] Create TenantHub at `src/Services/Sorcha.Tenant.Service/Hubs/TenantHub.cs` inheriting `Hub<ITenantHubClient>` with `[Authorize]` Bearer auth and `platform_user_id` claim guard in `OnConnectedAsync`. On connect, add caller to `TenantHubGroups.User(claim)`.
-- [ ] T036 [P] [US2] Create `ITenantHubClient` typed interface at `src/Services/Sorcha.Tenant.Service/Hubs/ITenantHubClient.cs` per `contracts/tenant-hub-client.cs.md`. Inbox event methods stay declared but emitting lives in US3.
-- [ ] T037 [P] [US2] Create `TenantHubGroups` builder at `src/Services/Sorcha.Tenant.Service/Hubs/TenantHubGroups.cs` per `data-model.md` § hub group conventions.
-- [ ] T038 [US2] Wire `services.AddSorchaHub<TenantHub, ITenantHubClient>(builder.Configuration, "/hubs/tenant", "tenant")` in `src/Services/Sorcha.Tenant.Service/Program.cs`. Add `app.MapHub<TenantHub>("/hubs/tenant")`.
-- [ ] T039 [US2] Add Redis connection-string requirement to `src/Services/Sorcha.Tenant.Service/appsettings.json` and `appsettings.Production.json`.
-- [ ] T040 [US2] Add YARP route in `src/Services/Sorcha.ApiGateway/appsettings.json` for `/hubs/tenant` → tenant cluster with WebSocket support.
-- [ ] T041 [US2] Rename `src/Services/Sorcha.Blueprint.Service/Hubs/ActionsHub.cs` → `BlueprintHub.cs`. Update class name. Replace stub `IActionsHubClient` with full `IBlueprintHubClient` per `contracts/blueprint-hub-client.cs.md`.
-- [ ] T042 [P] [US2] Create `BlueprintHubGroups` builder at `src/Services/Sorcha.Blueprint.Service/Hubs/BlueprintHubGroups.cs` per `data-model.md`.
-- [ ] T043 [US2] Update `src/Services/Sorcha.Blueprint.Service/Program.cs`: `MapHub<BlueprintHub>("/hubs/blueprint")` plus `MapHub<BlueprintHub>("/actionshub")` as deprecated alias logging a `Deprecation` header. Update `AddSorchaHub` call accordingly.
-- [ ] T044 [US2] Update `src/Services/Sorcha.ApiGateway/appsettings.json` to route both `/hubs/blueprint` and `/actionshub` to blueprint cluster (alias for the deprecation window).
+- [X] T035 [US2] Create TenantHub at `src/Services/Sorcha.Tenant.Service/Hubs/TenantHub.cs` inheriting `Hub<ITenantHubClient>` with `[Authorize]` Bearer auth and `platform_user_id` claim guard in `OnConnectedAsync`. On connect, add caller to `TenantHubGroups.User(claim)`.
+- [X] T036 [P] [US2] Create `ITenantHubClient` typed interface at `src/Services/Sorcha.Tenant.Service/Hubs/ITenantHubClient.cs` per `contracts/tenant-hub-client.cs.md`. Inbox event methods stay declared but emitting lives in US3.
+- [X] T037 [P] [US2] Create `TenantHubGroups` builder at `src/Services/Sorcha.Tenant.Service/Hubs/TenantHubGroups.cs` per `data-model.md` § hub group conventions.
+- [X] T038 [US2] Wire `services.AddSorchaHub<TenantHub, ITenantHubClient>(builder.Configuration, "/hubs/tenant", "tenant")` in `src/Services/Sorcha.Tenant.Service/Program.cs`. Add `app.MapHub<TenantHub>("/hubs/tenant")`.
+- [X] T039 [US2] Add Redis connection-string requirement to `src/Services/Sorcha.Tenant.Service/appsettings.json` and `appsettings.Production.json`.
+- [X] T040 [US2] Add YARP route in `src/Services/Sorcha.ApiGateway/appsettings.json` for `/hubs/tenant` → tenant cluster with WebSocket support.
+- [X] T041 [US2] Rename `src/Services/Sorcha.Blueprint.Service/Hubs/ActionsHub.cs` → `BlueprintHub.cs`. Update class name. Replace stub `IActionsHubClient` with full `IBlueprintHubClient` per `contracts/blueprint-hub-client.cs.md`.
+- [X] T042 [P] [US2] Create `BlueprintHubGroups` builder at `src/Services/Sorcha.Blueprint.Service/Hubs/BlueprintHubGroups.cs` per `data-model.md`.
+- [X] T043 [US2] Update `src/Services/Sorcha.Blueprint.Service/Program.cs`: `MapHub<BlueprintHub>("/hubs/blueprint")` plus `MapHub<BlueprintHub>("/actionshub")` as deprecated alias logging a `Deprecation` header. Update `AddSorchaHub` call accordingly.
+- [X] T044 [US2] Update `src/Services/Sorcha.ApiGateway/appsettings.json` to route both `/hubs/blueprint` and `/actionshub` to blueprint cluster (alias for the deprecation window).
 - [ ] T045 [US2] Update WalletHub at `src/Services/Sorcha.Wallet.Service/Hubs/WalletHub.cs` to inherit `Hub<IWalletHubClient>` with the full typed contract per `contracts/wallet-hub-client.cs.md`. Migrate all existing method bodies to the new typed-client signatures.
-- [ ] T046 [P] [US2] Create `WalletHubGroups` builder at `src/Services/Sorcha.Wallet.Service/Hubs/WalletHubGroups.cs` formalising the existing `WalletHub.GroupNameFor` helper.
-- [ ] T047 [US2] Update RegisterHub at `src/Services/Sorcha.Register.Service/Hubs/RegisterHub.cs` to formalise its existing typed-client interface (already present) and use the new `RegisterHubGroups` builder. NO `[Authorize]` change in this phase — that lands in US4.
-- [ ] T048 [P] [US2] Create `RegisterHubGroups` builder at `src/Services/Sorcha.Register.Service/Hubs/RegisterHubGroups.cs`.
-- [ ] T049 [US2] Mark ChatHub as deliberate exception. Update XML doc on the class in `src/Services/Sorcha.Blueprint.Service/Hubs/ChatHub.cs` with `<remarks>Deliberate exception to one-hub-per-service rule. Streaming RPC shape; 3-minute keepalive; carries content payloads. Documented in specs/118-notifications-architecture/spec.md FR-019.</remarks>`.
-- [ ] T050 [US2] Begin parallel-fire on EventsHub. In each emit site (`NotificationService`, `EventsHubNotificationBridge`), continue firing the existing EventsHub events AND fire the new typed events on BlueprintHub or WalletHub. No subscriber moves yet — subscribers move in Phase 10 polish.
-- [ ] T051 [US2] Add `sorcha_signalr_events_hub_subscribers` gauge instrument in `src/Services/Sorcha.Blueprint.Service/Hubs/EventsHub.cs` reporting the current SignalR group-membership count derived from `OnConnectedAsync` / `OnDisconnectedAsync`.
-- [ ] T052 [US2] Document the deprecation policy: add `specs/118-notifications-architecture/MIGRATION.md` capturing the `/actionshub` alias plan, the EventsHub parallel-fire window, and the metric-driven decommission rule (FR-038). Reference the URL from spec FR-004 and FR-005.
-- [ ] T053 [US2] Update CLAUDE.md to reference the five-hub topology and the ChatHub exception alongside existing pattern documentation.
+- [X] T046 [P] [US2] Create `WalletHubGroups` builder at `src/Services/Sorcha.Wallet.Service/Hubs/WalletHubGroups.cs` formalising the existing `WalletHub.GroupNameFor` helper.
+- [X] T047 [US2] Update RegisterHub at `src/Services/Sorcha.Register.Service/Hubs/RegisterHub.cs` to formalise its existing typed-client interface (already present) and use the new `RegisterHubGroups` builder. NO `[Authorize]` change in this phase — that lands in US4.
+- [X] T048 [P] [US2] Create `RegisterHubGroups` builder at `src/Services/Sorcha.Register.Service/Hubs/RegisterHubGroups.cs`.
+- [X] T049 [US2] Mark ChatHub as deliberate exception. Update XML doc on the class in `src/Services/Sorcha.Blueprint.Service/Hubs/ChatHub.cs` with `<remarks>Deliberate exception to one-hub-per-service rule. Streaming RPC shape; 3-minute keepalive; carries content payloads. Documented in specs/118-notifications-architecture/spec.md FR-019.</remarks>`.
+- [X] T050 [US2] Begin parallel-fire on EventsHub. In each emit site (`NotificationService`, `EventsHubNotificationBridge`), continue firing the existing EventsHub events AND fire the new typed events on BlueprintHub or WalletHub. No subscriber moves yet — subscribers move in Phase 10 polish.
+- [X] T051 [US2] Add `sorcha_signalr_events_hub_subscribers` gauge instrument in `src/Services/Sorcha.Blueprint.Service/Hubs/EventsHub.cs` reporting the current SignalR group-membership count derived from `OnConnectedAsync` / `OnDisconnectedAsync`.
+- [X] T052 [US2] Document the deprecation policy: add `specs/118-notifications-architecture/MIGRATION.md` capturing the `/actionshub` alias plan, the EventsHub parallel-fire window, and the metric-driven decommission rule (FR-038). Reference the URL from spec FR-004 and FR-005.
+- [X] T053 [US2] Update CLAUDE.md to reference the five-hub topology and the ChatHub exception alongside existing pattern documentation.
 
 **Checkpoint**: US2 complete. Five hubs in tree, every notification hub uses `AddSorchaHub`, ChatHub marked, EventsHub firing in parallel with new homes for one release cycle.
 

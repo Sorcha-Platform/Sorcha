@@ -16,7 +16,7 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 /// </summary>
 public class NotificationServiceEventsHubTests
 {
-    private readonly Mock<IHubContext<ActionsHub>> _actionsHubContext = new();
+    private readonly Mock<IHubContext<BlueprintHub>> _actionsHubContext = new();
     private readonly Mock<IHubContext<EventsHub>> _eventsHubContext = new();
     private readonly Mock<IHubClients> _actionsHubClients = new();
     private readonly Mock<IHubClients> _eventsHubClients = new();
@@ -63,7 +63,7 @@ public class NotificationServiceEventsHubTests
         // Act
         await _service.NotifyEncryptionCompleteAsync("wallet-001", signal, userId: "user-42");
 
-        // Assert — ActionsHub received EncryptionComplete
+        // Assert — BlueprintHub received EncryptionComplete
         _actionsHubClients.Verify(c => c.Group("wallet:wallet-001"), Times.Once);
         _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionComplete");
 
@@ -86,7 +86,7 @@ public class NotificationServiceEventsHubTests
         // Act
         await _service.NotifyEncryptionFailedAsync("wallet-002", signal, userId: "user-43");
 
-        // Assert — ActionsHub received EncryptionFailed
+        // Assert — BlueprintHub received EncryptionFailed
         _actionsHubClients.Verify(c => c.Group("wallet:wallet-002"), Times.Once);
         _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionFailed");
 
@@ -134,7 +134,7 @@ public class NotificationServiceEventsHubTests
     }
 
     [Fact]
-    public async Task NotifyEncryptionCompleteAsync_EventsHubFailure_DoesNotPreventActionsHubNotification()
+    public async Task NotifyEncryptionCompleteAsync_EventsHubFailure_DoesNotPreventBlueprintHubNotification()
     {
         // Arrange — make EventsHub throw
         _eventsClientProxy.Setup(c => c.SendCoreAsync(
@@ -152,12 +152,12 @@ public class NotificationServiceEventsHubTests
         var act = async () => await _service.NotifyEncryptionCompleteAsync("wallet-005", signal, userId: "user-50");
         await act.Should().NotThrowAsync();
 
-        // Assert — ActionsHub still received its notification
+        // Assert — BlueprintHub still received its notification
         _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionComplete");
     }
 
     [Fact]
-    public async Task NotifyEncryptionFailedAsync_EventsHubFailure_DoesNotPreventActionsHubNotification()
+    public async Task NotifyEncryptionFailedAsync_EventsHubFailure_DoesNotPreventBlueprintHubNotification()
     {
         // Arrange — make EventsHub throw
         _eventsClientProxy.Setup(c => c.SendCoreAsync(
@@ -175,7 +175,7 @@ public class NotificationServiceEventsHubTests
         var act = async () => await _service.NotifyEncryptionFailedAsync("wallet-006", signal, userId: "user-51");
         await act.Should().NotThrowAsync();
 
-        // Assert — ActionsHub still received its notification
+        // Assert — BlueprintHub still received its notification
         _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionFailed");
     }
 
@@ -193,7 +193,7 @@ public class NotificationServiceEventsHubTests
         // Act — no userId provided
         await _service.NotifyEncryptionCompleteAsync("wallet-007", signal);
 
-        // Assert — ActionsHub received notification
+        // Assert — BlueprintHub received notification
         _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionComplete");
 
         // Assert — EventsHub was NOT called (no userId to target)
@@ -214,7 +214,7 @@ public class NotificationServiceEventsHubTests
         // Act — no userId provided
         await _service.NotifyEncryptionFailedAsync("wallet-008", signal);
 
-        // Assert — ActionsHub received notification
+        // Assert — BlueprintHub received notification
         _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionFailed");
 
         // Assert — EventsHub was NOT called
