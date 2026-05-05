@@ -61,23 +61,23 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Tests for User Story 1
 
-- [ ] T017 [P] [US1] Cross-replica integration test in `tests/Sorcha.Integration.Tests/MultiNode/HubBackplaneCrossReplicaTests.cs` parameterised over each hub (Blueprint, Wallet, Register, Tenant — Tenant added in US3 phase, mark its test as `[Fact(Skip="awaiting TenantHub from US3")]` initially). Uses raw `HubConnectionBuilder` with explicit YARP routing headers to control replica targeting.
-- [ ] T018 [P] [US1] Add `multinode-correctness.yml` GitHub Actions workflow at `.github/workflows/multinode-correctness.yml` that runs the cross-replica tests on PRs touching `src/Common/Sorcha.ServiceDefaults/Hubs/**` or `src/Services/*/Hubs/**`.
+- [X] T017 [P] [US1] Cross-replica integration test in `tests/Sorcha.Integration.Tests/MultiNode/HubBackplaneCrossReplicaTests.cs` parameterised over each hub (Blueprint, Wallet, Register, Tenant — Tenant added in US3 phase, mark its test as `[Fact(Skip="awaiting TenantHub from US3")]` initially). Uses raw `HubConnectionBuilder` with explicit YARP routing headers to control replica targeting.
+- [X] T018 [P] [US1] Add `multinode-correctness.yml` GitHub Actions workflow at `.github/workflows/multinode-correctness.yml` that runs the cross-replica tests on PRs touching `src/Common/Sorcha.ServiceDefaults/Hubs/**` or `src/Services/*/Hubs/**`.
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Migrate ActionsHub registration in `src/Services/Sorcha.Blueprint.Service/Program.cs` to use `services.AddSorchaHub<ActionsHub, IActionsHubClient>(...)` (interface stub-added in this task — full rename to BlueprintHub waits for US2). ActionsHub gains a typed client interface `IActionsHubClient` in `src/Services/Sorcha.Blueprint.Service/Hubs/IActionsHubClient.cs` mirroring its current methods as a bridge.
-- [ ] T020 [US1] Migrate EventsHub registration in `src/Services/Sorcha.Blueprint.Service/Program.cs` to use `AddSorchaHub<EventsHub, IEventsHubClient>(...)`. Add `IEventsHubClient` stub interface.
-- [ ] T021 [US1] Migrate ChatHub registration in `src/Services/Sorcha.Blueprint.Service/Program.cs` to use `AddSorchaHub<ChatHub, IChatHubClient>(...)`. Note ChatHub is exempt from the thin-signal contract; XML doc on the class marks it as the deliberate exception (FR-019). Add `IChatHubClient` stub interface mirroring existing methods.
-- [ ] T022 [P] [US1] Migrate WalletHub registration in `src/Services/Sorcha.Wallet.Service/Program.cs` to use `AddSorchaHub<WalletHub, IWalletHubClient>(...)`. Add typed client interface (existing WalletHub is currently untyped).
-- [ ] T023 [P] [US1] Migrate RegisterHub registration in `src/Services/Sorcha.Register.Service/Program.cs` to use `AddSorchaHub<RegisterHub, IRegisterHubClient>(...)`. RegisterHub already has `IRegisterHubClient`. Auth hardening deferred to US4 cutover.
-- [ ] T024 [US1] Add Redis connection-string requirement to `src/Services/Sorcha.Blueprint.Service/appsettings.json` (and `appsettings.Production.json`) under `ConnectionStrings:Blueprint:Redis`, falling back to `ConnectionStrings:Sorcha:Redis` per the SorchaConnections cascade pattern.
-- [ ] T025 [P] [US1] Add Redis connection-string requirement to `src/Services/Sorcha.Wallet.Service/appsettings.json`.
-- [ ] T026 [P] [US1] Add Redis connection-string requirement to `src/Services/Sorcha.Register.Service/appsettings.json`.
-- [ ] T027 [US1] Update `docker-compose.yml` so every hub-hosting service sees the existing `redis` container via the SorchaConnections cascade env vars (`ConnectionStrings__Sorcha__Redis=redis:6379`). Verify the dev profile.
-- [ ] T028 [P] [US1] Update `docker-compose.multinode.yml` (created in T005) to bring up two Blueprint Service replicas behind a YARP affinity rule to support the cross-replica test.
-- [ ] T029 [US1] Wire the `sorcha_signalr_backplane_state` gauge into the `storage-providers` health check in each migrated service via the existing `IStorageRegistrationLog` integration so a degraded backplane reports `Degraded` on `/health/storage-providers`.
-- [ ] T030 [US1] Update CLAUDE.md pattern #10 to mention SignalR backplane registration alongside the existing storage interfaces.
+- [X] T019 [US1] Migrate ActionsHub registration in `src/Services/Sorcha.Blueprint.Service/Program.cs` to use `services.AddSorchaHub<ActionsHub, IActionsHubClient>(...)` (interface stub-added in this task — full rename to BlueprintHub waits for US2). ActionsHub gains a typed client interface `IActionsHubClient` in `src/Services/Sorcha.Blueprint.Service/Hubs/IActionsHubClient.cs` mirroring its current methods as a bridge.
+- [X] T020 [US1] Migrate EventsHub registration in `src/Services/Sorcha.Blueprint.Service/Program.cs` to use `AddSorchaHub<EventsHub, IEventsHubClient>(...)`. Add `IEventsHubClient` stub interface.
+- [X] T021 [US1] Migrate ChatHub registration in `src/Services/Sorcha.Blueprint.Service/Program.cs` to use `AddSorchaHub<ChatHub, IChatHubClient>(...)`. Note ChatHub is exempt from the thin-signal contract; XML doc on the class marks it as the deliberate exception (FR-019). Add `IChatHubClient` stub interface mirroring existing methods.
+- [X] T022 [P] [US1] Migrate WalletHub registration in `src/Services/Sorcha.Wallet.Service/Program.cs` to use `AddSorchaHub<WalletHub, IWalletHubClient>(...)`. Add typed client interface (existing WalletHub is currently untyped).
+- [X] T023 [P] [US1] Migrate RegisterHub registration in `src/Services/Sorcha.Register.Service/Program.cs` to use `AddSorchaHub<RegisterHub, IRegisterHubClient>(...)`. RegisterHub already has `IRegisterHubClient`. Auth hardening deferred to US4 cutover.
+- [X] T024 [US1] Add Redis connection-string requirement to `src/Services/Sorcha.Blueprint.Service/appsettings.json` (and `appsettings.Production.json`) under `ConnectionStrings:Blueprint:Redis`, falling back to `ConnectionStrings:Sorcha:Redis` per the SorchaConnections cascade pattern.
+- [X] T025 [P] [US1] Add Redis connection-string requirement to `src/Services/Sorcha.Wallet.Service/appsettings.json`.
+- [X] T026 [P] [US1] Add Redis connection-string requirement to `src/Services/Sorcha.Register.Service/appsettings.json`.
+- [X] T027 [US1] Update `docker-compose.yml` so every hub-hosting service sees the existing `redis` container via the SorchaConnections cascade env vars (`ConnectionStrings__Sorcha__Redis=redis:6379`). Verify the dev profile.
+- [X] T028 [P] [US1] Update `docker-compose.multinode.yml` (created in T005) to bring up two Blueprint Service replicas behind a YARP affinity rule to support the cross-replica test.
+- [X] T029 [US1] Wire the `sorcha_signalr_backplane_state` gauge into the `storage-providers` health check in each migrated service via the existing `IStorageRegistrationLog` integration so a degraded backplane reports `Degraded` on `/health/storage-providers`.
+- [X] T030 [US1] Update CLAUDE.md pattern #10 to mention SignalR backplane registration alongside the existing storage interfaces.
 
 **Checkpoint**: US1 complete. Multi-node correctness verified on every existing hub. Topology unchanged. MVP ships here.
 

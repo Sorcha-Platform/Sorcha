@@ -338,7 +338,11 @@ services:
     ports:
       - "${REGISTER_PORT:-5380}:8080"  # Exposed for walkthrough testing
     environment:
-      <<: [*otel-env, *jwt-env]
+      # *sorcha-connections supplies ConnectionStrings__Sorcha__{Postgres,Mongo,Redis}
+      # used by the Feature 118 SignalR backplane (AddSorchaHub) via the SorchaConnections
+      # cascade. The legacy ConnectionStrings__Redis below stays for the Aspire-named
+      # alias used by other code paths in Register Service.
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: register-service
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080

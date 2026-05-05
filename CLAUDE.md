@@ -272,6 +272,29 @@ Operators who need to run a Production-flagged container against an ephemeral en
 
 Health check `storage-providers` reports `Degraded` when any audited interface is on an in-memory backend. OpenTelemetry instruments on the `Sorcha.Storage` meter — `sorcha_storage_provider_info` and `sorcha_storage_fallback_active` — surface the same state for dashboards and alerting.
 
+The audited list also covers the SignalR backplane (Feature 118 — synthetic interface name `Sorcha.ServiceDefaults.Hubs.SignalRBackplane`). Production / Staging refuse to start when a hub-hosting service has no Redis backplane — silent multi-replica fan-out misses are a correctness bug, not a degraded mode.
+
+### 11. Notification Hubs (Feature 118)
+
+Every Sorcha notification hub (TenantHub, BlueprintHub, WalletHub, RegisterHub) registers through `services.AddSorchaHub<THub, TClient>(IConfiguration, routePath, serviceShortName)` from `Sorcha.ServiceDefaults.Hubs`. ChatHub is the deliberate exception — RPC-streaming wire shape, documented inline.
+
+```csharp
+using Sorcha.ServiceDefaults.Hubs;
+
+builder.Services.AddSorchaHub<BlueprintHub, IBlueprintHubClient>(
+    builder.Configuration, "/hubs/blueprint", "blueprint");
+// ...
+app.MapSorchaHubs();   // maps every AddSorchaHub registration
+```
+
+The extension wires SignalR + Redis backplane (`ChannelPrefix = sorcha:signalr:{serviceShortName}` so cross-service backplane traffic is isolated) + reconnect-with-jitter + the storage-providers audit. The Redis connection comes from the SorchaConnections cascade (`ConnectionStrings:{Service}:Redis` → `ConnectionStrings:Sorcha:Redis`).
+
+Group strings are constructed only via `*HubGroups` builder classes alongside each hub (e.g., `BlueprintHubGroups.Wallet(addr)`) — no inline `$"wallet:{addr}"` interpolation in service code. CI grep gate enforces this (Phase 7 / US5).
+
+Hub events follow the **thin-signal contract** — opaque IDs and timestamps only, no domain payload. Each event method on the typed-client interface carries an XML doc `<see cref="..."/>` linking to the authenticated REST detail endpoint. ChatHub is exempt (it streams content by design).
+
+Full architecture: `specs/118-notifications-architecture/spec.md`. Design rationale: `docs/superpowers/specs/2026-05-05-notifications-architecture-design.md`.
+
 ---
 
 ## Key Documentation

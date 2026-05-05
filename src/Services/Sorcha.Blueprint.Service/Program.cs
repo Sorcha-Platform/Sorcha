@@ -13,6 +13,8 @@ using Sorcha.Blueprint.Service.Extensions;
 using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.JsonLd;
+using Microsoft.AspNetCore.SignalR;
+using Sorcha.ServiceDefaults.Hubs;
 using Sorcha.ServiceDefaults;
 using Sorcha.ServiceDefaults.Storage;
 using Sorcha.Blueprint.Service.Services;
@@ -250,12 +252,23 @@ builder.Services.Configure<Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOpt
     builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions.SectionName));
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.OrphanChunkCleanupService>();
 
-// Add SignalR (Sprint 5)
-// TODO: Add Redis backplane when Microsoft.AspNetCore.SignalR.StackExchangeRedis package is added
-builder.Services.AddSignalR(options =>
+// Feature 118 — multi-node hub fan-out via Redis backplane (US1).
+// AddSorchaHub wires JWT auth + Redis backplane (ChannelPrefix=sorcha:signalr:blueprint)
+// + reconnect-with-jitter + OpenTelemetry instrumentation, identically across services.
+// ChatHub is the deliberate exception (FR-005, FR-019) — RPC-streaming wire shape;
+// it does not register through AddSorchaHub but still inherits the backplane because
+// AddStackExchangeRedis applies to every hub in the service.
+builder.Services.AddSorchaHub<ActionsHub, IActionsHubClient>(
+    builder.Configuration, "/actionshub", "blueprint");
+builder.Services.AddSorchaHub<EventsHub, IEventsHubClient>(
+    builder.Configuration, "/hubs/events", "blueprint");
+
+// AI tool execution can take 30-60+ seconds per turn with multiple continuation rounds.
+// Default 30s client timeout causes disconnects during long AI processing. The settings
+// here apply to ChatHub specifically, but HubOptions are global so notification hubs
+// inherit them too — that's fine, longer timeouts are conservative.
+builder.Services.Configure<HubOptions>(options =>
 {
-    // AI tool execution can take 30-60+ seconds per turn with multiple continuation rounds.
-    // Default 30s client timeout causes disconnects during long AI processing.
     options.ClientTimeoutInterval = TimeSpan.FromMinutes(3);
     options.KeepAliveInterval = TimeSpan.FromSeconds(15);
 });
@@ -439,10 +452,11 @@ app.UseRateLimiting();
 // Add Delegation Token Middleware (Sprint 6 - Orchestration)
 app.UseMiddleware<Sorcha.Blueprint.Service.Middleware.DelegationTokenMiddleware>();
 
-// Map SignalR hubs (Sprint 5, Sprint 8)
-app.MapHub<Sorcha.Blueprint.Service.Hubs.ActionsHub>("/actionshub").RequireAuthorization();
+// Map SignalR hubs.
+// ActionsHub + EventsHub mapped via MapSorchaHubs from the AddSorchaHub registry above
+// (Feature 118 US1). ChatHub is the deliberate exception, mapped explicitly here.
+app.MapSorchaHubs();
 app.MapHub<Sorcha.Blueprint.Service.Hubs.ChatHub>("/hubs/chat").RequireAuthorization();
-app.MapHub<Sorcha.Blueprint.Service.Hubs.EventsHub>("/hubs/events").RequireAuthorization();
 
 // Map Operations endpoints (045 Phase 7 - async encryption status)
 app.MapOperationsEndpoints();
