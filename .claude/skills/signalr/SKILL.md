@@ -8,65 +8,98 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-libra
 
 # SignalR Skill
 
-ASP.NET Core SignalR implementation for real-time client-server communication. Sorcha uses two hubs: `ActionsHub` (Blueprint Service) for workflow notifications and `RegisterHub` (Register Service) for ledger events. Both use group-based broadcasting with JWT authentication via query parameters.
+ASP.NET Core SignalR implementation for real-time client-server communication. Sorcha runs **five hubs** post-Feature 118: `BlueprintHub` (workflow signals; `/hubs/blueprint`, `/actionshub` deprecated alias), `WalletHub` (wallet-domain events; `/hubs/wallet`), `RegisterHub` (register-domain events; `/hubs/register`), `TenantHub` (identity / membership / inbox; `/hubs/tenant`), and `ChatHub` (the deliberate exception — RPC-streaming AI Designer; `/hubs/chat`).
+
+Every notification hub registers through `services.AddSorchaHub<THub, TClient>(IConfiguration, routePath, serviceShortName)` from `Sorcha.ServiceDefaults.Hubs`. The extension wires JWT Bearer auth, the SignalR Redis backplane (with per-service `ChannelPrefix=sorcha:signalr:{service}` for cross-service isolation), reconnect-with-jitter, OpenTelemetry instrumentation, and the storage-providers fail-fast audit. ChatHub is exempt — its streaming wire shape doesn't fit the notification-hub contract.
 
 ## Quick Start
 
 ### Hub Implementation
 
 ```csharp
-// Strongly-typed hub with client interface
-public class RegisterHub : Hub<IRegisterHubClient>
+// Every notification hub: typed client interface + Hub<TClient> + group builder.
+public sealed class TenantHub : Hub<ITenantHubClient>
 {
-    public async Task SubscribeToRegister(string registerId)
+    public override async Task OnConnectedAsync()
     {
-        await Groups.AddToGroupAsync(Context.ConnectionId, $"register:{registerId}");
+        var pid = Context.User?.FindFirst("platform_user_id")?.Value;
+        if (Guid.TryParse(pid, out var platformUserId))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, TenantHubGroups.User(platformUserId));
+        }
+        await base.OnConnectedAsync();
     }
 }
 
-public interface IRegisterHubClient
+// Group strings come from the *HubGroups builder, never from inline interpolation.
+public static class TenantHubGroups
 {
-    Task RegisterCreated(string registerId, string name);
-    Task TransactionConfirmed(string registerId, string transactionId);
+    public static string User(Guid platformUserId) => $"user:{platformUserId:N}";
+    public static string Org(Guid orgId) => $"org:{orgId:N}";
+    public const string SystemAll = "system:all";
 }
 ```
 
-### Sending from Services
+### Service Registration
 
 ```csharp
-public class NotificationService
-{
-    private readonly IHubContext<ActionsHub> _hubContext;
+// One AddSorchaHub call per notification hub. Idempotent across hubs in the same service.
+builder.Services.AddSorchaHub<TenantHub, ITenantHubClient>(
+    builder.Configuration, "/hubs/tenant", "tenant");
+// ...
+app.MapSorchaHubs();   // maps every AddSorchaHub registration
+```
 
-    public async Task NotifyActionConfirmedAsync(ActionNotification notification, CancellationToken ct)
+### Sending from Services (thin-signal contract)
+
+```csharp
+// Hub events carry opaque IDs only — no claim values, descriptions, or balances.
+// Detail fetch via REST is the contract.
+public class InboxService
+{
+    private readonly IHubContext<TenantHub> _hub;
+
+    public async Task EmitInboxEntryAddedAsync(InboxEntry entry, CancellationToken ct)
     {
-        await _hubContext.Clients
-            .Group($"wallet:{notification.WalletAddress}")
-            .SendAsync("ActionConfirmed", notification, ct);
+        await _hub.Clients
+            .Group(TenantHubGroups.User(entry.PlatformUserId))
+            .SendAsync(
+                "InboxEntryAdded",
+                entry.Id.ToString("N"),
+                entry.OccurredAt,
+                Activity.Current?.TraceId.ToString() ?? "",
+                ct);
     }
 }
 ```
+
+The thin-signal contract is enforced by `tests/Sorcha.Integration.Tests/Hubs/ThinSignalContractTests.cs` — adding an event method with a non-ID parameter type fails the suite. The CI grep gate at `scripts/check-no-inline-group-strings.ps1` (workflow `group-name-builder-check.yml`) enforces the builder rule.
 
 ### Client Connection (Testing)
 
 ```csharp
 var connection = new HubConnectionBuilder()
-    .WithUrl($"{baseUrl}/actionshub?access_token={jwt}")
+    .WithUrl($"{baseUrl}/hubs/tenant?access_token={jwt}")
     .Build();
 
-connection.On<ActionNotification>("ActionConfirmed", notification => { /* handle */ });
+connection.On<string, DateTimeOffset, string>("InboxEntryAdded", (entryId, occurredAt, traceId) =>
+{
+    // Fetch full entry detail via authenticated REST.
+});
 await connection.StartAsync();
-await connection.InvokeAsync("SubscribeToWallet", walletAddress);
 ```
 
 ## Key Concepts
 
 | Concept | Usage | Example |
 |---------|-------|---------|
-| Groups | Route messages to subscribers | `wallet:{address}`, `register:{id}`, `tenant:{id}` |
-| Typed Hubs | Compile-time safety | `Hub<IRegisterHubClient>` |
-| IHubContext | Send from services | Inject `IHubContext<THub>` |
-| JWT Auth | Query parameter auth | `?access_token={jwt}` |
+| Hub-per-service topology | One notification hub per service; ChatHub is the exception | TenantHub, BlueprintHub, WalletHub, RegisterHub, ChatHub |
+| `AddSorchaHub<THub, TClient>` | Single-call DI wiring — auth + backplane + jitter + tracing + audit | `services.AddSorchaHub<TenantHub, ITenantHubClient>(cfg, "/hubs/tenant", "tenant")` |
+| Group builders | All group strings constructed via `*HubGroups` static helpers | `TenantHubGroups.User(pid)` not `$"user:{pid:N}"` |
+| Thin-signal contract | Events carry IDs + timestamps + trace tokens only — no descriptive payload | `InboxEntryAdded(string entryId, DateTimeOffset occurredAt, string traceId)` |
+| Redis backplane isolation | `ChannelPrefix = sorcha:signalr:{serviceShortName}` per service | Each service's pub/sub keyspace is isolated |
+| Multi-node fail-fast | Production refuses to start without Redis backplane | Audited via `IStorageRegistrationLog` (Feature 113 pattern) |
+| JWT Auth | Bearer token; `platform_user_id` claim required on every notification hub | `?access_token={jwt}` |
 
 ## Common Patterns
 
@@ -88,11 +121,14 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 ### Hub Registration in Program.cs
 
 ```csharp
-builder.Services.AddSignalR();
+// Feature 118 — every notification hub goes through AddSorchaHub.
+builder.Services.AddSorchaHub<TenantHub, ITenantHubClient>(
+    builder.Configuration, "/hubs/tenant", "tenant");
 
 // Map after authentication middleware
-app.MapHub<ActionsHub>("/actionshub");
-app.MapHub<RegisterHub>("/hubs/register");
+app.MapSorchaHubs();
+// ChatHub is the deliberate exception (FR-019) — explicit mapping.
+app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
 ```
 
 ## See Also
