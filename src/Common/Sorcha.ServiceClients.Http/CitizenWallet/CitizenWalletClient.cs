@@ -107,4 +107,38 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         return await response.Content.ReadFromJsonAsync<DelegationRenewalResponse>(JsonOptions, ct)
             ?? throw new InvalidOperationException("Wallet Service returned an empty body for /devices/renew-delegation.");
     }
+
+    /// <inheritdoc />
+    public async Task<DeviceListResponse> ListDevicesAsync(CancellationToken ct = default)
+    {
+        var response = await _httpClient.GetAsync("api/v1/wallet/devices", ct);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<DeviceListResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Wallet Service returned an empty body for /devices.");
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> RenameDeviceAsync(
+        Guid deviceId, string label, CancellationToken ct = default)
+    {
+        var response = await _httpClient.PutAsJsonAsync(
+            $"api/v1/wallet/devices/{deviceId}/label",
+            new DeviceLabelUpdateRequest { Label = label },
+            JsonOptions, ct);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> RevokeDeviceAsync(
+        Guid deviceId, CancellationToken ct = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/v1/wallet/devices/{deviceId}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
 }

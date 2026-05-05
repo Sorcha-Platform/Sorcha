@@ -50,4 +50,24 @@ public interface ICitizenWalletClient
     /// </summary>
     Task<DelegationRenewalResponse?> RenewDelegationAsync(
         Guid deviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists the citizen's enrolled devices (active + revoked, ordered by
+    /// enrolment desc). Calls <c>GET /api/v1/wallet/devices</c>.
+    /// </summary>
+    Task<DeviceListResponse> ListDevicesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Renames a device. Calls <c>PUT /api/v1/wallet/devices/{id}/label</c>.
+    /// Returns <c>false</c> on 404 (unknown / not owned).
+    /// </summary>
+    Task<bool> RenameDeviceAsync(
+        Guid deviceId, string label, CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes a device. Calls <c>DELETE /api/v1/wallet/devices/{id}</c>.
+    /// Returns <c>false</c> on 404 (unknown / not owned).
+    /// </summary>
+    Task<bool> RevokeDeviceAsync(
+        Guid deviceId, CancellationToken ct = default);
 }

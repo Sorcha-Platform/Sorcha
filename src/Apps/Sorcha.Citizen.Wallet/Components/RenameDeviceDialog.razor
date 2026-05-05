@@ -1,0 +1,54 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Rename-device modal (Feature 114, T120 — US3 PR4). Returns the new
+    label string on Save, Canceled on Cancel.
+*@
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_label"
+                      Label="Device label"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      MaxLength="120"
+                      Counter="120"
+                      Immediate="true"
+                      data-testid="rename-input" />
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+            1–120 characters. The label is shown in your device list and on the main Sorcha web UI.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" data-testid="rename-cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   Disabled="@(!IsValid)"
+                   OnClick="Save"
+                   data-testid="rename-save">
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public string CurrentLabel { get; set; } = string.Empty;
+
+    private string _label = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        _label = CurrentLabel;
+    }
+
+    private bool IsValid =>
+        !string.IsNullOrWhiteSpace(_label) &&
+        _label.Length <= 120 &&
+        !string.Equals(_label, CurrentLabel, StringComparison.Ordinal);
+
+    private void Save() => Dialog.Close(DialogResult.Ok(_label));
+    private void Cancel() => Dialog.Cancel();
+}

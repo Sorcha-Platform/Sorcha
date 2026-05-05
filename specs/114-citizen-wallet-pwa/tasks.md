@@ -262,7 +262,7 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 ### PWA — device manager page
 
-- [ ] T120 [US3] Create `src/Apps/Sorcha.Citizen.Wallet/Pages/Devices.razor` — `/wallet/devices` route, lists devices with label / platform / enrolledAt / status. Per-row actions: rename (calls `PUT /devices/{id}/label`), revoke (calls `DELETE /devices/{id}`, with confirm dialog).
+- [x] T120 [US3] Create `src/Apps/Sorcha.Citizen.Wallet/Pages/Devices.razor` — `/wallet/devices` route, lists devices with label / platform / enrolledAt / status. Per-row actions: rename (calls `PUT /devices/{id}/label`), revoke (calls `DELETE /devices/{id}`, with confirm dialog). (Replaces the placeholder; uses two new MudDialog modals — `RenameDeviceDialog`, `ConfirmRevokeDialog` — and extends `ICitizenWalletClient` with `ListDevicesAsync` / `RenameDeviceAsync` / `RevokeDeviceAsync`.)
 
 ### Sorcha.UI.Web — additive My Devices page
 
