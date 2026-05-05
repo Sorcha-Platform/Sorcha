@@ -1,0 +1,119 @@
+{
+  "annotations": { "list": [] },
+  "description": "Feature 118 — Sorcha SignalR observability. Hub connection lifecycle, message fan-out rate, backplane health per service, reconnect attempt rate, and the EventsHub-decommission gauge that gates retirement (FR-038). Source meter: `Sorcha.SignalR` from `Sorcha.ServiceDefaults.Hubs.SignalRMetrics`.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "SignalR connections — open vs closed",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (hub, state) (rate(sorcha_signalr_connections_total[5m]))",
+          "legendFormat": "{{hub}} / {{state}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Hub events sent — by hub + event type",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (hub, event_type) (rate(sorcha_signalr_messages_sent_total[5m]))",
+          "legendFormat": "{{hub}} / {{event_type}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "Backplane state — per service",
+      "description": "0=down, 1=degraded, 2=up. A non-up state on any service is a multi-replica fan-out outage in progress.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sorcha_signalr_backplane_state",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "green", "value": 2 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "down", "color": "red" }, "1": { "text": "degraded", "color": "orange" }, "2": { "text": "up", "color": "green" } } }
+          ]
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "none", "colorMode": "background", "textMode": "value_and_name" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Client reconnect attempts — by hub + reason",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (hub, reason) (rate(sorcha_signalr_reconnects_total[5m]))",
+          "legendFormat": "{{hub}} / {{reason}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 6 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "EventsHub subscribers — decommission gauge (FR-038)",
+      "description": "EventsHub is retired in Phase 10 polish only after this gauge has been zero across all replicas for one full release cycle. Non-zero values during the parallel-fire window are expected; trending to zero is the deletion gate.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(sorcha_signalr_events_hub_subscribers)",
+          "legendFormat": "subscribers",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 14, "w": 8, "h": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "value", "textMode": "value_and_name" }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["sorcha", "signalr", "feature-118"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "title": "Sorcha SignalR",
+  "uid": "sorcha-signalr",
+  "version": 1
+}
