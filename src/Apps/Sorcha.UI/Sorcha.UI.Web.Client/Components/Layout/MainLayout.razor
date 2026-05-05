@@ -14,6 +14,7 @@
 @inject IJSRuntime JSRuntime
 @inject EventsHubConnection EventsHub
 @inject ActionsHubConnection ActionsHub
+@inject TenantHubConnection TenantHub
 @inject ISnackbar Snackbar
 @inject ILocalizationService Loc
 @inject IPendingActionService PendingActionService
@@ -300,6 +301,21 @@
             ActionsHub.OnCredentialReceived += OnCredentialReceived;
             ActionsHub.OnPendingCredentialCountUpdated += OnPendingCredentialCountUpdated;
 
+            // Feature 118 Phase 5 — also subscribe to TenantHub inbox events. The
+            // bell uses whichever number is higher between the legacy EventsHub
+            // unread count and the TenantHub inbox unread count during the
+            // parallel-fire window. When EventsHub retires the bell will read
+            // only TenantHub.
+            TenantHub.OnInboxUnreadCountUpdated += OnInboxUnreadCountUpdated;
+            try
+            {
+                await TenantHub.StartAsync();
+            }
+            catch (Exception)
+            {
+                // Hub may be unavailable — auto-reconnect handles transient outages.
+            }
+
             StateHasChanged();
         }
     }
@@ -312,7 +328,9 @@
         EventsHub.OnPendingActionReceived -= OnPendingActionReceived;
         ActionsHub.OnCredentialReceived -= OnCredentialReceived;
         ActionsHub.OnPendingCredentialCountUpdated -= OnPendingCredentialCountUpdated;
+        TenantHub.OnInboxUnreadCountUpdated -= OnInboxUnreadCountUpdated;
         await EventsHub.DisconnectAsync();
+        await TenantHub.DisposeAsync();
         await TokenRefreshService.StopAsync();
     }
 
@@ -333,6 +351,22 @@
     {
         _unreadCount = count == IncrementByOneSignal ? _unreadCount + 1 : count;
         InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Feature 118 / US3 — TenantHub inbox unread-count handler. Authoritative
+    /// from the server (no -1 increment-by-one signal); the bell renders the
+    /// max of the legacy EventsHub count and this TenantHub count during the
+    /// parallel-fire window. After EventsHub retires the bell reads only this.
+    /// </summary>
+    private Task OnInboxUnreadCountUpdated(int unreadCount, DateTimeOffset occurredAt, string traceId)
+    {
+        if (unreadCount > _unreadCount)
+        {
+            _unreadCount = unreadCount;
+            InvokeAsync(StateHasChanged);
+        }
+        return Task.CompletedTask;
     }
 
     private readonly MudTheme _theme = new()
