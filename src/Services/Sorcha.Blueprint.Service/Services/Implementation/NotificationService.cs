@@ -17,16 +17,19 @@ public class NotificationService : INotificationService
 {
     private readonly IHubContext<BlueprintHub> _hubContext;
     private readonly IHubContext<EventsHub> _eventsHubContext;
+    private readonly IBlueprintInboxWriter _inboxWriter;
     private readonly ILogger<NotificationService> _logger;
 
     /// <summary>Initialises a new instance of the <see cref="NotificationService"/> class.</summary>
     public NotificationService(
         IHubContext<BlueprintHub> hubContext,
         IHubContext<EventsHub> eventsHubContext,
+        IBlueprintInboxWriter inboxWriter,
         ILogger<NotificationService> logger)
     {
         _hubContext = hubContext;
         _eventsHubContext = eventsHubContext;
+        _inboxWriter = inboxWriter;
         _logger = logger;
     }
 
@@ -49,6 +52,16 @@ public class NotificationService : INotificationService
         };
 
         await SendToWalletAsync(walletAddress, "ActionAvailable", signal, ct);
+
+        // Phase 5 follow-up of Feature 118: also drop a durable inbox entry. The writer
+        // resolves wallet -> participant -> platform user and POSTs to Tenant. Failures
+        // are swallowed so an inbox-write outage cannot break SignalR delivery.
+        await _inboxWriter.WriteActionAvailableAsync(
+            walletAddress: walletAddress,
+            instanceId: instanceId,
+            actionId: signal.CorrelationId?.ToString("N") ?? instanceId,
+            actionTitle: null,
+            ct: ct).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Sent signal {SignalType} to wallet {Wallet} for instance {InstanceId}",

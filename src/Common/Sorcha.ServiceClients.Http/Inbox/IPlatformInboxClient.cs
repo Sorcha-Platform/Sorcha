@@ -20,6 +20,15 @@ public interface IPlatformInboxClient
     /// whether the write was idempotent (duplicate of an earlier write).
     /// </summary>
     Task<InboxWriteOutcome> WriteAsync(InboxWritePayload payload, CancellationToken ct = default);
+
+    /// <summary>
+    /// GET <c>/api/internal/users/by-identity/{userIdentityId}</c>. Resolves the
+    /// org-scoped <c>UserIdentity.Id</c> (which the Participant Service surface
+    /// hands back via <c>ParticipantInfo.UserId</c>) to the cross-org
+    /// <c>PlatformUser.Id</c> the inbox is addressed by.
+    /// </summary>
+    /// <returns>The platform user id, or <c>null</c> if no UserIdentity matches.</returns>
+    Task<Guid?> ResolvePlatformUserIdAsync(Guid userIdentityId, CancellationToken ct = default);
 }
 
 /// <summary>Wire shape sent to the internal inbox endpoint.</summary>
