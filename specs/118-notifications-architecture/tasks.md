@@ -131,7 +131,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 ### Tests for User Story 3
 
 - [ ] T054 [P] [US3] EF migration test in `tests/Sorcha.Tenant.Service.Tests/Migrations/InboxEntryMigrationTests.cs` (apply, check schema, check indexes).
-- [ ] T055 [P] [US3] `InboxService` unit tests in `tests/Sorcha.Tenant.Service.Tests/Services/InboxServiceTests.cs` covering write, idempotent write, read transition, dismiss transition, mark-all-read.
+- [X] T055 [P] [US3] `InboxService` unit tests in `tests/Sorcha.Tenant.Service.Tests/Services/InboxServiceTests.cs` covering write, idempotent write, read transition, dismiss transition, mark-all-read.
 - [ ] T056 [P] [US3] Redis index tests in `tests/Sorcha.Tenant.Service.Tests/Services/InboxUnreadIndexTests.cs` covering ZADD, ZREM, ZCARD atomicity and Postgres fallback when Redis is down.
 - [ ] T057 [P] [US3] Endpoint integration tests in `tests/Sorcha.Tenant.Service.Tests/Endpoints/MeInboxEndpointsTests.cs` covering all six public endpoints, authorization scoping, idempotency.
 - [ ] T058 [P] [US3] Internal endpoint test in `tests/Sorcha.Tenant.Service.Tests/Endpoints/InternalInboxEndpointsTests.cs` covering RequireService policy gate, idempotent write on `(PlatformUserId, SourceEventId)`, validation errors.
@@ -141,17 +141,17 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Implementation for User Story 3
 
-- [ ] T062 [US3] Create `InboxEntry` EF entity, `InboxCategory` and `InboxSeverity` enums, `ChannelHints` `[Flags]` enum at `src/Services/Sorcha.Tenant.Service/Models/InboxEntry.cs` per `data-model.md`.
-- [ ] T063 [US3] Add `InboxEntries` `DbSet` to `src/Services/Sorcha.Tenant.Service/Data/TenantDbContext.cs` with the five indexes from `data-model.md` § Indexes.
-- [ ] T064 [US3] Create EF migration `Migrations/AddInboxEntry.cs` for the new table.
+- [X] T062 [US3] Create `InboxEntry` EF entity, `InboxCategory` and `InboxSeverity` enums, `ChannelHints` `[Flags]` enum at `src/Services/Sorcha.Tenant.Service/Models/InboxEntry.cs` per `data-model.md`.
+- [X] T063 [US3] Add `InboxEntries` `DbSet` to `src/Services/Sorcha.Tenant.Service/Data/TenantDbContext.cs` with the five indexes from `data-model.md` § Indexes.
+- [X] T064 [US3] Create EF migration `Migrations/AddInboxEntry.cs` for the new table.
 - [ ] T065 [US3] Implement `IInboxStore` and `EfCoreInboxStore` (Postgres) in `src/Services/Sorcha.Tenant.Service/Services/InboxStore.cs`. Register through `IStorageRegistrationLog` per Feature 113 pattern; production fail-fast applies.
 - [ ] T066 [US3] Implement `IInboxUnreadIndex` (Redis sorted-set wrapper) in `src/Services/Sorcha.Tenant.Service/Services/InboxUnreadIndex.cs` with `ZADD` / `ZREM` / `ZCARD` operations and Postgres `COUNT(*)` fallback. Register through `IStorageRegistrationLog`.
-- [ ] T067 [US3] Implement `IInboxService` and `InboxService` in `src/Services/Sorcha.Tenant.Service/Services/InboxService.cs` orchestrating Postgres write + Redis ZADD + TenantHub event emit. Idempotency on `(PlatformUserId, SourceEventId)`.
-- [ ] T068 [US3] Implement `MeInboxEndpoints` in `src/Services/Sorcha.Tenant.Service/Endpoints/MeInboxEndpoints.cs`: GET /api/me/inbox, GET /{id}, GET /unread-count, POST /{id}/read, POST /{id}/dismiss, POST /mark-all-read. All scoped to caller's `platform_user_id` claim. Per `contracts/inbox-endpoints.openapi.yaml`.
-- [ ] T069 [US3] Implement `InternalInboxEndpoints` in `src/Services/Sorcha.Tenant.Service/Endpoints/InternalInboxEndpoints.cs`: POST /api/internal/inbox gated by `RequireService` policy. Idempotency on the unique index, `200 idempotent:true` response on duplicate.
-- [ ] T070 [US3] Wire endpoints into `src/Services/Sorcha.Tenant.Service/Program.cs`. Add YARP route in `src/Services/Sorcha.ApiGateway/appsettings.json` for `/api/me/inbox/*` and (locally — not gateway-exposed) `/api/internal/inbox`.
-- [ ] T071 [US3] Implement TenantHub inbox event emission in `InboxService`: `InboxEntryAdded(entryId, occurredAt, traceId)` and `InboxUnreadCountUpdated(unreadCount, occurredAt, traceId)` on `TenantHubGroups.User(platformUserId)`. Per `contracts/tenant-hub-client.cs.md`.
-- [ ] T072 [P] [US3] Create `IPlatformInboxClient` HTTP client in `src/Common/Sorcha.ServiceClients.Http/Inbox/IPlatformInboxClient.cs` with `WriteAsync(InboxEntryWriteRequest)` calling `POST /api/internal/inbox` with the existing `ServiceAuthClient` token flow.
+- [X] T067 [US3] Implement `IInboxService` and `InboxService` in `src/Services/Sorcha.Tenant.Service/Services/InboxService.cs` orchestrating Postgres write + Redis ZADD + TenantHub event emit. Idempotency on `(PlatformUserId, SourceEventId)`.
+- [X] T068 [US3] Implement `MeInboxEndpoints` in `src/Services/Sorcha.Tenant.Service/Endpoints/MeInboxEndpoints.cs`: GET /api/me/inbox, GET /{id}, GET /unread-count, POST /{id}/read, POST /{id}/dismiss, POST /mark-all-read. All scoped to caller's `platform_user_id` claim. Per `contracts/inbox-endpoints.openapi.yaml`.
+- [X] T069 [US3] Implement `InternalInboxEndpoints` in `src/Services/Sorcha.Tenant.Service/Endpoints/InternalInboxEndpoints.cs`: POST /api/internal/inbox gated by `RequireService` policy. Idempotency on the unique index, `200 idempotent:true` response on duplicate.
+- [X] T070 [US3] Wire endpoints into `src/Services/Sorcha.Tenant.Service/Program.cs`. Add YARP route in `src/Services/Sorcha.ApiGateway/appsettings.json` for `/api/me/inbox/*` and (locally — not gateway-exposed) `/api/internal/inbox`.
+- [X] T071 [US3] Implement TenantHub inbox event emission in `InboxService`: `InboxEntryAdded(entryId, occurredAt, traceId)` and `InboxUnreadCountUpdated(unreadCount, occurredAt, traceId)` on `TenantHubGroups.User(platformUserId)`. Per `contracts/tenant-hub-client.cs.md`.
+- [X] T072 [P] [US3] Create `IPlatformInboxClient` HTTP client in `src/Common/Sorcha.ServiceClients.Http/Inbox/IPlatformInboxClient.cs` with `WriteAsync(InboxEntryWriteRequest)` calling `POST /api/internal/inbox` with the existing `ServiceAuthClient` token flow.
 - [ ] T073 [US3] Implement `BlueprintInboxWriter` service in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/BlueprintInboxWriter.cs` invoked by `NotificationService` when an action becomes available. Writes a `Category=Action` entry with `tx:{walletAddr}:{txId}` correlation key. Registered in DI.
 - [ ] T074 [US3] Implement `WalletInboxWriter` service in `src/Services/Sorcha.Wallet.Service/Services/Implementation/WalletInboxWriter.cs` invoked by the credential issuance pipeline. Writes a `Category=Credential` entry with the same correlation key. Registered in DI.
 - [ ] T075 [P] [US3] Update `NotificationDeliveryService` in `src/Services/Sorcha.Wallet.Service/Services/Implementation/NotificationDeliveryService.cs` to invoke `IPlatformInboxClient.WriteAsync` instead of publishing to `wallet:notifications`. Keep the legacy publish during US2 parallel-fire window.

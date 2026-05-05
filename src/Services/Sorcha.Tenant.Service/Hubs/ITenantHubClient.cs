@@ -24,8 +24,25 @@ namespace Sorcha.Tenant.Service.Hubs;
 /// </remarks>
 public interface ITenantHubClient
 {
-    // No event methods yet — added in Phase 5 (InboxEntryAdded, InboxUnreadCountUpdated)
-    // and later in Phase 4 follow-up work (MembershipChanged, SecurityAlert, SystemAnnouncement).
-    // Keeping the interface empty rather than carrying placeholders so Phase 5 owners
-    // see immediately that they are defining the first real event method.
+    /// <summary>
+    /// A new inbox entry was written for the user. Carries opaque IDs only; clients
+    /// fetch full content via <c>GET /api/me/inbox/{entryId}</c>.
+    /// </summary>
+    /// <param name="entryId">GUID of the entry, formatted with <c>:N</c> (no hyphens).</param>
+    /// <param name="occurredAt">Server timestamp at which the underlying event occurred.</param>
+    /// <param name="traceId">W3C trace-id for correlating across the bridge.</param>
+    /// <see href="/api/me/inbox/{entryId}"/>
+    Task InboxEntryAdded(string entryId, DateTimeOffset occurredAt, string traceId);
+
+    /// <summary>
+    /// The authenticated user's unread inbox count changed. Authoritative —
+    /// the client should overwrite, not increment.
+    /// </summary>
+    /// <param name="unreadCount">New unread count. Cold-load via <c>GET /api/me/inbox/unread-count</c>.</param>
+    /// <param name="occurredAt">Server timestamp.</param>
+    /// <param name="traceId">W3C trace-id.</param>
+    /// <see href="/api/me/inbox/unread-count"/>
+    Task InboxUnreadCountUpdated(int unreadCount, DateTimeOffset occurredAt, string traceId);
+
+    // Membership / Security / System announcement events follow in a later phase.
 }

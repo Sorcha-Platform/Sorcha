@@ -41,6 +41,7 @@ public class TenantDbContext : DbContext
     public DbSet<OrganizationRegisterSubscription> OrganizationRegisterSubscriptions => Set<OrganizationRegisterSubscription>();
     public DbSet<RegisterInvitationRecord> RegisterInvitationRecords => Set<RegisterInvitationRecord>();
     public DbSet<InvitationNonce> InvitationNonces => Set<InvitationNonce>();
+    public DbSet<InboxEntry> InboxEntries => Set<InboxEntry>();
 
     // Public schema entities for custom domain resolution
     public DbSet<CustomDomainMapping> CustomDomainMappings => Set<CustomDomainMapping>();
@@ -164,6 +165,79 @@ public class TenantDbContext : DbContext
 
         // Configure AuthChallengeToken entity (public schema) — Feature 116
         ConfigureAuthChallengeToken(modelBuilder);
+
+        // Configure InboxEntry entity (public schema) — Feature 118 / US3 (durable user inbox)
+        ConfigureInboxEntry(modelBuilder);
+    }
+
+    /// <summary>Feature 118 / US3 — durable per-user notification entries.</summary>
+    private void ConfigureInboxEntry(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<InboxEntry>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("InboxEntries");
+            else
+                entity.ToTable("InboxEntries", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Category)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(e => e.Severity)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(e => e.CorrelationKey)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.DetailHref)
+                .IsRequired()
+                .HasMaxLength(1024);
+
+            entity.Property(e => e.Title)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(e => e.Summary)
+                .HasMaxLength(1000);
+
+            entity.Property(e => e.IconKey)
+                .HasMaxLength(64);
+
+            entity.Property(e => e.OccurredAt).IsRequired();
+
+            // Idempotency on duplicate writer retries.
+            entity.HasIndex(e => new { e.PlatformUserId, e.SourceEventId })
+                .IsUnique()
+                .HasDatabaseName("IX_InboxEntries_PlatformUserId_SourceEventId");
+
+            // Primary list query.
+            entity.HasIndex(e => new { e.PlatformUserId, e.OccurredAt })
+                .HasDatabaseName("IX_InboxEntries_PlatformUserId_OccurredAt");
+
+            // Sibling-grouping lookup (30s correlation-key window).
+            entity.HasIndex(e => new { e.PlatformUserId, e.CorrelationKey, e.OccurredAt })
+                .HasDatabaseName("IX_InboxEntries_PlatformUserId_CorrelationKey_OccurredAt");
+
+            // Category filter.
+            entity.HasIndex(e => new { e.PlatformUserId, e.Category, e.OccurredAt })
+                .HasDatabaseName("IX_InboxEntries_PlatformUserId_Category_OccurredAt");
+
+            // Cascade delete with PlatformUser.
+            entity.HasOne<PlatformUser>()
+                .WithMany()
+                .HasForeignKey(e => e.PlatformUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     private void ConfigureOrganization(ModelBuilder modelBuilder)
