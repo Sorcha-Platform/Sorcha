@@ -379,6 +379,9 @@ public static class ServiceCollectionExtensions
         // Events Hub Connection (SignalR for real-time activity event notifications)
         services.AddEventsHubServices(baseAddress);
 
+        // Tenant Hub Connection (Phase 5 of Feature 118 — durable inbox events)
+        services.AddTenantHubServices(baseAddress);
+
         // Theme Service (043 - T042)
         services.AddScoped<IThemeService>(sp =>
         {
@@ -518,6 +521,41 @@ public static class ServiceCollectionExtensions
             var configService = sp.GetRequiredService<IConfigurationService>();
             var logger = sp.GetRequiredService<ILogger<EventsHubConnection>>();
             return new EventsHubConnection(hubBaseUrl, authService, configService, logger);
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="TenantHubConnection"/> for real-time inbox events
+    /// (Phase 5 of Feature 118). Bell badge + activity panel + pending-action
+    /// inbox subscribe to <c>OnInboxEntryAdded</c> + <c>OnInboxUnreadCountUpdated</c>.
+    /// </summary>
+    public static IServiceCollection AddTenantHubServices(this IServiceCollection services, string baseAddress)
+    {
+        services.AddScoped<TenantHubConnection>(sp =>
+        {
+            string hubBaseUrl;
+            if (Uri.TryCreate(baseAddress, UriKind.Absolute, out var uri))
+            {
+                hubBaseUrl = $"{uri.Scheme}://{uri.Authority}";
+            }
+            else
+            {
+                hubBaseUrl = "";
+            }
+
+            var authService = sp.GetRequiredService<IAuthenticationService>();
+            var configService = sp.GetRequiredService<IConfigurationService>();
+            var logger = sp.GetRequiredService<ILogger<TenantHubConnection>>();
+            return new TenantHubConnection(
+                hubBaseUrl,
+                accessTokenProvider: async () =>
+                {
+                    var profileName = await configService.GetActiveProfileNameAsync();
+                    return await authService.GetAccessTokenAsync(profileName);
+                },
+                logger);
         });
 
         return services;
