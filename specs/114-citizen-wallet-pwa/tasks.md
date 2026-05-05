@@ -266,8 +266,8 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 ### Sorcha.UI.Web — additive My Devices page
 
-- [ ] T121 [US3] Create `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor` — new additive page in the existing Sorcha.UI.Web (does NOT modify any existing page; FR-035 holds). Calls `GET /api/v1/me/devices`, surfaces the same list + revoke action. Linked from the existing MyProfile menu (one new menu entry).
-- [ ] T122 [P] [US3] Add E2E coverage for the additive MyDevices page in `tests/Sorcha.UI.E2E.Tests/Docker/MyDevicesTests.cs` (extends existing UI test pattern, not the wallet test pattern).
+- [x] T121 [US3] Create `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor` — new additive page in the existing Sorcha.UI.Web (does NOT modify any existing page; FR-035 holds). Calls `GET /api/v1/me/devices`, surfaces the same list + revoke action. Linked from the existing MyProfile menu (one new menu entry).
+- [x] T122 [P] [US3] Add E2E coverage for the additive MyDevices page in `tests/Sorcha.UI.E2E.Tests/Docker/MyDevicesTests.cs` (extends existing UI test pattern, not the wallet test pattern).
 
 **Checkpoint**: Recovery flow works end to end. Citizen can revoke from either wallet or main UI; lost device is rejected by verifier within the documented status-list refresh interval; new device enrols + recovers credentials with no re-issuance.
 

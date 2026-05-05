@@ -1,0 +1,202 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@*
+    My Devices (Feature 114, T121 — US3 PR5). Additive page giving the
+    citizen a recovery surface from the main Sorcha web UI: list every
+    enrolled wallet device + revoke any one of them. Backed by the
+    Tenant Service endpoints landed in PR #501:
+
+      GET    /api/v1/me/devices            (list)
+      DELETE /api/v1/me/devices/{deviceId} (revoke — Tenant flips local
+              row + S2S to Wallet to flip status-list bit + broadcast
+              SignalR DeviceRevoked)
+
+    FR-035 (additive only): no existing pages were modified to add this
+    surface; the menu link in UserProfileMenu is a one-line additive
+    MudMenuItem alongside the existing entries.
+*@
+
+@page "/my-devices"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize]
+
+@using System.Net
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Logging
+@using MudBlazor
+@using Sorcha.CitizenWallet.Abstractions.Models
+
+@inject HttpClient Http
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject ILogger<MyDevices> Logger
+
+<PageTitle>My Devices - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.Devices" Class="mr-2" />
+        My Devices
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Wallet devices you've enrolled. Lost your phone? Revoke it here so
+        verifiers reject any further presentations from that device.
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-8" />
+    }
+    else if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3" data-testid="my-devices-error">
+            @_loadError
+        </MudAlert>
+        <MudButton Variant="Variant.Outlined" OnClick="LoadAsync">Retry</MudButton>
+    }
+    else if (_devices is null || _devices.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" data-testid="my-devices-empty">
+            No wallet devices enrolled yet. Once you enrol from the citizen
+            wallet PWA, devices will appear here.
+        </MudAlert>
+    }
+    else
+    {
+        <MudPaper Elevation="1">
+            <MudList T="DeviceSummary" Dense="false" data-testid="my-devices-list">
+                @foreach (var device in _devices)
+                {
+                    <MudListItem T="DeviceSummary" data-testid="@($"my-devices-row-{device.DeviceId}")">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Class="w-100">
+                            <MudIcon Icon="@(device.Status == DeviceStatus.Active ? Icons.Material.Filled.PhoneIphone : Icons.Material.Outlined.PhoneIphone)"
+                                     Color="@(device.Status == DeviceStatus.Active ? Color.Primary : Color.Default)" />
+                            <MudStack Row="false" Spacing="0" Class="flex-grow-1">
+                                <MudText Typo="Typo.body1"><strong>@device.Label</strong></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @device.Platform · enrolled @device.EnrolledAt.ToLocalTime().ToString("d MMM yyyy")
+                                </MudText>
+                                <MudText Typo="Typo.caption">
+                                    @if (device.Status == DeviceStatus.Active)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Active</MudChip>
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">Revoked</MudChip>
+                                        @if (device.RevokedAt is not null)
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ms-1" Inline="true">
+                                                @device.RevokedAt.Value.ToLocalTime().ToString("d MMM yyyy")
+                                            </MudText>
+                                        }
+                                    }
+                                </MudText>
+                            </MudStack>
+                            @if (device.Status == DeviceStatus.Active)
+                            {
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                                           StartIcon="@Icons.Material.Filled.Delete"
+                                           Disabled="@(_busyDeviceId == device.DeviceId)"
+                                           OnClick="() => RevokeAsync(device)"
+                                           data-testid="@($"my-devices-revoke-{device.DeviceId}")">
+                                    Revoke
+                                </MudButton>
+                            }
+                        </MudStack>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private List<DeviceSummary>? _devices;
+    private bool _loading = true;
+    private string? _loadError;
+    private Guid? _busyDeviceId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        try
+        {
+            var response = await Http.GetFromJsonAsync<DeviceListResponse>("/api/v1/me/devices");
+            _devices = response?.Devices.ToList() ?? new List<DeviceSummary>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load /api/v1/me/devices");
+            _loadError = "Could not load devices. Check your connection and try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RevokeAsync(DeviceSummary device)
+    {
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Revoke device?",
+            $"Revoking \"{device.Label}\" is permanent. Verifiers that refresh the citizen-devices status list will reject any further presentations from this device. You cannot un-revoke.",
+            yesText: "Revoke",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true });
+        if (confirm != true) return;
+
+        _busyDeviceId = device.DeviceId;
+        try
+        {
+            var response = await Http.DeleteAsync($"/api/v1/me/devices/{device.DeviceId}");
+            if (response.StatusCode == HttpStatusCode.NoContent)
+            {
+                var idx = _devices!.FindIndex(d => d.DeviceId == device.DeviceId);
+                if (idx >= 0)
+                {
+                    _devices[idx] = device with
+                    {
+                        Status = DeviceStatus.Revoked,
+                        RevokedAt = DateTimeOffset.UtcNow
+                    };
+                }
+                Snackbar.Add("Device revoked.", Severity.Success);
+            }
+            else if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                Snackbar.Add("Device not found.", Severity.Warning);
+                await LoadAsync();
+            }
+            else if (response.StatusCode == HttpStatusCode.BadGateway)
+            {
+                // Tenant row IS revoked but Wallet S2S failed. Caller should retry.
+                Snackbar.Add(
+                    "Device marked revoked, but the wallet status-list flip failed. Try again to complete revocation.",
+                    Severity.Warning);
+                await LoadAsync();
+            }
+            else
+            {
+                Snackbar.Add($"Revoke failed (HTTP {(int)response.StatusCode}).", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Revoke /api/v1/me/devices/{DeviceId} failed", device.DeviceId);
+            Snackbar.Add($"Revoke failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busyDeviceId = null;
+        }
+    }
+}

@@ -157,5 +157,6 @@ public static class TestConstants
         public const string NotificationSettings = $"{AppBase}/settings/notifications";
         public const string Credentials = $"{AppBase}/credentials";
         public const string Help = $"{AppBase}/help";
+        public const string MyDevices = $"{AppBase}/my-devices";
     }
 }
