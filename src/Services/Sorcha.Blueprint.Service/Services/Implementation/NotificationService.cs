@@ -190,7 +190,7 @@ public class NotificationService : INotificationService
 
         try
         {
-            var userGroup = $"user:{userId}";
+            var userGroup = BlueprintHubGroups.LegacyEventsHubUser(userId);
             await _eventsHubContext.Clients
                 .Group(userGroup)
                 .SendAsync("EncryptionOperationCompleted", signal, ct);
@@ -212,7 +212,7 @@ public class NotificationService : INotificationService
     /// </summary>
     private async Task SendToWalletAsync(string walletAddress, string method, object signal, CancellationToken ct)
     {
-        var groupName = $"wallet:{walletAddress}";
+        var groupName = BlueprintHubGroups.Wallet(walletAddress);
         await _hubContext.Clients
             .Group(groupName)
             .SendAsync(method, signal, ct);

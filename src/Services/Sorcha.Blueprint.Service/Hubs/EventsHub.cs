@@ -77,7 +77,7 @@ public class EventsHub : Hub<IEventsHubClient>
         if (string.IsNullOrEmpty(userId))
             throw new HubException("Unauthorized: missing identity claims");
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, $"user:{userId}");
+        await Groups.AddToGroupAsync(Context.ConnectionId, BlueprintHubGroups.LegacyEventsHubUser(userId));
         _logger.LogInformation("User {UserId} subscribed to personal events", userId);
     }
 
@@ -93,7 +93,7 @@ public class EventsHub : Hub<IEventsHubClient>
         if (string.IsNullOrEmpty(orgId))
             throw new HubException("Unauthorized: missing organisation claim");
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, $"org:{orgId}");
+        await Groups.AddToGroupAsync(Context.ConnectionId, BlueprintHubGroups.LegacyEventsHubOrg(orgId));
         _logger.LogInformation("Admin subscribed to org {OrgId} events", orgId);
     }
 
@@ -104,7 +104,7 @@ public class EventsHub : Hub<IEventsHubClient>
     {
         var userId = GetUserId();
         if (!string.IsNullOrEmpty(userId))
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"user:{userId}");
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, BlueprintHubGroups.LegacyEventsHubUser(userId));
     }
 
     /// <summary>
@@ -114,7 +114,7 @@ public class EventsHub : Hub<IEventsHubClient>
     {
         var orgId = GetOrganizationId();
         if (!string.IsNullOrEmpty(orgId))
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"org:{orgId}");
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, BlueprintHubGroups.LegacyEventsHubOrg(orgId));
     }
 
     private string? GetUserId() =>

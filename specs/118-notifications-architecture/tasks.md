@@ -200,17 +200,17 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Tests for User Story 5
 
-- [ ] T092 [P] [US5] Unit tests for `TenantHubGroups`, `BlueprintHubGroups`, `WalletHubGroups`, `RegisterHubGroups` builders in their respective service-test projects (covering all formatting rules, GUID `:N`, wallet bech32, etc.).
+- [X] T092 [P] [US5] Unit tests for `TenantHubGroups`, `BlueprintHubGroups`, `WalletHubGroups`, `RegisterHubGroups` builders in their respective service-test projects (covering all formatting rules, GUID `:N`, wallet bech32, etc.).
 
 ### Implementation for User Story 5
 
-- [ ] T093 [US5] Sweep `src/Services/Sorcha.Blueprint.Service/` for inline string interpolations matching `"wallet:`, `"register:`, `"user:`, `"org:`, `"instance:`, `"system:` outside `*HubGroups.cs` and replace with builder calls.
-- [ ] T094 [P] [US5] Sweep `src/Services/Sorcha.Wallet.Service/` similarly.
-- [ ] T095 [P] [US5] Sweep `src/Services/Sorcha.Register.Service/` similarly.
-- [ ] T096 [P] [US5] Sweep `src/Services/Sorcha.Tenant.Service/` similarly.
-- [ ] T097 [P] [US5] Sweep `src/Apps/Sorcha.UI/`, `src/Apps/Sorcha.Cli/`, `src/Apps/Sorcha.Agent/` for client-side group-string construction passed to `SubscribeTo*` invocations. Replace with builder calls.
-- [ ] T098 [US5] Create `scripts/check-no-inline-group-strings.ps1` that greps the patterns under `src/` excluding `*HubGroups.cs` and `*Tests.cs`. Exits non-zero with file:line listing on hit.
-- [ ] T099 [US5] Add the script to a new `.github/workflows/group-name-builder-check.yml` GitHub Actions workflow that runs on every PR. Required check on `master`.
+- [X] T093 [US5] Sweep `src/Services/Sorcha.Blueprint.Service/` for inline string interpolations matching `"wallet:`, `"register:`, `"user:`, `"org:`, `"instance:`, `"system:` outside `*HubGroups.cs` and replace with builder calls.
+- [X] T094 [P] [US5] Sweep `src/Services/Sorcha.Wallet.Service/` similarly.
+- [X] T095 [P] [US5] Sweep `src/Services/Sorcha.Register.Service/` similarly.
+- [X] T096 [P] [US5] Sweep `src/Services/Sorcha.Tenant.Service/` similarly.
+- [X] T097 [P] [US5] Sweep `src/Apps/Sorcha.UI/`, `src/Apps/Sorcha.Cli/`, `src/Apps/Sorcha.Agent/` for client-side group-string construction passed to `SubscribeTo*` invocations. Replace with builder calls.
+- [X] T098 [US5] Create `scripts/check-no-inline-group-strings.ps1` that greps the patterns under `src/` excluding `*HubGroups.cs` and `*Tests.cs`. Exits non-zero with file:line listing on hit.
+- [X] T099 [US5] Add the script to a new `.github/workflows/group-name-builder-check.yml` GitHub Actions workflow that runs on every PR. Required check on `master`.
 
 **Checkpoint**: US5 complete. CI enforces the convention forever.
 
