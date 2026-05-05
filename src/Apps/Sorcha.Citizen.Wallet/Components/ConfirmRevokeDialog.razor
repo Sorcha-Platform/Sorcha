@@ -1,0 +1,50 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Confirm-revoke modal (Feature 114, T120 — US3 PR4). Revoke is
+    destructive across the device's whole lifecycle — verifiers will
+    reject any presentation made from it once the status-list bit
+    propagates. Make the user type DEVICE LABEL to confirm.
+*@
+
+<MudDialog>
+    <DialogContent>
+        <MudAlert Severity="Severity.Warning" Class="mb-3">
+            Revoking <strong>@DeviceLabel</strong> is permanent. Any verifier
+            that refreshes the citizen-devices status list will reject
+            presentations signed by this device. You cannot un-revoke.
+        </MudAlert>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Type <strong>@DeviceLabel</strong> to confirm:
+        </MudText>
+        <MudTextField @bind-Value="_typed"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Immediate="true"
+                      data-testid="revoke-confirm-input" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" data-testid="revoke-cancel">Cancel</MudButton>
+        <MudButton Color="Color.Error"
+                   Variant="Variant.Filled"
+                   Disabled="@(!IsConfirmed)"
+                   OnClick="Confirm"
+                   data-testid="revoke-confirm">
+            Revoke
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public string DeviceLabel { get; set; } = string.Empty;
+
+    private string _typed = string.Empty;
+
+    private bool IsConfirmed => string.Equals(_typed, DeviceLabel, StringComparison.Ordinal);
+
+    private void Confirm() => Dialog.Close(DialogResult.Ok(true));
+    private void Cancel() => Dialog.Cancel();
+}
