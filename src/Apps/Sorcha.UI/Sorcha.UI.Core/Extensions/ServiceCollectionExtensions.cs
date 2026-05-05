@@ -747,6 +747,16 @@ public static class ServiceCollectionExtensions
             return new OperationStatusService(httpClient, logger);
         });
 
+        // Feature 118 / US3 — UI-side wrapper for /api/me/inbox/* endpoints.
+        services.AddScoped<IInboxApiService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<InboxApiService>>();
+            return new InboxApiService(httpClient, logger);
+        });
+
         // IDP Configuration Client Service (054 - authenticated)
         services.AddScoped<IIdpConfigurationClientService>(sp =>
         {
