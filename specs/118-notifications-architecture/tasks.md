@@ -276,8 +276,8 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Non-UI subscribers
 
-- [ ] T119 Rewrite `src/Apps/Sorcha.Cli/Services/EventStreamService.cs` to consume `RegisterHub` + `BlueprintHub` + `WalletHub` via `SorchaHubConnectionBuilder` (replacing the rolled-own connection logic and dropping EventsHub). Update `src/Apps/Sorcha.Cli/Commands/EventWatchCommand.cs` option set to reflect new hub paths.
-- [ ] T120 Update `src/Apps/Sorcha.Agent/Inbox/SignalRInboxListener.cs` to connect to `/hubs/blueprint` instead of `/actionshub`. Update `walkthroughs/*/actors/*.json` if any contain hardcoded hub paths.
+- [X] T119 Rewrite `src/Apps/Sorcha.Cli/Services/EventStreamService.cs` to consume `RegisterHub` + `BlueprintHub` + `WalletHub` via `SorchaHubConnectionBuilder` (replacing the rolled-own connection logic and dropping EventsHub). Update `src/Apps/Sorcha.Cli/Commands/EventWatchCommand.cs` option set to reflect new hub paths.
+- [X] T120 Update `src/Apps/Sorcha.Agent/Inbox/SignalRInboxListener.cs` to connect to `/hubs/blueprint` instead of `/actionshub`. Update `walkthroughs/*/actors/*.json` if any contain hardcoded hub paths.
 
 ### EventsHub decommission
 
