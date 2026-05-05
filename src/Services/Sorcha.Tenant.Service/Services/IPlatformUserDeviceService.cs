@@ -96,4 +96,15 @@ public interface IPlatformUserDeviceService
         Guid deviceId,
         Guid platformUserId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates the citizen-visible <see cref="PlatformUserDevice.Label"/>. Returns
+    /// <c>null</c> when the device does not exist OR is not owned by the supplied
+    /// platform user (intentionally indistinguishable). Validates length 1..120.
+    /// </summary>
+    Task<PlatformUserDevice?> UpdateLabelAsync(
+        Guid deviceId,
+        Guid platformUserId,
+        string label,
+        CancellationToken ct = default);
 }

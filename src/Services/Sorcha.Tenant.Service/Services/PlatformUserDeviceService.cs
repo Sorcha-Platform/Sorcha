@@ -172,4 +172,28 @@ public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
 
         return device;
     }
+
+    /// <inheritdoc />
+    public async Task<PlatformUserDevice?> UpdateLabelAsync(
+        Guid deviceId, Guid platformUserId, string label, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        if (label.Length > 120)
+        {
+            throw new ArgumentException("Label exceeds 120 characters.", nameof(label));
+        }
+
+        var device = await _db.PlatformUserDevices
+            .FirstOrDefaultAsync(d => d.Id == deviceId && d.PlatformUserId == platformUserId, ct);
+        if (device is null) return null;
+
+        device.Label = label;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Renamed PlatformUserDevice {DeviceId} (platformUser={PlatformUserId})",
+            device.Id, platformUserId);
+
+        return device;
+    }
 }

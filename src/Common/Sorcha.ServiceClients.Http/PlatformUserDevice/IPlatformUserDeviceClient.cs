@@ -49,6 +49,26 @@ public interface IPlatformUserDeviceClient
         Guid deviceId,
         Guid platformUserId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists every device enrolled by the supplied platform user. Includes both
+    /// active and revoked devices. Used by the Wallet Service to back the PWA's
+    /// <c>GET /api/v1/wallet/devices</c> public endpoint.
+    /// </summary>
+    Task<IReadOnlyList<PlatformUserDeviceLookupResult>> ListAsync(
+        Guid platformUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Renames a device. Returns <c>false</c> when the device does not exist or
+    /// is not owned by the supplied platform user (intentionally indistinguishable).
+    /// Throws on invalid label (length 0 or &gt; 120).
+    /// </summary>
+    Task<bool> UpdateLabelAsync(
+        Guid deviceId,
+        Guid platformUserId,
+        string label,
+        CancellationToken ct = default);
 }
 
 /// <summary>Result of <see cref="IPlatformUserDeviceClient.RegisterAsync"/>.</summary>

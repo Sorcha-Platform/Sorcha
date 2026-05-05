@@ -122,6 +122,44 @@ public sealed class PlatformUserDeviceServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateLabelAsync_OwnedDevice_UpdatesLabel()
+    {
+        var device = await RegisterAsync();
+        var updated = await _sut.UpdateLabelAsync(device.Id, _platformUserId, "Stuart's NEW phone");
+
+        updated.Should().NotBeNull();
+        updated!.Label.Should().Be("Stuart's NEW phone");
+    }
+
+    [Fact]
+    public async Task UpdateLabelAsync_OtherUsersDevice_ReturnsNullNoMutation()
+    {
+        var device = await RegisterAsync();
+        var updated = await _sut.UpdateLabelAsync(device.Id, Guid.NewGuid(), "hacker rename");
+
+        updated.Should().BeNull();
+        (await _db.PlatformUserDevices.FindAsync(device.Id))!.Label.Should().Be("iPhone");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task UpdateLabelAsync_BlankLabel_Throws(string label)
+    {
+        var device = await RegisterAsync();
+        var act = () => _sut.UpdateLabelAsync(device.Id, _platformUserId, label);
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task UpdateLabelAsync_LabelTooLong_Throws()
+    {
+        var device = await RegisterAsync();
+        var act = () => _sut.UpdateLabelAsync(device.Id, _platformUserId, new string('x', 121));
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
     public async Task RegisterAsync_DifferentThumbprintSameUser_CreatesSecondRow()
     {
         await RegisterAsync(thumbprint: Thumbprint, jti: "j-1", statusListIndex: 7);

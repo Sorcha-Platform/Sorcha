@@ -59,6 +59,26 @@ public static class InternalEndpoints
                 + "parameter scopes the lookup so cross-user revocation is impossible (404 on mismatch).")
             .RequireAuthorization("RequireService");
 
+        // Feature 114 (US3 PR3): list devices for the wallet PWA. Wallet proxies
+        // its public GET /api/v1/wallet/devices through here so it never reaches
+        // into Tenant's PlatformUserDevices table directly.
+        group.MapGet("/platform-user-devices", ListPlatformUserDevices)
+            .WithName("ListPlatformUserDevices")
+            .WithSummary("List a citizen's enrolled wallet devices")
+            .WithDescription("Called by Wallet Service to back the PWA's device list. "
+                + "Returns active and revoked devices ordered by enrolment desc, scoped "
+                + "to the supplied platformUserId.")
+            .RequireAuthorization("RequireService");
+
+        // Feature 114 (US3 PR3): rename a device.
+        group.MapPut("/platform-user-devices/{deviceId:guid}/label", UpdatePlatformUserDeviceLabel)
+            .WithName("UpdatePlatformUserDeviceLabel")
+            .WithSummary("Rename a citizen wallet device")
+            .WithDescription("Called by Wallet Service when the citizen renames a device "
+                + "from the PWA. Validates label length 1..120. 404 indistinguishable from "
+                + "non-existence on cross-user mismatch.")
+            .RequireAuthorization("RequireService");
+
         return app;
     }
 
@@ -124,6 +144,52 @@ public static class InternalEndpoints
         var revoked = await deviceService.RevokeAsync(deviceId, platformUserId, ct);
         return revoked is null ? TypedResults.NotFound() : TypedResults.NoContent();
     }
+
+    private static async Task<Ok<PlatformUserDeviceListResponse>> ListPlatformUserDevices(
+        [FromQuery] Guid platformUserId,
+        IPlatformUserDeviceService deviceService,
+        CancellationToken ct)
+    {
+        var devices = await deviceService.ListAsync(platformUserId, ct);
+        var items = devices.Select(d => new PlatformUserDeviceLookupResponse(
+            d.Id,
+            d.PlatformUserId,
+            d.Label,
+            d.DevicePublicJwkThumbprint,
+            d.DevicePublicJwkJson,
+            d.Platform,
+            d.Status.ToString(),
+            d.EnrolledAt,
+            d.DelegationExpiresAt,
+            d.DelegationCredentialJti,
+            d.StatusListId,
+            d.StatusListIndex)).ToList();
+        return TypedResults.Ok(new PlatformUserDeviceListResponse(items));
+    }
+
+    private static async Task<Results<NoContent, NotFound, BadRequest<string>>> UpdatePlatformUserDeviceLabel(
+        Guid deviceId,
+        [FromQuery] Guid platformUserId,
+        [FromBody] PlatformUserDeviceLabelUpdateRequest request,
+        IPlatformUserDeviceService deviceService,
+        CancellationToken ct)
+    {
+        try
+        {
+            var updated = await deviceService.UpdateLabelAsync(deviceId, platformUserId, request.Label, ct);
+            return updated is null ? TypedResults.NotFound() : TypedResults.NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return TypedResults.BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>Internal response wrapping a list of devices.</summary>
+    public sealed record PlatformUserDeviceListResponse(IReadOnlyList<PlatformUserDeviceLookupResponse> Devices);
+
+    /// <summary>Internal request body for label updates.</summary>
+    public sealed record PlatformUserDeviceLabelUpdateRequest(string Label);
 
     /// <summary>Internal response for a single device lookup.</summary>
     public sealed record PlatformUserDeviceLookupResponse(
