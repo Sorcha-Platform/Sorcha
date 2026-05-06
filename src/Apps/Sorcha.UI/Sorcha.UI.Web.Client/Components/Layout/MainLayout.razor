@@ -46,6 +46,10 @@
                         <MudBadge Content="@_unreadCount" Color="Color.Error" Overlap="true" />
                     }
                 </MudIconButton>
+                @* Feature 118 — durable inbox bell. Coexists with the legacy
+                   activity log + pending-actions buttons during the parallel-fire
+                   window. *@
+                <MudIconButton Icon="@Icons.Material.Filled.MarkEmailUnread" Color="Color.Inherit" OnClick="@ToggleInboxPanel" Title="Inbox" />
                 <UserProfileMenu />
             </Authorized>
             <NotAuthorized>
@@ -252,6 +256,9 @@
     <CryptoProgressPopover />
     @* PendingActionToast removed — activity log panel now handles all notifications *@
     <PendingActionInbox @bind-IsOpen="_pendingInboxOpen" />
+
+    @* Feature 118 — durable inbox UI. *@
+    <InboxPanel @bind-IsOpen="_inboxPanelOpen" />
 </MudLayout>
 
 </CascadingAuthenticationState>
@@ -261,6 +268,7 @@
     private bool _tokenRefreshStarted;
     private bool _activityLogOpen;
     private bool _pendingInboxOpen;
+    private bool _inboxPanelOpen;
     private int _unreadCount;
     private int _pendingActionCount;
     private int _pendingCredentialCount;
@@ -400,6 +408,11 @@
     private void ToggleActivityLog()
     {
         _activityLogOpen = !_activityLogOpen;
+    }
+
+    private void ToggleInboxPanel()
+    {
+        _inboxPanelOpen = !_inboxPanelOpen;
     }
 
     private async Task TogglePendingInbox()
