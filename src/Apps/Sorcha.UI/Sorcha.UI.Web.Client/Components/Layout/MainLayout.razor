@@ -48,8 +48,15 @@
                 </MudIconButton>
                 @* Feature 118 — durable inbox bell. Coexists with the legacy
                    activity log + pending-actions buttons during the parallel-fire
-                   window. *@
-                <MudIconButton Icon="@Icons.Material.Filled.MarkEmailUnread" Color="Color.Inherit" OnClick="@ToggleInboxPanel" Title="Inbox" />
+                   window. The badge reflects the inbox unread count specifically;
+                   the activity-log _unreadCount remains the combined-source max
+                   until EventsHub retires. *@
+                <MudIconButton Icon="@Icons.Material.Filled.MarkEmailUnread" Color="Color.Inherit" OnClick="@ToggleInboxPanel" Title="Inbox">
+                    @if (_inboxUnreadCount > 0)
+                    {
+                        <MudBadge Content="@_inboxUnreadCount" Color="Color.Primary" Overlap="true" />
+                    }
+                </MudIconButton>
                 <UserProfileMenu />
             </Authorized>
             <NotAuthorized>
@@ -270,6 +277,7 @@
     private bool _pendingInboxOpen;
     private bool _inboxPanelOpen;
     private int _unreadCount;
+    private int _inboxUnreadCount;
     private int _pendingActionCount;
     private int _pendingCredentialCount;
     private bool _isDarkMode;
@@ -370,11 +378,14 @@
     /// </summary>
     private Task OnInboxUnreadCountUpdated(int unreadCount, DateTimeOffset occurredAt, string traceId)
     {
+        // Track the inbox count separately for the dedicated inbox-button badge.
+        _inboxUnreadCount = unreadCount;
+        // Bump the combined activity bell when the new inbox count is higher.
         if (unreadCount > _unreadCount)
         {
             _unreadCount = unreadCount;
-            InvokeAsync(StateHasChanged);
         }
+        InvokeAsync(StateHasChanged);
         return Task.CompletedTask;
     }
 
@@ -477,6 +488,7 @@
             // After EventsHub retires, this reduces to inbox-only.
             var activityCount = await ActivityLogService.GetUnreadCountAsync();
             var inboxCount = await InboxApi.GetUnreadCountAsync();
+            _inboxUnreadCount = inboxCount;
             _unreadCount = Math.Max(activityCount, inboxCount);
             StateHasChanged();
         }
