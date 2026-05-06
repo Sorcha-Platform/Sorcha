@@ -86,3 +86,28 @@ This document tracks the metric-gated and time-gated migration steps for the not
 | #528 | Phase 10 step 3 | UI-side IInboxApiService HTTP client |
 | #529 | Phase 10 polish | Seed bell badge from inbox API on cold load |
 | #530 | Phase 3 follow-up | Multinode CI deferred to manual-trigger |
+| #531 | Docs | tasks.md + MIGRATION.md ledger |
+| #532 | Phase 10 | InboxPanel.razor — UI drawer consuming durable inbox |
+| #533 | Phase 10 | Wire InboxPanel to MainLayout app bar |
+| #534 | Phase 5 follow-up #3 (T077) | TenantMembershipInboxWriter — welcome inbox on org join |
+| #535 | Phase 10 | Inbox button badge — distinct count from activity bell |
+
+## End-to-end inbox surface — what users see today
+
+The Phase 5 inbox is **shipped end-to-end** as of PR #535:
+
+1. Three domain writers fire on real events:
+   - `BlueprintInboxWriter` → action-available (PR #521)
+   - `WalletInboxWriter` → credential issuance (PR #525)
+   - `TenantMembershipInboxWriter` → org membership added (PR #534)
+2. Tenant Service persists the entry with `(PlatformUserId, SourceEventId)` idempotency.
+3. `TenantHub` fans out `InboxEntryAdded` + `InboxUnreadCountUpdated` over the Redis backplane.
+4. `MainLayout.razor` carries two distinct badges — error-red for the combined activity-log count, primary-blue for the inbox unread count specifically.
+5. Clicking the inbox icon opens `InboxPanel.razor`, which:
+   - Lists entries fetched via `IInboxApiService`
+   - Refreshes on every `OnInboxEntryAdded`
+   - Renders category icon + severity colour + relative timestamp + "New" chip for unread
+   - Per-entry mark-read + dismiss buttons hit the public REST endpoints
+   - Clicking an entry marks-read and navigates to its `DetailHref`
+
+**Coexistence:** The legacy `PendingActionInbox` and `ActivityLogPanel` drawers are still mounted alongside the new `InboxPanel`. Final consolidation lands when `EventsHub` retires (gauge-gated).
