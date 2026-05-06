@@ -191,6 +191,8 @@ public static class ServiceCollectionExtensions
 
         // Platform services
         services.AddScoped<IPlatformUserService, PlatformUserService>();
+        // Feature 118 / US3 follow-up #3 — Tenant-side inbox writer for org membership events.
+        services.AddScoped<ITenantMembershipInboxWriter, TenantMembershipInboxWriter>();
         services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
         services.AddScoped<IOrgProvisioningService, OrgProvisioningService>();
         services.AddScoped<IPlatformUserProvisioningService, PlatformUserProvisioningService>();
