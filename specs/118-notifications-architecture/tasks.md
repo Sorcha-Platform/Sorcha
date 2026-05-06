@@ -246,9 +246,9 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Implementation for User Story 7
 
-- [ ] T106 [US7] Confirm the `ChannelHints` `[Flags]` enum and the `ChannelHints` field on `InboxEntry` (added in T062) carry through migrations and serialization. Add unit assertion.
-- [ ] T107 [P] [US7] Implement default-hints-by-category logic in `InboxService`: `Action → Inbox|Push|Email`, `Credential → Inbox|Push`, `Membership → Inbox|Email`, `Security → Inbox|Push|Email`, `System → Inbox`, `Workflow → Inbox`. Per research § Resolved unknowns.
-- [ ] T108 [US7] Document in `specs/118-notifications-architecture/spec.md` (under Out of Scope) and in `MIGRATION.md` (created in T052) that phase-5 dispatch is deferred and reference the locked-in data model.
+- [X] T106 [US7] Confirm the `ChannelHints` `[Flags]` enum and the `ChannelHints` field on `InboxEntry` (added in T062) carry through migrations and serialization. Add unit assertion.
+- [X] T107 [P] [US7] Implement default-hints-by-category logic in `InboxService`: `Action → Inbox|Push|Email`, `Credential → Inbox|Push`, `Membership → Inbox|Email`, `Security → Inbox|Push|Email`, `System → Inbox`, `Workflow → Inbox`. Per research § Resolved unknowns.
+- [X] T108 [US7] Document in `specs/118-notifications-architecture/spec.md` (under Out of Scope) and in `MIGRATION.md` (created in T052) that phase-5 dispatch is deferred and reference the locked-in data model.
 
 **Checkpoint**: US7 complete. Phase-5 unblocked at the data layer.
 
