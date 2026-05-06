@@ -19,6 +19,8 @@ public class PlatformUserService : IPlatformUserService
     private readonly TenantDbContext _db;
     private readonly ILogger<PlatformUserService> _logger;
     private readonly LockoutConfig _lockoutConfig;
+    /// <summary>Optional inbox writer (Feature 118 / US3 Phase-5 follow-up #3). Null in tests where membership inbox emission is irrelevant.</summary>
+    private readonly ITenantMembershipInboxWriter? _inboxWriter;
 
     /// <summary>
     /// Creates a new instance of <see cref="PlatformUserService"/>.
@@ -26,11 +28,17 @@ public class PlatformUserService : IPlatformUserService
     /// <param name="db">The tenant database context.</param>
     /// <param name="logger">The logger instance.</param>
     /// <param name="configuration">Application configuration for lockout thresholds.</param>
-    public PlatformUserService(TenantDbContext db, ILogger<PlatformUserService> logger, IConfiguration configuration)
+    /// <param name="inboxWriter">Optional inbox writer for Feature 118 — fires when a user joins an org.</param>
+    public PlatformUserService(
+        TenantDbContext db,
+        ILogger<PlatformUserService> logger,
+        IConfiguration configuration,
+        ITenantMembershipInboxWriter? inboxWriter = null)
     {
         _db = db;
         _logger = logger;
         _lockoutConfig = LockoutConfig.FromConfiguration(configuration);
+        _inboxWriter = inboxWriter;
     }
 
     /// <inheritdoc />
@@ -170,6 +178,13 @@ public class PlatformUserService : IPlatformUserService
         _logger.LogInformation(
             "Added organisation membership for platform user {UserId} in org {OrgId} with role {Role}",
             platformUserId, organizationId, role);
+
+        // Feature 118 / US3 follow-up #3 — drop a "welcome to {org}" inbox entry.
+        // Optional + fail-safe: writer null-checks and the writer itself catches.
+        if (_inboxWriter is not null)
+        {
+            await _inboxWriter.WriteOrgMembershipAddedAsync(platformUserId, organizationId, role, ct).ConfigureAwait(false);
+        }
 
         return membership;
     }
