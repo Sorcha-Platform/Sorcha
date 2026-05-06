@@ -2,57 +2,73 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @implements IDisposable
-@inject EventsHubConnection EventsHub
+@inject TenantHubConnection TenantHub
+@inject IInboxApiService InboxApi
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
-@using Sorcha.UI.Core.Models.Actions
+@inject ILogger<PendingActionToast> Logger
 @using Sorcha.UI.Core.Services
 @using MudBlazor
 
-@code {
-    private readonly Queue<SignalNotification> _queue = new();
-    private bool _processing;
+@*
+    Feature 118 / T117 — toast surface for inbox entries with Category=Action.
 
+    Subscribes to TenantHub.OnInboxEntryAdded (thin signal — entryId only),
+    fetches the entry via the inbox REST endpoint, and shows a snackbar when
+    the category is Action. Click navigates to the entry's DetailHref.
+*@
+
+@code {
     /// <inheritdoc />
     protected override void OnInitialized()
     {
-        EventsHub.OnPendingActionReceived += HandlePendingAction;
+        TenantHub.OnInboxEntryAdded += HandleInboxEntryAddedAsync;
     }
 
-    private void HandlePendingAction(SignalNotification signal)
+    private async Task HandleInboxEntryAddedAsync(string entryId, DateTimeOffset occurredAt, string traceId)
     {
-        InvokeAsync(async () =>
+        if (!Guid.TryParse(entryId, out var id))
         {
-            _queue.Enqueue(signal);
-            if (_processing) return;
-            _processing = true;
+            return;
+        }
 
-            while (_queue.Count > 0)
+        try
+        {
+            var entry = await InboxApi.GetByIdAsync(id);
+            if (entry is null || !string.Equals(entry.Category, "Action", StringComparison.Ordinal))
             {
-                var notification = _queue.Dequeue();
-                ShowToast(notification);
-                if (_queue.Count > 0)
-                    await Task.Delay(300); // Brief delay between queued toasts
+                return;
             }
 
-            _processing = false;
-        });
-    }
+            var detailHref = entry.DetailHref;
+            var title = entry.Title;
 
-    private void ShowToast(SignalNotification signal)
-    {
-        var message = "New action available";
-
-        Snackbar.Add(message, Severity.Info, config =>
+            await InvokeAsync(() =>
+            {
+                Snackbar.Add(title, Severity.Info, config =>
+                {
+                    config.VisibleStateDuration = 5000;
+                    config.ShowCloseIcon = true;
+                    config.OnClick = _ =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(detailHref))
+                        {
+                            Navigation.NavigateTo(detailHref);
+                        }
+                        return Task.CompletedTask;
+                    };
+                });
+            });
+        }
+        catch (Exception ex)
         {
-            config.VisibleStateDuration = 5000;
-            config.ShowCloseIcon = true;
-        });
+            Logger.LogWarning(ex, "PendingActionToast — failed to load inbox entry {EntryId}", entryId);
+        }
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
-        EventsHub.OnPendingActionReceived -= HandlePendingAction;
+        TenantHub.OnInboxEntryAdded -= HandleInboxEntryAddedAsync;
     }
 }
