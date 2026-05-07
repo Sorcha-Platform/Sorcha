@@ -33,9 +33,7 @@ Status values:
 
 Internal cross-service capabilities that aren't external standards but are referenced from agent-facing surfaces (`llms.txt`, `docs/`, OpenAPI). Each links to the spec that defines the contract.
 
-| Capability | Status | Spec | Notes |
-|---|---|---|---|
-| Notifications & Inbox | full | [specs/118-notifications-architecture/spec.md](specs/118-notifications-architecture/spec.md) | Five-hub topology (Blueprint, Wallet, Register, Tenant, Chat) with Redis backplane, thin-signal contract (opaque IDs only), and durable per-user inbox with category filtering. ChatHub is the documented streaming exception (FR-019). |
+- **Notifications & Inbox** — `full` — [specs/118-notifications-architecture/spec.md](specs/118-notifications-architecture/spec.md). Five-hub topology (Blueprint, Wallet, Register, Tenant, Chat) with Redis backplane, thin-signal contract (opaque IDs only), and durable per-user inbox with category filtering. ChatHub is the documented streaming exception (FR-019).
 
 ## Maintenance
 
