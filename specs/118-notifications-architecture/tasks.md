@@ -108,7 +108,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 - [X] T042 [P] [US2] Create `BlueprintHubGroups` builder at `src/Services/Sorcha.Blueprint.Service/Hubs/BlueprintHubGroups.cs` per `data-model.md`.
 - [X] T043 [US2] Update `src/Services/Sorcha.Blueprint.Service/Program.cs`: `MapHub<BlueprintHub>("/hubs/blueprint")` plus `MapHub<BlueprintHub>("/actionshub")` as deprecated alias logging a `Deprecation` header. Update `AddSorchaHub` call accordingly.
 - [X] T044 [US2] Update `src/Services/Sorcha.ApiGateway/appsettings.json` to route both `/hubs/blueprint` and `/actionshub` to blueprint cluster (alias for the deprecation window).
-- [ ] T045 [US2] Update WalletHub at `src/Services/Sorcha.Wallet.Service/Hubs/WalletHub.cs` to inherit `Hub<IWalletHubClient>` with the full typed contract per `contracts/wallet-hub-client.cs.md`. Migrate all existing method bodies to the new typed-client signatures.
+- [X] T045 [US2] Update WalletHub at `src/Services/Sorcha.Wallet.Service/Hubs/WalletHub.cs` to inherit `Hub<IWalletHubClient>` with the full typed contract per `contracts/wallet-hub-client.cs.md`. Migrate all existing method bodies to the new typed-client signatures.
 - [X] T046 [P] [US2] Create `WalletHubGroups` builder at `src/Services/Sorcha.Wallet.Service/Hubs/WalletHubGroups.cs` formalising the existing `WalletHub.GroupNameFor` helper.
 - [X] T047 [US2] Update RegisterHub at `src/Services/Sorcha.Register.Service/Hubs/RegisterHub.cs` to formalise its existing typed-client interface (already present) and use the new `RegisterHubGroups` builder. NO `[Authorize]` change in this phase — that lands in US4.
 - [X] T048 [P] [US2] Create `RegisterHubGroups` builder at `src/Services/Sorcha.Register.Service/Hubs/RegisterHubGroups.cs`.
