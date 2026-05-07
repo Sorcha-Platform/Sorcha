@@ -2061,40 +2061,60 @@ Content-Type: application/json
 
 ## Real-time Notifications (SignalR)
 
-### Hub Endpoint: `/actionshub`
+### Hub topology (Feature 118)
 
-### Events
+Five canonical hubs — every notification hub other than ChatHub conforms to the thin-signal contract: events carry opaque IDs, timestamps, and a W3C trace token only. Clients pull full detail via the authenticated REST endpoint linked from the typed-client interface.
 
-#### 1. Subscribe to Actions
+| Hub | Route | Service | Purpose |
+|---|---|---|---|
+| BlueprintHub | `/hubs/blueprint` (alias `/actionshub`) | Blueprint | Action lifecycle, workflow completion, encryption progress |
+| WalletHub | `/hubs/wallet` | Wallet | Citizen-wallet device + credential events; future home for transaction-tick + org-credential events |
+| RegisterHub | `/hubs/register` | Register | Register lifecycle, docket sealing, sync-state changes |
+| TenantHub | `/hubs/tenant` | Tenant | User inbox events (entry added, unread count) |
+| ChatHub | `/hubs/chat` | Blueprint | AI Designer streaming RPC — exempt from thin-signal contract per FR-019 |
+
+Authentication: JWT Bearer via `?access_token=` query parameter (browsers can't set Authorization headers on WebSocket upgrades). The `platform_user_id` claim is required on every notification hub.
+
+### Subscribe to BlueprintHub
 
 ```javascript
 const connection = new signalR.HubConnectionBuilder()
-  .withUrl("http://localhost:5000/actionshub")
+  .withUrl(`/hubs/blueprint?access_token=${jwt}`)
   .build();
 
-// Subscribe to actions for specific wallet/register
-await connection.invoke("SubscribeToActions", "wallet-789", "register-101");
+await connection.invoke("SubscribeToWallet", "wallet-789");
 
-// Listen for action confirmed events
-connection.on("ActionConfirmed", (notification) => {
-  console.log("Action confirmed:", notification);
+connection.on("ActionAvailable", (instanceId, actionId, occurredAt, traceId) => {
+  // Fetch detail via GET /api/instances/{instanceId}/actions/{actionId}
 });
 ```
 
-#### 2. Notification Format
+See each `I*HubClient` interface in tree (`Sorcha.Blueprint.Service.Hubs.IBlueprintHubClient`, etc.) for the authoritative method list and REST detail-endpoint references.
 
-```javascript
-{
-  "transactionHash": "0xabc123def456",
-  "walletAddress": "wallet-789",
-  "registerAddress": "register-101",
-  "blueprintId": "bp-123",
-  "actionId": "0",
-  "instanceId": "instance-abc",
-  "timestamp": "2025-11-17T16:00:00Z",
-  "message": "Transaction confirmed"
-}
-```
+---
+
+## Inbox API
+
+The durable per-user inbox lives in the Tenant Service and is fed by every other service via the internal write endpoint. Real-time updates are delivered through TenantHub's `InboxEntryAdded` and `InboxUnreadCountUpdated` events.
+
+### Public surface (citizen JWT, base path `/api/me/inbox`)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/me/inbox` | List the authenticated user's inbox entries (paginated, optional `category` filter) |
+| GET | `/api/me/inbox/unread-count` | Authoritative unread count for the inbox bell |
+| GET | `/api/me/inbox/{id}` | Fetch a single entry's full content |
+| POST | `/api/me/inbox/{id}/read` | Mark an entry as read |
+| POST | `/api/me/inbox/{id}/dismiss` | Dismiss an entry |
+| POST | `/api/me/inbox/mark-all-read` | Bulk mark every unread entry as read |
+
+### Internal surface (service principal, `RequireService` policy)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/internal/inbox` | Bridge endpoint called by Blueprint / Wallet writers via `IPlatformInboxClient` to create entries on behalf of a target user. Idempotent on `(PlatformUserId, SourceEventId)`. |
+
+Categories today: `Action`, `Credential`, `Membership`, `Security`. Each writer constructs a deterministic `SourceEventId` (SHA-1 over the natural keys of the event) so retries fold into a single entry.
 
 ---
 

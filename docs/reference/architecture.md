@@ -465,8 +465,34 @@ YARP-based API Gateway for routing and aggregation.
 *File Operations:*
 - `GET /api/files/{wallet}/{register}/{tx}/{fileId}` - Download file
 
-*SignalR Hub:*
-- `/actionshub` - Real-time notifications (ActionAvailable, ActionConfirmed, ActionRejected)
+*SignalR Hubs (Feature 118 — five-hub topology):*
+- `/hubs/blueprint` (alias `/actionshub`) — BlueprintHub (Blueprint Service): action lifecycle + encryption progress
+- `/hubs/wallet` — WalletHub (Wallet Service): citizen-wallet device + credential events
+- `/hubs/register` — RegisterHub (Register Service): register lifecycle + docket sealing + sync state
+- `/hubs/tenant` — TenantHub (Tenant Service): durable inbox events
+- `/hubs/chat` — ChatHub (Blueprint Service): AI Designer streaming RPC (FR-019 exception)
+
+Every notification hub uses `services.AddSorchaHub<THub, TClient>(...)` from `Sorcha.ServiceDefaults.Hubs`, which wires JWT Bearer auth, the Redis backplane (per-service `ChannelPrefix=sorcha:signalr:{service}`), reconnect-with-jitter, and the storage-providers fail-fast audit. Multi-replica deployments require Redis or fail-fast at boot.
+
+Every event method on the typed-client interfaces conforms to the **thin-signal contract** — opaque IDs, timestamps, and a W3C trace token only. Clients pull full detail through the authenticated REST endpoint named in the method's `<see cref>` doc. The `ThinSignalContractTests` reflection test guards the surface; `HubTopologyTests` guards the hub set.
+
+*Inbox flow:*
+
+```
+Action emitted on a domain hub (e.g. BlueprintHub.ActionAvailable)
+    ↓
+Domain inbox writer (BlueprintInboxWriter / WalletInboxWriter / TenantSecurityInboxWriter)
+    ↓
+IPlatformInboxClient.WriteAsync (cross-service) or IInboxService.WriteAsync (Tenant local)
+    ↓
+POST /api/internal/inbox  (Tenant Service) — idempotent on (PlatformUserId, SourceEventId)
+    ↓
+EfCoreInboxStore writes the InboxEntry; Redis ZADD to InboxUnreadIndex
+    ↓
+TenantHub broadcasts InboxEntryAdded(entryId, occurredAt, traceId)
+    ↓
+Sorcha.UI MainLayout bell + InboxPanel pull /api/me/inbox to fetch detail
+```
 
 **Features:**
 - RESTful API with Minimal APIs pattern

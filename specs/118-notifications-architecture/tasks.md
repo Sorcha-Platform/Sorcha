@@ -286,10 +286,10 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Docs and observability
 
-- [ ] T123 [P] Update `docs/reference/API-DOCUMENTATION.md` with the new `/api/me/inbox/*`, `/api/internal/inbox`, and the consolidated hub routes.
-- [ ] T124 [P] Update `docs/reference/architecture.md` with the five-hub topology diagram and the inbox flow walkthrough.
+- [X] T123 [P] Update `docs/reference/API-DOCUMENTATION.md` with the new `/api/me/inbox/*`, `/api/internal/inbox`, and the consolidated hub routes.
+- [X] T124 [P] Update `docs/reference/architecture.md` with the five-hub topology diagram and the inbox flow walkthrough.
 - [X] T125 [P] Update `.claude/skills/signalr/SKILL.md` to reflect the five-hub topology, `AddSorchaHub` extension, group builders, and ChatHub exception.
-- [ ] T126 [P] Add a section to `STANDARDS.md` (Feature 117) noting "Notifications & Inbox" as an implemented capability with a link to `specs/118-notifications-architecture/spec.md`.
+- [X] T126 [P] Add a section to `STANDARDS.md` (Feature 117) noting "Notifications & Inbox" as an implemented capability with a link to `specs/118-notifications-architecture/spec.md`.
 - [X] T127 [P] Add Grafana dashboard JSON at `ops/grafana/dashboards/sorcha-signalr.json` consuming the `Sorcha.SignalR` meter (connections, messages-sent, backplane-state, reconnects). Include alert rules for backplane-state ≠ up.
 - [ ] T128 Run quickstart verification end-to-end against a fresh Docker host per `quickstart.md`. Capture pass/fail per step in `specs/118-notifications-architecture/quickstart-verification.md`.
 

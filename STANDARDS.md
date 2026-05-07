@@ -29,6 +29,14 @@ Status values:
 | SLH-DSA (FIPS 205) | 2024 | NIST | [FIPS 205](https://csrc.nist.gov/pubs/fips/205/final) | n/a | planned | Stateless hash-based signature; complementary PQC algorithm to ML-DSA |
 | BBS+ Signatures | Draft | IETF | [BBS Signatures](https://datatracker.ietf.org/doc/draft-irtf-cfrg-bbs-signatures/) | n/a | planned | Selective-disclosure signature scheme; SD-JWT VC currently covers the disclosure use case |
 
+## Sorcha-implemented capabilities
+
+Internal cross-service capabilities that aren't external standards but are referenced from agent-facing surfaces (`llms.txt`, `docs/`, OpenAPI). Each links to the spec that defines the contract.
+
+| Capability | Status | Spec | Notes |
+|---|---|---|---|
+| Notifications & Inbox | full | [specs/118-notifications-architecture/spec.md](specs/118-notifications-architecture/spec.md) | Five-hub topology (Blueprint, Wallet, Register, Tenant, Chat) with Redis backplane, thin-signal contract (opaque IDs only), and durable per-user inbox with category filtering. ChatHub is the documented streaming exception (FR-019). |
+
 ## Maintenance
 
 - **PR checklist requirement.** Every PR that touches a path listed in any Components cell MUST review this file and update it if the change affects compliance status. The PR template at `.github/pull_request_template.md` carries a "STANDARDS.md reviewed" checkbox.
