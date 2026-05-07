@@ -123,4 +123,24 @@ Failures observed during such a run should be appended below this line with time
 
 ### Live-run notes
 
-_(Empty — operator to fill on next clean-host quickstart pass.)_
+#### 2026-05-07 — n1.sorcha.dev (image sha `aa9a082`, deploy via `docker compose pull && up -d --force-recreate`)
+
+| § | Probe | Result | Notes |
+|---|-------|--------|-------|
+| 1 | `docker compose ps` | All 9 containers Healthy | mongodb, postgres, redis, register, validator, peer, tenant, blueprint, wallet, haip, ui-web, citizen-wallet, citizen-verifier, api-gateway. |
+| 1 | Disk before deploy | 17 GB free of 29 GB | `docker image prune -a -f --filter "until=24h"` reclaimed 11 MB. |
+| 3 | `GET /.well-known/openapi.json` | 200 | Gateway up. |
+| 3 | `GET /hubs/tenant` | 401 | Live; JWT required. |
+| 3 | `GET /hubs/blueprint` | 401 | Live; JWT required. |
+| 3 | `GET /hubs/wallet` | 401 | Live; JWT required. |
+| 3 | `GET /hubs/register` | **401** | T091 cutover confirmed live — was anonymous-allowed pre-T091. |
+| 4 | Tenant migration `20260505175116_AddInboxEntry` | Applied at boot | First-run migration; `inbox_entries` table now present. |
+| 10 | Tenant storage audit | `Sorcha.Tenant.Service.Storage.IInboxStore → EfCoreInboxStore (postgres)` | Logged at INF on Tenant Service startup. T065 wiring confirmed. |
+| 10 | SignalR backplane | `Sorcha.ServiceDefaults.Hubs.SignalRBackplane → Microsoft.AspNetCore.SignalR.StackExchangeRedis (redis (prefix=sorcha:signalr:tenant))` | Per-service `ChannelPrefix` isolation in effect. |
+| 10 | Storage summary | `2 persistent, 0 in-memory (0 of which are audited)` | Tenant Service registers two storage interfaces, both persistent. (Service runs under `Development` env on n1; fail-fast applies in Production / Staging.) |
+| 11 | `GET /hubs/events` | **404** | T121: EventsHub deleted entirely; gateway has no route. |
+| 11 | `GET /actionshub` | **404** | T122: alias deleted; gateway has no route. |
+
+**Verdict**: Feature 118 fully live on n1. The retired surfaces (`/hubs/events`, `/actionshub`) correctly return 404 with no 410 alias overhead; the new RegisterHub auth gate returns 401 as expected; the new audited Tenant inbox storage registers cleanly through `IStorageRegistrationLog`.
+
+**Outstanding for an operator**: end-to-end inbox round-trip via the UI (write → bell update → read) and a multi-replica fan-out demo via `docker-compose.multinode.yml` overlay. Both are covered by automated tests in CI; capturing them as a manual screen-grab walkthrough is a separate documentation task if needed.
