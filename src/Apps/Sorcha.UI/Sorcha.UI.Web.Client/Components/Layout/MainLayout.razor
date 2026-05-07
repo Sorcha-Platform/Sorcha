@@ -9,10 +9,8 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ITokenRefreshService TokenRefreshService
-@inject IActivityLogService ActivityLogService
 @inject IThemeService ThemeService
 @inject IJSRuntime JSRuntime
-@inject EventsHubConnection EventsHub
 @inject ActionsHubConnection ActionsHub
 @inject TenantHubConnection TenantHub
 @inject IInboxApiService InboxApi
@@ -33,18 +31,10 @@
         <AuthorizeView>
             <Authorized>
                 <OrgSwitcher />
-                <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="@ToggleActivityLog" Title="Activity Log">
-                    @if (_unreadCount > 0)
-                    {
-                        <MudBadge Content="@_unreadCount" Color="Color.Error" Overlap="true" />
-                    }
-                </MudIconButton>
-                @* Feature 118 — durable inbox bell. Coexists with the legacy
-                   activity log + pending-actions buttons during the parallel-fire
-                   window. The badge reflects the inbox unread count specifically;
-                   the activity-log _unreadCount remains the combined-source max
-                   until EventsHub retires. *@
-                <MudIconButton Icon="@Icons.Material.Filled.MarkEmailUnread" Color="Color.Inherit" OnClick="@ToggleInboxPanel" Title="Inbox">
+                @* Feature 118 — durable inbox bell. Single notification surface
+                   after retirement of the legacy ActivityLogPanel + PendingActionInbox
+                   in PRs #538 / this PR. *@
+                <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="@ToggleInboxPanel" Title="Inbox">
                     @if (_inboxUnreadCount > 0)
                     {
                         <MudBadge Content="@_inboxUnreadCount" Color="Color.Primary" Overlap="true" />
@@ -251,7 +241,6 @@
         </MudContainer>
     </MudMainContent>
     <StatusFooter />
-    <ActivityLogPanel @bind-IsOpen="_activityLogOpen" OnEventsRead="RefreshUnreadCount" />
     <OperationNotificationListener />
     <CryptoProgressPopover />
     @* Feature 118 / T117 — inbox-driven toast for Category=Action entries.
@@ -268,9 +257,7 @@
 @code {
     private bool _drawerOpen = true;
     private bool _tokenRefreshStarted;
-    private bool _activityLogOpen;
     private bool _inboxPanelOpen;
-    private int _unreadCount;
     private int _inboxUnreadCount;
     private int _pendingCredentialCount;
     private bool _isDarkMode;
@@ -296,24 +283,11 @@
             Loc.OnLanguageChanged += OnLanguageChanged;
             await Loc.InitializeAsync();
 
-            EventsHub.OnUnreadCountUpdated += OnUnreadCountUpdated;
-            try
-            {
-                await EventsHub.ConnectAsync();
-            }
-            catch (Exception)
-            {
-                // Hub may be unavailable — SignalR will auto-reconnect
-            }
-
             ActionsHub.OnCredentialReceived += OnCredentialReceived;
             ActionsHub.OnPendingCredentialCountUpdated += OnPendingCredentialCountUpdated;
 
-            // Feature 118 Phase 5 — also subscribe to TenantHub inbox events. The
-            // bell uses whichever number is higher between the legacy EventsHub
-            // unread count and the TenantHub inbox unread count during the
-            // parallel-fire window. When EventsHub retires the bell will read
-            // only TenantHub.
+            // Feature 118 — TenantHub is the authoritative source of the unread
+            // bell badge after retirement of the legacy ActivityLogPanel.
             TenantHub.OnInboxUnreadCountUpdated += OnInboxUnreadCountUpdated;
             try
             {
@@ -332,11 +306,9 @@
     {
         ThemeService.OnThemeChanged -= OnThemeChanged;
         Loc.OnLanguageChanged -= OnLanguageChanged;
-        EventsHub.OnUnreadCountUpdated -= OnUnreadCountUpdated;
         ActionsHub.OnCredentialReceived -= OnCredentialReceived;
         ActionsHub.OnPendingCredentialCountUpdated -= OnPendingCredentialCountUpdated;
         TenantHub.OnInboxUnreadCountUpdated -= OnInboxUnreadCountUpdated;
-        await EventsHub.DisconnectAsync();
         await TenantHub.DisposeAsync();
         await TokenRefreshService.StopAsync();
     }
@@ -352,29 +324,13 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private const int IncrementByOneSignal = -1;
-
-    private void OnUnreadCountUpdated(int count)
-    {
-        _unreadCount = count == IncrementByOneSignal ? _unreadCount + 1 : count;
-        InvokeAsync(StateHasChanged);
-    }
-
     /// <summary>
-    /// Feature 118 / US3 — TenantHub inbox unread-count handler. Authoritative
-    /// from the server (no -1 increment-by-one signal); the bell renders the
-    /// max of the legacy EventsHub count and this TenantHub count during the
-    /// parallel-fire window. After EventsHub retires the bell reads only this.
+    /// Feature 118 — TenantHub inbox unread-count handler. Authoritative source
+    /// for the bell badge after retirement of the legacy ActivityLogPanel.
     /// </summary>
     private Task OnInboxUnreadCountUpdated(int unreadCount, DateTimeOffset occurredAt, string traceId)
     {
-        // Track the inbox count separately for the dedicated inbox-button badge.
         _inboxUnreadCount = unreadCount;
-        // Bump the combined activity bell when the new inbox count is higher.
-        if (unreadCount > _unreadCount)
-        {
-            _unreadCount = unreadCount;
-        }
         InvokeAsync(StateHasChanged);
         return Task.CompletedTask;
     }
@@ -406,11 +362,6 @@
         _drawerOpen = !_drawerOpen;
     }
 
-    private void ToggleActivityLog()
-    {
-        _activityLogOpen = !_activityLogOpen;
-    }
-
     private void ToggleInboxPanel()
     {
         _inboxPanelOpen = !_inboxPanelOpen;
@@ -438,13 +389,9 @@
     {
         try
         {
-            // Take the larger of the legacy activity-log unread count and the
-            // Feature 118 inbox unread count during the parallel-fire window.
-            // After EventsHub retires, this reduces to inbox-only.
-            var activityCount = await ActivityLogService.GetUnreadCountAsync();
-            var inboxCount = await InboxApi.GetUnreadCountAsync();
-            _inboxUnreadCount = inboxCount;
-            _unreadCount = Math.Max(activityCount, inboxCount);
+            // Feature 118 — inbox-only unread count after retirement of the
+            // legacy ActivityLogPanel. The TenantHub event keeps it live.
+            _inboxUnreadCount = await InboxApi.GetUnreadCountAsync();
             StateHasChanged();
         }
         catch (Exception)
