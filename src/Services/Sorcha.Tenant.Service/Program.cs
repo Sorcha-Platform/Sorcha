@@ -10,7 +10,9 @@ using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.Tenant.Service.Hubs;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceDefaults.Hubs;
+using Sorcha.ServiceDefaults.Storage;
 using Sorcha.Tenant.Service.Extensions;
+using Sorcha.Tenant.Service.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -93,6 +95,18 @@ builder.Services.AddSorchaHub<TenantHub, ITenantHubClient>(
     builder.Configuration, "/hubs/tenant", "tenant");
 
 // Feature 118 / US3 — durable user inbox.
+// Storage layer is registered through IStorageRegistrationLog (Feature 113 audit
+// pattern). Tenant Service runs against Postgres in Production / Staging; the
+// audited interface (Sorcha.Tenant.Service.Storage.IInboxStore) is recorded as
+// persistent so storage-providers health and fail-fast enforcement apply.
+{
+    var storageLog = builder.Services.GetStorageRegistrationLog();
+    builder.Services.AddScoped<IInboxStore, EfCoreInboxStore>();
+    storageLog.RegisterPersistent(
+        typeof(IInboxStore).FullName!,
+        typeof(EfCoreInboxStore).FullName!,
+        backend: "postgres");
+}
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IInboxService,
     Sorcha.Tenant.Service.Services.InboxService>();
 

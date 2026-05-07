@@ -60,6 +60,12 @@ internal static class AuditedStorageInterfaces
         // multi-replica fan-out misses are a correctness bug, not a degraded mode.
         // Value matches Sorcha.ServiceDefaults.Hubs.SorchaHubConventions.BackplaneRegistrationInterface.
         "Sorcha.ServiceDefaults.Hubs.SignalRBackplane",
+
+        // Feature 118 / T065 — Tenant Service durable user inbox. The bell, unread
+        // counts, and SignalR fan-out all read from this store; an in-memory
+        // fallback would silently lose every user-facing notification on restart.
+        // Verified: matches typeof(Sorcha.Tenant.Service.Storage.IInboxStore).FullName.
+        "Sorcha.Tenant.Service.Storage.IInboxStore",
     };
 
     /// <summary>The literal backend label used for in-memory registrations.</summary>
