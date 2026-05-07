@@ -238,6 +238,7 @@ public class InboundCredentialDetectorDevModeTests
                 walletManager,
                 symmetricCryptoMock.Object,
                 CredentialStoreMock.Object,
+                Mock.Of<Sorcha.Wallet.Service.Services.Interfaces.ICitizenInboxProjector>(),
                 metrics,
                 NullLogger<InboundCredentialDetector>.Instance);
         }

@@ -49,7 +49,7 @@ public sealed class SyncServiceTests
 
         outcome.Mode.Should().Be(SyncMode.Delta);
         outcome.Added.Should().Be(1);
-        (await _cache.ListAsync()).Should().ContainSingle(c => c.Id == added.Id);
+        (await _cache.ListAsync()).Should().ContainSingle(c => c.RawSdJwt == added.Jwt);
         (await _cursors.GetAsync()).Should().Be("cursor-1");
     }
 
@@ -83,7 +83,7 @@ public sealed class SyncServiceTests
 
         outcome.Mode.Should().Be(SyncMode.FullSnapshot);
         outcome.Added.Should().Be(1);
-        (await _cache.ListAsync()).Should().ContainSingle(c => c.Id == snap.Id);
+        (await _cache.ListAsync()).Should().ContainSingle(c => c.RawSdJwt == snap.Jwt);
         (await _cursors.GetAsync()).Should().Be("fresh-cursor",
             "the recovery path must obtain a fresh cursor so the next /sync uses it");
     }
@@ -125,7 +125,7 @@ public sealed class SyncServiceTests
 
     private static CachedCredentialPayload NewPayload() => new()
     {
-        Id = Guid.NewGuid(),
+        Id = $"urn:credential:test:{Guid.NewGuid():N}",
         Vct = "https://sorcha.dev/vc/test/v1",
         Jwt = "eyJ.demo.sd-jwt~disclosure~",
         IssuerDid = "did:sorcha:org:test",

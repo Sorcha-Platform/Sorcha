@@ -23,8 +23,12 @@ public enum CredentialRevocationReason
 /// </summary>
 public sealed record RevokedCredentialEntry
 {
-    /// <summary>Credential identifier the wallet should mark as revoked.</summary>
-    public Guid Id { get; init; }
+    /// <summary>
+    /// Credential identifier the wallet should mark as revoked. Matches
+    /// <c>CredentialEntity.Id</c> (typically a URN like
+    /// <c>urn:credential:AssuredIdentityCredential:...</c>).
+    /// </summary>
+    public string Id { get; init; } = string.Empty;
 
     /// <summary>Revocation reason.</summary>
     public CredentialRevocationReason Reason { get; init; }
@@ -39,11 +43,16 @@ public sealed record RevokedCredentialEntry
 /// </summary>
 public sealed record ReplacedCredentialEntry
 {
-    /// <summary>Identifier of the old (now-superseded) credential.</summary>
-    public Guid OldId { get; init; }
+    /// <summary>
+    /// Identifier of the old (now-superseded) credential. Matches
+    /// <c>CredentialEntity.Id</c>.
+    /// </summary>
+    public string OldId { get; init; } = string.Empty;
 
-    /// <summary>Identifier of the new credential.</summary>
-    public Guid NewId { get; init; }
+    /// <summary>
+    /// Identifier of the new credential. Matches <c>CredentialEntity.Id</c>.
+    /// </summary>
+    public string NewId { get; init; } = string.Empty;
 
     /// <summary>Compact-serialised SD-JWT VC of the new credential.</summary>
     public string Jwt { get; init; } = string.Empty;

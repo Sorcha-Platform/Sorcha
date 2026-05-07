@@ -45,6 +45,7 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
     private readonly WalletManager _walletManager;
     private readonly ISymmetricCrypto _symmetricCrypto;
     private readonly ICredentialStore _credentialStore;
+    private readonly ICitizenInboxProjector _citizenProjector;
     private readonly InboundCredentialDetectorMetrics _metrics;
     private readonly ILogger<InboundCredentialDetector> _logger;
 
@@ -60,6 +61,7 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
         WalletManager walletManager,
         ISymmetricCrypto symmetricCrypto,
         ICredentialStore credentialStore,
+        ICitizenInboxProjector citizenProjector,
         InboundCredentialDetectorMetrics metrics,
         ILogger<InboundCredentialDetector> logger)
     {
@@ -67,6 +69,7 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
         _walletManager = walletManager ?? throw new ArgumentNullException(nameof(walletManager));
         _symmetricCrypto = symmetricCrypto ?? throw new ArgumentNullException(nameof(symmetricCrypto));
         _credentialStore = credentialStore ?? throw new ArgumentNullException(nameof(credentialStore));
+        _citizenProjector = citizenProjector ?? throw new ArgumentNullException(nameof(citizenProjector));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -210,6 +213,11 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
             };
 
             await _credentialStore.StoreAsync(entity, cancellationToken);
+
+            // Feature 114 US4 — project onto citizen sync surface if the recipient
+            // is a citizen-PWA holder. No-op for org wallets, so the existing
+            // org-credential pipeline is unaffected.
+            await _citizenProjector.OnCredentialAddedAsync(entity, cancellationToken);
 
             _metrics.RecordExtracted();
             _logger.LogInformation(

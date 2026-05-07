@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Domain.Entities;
+using Sorcha.Wallet.Service.Services.Interfaces;
 
 namespace Sorcha.Wallet.Service.Credentials;
 
@@ -23,11 +24,17 @@ public class CredentialStore : ICredentialStore
     };
 
     private readonly WalletDbContext _db;
+    private readonly ICitizenInboxProjector _citizenProjector;
     private readonly ILogger<CredentialStore> _logger;
 
-    public CredentialStore(WalletDbContext db, ILogger<CredentialStore> logger)
+    /// <summary>Initialises a new instance.</summary>
+    public CredentialStore(
+        WalletDbContext db,
+        ICitizenInboxProjector citizenProjector,
+        ILogger<CredentialStore> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        _citizenProjector = citizenProjector ?? throw new ArgumentNullException(nameof(citizenProjector));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -169,6 +176,11 @@ public class CredentialStore : ICredentialStore
         _logger.LogInformation(
             "Credential status changed: {CredentialId} wallet {WalletAddress} {PreviousStatus} -> {NewStatus}",
             credentialId, walletAddress, previousStatus, status);
+
+        // Feature 114 US4 — project status change onto citizen sync surface (no-op
+        // when the recipient is not a citizen-PWA holder).
+        await _citizenProjector.OnCredentialStatusChangedAsync(credential, previousStatus, ct);
+
         return true;
     }
 
@@ -211,6 +223,10 @@ public class CredentialStore : ICredentialStore
         _logger.LogInformation(
             "Credential {CredentialId} status patched: {PreviousStatus} → {NewStatus}",
             credentialId, previousStatus, newStatus);
+
+        // Feature 114 US4 — project status change onto citizen sync surface (no-op
+        // when the recipient is not a citizen-PWA holder).
+        await _citizenProjector.OnCredentialStatusChangedAsync(credential, previousStatus, ct);
 
         return credential;
     }

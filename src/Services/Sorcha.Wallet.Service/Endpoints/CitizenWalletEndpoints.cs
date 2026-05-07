@@ -276,6 +276,7 @@ public static class CitizenWalletEndpoints
         IDeviceDelegationIssuer issuer,
         IOrgStatusSigningWalletResolver orgWalletResolver,
         IPlatformUserDeviceClient deviceClient,
+        IHolderAddressLookup holderAddressLookup,
         ILogger<Program> logger,
         CancellationToken ct)
     {
@@ -290,6 +291,12 @@ public static class CitizenWalletEndpoints
         {
             return Results.Unauthorized();
         }
+
+        // Feature 114 US4 — pin the citizen holder wallet address ↔ PlatformUserId
+        // mapping the moment both are available together (the citizen's JWT carries
+        // both at enrolment time but neither flows to InboundCredentialDetector).
+        // Idempotent on retry.
+        await holderAddressLookup.RegisterAsync(citizenWallet, platformUserId.Value, ct);
 
         var orgSigningWallet = await orgWalletResolver.ResolveAsync(organizationId.Value, ct);
 

@@ -23,7 +23,10 @@ public class CredentialStoreTests : IDisposable
             .Options;
 
         _db = new TestCredentialDbContext(options);
-        _store = new CredentialStore(_db, NullLogger<CredentialStore>.Instance);
+        _store = new CredentialStore(
+            _db,
+            Moq.Mock.Of<Sorcha.Wallet.Service.Services.Interfaces.ICitizenInboxProjector>(),
+            NullLogger<CredentialStore>.Instance);
     }
 
     public void Dispose()

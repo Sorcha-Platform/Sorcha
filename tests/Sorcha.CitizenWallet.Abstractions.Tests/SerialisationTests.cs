@@ -77,7 +77,7 @@ public sealed class SerialisationTests
             SyncToken = "opaque-token",
             Credentials = new SyncCredentialChanges
             {
-                Added = [new CachedCredentialPayload { Id = Guid.NewGuid(), Vct = "test", Jwt = "jwt", IssuerDid = "did:test", IssuedAt = DateTimeOffset.UtcNow }]
+                Added = [new CachedCredentialPayload { Id = $"urn:credential:test:{Guid.NewGuid():N}", Vct = "test", Jwt = "jwt", IssuerDid = "did:test", IssuedAt = DateTimeOffset.UtcNow }]
             },
             Delegation = new SyncDelegationUpdate { Renewed = false },
             StatusListsToRefresh = ["https://sorcha.dev/status/1.statuslist+jwt"]

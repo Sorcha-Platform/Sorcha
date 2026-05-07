@@ -189,7 +189,7 @@ public sealed class CitizenSyncService : ICitizenSyncService
 
     private static IEnumerable<CachedCredentialPayload> ReplayToSnapshot(IReadOnlyList<CitizenCredentialEvent> events)
     {
-        var byId = new Dictionary<Guid, CachedCredentialPayload>();
+        var byId = new Dictionary<string, CachedCredentialPayload>(StringComparer.Ordinal);
         foreach (var evt in events)
         {
             switch (evt.Kind)

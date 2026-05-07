@@ -153,13 +153,23 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IOrgStatusS
 builder.Services.AddHostedService<
     Sorcha.Wallet.Service.Services.Implementation.CitizenStatusListPublisherService>();
 
-// Feature 114: Citizen wallet sync surface (T103). EmptyCitizenCredentialEventStream is a
-// placeholder until the citizen-credential issuance pipeline lands (US4 / Phase 6); the sync
-// surface, sync-token round-trip, and 410 stale-cursor path are still exercised end-to-end.
-builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizenCredentialEventStream,
-    Sorcha.Wallet.Service.Services.Implementation.EmptyCitizenCredentialEventStream>();
-builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizenSyncService,
+// Feature 114 / US4: Citizen wallet sync surface. Reads the citizen-scoped
+// CitizenCredentialEventLog written by CitizenInboxProjector when an inbound
+// credential lands in CredentialStore against a known citizen holder address.
+// Replaces the v1 EmptyCitizenCredentialEventStream placeholder.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenCredentialEventStream,
+    Sorcha.Wallet.Service.Services.Implementation.EfCoreCitizenCredentialEventStream>();
+// Scoped (was Singleton) because it now consumes the Scoped EfCoreCitizenCredentialEventStream.
+// CitizenSyncService is stateless apart from its signing key, so per-request creation is cheap.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenSyncService,
     Sorcha.Wallet.Service.Services.Implementation.CitizenSyncService>();
+
+// Feature 114 / US4: Holder-address index + citizen-inbox projector. Both
+// scoped because they consume WalletDbContext.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderAddressLookup,
+    Sorcha.Wallet.Service.Services.Implementation.EfCoreHolderAddressLookup>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenInboxProjector,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenInboxProjector>();
 
 // Feature 114: Delegation renewal (T106). Composes Tenant Service device lookup
 // + IDeviceDelegationIssuer + IOrgStatusSigningWalletResolver behind one
