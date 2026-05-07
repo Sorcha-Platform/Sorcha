@@ -55,6 +55,14 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Feature 114 / US4 — citizen wallet hub connection. Singleton so the
+        // PWA holds a single live SignalR socket across page navigation; the
+        // connection authenticates lazily via the access-token store.
+        services.AddSingleton(sp => new CitizenWalletHubConnection(
+            gatewayBaseAddress,
+            sp.GetRequiredService<IAccessTokenStore>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CitizenWalletHubConnection>>()));
+
         return services;
     }
 }

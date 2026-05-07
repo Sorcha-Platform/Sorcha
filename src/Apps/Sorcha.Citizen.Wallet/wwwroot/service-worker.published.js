@@ -15,6 +15,25 @@ self.addEventListener('install', event => event.waitUntil(onInstall(event)));
 self.addEventListener('activate', event => event.waitUntil(onActivate(event)));
 self.addEventListener('fetch', event => event.respondWith(onFetch(event)));
 
+// Feature 114 / US4 — Background Sync wakes a closed/backgrounded PWA when a
+// CredentialAvailable hub push fires while the foreground tab is hidden. The
+// page registers tag 'citizen-credential-sync' on hub events; the handler here
+// notifies any open clients to re-run their sync. Chromium-only — non-Chromium
+// browsers fire the registration call but the event never arrives, so the
+// next foreground open + pull-on-load path is the unconditional fallback.
+self.addEventListener('sync', event => {
+    if (event.tag === 'citizen-credential-sync') {
+        event.waitUntil(notifyClientsForSync());
+    }
+});
+
+async function notifyClientsForSync() {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+        client.postMessage({ kind: 'citizen-credential-sync' });
+    }
+}
+
 const cacheNamePrefix = 'sorcha-wallet-cache-';
 const cacheName = `${cacheNamePrefix}${self.assetsManifest.version}`;
 const offlineAssetsInclude = [/\.dll$/, /\.pdb$/, /\.wasm/, /\.html/, /\.js$/, /\.json$/, /\.css$/, /\.woff$/, /\.png$/, /\.jpe?g$/, /\.gif$/, /\.ico$/, /\.blat$/, /\.dat$/];

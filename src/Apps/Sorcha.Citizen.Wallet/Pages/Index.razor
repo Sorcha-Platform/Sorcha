@@ -20,9 +20,11 @@
 @inject ISyncService Sync
 @inject IDelegationRenewalClient Renewal
 @inject IServerClockObserver ServerClock
+@inject CitizenWalletHubConnection Hub
 @inject HttpClient Http
 @inject NavigationManager Nav
 @inject ILogger<Index> Logger
+@implements IAsyncDisposable
 
 <PageTitle>Sorcha Wallet</PageTitle>
 
@@ -123,6 +125,43 @@
         _ = SyncNowAsync(silentSuccess: true);
         // Fire-and-forget delegation renewal check — silent unless renewal happens.
         _ = RenewIfDueAsync();
+
+        // Feature 114 / US4 — subscribe to push notifications and reconnect the
+        // hub. On CredentialAvailable we re-run sync; the wallet stays the source
+        // of truth, the push just shrinks the latency from "next foreground open"
+        // to "within seconds of issuance".
+        Hub.OnCredentialAvailable += OnHubCredentialAvailable;
+        Hub.OnDeviceRevoked += OnHubDeviceRevoked;
+        _ = Hub.StartAsync();
+    }
+
+    private void OnHubCredentialAvailable(string credentialId)
+    {
+        Logger.LogInformation("Hub push: credential {CredentialId} — triggering sync", credentialId);
+        _ = InvokeAsync(async () =>
+        {
+            await SyncNowAsync(silentSuccess: true);
+        });
+    }
+
+    private void OnHubDeviceRevoked(Guid deviceId)
+    {
+        Logger.LogInformation("Hub push: device {DeviceId} revoked — triggering renewal check", deviceId);
+        _ = InvokeAsync(async () =>
+        {
+            await RenewIfDueAsync();
+        });
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        Hub.OnCredentialAvailable -= OnHubCredentialAvailable;
+        Hub.OnDeviceRevoked -= OnHubDeviceRevoked;
+        // The hub itself is a Singleton owned by the DI container; we only
+        // detach our handlers here. The container disposes the connection on
+        // application shutdown.
+        await Task.CompletedTask;
     }
 
     private async Task RenewIfDueAsync()
