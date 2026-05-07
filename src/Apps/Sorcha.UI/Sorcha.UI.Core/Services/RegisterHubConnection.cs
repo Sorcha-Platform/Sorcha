@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
+using Sorcha.ServiceClients.Http.Hub;
 using Sorcha.UI.Core.Models.Registers;
 
 namespace Sorcha.UI.Core.Services;
@@ -15,7 +16,9 @@ public class RegisterHubConnection : IAsyncDisposable
     private readonly ILogger<RegisterHubConnection> _logger;
     private readonly string _hubUrl;
     private readonly Func<Task<string?>>? _accessTokenProvider;
+    private readonly Func<CancellationToken, Task>? _pollFallback;
     private HubConnection? _hubConnection;
+    private HubConnectionWithFallback? _fallbackWrapper;
     private ConnectionState _connectionState = new();
     private readonly HashSet<string> _subscribedRegisters = [];
     private CancellationTokenSource? _retryCts;
@@ -78,7 +81,7 @@ public class RegisterHubConnection : IAsyncDisposable
     /// has not yet been migrated to authenticated hubs.
     /// </summary>
     public RegisterHubConnection(string baseUrl, ILogger<RegisterHubConnection> logger)
-        : this(baseUrl, accessTokenProvider: null, logger)
+        : this(baseUrl, accessTokenProvider: null, logger, pollFallback: null)
     {
     }
 
@@ -92,11 +95,13 @@ public class RegisterHubConnection : IAsyncDisposable
     public RegisterHubConnection(
         string baseUrl,
         Func<Task<string?>>? accessTokenProvider,
-        ILogger<RegisterHubConnection> logger)
+        ILogger<RegisterHubConnection> logger,
+        Func<CancellationToken, Task>? pollFallback = null)
     {
         _hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/register";
         _accessTokenProvider = accessTokenProvider;
         _logger = logger;
+        _pollFallback = pollFallback;
     }
 
     /// <summary>
@@ -235,6 +240,12 @@ public class RegisterHubConnection : IAsyncDisposable
                 // Start background retry — the built-in reconnect has been exhausted
                 _ = BackgroundRetryAsync();
             };
+
+            // Feature 118 T104 — REST polling fallback engages after 90s of
+            // failed reconnect. Refresher delegate (passed via ctor) typically
+            // calls /api/registers/{id} per subscribed register and re-raises
+            // the relevant events. Default null = state observable only.
+            _fallbackWrapper = new HubConnectionWithFallback(_hubConnection, _pollFallback);
 
             await _hubConnection.StartAsync(cancellationToken);
 
@@ -442,6 +453,12 @@ public class RegisterHubConnection : IAsyncDisposable
 
     private async Task DisposeHubConnectionAsync()
     {
+        if (_fallbackWrapper is not null)
+        {
+            try { await _fallbackWrapper.DisposeAsync(); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Error disposing fallback wrapper"); }
+            _fallbackWrapper = null;
+        }
         if (_hubConnection is not null)
         {
             try

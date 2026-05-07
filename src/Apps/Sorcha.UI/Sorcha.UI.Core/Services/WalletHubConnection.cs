@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
+using Sorcha.ServiceClients.Http.Hub;
 using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Registers;
 using Sorcha.UI.Core.Services.Authentication;
@@ -38,8 +39,10 @@ public class WalletHubConnection : IAsyncDisposable
     private readonly ILogger<WalletHubConnection> _logger;
     private readonly IAuthenticationService _authService;
     private readonly IConfigurationService _configurationService;
+    private readonly Func<CancellationToken, Task>? _pollFallback;
     private readonly string _hubUrl;
     private HubConnection? _hubConnection;
+    private HubConnectionWithFallback? _fallbackWrapper;
     private ConnectionState _connectionState = new();
 
     /// <summary>Citizen device was revoked (admin- or self-initiated).</summary>
@@ -74,12 +77,14 @@ public class WalletHubConnection : IAsyncDisposable
         string baseUrl,
         IAuthenticationService authService,
         IConfigurationService configurationService,
-        ILogger<WalletHubConnection> logger)
+        ILogger<WalletHubConnection> logger,
+        Func<CancellationToken, Task>? pollFallback = null)
     {
         _hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/wallet";
         _authService = authService;
         _configurationService = configurationService;
         _logger = logger;
+        _pollFallback = pollFallback;
     }
 
     /// <summary>Starts the SignalR connection.</summary>
@@ -139,6 +144,12 @@ public class WalletHubConnection : IAsyncDisposable
                 UpdateConnectionState(ConnectionStatus.Disconnected, error?.Message);
                 return Task.CompletedTask;
             };
+
+            // Feature 118 T101 — REST polling fallback engages after 90s of
+            // failed reconnect. Refresher delegate (passed via ctor) typically
+            // invokes /api/wallets/{addr} or /api/v1/wallet/sync and re-raises
+            // the relevant events. Default null = state observable only.
+            _fallbackWrapper = new HubConnectionWithFallback(_hubConnection, _pollFallback);
 
             await _hubConnection.StartAsync(cancellationToken);
 
@@ -272,6 +283,11 @@ public class WalletHubConnection : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        if (_fallbackWrapper is not null)
+        {
+            await _fallbackWrapper.DisposeAsync();
+            _fallbackWrapper = null;
+        }
         if (_hubConnection != null)
         {
             await _hubConnection.DisposeAsync();

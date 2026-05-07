@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
+using Sorcha.ServiceClients.Http.Hub;
 using Sorcha.UI.Core.Models.Actions;
 using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Credentials;
@@ -43,8 +44,10 @@ public class BlueprintHubConnection : IAsyncDisposable
     private readonly ILogger<BlueprintHubConnection> _logger;
     private readonly IAuthenticationService _authService;
     private readonly IConfigurationService _configurationService;
+    private readonly Func<CancellationToken, Task>? _pollFallback;
     private readonly string _hubUrl;
     private HubConnection? _hubConnection;
+    private HubConnectionWithFallback? _fallbackWrapper;
     private ConnectionState _connectionState = new();
     private readonly HashSet<string> _subscribedWallets = [];
 
@@ -102,11 +105,13 @@ public class BlueprintHubConnection : IAsyncDisposable
         string baseUrl,
         IAuthenticationService authService,
         IConfigurationService configurationService,
-        ILogger<BlueprintHubConnection> logger)
+        ILogger<BlueprintHubConnection> logger,
+        Func<CancellationToken, Task>? pollFallback = null)
     {
         _hubUrl = $"{baseUrl.TrimEnd('/')}/actionshub";
         _authService = authService;
         _configurationService = configurationService;
+        _pollFallback = pollFallback;
         _logger = logger;
     }
 
@@ -173,6 +178,12 @@ public class BlueprintHubConnection : IAsyncDisposable
                 UpdateConnectionState(ConnectionStatus.Disconnected, error?.Message);
                 return Task.CompletedTask;
             };
+
+            // Feature 118 T102 — REST polling fallback engages after 90s of
+            // failed reconnect. Refresher delegate (passed via ctor) typically
+            // calls /api/instances/{id} per subscribed instance and re-raises
+            // the relevant events. Default null = state observable only.
+            _fallbackWrapper = new HubConnectionWithFallback(_hubConnection, _pollFallback);
 
             await _hubConnection.StartAsync(cancellationToken);
 
@@ -399,6 +410,11 @@ public class BlueprintHubConnection : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        if (_fallbackWrapper is not null)
+        {
+            await _fallbackWrapper.DisposeAsync();
+            _fallbackWrapper = null;
+        }
         if (_hubConnection != null)
         {
             await _hubConnection.DisposeAsync();
