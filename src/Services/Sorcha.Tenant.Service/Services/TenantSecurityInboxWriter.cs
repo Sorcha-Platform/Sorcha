@@ -19,6 +19,13 @@ public interface ITenantSecurityInboxWriter
 
     /// <summary>Write a "2FA disabled" Category=Security inbox entry.</summary>
     Task WriteTwoFactorDisabledAsync(Guid platformUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Write a "password reset" Category=Security inbox entry. The fold-by-second
+    /// SourceEventId means a successful reset always produces a fresh entry — the
+    /// "if this wasn't you" copy is the whole point of the surface.
+    /// </summary>
+    Task WritePasswordResetAsync(Guid platformUserId, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -54,6 +61,16 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             title: "Two-factor authentication disabled",
             summary: "Your account is now signing in with password only. Re-enable 2FA from Settings → Security.",
             iconKey: "security.2fa-disabled",
+            ct);
+
+    /// <inheritdoc />
+    public Task WritePasswordResetAsync(Guid platformUserId, CancellationToken ct = default) =>
+        WriteAsync(
+            platformUserId,
+            "password-reset",
+            title: "Password reset",
+            summary: "Your password was reset using the email link. If this wasn't you, contact support immediately.",
+            iconKey: "security.password-reset",
             ct);
 
     private async Task WriteAsync(

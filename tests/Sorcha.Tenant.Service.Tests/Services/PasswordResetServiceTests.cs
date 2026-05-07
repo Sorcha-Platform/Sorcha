@@ -25,6 +25,7 @@ public class PasswordResetServiceTests : IDisposable
     private readonly TenantDbContext _dbContext;
     private readonly Mock<IPasswordPolicyService> _passwordPolicyService = new();
     private readonly Mock<ITransactionalEmailService> _transactional = new();
+    private readonly Mock<ITenantSecurityInboxWriter> _securityInbox = new();
     private readonly ILogger<PasswordResetService> _logger = NullLogger<PasswordResetService>.Instance;
 
     public PasswordResetServiceTests()
@@ -40,6 +41,7 @@ public class PasswordResetServiceTests : IDisposable
             _dbContext,
             _passwordPolicyService.Object,
             _transactional.Object,
+            _securityInbox.Object,
             _logger);
 
     private UserIdentity CreateTestUser(

@@ -102,4 +102,36 @@ public sealed class TenantSecurityInboxWriterTests
 
         await act.Should().NotThrowAsync();
     }
+
+    [Fact]
+    public async Task WritePasswordResetAsync_PostsExpectedSecurityPayload()
+    {
+        InboxWriteRequest? captured = null;
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWriteRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
+                new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
+
+        await _sut.WritePasswordResetAsync(_userId);
+
+        captured.Should().NotBeNull();
+        captured!.Category.Should().Be(InboxCategory.Security);
+        captured.CorrelationKey.Should().Be($"security:password-reset:{_userId:N}");
+        captured.DetailHref.Should().Be("/settings/security");
+        captured.Title.Should().Be("Password reset");
+        captured.Summary.Should().Contain("contact support");
+        captured.IconKey.Should().Be("security.password-reset");
+    }
+
+    [Fact]
+    public async Task WritePasswordResetAsync_InboxThrows_DoesNotPropagate()
+    {
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("inbox down"));
+
+        var act = () => _sut.WritePasswordResetAsync(_userId);
+
+        await act.Should().NotThrowAsync(
+            "inbox-write failures must never block a password reset");
+    }
 }
