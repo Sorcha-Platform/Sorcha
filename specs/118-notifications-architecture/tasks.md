@@ -137,7 +137,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 - [X] T058 [P] [US3] Internal endpoint test in `tests/Sorcha.Tenant.Service.Tests/Endpoints/InternalInboxEndpointsTests.cs` covering RequireService policy gate, idempotent write on `(PlatformUserId, SourceEventId)`, validation errors.
 - [X] T059 [P] [US3] TenantHub event-emission tests in `tests/Sorcha.Tenant.Service.Tests/Hubs/TenantHubInboxEventsTests.cs` asserting `InboxEntryAdded` and `InboxUnreadCountUpdated` fire on the user group with correct thin-signal shape.
 - [ ] T060 [P] [US3] Cross-replica multi-node test for TenantHub in `tests/Sorcha.Integration.Tests/MultiNode/HubBackplaneCrossReplicaTests.cs` (un-skip the TenantHub case from T017).
-- [ ] T061 [P] [US3] Quickstart end-to-end script `tests/Sorcha.Integration.Tests/Quickstart/InboxRoundTripTests.cs` matching steps 4 and 6 in `quickstart.md` (post entry → realtime fire → REST read → mark read → idempotent re-post).
+- [X] T061 [P] [US3] Quickstart end-to-end script `tests/Sorcha.Integration.Tests/Quickstart/InboxRoundTripTests.cs` matching steps 4 and 6 in `quickstart.md` (post entry → realtime fire → REST read → mark read → idempotent re-post).
 
 ### Implementation for User Story 3
 
