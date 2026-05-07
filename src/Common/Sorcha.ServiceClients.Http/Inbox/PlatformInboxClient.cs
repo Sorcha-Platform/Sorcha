@@ -67,6 +67,7 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
             title = payload.Title,
             summary = payload.Summary,
             iconKey = payload.IconKey,
+            channelHints = payload.ChannelHints,
         };
 
         using var resp = await _httpClient.PostAsJsonAsync("api/internal/inbox", body, JsonOptions, ct).ConfigureAwait(false);

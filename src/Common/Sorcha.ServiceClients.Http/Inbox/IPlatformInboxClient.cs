@@ -32,6 +32,12 @@ public interface IPlatformInboxClient
 }
 
 /// <summary>Wire shape sent to the internal inbox endpoint.</summary>
+/// <param name="ChannelHints">
+/// Optional bit-flag mask (matches the Tenant <c>ChannelHints</c> enum:
+/// <c>Inbox=1, Push=2, Email=4, Digest=8</c>). When omitted, Tenant applies
+/// the per-category default. T076 sets <c>Inbox|Digest = 9</c> for digest
+/// notifications.
+/// </param>
 public sealed record InboxWritePayload(
     Guid PlatformUserId,
     string Category,
@@ -42,7 +48,8 @@ public sealed record InboxWritePayload(
     DateTimeOffset OccurredAt,
     string Title,
     string? Summary = null,
-    string? IconKey = null);
+    string? IconKey = null,
+    int? ChannelHints = null);
 
 /// <summary>Outcome returned by the internal inbox endpoint.</summary>
 public sealed record InboxWriteOutcome(Guid EntryId, bool Idempotent);
