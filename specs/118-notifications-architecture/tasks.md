@@ -271,7 +271,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 - [ ] T115 Rewrite `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor` so the unread-count badge reads from `TenantHubConnection.OnInboxUnreadCountUpdated` plus a REST seed from `GET /api/me/inbox/unread-count` on mount. Remove `EventsHubConnection` injection.
 - [ ] T116 Rewrite `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/ActivityLogPanel.razor` to render from `GET /api/me/inbox` paginated results, with `TenantHubConnection.OnInboxEntryAdded` triggering page-1 refresh. Implement 30 s correlation grouping in the render path.
-- [ ] T117 Rewrite `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionToast.razor` to fire on `OnInboxEntryAdded` filtered to `Category=Action`. Toast carries title only; click navigates to `DetailHref`.
+- [X] T117 Rewrite `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionToast.razor` to fire on `OnInboxEntryAdded` filtered to `Category=Action`. Toast carries title only; click navigates to `DetailHref`.
 - [ ] T118 Rewrite `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionInbox.razor` so it IS the inbox UI: list view, per-entry read/dismiss buttons calling the inbox API, correlation grouping, category filters.
 
 ### Non-UI subscribers

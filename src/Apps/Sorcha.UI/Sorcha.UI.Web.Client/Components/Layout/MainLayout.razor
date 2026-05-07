@@ -261,7 +261,10 @@
     <ActivityLogPanel @bind-IsOpen="_activityLogOpen" OnEventsRead="RefreshUnreadCount" />
     <OperationNotificationListener />
     <CryptoProgressPopover />
-    @* PendingActionToast removed — activity log panel now handles all notifications *@
+    @* Feature 118 / T117 — inbox-driven toast for Category=Action entries.
+       Subscribes to TenantHub.OnInboxEntryAdded, fetches entry detail, and
+       shows a snackbar with click-through to DetailHref. *@
+    <PendingActionToast />
     <PendingActionInbox @bind-IsOpen="_pendingInboxOpen" />
 
     @* Feature 118 — durable inbox UI. *@
