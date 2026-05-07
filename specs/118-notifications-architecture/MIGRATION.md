@@ -91,23 +91,35 @@ This document tracks the metric-gated and time-gated migration steps for the not
 | #533 | Phase 10 | Wire InboxPanel to MainLayout app bar |
 | #534 | Phase 5 follow-up #3 (T077) | TenantMembershipInboxWriter — welcome inbox on org join |
 | #535 | Phase 10 | Inbox button badge — distinct count from activity bell |
+| #536 | Docs | MIGRATION.md ledger update — end-to-end surface description |
+| #537 | Phase 10 (T117) | PendingActionToast — inbox-driven toast for Category=Action |
+| #538 | Phase 10 (T118) | Retire PendingActionInbox — InboxPanel is the canonical inbox UI |
+| #539 | Phase 10 (T115/T116) | Retire ActivityLogPanel — single notification bell |
+| #540 | Phase 10 polish | InboxPanel category filter chips |
+| #541 | Phase 5 follow-up | TenantSecurityInboxWriter — Category=Security entries for 2FA enable/disable |
+| #542 | Phase 5 follow-up | Security inbox — password-reset entry |
+| #543 | Phase 6 (T089) | RegisterHubConnection — pass JWT via ?access_token= |
 
 ## End-to-end inbox surface — what users see today
 
-The Phase 5 inbox is **shipped end-to-end** as of PR #535:
+The Phase 5 inbox is **shipped end-to-end** as of PR #543. Legacy notification drawers have been retired:
 
-1. Three domain writers fire on real events:
+1. Five domain writers fire on real events:
    - `BlueprintInboxWriter` → action-available (PR #521)
    - `WalletInboxWriter` → credential issuance (PR #525)
    - `TenantMembershipInboxWriter` → org membership added (PR #534)
-2. Tenant Service persists the entry with `(PlatformUserId, SourceEventId)` idempotency.
+   - `TenantSecurityInboxWriter` (2FA enable/disable) → Category=Security (PR #541)
+   - `TenantSecurityInboxWriter` (password reset) → Category=Security (PR #542)
+2. Tenant Service persists the entry with `(PlatformUserId, SourceEventId)` idempotency. Security events fold the unix-second timestamp into the SourceEventId so re-enable/re-reset events produce fresh entries while same-second retries collapse.
 3. `TenantHub` fans out `InboxEntryAdded` + `InboxUnreadCountUpdated` over the Redis backplane.
-4. `MainLayout.razor` carries two distinct badges — error-red for the combined activity-log count, primary-blue for the inbox unread count specifically.
-5. Clicking the inbox icon opens `InboxPanel.razor`, which:
+4. `MainLayout.razor` carries a **single** Notifications-icon bell with a primary-blue badge for the inbox unread count. The legacy activity-log + pending-actions buttons are gone (PRs #538, #539).
+5. The bell opens `InboxPanel.razor`, which:
    - Lists entries fetched via `IInboxApiService`
    - Refreshes on every `OnInboxEntryAdded`
    - Renders category icon + severity colour + relative timestamp + "New" chip for unread
    - Per-entry mark-read + dismiss buttons hit the public REST endpoints
    - Clicking an entry marks-read and navigates to its `DetailHref`
+   - Category filter chips (PR #540) scope the listing to Action / Credential / Membership / Security / System / Workflow
+6. `PendingActionToast.razor` (PR #537) fires an in-flight snackbar for new Category=Action entries with click-through to DetailHref — alongside the badge for users who want the nudge.
 
-**Coexistence:** The legacy `PendingActionInbox` and `ActivityLogPanel` drawers are still mounted alongside the new `InboxPanel`. Final consolidation lands when `EventsHub` retires (gauge-gated).
+**Coexistence retired:** The legacy `PendingActionInbox`, `ActivityLogPanel`, and the EventsHub-driven badge subscriptions are gone from `MainLayout`. `EventsHub` itself is still running (encryption-progress channel, served by `OperationNotificationListener` which now self-connects) — full retirement under T121 is gauge-gated.
