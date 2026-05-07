@@ -241,52 +241,25 @@
         ActionsHub.OnConnectionStateChanged -= HandleHubConnectionChanged;
     }
 
-    private Task HandleSignalRProgress(EncryptionSignal signal)
+    // Feature 118 T087 — SignalR signals now carry the operation id only;
+    // the current state is fetched from /api/operations/{operationId} on every
+    // signal so the indicator never displays stale or synthesised progress.
+    private async Task HandleSignalRProgress(EncryptionSignal signal)
     {
-        if (signal.OperationId != _currentOperationId) return Task.CompletedTask;
-
-        if (_operation is null) return Task.CompletedTask;
-
-        _operation = _operation with
-        {
-            Stage = signal.Status,
-            PercentComplete = signal.PercentComplete
-        };
-        _isLoading = false;
-
-        return InvokeAsync(StateHasChanged);
+        if (signal.OperationId != _currentOperationId) return;
+        await InvokeAsync(PollStatusAsync);
     }
 
     private async Task HandleSignalRComplete(EncryptionSignal signal)
     {
-        if (signal.OperationId != _currentOperationId || _operation is null) return;
-
-        _operation = _operation with
-        {
-            Stage = OperationStage.Complete,
-            PercentComplete = 100
-        };
-        _isLoading = false;
-
-        StopPolling();
-        await OnCompleted.InvokeAsync();
-        await InvokeAsync(StateHasChanged);
+        if (signal.OperationId != _currentOperationId) return;
+        await InvokeAsync(PollStatusAsync);
     }
 
     private async Task HandleSignalRFailed(EncryptionSignal signal)
     {
-        if (signal.OperationId != _currentOperationId || _operation is null) return;
-
-        _operation = _operation with
-        {
-            Stage = OperationStage.Failed,
-            ErrorMessage = null // Detail available via pull-back from operations endpoint
-        };
-        _isLoading = false;
-
-        StopPolling();
-        await OnFailed.InvokeAsync();
-        await InvokeAsync(StateHasChanged);
+        if (signal.OperationId != _currentOperationId) return;
+        await InvokeAsync(PollStatusAsync);
     }
 
     private void HandleHubConnectionChanged(ConnectionState state)

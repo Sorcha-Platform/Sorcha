@@ -4,6 +4,7 @@
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Encryption;
+using Sorcha.UI.Core.Services.Admin;
 
 namespace Sorcha.UI.Core.Services;
 
@@ -39,6 +40,7 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
 {
     private readonly Dictionary<string, EncryptionOperationState> _operations = new();
     private readonly ActionsHubConnection _actionsHub;
+    private readonly IOperationStatusService _operationStatus;
     private readonly ILogger<EncryptionOperationTracker> _logger;
     private readonly CancellationTokenSource _cts = new();
     private string? _currentOperationId;
@@ -59,9 +61,11 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
 
     public EncryptionOperationTracker(
         ActionsHubConnection actionsHub,
+        IOperationStatusService operationStatus,
         ILogger<EncryptionOperationTracker> logger)
     {
         _actionsHub = actionsHub;
+        _operationStatus = operationStatus;
         _logger = logger;
 
         _actionsHub.OnEncryptionProgress += HandleProgress;
@@ -101,19 +105,24 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
         OnStateChanged?.Invoke();
     }
 
-    private Task HandleProgress(EncryptionSignal signal)
+    // Feature 118 T087 — SignalR signals carry the operation id only; progress
+    // detail (percent, stage) is fetched from /api/operations/{operationId}.
+    private async Task HandleProgress(EncryptionSignal signal)
     {
-        if (!_operations.TryGetValue(signal.OperationId, out var op)) return Task.CompletedTask;
+        if (!_operations.TryGetValue(signal.OperationId, out var op)) return;
 
         op.Status = OperationDisplayStatus.InProgress;
-        op.PercentComplete = signal.PercentComplete;
+        var detail = await _operationStatus.GetStatusAsync(signal.OperationId, _cts.Token).ConfigureAwait(false);
+        if (detail is not null)
+        {
+            op.PercentComplete = detail.PercentComplete;
+        }
         OnStateChanged?.Invoke();
-        return Task.CompletedTask;
     }
 
-    private Task HandleComplete(EncryptionSignal signal)
+    private async Task HandleComplete(EncryptionSignal signal)
     {
-        if (!_operations.TryGetValue(signal.OperationId, out var op)) return Task.CompletedTask;
+        if (!_operations.TryGetValue(signal.OperationId, out var op)) return;
 
         op.Status = OperationDisplayStatus.Complete;
         op.PercentComplete = 100;
@@ -127,23 +136,26 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
         _logger.LogDebug("Encryption operation {OperationId} complete", signal.OperationId);
         OnStateChanged?.Invoke();
 
+        // Best-effort detail refresh — gives recipient state and final stage.
+        _ = _operationStatus.GetStatusAsync(signal.OperationId, _cts.Token);
+
         // Clean up completed operations after a delay (keep for 5 minutes for toast/review)
         _ = CleanupAfterDelayAsync(signal.OperationId);
-        return Task.CompletedTask;
     }
 
-    private Task HandleFailed(EncryptionSignal signal)
+    private async Task HandleFailed(EncryptionSignal signal)
     {
-        if (!_operations.TryGetValue(signal.OperationId, out var op)) return Task.CompletedTask;
+        if (!_operations.TryGetValue(signal.OperationId, out var op)) return;
 
         op.Status = OperationDisplayStatus.Failed;
-        op.ErrorMessage = null; // Detail available via pull-back from operations endpoint
+        // Pull error detail via REST — the wire signal carries no failure reason.
+        var detail = await _operationStatus.GetStatusAsync(signal.OperationId, _cts.Token).ConfigureAwait(false);
+        op.ErrorMessage = detail?.ErrorMessage;
 
-        _logger.LogDebug("Encryption operation {OperationId} failed: {Status}", signal.OperationId, signal.Status);
+        _logger.LogDebug("Encryption operation {OperationId} failed", signal.OperationId);
         OnStateChanged?.Invoke();
 
         _ = CleanupAfterDelayAsync(signal.OperationId);
-        return Task.CompletedTask;
     }
 
     private async Task CleanupAfterDelayAsync(string operationId)

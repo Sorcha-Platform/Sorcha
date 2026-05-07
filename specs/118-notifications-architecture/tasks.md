@@ -182,8 +182,8 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 - [ ] T084 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IWalletHubClient` per `contracts/wallet-hub-client.cs.md`.
 - [ ] T085 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IRegisterHubClient` per `contracts/register-hub-client.cs.md`.
 - [ ] T086 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `ITenantHubClient` per `contracts/tenant-hub-client.cs.md`.
-- [ ] T087 [US4] Update `EncryptionProgressIndicator.razor` and any other UI consumer that previously read percentage off the hub event to fetch detail via `GET /api/operations/{operationId}`.
-- [ ] T088 [US4] Update `MainLayout.razor` and credential consumers that previously read issuer/credential metadata off the hub event to fetch detail via `GET /api/wallets/{addr}/credentials/{credentialId}`.
+- [X] T087 [US4] Update `EncryptionProgressIndicator.razor` and any other UI consumer that previously read percentage off the hub event to fetch detail via `GET /api/operations/{operationId}`.
+- [X] T088 [US4] Update `MainLayout.razor` and credential consumers that previously read issuer/credential metadata off the hub event to fetch detail via `GET /api/wallets/{addr}/credentials/{credentialId}`.
 - [X] T089 [US4] Ship UI's `RegisterHubConnection` token-passing change in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/RegisterHubConnection.cs` — pass the JWT via `?access_token=`. Server-side hub still permissive.
 - [X] T090 [US4] Add `sorcha_signalr_connections_total{hub="register",authenticated=...}` counter to track rollout. Wire in `RegisterHub.OnConnectedAsync`.
 - [ ] T091 [US4] **Second-release task** (do not bundle with above): Add `[Authorize]` to `src/Services/Sorcha.Register.Service/Hubs/RegisterHub.cs`. Un-skip T080. Remove permissive code path. Only ship after the authenticated counter shows ≥ 99 % adoption.
