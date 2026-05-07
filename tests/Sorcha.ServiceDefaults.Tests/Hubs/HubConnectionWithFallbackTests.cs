@@ -3,7 +3,7 @@
 
 using FluentAssertions;
 using Microsoft.AspNetCore.SignalR.Client;
-using Sorcha.ServiceDefaults.Hubs;
+using Sorcha.ServiceClients.Http.Hub;
 using Xunit;
 
 namespace Sorcha.ServiceDefaults.Tests.Hubs;

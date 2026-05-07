@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
+using Sorcha.ServiceClients.Http.Hub;
 using Sorcha.UI.Core.Models.Registers;
 
 namespace Sorcha.UI.Core.Services;
@@ -27,9 +28,11 @@ public sealed class TenantHubConnection : IAsyncDisposable
 {
     private readonly string _hubUrl;
     private readonly Func<Task<string?>> _accessTokenProvider;
+    private readonly IInboxApiService? _inboxApi;
     private readonly ILogger<TenantHubConnection> _logger;
 
     private HubConnection? _hubConnection;
+    private HubConnectionWithFallback? _fallbackWrapper;
     private ConnectionState _connectionState = new();
 
     /// <summary>Fires when the server emits <c>InboxEntryAdded(entryId, occurredAt, traceId)</c>.</summary>
@@ -51,11 +54,13 @@ public sealed class TenantHubConnection : IAsyncDisposable
     public TenantHubConnection(
         string baseUrl,
         Func<Task<string?>> accessTokenProvider,
-        ILogger<TenantHubConnection> logger)
+        ILogger<TenantHubConnection> logger,
+        IInboxApiService? inboxApi = null)
     {
         _hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/tenant";
         _accessTokenProvider = accessTokenProvider ?? throw new ArgumentNullException(nameof(accessTokenProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _inboxApi = inboxApi;
     }
 
     /// <summary>
@@ -128,6 +133,13 @@ public sealed class TenantHubConnection : IAsyncDisposable
                 return Task.CompletedTask;
             };
 
+            // Feature 118 T103 — REST polling fallback engages after 90s of
+            // failed reconnect. Refresher hits /api/me/inbox/unread-count and
+            // raises OnInboxUnreadCountUpdated so consumers see fresh state.
+            _fallbackWrapper = new HubConnectionWithFallback(
+                _hubConnection,
+                pollFallback: _inboxApi is null ? null : PollUnreadCountAsync);
+
             await _hubConnection.StartAsync(cancellationToken);
             UpdateConnectionState(ConnectionStatus.Connected);
             _logger.LogInformation("TenantHub connected to {HubUrl}", _hubUrl);
@@ -165,10 +177,39 @@ public sealed class TenantHubConnection : IAsyncDisposable
 
     private async Task DisposeHubConnectionAsync()
     {
+        if (_fallbackWrapper is not null)
+        {
+            try { await _fallbackWrapper.DisposeAsync(); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Error disposing TenantHub fallback wrapper"); }
+            _fallbackWrapper = null;
+        }
         if (_hubConnection is null) return;
         try { await _hubConnection.DisposeAsync(); }
         catch (Exception ex) { _logger.LogWarning(ex, "Error disposing TenantHub connection"); }
         _hubConnection = null;
+    }
+
+    /// <summary>
+    /// Polling-fallback delegate. Invoked by <see cref="HubConnectionWithFallback"/>
+    /// after the configured engage-after window of failed reconnects, then on
+    /// each poll-interval tick until the websocket recovers.
+    /// </summary>
+    private async Task PollUnreadCountAsync(CancellationToken cancellationToken)
+    {
+        if (_inboxApi is null) return;
+        try
+        {
+            var count = await _inboxApi.GetUnreadCountAsync(cancellationToken).ConfigureAwait(false);
+            if (OnInboxUnreadCountUpdated is not null)
+            {
+                await OnInboxUnreadCountUpdated(count, DateTimeOffset.UtcNow, string.Empty)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "TenantHub polling fallback fetch failed");
+        }
     }
 
     private void UpdateConnectionState(ConnectionStatus status, string? errorMessage = null)
