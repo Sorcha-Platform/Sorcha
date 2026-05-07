@@ -6,7 +6,7 @@
 @implements IAsyncDisposable
 @inject IWalletApiService WalletService
 @inject ITransactionService TransactionService
-@inject RegisterHubConnection HubConnection
+@inject WalletHubConnection HubConnection
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -784,9 +784,14 @@
     }
 
     /// <summary>
-    /// Handles real-time receipt notifications via SignalR and updates the transaction list.
+    /// Handles real-time receipt notifications via SignalR and updates the
+    /// transaction list. Feature 118 T111 — switched from RegisterHub to
+    /// WalletHub; the thin signal carries (walletAddress, transactionId,
+    /// receiptId) only. The receipted-at timestamp is set from local UTC
+    /// since the event fired in real time; consumers needing authoritative
+    /// docket/sealing detail call the receipt endpoint directly.
     /// </summary>
-    private async Task HandleTransactionReceipted(string txId, string registerId, long docketNumber, string receiptId, DateTimeOffset sealedAt)
+    private void HandleTransactionReceipted(string walletAddress, string txId, string receiptId)
     {
         var match = transactions.FirstOrDefault(t => t.Transaction.TxId == txId);
         if (match is not null)
@@ -795,11 +800,11 @@
             var updatedTx = match.Transaction with
             {
                 ReceiptId = receiptId,
-                ReceiptedAt = sealedAt.UtcDateTime,
+                ReceiptedAt = DateTime.UtcNow,
                 State = "Receipted"
             };
             transactions[index] = match with { Transaction = updatedTx };
-            await InvokeAsync(StateHasChanged);
+            InvokeAsync(StateHasChanged);
         }
     }
 
