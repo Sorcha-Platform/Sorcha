@@ -130,7 +130,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Tests for User Story 3
 
-- [ ] T054 [P] [US3] EF migration test in `tests/Sorcha.Tenant.Service.Tests/Migrations/InboxEntryMigrationTests.cs` (apply, check schema, check indexes).
+- [X] T054 [P] [US3] EF migration test in `tests/Sorcha.Tenant.Service.Tests/Migrations/InboxEntryMigrationTests.cs` (apply, check schema, check indexes).
 - [X] T055 [P] [US3] `InboxService` unit tests in `tests/Sorcha.Tenant.Service.Tests/Services/InboxServiceTests.cs` covering write, idempotent write, read transition, dismiss transition, mark-all-read.
 - [ ] T056 [P] [US3] Redis index tests in `tests/Sorcha.Tenant.Service.Tests/Services/InboxUnreadIndexTests.cs` covering ZADD, ZREM, ZCARD atomicity and Postgres fallback when Redis is down.
 - [X] T057 [P] [US3] Endpoint integration tests in `tests/Sorcha.Tenant.Service.Tests/Endpoints/MeInboxEndpointsTests.cs` covering all six public endpoints, authorization scoping, idempotency.
