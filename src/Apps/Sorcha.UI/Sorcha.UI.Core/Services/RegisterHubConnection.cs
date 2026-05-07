@@ -14,6 +14,7 @@ public class RegisterHubConnection : IAsyncDisposable
 {
     private readonly ILogger<RegisterHubConnection> _logger;
     private readonly string _hubUrl;
+    private readonly Func<Task<string?>>? _accessTokenProvider;
     private HubConnection? _hubConnection;
     private ConnectionState _connectionState = new();
     private readonly HashSet<string> _subscribedRegisters = [];
@@ -71,9 +72,30 @@ public class RegisterHubConnection : IAsyncDisposable
     /// </summary>
     public ConnectionState ConnectionState => _connectionState;
 
+    /// <summary>
+    /// Initialises the connection without an access-token provider. Compatible
+    /// with the pre-Feature-118 wire shape — used by tests and any caller that
+    /// has not yet been migrated to authenticated hubs.
+    /// </summary>
     public RegisterHubConnection(string baseUrl, ILogger<RegisterHubConnection> logger)
+        : this(baseUrl, accessTokenProvider: null, logger)
+    {
+    }
+
+    /// <summary>
+    /// Initialises the connection with an access-token provider. The token
+    /// rides on the SignalR negotiate as <c>?access_token=</c> and on the
+    /// websocket upgrade as a query string. Required for the upcoming
+    /// RegisterHub <c>[Authorize]</c> cutover (T080); permissive on the
+    /// server today so this change is forward-compatible (T089).
+    /// </summary>
+    public RegisterHubConnection(
+        string baseUrl,
+        Func<Task<string?>>? accessTokenProvider,
+        ILogger<RegisterHubConnection> logger)
     {
         _hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/register";
+        _accessTokenProvider = accessTokenProvider;
         _logger = logger;
     }
 
@@ -98,7 +120,13 @@ public class RegisterHubConnection : IAsyncDisposable
         try
         {
             _hubConnection = new HubConnectionBuilder()
-                .WithUrl(_hubUrl)
+                .WithUrl(_hubUrl, options =>
+                {
+                    if (_accessTokenProvider is not null)
+                    {
+                        options.AccessTokenProvider = _accessTokenProvider;
+                    }
+                })
                 .WithAutomaticReconnect(new[]
                 {
                     TimeSpan.FromSeconds(0),

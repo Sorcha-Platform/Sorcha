@@ -890,8 +890,11 @@ public static class ServiceCollectionExtensions
             return new TransactionService(httpClient, logger);
         });
 
-        // Register Hub Connection (SignalR)
-        // Strip the /app/ path prefix — SignalR hubs are at the API Gateway root
+        // Register Hub Connection (SignalR).
+        // Strip the /app/ path prefix — SignalR hubs are at the API Gateway root.
+        // Feature 118 / T089 — pass the JWT via ?access_token= so the server can
+        // identify the connection. The hub is permissive today; the [Authorize]
+        // cutover (T080) lands in a later release.
         services.AddScoped<RegisterHubConnection>(sp =>
         {
             string hubBaseUrl;
@@ -904,8 +907,17 @@ public static class ServiceCollectionExtensions
                 hubBaseUrl = "";
             }
 
+            var authService = sp.GetRequiredService<IAuthenticationService>();
+            var configService = sp.GetRequiredService<IConfigurationService>();
             var logger = sp.GetRequiredService<ILogger<RegisterHubConnection>>();
-            return new RegisterHubConnection(hubBaseUrl, logger);
+            return new RegisterHubConnection(
+                hubBaseUrl,
+                accessTokenProvider: async () =>
+                {
+                    var profileName = await configService.GetActiveProfileNameAsync();
+                    return await authService.GetAccessTokenAsync(profileName);
+                },
+                logger);
         });
 
         return services;
