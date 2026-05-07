@@ -14,11 +14,11 @@ using Xunit;
 namespace Sorcha.UI.Core.Tests.Services;
 
 /// <summary>
-/// Tests for ActionsHubConnection encryption event handlers (T017).
-/// Since ActionsHubConnection creates its own internal HubConnection via HubConnectionBuilder,
+/// Tests for BlueprintHubConnection encryption event handlers (T017).
+/// Since BlueprintHubConnection creates its own internal HubConnection via HubConnectionBuilder,
 /// these tests verify the public event API, default state, and subscribe/unsubscribe behavior.
 /// </summary>
-public class ActionsHubConnectionTests
+public class BlueprintHubConnectionTests
 {
     // ---------------------------------------------------------------
     // Connection state defaults
@@ -224,13 +224,13 @@ public class ActionsHubConnectionTests
     // Helpers
     // ---------------------------------------------------------------
 
-    private static ActionsHubConnection CreateConnection(string baseUrl = "http://localhost")
+    private static BlueprintHubConnection CreateConnection(string baseUrl = "http://localhost")
     {
         var authService = new Mock<IAuthenticationService>();
         var configService = new Mock<IConfigurationService>();
-        var logger = new Mock<ILogger<ActionsHubConnection>>();
+        var logger = new Mock<ILogger<BlueprintHubConnection>>();
 
-        return new ActionsHubConnection(
+        return new BlueprintHubConnection(
             baseUrl,
             authService.Object,
             configService.Object,

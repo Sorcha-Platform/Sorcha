@@ -13,19 +13,24 @@ using Sorcha.UI.Core.Services.Configuration;
 namespace Sorcha.UI.Core.Services;
 
 /// <summary>
-/// Manages SignalR connection to the Actions Hub for real-time action notifications.
+/// Manages SignalR connection to the Blueprint Service hub for real-time
+/// workflow notifications.
 /// </summary>
 /// <remarks>
-/// Connects to the Blueprint Service ActionsHub at /actionshub
+/// Connects to the Blueprint Service at <c>/actionshub</c> (legacy alias for
+/// <c>/hubs/blueprint</c> — both routes resolve to the same hub).
 ///
 /// Events received from server:
 /// - ActionAvailable: New action available for a participant
-/// - ActionConfirmed: Action has been confirmed/completed
 /// - ActionRejected: Action was rejected and routed elsewhere
 /// - WorkflowCompleted: Entire workflow has completed
-/// - EncryptionProgress: Encryption operation progress signal
-/// - EncryptionComplete: Encryption operation completed signal
-/// - EncryptionFailed: Encryption operation failed signal
+/// - EncryptionProgress / EncryptionComplete / EncryptionFailed: legacy hosting —
+///   encryption events still emit on BlueprintHub today; they migrate to
+///   <see cref="WalletHubConnection"/> alongside the server-side IBlueprintHubClient
+///   surface trim in a follow-up phase.
+/// - CredentialReceived / CredentialStatusChanged / PendingCredentialCountUpdated:
+///   currently inert (no server emit path); placeholders preserved for the
+///   forthcoming WalletHubConnection migration.
 ///
 /// All notifications use thin signal types (SignalNotification / EncryptionSignal)
 /// that carry only identifiers — UI pulls details through REST endpoints.
@@ -34,9 +39,9 @@ namespace Sorcha.UI.Core.Services;
 /// - Wallet-based notifications (SubscribeToWallet)
 /// - Instance-based notifications (future)
 /// </remarks>
-public class ActionsHubConnection : IAsyncDisposable
+public class BlueprintHubConnection : IAsyncDisposable
 {
-    private readonly ILogger<ActionsHubConnection> _logger;
+    private readonly ILogger<BlueprintHubConnection> _logger;
     private readonly IAuthenticationService _authService;
     private readonly IConfigurationService _configurationService;
     private readonly string _hubUrl;
@@ -103,17 +108,17 @@ public class ActionsHubConnection : IAsyncDisposable
     public ConnectionState ConnectionState => _connectionState;
 
     /// <summary>
-    /// Creates a new ActionsHubConnection.
+    /// Creates a new BlueprintHubConnection.
     /// </summary>
     /// <param name="baseUrl">Base URL of the Blueprint Service (e.g., https://localhost:7000)</param>
     /// <param name="authService">Authentication service for JWT token retrieval</param>
     /// <param name="configurationService">Configuration service for active profile</param>
     /// <param name="logger">Logger for diagnostics</param>
-    public ActionsHubConnection(
+    public BlueprintHubConnection(
         string baseUrl,
         IAuthenticationService authService,
         IConfigurationService configurationService,
-        ILogger<ActionsHubConnection> logger)
+        ILogger<BlueprintHubConnection> logger)
     {
         _hubUrl = $"{baseUrl.TrimEnd('/')}/actionshub";
         _authService = authService;
@@ -128,7 +133,7 @@ public class ActionsHubConnection : IAsyncDisposable
     {
         if (_hubConnection != null)
         {
-            _logger.LogDebug("ActionsHub connection already exists");
+            _logger.LogDebug("BlueprintHub connection already exists");
             return;
         }
 
@@ -143,7 +148,7 @@ public class ActionsHubConnection : IAsyncDisposable
                     {
                         var profileName = await _configurationService.GetActiveProfileNameAsync();
                         var token = await _authService.GetAccessTokenAsync(profileName);
-                        _logger.LogDebug("ActionsHub token provider: profile={Profile}, hasToken={HasToken}",
+                        _logger.LogDebug("BlueprintHub token provider: profile={Profile}, hasToken={HasToken}",
                             profileName, !string.IsNullOrEmpty(token));
                         return token;
                     };
@@ -164,14 +169,14 @@ public class ActionsHubConnection : IAsyncDisposable
             // Handle connection lifecycle
             _hubConnection.Reconnecting += error =>
             {
-                _logger.LogWarning("ActionsHub reconnecting: {Error}", error?.Message);
+                _logger.LogWarning("BlueprintHub reconnecting: {Error}", error?.Message);
                 UpdateConnectionState(ConnectionStatus.Reconnecting, error?.Message);
                 return Task.CompletedTask;
             };
 
             _hubConnection.Reconnected += async connectionId =>
             {
-                _logger.LogInformation("ActionsHub reconnected: {ConnectionId}", connectionId);
+                _logger.LogInformation("BlueprintHub reconnected: {ConnectionId}", connectionId);
                 UpdateConnectionState(ConnectionStatus.Connected);
 
                 // Re-subscribe to all previously subscribed wallets
@@ -180,7 +185,7 @@ public class ActionsHubConnection : IAsyncDisposable
 
             _hubConnection.Closed += error =>
             {
-                _logger.LogWarning("ActionsHub connection closed: {Error}", error?.Message);
+                _logger.LogWarning("BlueprintHub connection closed: {Error}", error?.Message);
                 UpdateConnectionState(ConnectionStatus.Disconnected, error?.Message);
                 return Task.CompletedTask;
             };
@@ -188,11 +193,11 @@ public class ActionsHubConnection : IAsyncDisposable
             await _hubConnection.StartAsync(cancellationToken);
 
             UpdateConnectionState(ConnectionStatus.Connected);
-            _logger.LogInformation("ActionsHub connected to {HubUrl}", _hubUrl);
+            _logger.LogInformation("BlueprintHub connected to {HubUrl}", _hubUrl);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to connect to ActionsHub at {HubUrl}", _hubUrl);
+            _logger.LogError(ex, "Failed to connect to BlueprintHub at {HubUrl}", _hubUrl);
             UpdateConnectionState(ConnectionStatus.Disconnected, ex.Message);
             throw;
         }
@@ -212,11 +217,11 @@ public class ActionsHubConnection : IAsyncDisposable
         {
             await _hubConnection.StopAsync(cancellationToken);
             UpdateConnectionState(ConnectionStatus.Disconnected);
-            _logger.LogInformation("ActionsHub disconnected");
+            _logger.LogInformation("BlueprintHub disconnected");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error stopping ActionsHub connection");
+            _logger.LogError(ex, "Error stopping BlueprintHub connection");
         }
     }
 

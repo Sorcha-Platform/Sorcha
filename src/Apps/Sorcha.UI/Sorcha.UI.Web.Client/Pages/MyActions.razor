@@ -22,7 +22,7 @@
 @inject IBlueprintApiService BlueprintApiService
 @inject IWalletApiService WalletService
 @inject IWalletPreferenceService WalletPreferenceService
-@inject ActionsHubConnection ActionsHub
+@inject BlueprintHubConnection BlueprintHub
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject ILogger<MyActions> Logger
@@ -240,7 +240,7 @@
     private List<SignalNotification> _recentNotifications = [];
     private List<KeyValuePair<string, List<PendingActionViewModel>>> _groupedActions = [];
     private ConnectionState _connectionState = new();
-    private ActionsHubConnection? _actionsHub = null;
+    private BlueprintHubConnection? _blueprintHub = null;
     private bool _loading = true;
     private bool _serviceError;
     private string _viewMode = "cards";
@@ -251,7 +251,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadActionsAsync();
-        await ConnectToActionsHubAsync();
+        await ConnectToBlueprintHubAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -291,33 +291,33 @@
             .ToList();
     }
 
-    private async Task ConnectToActionsHubAsync()
+    private async Task ConnectToBlueprintHubAsync()
     {
-        _actionsHub = ActionsHub;
+        _blueprintHub = BlueprintHub;
 
         // Subscribe to events
-        _actionsHub.OnConnectionStateChanged += HandleConnectionStateChanged;
-        _actionsHub.OnActionAvailable += HandleActionAvailable;
-        _actionsHub.OnActionRejected += HandleActionRejected;
-        _actionsHub.OnWorkflowCompleted += HandleWorkflowCompleted;
+        _blueprintHub.OnConnectionStateChanged += HandleConnectionStateChanged;
+        _blueprintHub.OnActionAvailable += HandleActionAvailable;
+        _blueprintHub.OnActionRejected += HandleActionRejected;
+        _blueprintHub.OnWorkflowCompleted += HandleWorkflowCompleted;
 
         // Sync current state
-        _connectionState = _actionsHub.ConnectionState;
+        _connectionState = _blueprintHub.ConnectionState;
 
         try
         {
-            await _actionsHub.StartAsync();
+            await _blueprintHub.StartAsync();
 
             // Subscribe to user's wallet addresses for targeted notifications
             var wallets = await WalletService.GetWalletsAsync();
             foreach (var wallet in wallets)
             {
-                await _actionsHub.SubscribeToWalletAsync(wallet.Address);
+                await _blueprintHub.SubscribeToWalletAsync(wallet.Address);
             }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Failed to connect to ActionsHub — page will use polling");
+            Logger.LogWarning(ex, "Failed to connect to BlueprintHub — page will use polling");
         }
     }
 
@@ -629,12 +629,12 @@
 
     public ValueTask DisposeAsync()
     {
-        if (_actionsHub != null)
+        if (_blueprintHub != null)
         {
-            _actionsHub.OnConnectionStateChanged -= HandleConnectionStateChanged;
-            _actionsHub.OnActionAvailable -= HandleActionAvailable;
-            _actionsHub.OnActionRejected -= HandleActionRejected;
-            _actionsHub.OnWorkflowCompleted -= HandleWorkflowCompleted;
+            _blueprintHub.OnConnectionStateChanged -= HandleConnectionStateChanged;
+            _blueprintHub.OnActionAvailable -= HandleActionAvailable;
+            _blueprintHub.OnActionRejected -= HandleActionRejected;
+            _blueprintHub.OnWorkflowCompleted -= HandleWorkflowCompleted;
         }
 
         return ValueTask.CompletedTask;

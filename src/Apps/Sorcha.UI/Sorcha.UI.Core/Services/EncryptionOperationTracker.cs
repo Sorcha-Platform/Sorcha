@@ -10,7 +10,7 @@ namespace Sorcha.UI.Core.Services;
 
 /// <summary>
 /// Tracks active encryption operations across page navigations.
-/// Scoped service that subscribes to ActionsHub events and maintains operation state.
+/// Scoped service that subscribes to BlueprintHub events and maintains operation state.
 /// </summary>
 public interface IEncryptionOperationTracker : IDisposable
 {
@@ -39,7 +39,7 @@ public interface IEncryptionOperationTracker : IDisposable
 public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
 {
     private readonly Dictionary<string, EncryptionOperationState> _operations = new();
-    private readonly ActionsHubConnection _actionsHub;
+    private readonly BlueprintHubConnection _blueprintHub;
     private readonly IOperationStatusService _operationStatus;
     private readonly ILogger<EncryptionOperationTracker> _logger;
     private readonly CancellationTokenSource _cts = new();
@@ -60,17 +60,17 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
     public event Action? OnStateChanged;
 
     public EncryptionOperationTracker(
-        ActionsHubConnection actionsHub,
+        BlueprintHubConnection blueprintHub,
         IOperationStatusService operationStatus,
         ILogger<EncryptionOperationTracker> logger)
     {
-        _actionsHub = actionsHub;
+        _blueprintHub = blueprintHub;
         _operationStatus = operationStatus;
         _logger = logger;
 
-        _actionsHub.OnEncryptionProgress += HandleProgress;
-        _actionsHub.OnEncryptionComplete += HandleComplete;
-        _actionsHub.OnEncryptionFailed += HandleFailed;
+        _blueprintHub.OnEncryptionProgress += HandleProgress;
+        _blueprintHub.OnEncryptionComplete += HandleComplete;
+        _blueprintHub.OnEncryptionFailed += HandleFailed;
     }
 
     /// <inheritdoc />
@@ -201,8 +201,8 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
 
         _cts.Cancel();
         _cts.Dispose();
-        _actionsHub.OnEncryptionProgress -= HandleProgress;
-        _actionsHub.OnEncryptionComplete -= HandleComplete;
-        _actionsHub.OnEncryptionFailed -= HandleFailed;
+        _blueprintHub.OnEncryptionProgress -= HandleProgress;
+        _blueprintHub.OnEncryptionComplete -= HandleComplete;
+        _blueprintHub.OnEncryptionFailed -= HandleFailed;
     }
 }
