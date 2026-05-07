@@ -133,8 +133,8 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 - [ ] T054 [P] [US3] EF migration test in `tests/Sorcha.Tenant.Service.Tests/Migrations/InboxEntryMigrationTests.cs` (apply, check schema, check indexes).
 - [X] T055 [P] [US3] `InboxService` unit tests in `tests/Sorcha.Tenant.Service.Tests/Services/InboxServiceTests.cs` covering write, idempotent write, read transition, dismiss transition, mark-all-read.
 - [ ] T056 [P] [US3] Redis index tests in `tests/Sorcha.Tenant.Service.Tests/Services/InboxUnreadIndexTests.cs` covering ZADD, ZREM, ZCARD atomicity and Postgres fallback when Redis is down.
-- [ ] T057 [P] [US3] Endpoint integration tests in `tests/Sorcha.Tenant.Service.Tests/Endpoints/MeInboxEndpointsTests.cs` covering all six public endpoints, authorization scoping, idempotency.
-- [ ] T058 [P] [US3] Internal endpoint test in `tests/Sorcha.Tenant.Service.Tests/Endpoints/InternalInboxEndpointsTests.cs` covering RequireService policy gate, idempotent write on `(PlatformUserId, SourceEventId)`, validation errors.
+- [X] T057 [P] [US3] Endpoint integration tests in `tests/Sorcha.Tenant.Service.Tests/Endpoints/MeInboxEndpointsTests.cs` covering all six public endpoints, authorization scoping, idempotency.
+- [X] T058 [P] [US3] Internal endpoint test in `tests/Sorcha.Tenant.Service.Tests/Endpoints/InternalInboxEndpointsTests.cs` covering RequireService policy gate, idempotent write on `(PlatformUserId, SourceEventId)`, validation errors.
 - [ ] T059 [P] [US3] TenantHub event-emission tests in `tests/Sorcha.Tenant.Service.Tests/Hubs/TenantHubInboxEventsTests.cs` asserting `InboxEntryAdded` and `InboxUnreadCountUpdated` fire on the user group with correct thin-signal shape.
 - [ ] T060 [P] [US3] Cross-replica multi-node test for TenantHub in `tests/Sorcha.Integration.Tests/MultiNode/HubBackplaneCrossReplicaTests.cs` (un-skip the TenantHub case from T017).
 - [ ] T061 [P] [US3] Quickstart end-to-end script `tests/Sorcha.Integration.Tests/Quickstart/InboxRoundTripTests.cs` matching steps 4 and 6 in `quickstart.md` (post entry → realtime fire → REST read → mark read → idempotent re-post).

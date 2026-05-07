@@ -56,6 +56,25 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
             claims.Add(new Claim("org_id", organizationId));
         }
 
+        // Feature 118 — endpoints scoped to the authenticated platform user
+        // (e.g., /api/me/inbox/*) read the `platform_user_id` claim. Tests
+        // pass it via X-Test-Platform-User-Id when needed. Existing endpoints
+        // that fall back to `sub` (NameIdentifier) keep working when the
+        // header is absent.
+        var platformUserId = Request.Headers["X-Test-Platform-User-Id"].ToString();
+        if (!string.IsNullOrEmpty(platformUserId))
+        {
+            claims.Add(new Claim("platform_user_id", platformUserId));
+        }
+
+        // Service-principal tests pass X-Test-Token-Type=service to satisfy
+        // the RequireService authorization policy used by /api/internal/* endpoints.
+        var tokenType = Request.Headers["X-Test-Token-Type"].ToString();
+        if (!string.IsNullOrEmpty(tokenType))
+        {
+            claims.Add(new Claim("token_type", tokenType));
+        }
+
         var identity = new ClaimsIdentity(claims, "Test");
         var principal = new ClaimsPrincipal(identity);
         var ticket = new AuthenticationTicket(principal, "Test");
