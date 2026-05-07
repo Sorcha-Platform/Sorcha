@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.SignalR;
 using Sorcha.ServiceClients.Subscription;
+using Sorcha.ServiceDefaults.Hubs;
 
 namespace Sorcha.Register.Service.Hubs;
 
@@ -13,13 +14,15 @@ namespace Sorcha.Register.Service.Hubs;
 public class RegisterHub : Hub<IRegisterHubClient>
 {
     private readonly ISubscriptionServiceClient _subscriptionClient;
+    private readonly SignalRMetrics _metrics;
 
     /// <summary>
     /// Initializes the hub with subscription client for access checks
     /// </summary>
-    public RegisterHub(ISubscriptionServiceClient subscriptionClient)
+    public RegisterHub(ISubscriptionServiceClient subscriptionClient, SignalRMetrics metrics)
     {
         _subscriptionClient = subscriptionClient;
+        _metrics = metrics;
     }
 
     /// <summary>
@@ -49,8 +52,19 @@ public class RegisterHub : Hub<IRegisterHubClient>
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, RegisterHubGroups.Register(registerId));
     }
 
+    /// <summary>
+    /// Records the connection in <see cref="SignalRMetrics.ConnectionsTotal"/>
+    /// tagged by authentication state. Drives the cutover gauge per Feature 118
+    /// task T090 — RegisterHub adds <c>[Authorize]</c> only after the
+    /// authenticated tag reaches ≥ 99 % of total.
+    /// </summary>
     public override async Task OnConnectedAsync()
     {
+        var authenticated = Context.User?.Identity?.IsAuthenticated == true;
+        _metrics.ConnectionsTotal.Add(1,
+            new KeyValuePair<string, object?>("hub", "register"),
+            new KeyValuePair<string, object?>("state", "connected"),
+            new KeyValuePair<string, object?>("authenticated", authenticated));
         await base.OnConnectedAsync();
     }
 
