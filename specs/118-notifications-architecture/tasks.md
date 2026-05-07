@@ -260,7 +260,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### UI rewires (mechanical)
 
-- [ ] T109 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` to inject `BlueprintHubConnection` instead of `ActionsHubConnection`. Subscribe to `OnActionAvailable` / `OnActionRejected` / `OnWorkflowCompleted`.
+- [X] T109 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` to inject `BlueprintHubConnection` instead of `ActionsHubConnection`. Subscribe to `OnActionAvailable` / `OnActionRejected` / `OnWorkflowCompleted`.
 - [ ] T110 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyCredentials.razor` to inject `WalletHubConnection`. Subscribe to `OnCredentialReceived` / `OnCredentialStatusChanged`.
 - [ ] T111 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletDetail.razor` from `RegisterHubConnection.OnTransactionReceipted` to `WalletHubConnection.OnTransactionReceipted`.
 - [ ] T112 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EncryptionOperationTracker.cs` to inject `WalletHubConnection`.

@@ -11,7 +11,7 @@
 @inject ITokenRefreshService TokenRefreshService
 @inject IThemeService ThemeService
 @inject IJSRuntime JSRuntime
-@inject ActionsHubConnection ActionsHub
+@inject BlueprintHubConnection BlueprintHub
 @inject TenantHubConnection TenantHub
 @inject IInboxApiService InboxApi
 @inject ISnackbar Snackbar
@@ -283,8 +283,8 @@
             Loc.OnLanguageChanged += OnLanguageChanged;
             await Loc.InitializeAsync();
 
-            ActionsHub.OnCredentialReceived += OnCredentialReceived;
-            ActionsHub.OnPendingCredentialCountUpdated += OnPendingCredentialCountUpdated;
+            BlueprintHub.OnCredentialReceived += OnCredentialReceived;
+            BlueprintHub.OnPendingCredentialCountUpdated += OnPendingCredentialCountUpdated;
 
             // Feature 118 — TenantHub is the authoritative source of the unread
             // bell badge after retirement of the legacy ActivityLogPanel.
@@ -306,8 +306,8 @@
     {
         ThemeService.OnThemeChanged -= OnThemeChanged;
         Loc.OnLanguageChanged -= OnLanguageChanged;
-        ActionsHub.OnCredentialReceived -= OnCredentialReceived;
-        ActionsHub.OnPendingCredentialCountUpdated -= OnPendingCredentialCountUpdated;
+        BlueprintHub.OnCredentialReceived -= OnCredentialReceived;
+        BlueprintHub.OnPendingCredentialCountUpdated -= OnPendingCredentialCountUpdated;
         TenantHub.OnInboxUnreadCountUpdated -= OnInboxUnreadCountUpdated;
         await TenantHub.DisposeAsync();
         await TokenRefreshService.StopAsync();

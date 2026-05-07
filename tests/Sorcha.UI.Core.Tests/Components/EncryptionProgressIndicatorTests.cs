@@ -406,9 +406,9 @@ public class EncryptionProgressIndicatorTests : BunitContext
     // ---------------------------------------------------------------
 
     [Fact]
-    public void ActionsHub_IsNullByDefault()
+    public void BlueprintHub_IsNullByDefault()
     {
-        // Arrange — render without ActionsHub parameter
+        // Arrange — render without BlueprintHub parameter
         var operation = CreateOperation(
             stage: OperationStage.EncryptingPerRecipient,
             percentComplete: 25,
@@ -425,7 +425,7 @@ public class EncryptionProgressIndicatorTests : BunitContext
 
         // Assert — component renders in polling mode (no SignalR)
         cut.Markup.Should().Contain("1 of 4 recipients processed");
-        cut.Instance.ActionsHub.Should().BeNull();
+        cut.Instance.BlueprintHub.Should().BeNull();
     }
 
     [Fact]
@@ -473,13 +473,13 @@ public class EncryptionProgressIndicatorTests : BunitContext
     }
 
     [Fact]
-    public void Dispose_WithActionsHub_UnsubscribesFromEvents()
+    public void Dispose_WithBlueprintHub_UnsubscribesFromEvents()
     {
-        // Arrange — create a real ActionsHubConnection (unconnected) and pass it
+        // Arrange — create a real BlueprintHubConnection (unconnected) and pass it
         var authService = new Mock<Sorcha.UI.Core.Services.Authentication.IAuthenticationService>();
         var configService = new Mock<Sorcha.UI.Core.Services.Configuration.IConfigurationService>();
-        var logger = new Mock<Microsoft.Extensions.Logging.ILogger<ActionsHubConnection>>();
-        var hub = new ActionsHubConnection("http://localhost", authService.Object, configService.Object, logger.Object);
+        var logger = new Mock<Microsoft.Extensions.Logging.ILogger<BlueprintHubConnection>>();
+        var hub = new BlueprintHubConnection("http://localhost", authService.Object, configService.Object, logger.Object);
 
         var operation = CreateOperation(
             stage: OperationStage.EncryptingPerRecipient,
@@ -494,9 +494,9 @@ public class EncryptionProgressIndicatorTests : BunitContext
         // Act
         var cut = Render<EncryptionProgressIndicator>(parameters => parameters
             .Add(p => p.OperationId, "op-hub-dispose")
-            .Add(p => p.ActionsHub, hub));
+            .Add(p => p.BlueprintHub, hub));
 
-        // Assert — Dispose should not throw even when ActionsHub was subscribed
+        // Assert — Dispose should not throw even when BlueprintHub was subscribed
         var act = () => cut.Instance.Dispose();
         act.Should().NotThrow();
     }

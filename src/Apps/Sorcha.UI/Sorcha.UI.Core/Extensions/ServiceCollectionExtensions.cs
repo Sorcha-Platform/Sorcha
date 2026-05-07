@@ -374,7 +374,7 @@ public static class ServiceCollectionExtensions
         });
 
         // Actions Hub Connection (SignalR for real-time action notifications)
-        services.AddActionsHubServices(baseAddress);
+        services.AddBlueprintHubServices(baseAddress);
 
         // Events Hub Connection (SignalR for real-time activity event notifications)
         services.AddEventsHubServices(baseAddress);
@@ -474,9 +474,9 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Registers the Actions Hub connection for real-time action notifications.
     /// </summary>
-    public static IServiceCollection AddActionsHubServices(this IServiceCollection services, string baseAddress)
+    public static IServiceCollection AddBlueprintHubServices(this IServiceCollection services, string baseAddress)
     {
-        services.AddScoped<ActionsHubConnection>(sp =>
+        services.AddScoped<BlueprintHubConnection>(sp =>
         {
             string hubBaseUrl;
             if (Uri.TryCreate(baseAddress, UriKind.Absolute, out var uri))
@@ -490,8 +490,8 @@ public static class ServiceCollectionExtensions
 
             var authService = sp.GetRequiredService<IAuthenticationService>();
             var configService = sp.GetRequiredService<IConfigurationService>();
-            var logger = sp.GetRequiredService<ILogger<ActionsHubConnection>>();
-            return new ActionsHubConnection(hubBaseUrl, authService, configService, logger);
+            var logger = sp.GetRequiredService<ILogger<BlueprintHubConnection>>();
+            return new BlueprintHubConnection(hubBaseUrl, authService, configService, logger);
         });
 
         // Encryption operation tracker (global state across page navigation)
