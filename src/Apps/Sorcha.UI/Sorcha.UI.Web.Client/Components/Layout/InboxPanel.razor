@@ -39,6 +39,21 @@
                        OnClick="@(() => IsOpen = false)" />
     </MudDrawerHeader>
 
+    <MudChipSet T="string"
+                SelectedValue="@_selectedCategory"
+                SelectedValueChanged="OnCategoryChanged"
+                SelectionMode="SelectionMode.SingleSelection"
+                CheckMark="false"
+                Class="px-3 pb-2">
+        <MudChip T="string" Value="@(string.Empty)" Color="Color.Default" Size="Size.Small">All</MudChip>
+        @foreach (var category in CategoryFilters)
+        {
+            <MudChip T="string" Value="@category" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">
+                @category
+            </MudChip>
+        }
+    </MudChipSet>
+
     @if (_loading && _entries.Count == 0)
     {
         <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
@@ -104,10 +119,27 @@
     private readonly List<InboxEntryDto> _entries = new();
     private bool _loading;
     private bool _disposed;
+    private string _selectedCategory = string.Empty;
+
+    private static readonly string[] CategoryFilters =
+    {
+        "Action",
+        "Credential",
+        "Membership",
+        "Security",
+        "System",
+        "Workflow",
+    };
 
     protected override async Task OnInitializedAsync()
     {
         TenantHub.OnInboxEntryAdded += OnInboxEntryAddedAsync;
+        await LoadAsync();
+    }
+
+    private async Task OnCategoryChanged(string? category)
+    {
+        _selectedCategory = category ?? string.Empty;
         await LoadAsync();
     }
 
@@ -123,7 +155,8 @@
         _loading = true;
         try
         {
-            var page = await InboxApi.ListAsync(page: 1, pageSize: 50);
+            var category = string.IsNullOrEmpty(_selectedCategory) ? null : _selectedCategory;
+            var page = await InboxApi.ListAsync(page: 1, pageSize: 50, category: category);
             _entries.Clear();
             if (page is not null)
             {
