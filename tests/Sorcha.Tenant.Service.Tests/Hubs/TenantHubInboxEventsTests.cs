@@ -9,6 +9,7 @@ using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Hubs;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Service.Storage;
 using Sorcha.Tenant.Service.Tests.Helpers;
 using Xunit;
 
@@ -168,7 +169,8 @@ public class TenantHubInboxEventsTests
     private (InboxService Service, TenantDbContext Db) CreateService()
     {
         var db = InMemoryDbContextFactory.Create();
-        var service = new InboxService(db, _hub.Object, NullLogger<InboxService>.Instance);
+        var store = new EfCoreInboxStore(db);
+        var service = new InboxService(store, _hub.Object, NullLogger<InboxService>.Instance);
         return (service, db);
     }
 

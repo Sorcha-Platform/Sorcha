@@ -47,22 +47,22 @@ public interface INotificationService
     Task NotifyEncryptionProgressAsync(string walletAddress, EncryptionSignal signal, CancellationToken ct = default);
 
     /// <summary>
-    /// Signal encryption completion to the submitting wallet.
-    /// Also sends to EventsHub for the user if userId is provided.
+    /// Signal encryption completion to the submitting wallet via the WalletHub
+    /// Redis bridge.
     /// </summary>
     /// <param name="walletAddress">The submitting wallet address</param>
     /// <param name="signal">The encryption signal</param>
-    /// <param name="userId">Optional user ID for EventsHub notification</param>
+    /// <param name="userId">Unused. Retained for API stability while encryption call sites finish migrating.</param>
     /// <param name="ct">Cancellation token</param>
     Task NotifyEncryptionCompleteAsync(string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default);
 
     /// <summary>
-    /// Signal encryption failure to the submitting wallet.
-    /// Also sends to EventsHub for the user if userId is provided.
+    /// Signal encryption failure to the submitting wallet via the WalletHub
+    /// Redis bridge.
     /// </summary>
     /// <param name="walletAddress">The submitting wallet address</param>
     /// <param name="signal">The encryption signal</param>
-    /// <param name="userId">Optional user ID for EventsHub notification</param>
+    /// <param name="userId">Unused. Retained for API stability while encryption call sites finish migrating.</param>
     /// <param name="ct">Cancellation token</param>
     Task NotifyEncryptionFailedAsync(string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default);
 }

@@ -47,17 +47,10 @@ public class ThinSignalContractTests
 
     /// <summary>
     /// Methods on typed-client interfaces that are temporarily exempt from the strict
-    /// allow-list because their payload types haven't been stripped yet. Each entry MUST
-    /// have a follow-up phase tracked in MIGRATION.md.
+    /// allow-list because their payload types haven't been stripped yet. Empty after
+    /// T121 retired the EventsHub legacy events.
     /// </summary>
-    private static readonly HashSet<string> DeferredExemptions = new(StringComparer.Ordinal)
-    {
-        // EventsHub legacy events — retired in Phase 10 polish; not migrated.
-        "Sorcha.Blueprint.Service.Hubs.IEventsHubClient.EncryptionOperationCompleted",
-        "Sorcha.Blueprint.Service.Hubs.IEventsHubClient.EventReceived",
-        "Sorcha.Blueprint.Service.Hubs.IEventsHubClient.CredentialStatusChanged",
-        "Sorcha.Blueprint.Service.Hubs.IEventsHubClient.InboundActionReceived",
-    };
+    private static readonly HashSet<string> DeferredExemptions = new(StringComparer.Ordinal);
 
     [Fact]
     public void EveryEventMethod_OnEveryTypedClientInterface_HasAllowedParameterTypes()
@@ -142,7 +135,6 @@ public class ThinSignalContractTests
         // violation that EveryNonChatHub_HasTypedClientInterface catches separately.
         return [
             typeof(Sorcha.Blueprint.Service.Hubs.IBlueprintHubClient),
-            typeof(Sorcha.Blueprint.Service.Hubs.IEventsHubClient),
             typeof(Sorcha.Tenant.Service.Hubs.ITenantHubClient),
             typeof(Sorcha.Wallet.Service.Hubs.IWalletHubClient),
             typeof(Sorcha.Register.Service.Hubs.IRegisterHubClient),
@@ -154,7 +146,6 @@ public class ThinSignalContractTests
         // As above — enumerate by typeof(...) instead of walking the AppDomain.
         return [
             typeof(Sorcha.Blueprint.Service.Hubs.BlueprintHub),
-            typeof(Sorcha.Blueprint.Service.Hubs.EventsHub),
             typeof(Sorcha.Blueprint.Service.Hubs.ChatHub),
             typeof(Sorcha.Tenant.Service.Hubs.TenantHub),
             typeof(Sorcha.Wallet.Service.Hubs.WalletHub),

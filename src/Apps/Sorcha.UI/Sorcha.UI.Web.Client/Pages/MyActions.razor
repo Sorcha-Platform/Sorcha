@@ -592,7 +592,7 @@
 
     private Task HandleActionRejected(SignalNotification signal)
     {
-        // Real-time signal delivered to ActivityLogPanel via EventsHub
+        // Real-time signal delivered via TenantHub inbox events
         return InvokeAsync(StateHasChanged);
     }
 

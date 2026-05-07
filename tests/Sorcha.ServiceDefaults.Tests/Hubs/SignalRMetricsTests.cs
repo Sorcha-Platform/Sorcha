@@ -24,33 +24,6 @@ public class SignalRMetricsTests
         metrics.MessagesSentTotal.Name.Should().Be("sorcha_signalr_messages_sent_total");
         metrics.ReconnectsTotal.Name.Should().Be("sorcha_signalr_reconnects_total");
         metrics.BackplaneState.Name.Should().Be("sorcha_signalr_backplane_state");
-        metrics.EventsHubSubscribers.Name.Should().Be("sorcha_signalr_events_hub_subscribers");
-    }
-
-    [Fact]
-    public void EventsHubSubscribers_TracksIncrementsAndDecrements()
-    {
-        using var metrics = new SignalRMetrics();
-        using var listener = new MeterListener();
-        long observed = -1;
-        listener.InstrumentPublished = (instrument, l) =>
-        {
-            if (instrument.Meter.Name == SignalRMetrics.MeterName &&
-                instrument.Name == "sorcha_signalr_events_hub_subscribers")
-            {
-                l.EnableMeasurementEvents(instrument);
-            }
-        };
-        listener.SetMeasurementEventCallback<long>((_, value, _, _) => observed = value);
-        listener.Start();
-
-        metrics.IncrementEventsHubSubscribers();
-        metrics.IncrementEventsHubSubscribers();
-        metrics.IncrementEventsHubSubscribers();
-        metrics.DecrementEventsHubSubscribers();
-
-        listener.RecordObservableInstruments();
-        observed.Should().Be(2);
     }
 
     [Fact]

@@ -60,7 +60,7 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
             services.AddSingleton<IOutputCacheStore, NoOpOutputCacheStore>();
 
             // Remove Redis connection multiplexer and replace with mock
-            // (required by EventsHubNotificationBridge and other Redis-dependent services)
+            // (required by SignalR backplane wiring and other Redis-dependent services)
             services.RemoveAll<IConnectionMultiplexer>();
             var mockMultiplexer = new Mock<IConnectionMultiplexer>();
             var mockSubscriber = new Mock<ISubscriber>();

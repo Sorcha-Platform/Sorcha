@@ -8,7 +8,7 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-libra
 
 # SignalR Skill
 
-ASP.NET Core SignalR implementation for real-time client-server communication. Sorcha runs **five hubs** post-Feature 118: `BlueprintHub` (workflow signals; `/hubs/blueprint`, `/actionshub` deprecated alias), `WalletHub` (wallet-domain events; `/hubs/wallet`), `RegisterHub` (register-domain events; `/hubs/register`), `TenantHub` (identity / membership / inbox; `/hubs/tenant`), and `ChatHub` (the deliberate exception — RPC-streaming AI Designer; `/hubs/chat`).
+ASP.NET Core SignalR implementation for real-time client-server communication. Sorcha runs **five hubs** post-Feature 118: `BlueprintHub` (workflow signals; `/hubs/blueprint`), `WalletHub` (wallet-domain events; `/hubs/wallet`), `RegisterHub` (register-domain events; `/hubs/register`), `TenantHub` (identity / membership / inbox; `/hubs/tenant`), and `ChatHub` (the deliberate exception — RPC-streaming AI Designer; `/hubs/chat`). The legacy `EventsHub` and `/actionshub` alias retired in T121 / T122.
 
 Every notification hub registers through `services.AddSorchaHub<THub, TClient>(IConfiguration, routePath, serviceShortName)` from `Sorcha.ServiceDefaults.Hubs`. The extension wires JWT Bearer auth, the SignalR Redis backplane (with per-service `ChannelPrefix=sorcha:signalr:{service}` for cross-service isolation), reconnect-with-jitter, OpenTelemetry instrumentation, and the storage-providers fail-fast audit. ChatHub is exempt — its streaming wire shape doesn't fit the notification-hub contract.
 

@@ -13,11 +13,9 @@ namespace Sorcha.Blueprint.Service.Hubs;
 /// </summary>
 /// <remarks>
 /// Renamed from <c>ActionsHub</c> in Feature 118 Phase 4 (US2 — topology consolidation).
-/// The legacy route <c>/actionshub</c> is preserved as an alias for one release cycle
-/// per spec FR-003 — old clients continue to connect; the deprecation Notice is logged
-/// at the alias-mapped endpoint.
+/// The legacy <c>/actionshub</c> alias was retired in T122.
 ///
-/// Connection URL: <c>/hubs/blueprint</c> (preferred), <c>/actionshub</c> (deprecated alias).
+/// Connection URL: <c>/hubs/blueprint</c>.
 /// Authentication: JWT token via query parameter <c>?access_token={jwt}</c>.
 ///
 /// Server-to-client events live on <see cref="IBlueprintHubClient"/>. Encryption

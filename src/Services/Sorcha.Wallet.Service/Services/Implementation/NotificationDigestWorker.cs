@@ -26,9 +26,8 @@ namespace Sorcha.Wallet.Service.Services.Implementation;
 /// digest as JSON to the legacy <c>wallet:notifications</c> Redis pub/sub
 /// channel — pre-release means no parallel-fire window. The sorted-set
 /// dequeue path stays (it is the source of digest events; T075 already
-/// migrated the real-time path off pub/sub). <c>EventsHubNotificationBridge</c>
-/// in Blueprint Service is the only remaining consumer of the legacy channel
-/// and stays in tree until T121 retires EventsHub entirely.
+/// migrated the real-time path off pub/sub). T121 retired EventsHub and the
+/// legacy bridge consumer.
 /// </para>
 /// <para>
 /// Lua atomic dequeue is preserved verbatim — multi-instance correctness was

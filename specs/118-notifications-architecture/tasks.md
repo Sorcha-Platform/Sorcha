@@ -186,7 +186,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 - [X] T088 [US4] Update `MainLayout.razor` and credential consumers that previously read issuer/credential metadata off the hub event to fetch detail via `GET /api/wallets/{addr}/credentials/{credentialId}`.
 - [X] T089 [US4] Ship UI's `RegisterHubConnection` token-passing change in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/RegisterHubConnection.cs` — pass the JWT via `?access_token=`. Server-side hub still permissive.
 - [X] T090 [US4] Add `sorcha_signalr_connections_total{hub="register",authenticated=...}` counter to track rollout. Wire in `RegisterHub.OnConnectedAsync`.
-- [ ] T091 [US4] **Second-release task** (do not bundle with above): Add `[Authorize]` to `src/Services/Sorcha.Register.Service/Hubs/RegisterHub.cs`. Un-skip T080. Remove permissive code path. Only ship after the authenticated counter shows ≥ 99 % adoption.
+- [X] T091 [US4] Add `[Authorize]` to `src/Services/Sorcha.Register.Service/Hubs/RegisterHub.cs`. Cutover-counter instrumentation removed (no anonymous holdouts pre-release).
 
 **Checkpoint**: US4 complete (after second-release task lands). Backplane carries no domain content. RegisterHub closed.
 
@@ -281,8 +281,8 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### EventsHub decommission
 
-- [ ] T121 After parallel-fire window closes and `sorcha_signalr_events_hub_subscribers` has been at zero across all replicas for the full release cycle: delete `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EventsHubConnection.cs`, `src/Services/Sorcha.Blueprint.Service/Hubs/EventsHub.cs`, `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EventsHubNotificationBridge.cs`. Replace `MapHub<EventsHub>` with a `MapGet("/hubs/events", ...)` that returns 410 with the structured JSON body from FR-004.
-- [ ] T122 After the deprecation window for `/actionshub` closes: replace its alias in `src/Services/Sorcha.Blueprint.Service/Program.cs` with a `MapGet("/actionshub", ...)` returning 410 with structured JSON naming `/hubs/blueprint`.
+- [X] T121 EventsHub retired entirely: deleted `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EventsHubConnection.cs`, `src/Services/Sorcha.Blueprint.Service/Hubs/EventsHub.cs` + `IEventsHubClient.cs`, `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EventsHubNotificationBridge.cs`, `src/Common/Sorcha.ServiceClients.Http/Models/CredentialStatusChangedEvent.cs`, `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EncryptionOperationCompletedDto.cs`. Wallet `wallet:credential-status` publish + EventsHub-specific `EventsHubSubscribers` gauge removed. Pre-release: no 410 alias needed (no clients to redirect).
+- [X] T122 `/actionshub` route alias removed from `src/Services/Sorcha.Blueprint.Service/Program.cs`. Pre-release: no 410 alias needed (no clients to redirect). Internal callers (Sorcha.Agent, BlueprintHubConnection, multinode tests) migrated to `/hubs/blueprint`.
 
 ### Docs and observability
 

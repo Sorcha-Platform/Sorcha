@@ -12,10 +12,7 @@ namespace Sorcha.ServiceDefaults.Hubs;
 /// </summary>
 /// <remarks>
 /// Per Feature 118 spec FR-039 — exposes connection lifecycle, message
-/// fan-out, backplane state, and reconnect rate per hub. The
-/// <see cref="EventsHubSubscribers" /> gauge is intentionally separate from
-/// the per-hub instruments so that EventsHub decommission (FR-038) can be
-/// observed regardless of the hub-name tag set on every other instrument.
+/// fan-out, backplane state, and reconnect rate per hub.
 /// </remarks>
 public sealed class SignalRMetrics : IDisposable
 {
@@ -23,7 +20,6 @@ public sealed class SignalRMetrics : IDisposable
     public const string MeterName = "Sorcha.SignalR";
 
     private readonly Meter _meter;
-    private long _eventsHubSubscriberCount;
     private readonly Dictionary<string, int> _backplaneStates = new(StringComparer.Ordinal);
     private readonly object _backplaneLock = new();
 
@@ -38,9 +34,6 @@ public sealed class SignalRMetrics : IDisposable
 
     /// <summary>Observable gauge: per-service backplane health. Tag: <c>service</c>. Values 0=down, 1=degraded, 2=up.</summary>
     public ObservableGauge<int> BackplaneState { get; }
-
-    /// <summary>Observable gauge: EventsHub subscriber count. Used to gate decommission (spec FR-038). No tags.</summary>
-    public ObservableGauge<long> EventsHubSubscribers { get; }
 
     /// <summary>
     /// Constructs the meter and registers all instruments. Singleton — register
@@ -70,12 +63,6 @@ public sealed class SignalRMetrics : IDisposable
             observeValues: ObserveBackplaneStates,
             unit: "{state}",
             description: "Per-service SignalR backplane health: 0=down, 1=degraded, 2=up.");
-
-        EventsHubSubscribers = _meter.CreateObservableGauge<long>(
-            name: "sorcha_signalr_events_hub_subscribers",
-            observeValue: () => Interlocked.Read(ref _eventsHubSubscriberCount),
-            unit: "{subscriber}",
-            description: "EventsHub subscriber count. Drops to zero across the parallel-fire window before EventsHub is removed (spec FR-038).");
     }
 
     /// <summary>
@@ -92,18 +79,6 @@ public sealed class SignalRMetrics : IDisposable
             _backplaneStates[serviceShortName] = state;
         }
     }
-
-    /// <summary>
-    /// Increments the EventsHub subscriber gauge. Used by EventsHub
-    /// <c>OnConnectedAsync</c>.
-    /// </summary>
-    public void IncrementEventsHubSubscribers() => Interlocked.Increment(ref _eventsHubSubscriberCount);
-
-    /// <summary>
-    /// Decrements the EventsHub subscriber gauge. Used by EventsHub
-    /// <c>OnDisconnectedAsync</c>.
-    /// </summary>
-    public void DecrementEventsHubSubscribers() => Interlocked.Decrement(ref _eventsHubSubscriberCount);
 
     private IEnumerable<Measurement<int>> ObserveBackplaneStates()
     {

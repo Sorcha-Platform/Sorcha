@@ -418,8 +418,6 @@ public static class CredentialEndpoints
         string credentialId,
         [FromBody] UpdateStatusRequest request,
         ICredentialStore store,
-        IConnectionMultiplexer redis,
-        IWalletRepository walletRepository,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken = default)
     {
@@ -471,62 +469,12 @@ public static class CredentialEndpoints
         if (updated is null)
             return Results.NotFound();
 
-        // Resolve the owning user id so the SignalR bridge can route to the right group.
-        // Best-effort — event publishing is non-fatal. If the wallet record is missing
-        // (shouldn't happen since PatchStatusAsync just succeeded) we skip the publish
-        // rather than fail the PATCH.
-        string? userId = null;
-        try
-        {
-            var wallet = await walletRepository.GetByAddressAsync(walletAddress, cancellationToken: cancellationToken);
-            userId = wallet?.Owner;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex,
-                "Failed to resolve wallet owner for {WalletAddress} while publishing CredentialStatusChangedEvent",
-                walletAddress);
-        }
-
-        try
-        {
-            var evt = new CredentialStatusChangedEvent
-            {
-                WalletAddress = walletAddress,
-                CredentialId = credentialId,
-                CredentialType = updated.Type,
-                PreviousStatus = previousStatus.ToString(),
-                NewStatus = updated.Status.ToString(),
-                ChangedAt = DateTimeOffset.UtcNow,
-                UserId = userId,
-            };
-
-            var subscriber = redis.GetSubscriber();
-            var json = JsonSerializer.Serialize(evt, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            });
-            await subscriber.PublishAsync(
-                RedisChannel.Literal(Feature106CredentialStatusChannel),
-                json);
-        }
-        catch (Exception ex)
-        {
-            // Publishing is best-effort — the authoritative state is already persisted.
-            logger.LogWarning(ex,
-                "Failed to publish CredentialStatusChangedEvent for credential {CredentialId}",
-                credentialId);
-        }
-
+        // Modern path (Feature 118): WalletHub emits CredentialStatusChanged
+        // directly; the legacy wallet:credential-status Redis bridge that fed
+        // EventsHub was retired in T121. No publish here.
+        _ = previousStatus; // retained for future inbox-write enrichment if needed
         return Results.Ok(updated);
     }
-
-    /// <summary>
-    /// Redis pub/sub channel for Feature 106 credential status transitions.
-    /// Consumed by <c>EventsHubNotificationBridge</c> in Blueprint Service and
-    /// forwarded to the holder's SignalR group as <c>CredentialStatusChanged</c>.
-    /// </summary>
-    public const string Feature106CredentialStatusChannel = "wallet:credential-status";
 
     private static async Task<IResult> IssueCredential(
         string walletAddress,

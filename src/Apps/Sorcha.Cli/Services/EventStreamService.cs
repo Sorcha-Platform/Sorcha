@@ -14,15 +14,10 @@ namespace Sorcha.Cli.Services;
 /// <see cref="SorchaHubConnectionBuilder"/> (jittered infinite reconnect, JWT auth).
 /// </summary>
 /// <remarks>
-/// Feature 118 Phase 10 polish — rewritten to:
-/// <list type="bullet">
-///   <item>Use <c>SorchaHubConnectionBuilder</c> instead of a roll-own builder so
-///         the CLI shares the platform reconnect-with-jitter policy.</item>
-///   <item>Drop the EventsHub connection — that hub is in its parallel-fire
-///         deprecation window. Workflow signals come from BlueprintHub now.</item>
-///   <item>Connect to RegisterHub and BlueprintHub at their canonical routes
-///         (<c>/hubs/register</c> and <c>/hubs/blueprint</c>).</item>
-/// </list>
+/// Feature 118 — connects to RegisterHub and BlueprintHub at their canonical
+/// routes (<c>/hubs/register</c> and <c>/hubs/blueprint</c>) using
+/// <c>SorchaHubConnectionBuilder</c> so the CLI shares the platform
+/// reconnect-with-jitter policy.
 /// </remarks>
 public class EventStreamService : IAsyncDisposable
 {
@@ -49,12 +44,6 @@ public class EventStreamService : IAsyncDisposable
     ];
 
     /// <summary>BlueprintHub events the CLI surfaces to the watcher.</summary>
-    /// <remarks>
-    /// Replaces the legacy EventsHub event names <c>BlueprintPublished</c> /
-    /// <c>ActionCompleted</c>. <c>WorkflowCompleted</c> is the BlueprintHub
-    /// equivalent of the latter; <c>BlueprintPublished</c> was admin-only and
-    /// is dropped.
-    /// </remarks>
     private static readonly string[] BlueprintEventTypes =
     [
         "ActionAvailable",
