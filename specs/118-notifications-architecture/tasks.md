@@ -232,7 +232,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 - [ ] T102 [P] [US6] Adopt `HubConnectionWithFallback<IBlueprintHubClient>` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/BlueprintHubConnection.cs`. Refresher calls `GET /api/instances/{id}` per subscribed instance.
 - [ ] T103 [P] [US6] Adopt `HubConnectionWithFallback<ITenantHubClient>` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/TenantHubConnection.cs`. Refresher calls `GET /api/me/inbox/unread-count`.
 - [ ] T104 [P] [US6] Adopt `HubConnectionWithFallback<IRegisterHubClient>` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/RegisterHubConnection.cs`. Refresher calls `GET /api/registers/{id}` per subscribed register.
-- [ ] T105 [US6] Surface a "Reconnecting…" affordance in the existing `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor` driven by the connection-state observable on the inbox connection. Inline indicator only — no blocking toast.
+- [X] T105 [US6] Surface a "Reconnecting…" affordance in the existing `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor` driven by the connection-state observable on the inbox connection. Inline indicator only — no blocking toast.
 
 **Checkpoint**: US6 complete. Every hub-backed UI surface degrades gracefully on disconnect.
 
