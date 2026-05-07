@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.SignalR.Client;
 using Xunit;
@@ -80,10 +81,110 @@ public class HubBackplaneCrossReplicaTests
         }
     }
 
-    [Fact(Skip = "TenantHub does not yet exist — created in Phase 4 (US2). This case is parameterised here so the test fixture is ready when TenantHub lands.")]
+    [SkippableFact]
     [Trait("Hub", "Tenant")]
-    public Task TenantHub_EventOnReplicaA_ReachesClientOnReplicaB_WithinBudget() =>
-        Task.CompletedTask;
+    public async Task TenantHub_EventOnReplicaA_ReachesClientOnReplicaB_WithinBudget()
+    {
+        Skip.IfNot(MultinodeEnabled, "Multi-node fixture not running. Set SORCHA_MULTINODE=1 and start docker-compose.multinode.yml.");
+
+        // 1. Acquire admin user token. TenantHub auto-joins user:{platform_user_id}
+        //    on connect; same JWT on both replicas → both pinned to the same
+        //    backplane group, so a write on either replica should fan out to both.
+        using var http = new HttpClient { BaseAddress = new Uri(GatewayUrl) };
+        var userToken = await GetAdminUserTokenAsync(http);
+        var serviceToken = await GetServiceTokenAsync(http);
+
+        var clientOnReplica1 = await ConnectTenantAsync(userToken, affinityCookie: "tenant-1");
+        var clientOnReplica2 = await ConnectTenantAsync(userToken, affinityCookie: "tenant-2");
+
+        try
+        {
+            var receivedOn1 = new TaskCompletionSource<DateTimeOffset>();
+            var receivedOn2 = new TaskCompletionSource<DateTimeOffset>();
+
+            clientOnReplica1.On<string, DateTimeOffset, string>("InboxEntryAdded",
+                (_, _, _) => receivedOn1.TrySetResult(DateTimeOffset.UtcNow));
+            clientOnReplica2.On<string, DateTimeOffset, string>("InboxEntryAdded",
+                (_, _, _) => receivedOn2.TrySetResult(DateTimeOffset.UtcNow));
+
+            // Trigger via the internal write endpoint. The host port mapping varies
+            // between the base compose and the multinode overlay; the write reaches
+            // whichever replica YARP routes the POST to. Backplane fan-out should
+            // reach both subscribers.
+            var sentAt = DateTimeOffset.UtcNow;
+            await TriggerInboxWriteAsync(serviceToken);
+
+            await Task.WhenAll(
+                receivedOn1.Task.WaitAsync(TimeSpan.FromSeconds(5)),
+                receivedOn2.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+
+            (receivedOn1.Task.Result - sentAt).Should().BeLessThan(FanOutBudget);
+            (receivedOn2.Task.Result - sentAt).Should().BeLessThan(FanOutBudget);
+        }
+        finally
+        {
+            await clientOnReplica1.DisposeAsync();
+            await clientOnReplica2.DisposeAsync();
+        }
+    }
+
+    private static async Task<HubConnection> ConnectTenantAsync(string accessToken, string affinityCookie)
+    {
+        var connection = new HubConnectionBuilder()
+            .WithUrl(GatewayUrl + $"/hubs/tenant?access_token={accessToken}", options =>
+            {
+                options.Cookies.Add(new System.Net.Cookie(".Sorcha.Affinity.Tenant", affinityCookie, "/", "localhost"));
+            })
+            .Build();
+        await connection.StartAsync();
+        return connection;
+    }
+
+    private static async Task<string> GetAdminUserTokenAsync(HttpClient http)
+    {
+        var resp = await http.PostAsJsonAsync("/api/auth/login",
+            new { email = "admin@sorcha.local", password = "Dev_Pass_2025!" });
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return body.GetProperty("access_token").GetString()!;
+    }
+
+    private static async Task<string> GetServiceTokenAsync(HttpClient http)
+    {
+        var form = new FormUrlEncodedContent(new[]
+        {
+            new KeyValuePair<string, string>("grant_type", "client_credentials"),
+            new KeyValuePair<string, string>("client_id", "service-blueprint"),
+            new KeyValuePair<string, string>("client_secret", "blueprint-service-secret"),
+        });
+        var resp = await http.PostAsync("/api/service-auth/token", form);
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return body.GetProperty("access_token").GetString()!;
+    }
+
+    private static async Task TriggerInboxWriteAsync(string serviceToken)
+    {
+        // Internal endpoint is service-to-service only — the multinode overlay
+        // exposes both replicas via the host-mapped tenant ports (5450 → tenant-1,
+        // dynamic for tenant-2). Reach replica-1 directly; the backplane handles
+        // fan-out across replicas.
+        using var http = new HttpClient { BaseAddress = new Uri("http://localhost:5450") };
+        http.DefaultRequestHeaders.Add("Authorization", $"Bearer {serviceToken}");
+        var sourceEventId = Guid.NewGuid();
+        var resp = await http.PostAsJsonAsync("/api/internal/inbox", new
+        {
+            platformUserId = Guid.Parse("00000000-0000-0001-0000-000000000001"),
+            category = "Action",
+            severity = "Info",
+            correlationKey = $"multinode:tenant:{sourceEventId:N}",
+            detailHref = "/api/me/inbox",
+            sourceEventId,
+            occurredAt = DateTimeOffset.UtcNow,
+            title = "Multinode TenantHub fan-out test",
+        });
+        resp.EnsureSuccessStatusCode();
+    }
 
     [Fact(Skip = "WalletHub multinode overlay not populated yet — Phase 3 follow-up.")]
     [Trait("Hub", "Wallet")]
