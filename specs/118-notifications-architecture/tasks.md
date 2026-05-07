@@ -172,7 +172,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 - [X] T078 [P] [US4] Reflection-based contract test `tests/Sorcha.ServiceDefaults.Tests/Hubs/ThinSignalContractTests.cs` enumerating every method on every `I*HubClient` interface and asserting parameter types are in the allow-list (`string`, `Guid`, `Guid?`, `int`, `long`, `DateTimeOffset`). ChatHub interface excluded explicitly.
 - [ ] T079 [P] [US4] Backplane-observation integration test in `tests/Sorcha.Integration.Tests/Hubs/BackplanePayloadShapeTests.cs` — runs the four notification hubs, triggers one of every event type, subscribes to Redis backplane, asserts every JSON message body conforms to `contracts/hub-signal.schema.json`.
-- [ ] T080 [P] [US4] RegisterHub auth cutover test `tests/Sorcha.Register.Service.Tests/RegisterHubAuthorizeTests.cs` asserting unauthenticated connections are rejected with 401 (initially `[Fact(Skip="awaiting cutover")]`, un-skipped in the second-release task).
+- [X] T080 [P] [US4] RegisterHub auth cutover test `tests/Sorcha.Register.Service.Tests/RegisterHubAuthorizeTests.cs` asserting unauthenticated connections are rejected with 401 (initially `[Fact(Skip="awaiting cutover")]`, un-skipped in the second-release task).
 
 ### Implementation for User Story 4
 
