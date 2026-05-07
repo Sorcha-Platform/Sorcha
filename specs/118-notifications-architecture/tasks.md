@@ -179,9 +179,9 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 - [X] T081 [US4] Strip descriptive fields from existing `ActionNotification` / `CredentialNotification` / `EncryptionSignal` records. Replace with the IDs they carry; move descriptive fields (blueprint name, action description, percentage) to the corresponding REST detail endpoints if not already there. Files: `src/Services/Sorcha.Blueprint.Service/Models/Notifications/*.cs`, `src/Services/Sorcha.Wallet.Service/Models/Notifications/*.cs`.
 - [X] T082 [US4] Update every emit site to call the new typed methods on `IBlueprintHubClient` / `IWalletHubClient` with thin-signal parameters. Files: `NotificationService.cs`, `TransactionLifecycleEventBridge.cs`, encryption pipeline emit sites.
 - [X] T083 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IBlueprintHubClient` per `contracts/blueprint-hub-client.cs.md`.
-- [ ] T084 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IWalletHubClient` per `contracts/wallet-hub-client.cs.md`.
-- [ ] T085 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IRegisterHubClient` per `contracts/register-hub-client.cs.md`.
-- [ ] T086 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `ITenantHubClient` per `contracts/tenant-hub-client.cs.md`.
+- [X] T084 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IWalletHubClient` per `contracts/wallet-hub-client.cs.md`.
+- [X] T085 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IRegisterHubClient` per `contracts/register-hub-client.cs.md`.
+- [X] T086 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `ITenantHubClient` per `contracts/tenant-hub-client.cs.md`.
 - [X] T087 [US4] Update `EncryptionProgressIndicator.razor` and any other UI consumer that previously read percentage off the hub event to fetch detail via `GET /api/operations/{operationId}`.
 - [X] T088 [US4] Update `MainLayout.razor` and credential consumers that previously read issuer/credential metadata off the hub event to fetch detail via `GET /api/wallets/{addr}/credentials/{credentialId}`.
 - [X] T089 [US4] Ship UI's `RegisterHubConnection` token-passing change in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/RegisterHubConnection.cs` — pass the JWT via `?access_token=`. Server-side hub still permissive.
