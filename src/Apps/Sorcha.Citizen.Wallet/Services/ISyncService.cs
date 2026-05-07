@@ -184,7 +184,7 @@ public sealed class SyncService : ISyncService
         {
             await _cache.UpsertAsync(new CachedCredential
             {
-                Id = replaced.NewId,
+                Id = StringToCacheGuid(replaced.NewId),
                 Vct = string.Empty,
                 RawSdJwt = replaced.Jwt,
                 AvailableClaimNames = [],
@@ -197,11 +197,24 @@ public sealed class SyncService : ISyncService
 
     private static CachedCredential ToCachedCredential(CachedCredentialPayload payload) => new()
     {
-        Id = payload.Id,
+        // The cache uses Guid as an opaque local key; the canonical credential id
+        // (urn:credential:...) survives in payload.RawSdJwt + the presentation
+        // engine's verifier round-trip. Boundary mapping is deterministic so the
+        // same urn always lands on the same cache row across syncs.
+        Id = StringToCacheGuid(payload.Id),
         Vct = payload.Vct,
         RawSdJwt = payload.Jwt,
         AvailableClaimNames = [],
         IssuerDid = payload.IssuerDid,
     };
 
+    private static Guid StringToCacheGuid(string credentialId)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(credentialId));
+        // First 16 bytes of SHA-256 form a deterministic, well-distributed Guid.
+        var slice = new byte[16];
+        Array.Copy(bytes, slice, 16);
+        return new Guid(slice);
+    }
 }

@@ -12,8 +12,11 @@ namespace Sorcha.CitizenWallet.Abstractions.Models;
 /// </summary>
 public sealed record CachedCredentialPayload
 {
-    /// <summary>Server-assigned credential identifier.</summary>
-    public Guid Id { get; init; }
+    /// <summary>
+    /// Server-assigned credential identifier. Matches <c>CredentialEntity.Id</c>
+    /// (typically a URN like <c>urn:credential:AssuredIdentityCredential:...</c>).
+    /// </summary>
+    public string Id { get; init; } = string.Empty;
 
     /// <summary>Verifiable Credential Type URI (e.g. Verified Citizen, Assured Identity).</summary>
     public string Vct { get; init; } = string.Empty;

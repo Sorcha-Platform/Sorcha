@@ -49,5 +49,27 @@ internal sealed class TestCitizenWalletDbContext : WalletDbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.PlatformUserId, e.PlatformUserDeviceId }).IsUnique();
         });
+
+        // Feature 114 / US4 — citizen holder-address index + credential event log
+        // + a minimal Credentials mapping so EfCoreCitizenCredentialEventStream's
+        // join to CredentialEntity works under the InMemory provider (jsonb /
+        // soft-delete from the production mapping is incompatible with InMemory).
+        modelBuilder.Entity<CitizenHolderIndex>(entity =>
+        {
+            entity.HasKey(e => e.WalletAddress);
+            entity.HasIndex(e => e.PlatformUserId);
+        });
+
+        modelBuilder.Entity<CitizenCredentialEventLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.PlatformUserId, e.Seq }).IsUnique();
+        });
+
+        modelBuilder.Entity<CredentialEntity>(entity =>
+        {
+            entity.HasKey(e => new { e.Id, e.WalletAddress });
+            entity.Property(e => e.Status).HasConversion<string>();
+        });
     }
 }

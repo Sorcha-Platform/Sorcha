@@ -36,6 +36,7 @@ public sealed class CitizenWalletEnrolEndpointTests
 
     private readonly Mock<IValidator<DeviceEnrolmentRequest>> _validator = new();
     private readonly Mock<IHolderKeyService> _holderKeys = new();
+    private readonly Mock<IHolderAddressLookup> _holderAddressLookup = new();
     private readonly Mock<IDeviceDelegationIssuer> _issuer = new();
     private readonly Mock<IOrgStatusSigningWalletResolver> _resolver = new();
     private readonly Mock<IPlatformUserDeviceClient> _deviceClient = new();
@@ -108,6 +109,7 @@ public sealed class CitizenWalletEnrolEndpointTests
             _issuer.Object,
             _resolver.Object,
             _deviceClient.Object,
+            _holderAddressLookup.Object,
             NullLogger<Program>.Instance,
             CancellationToken.None
         ]);
