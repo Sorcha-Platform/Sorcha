@@ -580,6 +580,7 @@ public static class ServiceCollectionExtensions
             var authService = sp.GetRequiredService<IAuthenticationService>();
             var configService = sp.GetRequiredService<IConfigurationService>();
             var logger = sp.GetRequiredService<ILogger<TenantHubConnection>>();
+            var inboxApi = sp.GetService<IInboxApiService>();
             return new TenantHubConnection(
                 hubBaseUrl,
                 accessTokenProvider: async () =>
@@ -587,7 +588,8 @@ public static class ServiceCollectionExtensions
                     var profileName = await configService.GetActiveProfileNameAsync();
                     return await authService.GetAccessTokenAsync(profileName);
                 },
-                logger);
+                logger,
+                inboxApi);
         });
 
         return services;

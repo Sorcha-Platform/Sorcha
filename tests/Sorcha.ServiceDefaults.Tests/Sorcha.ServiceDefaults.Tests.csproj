@@ -39,6 +39,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Common\Sorcha.ServiceDefaults\Sorcha.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
   </ItemGroup>
 
 </Project>

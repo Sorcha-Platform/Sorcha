@@ -3,7 +3,7 @@
 
 using Microsoft.AspNetCore.SignalR.Client;
 
-namespace Sorcha.ServiceDefaults.Hubs;
+namespace Sorcha.ServiceClients.Http.Hub;
 
 /// <summary>
 /// Wraps a <see cref="HubConnection" /> and exposes a connection-state
