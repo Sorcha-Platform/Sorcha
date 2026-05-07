@@ -382,6 +382,10 @@ public static class ServiceCollectionExtensions
         // Tenant Hub Connection (Phase 5 of Feature 118 — durable inbox events)
         services.AddTenantHubServices(baseAddress);
 
+        // Wallet Hub Connection (Feature 114 citizen wallet + future home for
+        // wallet-domain encryption / credential / transaction events per Feature 118 US2)
+        services.AddWalletHubServices(baseAddress);
+
         // Theme Service (043 - T042)
         services.AddScoped<IThemeService>(sp =>
         {
@@ -496,6 +500,34 @@ public static class ServiceCollectionExtensions
 
         // Encryption operation tracker (global state across page navigation)
         services.AddScoped<IEncryptionOperationTracker, EncryptionOperationTracker>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Wallet Hub connection. Subscribes to citizen-wallet device +
+    /// credential events today; future home for encryption / org-credential /
+    /// transaction-tick events as the server-side migration lands.
+    /// </summary>
+    public static IServiceCollection AddWalletHubServices(this IServiceCollection services, string baseAddress)
+    {
+        services.AddScoped<WalletHubConnection>(sp =>
+        {
+            string hubBaseUrl;
+            if (Uri.TryCreate(baseAddress, UriKind.Absolute, out var uri))
+            {
+                hubBaseUrl = $"{uri.Scheme}://{uri.Authority}";
+            }
+            else
+            {
+                hubBaseUrl = "";
+            }
+
+            var authService = sp.GetRequiredService<IAuthenticationService>();
+            var configService = sp.GetRequiredService<IConfigurationService>();
+            var logger = sp.GetRequiredService<ILogger<WalletHubConnection>>();
+            return new WalletHubConnection(hubBaseUrl, authService, configService, logger);
+        });
 
         return services;
     }
