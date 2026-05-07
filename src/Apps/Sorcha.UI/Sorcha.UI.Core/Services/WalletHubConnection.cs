@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Registers;
 using Sorcha.UI.Core.Services.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
@@ -46,6 +47,15 @@ public class WalletHubConnection : IAsyncDisposable
 
     /// <summary>A new credential is available for the citizen's wallet to sync.</summary>
     public event Action<string>? OnCredentialAvailable;
+
+    /// <summary>Encryption operation progressed. Detail via <c>GET /api/operations/{operationId}</c>.</summary>
+    public event Func<EncryptionSignal, Task>? OnEncryptionProgress;
+
+    /// <summary>Encryption operation completed successfully. Detail via <c>GET /api/operations/{operationId}</c>.</summary>
+    public event Func<EncryptionSignal, Task>? OnEncryptionComplete;
+
+    /// <summary>Encryption operation failed. Detail via <c>GET /api/operations/{operationId}</c>.</summary>
+    public event Func<EncryptionSignal, Task>? OnEncryptionFailed;
 
     /// <summary>Connection state changed.</summary>
     public event Action<ConnectionState>? OnConnectionStateChanged;
@@ -177,6 +187,57 @@ public class WalletHubConnection : IAsyncDisposable
             _logger.LogDebug("WalletHub CredentialAvailable: {CredentialId}", credentialId);
             OnCredentialAvailable?.Invoke(credentialId);
         });
+
+        // Feature 118 — encryption pipeline migrated off BlueprintHub. Wire shape
+        // is (operationId, occurredAt, traceId); UI consumers fetch percent /
+        // stage / recipient state via /api/operations/{operationId}.
+        _hubConnection.On<string, DateTimeOffset, string>("EncryptionProgress",
+            async (operationId, occurredAt, traceId) =>
+            {
+                _logger.LogDebug("WalletHub EncryptionProgress: {OperationId}", operationId);
+                if (OnEncryptionProgress is not null)
+                {
+                    await OnEncryptionProgress(new EncryptionSignal
+                    {
+                        OperationId = operationId,
+                        PercentComplete = 0,
+                        Status = "encrypting",
+                        Timestamp = occurredAt,
+                    });
+                }
+            });
+
+        _hubConnection.On<string, DateTimeOffset, string>("EncryptionComplete",
+            async (operationId, occurredAt, traceId) =>
+            {
+                _logger.LogDebug("WalletHub EncryptionComplete: {OperationId}", operationId);
+                if (OnEncryptionComplete is not null)
+                {
+                    await OnEncryptionComplete(new EncryptionSignal
+                    {
+                        OperationId = operationId,
+                        PercentComplete = 100,
+                        Status = "complete",
+                        Timestamp = occurredAt,
+                    });
+                }
+            });
+
+        _hubConnection.On<string, DateTimeOffset, string>("EncryptionFailed",
+            async (operationId, occurredAt, traceId) =>
+            {
+                _logger.LogDebug("WalletHub EncryptionFailed: {OperationId}", operationId);
+                if (OnEncryptionFailed is not null)
+                {
+                    await OnEncryptionFailed(new EncryptionSignal
+                    {
+                        OperationId = operationId,
+                        PercentComplete = 0,
+                        Status = "failed",
+                        Timestamp = occurredAt,
+                    });
+                }
+            });
     }
 
     private void UpdateConnectionState(ConnectionStatus status, string? errorMessage = null)

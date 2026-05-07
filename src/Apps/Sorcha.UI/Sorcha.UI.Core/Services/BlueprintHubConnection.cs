@@ -24,13 +24,12 @@ namespace Sorcha.UI.Core.Services;
 /// - ActionAvailable: New action available for a participant
 /// - ActionRejected: Action was rejected and routed elsewhere
 /// - WorkflowCompleted: Entire workflow has completed
-/// - EncryptionProgress / EncryptionComplete / EncryptionFailed: legacy hosting —
-///   encryption events still emit on BlueprintHub today; they migrate to
-///   <see cref="WalletHubConnection"/> alongside the server-side IBlueprintHubClient
-///   surface trim in a follow-up phase.
 /// - CredentialReceived / CredentialStatusChanged / PendingCredentialCountUpdated:
 ///   currently inert (no server emit path); placeholders preserved for the
 ///   forthcoming WalletHubConnection migration.
+///
+/// Encryption events (Progress/Complete/Failed) live on
+/// <see cref="WalletHubConnection"/> as of the encryption-pipeline migration.
 ///
 /// All notifications use thin signal types (SignalNotification / EncryptionSignal)
 /// that carry only identifiers — UI pulls details through REST endpoints.
@@ -66,21 +65,6 @@ public class BlueprintHubConnection : IAsyncDisposable
     /// Parameters: SignalNotification with SignalType "workflow-completed"
     /// </summary>
     public event Func<SignalNotification, Task>? OnWorkflowCompleted;
-
-    /// <summary>
-    /// Event raised when encryption progress is updated.
-    /// </summary>
-    public event Func<EncryptionSignal, Task>? OnEncryptionProgress;
-
-    /// <summary>
-    /// Event raised when encryption completes successfully.
-    /// </summary>
-    public event Func<EncryptionSignal, Task>? OnEncryptionComplete;
-
-    /// <summary>
-    /// Event raised when encryption fails.
-    /// </summary>
-    public event Func<EncryptionSignal, Task>? OnEncryptionFailed;
 
     /// <summary>
     /// Event raised when connection state changes.
@@ -345,69 +329,6 @@ public class BlueprintHubConnection : IAsyncDisposable
                         Timestamp = occurredAt,
                     };
                     await OnWorkflowCompleted(signal);
-                }
-            });
-
-        // EncryptionProgress - thin signal (operationId only). Detail via REST.
-        _hubConnection.On<string, DateTimeOffset, string>("EncryptionProgress",
-            async (operationId, occurredAt, traceId) =>
-            {
-                _logger.LogDebug(
-                    "Encryption progress signal: Operation={OperationId}, TraceId={TraceId}",
-                    operationId, traceId);
-
-                if (OnEncryptionProgress != null)
-                {
-                    var signal = new EncryptionSignal
-                    {
-                        OperationId = operationId,
-                        PercentComplete = 0,
-                        Status = "encrypting",
-                        Timestamp = occurredAt,
-                    };
-                    await OnEncryptionProgress(signal);
-                }
-            });
-
-        // EncryptionComplete - thin signal.
-        _hubConnection.On<string, DateTimeOffset, string>("EncryptionComplete",
-            async (operationId, occurredAt, traceId) =>
-            {
-                _logger.LogDebug(
-                    "Encryption complete signal: Operation={OperationId}, TraceId={TraceId}",
-                    operationId, traceId);
-
-                if (OnEncryptionComplete != null)
-                {
-                    var signal = new EncryptionSignal
-                    {
-                        OperationId = operationId,
-                        PercentComplete = 100,
-                        Status = "complete",
-                        Timestamp = occurredAt,
-                    };
-                    await OnEncryptionComplete(signal);
-                }
-            });
-
-        // EncryptionFailed - thin signal.
-        _hubConnection.On<string, DateTimeOffset, string>("EncryptionFailed",
-            async (operationId, occurredAt, traceId) =>
-            {
-                _logger.LogDebug(
-                    "Encryption failed signal: Operation={OperationId}, TraceId={TraceId}",
-                    operationId, traceId);
-
-                if (OnEncryptionFailed != null)
-                {
-                    var signal = new EncryptionSignal
-                    {
-                        OperationId = operationId,
-                        PercentComplete = 0,
-                        Status = "failed",
-                        Timestamp = occurredAt,
-                    };
-                    await OnEncryptionFailed(signal);
                 }
             });
 

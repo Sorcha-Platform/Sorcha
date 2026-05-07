@@ -263,9 +263,9 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 - [X] T109 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` to inject `BlueprintHubConnection` instead of `ActionsHubConnection`. Subscribe to `OnActionAvailable` / `OnActionRejected` / `OnWorkflowCompleted`.
 - [ ] T110 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyCredentials.razor` to inject `WalletHubConnection`. Subscribe to `OnCredentialReceived` / `OnCredentialStatusChanged`.
 - [ ] T111 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletDetail.razor` from `RegisterHubConnection.OnTransactionReceipted` to `WalletHubConnection.OnTransactionReceipted`.
-- [ ] T112 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EncryptionOperationTracker.cs` to inject `WalletHubConnection`.
-- [ ] T113 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor` to wire `WalletHubConnection`.
-- [ ] T114 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OperationNotificationListener.razor` to wire `WalletHubConnection`.
+- [X] T112 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EncryptionOperationTracker.cs` to inject `WalletHubConnection`.
+- [X] T113 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor` to wire `WalletHubConnection`.
+- [X] T114 [P] Migrate `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OperationNotificationListener.razor` to wire `WalletHubConnection`.
 
 ### UI rewrites (logic changes — inbox-driven)
 

@@ -2,10 +2,13 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.ServiceDefaults.Hubs;
+using StackExchange.Redis;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -14,11 +17,24 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// All signals are delivered exclusively through wallet-scoped groups.
 /// Clients pull detailed data through authenticated REST endpoints.
 /// </summary>
+/// <remarks>
+/// Encryption events are published to the <see cref="EncryptionEventEnvelope.ChannelName"/>
+/// Redis channel rather than emitted directly on BlueprintHub. The
+/// encryption pipeline lives in Blueprint Service, but the wire-level home
+/// is WalletHub (in Wallet Service); the cross-service Redis bridge keeps
+/// emission and hub-host in the same process per FR-006.
+/// </remarks>
 public class NotificationService : INotificationService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     private readonly IHubContext<BlueprintHub, IBlueprintHubClient> _hubContext;
     private readonly IHubContext<EventsHub> _eventsHubContext;
     private readonly IBlueprintInboxWriter _inboxWriter;
+    private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<NotificationService> _logger;
 
     /// <summary>Initialises a new instance of the <see cref="NotificationService"/> class.</summary>
@@ -26,11 +42,13 @@ public class NotificationService : INotificationService
         IHubContext<BlueprintHub, IBlueprintHubClient> hubContext,
         IHubContext<EventsHub> eventsHubContext,
         IBlueprintInboxWriter inboxWriter,
+        IConnectionMultiplexer redis,
         ILogger<NotificationService> logger)
     {
         _hubContext = hubContext;
         _eventsHubContext = eventsHubContext;
         _inboxWriter = inboxWriter;
+        _redis = redis;
         _logger = logger;
     }
 
@@ -121,46 +139,15 @@ public class NotificationService : INotificationService
     }
 
     /// <inheritdoc />
-    public async Task NotifyEncryptionProgressAsync(
-        string walletAddress, EncryptionSignal signal, CancellationToken ct = default)
-    {
-        try
-        {
-            var groupName = BlueprintHubGroups.Wallet(walletAddress);
-            await _hubContext.Clients.Group(groupName)
-                .EncryptionProgress(signal.OperationId, DateTimeOffset.UtcNow, CurrentTraceId());
-
-            _logger.LogDebug(
-                "Sent EncryptionProgress to wallet {Wallet}. Operation: {OperationId}",
-                walletAddress, signal.OperationId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionProgress to wallet {Wallet}", walletAddress);
-        }
-    }
+    public Task NotifyEncryptionProgressAsync(
+        string walletAddress, EncryptionSignal signal, CancellationToken ct = default) =>
+        PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindProgress, ct);
 
     /// <inheritdoc />
     public async Task NotifyEncryptionCompleteAsync(
         string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
     {
-        try
-        {
-            var groupName = BlueprintHubGroups.Wallet(walletAddress);
-            await _hubContext.Clients.Group(groupName)
-                .EncryptionComplete(signal.OperationId, DateTimeOffset.UtcNow, CurrentTraceId());
-
-            _logger.LogInformation(
-                "Sent EncryptionComplete to wallet {Wallet}. Operation: {OperationId}",
-                walletAddress, signal.OperationId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionComplete to wallet {Wallet}", walletAddress);
-        }
-
+        await PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindComplete, ct);
         await SendEncryptionSignalToEventsHubAsync(userId, signal, ct);
     }
 
@@ -168,28 +155,46 @@ public class NotificationService : INotificationService
     public async Task NotifyEncryptionFailedAsync(
         string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
     {
-        try
-        {
-            var groupName = BlueprintHubGroups.Wallet(walletAddress);
-            await _hubContext.Clients.Group(groupName)
-                .EncryptionFailed(signal.OperationId, DateTimeOffset.UtcNow, CurrentTraceId());
-
-            _logger.LogWarning(
-                "Sent EncryptionFailed to wallet {Wallet}. Operation: {OperationId}",
-                walletAddress, signal.OperationId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionFailed to wallet {Wallet}", walletAddress);
-        }
-
+        await PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindFailed, ct);
         await SendEncryptionSignalToEventsHubAsync(userId, signal, ct);
     }
 
     /// <summary>
+    /// Publishes an encryption event to Redis. <c>EncryptionEventBridge</c> in
+    /// Wallet Service consumes the channel and emits the signal on WalletHub.
+    /// </summary>
+    private async Task PublishEncryptionEventAsync(
+        string walletAddress, EncryptionSignal signal, string kind, CancellationToken ct)
+    {
+        var envelope = new EncryptionEventEnvelope(
+            WalletAddress: walletAddress,
+            OperationId: signal.OperationId,
+            Kind: kind,
+            OccurredAt: DateTimeOffset.UtcNow,
+            TraceId: CurrentTraceId());
+
+        try
+        {
+            var subscriber = _redis.GetSubscriber();
+            var json = JsonSerializer.Serialize(envelope, JsonOptions);
+            await subscriber.PublishAsync(
+                RedisChannel.Literal(EncryptionEventEnvelope.ChannelName), json);
+
+            _logger.LogDebug(
+                "Published encryption {Kind} for wallet {Wallet}, operation {OperationId}",
+                kind, walletAddress, signal.OperationId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to publish encryption {Kind} envelope for wallet {Wallet}, operation {OperationId}",
+                kind, walletAddress, signal.OperationId);
+        }
+    }
+
+    /// <summary>
     /// Sends an EncryptionSignal to the legacy EventsHub for the specified user.
-    /// Isolated in its own try/catch so BlueprintHub delivery is never affected.
+    /// Isolated in its own try/catch so encryption emit is never affected.
     /// EventsHub is exempt from the thin-signal contract (Phase 10 retire).
     /// </summary>
     private async Task SendEncryptionSignalToEventsHubAsync(

@@ -408,7 +408,7 @@ public class EncryptionProgressIndicatorTests : BunitContext
     [Fact]
     public void BlueprintHub_IsNullByDefault()
     {
-        // Arrange — render without BlueprintHub parameter
+        // Arrange — render without WalletHub parameter
         var operation = CreateOperation(
             stage: OperationStage.EncryptingPerRecipient,
             percentComplete: 25,
@@ -425,7 +425,7 @@ public class EncryptionProgressIndicatorTests : BunitContext
 
         // Assert — component renders in polling mode (no SignalR)
         cut.Markup.Should().Contain("1 of 4 recipients processed");
-        cut.Instance.BlueprintHub.Should().BeNull();
+        cut.Instance.WalletHub.Should().BeNull();
     }
 
     [Fact]
@@ -473,13 +473,13 @@ public class EncryptionProgressIndicatorTests : BunitContext
     }
 
     [Fact]
-    public void Dispose_WithBlueprintHub_UnsubscribesFromEvents()
+    public void Dispose_WithWalletHub_UnsubscribesFromEvents()
     {
-        // Arrange — create a real BlueprintHubConnection (unconnected) and pass it
+        // Arrange — create a real WalletHubConnection (unconnected) and pass it
         var authService = new Mock<Sorcha.UI.Core.Services.Authentication.IAuthenticationService>();
         var configService = new Mock<Sorcha.UI.Core.Services.Configuration.IConfigurationService>();
-        var logger = new Mock<Microsoft.Extensions.Logging.ILogger<BlueprintHubConnection>>();
-        var hub = new BlueprintHubConnection("http://localhost", authService.Object, configService.Object, logger.Object);
+        var logger = new Mock<Microsoft.Extensions.Logging.ILogger<WalletHubConnection>>();
+        var hub = new WalletHubConnection("http://localhost", authService.Object, configService.Object, logger.Object);
 
         var operation = CreateOperation(
             stage: OperationStage.EncryptingPerRecipient,
@@ -494,9 +494,9 @@ public class EncryptionProgressIndicatorTests : BunitContext
         // Act
         var cut = Render<EncryptionProgressIndicator>(parameters => parameters
             .Add(p => p.OperationId, "op-hub-dispose")
-            .Add(p => p.BlueprintHub, hub));
+            .Add(p => p.WalletHub, hub));
 
-        // Assert — Dispose should not throw even when BlueprintHub was subscribed
+        // Assert — Dispose should not throw even when WalletHub was subscribed
         var act = () => cut.Instance.Dispose();
         act.Should().NotThrow();
     }

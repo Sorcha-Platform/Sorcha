@@ -10,7 +10,7 @@ namespace Sorcha.UI.Core.Services;
 
 /// <summary>
 /// Tracks active encryption operations across page navigations.
-/// Scoped service that subscribes to BlueprintHub events and maintains operation state.
+/// Scoped service that subscribes to WalletHub events and maintains operation state.
 /// </summary>
 public interface IEncryptionOperationTracker : IDisposable
 {
@@ -39,7 +39,7 @@ public interface IEncryptionOperationTracker : IDisposable
 public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
 {
     private readonly Dictionary<string, EncryptionOperationState> _operations = new();
-    private readonly BlueprintHubConnection _blueprintHub;
+    private readonly WalletHubConnection _walletHub;
     private readonly IOperationStatusService _operationStatus;
     private readonly ILogger<EncryptionOperationTracker> _logger;
     private readonly CancellationTokenSource _cts = new();
@@ -60,17 +60,17 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
     public event Action? OnStateChanged;
 
     public EncryptionOperationTracker(
-        BlueprintHubConnection blueprintHub,
+        WalletHubConnection walletHub,
         IOperationStatusService operationStatus,
         ILogger<EncryptionOperationTracker> logger)
     {
-        _blueprintHub = blueprintHub;
+        _walletHub = walletHub;
         _operationStatus = operationStatus;
         _logger = logger;
 
-        _blueprintHub.OnEncryptionProgress += HandleProgress;
-        _blueprintHub.OnEncryptionComplete += HandleComplete;
-        _blueprintHub.OnEncryptionFailed += HandleFailed;
+        _walletHub.OnEncryptionProgress += HandleProgress;
+        _walletHub.OnEncryptionComplete += HandleComplete;
+        _walletHub.OnEncryptionFailed += HandleFailed;
     }
 
     /// <inheritdoc />
@@ -201,8 +201,8 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
 
         _cts.Cancel();
         _cts.Dispose();
-        _blueprintHub.OnEncryptionProgress -= HandleProgress;
-        _blueprintHub.OnEncryptionComplete -= HandleComplete;
-        _blueprintHub.OnEncryptionFailed -= HandleFailed;
+        _walletHub.OnEncryptionProgress -= HandleProgress;
+        _walletHub.OnEncryptionComplete -= HandleComplete;
+        _walletHub.OnEncryptionFailed -= HandleFailed;
     }
 }

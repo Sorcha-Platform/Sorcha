@@ -36,4 +36,32 @@ public interface IWalletHubClient
     /// </summary>
     /// <param name="credentialId">Identifier of the newly-available credential.</param>
     Task CredentialAvailable(string credentialId);
+
+    /// <summary>
+    /// Encryption operation progress. Carries the operation id only; clients
+    /// fetch percent / stage / per-recipient state via
+    /// <c>GET /api/operations/{operationId}</c>.
+    /// </summary>
+    /// <param name="operationId">Encryption operation identifier.</param>
+    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
+    /// <param name="traceId">W3C trace-id for correlation.</param>
+    Task EncryptionProgress(string operationId, DateTimeOffset occurredAt, string traceId);
+
+    /// <summary>
+    /// Encryption operation completed successfully. Clients fetch the final
+    /// result via <c>GET /api/operations/{operationId}</c>.
+    /// </summary>
+    /// <param name="operationId">Encryption operation identifier.</param>
+    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
+    /// <param name="traceId">W3C trace-id for correlation.</param>
+    Task EncryptionComplete(string operationId, DateTimeOffset occurredAt, string traceId);
+
+    /// <summary>
+    /// Encryption operation failed. Clients fetch failure detail via
+    /// <c>GET /api/operations/{operationId}</c>.
+    /// </summary>
+    /// <param name="operationId">Encryption operation identifier.</param>
+    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
+    /// <param name="traceId">W3C trace-id for correlation.</param>
+    Task EncryptionFailed(string operationId, DateTimeOffset occurredAt, string traceId);
 }

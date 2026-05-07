@@ -10,9 +10,11 @@ namespace Sorcha.Blueprint.Service.Hubs;
 /// in each method's <c>&lt;see cref&gt;</c> doc.
 /// </summary>
 /// <remarks>
-/// Encryption events are scheduled to migrate to <c>IWalletHubClient</c> alongside
-/// the EventsHub retirement; they remain here while the wallet-domain hub
-/// adopts them in a follow-up phase.
+/// Encryption events live on <see cref="Sorcha.Wallet.Service.Hubs.IWalletHubClient"/>
+/// — the wallet-domain hub became their canonical home in the encryption-pipeline
+/// migration. Blueprint Service publishes encryption progress via the
+/// <c>encryption:events</c> Redis channel; <c>EncryptionEventBridge</c> in
+/// Wallet Service subscribes and emits on WalletHub.
 /// </remarks>
 public interface IBlueprintHubClient
 {
@@ -46,31 +48,4 @@ public interface IBlueprintHubClient
     /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
     /// <param name="traceId">W3C trace-id for correlation.</param>
     Task WorkflowCompleted(string instanceId, DateTimeOffset occurredAt, string traceId);
-
-    /// <summary>
-    /// Encryption operation progressed. Carries the operation id only; clients
-    /// fetch progress detail via <c>GET /api/operations/{operationId}</c>.
-    /// </summary>
-    /// <param name="operationId">Encryption operation identifier.</param>
-    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
-    /// <param name="traceId">W3C trace-id for correlation.</param>
-    Task EncryptionProgress(string operationId, DateTimeOffset occurredAt, string traceId);
-
-    /// <summary>
-    /// Encryption operation completed successfully. Clients fetch the final
-    /// result via <c>GET /api/operations/{operationId}</c>.
-    /// </summary>
-    /// <param name="operationId">Encryption operation identifier.</param>
-    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
-    /// <param name="traceId">W3C trace-id for correlation.</param>
-    Task EncryptionComplete(string operationId, DateTimeOffset occurredAt, string traceId);
-
-    /// <summary>
-    /// Encryption operation failed. Clients fetch failure detail via
-    /// <c>GET /api/operations/{operationId}</c>.
-    /// </summary>
-    /// <param name="operationId">Encryption operation identifier.</param>
-    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
-    /// <param name="traceId">W3C trace-id for correlation.</param>
-    Task EncryptionFailed(string operationId, DateTimeOffset occurredAt, string traceId);
 }
