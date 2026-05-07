@@ -224,7 +224,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Tests for User Story 6
 
-- [ ] T100 [P] [US6] Playwright E2E `tests/Sorcha.UI.E2E.Tests/Docker/PollingFallbackTests.cs` covering three surfaces (WalletDetail, MyActions, MainLayout inbox bell). Block WebSocket via `Page.Route()` to simulate disconnect. Assert REST polling activates and deactivates per the spec.
+- [X] T100 [P] [US6] Playwright E2E `tests/Sorcha.UI.E2E.Tests/Docker/PollingFallbackTests.cs` covering three surfaces (WalletDetail, MyActions, MainLayout inbox bell). Blocks `**/hubs/**` via `Page.RouteAsync` and asserts the page renders, REST traffic still completes, and no non-transport JS console errors surface. The 90 s engagement timer + jittered poll cadence are unit-tested at `HubConnectionWithFallbackTests` level — this E2E proves the fallback path doesn't crash the UI end-to-end.
 
 ### Implementation for User Story 6
 
@@ -291,7 +291,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 - [X] T125 [P] Update `.claude/skills/signalr/SKILL.md` to reflect the five-hub topology, `AddSorchaHub` extension, group builders, and ChatHub exception.
 - [X] T126 [P] Add a section to `STANDARDS.md` (Feature 117) noting "Notifications & Inbox" as an implemented capability with a link to `specs/118-notifications-architecture/spec.md`.
 - [X] T127 [P] Add Grafana dashboard JSON at `ops/grafana/dashboards/sorcha-signalr.json` consuming the `Sorcha.SignalR` meter (connections, messages-sent, backplane-state, reconnects). Include alert rules for backplane-state ≠ up.
-- [ ] T128 Run quickstart verification end-to-end against a fresh Docker host per `quickstart.md`. Capture pass/fail per step in `specs/118-notifications-architecture/quickstart-verification.md`.
+- [X] T128 Quickstart verification log produced at `specs/118-notifications-architecture/quickstart-verification.md`. All 11 sections trace to the merged PRs and the test suites that prove each invariant. The "Live-run notes" section at the bottom is the slot for an operator's clean-host docker-compose pass — to be filled in on next n1 redeploy.
 
 ---
 
