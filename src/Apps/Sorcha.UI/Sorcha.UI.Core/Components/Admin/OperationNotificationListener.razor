@@ -2,7 +2,7 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @implements IDisposable
-@inject EventsHubConnection EventsHub
+@inject WalletHubConnection WalletHub
 @inject ISnackbar Snackbar
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Services
@@ -12,12 +12,14 @@
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
-        EventsHub.OnEncryptionOperationCompleted += HandleOperationCompleted;
+        // Feature 118 T114 — encryption events live on WalletHub now. Subscribe
+        // to Complete + Failed; ignore Progress (the global popover surfaces
+        // in-flight progress, not toasts).
+        WalletHub.OnEncryptionComplete += HandleComplete;
+        WalletHub.OnEncryptionFailed += HandleFailed;
         try
         {
-            // Self-connect — MainLayout no longer owns the EventsHub lifecycle
-            // after T115 closure. ConnectAsync is idempotent.
-            await EventsHub.ConnectAsync();
+            await WalletHub.StartAsync();
         }
         catch
         {
@@ -25,25 +27,22 @@
         }
     }
 
-    private void HandleOperationCompleted(EncryptionSignal signal)
+    private Task HandleComplete(EncryptionSignal _)
     {
-        if (string.Equals(signal.Status, "complete", StringComparison.OrdinalIgnoreCase))
-        {
-            Snackbar.Add("Encryption complete", Severity.Success);
-        }
-        else if (string.Equals(signal.Status, "failed", StringComparison.OrdinalIgnoreCase))
-        {
-            Snackbar.Add("Encryption failed", Severity.Error);
-        }
-        else
-        {
-            Snackbar.Add($"Encryption operation: {signal.Status}", Severity.Info);
-        }
+        Snackbar.Add("Encryption complete", Severity.Success);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleFailed(EncryptionSignal _)
+    {
+        Snackbar.Add("Encryption failed", Severity.Error);
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
-        EventsHub.OnEncryptionOperationCompleted -= HandleOperationCompleted;
+        WalletHub.OnEncryptionComplete -= HandleComplete;
+        WalletHub.OnEncryptionFailed -= HandleFailed;
     }
 }

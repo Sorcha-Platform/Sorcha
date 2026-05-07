@@ -99,38 +99,6 @@ public class BlueprintHubConnectionTests
     // ---------------------------------------------------------------
 
     [Fact]
-    public void OnEncryptionProgress_CanSubscribeAndUnsubscribe()
-    {
-        var connection = CreateConnection();
-        Func<EncryptionSignal, Task> handler = _ => Task.CompletedTask;
-
-        connection.OnEncryptionProgress += handler;
-        connection.OnEncryptionProgress -= handler;
-
-        // No exception thrown — subscribe/unsubscribe works correctly
-    }
-
-    [Fact]
-    public void OnEncryptionComplete_CanSubscribeAndUnsubscribe()
-    {
-        var connection = CreateConnection();
-        Func<EncryptionSignal, Task> handler = _ => Task.CompletedTask;
-
-        connection.OnEncryptionComplete += handler;
-        connection.OnEncryptionComplete -= handler;
-    }
-
-    [Fact]
-    public void OnEncryptionFailed_CanSubscribeAndUnsubscribe()
-    {
-        var connection = CreateConnection();
-        Func<EncryptionSignal, Task> handler = _ => Task.CompletedTask;
-
-        connection.OnEncryptionFailed += handler;
-        connection.OnEncryptionFailed -= handler;
-    }
-
-    [Fact]
     public void OnConnectionStateChanged_CanSubscribeAndUnsubscribe()
     {
         var connection = CreateConnection();
@@ -140,48 +108,7 @@ public class BlueprintHubConnectionTests
         connection.OnConnectionStateChanged -= handler;
     }
 
-    [Fact]
-    public void OnEncryptionProgress_CanSubscribeMultipleHandlers()
-    {
-        var connection = CreateConnection();
-        Func<EncryptionSignal, Task> handler1 = _ => Task.CompletedTask;
-        Func<EncryptionSignal, Task> handler2 = _ => Task.CompletedTask;
-
-        connection.OnEncryptionProgress += handler1;
-        connection.OnEncryptionProgress += handler2;
-
-        // No exception — multiple handlers can be attached
-        connection.OnEncryptionProgress -= handler1;
-        connection.OnEncryptionProgress -= handler2;
-    }
-
-    [Fact]
-    public void OnEncryptionComplete_CanSubscribeMultipleHandlers()
-    {
-        var connection = CreateConnection();
-        Func<EncryptionSignal, Task> handler1 = _ => Task.CompletedTask;
-        Func<EncryptionSignal, Task> handler2 = _ => Task.CompletedTask;
-
-        connection.OnEncryptionComplete += handler1;
-        connection.OnEncryptionComplete += handler2;
-
-        connection.OnEncryptionComplete -= handler1;
-        connection.OnEncryptionComplete -= handler2;
-    }
-
-    [Fact]
-    public void OnEncryptionFailed_CanSubscribeMultipleHandlers()
-    {
-        var connection = CreateConnection();
-        Func<EncryptionSignal, Task> handler1 = _ => Task.CompletedTask;
-        Func<EncryptionSignal, Task> handler2 = _ => Task.CompletedTask;
-
-        connection.OnEncryptionFailed += handler1;
-        connection.OnEncryptionFailed += handler2;
-
-        connection.OnEncryptionFailed -= handler1;
-        connection.OnEncryptionFailed -= handler2;
-    }
+    // Encryption events migrated to WalletHubConnection — see WalletHubConnectionTests.
 
     // ---------------------------------------------------------------
     // Wallet subscriptions (default state)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,87 +9,89 @@ using Moq;
 using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Implementation;
+using Sorcha.ServiceDefaults.Hubs;
+using StackExchange.Redis;
 
 namespace Sorcha.Blueprint.Service.Tests.Services;
 
 public class EncryptionNotificationTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     private readonly Mock<IHubContext<BlueprintHub, IBlueprintHubClient>> _hubContext = new();
     private readonly Mock<IHubContext<EventsHub>> _eventsHubContext = new();
-    private readonly Mock<IHubClients<IBlueprintHubClient>> _hubClients = new();
-    private readonly Mock<IHubClients> _eventsHubClients = new();
-    private readonly Mock<IBlueprintHubClient> _clientProxy = new();
-    private readonly Mock<IClientProxy> _eventsClientProxy = new();
+    private readonly Mock<IConnectionMultiplexer> _redis = new();
+    private readonly Mock<ISubscriber> _subscriber = new();
+    private readonly List<(RedisChannel Channel, string Message)> _published = new();
     private readonly NotificationService _service;
 
     public EncryptionNotificationTests()
     {
-        _hubContext.Setup(h => h.Clients).Returns(_hubClients.Object);
-        _hubClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_clientProxy.Object);
-        _clientProxy
-            .Setup(c => c.EncryptionProgress(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
-        _clientProxy
-            .Setup(c => c.EncryptionComplete(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
-        _clientProxy
-            .Setup(c => c.EncryptionFailed(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
+        _hubContext.Setup(h => h.Clients).Returns(Mock.Of<IHubClients<IBlueprintHubClient>>());
+        _eventsHubContext.Setup(h => h.Clients).Returns(Mock.Of<IHubClients>());
 
-        _eventsHubContext.Setup(h => h.Clients).Returns(_eventsHubClients.Object);
-        _eventsHubClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_eventsClientProxy.Object);
-        _eventsClientProxy.Setup(c => c.SendCoreAsync(
-                It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _redis.Setup(r => r.GetSubscriber(It.IsAny<object>())).Returns(_subscriber.Object);
+        _subscriber
+            .Setup(s => s.PublishAsync(It.IsAny<RedisChannel>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .Callback<RedisChannel, RedisValue, CommandFlags>((ch, msg, _) =>
+                _published.Add((ch, msg.ToString()!)))
+            .ReturnsAsync(0L);
 
         _service = new NotificationService(
             _hubContext.Object,
             _eventsHubContext.Object,
             new Mock<IBlueprintInboxWriter>().Object,
+            _redis.Object,
             NullLogger<NotificationService>.Instance);
     }
 
     [Fact]
-    public async Task SendEncryptionProgress_SendsToCorrectWalletGroup()
+    public async Task NotifyEncryptionProgressAsync_PublishesProgressEnvelopeToRedis()
     {
         var signal = new EncryptionSignal { OperationId = "op-1", PercentComplete = 30, Status = "encrypting" };
 
         await _service.NotifyEncryptionProgressAsync("wallet-test-001", signal);
 
-        _hubClients.Verify(c => c.Group("wallet:wallet-test-001"), Times.Once);
-        _clientProxy.Verify(c =>
-            c.EncryptionProgress("op-1", It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
-            Times.Once);
+        var (channel, message) = _published.Single();
+        channel.ToString().Should().Be(EncryptionEventEnvelope.ChannelName);
+
+        var envelope = JsonSerializer.Deserialize<EncryptionEventEnvelope>(message, JsonOptions)!;
+        envelope.WalletAddress.Should().Be("wallet-test-001");
+        envelope.OperationId.Should().Be("op-1");
+        envelope.Kind.Should().Be(EncryptionEventEnvelope.KindProgress);
     }
 
     [Fact]
-    public async Task SendEncryptionComplete_IncludesOperationId()
+    public async Task NotifyEncryptionCompleteAsync_PublishesCompleteEnvelope()
     {
         var signal = new EncryptionSignal { OperationId = "op-2", PercentComplete = 100, Status = "complete" };
 
         await _service.NotifyEncryptionCompleteAsync("wallet-test-002", signal);
 
-        _hubClients.Verify(c => c.Group("wallet:wallet-test-002"), Times.Once);
-        _clientProxy.Verify(c =>
-            c.EncryptionComplete("op-2", It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
-            Times.Once);
+        var envelope = JsonSerializer.Deserialize<EncryptionEventEnvelope>(_published.Single().Message, JsonOptions)!;
+        envelope.WalletAddress.Should().Be("wallet-test-002");
+        envelope.OperationId.Should().Be("op-2");
+        envelope.Kind.Should().Be(EncryptionEventEnvelope.KindComplete);
     }
 
     [Fact]
-    public async Task SendEncryptionFailed_IncludesOperationId()
+    public async Task NotifyEncryptionFailedAsync_PublishesFailedEnvelope()
     {
         var signal = new EncryptionSignal { OperationId = "op-3", PercentComplete = 30, Status = "failed" };
 
         await _service.NotifyEncryptionFailedAsync("wallet-test-003", signal);
 
-        _hubClients.Verify(c => c.Group("wallet:wallet-test-003"), Times.Once);
-        _clientProxy.Verify(c =>
-            c.EncryptionFailed("op-3", It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
-            Times.Once);
+        var envelope = JsonSerializer.Deserialize<EncryptionEventEnvelope>(_published.Single().Message, JsonOptions)!;
+        envelope.WalletAddress.Should().Be("wallet-test-003");
+        envelope.OperationId.Should().Be("op-3");
+        envelope.Kind.Should().Be(EncryptionEventEnvelope.KindFailed);
     }
 
     [Fact]
-    public async Task SendEncryptionProgress_AllSteps_SendsCorrectOperationIds()
+    public async Task NotifyEncryptionProgressAsync_AllSteps_PublishesOnePerCall()
     {
         var operationIds = new[] { "op-a", "op-b", "op-c", "op-d" };
 
@@ -98,12 +101,8 @@ public class EncryptionNotificationTests
                 new EncryptionSignal { OperationId = op, PercentComplete = 10, Status = "encrypting" });
         }
 
-        _hubClients.Verify(c => c.Group("wallet:wallet-all-steps"), Times.Exactly(4));
-        foreach (var op in operationIds)
-        {
-            _clientProxy.Verify(c =>
-                c.EncryptionProgress(op, It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
-                Times.Once);
-        }
+        _published.Should().HaveCount(4);
+        _published.Select(p => JsonSerializer.Deserialize<EncryptionEventEnvelope>(p.Message, JsonOptions)!.OperationId)
+            .Should().BeEquivalentTo(operationIds);
     }
 }
