@@ -32,7 +32,6 @@ public class NotificationService : INotificationService
     };
 
     private readonly IHubContext<BlueprintHub, IBlueprintHubClient> _hubContext;
-    private readonly IHubContext<EventsHub> _eventsHubContext;
     private readonly IBlueprintInboxWriter _inboxWriter;
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<NotificationService> _logger;
@@ -40,13 +39,11 @@ public class NotificationService : INotificationService
     /// <summary>Initialises a new instance of the <see cref="NotificationService"/> class.</summary>
     public NotificationService(
         IHubContext<BlueprintHub, IBlueprintHubClient> hubContext,
-        IHubContext<EventsHub> eventsHubContext,
         IBlueprintInboxWriter inboxWriter,
         IConnectionMultiplexer redis,
         ILogger<NotificationService> logger)
     {
         _hubContext = hubContext;
-        _eventsHubContext = eventsHubContext;
         _inboxWriter = inboxWriter;
         _redis = redis;
         _logger = logger;
@@ -144,20 +141,14 @@ public class NotificationService : INotificationService
         PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindProgress, ct);
 
     /// <inheritdoc />
-    public async Task NotifyEncryptionCompleteAsync(
+    public Task NotifyEncryptionCompleteAsync(
         string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
-    {
-        await PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindComplete, ct);
-        await SendEncryptionSignalToEventsHubAsync(userId, signal, ct);
-    }
+        => PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindComplete, ct);
 
     /// <inheritdoc />
-    public async Task NotifyEncryptionFailedAsync(
+    public Task NotifyEncryptionFailedAsync(
         string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
-    {
-        await PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindFailed, ct);
-        await SendEncryptionSignalToEventsHubAsync(userId, signal, ct);
-    }
+        => PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindFailed, ct);
 
     /// <summary>
     /// Publishes an encryption event to Redis. <c>EncryptionEventBridge</c> in
@@ -189,41 +180,6 @@ public class NotificationService : INotificationService
             _logger.LogError(ex,
                 "Failed to publish encryption {Kind} envelope for wallet {Wallet}, operation {OperationId}",
                 kind, walletAddress, signal.OperationId);
-        }
-    }
-
-    /// <summary>
-    /// Sends an EncryptionSignal to the legacy EventsHub for the specified user.
-    /// Isolated in its own try/catch so encryption emit is never affected.
-    /// EventsHub is exempt from the thin-signal contract (Phase 10 retire).
-    /// </summary>
-    private async Task SendEncryptionSignalToEventsHubAsync(
-        string? userId, EncryptionSignal signal, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(userId))
-        {
-            _logger.LogDebug(
-                "No userId provided for EventsHub encryption signal. Operation: {OperationId}",
-                signal.OperationId);
-            return;
-        }
-
-        try
-        {
-            var userGroup = BlueprintHubGroups.LegacyEventsHubUser(userId);
-            await _eventsHubContext.Clients
-                .Group(userGroup)
-                .SendAsync("EncryptionOperationCompleted", signal, ct);
-
-            _logger.LogInformation(
-                "Sent EncryptionSignal to EventsHub user:{UserId}. Operation: {OperationId}, Status: {Status}",
-                userId, signal.OperationId, signal.Status);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionSignal to EventsHub for user {UserId}. Operation: {OperationId}",
-                userId, signal.OperationId);
         }
     }
 

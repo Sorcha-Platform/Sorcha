@@ -240,9 +240,6 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.ISchemaRefResolv
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
     Sorcha.Blueprint.Service.Services.Implementation.TransactionRetrievalService>();
 
-// Feature 047: Redis pub/sub → SignalR EventsHub bridge for inbound action notifications (US2)
-builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EventsHubNotificationBridge>();
-
 // Feature 106 Wave D — cross-node instance mirror reconstructor
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.InstanceMirrorReconstructorMetrics>();
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.InstanceMirrorReconstructor>();
@@ -260,8 +257,6 @@ builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementati
 // AddStackExchangeRedis applies to every hub in the service.
 builder.Services.AddSorchaHub<BlueprintHub, IBlueprintHubClient>(
     builder.Configuration, "/hubs/blueprint", "blueprint");
-builder.Services.AddSorchaHub<EventsHub, IEventsHubClient>(
-    builder.Configuration, "/hubs/events", "blueprint");
 
 // AI tool execution can take 30-60+ seconds per turn with multiple continuation rounds.
 // Default 30s client timeout causes disconnects during long AI processing. The settings
@@ -458,13 +453,9 @@ app.UseRateLimiting();
 app.UseMiddleware<Sorcha.Blueprint.Service.Middleware.DelegationTokenMiddleware>();
 
 // Map SignalR hubs.
-// BlueprintHub + EventsHub mapped via MapSorchaHubs from the AddSorchaHub registry above.
+// BlueprintHub mapped via MapSorchaHubs from the AddSorchaHub registry above.
 // ChatHub is the deliberate exception (FR-005, FR-019), mapped explicitly.
-// Feature 118 Phase 4 (US2) — /actionshub kept as deprecated alias for one release
-// cycle per spec FR-003. Old clients still resolve here; new clients should use
-// /hubs/blueprint. The alias removes in Phase 10 polish after the release window.
 app.MapSorchaHubs();
-app.MapHub<Sorcha.Blueprint.Service.Hubs.BlueprintHub>("/actionshub").RequireAuthorization();
 app.MapHub<Sorcha.Blueprint.Service.Hubs.ChatHub>("/hubs/chat").RequireAuthorization();
 
 // Map Operations endpoints (045 Phase 7 - async encryption status)

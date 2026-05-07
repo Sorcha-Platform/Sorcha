@@ -573,8 +573,8 @@ public class CredentialApiService : ICredentialApiService
     /// <inheritdoc/>
     // Feature 106 Wave E — holder accept path. Hits the Feature 106 PATCH endpoint
     // (without the /status suffix) which enforces the PendingAcceptance → Active
-    // state-machine transition and fans out a CredentialStatusChangedEvent over
-    // SignalR so parallel holder sessions stay in sync.
+    // state-machine transition. Parallel holder sessions stay in sync via the
+    // WalletHub typed CredentialStatusChanged event.
     public async Task<bool> AcceptCredentialAsync(
         string walletAddress, string credentialId, CancellationToken ct = default)
     {

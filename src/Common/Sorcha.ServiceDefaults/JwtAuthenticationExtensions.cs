@@ -219,8 +219,7 @@ public static class JwtAuthenticationExtensions
                         var path = context.HttpContext.Request.Path;
                         if (!string.IsNullOrEmpty(accessToken) &&
                             (path.StartsWithSegments("/hubs") ||
-                             path.StartsWithSegments("/hub") ||
-                             path.StartsWithSegments("/actionshub")))
+                             path.StartsWithSegments("/hub")))
                         {
                             // Extract the token from query string for SignalR
                             context.Token = accessToken;

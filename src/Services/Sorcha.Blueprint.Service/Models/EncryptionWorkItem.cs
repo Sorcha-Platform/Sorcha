@@ -68,7 +68,9 @@ public sealed record EncryptionWorkItem
     public EncryptedPayloadGroup[]? PreComputedGroups { get; init; }
 
     /// <summary>
-    /// Authenticated user ID (from JWT sub claim) for EventsHub notifications.
+    /// Authenticated user ID (from JWT sub claim). Currently unused on the
+    /// hot path — kept for trace correlation and any future user-scoped
+    /// notification surface.
     /// </summary>
     public string? UserId { get; init; }
 

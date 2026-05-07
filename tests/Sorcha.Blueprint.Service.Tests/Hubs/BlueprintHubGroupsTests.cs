@@ -33,15 +33,4 @@ public class BlueprintHubGroupsTests
         BlueprintHubGroups.Org(id).Should().Be("org:aaaaaaaabbbbccccddddeeeeeeeeeeee");
     }
 
-    [Fact]
-    public void LegacyEventsHubUser_PreservesRawString()
-    {
-        BlueprintHubGroups.LegacyEventsHubUser("user-claim-string").Should().Be("user:user-claim-string");
-    }
-
-    [Fact]
-    public void LegacyEventsHubOrg_PreservesRawString()
-    {
-        BlueprintHubGroups.LegacyEventsHubOrg("org-claim-string").Should().Be("org:org-claim-string");
-    }
 }

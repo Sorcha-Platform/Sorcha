@@ -10,16 +10,15 @@ namespace Sorcha.Integration.Tests.Hubs;
 
 /// <summary>
 /// Topology-enforcement test for Feature 118 — asserts the canonical five-hub
-/// surface (BlueprintHub, EventsHub, WalletHub, RegisterHub, TenantHub +
-/// ChatHub as the documented FR-019 streaming exception) and that every
-/// non-ChatHub uses <c>AddSorchaHub&lt;THub, TClient&gt;</c> via inheritance
-/// from <c>Hub&lt;TClient&gt;</c> rather than the untyped base class.
+/// surface (BlueprintHub, WalletHub, RegisterHub, TenantHub + ChatHub as the
+/// documented FR-019 streaming exception) and that every non-ChatHub uses
+/// <c>AddSorchaHub&lt;THub, TClient&gt;</c> via inheritance from
+/// <c>Hub&lt;TClient&gt;</c> rather than the untyped base class.
 /// </summary>
 /// <remarks>
 /// Lives next to <see cref="ThinSignalContractTests"/> so both reflection
-/// surveys load the same service assemblies. Tightens automatically when
-/// the legacy <c>EventsHub</c> retires in Phase 10 — drop its entry from
-/// <see cref="ExpectedHubFqns"/>.
+/// surveys load the same service assemblies. The legacy <c>EventsHub</c>
+/// retired in T121.
 /// </remarks>
 [Trait("Category", "HubTopology")]
 public class HubTopologyTests
@@ -27,7 +26,6 @@ public class HubTopologyTests
     private static readonly string[] ExpectedHubFqns =
     [
         "Sorcha.Blueprint.Service.Hubs.BlueprintHub",
-        "Sorcha.Blueprint.Service.Hubs.EventsHub",
         "Sorcha.Blueprint.Service.Hubs.ChatHub",
         "Sorcha.Tenant.Service.Hubs.TenantHub",
         "Sorcha.Wallet.Service.Hubs.WalletHub",
@@ -43,8 +41,7 @@ public class HubTopologyTests
         var expected = ExpectedHubFqns.OrderBy(x => x).ToArray();
 
         hubFqns.Should().BeEquivalentTo(expected,
-            "the Feature 118 canonical topology is the five hubs above plus ChatHub. " +
-            "Drop EventsHub from this list when Phase 10 retirement lands.");
+            "the Feature 118 canonical topology is the four notification hubs plus ChatHub.");
     }
 
     [Fact]

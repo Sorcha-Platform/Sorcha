@@ -158,7 +158,7 @@ public class ValidateCommand : Command
         {
             try
             {
-                var hubUrl = $"{definition.Connection.GatewayUrl.TrimEnd('/')}/actionshub";
+                var hubUrl = $"{definition.Connection.GatewayUrl.TrimEnd('/')}/hubs/blueprint";
                 var connection = SorchaHubConnectionBuilder.Build(hubUrl, authService.TokenProviderAsync);
 
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

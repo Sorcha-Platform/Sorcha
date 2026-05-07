@@ -376,9 +376,6 @@ public static class ServiceCollectionExtensions
         // Actions Hub Connection (SignalR for real-time action notifications)
         services.AddBlueprintHubServices(baseAddress);
 
-        // Events Hub Connection (SignalR for real-time activity event notifications)
-        services.AddEventsHubServices(baseAddress);
-
         // Tenant Hub Connection (Phase 5 of Feature 118 — durable inbox events)
         services.AddTenantHubServices(baseAddress);
 
@@ -527,32 +524,6 @@ public static class ServiceCollectionExtensions
             var configService = sp.GetRequiredService<IConfigurationService>();
             var logger = sp.GetRequiredService<ILogger<WalletHubConnection>>();
             return new WalletHubConnection(hubBaseUrl, authService, configService, logger);
-        });
-
-        return services;
-    }
-
-    /// <summary>
-    /// Registers the Events Hub connection for real-time activity event notifications.
-    /// </summary>
-    public static IServiceCollection AddEventsHubServices(this IServiceCollection services, string baseAddress)
-    {
-        services.AddScoped<EventsHubConnection>(sp =>
-        {
-            string hubBaseUrl;
-            if (Uri.TryCreate(baseAddress, UriKind.Absolute, out var uri))
-            {
-                hubBaseUrl = $"{uri.Scheme}://{uri.Authority}";
-            }
-            else
-            {
-                hubBaseUrl = "";
-            }
-
-            var authService = sp.GetRequiredService<IAuthenticationService>();
-            var configService = sp.GetRequiredService<IConfigurationService>();
-            var logger = sp.GetRequiredService<ILogger<EventsHubConnection>>();
-            return new EventsHubConnection(hubBaseUrl, authService, configService, logger);
         });
 
         return services;

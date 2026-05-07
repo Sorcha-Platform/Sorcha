@@ -18,8 +18,7 @@ namespace Sorcha.UI.Core.Services;
 /// workflow notifications.
 /// </summary>
 /// <remarks>
-/// Connects to the Blueprint Service at <c>/actionshub</c> (legacy alias for
-/// <c>/hubs/blueprint</c> — both routes resolve to the same hub).
+/// Connects to the Blueprint Service at <c>/hubs/blueprint</c>.
 ///
 /// Events received from server:
 /// - ActionAvailable: New action available for a participant
@@ -108,7 +107,7 @@ public class BlueprintHubConnection : IAsyncDisposable
         ILogger<BlueprintHubConnection> logger,
         Func<CancellationToken, Task>? pollFallback = null)
     {
-        _hubUrl = $"{baseUrl.TrimEnd('/')}/actionshub";
+        _hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/blueprint";
         _authService = authService;
         _configurationService = configurationService;
         _pollFallback = pollFallback;

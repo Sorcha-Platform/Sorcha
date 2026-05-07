@@ -22,7 +22,6 @@ public class EncryptionNotificationTests
     };
 
     private readonly Mock<IHubContext<BlueprintHub, IBlueprintHubClient>> _hubContext = new();
-    private readonly Mock<IHubContext<EventsHub>> _eventsHubContext = new();
     private readonly Mock<IConnectionMultiplexer> _redis = new();
     private readonly Mock<ISubscriber> _subscriber = new();
     private readonly List<(RedisChannel Channel, string Message)> _published = new();
@@ -31,7 +30,6 @@ public class EncryptionNotificationTests
     public EncryptionNotificationTests()
     {
         _hubContext.Setup(h => h.Clients).Returns(Mock.Of<IHubClients<IBlueprintHubClient>>());
-        _eventsHubContext.Setup(h => h.Clients).Returns(Mock.Of<IHubClients>());
 
         _redis.Setup(r => r.GetSubscriber(It.IsAny<object>())).Returns(_subscriber.Object);
         _subscriber
@@ -42,7 +40,6 @@ public class EncryptionNotificationTests
 
         _service = new NotificationService(
             _hubContext.Object,
-            _eventsHubContext.Object,
             new Mock<IBlueprintInboxWriter>().Object,
             _redis.Object,
             NullLogger<NotificationService>.Instance);

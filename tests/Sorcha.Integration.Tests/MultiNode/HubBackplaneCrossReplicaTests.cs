@@ -46,8 +46,8 @@ public class HubBackplaneCrossReplicaTests
         // Two SignalR connections, each targeting a different replica via the YARP
         // sticky-session cookie. The cookie names — defined in
         // docker-compose.multinode.yml — pin replica selection.
-        var clientOnReplica1 = await ConnectAsync(GatewayUrl + "/actionshub", affinityCookie: "blueprint-1");
-        var clientOnReplica2 = await ConnectAsync(GatewayUrl + "/actionshub", affinityCookie: "blueprint-2");
+        var clientOnReplica1 = await ConnectAsync(GatewayUrl + "/hubs/blueprint", affinityCookie: "blueprint-1");
+        var clientOnReplica2 = await ConnectAsync(GatewayUrl + "/hubs/blueprint", affinityCookie: "blueprint-2");
 
         try
         {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Sorcha.ServiceClients.Subscription;
-using Sorcha.ServiceDefaults.Hubs;
 
 namespace Sorcha.Register.Service.Hubs;
 
@@ -11,18 +11,22 @@ namespace Sorcha.Register.Service.Hubs;
 /// SignalR hub for real-time register notifications.
 /// Subscription access is verified before allowing clients to join register groups.
 /// </summary>
+/// <remarks>
+/// Authenticated-only since Feature 118 / T091. Pre-release: no anonymous
+/// holdouts to drop, so the cutover gauge that previously gated this attribute
+/// is gone.
+/// </remarks>
+[Authorize]
 public class RegisterHub : Hub<IRegisterHubClient>
 {
     private readonly ISubscriptionServiceClient _subscriptionClient;
-    private readonly SignalRMetrics _metrics;
 
     /// <summary>
     /// Initializes the hub with subscription client for access checks
     /// </summary>
-    public RegisterHub(ISubscriptionServiceClient subscriptionClient, SignalRMetrics metrics)
+    public RegisterHub(ISubscriptionServiceClient subscriptionClient)
     {
         _subscriptionClient = subscriptionClient;
-        _metrics = metrics;
     }
 
     /// <summary>
@@ -52,26 +56,6 @@ public class RegisterHub : Hub<IRegisterHubClient>
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, RegisterHubGroups.Register(registerId));
     }
 
-    /// <summary>
-    /// Records the connection in <see cref="SignalRMetrics.ConnectionsTotal"/>
-    /// tagged by authentication state. Drives the cutover gauge per Feature 118
-    /// task T090 — RegisterHub adds <c>[Authorize]</c> only after the
-    /// authenticated tag reaches ≥ 99 % of total.
-    /// </summary>
-    public override async Task OnConnectedAsync()
-    {
-        var authenticated = Context.User?.Identity?.IsAuthenticated == true;
-        _metrics.ConnectionsTotal.Add(1,
-            new KeyValuePair<string, object?>("hub", "register"),
-            new KeyValuePair<string, object?>("state", "connected"),
-            new KeyValuePair<string, object?>("authenticated", authenticated));
-        await base.OnConnectedAsync();
-    }
-
-    public override async Task OnDisconnectedAsync(Exception? exception)
-    {
-        await base.OnDisconnectedAsync(exception);
-    }
 }
 
 /// <summary>
