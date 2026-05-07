@@ -25,23 +25,22 @@ namespace Sorcha.Tenant.Service.Hubs;
 public interface ITenantHubClient
 {
     /// <summary>
-    /// A new inbox entry was written for the user. Carries opaque IDs only; clients
-    /// fetch full content via <c>GET /api/me/inbox/{entryId}</c>.
+    /// A new inbox entry was written for the user. Carries opaque IDs only;
+    /// clients fetch full content via <c>GET /api/me/inbox/{entryId}</c>.
     /// </summary>
     /// <param name="entryId">GUID of the entry, formatted with <c>:N</c> (no hyphens).</param>
     /// <param name="occurredAt">Server timestamp at which the underlying event occurred.</param>
     /// <param name="traceId">W3C trace-id for correlating across the bridge.</param>
-    /// <see href="/api/me/inbox/{entryId}"/>
     Task InboxEntryAdded(string entryId, DateTimeOffset occurredAt, string traceId);
 
     /// <summary>
     /// The authenticated user's unread inbox count changed. Authoritative —
-    /// the client should overwrite, not increment.
+    /// the client should overwrite, not increment. Cold-load via
+    /// <c>GET /api/me/inbox/unread-count</c>.
     /// </summary>
-    /// <param name="unreadCount">New unread count. Cold-load via <c>GET /api/me/inbox/unread-count</c>.</param>
+    /// <param name="unreadCount">New unread count.</param>
     /// <param name="occurredAt">Server timestamp.</param>
-    /// <param name="traceId">W3C trace-id.</param>
-    /// <see href="/api/me/inbox/unread-count"/>
+    /// <param name="traceId">W3C trace-id for correlating across the bridge.</param>
     Task InboxUnreadCountUpdated(int unreadCount, DateTimeOffset occurredAt, string traceId);
 
     // Membership / Security / System announcement events follow in a later phase.
