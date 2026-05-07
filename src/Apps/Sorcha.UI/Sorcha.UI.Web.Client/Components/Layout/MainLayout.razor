@@ -6,6 +6,7 @@
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Models.Credentials
+@using Sorcha.UI.Core.Models.Registers
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ITokenRefreshService TokenRefreshService
@@ -40,6 +41,21 @@
                         <MudBadge Content="@_inboxUnreadCount" Color="Color.Primary" Overlap="true" />
                     }
                 </MudIconButton>
+                @* Feature 118 T105 — inline reconnect affordance driven by the
+                   inbox connection state. No blocking toast. *@
+                @if (_inboxConnectionStatus is ConnectionStatus.Reconnecting or ConnectionStatus.Disconnected)
+                {
+                    <MudTooltip Text="@_reconnectTooltip" Placement="Placement.Bottom">
+                        <MudChip T="string"
+                                 Icon="@Icons.Material.Filled.SyncProblem"
+                                 Color="Color.Warning"
+                                 Size="Size.Small"
+                                 Variant="Variant.Text"
+                                 Class="ml-2">
+                            Reconnecting…
+                        </MudChip>
+                    </MudTooltip>
+                }
                 <UserProfileMenu />
             </Authorized>
             <NotAuthorized>
@@ -259,6 +275,23 @@
     private bool _tokenRefreshStarted;
     private bool _inboxPanelOpen;
     private int _inboxUnreadCount;
+    private ConnectionStatus _inboxConnectionStatus = ConnectionStatus.Connecting;
+    private string _reconnectTooltip = "Reconnecting to the notification service…";
+
+    private void OnTenantHubConnectionChanged(ConnectionState state)
+    {
+        InvokeAsync(() =>
+        {
+            _inboxConnectionStatus = state.Status;
+            _reconnectTooltip = state.Status switch
+            {
+                ConnectionStatus.Reconnecting => $"Reconnecting to the notification service (attempt {state.ReconnectAttempts})…",
+                ConnectionStatus.Disconnected => "Notification service disconnected — retrying…",
+                _ => "Connected"
+            };
+            StateHasChanged();
+        });
+    }
     private int _pendingCredentialCount;
     private bool _isDarkMode;
 
@@ -289,6 +322,9 @@
             // Feature 118 — TenantHub is the authoritative source of the unread
             // bell badge after retirement of the legacy ActivityLogPanel.
             TenantHub.OnInboxUnreadCountUpdated += OnInboxUnreadCountUpdated;
+            // T105 — drive the inline "Reconnecting…" affordance off the inbox
+            // connection state.
+            TenantHub.OnConnectionStateChanged += OnTenantHubConnectionChanged;
             try
             {
                 await TenantHub.StartAsync();
@@ -309,6 +345,7 @@
         BlueprintHub.OnCredentialReceived -= OnCredentialReceived;
         BlueprintHub.OnPendingCredentialCountUpdated -= OnPendingCredentialCountUpdated;
         TenantHub.OnInboxUnreadCountUpdated -= OnInboxUnreadCountUpdated;
+        TenantHub.OnConnectionStateChanged -= OnTenantHubConnectionChanged;
         await TenantHub.DisposeAsync();
         await TokenRefreshService.StopAsync();
     }
