@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.Models;
+using Sorcha.ServiceClients.Participant;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Services.Interfaces;
 using StackExchange.Redis;
@@ -12,13 +16,25 @@ namespace Sorcha.Wallet.Service.Services.Implementation;
 
 /// <summary>
 /// Delivers inbound action notifications to users.
-/// Resolves wallet address → wallet → user, checks notification preferences,
-/// publishes real-time events via Redis pub/sub (wallet:notifications channel)
-/// for the EventsHub bridge, or queues to Redis sorted set (wallet:digest:{userId}) for digest batching.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Real-time path (Feature 118 / T075): resolves wallet → participant →
+/// PlatformUserId, then writes a durable Action inbox entry via
+/// <see cref="IPlatformInboxClient"/>. TenantHub fans out the
+/// <c>InboxEntryAdded</c> signal to the user's open connections; the legacy
+/// <c>wallet:notifications</c> Redis pub/sub channel is removed (pre-release —
+/// no parallel-fire window needed).
+/// </para>
+/// <para>
+/// Digest path: still queues to the Redis sorted set
+/// <c>wallet:digest:{userId}</c>. <c>NotificationDigestWorker</c> drains it on
+/// the digest cadence; T076 will replace the worker output with inbox digest
+/// entries.
+/// </para>
+/// </remarks>
 public sealed class NotificationDeliveryService : INotificationDeliveryService
 {
-    private const string PubSubChannel = "wallet:notifications";
     private const string DigestKeyPrefix = "wallet:digest:";
     private const string DigestActiveUsersKey = "wallet:digest:active-users";
 
@@ -32,15 +48,20 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
     private readonly INotificationPreferenceProvider _preferenceProvider;
     private readonly NotificationMetrics _metrics;
     private readonly IConnectionMultiplexer _redis;
+    private readonly IParticipantServiceClient _participants;
+    private readonly IPlatformInboxClient _inbox;
     private readonly IInboundCredentialDetector? _credentialDetector;
     private readonly ILogger<NotificationDeliveryService> _logger;
 
+    /// <summary>Initialises a new <see cref="NotificationDeliveryService"/>.</summary>
     public NotificationDeliveryService(
         IWalletRepository walletRepository,
         INotificationRateLimiter rateLimiter,
         INotificationPreferenceProvider preferenceProvider,
         NotificationMetrics metrics,
         IConnectionMultiplexer redis,
+        IParticipantServiceClient participants,
+        IPlatformInboxClient inbox,
         ILogger<NotificationDeliveryService> logger,
         IInboundCredentialDetector? credentialDetector = null)
     {
@@ -49,6 +70,8 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         _preferenceProvider = preferenceProvider;
         _metrics = metrics;
         _redis = redis;
+        _participants = participants;
+        _inbox = inbox;
         _credentialDetector = credentialDetector;
         _logger = logger;
     }
@@ -134,7 +157,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
                 userId);
         }
 
-        // Build the event
+        // Build the event (still serialized into the digest sorted set; digest path migrates in T076)
         var actionEvent = new InboundActionEvent
         {
             WalletAddress = recipientAddress,
@@ -180,21 +203,108 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
             return NotificationDeliveryResult.RateLimited;
         }
 
-        // Deliver real-time via Redis pub/sub
-        await PublishRealTimeAsync(actionEvent);
+        // Deliver real-time via the durable Tenant inbox.
+        // Failure here returns NoUserFound rather than throwing — an inbox-write
+        // outage must not poison the inbound-transaction pipeline. The signal
+        // surfaces via metrics + WARN logs.
+        var written = await TryWriteInboxEntryAsync(
+            recipientAddress, actionEvent, cancellationToken).ConfigureAwait(false);
+
+        if (!written)
+        {
+            _metrics.RecordNoUserFound();
+            return NotificationDeliveryResult.NoUserFound;
+        }
+
         _metrics.RecordDeliveredRealTime();
         _metrics.RecordDeliveryLatency((DateTimeOffset.UtcNow - timestamp).TotalMilliseconds);
         _logger.LogDebug(
-            "Real-time notification published for user {UserId}, tx {TxId}",
+            "Real-time inbox entry written for user {UserId}, tx {TxId}",
             userId, transactionId);
         return NotificationDeliveryResult.DeliveredRealTime;
     }
 
-    private async Task PublishRealTimeAsync(InboundActionEvent actionEvent)
+    private async Task<bool> TryWriteInboxEntryAsync(
+        string recipientAddress,
+        InboundActionEvent actionEvent,
+        CancellationToken ct)
     {
-        var subscriber = _redis.GetSubscriber();
-        var json = JsonSerializer.Serialize(actionEvent, JsonOptions);
-        await subscriber.PublishAsync(RedisChannel.Literal(PubSubChannel), json);
+        try
+        {
+            var participant = await _participants.GetByWalletAddressAsync(recipientAddress, ct).ConfigureAwait(false);
+            if (participant is null)
+            {
+                _logger.LogDebug(
+                    "Inbox skip — no participant for recipient wallet {Wallet}",
+                    recipientAddress);
+                return false;
+            }
+
+            var platformUserId = await _inbox.ResolvePlatformUserIdAsync(participant.UserId, ct).ConfigureAwait(false);
+            if (platformUserId is null)
+            {
+                _logger.LogDebug(
+                    "Inbox skip — could not resolve PlatformUserId for UserIdentity {UserIdentityId}",
+                    participant.UserId);
+                return false;
+            }
+
+            var sourceEventId = DeterministicSourceEventId(recipientAddress, actionEvent.TransactionId);
+            var detailHref = BuildDetailHref(actionEvent);
+            var title = actionEvent.IsRecoveryEvent
+                ? "Recovered action requires your attention"
+                : "Action required";
+
+            var payload = new InboxWritePayload(
+                PlatformUserId: platformUserId.Value,
+                Category: "Action",
+                Severity: "ActionRequired",
+                CorrelationKey: $"tx:{recipientAddress}:{actionEvent.TransactionId}",
+                DetailHref: detailHref,
+                SourceEventId: sourceEventId,
+                OccurredAt: actionEvent.Timestamp,
+                Title: title,
+                Summary: null,
+                IconKey: actionEvent.CredentialOfferId is null ? "action.required" : "credential.received");
+
+            var outcome = await _inbox.WriteAsync(payload, ct).ConfigureAwait(false);
+            _logger.LogInformation(
+                "Inbox entry {Outcome} for inbound action — RecipientWallet={Wallet} TxId={TxId} EntryId={EntryId}",
+                outcome.Idempotent ? "idempotent" : "created",
+                recipientAddress, actionEvent.TransactionId, outcome.EntryId);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Inbox-write failed for inbound action — RecipientWallet={Wallet} TxId={TxId}",
+                recipientAddress, actionEvent.TransactionId);
+            return false;
+        }
+    }
+
+    private static string BuildDetailHref(InboundActionEvent actionEvent)
+    {
+        if (!string.IsNullOrWhiteSpace(actionEvent.InstanceId))
+        {
+            return $"/api/instances/{actionEvent.InstanceId}/actions/{actionEvent.ActionId}";
+        }
+        return "/api/me/inbox";
+    }
+
+    private static Guid DeterministicSourceEventId(string recipientWalletAddress, string transactionId)
+    {
+        var input = $"sorcha.inbox.action-required:{recipientWalletAddress}:{transactionId}";
+        var bytes = SHA1.HashData(Encoding.UTF8.GetBytes(input));
+        var guidBytes = new byte[16];
+        Array.Copy(bytes, guidBytes, 16);
+        guidBytes[6] = (byte)((guidBytes[6] & 0x0F) | 0x50);
+        guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
+        return new Guid(guidBytes);
     }
 
     private async Task QueueForDigestAsync(string userId, InboundActionEvent actionEvent)
