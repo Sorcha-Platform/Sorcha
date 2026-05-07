@@ -11,10 +11,10 @@
 # triggered on replica A reaches the client connected to replica B within 200ms p95
 # (Feature 118 spec NFR-001).
 #
-# Tenant Service multi-replica fixture lands in Phase 4 (US2) when TenantHub is
-# created. Wallet/Register multi-replica fixtures lined up but not exercised in
-# this overlay — they share the same backplane keyspace and are covered by the
-# parameterised cross-replica test once they have their own multinode definitions.
+# Tenant Service multi-replica fixture added in T060 — TenantHub cross-replica
+# delivery uses the same backplane keyspace as Blueprint and is exercised by the
+# same parameterised test class. Wallet/Register multi-replica fixtures lined up
+# but not yet defined here.
 #
 # Referenced by:
 #   - tests/Sorcha.Integration.Tests/MultiNode/HubBackplaneCrossReplicaTests.cs
@@ -57,14 +57,60 @@ services:
     networks:
       - sorcha-network
 
-  # ---- API Gateway with sticky-session affinity for Blueprint cluster ----
-  # YARP routes /actionshub /hubs/events /hubs/chat to blueprint-cluster which
-  # now has two destinations. The session-affinity cookie pins each connection
-  # to one replica for the duration of the SignalR session — required because
-  # SignalR negotiate/connect spans multiple HTTP requests.
+  # ---- Replica 1 of Tenant Service ----
+  tenant-service:
+    container_name: sorcha-tenant-service-1
+    environment:
+      OTEL_SERVICE_NAME: tenant-service-1
+      Hub__ReplicaId: tenant-1
+
+  # ---- Replica 2 of Tenant Service ----
+  tenant-service-2:
+    build:
+      context: .
+      dockerfile: src/Services/Sorcha.Tenant.Service/Dockerfile
+    image: sorchadev/tenant-service:latest
+    container_name: sorcha-tenant-service-2
+    restart: unless-stopped
+    mem_limit: 1g
+    environment:
+      ConnectionStrings__Sorcha__Postgres: Host=postgres;Username=sorcha;Password=sorcha_dev_password
+      ConnectionStrings__Sorcha__Mongo: mongodb://sorcha:sorcha_dev_password@mongodb:27017
+      ConnectionStrings__Sorcha__Redis: redis:6379
+      ConnectionStrings__redis: redis:6379
+      ConnectionStrings__mongodb: mongodb://sorcha:sorcha_dev_password@mongodb:27017
+      OTEL_SERVICE_NAME: tenant-service-2
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Hub__ReplicaId: tenant-2
+      # JWT signing key + installation name MUST match tenant-service-1 so
+      # tokens issued by either replica validate on both.
+      JwtSettings__SigningKeySource: Configuration
+      JwtSettings__InstallationName: ${INSTALLATION_NAME:-localhost}
+      JwtSettings__SigningKey: ${JWT_SIGNING_KEY:-c29yY2hhLWRvY2tlci1kZXYta2V5LTIwMjUtbWluLTI1Ni1iaXRzLXNlY3VyZQ==}
+      ServiceAuth__ClientId: tenant-service
+      ServiceAuth__ClientSecret: tenant-service-secret
+      ServiceAuth__Scopes: "wallets:sign wallets:verify persona:crypto"
+      ServiceClients__WalletService__Address: http://wallet-service:8080
+    depends_on:
+      - postgres
+      - mongodb
+      - redis
+    networks:
+      - sorcha-network
+
+  # ---- API Gateway with sticky-session affinity for Blueprint + Tenant clusters ----
+  # YARP routes /actionshub /hubs/events /hubs/chat to blueprint-cluster and
+  # /hubs/tenant to tenant-cluster, each with two destinations and a sticky
+  # affinity cookie pinning each SignalR connection to one replica for the
+  # duration of the session.
   api-gateway:
     environment:
       ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__Enabled: "true"
       ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__Policy: Cookie
       ReverseProxy__Clusters__blueprint-cluster__SessionAffinity__AffinityKeyName: ".Sorcha.Affinity.Blueprint"
       ReverseProxy__Clusters__blueprint-cluster__Destinations__blueprint-2__Address: http://blueprint-service-2:8080
+      ReverseProxy__Clusters__tenant-cluster__SessionAffinity__Enabled: "true"
+      ReverseProxy__Clusters__tenant-cluster__SessionAffinity__Policy: Cookie
+      ReverseProxy__Clusters__tenant-cluster__SessionAffinity__AffinityKeyName: ".Sorcha.Affinity.Tenant"
+      ReverseProxy__Clusters__tenant-cluster__Destinations__tenant-2__Address: http://tenant-service-2:8080
