@@ -704,6 +704,7 @@ Every audited storage interface registration goes through `IStorageRegistrationL
 | `Sorcha.Blueprint.Service.Storage.IActionStore` | Blueprint |
 | `Sorcha.Validator.Service.Services.Interfaces.IVerifiedTransactionQueue` | Validator |
 | `Sorcha.AtomicCache.IAtomicDistributedCache` | HAIP + future consumers |
+| `Sorcha.Tenant.Service.Storage.IInboxStore` | Tenant (Feature 118 / T065) |
 
 Cache-style stores (`IBlueprintStore`, `IPublishedBlueprintStore`, `BlueprintCache`, `ValidatorRegistry`, in-process routing tables) emit the warning but are intentionally not audited — they reload from the persistent transaction log on cold start.
 

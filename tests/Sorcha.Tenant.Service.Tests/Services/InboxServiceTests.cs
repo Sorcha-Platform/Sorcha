@@ -9,6 +9,7 @@ using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Hubs;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Service.Storage;
 using Sorcha.Tenant.Service.Tests.Helpers;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
@@ -35,7 +36,8 @@ public sealed class InboxServiceTests : IDisposable
         _hub.SetupGet(h => h.Clients).Returns(_hubClients.Object);
         _hubClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_clientProxy.Object);
 
-        _sut = new InboxService(_db, _hub.Object, NullLogger<InboxService>.Instance);
+        var store = new EfCoreInboxStore(_db);
+        _sut = new InboxService(store, _hub.Object, NullLogger<InboxService>.Instance);
     }
 
     public void Dispose() => _db.Dispose();

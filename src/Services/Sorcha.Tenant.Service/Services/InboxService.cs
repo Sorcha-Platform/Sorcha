@@ -2,17 +2,17 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
-using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Hubs;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Storage;
 
 namespace Sorcha.Tenant.Service.Services;
 
 /// <summary>
-/// Default <see cref="IInboxService"/> implementation. Postgres source of truth
-/// (via <see cref="TenantDbContext"/>); SignalR fan-out to TenantHub on every
-/// state transition.
+/// Default <see cref="IInboxService"/> implementation. Delegates persistence to
+/// <see cref="IInboxStore"/> (audited under Feature 113); orchestrates idempotent
+/// writes, default channel-hint resolution, and SignalR fan-out to TenantHub on
+/// every state transition.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,14 +30,14 @@ namespace Sorcha.Tenant.Service.Services;
 /// </remarks>
 public sealed class InboxService : IInboxService
 {
-    private readonly TenantDbContext _db;
+    private readonly IInboxStore _store;
     private readonly IHubContext<TenantHub> _hub;
     private readonly ILogger<InboxService> _logger;
 
     /// <summary>Initialises a new <see cref="InboxService"/>.</summary>
-    public InboxService(TenantDbContext db, IHubContext<TenantHub> hub, ILogger<InboxService> logger)
+    public InboxService(IInboxStore store, IHubContext<TenantHub> hub, ILogger<InboxService> logger)
     {
-        _db = db ?? throw new ArgumentNullException(nameof(db));
+        _store = store ?? throw new ArgumentNullException(nameof(store));
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -47,21 +47,7 @@ public sealed class InboxService : IInboxService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // Idempotency check on (PlatformUserId, SourceEventId).
-        var existing = await _db.InboxEntries
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                e => e.PlatformUserId == request.PlatformUserId && e.SourceEventId == request.SourceEventId,
-                ct).ConfigureAwait(false);
-        if (existing is not null)
-        {
-            _logger.LogDebug(
-                "Inbox idempotent write — entry already exists. PlatformUserId={PlatformUserId} SourceEventId={SourceEventId} EntryId={EntryId}",
-                request.PlatformUserId, request.SourceEventId, existing.Id);
-            return new InboxWriteResult(existing, IsIdempotent: true);
-        }
-
-        var entry = new InboxEntry
+        var candidate = new InboxEntry
         {
             Id = Guid.NewGuid(),
             PlatformUserId = request.PlatformUserId,
@@ -78,34 +64,24 @@ public sealed class InboxService : IInboxService
             WriterServiceId = request.WriterServiceId,
         };
 
-        _db.InboxEntries.Add(entry);
-        try
+        var addResult = await _store.AddOrFindAsync(candidate, ct).ConfigureAwait(false);
+
+        if (addResult.IsIdempotent)
         {
-            await _db.SaveChangesAsync(ct).ConfigureAwait(false);
-        }
-        catch (DbUpdateException)
-        {
-            // Another concurrent write may have won the unique-index race. Re-read.
-            var raced = await _db.InboxEntries
-                .AsNoTracking()
-                .FirstOrDefaultAsync(
-                    e => e.PlatformUserId == request.PlatformUserId && e.SourceEventId == request.SourceEventId,
-                    ct).ConfigureAwait(false);
-            if (raced is not null)
-            {
-                return new InboxWriteResult(raced, IsIdempotent: true);
-            }
-            throw;
+            _logger.LogDebug(
+                "Inbox idempotent write — entry already exists. PlatformUserId={PlatformUserId} SourceEventId={SourceEventId} EntryId={EntryId}",
+                request.PlatformUserId, request.SourceEventId, addResult.Entry.Id);
+            return new InboxWriteResult(addResult.Entry, IsIdempotent: true);
         }
 
         _logger.LogInformation(
             "Inbox entry written. PlatformUserId={PlatformUserId} EntryId={EntryId} Category={Category} CorrelationKey={CorrelationKey}",
-            entry.PlatformUserId, entry.Id, entry.Category, entry.CorrelationKey);
+            addResult.Entry.PlatformUserId, addResult.Entry.Id, addResult.Entry.Category, addResult.Entry.CorrelationKey);
 
-        await EmitInboxEntryAddedAsync(entry, ct).ConfigureAwait(false);
-        await EmitUnreadCountAsync(entry.PlatformUserId, ct).ConfigureAwait(false);
+        await EmitInboxEntryAddedAsync(addResult.Entry, ct).ConfigureAwait(false);
+        await EmitUnreadCountAsync(addResult.Entry.PlatformUserId, ct).ConfigureAwait(false);
 
-        return new InboxWriteResult(entry, IsIdempotent: false);
+        return new InboxWriteResult(addResult.Entry, IsIdempotent: false);
     }
 
     /// <inheritdoc />
@@ -122,67 +98,32 @@ public sealed class InboxService : IInboxService
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        var query = _db.InboxEntries
-            .AsNoTracking()
-            .Where(e => e.PlatformUserId == platformUserId);
+        var result = await _store.GetPageAsync(
+            platformUserId, page, pageSize, category, unreadOnly, includeDismissed, ct)
+            .ConfigureAwait(false);
 
-        if (!includeDismissed)
-        {
-            query = query.Where(e => e.DismissedAt == null);
-        }
-        if (unreadOnly)
-        {
-            query = query.Where(e => e.ReadAt == null);
-        }
-        if (category.HasValue)
-        {
-            query = query.Where(e => e.Category == category.Value);
-        }
-
-        var total = await query.CountAsync(ct).ConfigureAwait(false);
-        var entries = await query
-            .OrderByDescending(e => e.OccurredAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(ct).ConfigureAwait(false);
-
-        return new InboxPage(entries, page, pageSize, total);
+        return new InboxPage(result.Entries, page, pageSize, result.TotalCount);
     }
 
     /// <inheritdoc />
-    public async Task<InboxEntry?> GetByIdAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default)
-    {
-        return await _db.InboxEntries
-            .AsNoTracking()
-            .FirstOrDefaultAsync(e => e.Id == entryId && e.PlatformUserId == platformUserId, ct)
-            .ConfigureAwait(false);
-    }
+    public Task<InboxEntry?> GetByIdAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default)
+        => _store.GetByIdAsync(platformUserId, entryId, ct);
 
     /// <inheritdoc />
-    public async Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default)
-    {
-        return await _db.InboxEntries
-            .AsNoTracking()
-            .Where(e => e.PlatformUserId == platformUserId && e.ReadAt == null && e.DismissedAt == null)
-            .CountAsync(ct)
-            .ConfigureAwait(false);
-    }
+    public Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default)
+        => _store.GetUnreadCountAsync(platformUserId, ct);
 
     /// <inheritdoc />
     public async Task<bool> MarkReadAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default)
     {
-        var entry = await _db.InboxEntries
-            .FirstOrDefaultAsync(e => e.Id == entryId && e.PlatformUserId == platformUserId, ct)
-            .ConfigureAwait(false);
-        if (entry is null)
+        var result = await _store.MarkReadAsync(platformUserId, entryId, ct).ConfigureAwait(false);
+        if (!result.Found)
         {
             return false;
         }
 
-        if (entry.ReadAt is null)
+        if (result.StateChanged)
         {
-            entry.ReadAt = DateTimeOffset.UtcNow;
-            await _db.SaveChangesAsync(ct).ConfigureAwait(false);
             await EmitUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
         }
         return true;
@@ -191,23 +132,15 @@ public sealed class InboxService : IInboxService
     /// <inheritdoc />
     public async Task<bool> DismissAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default)
     {
-        var entry = await _db.InboxEntries
-            .FirstOrDefaultAsync(e => e.Id == entryId && e.PlatformUserId == platformUserId, ct)
-            .ConfigureAwait(false);
-        if (entry is null)
+        var result = await _store.DismissAsync(platformUserId, entryId, ct).ConfigureAwait(false);
+        if (!result.Found)
         {
             return false;
         }
 
-        var wasUnread = entry.ReadAt is null && entry.DismissedAt is null;
-        if (entry.DismissedAt is null)
+        if (result.StateChanged && result.WasUnread)
         {
-            entry.DismissedAt = DateTimeOffset.UtcNow;
-            await _db.SaveChangesAsync(ct).ConfigureAwait(false);
-            if (wasUnread)
-            {
-                await EmitUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
-            }
+            await EmitUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
         }
         return true;
     }
@@ -215,24 +148,12 @@ public sealed class InboxService : IInboxService
     /// <inheritdoc />
     public async Task<int> MarkAllReadAsync(Guid platformUserId, CancellationToken ct = default)
     {
-        var now = DateTimeOffset.UtcNow;
-        // Use a tracked-entity update path so InMemory provider tests pass; on Postgres
-        // the same path generates a single UPDATE. ExecuteUpdateAsync would be more efficient
-        // for very large unread inboxes — Phase 5 follow-up swaps it in once we add a bulk
-        // op to the InMemoryDbContextFactory test helper.
-        var unread = await _db.InboxEntries
-            .Where(e => e.PlatformUserId == platformUserId && e.ReadAt == null && e.DismissedAt == null)
-            .ToListAsync(ct).ConfigureAwait(false);
-        foreach (var entry in unread)
+        var affected = await _store.MarkAllReadAsync(platformUserId, ct).ConfigureAwait(false);
+        if (affected > 0)
         {
-            entry.ReadAt = now;
-        }
-        if (unread.Count > 0)
-        {
-            await _db.SaveChangesAsync(ct).ConfigureAwait(false);
             await EmitUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
         }
-        return unread.Count;
+        return affected;
     }
 
     private static ChannelHints DefaultChannelHintsFor(InboxCategory category) => category switch
@@ -272,7 +193,7 @@ public sealed class InboxService : IInboxService
     {
         try
         {
-            var count = await GetUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
+            var count = await _store.GetUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
             await _hub.Clients.Group(TenantHubGroups.User(platformUserId))
                 .SendAsync(
                     "InboxUnreadCountUpdated",
