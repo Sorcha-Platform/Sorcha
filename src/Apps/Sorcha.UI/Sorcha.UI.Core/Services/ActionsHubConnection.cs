@@ -281,86 +281,130 @@ public class ActionsHubConnection : IAsyncDisposable
     {
         if (_hubConnection == null) return;
 
-        // ActionAvailable - thin signal, UI pulls details via REST
-        _hubConnection.On<SignalNotification>("ActionAvailable", async signal =>
-        {
-            _logger.LogDebug(
-                "Action available signal: Instance={InstanceId}, CorrelationId={CorrelationId}",
-                signal.InstanceId,
-                signal.CorrelationId);
-
-            if (OnActionAvailable != null)
+        // ActionAvailable - thin signal (Feature 118 wire shape: ID-only multi-args).
+        _hubConnection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            async (instanceId, actionId, occurredAt, traceId) =>
             {
-                await OnActionAvailable(signal);
-            }
-        });
+                _logger.LogDebug(
+                    "Action available signal: Instance={InstanceId}, ActionId={ActionId}, TraceId={TraceId}",
+                    instanceId, actionId, traceId);
 
-        // ActionRejected - thin signal
-        _hubConnection.On<SignalNotification>("ActionRejected", async signal =>
-        {
-            _logger.LogDebug(
-                "Action rejected signal: Instance={InstanceId}, CorrelationId={CorrelationId}",
-                signal.InstanceId,
-                signal.CorrelationId);
+                if (OnActionAvailable != null)
+                {
+                    var signal = new SignalNotification
+                    {
+                        SignalType = "action-available",
+                        InstanceId = instanceId,
+                        ActionId = string.IsNullOrEmpty(actionId) ? null : actionId,
+                        Timestamp = occurredAt,
+                    };
+                    await OnActionAvailable(signal);
+                }
+            });
 
-            if (OnActionRejected != null)
+        // ActionRejected - thin signal.
+        _hubConnection.On<string, string, DateTimeOffset, string>("ActionRejected",
+            async (instanceId, actionId, occurredAt, traceId) =>
             {
-                await OnActionRejected(signal);
-            }
-        });
+                _logger.LogDebug(
+                    "Action rejected signal: Instance={InstanceId}, ActionId={ActionId}, TraceId={TraceId}",
+                    instanceId, actionId, traceId);
 
-        // WorkflowCompleted - thin signal
-        _hubConnection.On<SignalNotification>("WorkflowCompleted", async signal =>
-        {
-            _logger.LogDebug(
-                "Workflow completed signal: Instance={InstanceId}, CorrelationId={CorrelationId}",
-                signal.InstanceId,
-                signal.CorrelationId);
+                if (OnActionRejected != null)
+                {
+                    var signal = new SignalNotification
+                    {
+                        SignalType = "action-rejected",
+                        InstanceId = instanceId,
+                        ActionId = string.IsNullOrEmpty(actionId) ? null : actionId,
+                        Timestamp = occurredAt,
+                    };
+                    await OnActionRejected(signal);
+                }
+            });
 
-            if (OnWorkflowCompleted != null)
+        // WorkflowCompleted - thin signal.
+        _hubConnection.On<string, DateTimeOffset, string>("WorkflowCompleted",
+            async (instanceId, occurredAt, traceId) =>
             {
-                await OnWorkflowCompleted(signal);
-            }
-        });
+                _logger.LogDebug(
+                    "Workflow completed signal: Instance={InstanceId}, TraceId={TraceId}",
+                    instanceId, traceId);
 
-        // EncryptionProgress - thin signal with progress percentage
-        _hubConnection.On<EncryptionSignal>("EncryptionProgress", async signal =>
-        {
-            _logger.LogDebug(
-                "Encryption progress signal: Operation={OperationId}, Progress={Percent}%, Status={Status}",
-                signal.OperationId, signal.PercentComplete, signal.Status);
+                if (OnWorkflowCompleted != null)
+                {
+                    var signal = new SignalNotification
+                    {
+                        SignalType = "workflow-completed",
+                        InstanceId = instanceId,
+                        Timestamp = occurredAt,
+                    };
+                    await OnWorkflowCompleted(signal);
+                }
+            });
 
-            if (OnEncryptionProgress != null)
+        // EncryptionProgress - thin signal (operationId only). Detail via REST.
+        _hubConnection.On<string, DateTimeOffset, string>("EncryptionProgress",
+            async (operationId, occurredAt, traceId) =>
             {
-                await OnEncryptionProgress(signal);
-            }
-        });
+                _logger.LogDebug(
+                    "Encryption progress signal: Operation={OperationId}, TraceId={TraceId}",
+                    operationId, traceId);
 
-        // EncryptionComplete - thin signal
-        _hubConnection.On<EncryptionSignal>("EncryptionComplete", async signal =>
-        {
-            _logger.LogDebug(
-                "Encryption complete signal: Operation={OperationId}, Status={Status}",
-                signal.OperationId, signal.Status);
+                if (OnEncryptionProgress != null)
+                {
+                    var signal = new EncryptionSignal
+                    {
+                        OperationId = operationId,
+                        PercentComplete = 0,
+                        Status = "encrypting",
+                        Timestamp = occurredAt,
+                    };
+                    await OnEncryptionProgress(signal);
+                }
+            });
 
-            if (OnEncryptionComplete != null)
+        // EncryptionComplete - thin signal.
+        _hubConnection.On<string, DateTimeOffset, string>("EncryptionComplete",
+            async (operationId, occurredAt, traceId) =>
             {
-                await OnEncryptionComplete(signal);
-            }
-        });
+                _logger.LogDebug(
+                    "Encryption complete signal: Operation={OperationId}, TraceId={TraceId}",
+                    operationId, traceId);
 
-        // EncryptionFailed - thin signal
-        _hubConnection.On<EncryptionSignal>("EncryptionFailed", async signal =>
-        {
-            _logger.LogDebug(
-                "Encryption failed signal: Operation={OperationId}, Status={Status}",
-                signal.OperationId, signal.Status);
+                if (OnEncryptionComplete != null)
+                {
+                    var signal = new EncryptionSignal
+                    {
+                        OperationId = operationId,
+                        PercentComplete = 100,
+                        Status = "complete",
+                        Timestamp = occurredAt,
+                    };
+                    await OnEncryptionComplete(signal);
+                }
+            });
 
-            if (OnEncryptionFailed != null)
+        // EncryptionFailed - thin signal.
+        _hubConnection.On<string, DateTimeOffset, string>("EncryptionFailed",
+            async (operationId, occurredAt, traceId) =>
             {
-                await OnEncryptionFailed(signal);
-            }
-        });
+                _logger.LogDebug(
+                    "Encryption failed signal: Operation={OperationId}, TraceId={TraceId}",
+                    operationId, traceId);
+
+                if (OnEncryptionFailed != null)
+                {
+                    var signal = new EncryptionSignal
+                    {
+                        OperationId = operationId,
+                        PercentComplete = 0,
+                        Status = "failed",
+                        Timestamp = occurredAt,
+                    };
+                    await OnEncryptionFailed(signal);
+                }
+            });
 
         // CredentialReceived - a new credential has been issued to the current user
         _hubConnection.On<CredentialNotification>("CredentialReceived", notification =>

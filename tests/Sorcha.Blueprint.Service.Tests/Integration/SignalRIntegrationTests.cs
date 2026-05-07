@@ -169,12 +169,13 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xabcdef1234567890";
-        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
+        var receivedSignal = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionAvailable", signal =>
-        {
-            receivedSignal.Writer.TryWrite(signal);
-        });
+        connection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (instanceId, actionId, occurredAt, traceId) =>
+            {
+                receivedSignal.Writer.TryWrite(new CapturedActionSignal(instanceId, actionId, occurredAt, traceId));
+            });
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToWallet", walletAddress);
@@ -188,8 +189,6 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var received = await receivedSignal.Reader.ReadAsync(
             new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
 
-        received.Should().NotBeNull();
-        received.SignalType.Should().Be("action-available");
         received.InstanceId.Should().Be("instance-001");
     }
 
@@ -199,12 +198,13 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xrejected654321";
-        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
+        var receivedSignal = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionRejected", signal =>
-        {
-            receivedSignal.Writer.TryWrite(signal);
-        });
+        connection.On<string, string, DateTimeOffset, string>("ActionRejected",
+            (instanceId, actionId, occurredAt, traceId) =>
+            {
+                receivedSignal.Writer.TryWrite(new CapturedActionSignal(instanceId, actionId, occurredAt, traceId));
+            });
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToWallet", walletAddress);
@@ -218,8 +218,6 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var received = await receivedSignal.Reader.ReadAsync(
             new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
 
-        received.Should().NotBeNull();
-        received.SignalType.Should().Be("action-rejected");
         received.InstanceId.Should().Be("instance-003");
     }
 
@@ -229,12 +227,13 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xunsubscribed999";
-        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
+        var receivedSignal = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionAvailable", signal =>
-        {
-            receivedSignal.Writer.TryWrite(signal);
-        });
+        connection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (instanceId, actionId, occurredAt, traceId) =>
+            {
+                receivedSignal.Writer.TryWrite(new CapturedActionSignal(instanceId, actionId, occurredAt, traceId));
+            });
 
         await connection.StartAsync();
         // Note: NOT subscribing to the wallet
@@ -266,12 +265,13 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xafterunsub888";
-        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
+        var receivedSignal = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionAvailable", signal =>
-        {
-            receivedSignal.Writer.TryWrite(signal);
-        });
+        connection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (instanceId, actionId, occurredAt, traceId) =>
+            {
+                receivedSignal.Writer.TryWrite(new CapturedActionSignal(instanceId, actionId, occurredAt, traceId));
+            });
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToWallet", walletAddress);
@@ -312,13 +312,16 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var connection2 = CreateHubConnection();
         var connection3 = CreateHubConnection();
 
-        var received1 = Channel.CreateUnbounded<SignalNotification>();
-        var received2 = Channel.CreateUnbounded<SignalNotification>();
-        var received3 = Channel.CreateUnbounded<SignalNotification>();
+        var received1 = Channel.CreateUnbounded<CapturedActionSignal>();
+        var received2 = Channel.CreateUnbounded<CapturedActionSignal>();
+        var received3 = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection1.On<SignalNotification>("ActionAvailable", n => received1.Writer.TryWrite(n));
-        connection2.On<SignalNotification>("ActionAvailable", n => received2.Writer.TryWrite(n));
-        connection3.On<SignalNotification>("ActionAvailable", n => received3.Writer.TryWrite(n));
+        connection1.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received1.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
+        connection2.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received2.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
+        connection3.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received3.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
 
         await connection1.StartAsync();
         await connection2.StartAsync();
@@ -355,11 +358,13 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var connection1 = CreateHubConnection();
         var connection2 = CreateHubConnection();
 
-        var received1 = Channel.CreateUnbounded<SignalNotification>();
-        var received2 = Channel.CreateUnbounded<SignalNotification>();
+        var received1 = Channel.CreateUnbounded<CapturedActionSignal>();
+        var received2 = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection1.On<SignalNotification>("ActionAvailable", n => received1.Writer.TryWrite(n));
-        connection2.On<SignalNotification>("ActionAvailable", n => received2.Writer.TryWrite(n));
+        connection1.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received1.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
+        connection2.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received2.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
 
         await connection1.StartAsync();
         await connection2.StartAsync();
@@ -404,11 +409,13 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var connection = CreateHubConnection();
         var walletAddress = "0xalltypes123";
 
-        var availableReceived = Channel.CreateUnbounded<SignalNotification>();
-        var rejectedReceived = Channel.CreateUnbounded<SignalNotification>();
+        var availableReceived = Channel.CreateUnbounded<CapturedActionSignal>();
+        var rejectedReceived = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionAvailable", n => availableReceived.Writer.TryWrite(n));
-        connection.On<SignalNotification>("ActionRejected", n => rejectedReceived.Writer.TryWrite(n));
+        connection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => availableReceived.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
+        connection.On<string, string, DateTimeOffset, string>("ActionRejected",
+            (i, a, o, t) => rejectedReceived.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToWallet", walletAddress);
@@ -417,20 +424,27 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
-        // Act & Assert - ActionAvailable
+        // Act & Assert - ActionAvailable (method name is the discriminator on the wire).
         await notificationService.NotifyActionAvailableAsync("instance-avail", walletAddress);
         var available = await availableReceived.Reader.ReadAsync(cts.Token);
-        available.SignalType.Should().Be("action-available");
+        available.InstanceId.Should().Be("instance-avail");
 
         // Act & Assert - ActionRejected
         await notificationService.NotifyActionRejectedAsync("instance-reject", walletAddress);
         var rejected = await rejectedReceived.Reader.ReadAsync(cts.Token);
-        rejected.SignalType.Should().Be("action-rejected");
+        rejected.InstanceId.Should().Be("instance-reject");
     }
 
     #endregion
 
     #region Helper Methods
+
+    /// <summary>
+    /// Test-only capture record for the multi-arg ActionAvailable / ActionRejected wire shape.
+    /// Mirrors the parameter list on <c>IBlueprintHubClient</c>.
+    /// </summary>
+    private sealed record CapturedActionSignal(
+        string InstanceId, string ActionId, DateTimeOffset OccurredAt, string TraceId);
 
     private HubConnection CreateHubConnection()
     {

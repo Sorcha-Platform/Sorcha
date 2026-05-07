@@ -1189,7 +1189,7 @@ public class ActionExecutionService : IActionExecutionService
         await _notificationService.NotifyActionRejectedAsync(
             instanceId,
             targetWalletAddress,
-            cancellationToken);
+            ct: cancellationToken);
 
         return new ActionRejectionResponse
         {
@@ -1616,7 +1616,8 @@ public class ActionExecutionService : IActionExecutionService
             await _notificationService.NotifyActionAvailableAsync(
                 instance.Id,
                 walletAddress,
-                cancellationToken);
+                actionId: nextAction.ActionId.ToString(),
+                ct: cancellationToken);
         }
 
         if (routingResult.NextActions.Count == 0)

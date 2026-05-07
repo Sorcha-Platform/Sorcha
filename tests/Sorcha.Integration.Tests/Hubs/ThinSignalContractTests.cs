@@ -52,16 +52,6 @@ public class ThinSignalContractTests
     /// </summary>
     private static readonly HashSet<string> DeferredExemptions = new(StringComparer.Ordinal)
     {
-        // Phase 6 follow-up — encryption events still carry object payloads. Strip when
-        // the descriptive-field migration on EncryptionSignal lands.
-        "Sorcha.Blueprint.Service.Hubs.IBlueprintHubClient.EncryptionProgress",
-        "Sorcha.Blueprint.Service.Hubs.IBlueprintHubClient.EncryptionComplete",
-        "Sorcha.Blueprint.Service.Hubs.IBlueprintHubClient.EncryptionFailed",
-        // SignalNotification carries InstanceId + signal-type strings — Phase 6 strips these
-        // to opaque IDs only.
-        "Sorcha.Blueprint.Service.Hubs.IBlueprintHubClient.ActionAvailable",
-        "Sorcha.Blueprint.Service.Hubs.IBlueprintHubClient.ActionRejected",
-        "Sorcha.Blueprint.Service.Hubs.IBlueprintHubClient.WorkflowCompleted",
         // EventsHub legacy events — retired in Phase 10 polish; not migrated.
         "Sorcha.Blueprint.Service.Hubs.IEventsHubClient.EncryptionOperationCompleted",
         "Sorcha.Blueprint.Service.Hubs.IEventsHubClient.EventReceived",
