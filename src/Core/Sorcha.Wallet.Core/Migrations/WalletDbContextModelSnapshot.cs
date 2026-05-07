@@ -24,6 +24,41 @@ namespace Sorcha.Wallet.Core.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CitizenCredentialEventLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("CredentialId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Seq")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlatformUserId", "Seq")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CitizenCredentialEventLog_User_Seq");
+
+                    b.ToTable("CitizenCredentialEventLog", "wallet");
+                });
+
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CitizenDeviceStatusList", b =>
                 {
                     b.Property<Guid>("Id")
@@ -67,6 +102,27 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasDatabaseName("IX_CitizenDeviceStatusLists_Org_ListId");
 
                     b.ToTable("CitizenDeviceStatusLists", "wallet");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CitizenHolderIndex", b =>
+                {
+                    b.Property<string>("WalletAddress")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("WalletAddress");
+
+                    b.HasIndex("PlatformUserId")
+                        .HasDatabaseName("IX_CitizenHolderIndex_PlatformUserId");
+
+                    b.ToTable("CitizenHolderIndex", "wallet");
                 });
 
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CitizenWalletSyncCursor", b =>

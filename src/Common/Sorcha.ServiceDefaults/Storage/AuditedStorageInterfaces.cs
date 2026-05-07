@@ -66,6 +66,13 @@ internal static class AuditedStorageInterfaces
         // fallback would silently lose every user-facing notification on restart.
         // Verified: matches typeof(Sorcha.Tenant.Service.Storage.IInboxStore).FullName.
         "Sorcha.Tenant.Service.Storage.IInboxStore",
+
+        // Feature 114 / US4 — Wallet Service citizen credential-event log. Backs
+        // the citizen wallet sync surface; an in-memory fallback would silently
+        // drop every push-on-issuance signal AND every replay through /sync after
+        // restart, leaving the wallet permanently out of date with no error path.
+        // Verified: matches typeof(Sorcha.Wallet.Service.Services.Interfaces.ICitizenCredentialEventStream).FullName.
+        "Sorcha.Wallet.Service.Services.Interfaces.ICitizenCredentialEventStream",
     };
 
     /// <summary>The literal backend label used for in-memory registrations.</summary>

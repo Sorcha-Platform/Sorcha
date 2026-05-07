@@ -85,6 +85,16 @@ public class WalletDbContext : DbContext
     public DbSet<CitizenWalletSyncCursor> CitizenWalletSyncCursors => Set<CitizenWalletSyncCursor>();
 
     /// <summary>
+    /// Reverse map from citizen holder wallet address to PlatformUser (Feature 114, US4).
+    /// </summary>
+    public DbSet<CitizenHolderIndex> CitizenHolderIndex => Set<CitizenHolderIndex>();
+
+    /// <summary>
+    /// Append-only credential-lifecycle event log per citizen (Feature 114, US4).
+    /// </summary>
+    public DbSet<CitizenCredentialEventLog> CitizenCredentialEventLog => Set<CitizenCredentialEventLog>();
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="WalletDbContext"/> class.
     /// </summary>
     /// <param name="options">The database context options configured with PostgreSQL connection string.</param>
@@ -125,6 +135,8 @@ public class WalletDbContext : DbContext
         ConfigureSigningSession(modelBuilder);
         ConfigureCitizenDeviceStatusList(modelBuilder);
         ConfigureCitizenWalletSyncCursor(modelBuilder);
+        ConfigureCitizenHolderIndex(modelBuilder);
+        ConfigureCitizenCredentialEventLog(modelBuilder);
     }
 
     private static void ConfigureWallet(ModelBuilder modelBuilder)
@@ -930,6 +942,62 @@ public class WalletDbContext : DbContext
             entity.HasIndex(e => new { e.PlatformUserId, e.PlatformUserDeviceId })
                 .IsUnique()
                 .HasDatabaseName("IX_CitizenWalletSyncCursors_User_Device");
+        });
+    }
+
+    // Feature 114 US4: reverse index from citizen holder wallet address → PlatformUser.
+    // Populated on first holder-key derivation; consumed by IHolderAddressLookup.
+    private static void ConfigureCitizenHolderIndex(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CitizenHolderIndex>(entity =>
+        {
+            entity.ToTable("CitizenHolderIndex");
+
+            // WalletAddress is the natural PK — one holder address ↔ one citizen.
+            entity.HasKey(e => e.WalletAddress);
+
+            entity.Property(e => e.WalletAddress)
+                .HasColumnType("text")
+                .IsRequired();
+
+            entity.Property(e => e.PlatformUserId).IsRequired();
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => e.PlatformUserId)
+                .HasDatabaseName("IX_CitizenHolderIndex_PlatformUserId");
+        });
+    }
+
+    // Feature 114 US4: append-only credential-lifecycle event log per citizen.
+    // Backs ICitizenCredentialEventStream; (PlatformUserId, Seq) supports the
+    // delta-read query the sync service issues on every wallet open.
+    private static void ConfigureCitizenCredentialEventLog(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CitizenCredentialEventLog>(entity =>
+        {
+            entity.ToTable("CitizenCredentialEventLog");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.PlatformUserId).IsRequired();
+            entity.Property(e => e.Seq).IsRequired();
+            entity.Property(e => e.Kind).IsRequired();
+
+            entity.Property(e => e.CredentialId)
+                .HasMaxLength(500)
+                .IsRequired();
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            // Hot-path read index — citizens always query "events strictly newer than Seq".
+            entity.HasIndex(e => new { e.PlatformUserId, e.Seq })
+                .IsUnique()
+                .HasDatabaseName("IX_CitizenCredentialEventLog_User_Seq");
         });
     }
 }

@@ -279,23 +279,24 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 **Independent Test**: With a wallet open and online, complete an issuance flow in the existing Sorcha web UI; the new credential appears in the wallet without explicit refresh within a short delay (< 5 seconds). Repeat with the wallet closed; the credential appears on next open.
 
-### Server side — push notification on issuance
+> **Superseded.** The original placeholder task list (T123–T131) was based on the
+> "build a new push pipeline" framing that pre-dated the audit of Feature 106's
+> `CredentialStore` / `InboundCredentialDetector` pipeline. The authoritative US4
+> task list now lives in [`us4-tasks.md`](us4-tasks.md), and the design rationale
+> in [`us4-plan.md`](us4-plan.md). The new shape reuses the SorchaLocalWallet
+> register-native delivery path end-to-end and adds only a citizen-side projection
+> + a hub emit; no new credential storage path. T123–T131 below are kept as
+> historical placeholders only and should not be implemented.
 
-- [ ] T123 [US4] Identify all current Sorcha credential-issuance code paths (Feature 097 OpenID4VCI issuer, Feature 107 Assured Identity issuance, Feature 103 Verified Citizen issuance, generic `Wallet.Service` issuance pipeline). Add a single notification call after each successful issuance: `await _walletHub.NotifyCredentialAvailable(platformUserId, credentialId, ct);`.
-- [ ] T124 [US4] Create `src/Services/Sorcha.Wallet.Service/Services/Interfaces/IWalletHubNotifier.cs` and implementation that wraps `IHubContext<WalletHub>` and broadcasts `CredentialAvailable(credentialId)` to the user's group (uses `IServiceScopeFactory` per CLAUDE.md singleton-DI guidance).
-- [ ] T125 [P] [US4] Add unit tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/WalletHubNotifierTests.cs` — group routing, fire-and-forget safety on disconnected groups.
-- [ ] T126 [P] [US4] Add integration test `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/SignalRPushIntegrationTests.cs` using a `TestServer`-hosted hub and a SignalR test client to confirm the push reaches a connected group member.
-
-### PWA — SignalR client + sync trigger
-
-- [ ] T127 [US4] Add `Microsoft.AspNetCore.SignalR.Client` PackageReference to `Sorcha.Citizen.Wallet.csproj`.
-- [ ] T128 [US4] Create `src/Apps/Sorcha.Citizen.Wallet/Services/IWalletHubClient.cs` and `Services/Implementation/WalletHubClient.cs` — connects to `/hubs/wallet` with the citizen JWT, subscribes to `CredentialAvailable` and `DeviceRevoked` events, exposes `IObservable<HubEvent>` for the app to consume.
-- [ ] T129 [US4] Wire `WalletHubClient` into `Home.razor` — on `CredentialAvailable`, invoke `ISyncService.SyncAsync()`; on `DeviceRevoked` matching the local device id, lock the wallet and route to a "this device was revoked" terminal screen.
-
-### Service worker — background sync (Chromium)
-
-- [ ] T130 [US4] Modify `src/Apps/Sorcha.Citizen.Wallet/wwwroot/service-worker.published.js` to register `periodicSync` events with tag `wallet-sync-tick` (1h interval where supported). Handler invokes a fetch to `/api/v1/wallet/sync` with the stored sync token and writes the response back into IndexedDB.
-- [ ] T131 [P] [US4] Document in `quickstart.md` Troubleshooting section that Safari/Firefox fall back to "sync runs on app open" (already in v1 quickstart; verify it remains accurate after this implementation).
+- [ ] ~~T123 [US4] Identify all current Sorcha credential-issuance code paths (Feature 097 OpenID4VCI issuer, Feature 107 Assured Identity issuance, Feature 103 Verified Citizen issuance, generic `Wallet.Service` issuance pipeline). Add a single notification call after each successful issuance: `await _walletHub.NotifyCredentialAvailable(platformUserId, credentialId, ct);`.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T124 [US4] Create `src/Services/Sorcha.Wallet.Service/Services/Interfaces/IWalletHubNotifier.cs` and implementation that wraps `IHubContext<WalletHub>` and broadcasts `CredentialAvailable(credentialId)` to the user's group (uses `IServiceScopeFactory` per CLAUDE.md singleton-DI guidance).~~ — superseded by `us4-tasks.md`
+- [ ] ~~T125 [P] [US4] Add unit tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/WalletHubNotifierTests.cs` — group routing, fire-and-forget safety on disconnected groups.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T126 [P] [US4] Add integration test `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/SignalRPushIntegrationTests.cs` using a `TestServer`-hosted hub and a SignalR test client to confirm the push reaches a connected group member.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T127 [US4] Add `Microsoft.AspNetCore.SignalR.Client` PackageReference to `Sorcha.Citizen.Wallet.csproj`.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T128 [US4] Create `src/Apps/Sorcha.Citizen.Wallet/Services/IWalletHubClient.cs` and `Services/Implementation/WalletHubClient.cs` — connects to `/hubs/wallet` with the citizen JWT, subscribes to `CredentialAvailable` and `DeviceRevoked` events, exposes `IObservable<HubEvent>` for the app to consume.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T129 [US4] Wire `WalletHubClient` into `Home.razor` — on `CredentialAvailable`, invoke `ISyncService.SyncAsync()`; on `DeviceRevoked` matching the local device id, lock the wallet and route to a "this device was revoked" terminal screen.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T130 [US4] Modify `src/Apps/Sorcha.Citizen.Wallet/wwwroot/service-worker.published.js` to register `periodicSync` events with tag `wallet-sync-tick` (1h interval where supported). Handler invokes a fetch to `/api/v1/wallet/sync` with the stored sync token and writes the response back into IndexedDB.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T131 [P] [US4] Document in `quickstart.md` Troubleshooting section that Safari/Firefox fall back to "sync runs on app open" (already in v1 quickstart; verify it remains accurate after this implementation).~~ — superseded by `us4-tasks.md`
 
 **Checkpoint**: New credentials appear in the wallet without explicit refresh — within seconds when SignalR-connected, on next open otherwise. Wallet locks itself if the user revokes its own device from another surface.
 

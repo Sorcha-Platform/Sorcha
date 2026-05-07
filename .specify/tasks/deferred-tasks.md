@@ -201,6 +201,23 @@
 
 ---
 
+## Blueprint Engine — Adaptive Credential Audience (Backlog)
+
+> **Context:** `CredentialIssuanceConfig.TargetAudience` currently requires the blueprint author to commit at design time to either `SorchaLocalWallet` (Feature 106 register-native delivery) or `HaipExternalWallet` (OID4VCI handoff). Both targets are valid, but the right choice depends on the *recipient* — a Citizen Wallet PWA holder benefits from the SorchaLocalWallet path (server-staged inbox, push notification, Feature 114 sync surface), while a generic GOV.UK Wallet / EUDIW holder must use HaipExternalWallet because it has no Sorcha-platform wallet row.
+>
+> **Vision:** The engine inspects the resolved recipient at issuance time and selects the audience automatically. If the recipient address resolves to a Sorcha-platform wallet (i.e. has a `Wallet` row, including citizen holder slot-108 wallets), use `SorchaLocalWallet`. Otherwise — or when the recipient is a JWK/DID with no platform wallet — fall back to `HaipExternalWallet`. Blueprint authors set `targetAudience: "Adaptive"` (new enum value) and stop having to know in advance whether their flow targets Sorcha PWA holders, third-party wallets, or both.
+>
+> **Decision (2026-05-07):** Deferred — Feature 114 US4 ships citizen-PWA SorchaLocalWallet delivery first. Validate the citizen-side projection with a single explicit-audience blueprint, then revisit adaptive selection once we have data on which flows mix recipient types.
+
+| ID | Task | Priority | Effort | Status | Notes |
+|----|------|----------|--------|--------|-------|
+| BPE-001 | Add `TargetAudience.Adaptive` enum value + publish-time validation | P3 | 4h | 🔬 Research | Validator must reject Adaptive when the recipient participant has a hard-coded wallet that's known to be a non-Sorcha JWK. |
+| BPE-002 | Recipient-type resolver in `ActionExecutionService` | P3 | 8h | 🔬 Research | At step 9b in the issuance pipeline, look up `recipientWallet` in `IWalletRepository`. Hit → SorchaLocalWallet; miss → HaipExternalWallet. Cache the decision on the action's instance state for audit. |
+| BPE-003 | Blueprint-author docs + worked example | P3 | 2h | 🔬 Research | Update `blueprint-builder` skill and `sorcha-architecture` skill once shipped. |
+| BPE-004 | Telemetry — emit a counter per resolved audience | P3 | 2h | 🔬 Research | `sorcha_blueprint_credential_audience_total{resolved="local|haip"}` so we can see real-world mix before tightening defaults. |
+
+---
+
 ## Summary
 
 **Total Deferred Tasks:** 69 (11 now completed/implemented)
