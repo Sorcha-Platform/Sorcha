@@ -369,9 +369,12 @@
 
     private void OnCredentialReceived(CredentialNotification notification)
     {
+        // Feature 118 T088 — the hub signal carries opaque IDs only; the snackbar
+        // surfaces a generic message and the user pulls full detail from
+        // /my-credentials (which fetches via /api/v1/wallets/{addr}/credentials).
         InvokeAsync(() =>
         {
-            Snackbar.Add($"New credential from {notification.IssuerName}: {notification.CredentialType}", Severity.Info);
+            Snackbar.Add("New credential received", Severity.Info);
             StateHasChanged();
         });
     }
