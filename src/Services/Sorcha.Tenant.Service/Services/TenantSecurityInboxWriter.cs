@@ -26,6 +26,14 @@ public interface ITenantSecurityInboxWriter
     /// "if this wasn't you" copy is the whole point of the surface.
     /// </summary>
     Task WritePasswordResetAsync(Guid platformUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Write a "backup code used" Category=Security entry. Severity is bumped to
+    /// <see cref="InboxSeverity.Warning"/> because backup-code consumption is an
+    /// account-takeover signal worth flagging. Each consumption produces a fresh
+    /// entry (timestamp folded into the SourceEventId).
+    /// </summary>
+    Task WriteBackupCodeUsedAsync(Guid platformUserId, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -51,6 +59,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             title: "Two-factor authentication enabled",
             summary: "Your account now requires a code from your authenticator app at sign-in.",
             iconKey: "security.2fa-enabled",
+            severity: InboxSeverity.Info,
             ct);
 
     /// <inheritdoc />
@@ -61,6 +70,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             title: "Two-factor authentication disabled",
             summary: "Your account is now signing in with password only. Re-enable 2FA from Settings → Security.",
             iconKey: "security.2fa-disabled",
+            severity: InboxSeverity.Info,
             ct);
 
     /// <inheritdoc />
@@ -71,6 +81,18 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             title: "Password reset",
             summary: "Your password was reset using the email link. If this wasn't you, contact support immediately.",
             iconKey: "security.password-reset",
+            severity: InboxSeverity.Info,
+            ct);
+
+    /// <inheritdoc />
+    public Task WriteBackupCodeUsedAsync(Guid platformUserId, CancellationToken ct = default) =>
+        WriteAsync(
+            platformUserId,
+            "backup-code-used",
+            title: "Backup code used to sign in",
+            summary: "A 2FA backup code was just consumed during sign-in. If this wasn't you, change your password and review your backup codes immediately.",
+            iconKey: "security.backup-code-used",
+            severity: InboxSeverity.Warning,
             ct);
 
     private async Task WriteAsync(
@@ -79,6 +101,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
         string title,
         string summary,
         string iconKey,
+        InboxSeverity severity,
         CancellationToken ct)
     {
         try
@@ -89,7 +112,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             var request = new InboxWriteRequest(
                 PlatformUserId: platformUserId,
                 Category: InboxCategory.Security,
-                Severity: InboxSeverity.Info,
+                Severity: severity,
                 CorrelationKey: $"security:{eventKey}:{platformUserId:N}",
                 DetailHref: "/settings/security",
                 SourceEventId: sourceEventId,

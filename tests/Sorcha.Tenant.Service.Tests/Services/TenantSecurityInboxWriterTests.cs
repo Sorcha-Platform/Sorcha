@@ -134,4 +134,36 @@ public sealed class TenantSecurityInboxWriterTests
         await act.Should().NotThrowAsync(
             "inbox-write failures must never block a password reset");
     }
+
+    [Fact]
+    public async Task WriteBackupCodeUsedAsync_PostsWarningSeverityPayload()
+    {
+        InboxWriteRequest? captured = null;
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWriteRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
+                new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
+
+        await _sut.WriteBackupCodeUsedAsync(_userId);
+
+        captured.Should().NotBeNull();
+        captured!.Category.Should().Be(InboxCategory.Security);
+        captured.Severity.Should().Be(InboxSeverity.Warning);
+        captured.CorrelationKey.Should().Be($"security:backup-code-used:{_userId:N}");
+        captured.Title.Should().Be("Backup code used to sign in");
+        captured.Summary.Should().Contain("change your password");
+        captured.IconKey.Should().Be("security.backup-code-used");
+    }
+
+    [Fact]
+    public async Task WriteBackupCodeUsedAsync_InboxThrows_DoesNotPropagate()
+    {
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("inbox down"));
+
+        var act = () => _sut.WriteBackupCodeUsedAsync(_userId);
+
+        await act.Should().NotThrowAsync(
+            "inbox-write failures must never block sign-in");
+    }
 }

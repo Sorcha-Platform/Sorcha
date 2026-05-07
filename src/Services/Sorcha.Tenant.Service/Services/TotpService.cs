@@ -213,6 +213,10 @@ public class TotpService : ITotpService
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Backup code consumed for user {UserId} (index {Index})", userId, matchIndex);
+
+        // Feature 118 — backup-code consumption is an account-takeover signal worth surfacing. Fail-safe.
+        await _securityInbox.WriteBackupCodeUsedAsync(userId, cancellationToken);
+
         return true;
     }
 
