@@ -60,6 +60,42 @@ public class WalletHubConnection : IAsyncDisposable
     /// <summary>Encryption operation failed. Detail via <c>GET /api/operations/{operationId}</c>.</summary>
     public event Func<EncryptionSignal, Task>? OnEncryptionFailed;
 
+    /// <summary>
+    /// A new inbound transaction arrived for the wallet (post peer-replication).
+    /// Parameters: walletAddress, transactionId. Detail via
+    /// <c>GET /api/wallets/{walletAddress}/transactions/{transactionId}</c>.
+    /// </summary>
+    public event Action<string, string>? OnTransactionReceived;
+
+    /// <summary>
+    /// A transaction sealed by the validator. Tick state advances to confirmed.
+    /// Parameters: walletAddress, transactionId.
+    /// </summary>
+    public event Action<string, string>? OnTransactionConfirmed;
+
+    /// <summary>
+    /// A transaction receipt was generated. Tick state advances to receipted.
+    /// Parameters: walletAddress, transactionId, receiptId.
+    /// </summary>
+    public event Action<string, string, string>? OnTransactionReceipted;
+
+    /// <summary>
+    /// A new org credential was issued to the wallet. Parameters: walletAddress, credentialId.
+    /// Detail via <c>GET /api/wallets/{walletAddress}/credentials/{credentialId}</c>.
+    /// </summary>
+    public event Action<string, string>? OnCredentialReceived;
+
+    /// <summary>
+    /// An org credential's status changed. Parameters: walletAddress, credentialId.
+    /// </summary>
+    public event Action<string, string>? OnCredentialStatusChanged;
+
+    /// <summary>
+    /// The pending-credential count for the wallet changed. Parameters:
+    /// walletAddress, pendingCount.
+    /// </summary>
+    public event Action<string, int>? OnPendingCredentialCountUpdated;
+
     /// <summary>Connection state changed.</summary>
     public event Action<ConnectionState>? OnConnectionStateChanged;
 
@@ -248,6 +284,53 @@ public class WalletHubConnection : IAsyncDisposable
                         Timestamp = occurredAt,
                     });
                 }
+            });
+
+        // Feature 118 — transaction lifecycle events forward-declared on
+        // IWalletHubClient (T045). No active server emit yet; handlers are
+        // wired so consumer pages don't need a follow-up subscribe.
+        _hubConnection.On<string, string, DateTimeOffset, string>("TransactionReceived",
+            (walletAddress, transactionId, _, _) =>
+            {
+                _logger.LogDebug("WalletHub TransactionReceived: {Wallet}/{Tx}", walletAddress, transactionId);
+                OnTransactionReceived?.Invoke(walletAddress, transactionId);
+            });
+
+        _hubConnection.On<string, string, DateTimeOffset, string>("TransactionConfirmed",
+            (walletAddress, transactionId, _, _) =>
+            {
+                _logger.LogDebug("WalletHub TransactionConfirmed: {Wallet}/{Tx}", walletAddress, transactionId);
+                OnTransactionConfirmed?.Invoke(walletAddress, transactionId);
+            });
+
+        _hubConnection.On<string, string, string, DateTimeOffset, string>("TransactionReceipted",
+            (walletAddress, transactionId, receiptId, _, _) =>
+            {
+                _logger.LogDebug("WalletHub TransactionReceipted: {Wallet}/{Tx}/{Receipt}",
+                    walletAddress, transactionId, receiptId);
+                OnTransactionReceipted?.Invoke(walletAddress, transactionId, receiptId);
+            });
+
+        _hubConnection.On<string, string, DateTimeOffset, string>("CredentialReceived",
+            (walletAddress, credentialId, _, _) =>
+            {
+                _logger.LogDebug("WalletHub CredentialReceived: {Wallet}/{Cred}", walletAddress, credentialId);
+                OnCredentialReceived?.Invoke(walletAddress, credentialId);
+            });
+
+        _hubConnection.On<string, string, DateTimeOffset, string>("CredentialStatusChanged",
+            (walletAddress, credentialId, _, _) =>
+            {
+                _logger.LogDebug("WalletHub CredentialStatusChanged: {Wallet}/{Cred}", walletAddress, credentialId);
+                OnCredentialStatusChanged?.Invoke(walletAddress, credentialId);
+            });
+
+        _hubConnection.On<string, int, DateTimeOffset, string>("PendingCredentialCountUpdated",
+            (walletAddress, pendingCount, _, _) =>
+            {
+                _logger.LogDebug("WalletHub PendingCredentialCountUpdated: {Wallet} count={Count}",
+                    walletAddress, pendingCount);
+                OnPendingCredentialCountUpdated?.Invoke(walletAddress, pendingCount);
             });
     }
 
