@@ -91,7 +91,7 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Tests for User Story 2
 
-- [ ] T031 [P] [US2] Topology-enforcement unit test in `tests/Sorcha.ServiceDefaults.Tests/Hubs/HubTopologyTests.cs` that uses reflection across the loaded service assemblies to assert exactly five `Hub<>` types exist and the four non-Chat hubs use `AddSorchaHub`.
+- [X] T031 [P] [US2] Topology-enforcement unit test in `tests/Sorcha.ServiceDefaults.Tests/Hubs/HubTopologyTests.cs` that uses reflection across the loaded service assemblies to assert exactly five `Hub<>` types exist and the four non-Chat hubs use `AddSorchaHub`.
 - [X] T032 [P] [US2] Existing `tests/Sorcha.Blueprint.Service.Tests/Integration/SignalRIntegrationTests.cs` updated for the rename (new hub class `BlueprintHub`, alias path semantics).
 - [ ] T033 [P] [US2] New `tests/Sorcha.Tenant.Service.Tests/Hubs/TenantHubTests.cs` covering connect, claim guard, group membership for `user:{platformUserId:N}` on connect.
 - [ ] T034 [P] [US2] EventsHub retirement test in `tests/Sorcha.Blueprint.Service.Tests/Integration/EventsHubRetirementTests.cs` asserting the `410 Gone` response shape after retirement (initially `[Fact(Skip="awaiting decommission step")]`).
