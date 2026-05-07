@@ -170,15 +170,15 @@ Existing multi-service Sorcha monorepo. Source under `src/`, tests under `tests/
 
 ### Tests for User Story 4
 
-- [ ] T078 [P] [US4] Reflection-based contract test `tests/Sorcha.ServiceDefaults.Tests/Hubs/ThinSignalContractTests.cs` enumerating every method on every `I*HubClient` interface and asserting parameter types are in the allow-list (`string`, `Guid`, `Guid?`, `int`, `long`, `DateTimeOffset`). ChatHub interface excluded explicitly.
+- [X] T078 [P] [US4] Reflection-based contract test `tests/Sorcha.ServiceDefaults.Tests/Hubs/ThinSignalContractTests.cs` enumerating every method on every `I*HubClient` interface and asserting parameter types are in the allow-list (`string`, `Guid`, `Guid?`, `int`, `long`, `DateTimeOffset`). ChatHub interface excluded explicitly.
 - [ ] T079 [P] [US4] Backplane-observation integration test in `tests/Sorcha.Integration.Tests/Hubs/BackplanePayloadShapeTests.cs` — runs the four notification hubs, triggers one of every event type, subscribes to Redis backplane, asserts every JSON message body conforms to `contracts/hub-signal.schema.json`.
 - [ ] T080 [P] [US4] RegisterHub auth cutover test `tests/Sorcha.Register.Service.Tests/RegisterHubAuthorizeTests.cs` asserting unauthenticated connections are rejected with 401 (initially `[Fact(Skip="awaiting cutover")]`, un-skipped in the second-release task).
 
 ### Implementation for User Story 4
 
-- [ ] T081 [US4] Strip descriptive fields from existing `ActionNotification` / `CredentialNotification` / `EncryptionSignal` records. Replace with the IDs they carry; move descriptive fields (blueprint name, action description, percentage) to the corresponding REST detail endpoints if not already there. Files: `src/Services/Sorcha.Blueprint.Service/Models/Notifications/*.cs`, `src/Services/Sorcha.Wallet.Service/Models/Notifications/*.cs`.
-- [ ] T082 [US4] Update every emit site to call the new typed methods on `IBlueprintHubClient` / `IWalletHubClient` with thin-signal parameters. Files: `NotificationService.cs`, `TransactionLifecycleEventBridge.cs`, encryption pipeline emit sites.
-- [ ] T083 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IBlueprintHubClient` per `contracts/blueprint-hub-client.cs.md`.
+- [X] T081 [US4] Strip descriptive fields from existing `ActionNotification` / `CredentialNotification` / `EncryptionSignal` records. Replace with the IDs they carry; move descriptive fields (blueprint name, action description, percentage) to the corresponding REST detail endpoints if not already there. Files: `src/Services/Sorcha.Blueprint.Service/Models/Notifications/*.cs`, `src/Services/Sorcha.Wallet.Service/Models/Notifications/*.cs`.
+- [X] T082 [US4] Update every emit site to call the new typed methods on `IBlueprintHubClient` / `IWalletHubClient` with thin-signal parameters. Files: `NotificationService.cs`, `TransactionLifecycleEventBridge.cs`, encryption pipeline emit sites.
+- [X] T083 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IBlueprintHubClient` per `contracts/blueprint-hub-client.cs.md`.
 - [ ] T084 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IWalletHubClient` per `contracts/wallet-hub-client.cs.md`.
 - [ ] T085 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `IRegisterHubClient` per `contracts/register-hub-client.cs.md`.
 - [ ] T086 [P] [US4] Add `<see cref="..." />` XML docs to every event method on `ITenantHubClient` per `contracts/tenant-hub-client.cs.md`.

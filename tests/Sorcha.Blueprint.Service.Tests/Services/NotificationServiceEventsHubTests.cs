@@ -16,24 +16,25 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 /// </summary>
 public class NotificationServiceEventsHubTests
 {
-    private readonly Mock<IHubContext<BlueprintHub>> _actionsHubContext = new();
+    private readonly Mock<IHubContext<BlueprintHub, IBlueprintHubClient>> _actionsHubContext = new();
     private readonly Mock<IHubContext<EventsHub>> _eventsHubContext = new();
-    private readonly Mock<IHubClients> _actionsHubClients = new();
+    private readonly Mock<IHubClients<IBlueprintHubClient>> _actionsHubClients = new();
     private readonly Mock<IHubClients> _eventsHubClients = new();
-    private readonly Mock<IClientProxy> _actionsClientProxy = new();
+    private readonly Mock<IBlueprintHubClient> _actionsClientProxy = new();
     private readonly Mock<IClientProxy> _eventsClientProxy = new();
     private readonly NotificationService _service;
 
-    private readonly List<(string Method, object?[] Args)> _actionsMessages = [];
     private readonly List<(string Method, object?[] Args)> _eventsMessages = [];
 
     public NotificationServiceEventsHubTests()
     {
         _actionsHubContext.Setup(h => h.Clients).Returns(_actionsHubClients.Object);
         _actionsHubClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_actionsClientProxy.Object);
-        _actionsClientProxy.Setup(c => c.SendCoreAsync(
-                It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
-            .Callback<string, object?[], CancellationToken>((method, args, _) => _actionsMessages.Add((method, args)))
+        _actionsClientProxy
+            .Setup(c => c.EncryptionComplete(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        _actionsClientProxy
+            .Setup(c => c.EncryptionFailed(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
 
         _eventsHubContext.Setup(h => h.Clients).Returns(_eventsHubClients.Object);
@@ -66,7 +67,9 @@ public class NotificationServiceEventsHubTests
 
         // Assert — BlueprintHub received EncryptionComplete
         _actionsHubClients.Verify(c => c.Group("wallet:wallet-001"), Times.Once);
-        _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionComplete");
+        _actionsClientProxy.Verify(c =>
+            c.EncryptionComplete(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
+            Times.Once);
 
         // Assert — EventsHub received EncryptionOperationCompleted
         _eventsHubClients.Verify(c => c.Group("user:user-42"), Times.Once);
@@ -89,7 +92,9 @@ public class NotificationServiceEventsHubTests
 
         // Assert — BlueprintHub received EncryptionFailed
         _actionsHubClients.Verify(c => c.Group("wallet:wallet-002"), Times.Once);
-        _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionFailed");
+        _actionsClientProxy.Verify(c =>
+            c.EncryptionFailed(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
+            Times.Once);
 
         // Assert — EventsHub received EncryptionOperationCompleted
         _eventsHubClients.Verify(c => c.Group("user:user-43"), Times.Once);
@@ -154,7 +159,9 @@ public class NotificationServiceEventsHubTests
         await act.Should().NotThrowAsync();
 
         // Assert — BlueprintHub still received its notification
-        _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionComplete");
+        _actionsClientProxy.Verify(c =>
+            c.EncryptionComplete(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
+            Times.Once);
     }
 
     [Fact]
@@ -177,7 +184,9 @@ public class NotificationServiceEventsHubTests
         await act.Should().NotThrowAsync();
 
         // Assert — BlueprintHub still received its notification
-        _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionFailed");
+        _actionsClientProxy.Verify(c =>
+            c.EncryptionFailed(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
+            Times.Once);
     }
 
     [Fact]
@@ -195,7 +204,9 @@ public class NotificationServiceEventsHubTests
         await _service.NotifyEncryptionCompleteAsync("wallet-007", signal);
 
         // Assert — BlueprintHub received notification
-        _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionComplete");
+        _actionsClientProxy.Verify(c =>
+            c.EncryptionComplete(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
+            Times.Once);
 
         // Assert — EventsHub was NOT called (no userId to target)
         _eventsMessages.Should().BeEmpty();
@@ -216,7 +227,9 @@ public class NotificationServiceEventsHubTests
         await _service.NotifyEncryptionFailedAsync("wallet-008", signal);
 
         // Assert — BlueprintHub received notification
-        _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionFailed");
+        _actionsClientProxy.Verify(c =>
+            c.EncryptionFailed(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string>()),
+            Times.Once);
 
         // Assert — EventsHub was NOT called
         _eventsMessages.Should().BeEmpty();

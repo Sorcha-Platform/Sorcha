@@ -4,41 +4,73 @@
 namespace Sorcha.Blueprint.Service.Hubs;
 
 /// <summary>
-/// Typed client interface for <see cref="BlueprintHub"/>. Bridge interface added
-/// in Feature 118 Phase 3 (US1 — multi-node correctness) so the hub can be
-/// registered through <c>services.AddSorchaHub&lt;ActionsHub, IBlueprintHubClient&gt;(...)</c>.
+/// Typed client interface for <see cref="BlueprintHub"/>. Every method conforms
+/// to the Feature 118 thin-signal contract — opaque IDs and timestamps only.
+/// Clients fetch full detail through authenticated REST endpoints referenced
+/// in each method's <c>&lt;see cref&gt;</c> doc.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The full topology rename to <c>BlueprintHub</c> + <c>IBlueprintHubClient</c>
-/// lands in Phase 4 (US2). This interface mirrors the existing untyped
-/// <c>SendAsync</c> method names emitted by <c>NotificationService</c> so existing
-/// emitters that use <see cref="Microsoft.AspNetCore.SignalR.IHubContext{ActionsHub}"/>
-/// continue to work via the untyped client-proxy path during the transition.
-/// </para>
-/// <para>
-/// Subject to the thin-signal contract from Feature 118 spec FR-016 — FR-019 once
-/// US4 lands. Today's payload shapes (<c>SignalNotification</c>, <c>EncryptionSignal</c>,
-/// <c>CredentialNotification</c>) carry descriptive fields; US4 strips them to opaque IDs.
-/// </para>
+/// Encryption events are scheduled to migrate to <c>IWalletHubClient</c> alongside
+/// the EventsHub retirement; they remain here while the wallet-domain hub
+/// adopts them in a follow-up phase.
 /// </remarks>
 public interface IBlueprintHubClient
 {
-    /// <summary>A new action is available for the recipient wallet.</summary>
-    Task ActionAvailable(SignalNotification notification);
+    /// <summary>
+    /// A new action is available for the recipient wallet. Carries opaque IDs
+    /// only; clients fetch the full action via
+    /// <c>GET /api/instances/{instanceId}/actions/{actionId}</c>.
+    /// </summary>
+    /// <param name="instanceId">Blueprint instance the action belongs to.</param>
+    /// <param name="actionId">Action identifier within the instance.</param>
+    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
+    /// <param name="traceId">W3C trace-id for correlation.</param>
+    Task ActionAvailable(string instanceId, string actionId, DateTimeOffset occurredAt, string traceId);
 
-    /// <summary>An action was rejected by the validation pipeline.</summary>
-    Task ActionRejected(SignalNotification notification);
+    /// <summary>
+    /// An action was rejected by the validation pipeline. Carries opaque IDs only;
+    /// clients fetch the rejection detail via
+    /// <c>GET /api/instances/{instanceId}/actions/{actionId}</c>.
+    /// </summary>
+    /// <param name="instanceId">Blueprint instance the action belonged to.</param>
+    /// <param name="actionId">Action identifier within the instance.</param>
+    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
+    /// <param name="traceId">W3C trace-id for correlation.</param>
+    Task ActionRejected(string instanceId, string actionId, DateTimeOffset occurredAt, string traceId);
 
-    /// <summary>A workflow instance reached a terminal state.</summary>
-    Task WorkflowCompleted(SignalNotification notification);
+    /// <summary>
+    /// A workflow instance reached a terminal state. Clients fetch instance
+    /// detail via <c>GET /api/instances/{instanceId}</c>.
+    /// </summary>
+    /// <param name="instanceId">Blueprint instance that completed.</param>
+    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
+    /// <param name="traceId">W3C trace-id for correlation.</param>
+    Task WorkflowCompleted(string instanceId, DateTimeOffset occurredAt, string traceId);
 
-    /// <summary>Encryption operation progress (percentage, status).</summary>
-    Task EncryptionProgress(object signal);
+    /// <summary>
+    /// Encryption operation progressed. Carries the operation id only; clients
+    /// fetch progress detail via <c>GET /api/operations/{operationId}</c>.
+    /// </summary>
+    /// <param name="operationId">Encryption operation identifier.</param>
+    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
+    /// <param name="traceId">W3C trace-id for correlation.</param>
+    Task EncryptionProgress(string operationId, DateTimeOffset occurredAt, string traceId);
 
-    /// <summary>Encryption operation succeeded.</summary>
-    Task EncryptionComplete(object signal);
+    /// <summary>
+    /// Encryption operation completed successfully. Clients fetch the final
+    /// result via <c>GET /api/operations/{operationId}</c>.
+    /// </summary>
+    /// <param name="operationId">Encryption operation identifier.</param>
+    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
+    /// <param name="traceId">W3C trace-id for correlation.</param>
+    Task EncryptionComplete(string operationId, DateTimeOffset occurredAt, string traceId);
 
-    /// <summary>Encryption operation failed.</summary>
-    Task EncryptionFailed(object signal);
+    /// <summary>
+    /// Encryption operation failed. Clients fetch failure detail via
+    /// <c>GET /api/operations/{operationId}</c>.
+    /// </summary>
+    /// <param name="operationId">Encryption operation identifier.</param>
+    /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
+    /// <param name="traceId">W3C trace-id for correlation.</param>
+    Task EncryptionFailed(string operationId, DateTimeOffset occurredAt, string traceId);
 }

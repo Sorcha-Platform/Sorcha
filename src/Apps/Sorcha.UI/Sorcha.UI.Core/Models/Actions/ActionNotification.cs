@@ -26,6 +26,11 @@ public record SignalNotification
     public Guid? CorrelationId { get; init; }
 
     /// <summary>
+    /// Optional action identifier carried on action-scoped signals.
+    /// </summary>
+    public string? ActionId { get; init; }
+
+    /// <summary>
     /// UTC timestamp of signal creation.
     /// </summary>
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
