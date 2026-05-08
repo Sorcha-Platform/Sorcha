@@ -4,6 +4,7 @@
 using Sorcha.AtomicCache.Extensions;
 using Sorcha.Haip.Service.Endpoints;
 using Sorcha.Haip.Service.Services;
+using Sorcha.ServiceClients.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -114,6 +115,13 @@ builder.Services.AddHttpClient<IetfTokenStatusListChecker>(client =>
 // Feature 111 — HAIP as a consumer of the Timebound Presentation Lifecycle.
 builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
     Sorcha.Haip.Service.Services.HaipPresentationConsumer>();
+
+// PresentationCallbackRelay needs IServiceAuthClient to authenticate the s2s
+// callback into Blueprint Service. Register the standard service-client stack
+// (matches every other Sorcha service — Blueprint, Register, Tenant, Validator,
+// Wallet, Peer all call AddServiceClients in their Program.cs).
+builder.Services.AddServiceClients(builder.Configuration);
+
 builder.Services.AddHttpClient<Sorcha.Haip.Service.Services.PresentationCallbackRelay>(client =>
 {
     var blueprintAddress = builder.Configuration["ServiceClients:BlueprintService:Address"]
