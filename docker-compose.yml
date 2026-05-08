@@ -708,6 +708,14 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Redis: redis:6379
       Haip__IssuerUrl: http://127.0.0.1
+      # Service-to-service auth — used by PresentationCallbackRelay (Feature 111)
+      # to authenticate the callback into Blueprint Service. Seeded by
+      # Tenant Service DatabaseInitializer as HaipServicePrincipalId.
+      ServiceClients__BlueprintService__Address: http://blueprint-service:8080
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+      ServiceAuth__ClientId: service-haip
+      ServiceAuth__ClientSecret: haip-service-secret
+      ServiceAuth__Scopes: "blueprints:read"
     depends_on:
       redis:
         condition: service_healthy
