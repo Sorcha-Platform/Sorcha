@@ -216,6 +216,14 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IPresent
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Infrastructure.IClock,
     Sorcha.Blueprint.Service.Services.Infrastructure.SystemClock>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.PresentationLifecycleMetrics>();
+
+// Feature 111 — IPresentationConsumer registrations dispatched by name from
+// PresentationLifecycleService. Consumers run in-process here in Blueprint
+// Service because the lifecycle dispatcher resolves them from the local DI
+// container; they cannot live in their originating service's process.
+builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
+    Sorcha.Blueprint.Service.Services.Implementation.HaipPresentationConsumer>();
+
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.AbandonmentSweeper>();
 
 // Feature 103 US1: Redis read-through cache for per-instance participant bindings.
