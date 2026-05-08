@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Blueprint.Service.Configuration;
 using Sorcha.Blueprint.Service.Models;
@@ -50,6 +52,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly IOptions<PresentationLifecycleOptions> _options;
     private readonly PresentationLifecycleMetrics? _metrics;
     private readonly IClock _clock;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<PresentationLifecycleService> _logger;
 
     public PresentationLifecycleService(
@@ -59,6 +62,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IPendingPresentationStore pendingStore,
         IEnumerable<IPresentationConsumer> consumers,
         IOptions<PresentationLifecycleOptions> options,
+        IServiceProvider serviceProvider,
         ILogger<PresentationLifecycleService> logger,
         IHaipServiceClient? haipClient = null,
         PresentationLifecycleMetrics? metrics = null,
@@ -70,6 +74,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _pendingStore = pendingStore ?? throw new ArgumentNullException(nameof(pendingStore));
         _consumers = consumers ?? throw new ArgumentNullException(nameof(consumers));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _haipClient = haipClient;
         _metrics = metrics;
@@ -387,6 +392,55 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             consumer: consumerName,
             kind: outcome.Kind.ToString().ToLowerInvariant(),
             seconds: (_clock.UtcNow - pending.CreatedAt).TotalSeconds);
+
+        // FR-015 — on success, advance the originating action: evaluate routing
+        // against the saved draft payload, update the instance, notify the next
+        // participant. Decline / abandonment paths do not advance — they
+        // terminate or reroute via their own logic (HandleAbandonmentAsync,
+        // rejectionConfig). Lazy-resolve IActionExecutionService to break the
+        // ctor-time DI cycle (ActionExecutionService injects this lifecycle
+        // service for InitiateAsync).
+        //
+        // Fire-and-forget on the success path: the callback HTTP request is
+        // typically a short-lived service-to-service POST whose CT is cancelled
+        // when the verifier closes the connection. The action-advancement
+        // includes a confirmation wait for the outcome tx to seal in a docket
+        // (~5-15s) which would otherwise be cut short. We launch the advancement
+        // on a detached Task with CancellationToken.None and a fresh DI scope so
+        // it survives the callback returning. Failures are logged via the
+        // service's own logger; the outcome is already on the register, so the
+        // worst case is a stuck instance that can be diagnosed from logs.
+        if (outcome.Kind == PresentationOutcomeKind.Success)
+        {
+            var instanceIdStr = pending.InstanceId.ToString();
+            var completedActionId = pending.ActionId;
+            var outcomeTxId = built.TxId;
+            var capturedDraftPayload = draftPayload;
+
+            _ = Task.Run(async () =>
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var actionExecution = scope.ServiceProvider
+                    .GetRequiredService<Services.Interfaces.IActionExecutionService>();
+                var scopedLogger = scope.ServiceProvider
+                    .GetRequiredService<ILogger<PresentationLifecycleService>>();
+                try
+                {
+                    await actionExecution.CompleteAfterPresentationAsync(
+                        instanceId: instanceIdStr,
+                        completedActionId: completedActionId,
+                        outcomeTransactionId: outcomeTxId,
+                        draftPayload: capturedDraftPayload,
+                        cancellationToken: CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    scopedLogger.LogError(ex,
+                        "FR-015 action-advance failed after success outcome tx {TxId} for instance {InstanceId} action {ActionId}; outcome is on the register but the action is not advanced",
+                        outcomeTxId, instanceIdStr, completedActionId);
+                }
+            }, CancellationToken.None);
+        }
 
         return new PresentationOutcomeResult(
             Kind: outcome.Kind,
