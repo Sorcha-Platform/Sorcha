@@ -617,7 +617,9 @@ End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). W
 - **`IPlatformUserDeviceClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.PlatformUserDevice`) — Wallet→Tenant service-to-service HTTP client. `RegisterAsync` (carries both `statusListId` and `statusListIndex` so revoke-by-deviceId can reach `FlipAsync(orgId, listId, idx)` after lists roll over) + `GetByIdAsync` (404→null). Uses `ServiceAuthClient` token.
 - **`ICitizenWalletClient`** (Sorcha.ServiceClients.Http, namespace `Sorcha.ServiceClients.CitizenWallet`) — forward HTTP client for the PWA (and tests / reference verifier setup) to call Wallet Service. Methods: `EnrolDeviceAsync`, `SyncAsync` (410→null), `ListCredentialsAsync`, `RenewDelegationAsync` (404→null). Caller-supplied JWT; no service-principal injection.
 - **`ICitizenSyncService`** / `CitizenSyncService` (Wallet Service) — composes credential deltas + full snapshots; mints/validates the opaque sync cursor as an HMAC-SHA256 JWT carrying `{sub: holderKeyId, seq, iat}` per research §R-006. 30-day cursor lifetime → 410 → wallet falls back to /credentials (PR #428).
-- **`ICitizenCredentialEventStream`** + `EmptyCitizenCredentialEventStream` (Wallet Service) — abstraction over the not-yet-implemented citizen credential issuance pipeline. Empty stub means sync returns no deltas now and stays stable when real events flow in (US4 / Phase 6). Replace the registration to ship US4.
+- **`ICitizenCredentialEventStream`** / `EfCoreCitizenCredentialEventStream` (Wallet Service) — reads `CitizenCredentialEventLog` joined to `CredentialEntity` for `/sync` payload composition. Status mapping: `Active`/`PendingAcceptance` → `Added`, `Revoked`/`Declined` → `Revoked`, replacement events → `Replaced`. Registered as scoped (US4 PR3 flipped `CitizenSyncService` from singleton → scoped to consume it). The previous `EmptyCitizenCredentialEventStream` stub was retired in PR #576.
+- **`IHolderAddressLookup`** / `EfCoreHolderAddressLookup` (Wallet Service, US4) — single method `ResolvePlatformUserIdAsync(walletAddress, ct)`. Reads `CitizenHolderIndex` with a 24-hour Redis cache (key `sorcha:citizen:holder-index:{addr}`). Returns null on miss — that's how the projector distinguishes citizen credentials from org credentials. The index is written from `CitizenWalletEndpoints.EnrolDevice` at the one moment the citizen JWT carries both the wallet address and the platform user id.
+- **`ICitizenInboxProjector`** / `CitizenInboxProjector` (Wallet Service, US4) — single composition point for citizen credential push. Methods `OnCredentialAddedAsync(CredentialEntity, ct)` and `OnCredentialStatusChangedAsync(CredentialEntity, oldStatus, ct)`. Resolves recipient address via `IHolderAddressLookup`; on hit, allocates next `Seq` (MAX(Seq)+1 with unique-index-violation retry), inserts a `CitizenCredentialEventLog` row, then emits `WalletHub.CredentialAvailable(credentialId)` to `WalletHub.GroupNameFor(platformUserId)`. Hub emit is try/log/swallow — the pull-on-open `/sync` path remains authoritative; push is the latency optimisation. Org credentials hit no-op.
 - **`IDelegationRenewalService`** / `DelegationRenewalService` (Wallet Service) — composes `IPlatformUserDeviceClient.GetByIdAsync` → `IDeviceDelegationIssuer.IssueAsync` → `IPlatformUserDeviceClient.RegisterAsync` (refresh in place, idempotent on thumbprint). Always re-issues; status-list slot stays the same. Rejects renewals for revoked devices (PR #435).
 - **`IIssuerKeyResolver`** (verifier) + `OptOutIssuerKeyResolver` (default — preserves v1 contract) + `JwkRegistryIssuerKeyResolver` (in-memory, used by tests + demo-mint to register per-mint issuer keys). `VerifiablePresentationValidator` step 4b verifies credential JWS when key resolved; `RequireIssuerSignature: true` flips to fail-closed when no resolver hit (PR #434). Production hardening swaps in a DID-resolver-backed impl that reads tenant register verification methods.
 
@@ -630,14 +632,14 @@ End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). W
 
 ### `WalletHub` (SignalR)
 
-Hub URL `/hubs/wallet`. `[Authorize(AuthenticationSchemes = "Bearer")]`. On connect, the bearer JWT's `platform_user_id` claim places the connection in group `wallet:platform-user:{guid:N}` so server-side broadcasters target a single citizen across all their enrolled devices. Public helpers `WalletHub.PlatformUserIdClaim` and `WalletHub.GroupNameFor(Guid)`. Server-to-client methods land here as features need them (US3 `DeviceRevoked(Guid)`, US4 `CredentialAvailable(string)`).
+Hub URL `/hubs/wallet`. `[Authorize(AuthenticationSchemes = "Bearer")]`. On connect, the bearer JWT's `platform_user_id` claim places the connection in group `wallet:platform-user:{guid:N}` so server-side broadcasters target a single citizen across all their enrolled devices. Public helpers `WalletHub.PlatformUserIdClaim` and `WalletHub.GroupNameFor(Guid)`. Server-to-client events: `DeviceRevoked(Guid)` (US3) and `CredentialAvailable(string)` (US4 — emitted from `CitizenInboxProjector`).
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
 | `src/Common/Sorcha.CitizenWallet.Abstractions/` | DTOs, derivation context constants, VCT URIs, validators, embedded JSON schema |
-| `src/Core/Sorcha.Wallet.Portable/Domain/Entities/CitizenDeviceStatusList.cs` + `CitizenWalletSyncCursor.cs` | Wallet Service entities |
+| `src/Core/Sorcha.Wallet.Portable/Domain/Entities/CitizenDeviceStatusList.cs` + `CitizenWalletSyncCursor.cs` + `CitizenHolderIndex.cs` + `CitizenCredentialEventLog.cs` | Wallet Service entities (last two added in US4 PR #575) |
 | `src/Services/Sorcha.Tenant.Service/Models/PlatformUserDevice.cs` | Tenant Service entity |
 | `src/Services/Sorcha.Wallet.Service/Services/Implementation/HolderKeyService.cs` | Slot-108 holder key derivation + JWK + thumbprint + sign |
 | `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenStatusListPublisher.cs` | Token Status List 2024 publisher |
@@ -645,7 +647,11 @@ Hub URL `/hubs/wallet`. `[Authorize(AuthenticationSchemes = "Bearer")]`. On conn
 | `src/Services/Sorcha.Wallet.Service/Services/Implementation/DeviceDelegationIssuer.cs` | SD-JWT VC composition |
 | `src/Services/Sorcha.Wallet.Service/Services/Implementation/OrgStatusSigningWalletResolver.cs` | Lazy per-org system-wallet provisioner |
 | `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` | `/api/v1/wallet/devices/{enrol,renew-delegation}`, `/credentials`, `/sync` |
-| `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenSyncService.cs` | Sync delta composer + JWT cursor mint/validate |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenSyncService.cs` | Sync delta composer + JWT cursor mint/validate (Scoped since US4) |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/EfCoreCitizenCredentialEventStream.cs` | US4 — reads `CitizenCredentialEventLog` joined to `CredentialEntity` for `/sync` |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/EfCoreHolderAddressLookup.cs` + `Interfaces/IHolderAddressLookup.cs` | US4 — citizen wallet address → PlatformUserId resolver, Redis-cached |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenInboxProjector.cs` + `Interfaces/ICitizenInboxProjector.cs` | US4 — composition point for credential push (event log + hub emit) |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/InboundCredentialDetector.cs` + `Credentials/CredentialStore.cs` | US4 hooks: `TryExtractAsync` (post-`AddAsync`), `PatchStatusAsync`, `UpdateStatusAsync` invoke the projector |
 | `src/Services/Sorcha.Wallet.Service/Services/Implementation/DelegationRenewalService.cs` | Renewal orchestrator (lookup → re-issue → tenant refresh) |
 | `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenStatusListEndpoints.cs` | Public status-list JWT endpoint |
 | `src/Services/Sorcha.Wallet.Service/Hubs/WalletHub.cs` | SignalR hub at `/hubs/wallet` |
@@ -654,7 +660,9 @@ Hub URL `/hubs/wallet`. `[Authorize(AuthenticationSchemes = "Bearer")]`. On conn
 | `src/Common/Sorcha.ServiceClients.Http/PlatformUserDevice/` | Wallet → Tenant s2s client (`RegisterAsync`, `GetByIdAsync`) |
 | `src/Common/Sorcha.ServiceClients.Http/CitizenWallet/` | PWA → Wallet client (enrol, sync, list-credentials, renew-delegation) |
 | `src/Apps/Sorcha.Citizen.Wallet/` | Blazor WASM PWA (mounted at `/wallet/` via gateway `PathRemovePrefix`). Pages: Index/Enrol/Present/CredentialDetail/Settings/Devices/Activity. Components: ConsentSheet/CredentialPickerDialog/NoMatchingCredentialDialog. wwwroot/js: webcrypto-bridge.js, indexeddb-bridge.js. |
-| `src/Apps/Sorcha.Citizen.Wallet/Services/` | All PWA services: WebCryptoDeviceKeyService, IndexedDb{Credential,Delegation,StatusList,DeviceMeta,SyncCursor,AccessToken}Store, AuthService, EnrolmentService, SyncService, DelegationRenewalClient, BearerTokenHandler, ServerClockHandler, ServerClockObserver |
+| `src/Apps/Sorcha.Citizen.Wallet/Services/` | All PWA services: WebCryptoDeviceKeyService, IndexedDb{Credential,Delegation,StatusList,DeviceMeta,SyncCursor,AccessToken}Store, AuthService, EnrolmentService, SyncService, DelegationRenewalClient, BearerTokenHandler, ServerClockHandler, ServerClockObserver, **CitizenWalletHubConnection** (US4 — singleton SignalR client at `/hubs/wallet`, subscribes to `CredentialAvailable` + `DeviceRevoked`) |
+| `src/Apps/Sorcha.Citizen.Wallet/Pages/Index.razor` | Home page; subscribes to `CitizenWalletHubConnection` events in `OnInitializedAsync`, fires `SyncNowAsync` / `RenewIfDueAsync`, `IAsyncDisposable` detach |
+| `src/Apps/Sorcha.Citizen.Wallet/wwwroot/service-worker.published.js` | US4 — handles Background Sync `sync` events tagged `citizen-credential-sync` to replay `/sync` while document is hidden |
 | `src/Apps/Sorcha.Citizen.Verifier/` | Blazor Server reference verifier (mounted at `/verify/`). Pages: Index/VerifierSession/Outcome. Endpoints: PresentationResponseEndpoints, DemoMintEndpoint. |
 | `src/Apps/Sorcha.Citizen.Verifier/Services/IIssuerKeyResolver.cs` | Issuer-signature verification seam — OptOut + JwkRegistry impls |
 | `specs/114-citizen-wallet-pwa/` | Spec, plan, contracts, data model, tasks |
@@ -674,7 +682,61 @@ The PWA's two background loops on every Home load:
 1. **Sync** — `SyncService.SyncAsync` reads cursor from `ISyncCursorStore`, calls `/sync?since=`, applies adds/revokes/replacements to `ICredentialCache`, persists new cursor, updates `IDelegationStore` if server piggybacked a renewal. On 410 → `ListCredentialsAsync` snapshot fallback then fresh `/sync` to bootstrap a usable cursor.
 2. **Delegation renewal** — `DelegationRenewalClient.RenewIfDueAsync` reads `IDeviceMetaStore`, checks `DelegationExpiresAt - now > 30 days`. If due, calls `/devices/renew-delegation`, persists fresh JWT + refreshed expiry. Five outcomes: `NotEnrolled`, `NotDue`, `Renewed`, `DeviceNotFound` (server 404 → device revoked elsewhere), `Failed`.
 
-Sync cursor is an HMAC-SHA256 JWT carrying `{sub: holderKeyId, seq, iat}` per research §R-006. 30-day cursor lifetime. `EmptyCitizenCredentialEventStream` is the v1 stub — replace its DI registration to wire real credential events when US4 ships. The whole sync surface is exercisable end-to-end now even though no real credentials flow through it yet.
+Sync cursor is an HMAC-SHA256 JWT carrying `{sub: holderKeyId, seq, iat}` per research §R-006. 30-day cursor lifetime. `EfCoreCitizenCredentialEventStream` (US4 PR #576) reads from `CitizenCredentialEventLog`; the previous `EmptyCitizenCredentialEventStream` stub is retired. Real credential events flow whenever `InboundCredentialDetector.TryExtractAsync` decrypts a `targetAudience: "SorchaLocalWallet"` credential bound to a citizen's holder wallet — see "Citizen credential push (US4)" below.
+
+### Citizen credential push (US4)
+
+The end-to-end chain when an issuer publishes a credential whose recipient is a citizen-PWA holder:
+
+1. **Block sealed** — Validator seals a docket containing the issuer's credential-issuance transaction (`targetAudience: "SorchaLocalWallet"`).
+2. **Inbound detect** — `InboundCredentialDetector.TryExtractAsync` (Wallet Service) decrypts the AEAD envelope using the recipient wallet's X25519 key, builds a `CredentialEntity`, calls `CredentialStore.AddAsync(...)`.
+3. **Project** — Immediately after `AddAsync`, `ICitizenInboxProjector.OnCredentialAddedAsync` runs:
+   - `IHolderAddressLookup.ResolvePlatformUserIdAsync(recipientWalletAddress)` — null = org credential, no-op; non-null = citizen.
+   - Insert `CitizenCredentialEventLog` row with `Seq = MAX(Seq)+1` for that PlatformUserId (unique-index-violation retry handles concurrent issues).
+   - `IHubContext<WalletHub>.Clients.Group(WalletHub.GroupNameFor(pid)).CredentialAvailable(credentialId)` — try/log/swallow.
+4. **Status mutations** — `CredentialStore.PatchStatusAsync` and `UpdateStatusAsync` call `ICitizenInboxProjector.OnCredentialStatusChangedAsync` after the mutation succeeds. Active→Revoked/Declined writes a `Revoked` log entry; replacement transitions write a `Replaced` entry.
+5. **PWA receives** — `CitizenWalletHubConnection` (Singleton SignalR client at `/hubs/wallet`) is subscribed to `CredentialAvailable` + `DeviceRevoked` only. `Pages/Index.razor` subscribes in `OnInitializedAsync`, fires `SyncService.SyncNowAsync()` on `CredentialAvailable` (and `DelegationRenewalClient.RenewIfDueAsync` on `DeviceRevoked`), detaches via `IAsyncDisposable`. Reconnect-with-jitter (0/2/5/10/30 s); connection failures swallow silently.
+6. **Background sync fallback** — `service-worker.published.js` handles `sync` events tagged `citizen-credential-sync` (Chromium Background Sync API) by replaying `/sync` when the document is hidden.
+
+The hub emit is an optimisation. The pull-on-open `/sync` path is authoritative — closing the PWA before issuance and reopening after still surfaces the credential because the projector wrote the event log row regardless of hub-emit success.
+
+### Citizen-PWA worked-example blueprint (`SorchaLocalWallet`)
+
+A council issues an Assured Identity credential to a citizen-PWA holder. Composes with Open Participants & Late Binding — the citizen applicant has `walletAddress: null` and is late-bound on first submission.
+
+```jsonc
+{
+  "title": "Assured Identity (PWA delivery)",
+  "participants": [
+    { "id": "applicant", "walletAddress": null },
+    { "id": "verifier",  "walletAddress": "ws1qta..." }
+  ],
+  "actions": [
+    { "id": 1, "isStartingAction": true, "sender": "applicant",
+      "schemaRef": "AssuredIdentityApplication/v1" },
+    { "id": 2, "sender": "verifier", "schemaRef": "VerifierDecision/v1" },
+    { "id": 3, "sender": "verifier",
+      "credentialIssuanceConfig": {
+        "credentialType": "AssuredIdentityCredential/v1",
+        "targetAudience": "SorchaLocalWallet",
+        "recipientParticipantId": "applicant",
+        "claimMappings": [
+          { "claimName": "givenName",   "sourceField": "/1/payload/givenName" },
+          { "claimName": "familyName",  "sourceField": "/1/payload/familyName" },
+          { "claimName": "dateOfBirth", "sourceField": "/1/payload/dateOfBirth" }
+        ],
+        "disclosable": ["givenName", "familyName", "dateOfBirth"],
+        "expiryDuration": "P5Y"
+      } }
+  ]
+}
+```
+
+Detailed authoring guidance lives in `.claude/skills/blueprint-builder/SKILL.md` → "SorchaLocalWallet citizen-PWA worked example".
+
+### Pre-release contract correction (US4)
+
+`CachedCredentialPayload.Id`, `RevokedCredentialEntry.Id`, and `ReplacedCredentialEntry.OldId`/`NewId` (in `Sorcha.CitizenWallet.Abstractions`) changed from `Guid` to `string` to carry credential identifiers as the projector emits them. The PWA's local `CachedCredential.Id` stays `Guid` for IndexedDB indexing; `ToCachedCredential` maps `string → Guid` deterministically via SHA-256 first-16-bytes.
 
 ### Issuer-signature trust (verifier)
 

@@ -570,6 +570,43 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
 - `usagePolicy: "LimitedUse"` requires `maxPresentations: <int>`.
 - `expiryDuration` is ISO 8601 (`P5Y`, `P365D`, `PT24H`); omit for non-expiring credentials.
 
+#### SorchaLocalWallet citizen-PWA worked example (Feature 114 US4)
+
+Composes `SorchaLocalWallet` issuance with **Open Participants & Late Binding** to deliver a credential to a walk-in citizen who has no pre-existing participant record. The applicant has `walletAddress: null`; the first authenticated submitter is late-bound to the participant for the life of the instance.
+
+```jsonc
+{
+  "title": "Assured Identity (PWA delivery)",
+  "participants": [
+    { "id": "applicant", "walletAddress": null },
+    { "id": "verifier",  "walletAddress": "ws1qta..." }
+  ],
+  "actions": [
+    { "id": 1, "isStartingAction": true, "sender": "applicant",
+      "schemaRef": "AssuredIdentityApplication/v1" },
+    { "id": 2, "sender": "verifier", "schemaRef": "VerifierDecision/v1" },
+    { "id": 3, "sender": "verifier",
+      "credentialIssuanceConfig": {
+        "credentialType": "AssuredIdentityCredential/v1",
+        "targetAudience": "SorchaLocalWallet",
+        "recipientParticipantId": "applicant",
+        "claimMappings": [
+          { "claimName": "givenName",   "sourceField": "/1/payload/givenName" },
+          { "claimName": "familyName",  "sourceField": "/1/payload/familyName" },
+          { "claimName": "dateOfBirth", "sourceField": "/1/payload/dateOfBirth" }
+        ],
+        "disclosable": ["givenName", "familyName", "dateOfBirth"],
+        "expiryDuration": "P5Y"
+      } }
+  ]
+}
+```
+
+- The citizen applicant must be omitted from walkthrough `$walletMap` — see "Open Participants & Late Binding". `VAL_BP_010` fires at publish time if you accidentally pre-bake a wallet on a starting action's `Sender`.
+- Once the credential-issuance transaction is sealed, Wallet Service's `InboundCredentialDetector` decrypts it, persists a `CredentialEntity`, and `ICitizenInboxProjector` writes a `CitizenCredentialEventLog` row + emits `WalletHub.CredentialAvailable(credentialId)` to the citizen's PlatformUser group. The PWA `Pages/Index.razor` subscribes via `CitizenWalletHubConnection` and fires `SyncService.SyncNowAsync()`. Closed-PWA delivery still works — the next `/sync` call drains the same event log.
+- Stacked-card review/credential preview: layering `x-review` on the verifier's review action with `credentialRequirements` + `credentialIssuanceConfig` produces the standard stacked-cards rendering.
+- Architectural detail and the projector chain live in `.claude/skills/sorcha-architecture/SKILL.md` § "Citizen Wallet PWA (Feature 114)" → "Citizen credential push (US4)".
+
 ## Rejection Configuration
 
 Defines what happens when a participant rejects the inbound data on an action.
