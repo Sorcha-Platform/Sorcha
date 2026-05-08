@@ -60,15 +60,15 @@ public class PresentationSealCoordinatorTests
 
         var services = new ServiceCollection();
         services.AddSingleton(_actionExecution.Object);
+        services.AddScoped(_ => _validator.Object);
+        services.AddScoped(_ => _register.Object);
+        services.AddScoped(_ => _store.Object);
         _scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
     }
 
     private RedisPresentationSealCoordinator MakeSut() => new(
         _redis.Object,
-        _validator.Object,
-        _register.Object,
         _scopeFactory,
-        _store.Object,
         _metrics,
         _clock,
         Options.Create(new PresentationLifecycleOptions()),

@@ -42,32 +42,27 @@ public sealed class RedisPresentationSealCoordinator : IPresentationSealCoordina
     private static readonly TimeSpan MissedEventThreshold = TimeSpan.FromSeconds(30);
 
     private readonly IConnectionMultiplexer _redis;
-    private readonly IValidatorServiceClient _validatorClient;
-    private readonly IRegisterServiceClient _registerClient;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IPendingPresentationStore _pendingStore;
     private readonly PresentationLifecycleMetrics _metrics;
     private readonly IClock _clock;
     private readonly IOptions<PresentationLifecycleOptions> _options;
     private readonly ILogger<RedisPresentationSealCoordinator> _logger;
 
-    /// <summary>Constructor — DI-friendly.</summary>
+    /// <summary>Constructor — DI-friendly. Scoped collaborators
+    /// (<c>IValidatorServiceClient</c>, <c>IRegisterServiceClient</c>,
+    /// <c>IPendingPresentationStore</c>, <c>IActionExecutionService</c>)
+    /// are resolved per-drain via <see cref="IServiceScopeFactory"/> to avoid
+    /// captive-dependency violations of this singleton.</summary>
     public RedisPresentationSealCoordinator(
         IConnectionMultiplexer redis,
-        IValidatorServiceClient validatorClient,
-        IRegisterServiceClient registerClient,
         IServiceScopeFactory scopeFactory,
-        IPendingPresentationStore pendingStore,
         PresentationLifecycleMetrics metrics,
         IClock clock,
         IOptions<PresentationLifecycleOptions> options,
         ILogger<RedisPresentationSealCoordinator> logger)
     {
         _redis = redis ?? throw new ArgumentNullException(nameof(redis));
-        _validatorClient = validatorClient ?? throw new ArgumentNullException(nameof(validatorClient));
-        _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
-        _pendingStore = pendingStore ?? throw new ArgumentNullException(nameof(pendingStore));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -339,7 +334,9 @@ public sealed class RedisPresentationSealCoordinator : IPresentationSealCoordina
         TransactionSubmissionResult result;
         try
         {
-            result = await _validatorClient.SubmitTransactionAsync(submission, ct);
+            using var scope = _scopeFactory.CreateScope();
+            var validatorClient = scope.ServiceProvider.GetRequiredService<IValidatorServiceClient>();
+            result = await validatorClient.SubmitTransactionAsync(submission, ct);
         }
         catch (Exception ex)
         {
@@ -515,7 +512,9 @@ public sealed class RedisPresentationSealCoordinator : IPresentationSealCoordina
     {
         try
         {
-            var tx = await _registerClient.GetTransactionAsync(registerId, txId, ct);
+            using var scope = _scopeFactory.CreateScope();
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+            var tx = await registerClient.GetTransactionAsync(registerId, txId, ct);
             return tx is not null;
         }
         catch (Exception ex)
@@ -551,7 +550,9 @@ public sealed class RedisPresentationSealCoordinator : IPresentationSealCoordina
     {
         try
         {
-            await _pendingStore.SetOutcomeSentinelAsync(requestId, value, validity, CancellationToken.None);
+            using var scope = _scopeFactory.CreateScope();
+            var pendingStore = scope.ServiceProvider.GetRequiredService<IPendingPresentationStore>();
+            await pendingStore.SetOutcomeSentinelAsync(requestId, value, validity, CancellationToken.None);
         }
         catch (Exception ex)
         {
