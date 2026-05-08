@@ -51,34 +51,38 @@
 
     @if (_credentials is null)
     {
-        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" data-testid="credentials-loading" />
     }
     else if (_credentials.Count == 0)
     {
-        <MudAlert Severity="Severity.Info" Class="mb-3">
+        <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="home-empty-state">
             No credentials yet. Enrol this device to load yours, or try the demo card.
         </MudAlert>
         <MudButton Variant="Variant.Filled" Color="Color.Primary"
                    StartIcon="@Icons.Material.Filled.PhoneIphone"
-                   OnClick="@(() => Nav.NavigateTo("/enrol"))" FullWidth="true" Class="mb-2">
+                   OnClick="@(() => Nav.NavigateTo("/enrol"))" FullWidth="true" Class="mb-2"
+                   data-testid="enrol-device-button">
             Enrol this device
         </MudButton>
     }
     else
     {
-        @foreach (var c in _credentials)
-        {
-            <MudCard Class="mb-3" Style="cursor:pointer;"
-                     @onclick="@(() => Nav.NavigateTo($"/credentials/{c.Id}"))">
-                <MudCardContent>
-                    <MudText Typo="Typo.subtitle1">@(c.DisplayLabel ?? c.Vct)</MudText>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">@c.Vct</MudText>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
-                        Claims: @string.Join(", ", c.AvailableClaimNames)
-                    </MudText>
-                </MudCardContent>
-            </MudCard>
-        }
+        <div data-testid="credentials-list">
+            @foreach (var c in _credentials)
+            {
+                <MudCard Class="mb-3" Style="cursor:pointer;"
+                         @onclick="@(() => Nav.NavigateTo($"/credentials/{c.Id}"))"
+                         data-testid="@($"credential-card-{c.Id}")">
+                    <MudCardContent>
+                        <MudText Typo="Typo.subtitle1">@(c.DisplayLabel ?? c.Vct)</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@c.Vct</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                            Claims: @string.Join(", ", c.AvailableClaimNames)
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </div>
     }
 
     <MudStack Row="true" Spacing="2" Class="mt-4">
@@ -101,7 +105,7 @@
 
     @if (!string.IsNullOrEmpty(_syncStatus))
     {
-        <MudAlert Severity="@_syncSeverity" Dense="true" Class="mt-3">@_syncStatus</MudAlert>
+        <MudAlert Severity="@_syncSeverity" Dense="true" Class="mt-3" data-testid="sync-banner">@_syncStatus</MudAlert>
     }
     @if (!string.IsNullOrEmpty(_seedError))
     {
