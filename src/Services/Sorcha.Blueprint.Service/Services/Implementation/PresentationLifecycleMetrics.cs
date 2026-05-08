@@ -26,6 +26,14 @@ public sealed class PresentationLifecycleMetrics
     private readonly Counter<long> _rateLimitRejected;
     private readonly Histogram<double> _durationSeconds;
 
+    // Feature 119 — seal-aware ordering instruments.
+    private readonly Histogram<double> _sealWaitSeconds;
+    private readonly Counter<long> _sealTimeoutTotal;
+    private readonly Counter<long> _sealRecoveredViaSweeperTotal;
+    private long _queueDepthOutcome;
+    private long _queueDepthAbandonment;
+    private long _queueDepthAdvance;
+
     public PresentationLifecycleMetrics(IMeterFactory meterFactory)
     {
         ArgumentNullException.ThrowIfNull(meterFactory);
@@ -51,6 +59,79 @@ public sealed class PresentationLifecycleMetrics
             name: "sorcha_presentation_duration_seconds",
             unit: "s",
             description: "Wall-clock duration from PresentationInitiated write to PresentationOutcome write.");
+
+        // Feature 119 — seal-aware ordering instruments.
+        _sealWaitSeconds = _meter.CreateHistogram<double>(
+            name: "sorcha_presentation_seal_wait_seconds",
+            unit: "s",
+            description: "Duration a queued submission or advancement waited from enqueue to drain.");
+
+        _sealTimeoutTotal = _meter.CreateCounter<long>(
+            name: "sorcha_presentation_seal_timeout_total",
+            description: "Count of queued entries that timed out waiting for predecessor seal (TTL).");
+
+        _sealRecoveredViaSweeperTotal = _meter.CreateCounter<long>(
+            name: "sorcha_presentation_seal_recovered_via_sweeper_total",
+            description: "Count of queued entries drained by the recovery sweeper after a missed seal event.");
+
+        _meter.CreateObservableGauge(
+            name: "sorcha_presentation_seal_queue_depth",
+            observeValues: () => new[]
+            {
+                new Measurement<long>(Interlocked.Read(ref _queueDepthOutcome),
+                    new KeyValuePair<string, object?>("site", "outcome")),
+                new Measurement<long>(Interlocked.Read(ref _queueDepthAbandonment),
+                    new KeyValuePair<string, object?>("site", "abandonment")),
+                new Measurement<long>(Interlocked.Read(ref _queueDepthAdvance),
+                    new KeyValuePair<string, object?>("site", "advance"))
+            },
+            description: "Current depth of the seal-wait queues, per site.");
+    }
+
+    /// <summary>Record enqueue→drain wait latency for a seal-aware queue entry.</summary>
+    public void RecordSealWait(string site, double seconds)
+    {
+        _sealWaitSeconds.Record(seconds, new KeyValuePair<string, object?>("site", site));
+    }
+
+    /// <summary>Record a TTL-fail of a queued entry (predecessor never sealed).</summary>
+    public void RecordSealTimeout(string site)
+    {
+        _sealTimeoutTotal.Add(1, new KeyValuePair<string, object?>("site", site));
+    }
+
+    /// <summary>Record a sweeper-recovery drain (missed transaction:confirmed event).</summary>
+    public void RecordSealRecoveredViaSweeper(string site)
+    {
+        _sealRecoveredViaSweeperTotal.Add(1, new KeyValuePair<string, object?>("site", site));
+    }
+
+    /// <summary>Increment the observable gauge for the given site.</summary>
+    public void IncrementSealQueueDepth(string site)
+    {
+        switch (site)
+        {
+            case "outcome": Interlocked.Increment(ref _queueDepthOutcome); break;
+            case "abandonment": Interlocked.Increment(ref _queueDepthAbandonment); break;
+            case "advance": Interlocked.Increment(ref _queueDepthAdvance); break;
+        }
+    }
+
+    /// <summary>Decrement the observable gauge for the given site (floored at zero).</summary>
+    public void DecrementSealQueueDepth(string site)
+    {
+        switch (site)
+        {
+            case "outcome":
+                if (Interlocked.Read(ref _queueDepthOutcome) > 0) Interlocked.Decrement(ref _queueDepthOutcome);
+                break;
+            case "abandonment":
+                if (Interlocked.Read(ref _queueDepthAbandonment) > 0) Interlocked.Decrement(ref _queueDepthAbandonment);
+                break;
+            case "advance":
+                if (Interlocked.Read(ref _queueDepthAdvance) > 0) Interlocked.Decrement(ref _queueDepthAdvance);
+                break;
+        }
     }
 
     public void RecordInitiated(string consumer)

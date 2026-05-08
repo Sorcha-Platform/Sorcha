@@ -24,9 +24,9 @@ Single-project modification within `Sorcha.Blueprint.Service`. New code under `s
 
 **Purpose**: Tiny — config knob + sentinel state extension + metrics extension. No new projects, no scaffolding.
 
-- [ ] T001 Add `SealRecoverySweepIntervalSeconds` (int, default 5) to `PresentationLifecycleOptions` in `src/Services/Sorcha.Blueprint.Service/Configuration/PresentationLifecycleOptions.cs`. Wire from `appsettings.json` `PresentationLifecycle:SealRecoverySweepIntervalSeconds`.
-- [ ] T002 [P] Extend `IPendingPresentationStore` in `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/IPendingPresentationStore.cs` with sentinel state-machine helpers for the three new values (`outcome-pending-seal`, `failed-predecessor-not-sealed`, `failed-validator-reject`) — extend the existing `TryClaimOutcomeSentinelAsync`/`SetOutcomeSentinelAsync`/`GetOutcomeSentinelAsync` semantics; no new methods.
-- [ ] T003 [P] Extend `PresentationLifecycleMetrics` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/PresentationLifecycleMetrics.cs` with the four new instruments per `contracts/presentation-seal-coordinator.cs.md` Observability contract: histogram `sorcha_presentation_seal_wait_seconds`, observable gauge `sorcha_presentation_seal_queue_depth`, counters `sorcha_presentation_seal_timeout_total` and `sorcha_presentation_seal_recovered_via_sweeper_total`.
+- [X] T001 Add `SealRecoverySweepIntervalSeconds` (int, default 5) to `PresentationLifecycleOptions` in `src/Services/Sorcha.Blueprint.Service/Configuration/PresentationLifecycleOptions.cs`. Wire from `appsettings.json` `PresentationLifecycle:SealRecoverySweepIntervalSeconds`.
+- [X] T002 [P] Extend `IPendingPresentationStore` in `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/IPendingPresentationStore.cs` with sentinel state-machine helpers for the three new values (`outcome-pending-seal`, `failed-predecessor-not-sealed`, `failed-validator-reject`) — extend the existing `TryClaimOutcomeSentinelAsync`/`SetOutcomeSentinelAsync`/`GetOutcomeSentinelAsync` semantics; no new methods.
+- [X] T003 [P] Extend `PresentationLifecycleMetrics` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/PresentationLifecycleMetrics.cs` with the four new instruments per `contracts/presentation-seal-coordinator.cs.md` Observability contract: histogram `sorcha_presentation_seal_wait_seconds`, observable gauge `sorcha_presentation_seal_queue_depth`, counters `sorcha_presentation_seal_timeout_total` and `sorcha_presentation_seal_recovered_via_sweeper_total`.
 
 ---
 

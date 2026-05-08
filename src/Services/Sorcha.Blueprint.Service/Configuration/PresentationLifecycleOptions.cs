@@ -18,6 +18,14 @@ public sealed class PresentationLifecycleOptions
     /// <summary>Redis leader-lock TTL for the sweeper in HA deployments (seconds).</summary>
     public int SweeperLeaderLockTtlSeconds { get; set; } = 60;
 
+    /// <summary>
+    /// Tick cadence for the seal-aware ordering recovery sweeper (Feature 119).
+    /// The sweeper drains queue entries whose predecessor sealed without a
+    /// <c>transaction:confirmed</c> event being observed, and fails entries past
+    /// their TTL with a structured timeout. Default 5 seconds (research R3).
+    /// </summary>
+    public int SealRecoverySweepIntervalSeconds { get; set; } = 5;
+
     /// <summary>Rate limit settings (per-wallet-per-register).</summary>
     public RateLimitOptions RateLimit { get; set; } = new();
 
