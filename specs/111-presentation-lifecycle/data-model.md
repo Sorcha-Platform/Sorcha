@@ -137,6 +137,25 @@ Retry after decline extends the chain naturally:
 
 The action's completion signal is the **first `presentation-outcome` with `kind=success`** for the instance+action. Subsequent attempts after success are rejected at the submission endpoint with HTTP 409 (action already complete).
 
+> **Submission ordering — seal-aware (Feature 119).** Chain-pointer-bearing
+> lifecycle transactions — `presentation-outcome` and `presentation-abandoned`
+> — are submitted to the validator only after their `previousTransactionId`
+> predecessor has been observed sealed in the register. Likewise the FR-015
+> workflow advancement that follows a `success` outcome fires only after the
+> outcome itself is observed sealed. The chain semantics above are unchanged;
+> only the *timing* of submission is gated by `IPresentationSealCoordinator`
+> (Redis-backed queue keyed by predecessor txId, drained by
+> `PresentationSealSubscriber` on the existing `transaction:confirmed` Redis
+> Streams channel, with a 5 s recovery sweep covering missed events and a
+> never-seals timeout transitioning the sentinel to
+> `failed-predecessor-not-sealed`). See research R10, the design at
+> `docs/superpowers/specs/2026-05-08-feature-111-chain-races-design.md`, and
+> the implementation spec at `specs/119-presentation-seal-ordering/`. The new
+> sentinel values `outcome-pending-seal`, `failed-predecessor-not-sealed`, and
+> `failed-validator-reject` are added to the existing R6 sentinel state
+> machine; see XML doc on
+> `IPendingPresentationStore.GetOutcomeSentinelAsync`.
+
 ---
 
 ## 2. Transient state — Redis schema

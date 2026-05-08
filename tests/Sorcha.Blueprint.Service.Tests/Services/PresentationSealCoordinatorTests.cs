@@ -354,6 +354,83 @@ public class PresentationSealCoordinatorTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task DrainOnSealAsync_AbandonmentSiteValidatorReject_TransitionsToFailedValidatorReject()
+    {
+        // T024 — exercises the abandonment-site path through DrainOnSealAsync's reject branch.
+        var requestId = Guid.NewGuid();
+        var submission = FakeSubmission();
+        var entries = new HashEntry[]
+        {
+            new("presentationRequestId", requestId.ToString()),
+            new("site", "Abandonment"),
+            new("submissionJson", JsonSerializer.Serialize(submission)),
+            new("targetSentinelOnSuccess", "abandoned"),
+            new("validityWindowSeconds", 600),
+            new("enqueuedAt", _clock.UtcNow.ToString("o")),
+            new("traceContext", "")
+        };
+        _db.Setup(d => d.HashGetAllAsync(
+                It.Is<RedisKey>(k => k.ToString().StartsWith("sorcha:presentation:awaiting-seal:submit:")),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(entries);
+        _db.Setup(d => d.HashGetAllAsync(
+                It.Is<RedisKey>(k => k.ToString().StartsWith("sorcha:presentation:awaiting-seal:advance:")),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(Array.Empty<HashEntry>());
+        _db.Setup(d => d.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(true);
+        _validator.Setup(v => v.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionSubmissionResult
+            {
+                Success = false,
+                ErrorCode = "VAL_OTHER",
+                ErrorMessage = "transient validator failure"
+            });
+
+        var sut = MakeSut();
+        var n = await sut.DrainOnSealAsync("tx-init");
+
+        n.Should().Be(1);
+        _store.Verify(s => s.SetOutcomeSentinelAsync(
+            requestId, "failed-validator-reject", It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DrainOnSealAsync_AbandonmentSiteSuccess_SetsAbandonedSentinel()
+    {
+        // T024 sibling — happy-path abandonment drain sets the abandoned sentinel.
+        var requestId = Guid.NewGuid();
+        var submission = FakeSubmission();
+        var entries = new HashEntry[]
+        {
+            new("presentationRequestId", requestId.ToString()),
+            new("site", "Abandonment"),
+            new("submissionJson", JsonSerializer.Serialize(submission)),
+            new("targetSentinelOnSuccess", "abandoned"),
+            new("validityWindowSeconds", 600),
+            new("enqueuedAt", _clock.UtcNow.ToString("o")),
+            new("traceContext", "")
+        };
+        _db.Setup(d => d.HashGetAllAsync(
+                It.Is<RedisKey>(k => k.ToString().StartsWith("sorcha:presentation:awaiting-seal:submit:")),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(entries);
+        _db.Setup(d => d.HashGetAllAsync(
+                It.Is<RedisKey>(k => k.ToString().StartsWith("sorcha:presentation:awaiting-seal:advance:")),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(Array.Empty<HashEntry>());
+        _db.Setup(d => d.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(true);
+        _validator.Setup(v => v.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionSubmissionResult { Success = true, TransactionId = submission.TransactionId });
+
+        var sut = MakeSut();
+        var n = await sut.DrainOnSealAsync("tx-init");
+
+        n.Should().Be(1);
+        _store.Verify(s => s.SetOutcomeSentinelAsync(
+            requestId, "abandoned", 600, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private sealed class TestClock : IClock
     {
         public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.Parse("2026-05-08T12:00:00Z");
