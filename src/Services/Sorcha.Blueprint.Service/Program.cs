@@ -21,6 +21,7 @@ using Sorcha.Blueprint.Service.Services;
 using Sorcha.Blueprint.Schemas.Services;
 using Sorcha.Cryptography.Core;
 using Sorcha.ServiceClients.Extensions;
+using Sorcha.Register.Storage.Redis;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -225,6 +226,16 @@ builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresent
     Sorcha.Blueprint.Service.Services.Implementation.HaipPresentationConsumer>();
 
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.AbandonmentSweeper>();
+
+// Feature 119 — seal-aware ordering for chain-pointer-bearing presentation lifecycle
+// transactions. Singleton coordinator + BackgroundService subscriber on the existing
+// transaction:confirmed Redis Streams channel. See:
+//   docs/superpowers/specs/2026-05-08-feature-111-chain-races-design.md
+//   specs/119-presentation-seal-ordering/spec.md
+builder.Services.AddRedisEventStreams(builder.Configuration);
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator,
+    Sorcha.Blueprint.Service.Services.Implementation.RedisPresentationSealCoordinator>();
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.PresentationSealSubscriber>();
 
 // Feature 103 US1: Redis read-through cache for per-instance participant bindings.
 // Hot-path lookup for Instance.ParticipantWallets during action execution.
