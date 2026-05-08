@@ -219,6 +219,37 @@ Actions carry credential configs as first-class fields (not an `x-*` schema exte
 
 `ActionExecutionService` reads `CredentialRequirements` before the action runs and `CredentialIssuance` after. No custom per-blueprint credential code.
 
+### Citizen-PWA delivery (Feature 114 US4)
+
+When `credentialIssuanceConfig.targetAudience: "SorchaLocalWallet"` and the resolved recipient wallet is a citizen's holder wallet (slot 108), the credential is delivered to the citizen-PWA inbox with optional SignalR push. The flow lives entirely in Wallet Service — Blueprint Service is unchanged from the org-credential path.
+
+```
+ActionExecutionService                            (Blueprint Service)
+   ↓ AEAD-encrypts SD-JWT VC to recipient wallet's X25519 key
+   ↓ submits credential-issuance transaction
+Validator seals docket
+   ↓
+InboundCredentialDetector.TryExtractAsync         (Wallet Service)
+   ↓ decrypts envelope with recipient wallet's X25519 private key
+   ↓ persists CredentialEntity
+   → CredentialStore.AddAsync(credential)
+   → ICitizenInboxProjector.OnCredentialAddedAsync(credential)
+        ↓ IHolderAddressLookup.ResolvePlatformUserIdAsync(recipientAddress)
+        ↓   null  → org credential, no-op (existing org-credential path takes over)
+        ↓   guid  → citizen credential
+        ↓ insert CitizenCredentialEventLog row, Seq = MAX(Seq)+1 per PlatformUserId
+        ↓ try { hub.Clients.Group(WalletHub.GroupNameFor(pid)).CredentialAvailable(id) }
+          catch { log; swallow }     // pull-on-open /sync stays authoritative
+```
+
+Status mutations follow the same projector seam: `CredentialStore.PatchStatusAsync` and `UpdateStatusAsync` invoke `ICitizenInboxProjector.OnCredentialStatusChangedAsync` after a successful mutation. Active→Revoked/Declined writes a `Revoked` event-log entry; replacement transitions write a `Replaced` entry.
+
+**Authority model.** The hub emit is an optimisation; the `/sync` endpoint reading `CitizenCredentialEventLog` via `EfCoreCitizenCredentialEventStream` is authoritative. Closing the PWA before issuance and reopening after still surfaces the credential because the projector wrote the log row regardless of hub-emit success.
+
+**Key index population.** `CitizenHolderIndex` (`(WalletAddress → PlatformUserId)`) is written from `CitizenWalletEndpoints.EnrolDevice` at the one moment the citizen JWT carries both the wallet address and the platform user id. Without that row, `IHolderAddressLookup` returns null and the credential falls back to the org path — meaning citizen-credential push only works for citizens who have completed at least one device enrolment.
+
+Worked-example blueprint (council issuing Assured Identity to a late-bound citizen applicant) is in `.claude/skills/blueprint-builder/SKILL.md` and `.claude/skills/sorcha-architecture/SKILL.md` § "Citizen Wallet PWA (Feature 114)".
+
 ## MAUI Blazor UI
 
 The **server** already has `Sorcha.Wallet.Service.Credentials.ICredentialStore`. The UI needs a separate render-mode-agnostic abstraction — use `ICredentialUiStore` under `Sorcha.UI.Core/Services/Credentials/` to avoid naming collision. Platform services (`SecureStorage`, biometrics) hide behind `IBiometricGate` and `IQrScanner`. Razor components never touch MAUI APIs directly.
