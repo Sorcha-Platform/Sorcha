@@ -59,7 +59,7 @@ Single-project modification within `Sorcha.Blueprint.Service`. New code under `s
 - [X] T013 [US1] Update the idempotent-replay logic in `HandleOutcomeAsync` (lines ~262-275) to recognise `outcome-pending-seal` as a "writer claimed; deduplicate" state — extend the `string.Equals(existingSentinel, "...", ...)` chain. (Same file as T011/T012.)
 - [X] T014 [P] [US1] Add unit tests to `tests/Sorcha.Blueprint.Service.Tests/Services/PresentationLifecycleServiceOutcomeTests.cs`: "predecessor sealed → submits inline" and "predecessor pending → enqueues, sentinel=outcome-pending-seal, returns deferred reply." Mock `_registerClient.GetTransactionAsync` and `_sealCoordinator`.
 - [X] T015 [P] [US1] Add unit tests to `tests/Sorcha.Blueprint.Service.Tests/Services/PresentationLifecycleServiceOutcomeTests.cs`: "FR-015 advancement enqueues to advance queue with correct envelope" — verifies T012's wiring.
-- [ ] T016 [US1] Smoke test: run `walkthroughs/AssuredIdentity/run.ps1 -Profile gateway` once after rebuilding `blueprint-service` (`docker compose build --no-cache blueprint-service && docker compose up -d --force-recreate --no-deps blueprint-service`). Phase 2 step 7 must pass. (Depends on T011-T015 and Phase 2.)
+- [~] T016 [US1] DEFERRED — Docker image rebuild started in background (~10 min); not completed within session window. PR #584 documents the test plan. User runs locally before merge. run `walkthroughs/AssuredIdentity/run.ps1 -Profile gateway` once after rebuilding `blueprint-service` (`docker compose build --no-cache blueprint-service && docker compose up -d --force-recreate --no-deps blueprint-service`). Phase 2 step 7 must pass. (Depends on T011-T015 and Phase 2.)
 
 ---
 
@@ -93,12 +93,12 @@ Single-project modification within `Sorcha.Blueprint.Service`. New code under `s
 
 **Purpose**: Documentation propagation, formal SC validation, and issue cleanup.
 
-- [ ] T025 Run `walkthroughs/AssuredIdentity/run.ps1 -Profile gateway` ten consecutive times against a fresh Docker stack per `quickstart.md` Step 2. All ten must pass. This is the formal SC-119-001 verification.
+- [~] T025 DEFERRED — same as T016 (image rebuild not completed in session). User runs the formal 10× SC-119-001 verification locally before merge. against a fresh Docker stack per `quickstart.md` Step 2. All ten must pass. This is the formal SC-119-001 verification.
 - [~] T026 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` (deviation: sandbox-blocked from editing this file; full drop-in copy recorded in EXECUTION-DEVIATIONS.md for the user to apply) "Cross-Cutting Pattern: Timebound Presentation Lifecycle (Feature 111)" section to describe the seal-aware ordering rule and the new `IPresentationSealCoordinator` surface. Reference both the design doc and Feature 119 spec.
 - [X] T027 [P] Add R10 "Seal-aware ordering of chain-bearing lifecycle txs" section to `specs/111-presentation-lifecycle/research.md` summarising the decision and linking to the design doc + Feature 119.
 - [X] T028 [P] Update `specs/111-presentation-lifecycle/data-model.md` §1.4 ("Transaction ordering and chain linkage") to clarify that chain-pointer-bearing lifecycle txs use seal-aware submission ordering — without redefining the chain semantics themselves.
 - [~] T029 [P] DEFERRED — same real-Redis dependency as T017-T021. Restart-safety guarantee is provided by Redis durability of the queue keys (atomic HSET+EXPIRE pipeline at enqueue time); coordinator instance disposal is stateless from Redis's perspective. `PresentationSealCoordinatorIntegrationTests.RestartSafety_DrainsAfterReconnect` (SC-119-007): enqueue entries on coordinator instance A, dispose A, instantiate coordinator instance B against the same Redis, verify B's `RunRecoverySweepAsync` drains all of A's pending entries.
-- [ ] T030 Close GitHub issue #582 with a summary linking Feature 119 PR + design doc + spec, and update `MEMORY.md > Current Branch` to reflect Feature 119 status.
+- [~] T030 DEFERRED — issue #582 will auto-close on PR #584 merge (PR body contains "Closes #582"). Manual update of MEMORY.md > Current Branch deferred to user since `MEMORY.md` is in user-home (`C:\Users\StuartFraser\.claude\projects\...`), outside the repo, not in scope for an automated commit.
 
 ---
 
