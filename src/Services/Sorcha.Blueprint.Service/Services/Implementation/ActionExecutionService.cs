@@ -1242,6 +1242,93 @@ public class ActionExecutionService : IActionExecutionService
         };
     }
 
+    /// <inheritdoc />
+    public async Task CompleteAfterPresentationAsync(
+        string instanceId,
+        int completedActionId,
+        string outcomeTransactionId,
+        IReadOnlyDictionary<string, object>? draftPayload,
+        CancellationToken cancellationToken = default)
+    {
+        using var activity = ActivitySource.StartActivity("CompleteAfterPresentation");
+        activity?.SetTag("instance.id", instanceId);
+        activity?.SetTag("action.id", completedActionId);
+        activity?.SetTag("tx.id", outcomeTransactionId);
+
+        _logger.LogInformation(
+            "FR-015: completing action {ActionId} for instance {InstanceId} after presentation outcome tx {TxId}",
+            completedActionId, instanceId, outcomeTransactionId);
+
+        var instance = await _instanceStore.GetAsync(instanceId, cancellationToken)
+            ?? throw new InvalidOperationException($"Instance {instanceId} not found");
+
+        // NOTE: a downstream submission's state-reconstruction may race the
+        // outcome tx's docket seal and chain off the wrong transaction (the
+        // validator returns VAL_BP_003). That race is NOT fixed here — see
+        // issue #582. Adding a confirmation wait at this point doesn't help
+        // because the outcome tx's own previousTransactionId race
+        // (VAL_CHAIN_001 against the not-yet-sealed presentation-initiated tx)
+        // can prevent the outcome from ever sealing. Fixing the chain is
+        // a Feature 111 design pass; this method advances the action's
+        // lifecycle state idempotently regardless of validator-side outcome.
+
+        if (!instance.CurrentActionIds.Contains(completedActionId))
+        {
+            // Idempotent replay — the action has already been advanced past this point
+            // (e.g. duplicate callback racing the outcome write, or a manual replay).
+            _logger.LogInformation(
+                "Action {ActionId} on instance {InstanceId} is already not-current; skipping FR-015 advancement (idempotent replay)",
+                completedActionId, instanceId);
+            return;
+        }
+
+        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken)
+            ?? throw new InvalidOperationException($"Blueprint {instance.BlueprintId} not found");
+
+        var actionDef = _actionResolver.GetActionDefinition(blueprint, completedActionId.ToString())
+            ?? throw new InvalidOperationException($"Action {completedActionId} not found in blueprint {blueprint.Id}");
+
+        // Build mergedData from the draft payload only. State reconstruction would
+        // require a delegation token to decrypt prior payloads — see XML doc on
+        // IActionExecutionService.CompleteAfterPresentationAsync. Routes that don't
+        // depend on prior decrypted state (the AssuredIdentity flow and any other
+        // unconditional / payload-only-conditioned routing) work correctly with this
+        // narrower context.
+        var mergedData = draftPayload is null
+            ? new Dictionary<string, object>()
+            : draftPayload.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+        var calculations = await EvaluateCalculationsAsync(actionDef, mergedData, cancellationToken);
+        if (calculations is not null)
+        {
+            foreach (var kvp in calculations)
+            {
+                mergedData[kvp.Key] = kvp.Value;
+            }
+        }
+
+        var outputSource = BuildOutputMappingSource(
+            payloadData: mergedData,
+            calculations: calculations,
+            haipOfferResult: null,
+            actionDef: actionDef);
+
+        var routingResult = await EvaluateRoutingAsync(blueprint, actionDef, mergedData, outputSource, cancellationToken);
+
+        instance = await UpdateInstanceAfterExecutionAsync(
+            instance,
+            completedActionId,
+            outcomeTransactionId,
+            routingResult,
+            cancellationToken);
+
+        await NotifyParticipantsAsync(instance, actionDef, routingResult, cancellationToken);
+
+        _logger.LogInformation(
+            "FR-015: action {ActionId} on instance {InstanceId} completed; {NextCount} next action(s) routed; isComplete={IsComplete}",
+            completedActionId, instanceId, routingResult.NextActions.Count, routingResult.NextActions.Count == 0);
+    }
+
     private async Task<RoutingResult> EvaluateRoutingAsync(
         BlueprintModel blueprint,
         ActionModel action,
