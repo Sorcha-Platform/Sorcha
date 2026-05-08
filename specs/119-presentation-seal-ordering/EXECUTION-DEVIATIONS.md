@@ -135,3 +135,75 @@ Insert location: immediately after the existing
 …" line at the end of the "Cross-Cutting Pattern: Timebound Presentation
 Lifecycle (Feature 111)" section, before the `---` separator that precedes
 "Transactional Email Architecture (Feature 112)".
+
+**Update 2026-05-08:** applied manually after this session; sandbox no longer
+blocks the file. Drop-in committed at `05b190e6`.
+
+---
+
+## Deviation: Walkthrough exposes a second VAL_BP_003 case the design did not anticipate
+
+**Discovered.** 2026-05-08, during T016 / T025 walkthrough verification after
+the captive-dependency DI fix unblocked Blueprint Service startup.
+
+**Issue.** The original task brief identified VAL_BP_003 as the next-action
+case ("Action 3 is not reachable from action 1 via blueprint routes" — chain
+pointer skipped over action 2's outcome). The brief did not surface a second
+case: when the **outcome itself** is submitted with
+`previousTransactionId = initiatedTxId`, both the outcome and the initiated
+carry `MetaData.ActionId = N` (the HAIP-gated action). The validator's VAL_BP_003
+check then evaluates "is action N reachable from action N via blueprint routes?"
+— which is reflexively false because actions do not route to themselves.
+
+Symptom on the live walkthrough:
+
+```
+VAL_BP_003: Action 2 is not reachable from action 2 via blueprint routes
+```
+
+Why this was masked before Feature 119: VAL_CHAIN_001 (predecessor-not-sealed)
+fired first under the old chain race and dropped the outcome before VAL_BP_003
+had a chance. Now that the seal-aware coordinator waits for initiated to seal
+before submitting outcome, VAL_CHAIN_001 passes and VAL_BP_003 fires instead.
+
+**Two options to consider, both out-of-scope per spec.md "Scope and Non-goals":**
+
+- **A — Blueprint-side.** Stop emitting `MetaData.ActionId` on
+  `presentation-outcome` and `presentation-abandoned` transactions.
+  ValidationEngine.cs:1191 already handles the missing-ActionId case
+  ("Previous transaction missing ActionId in metadata, skipping sequence
+  check"), so VAL_BP_003 short-circuits cleanly. Smallest change. Keeps the
+  validator unchanged. **Concern:** confirm `StateReconstructionService` does
+  not depend on `ActionId` on lifecycle txs — re-reading the code, it only
+  uses ActionId for *required-action data accumulation*, and lifecycle txs
+  carry no required action data, so this should be safe.
+
+- **B — Validator-side.** Carve out VAL_BP_003 for lifecycle tx types
+  (`presentation-initiated`, `presentation-outcome`, `presentation-abandoned`)
+  on either side of the chain pointer. Cleaner semantically but explicitly
+  out of scope per spec.md ("Validator chain rules ... are unchanged"), and
+  rebuilds `validator-service`.
+
+**Decision.** Halted T016 / T025 walkthrough verification. User must choose
+between (A) and (B); recommend (A) as the smallest change that keeps the
+out-of-scope-validator commitment intact.
+
+**Status of the rest of the feature.**
+
+- Phase 1 of the AssuredIdentity walkthrough still completes successfully.
+- Phase 2 progresses through step 5 (`haip present` succeeds — outcome callback
+  authenticates, outcome tx is built, queued, and later short-circuit-submitted
+  inline because the initiated tx had time to seal during the citizen flow).
+- Step 6 ("Wait for Action 3 to become current") times out at 60s because the
+  outcome tx is rejected with VAL_BP_003 and the FR-015 advancement queued in
+  the seal coordinator never drains (the `transaction:confirmed` event for
+  `outcomeTxId` never fires because the outcome never sealed).
+- All Phase 2 / Phase 3 / Phase 5 of Feature 119 itself work as designed —
+  the new code is exercising correctly. The block is in the validator's
+  pre-existing chain rules, not in Feature 119's seal-aware ordering.
+
+**Suggested follow-up.** Open an issue ("Feature 119 follow-up: VAL_BP_003
+reflexive-action carve-out for lifecycle txs"), reference this deviation log
+section, and decide between (A) and (B) before merging the Feature 119 PR.
+The current PR (#584) ships seal-aware ordering correctly; it just exposes a
+second pre-existing chain-rule defect that needs its own fix.
