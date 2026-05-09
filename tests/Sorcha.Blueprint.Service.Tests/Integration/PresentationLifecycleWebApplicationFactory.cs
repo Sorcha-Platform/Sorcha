@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.PresentationLifecycle.Abstractions;
@@ -114,6 +115,22 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
             .Setup(r => r.GetTransactionsByInstanceIdAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TransactionModel>());
+        // Feature 119 — PresentationLifecycleService.IsPredecessorSealedAsync calls
+        // GetTransactionAsync to decide whether to take the inline submit path or
+        // defer to the seal coordinator. Returning a non-null tx here keeps tests
+        // on the inline path (validator IS called, sentinels are written immediately),
+        // matching the wire shape these tests assert on. The deferred path is unit
+        // tested in PresentationLifecycleServiceTests.
+        RegisterClient
+            .Setup(r => r.GetTransactionAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string regId, string txId, CancellationToken _) => new TransactionModel
+            {
+                TxId = txId,
+                RegisterId = regId,
+                SenderWallet = "test",
+                TimeStamp = DateTime.UtcNow
+            });
         RegisterClient
             .Setup(r => r.GetRegisterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string regId, CancellationToken _) => new Sorcha.Register.Models.Register
@@ -201,9 +218,42 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
                 services.AddSingleton(extra);
             }
 
+            // Feature 119 — RedisPresentationSealCoordinator dereferences the
+            // IConnectionMultiplexer mock's GetDatabase() (which returns null in
+            // the base factory) and NREs. Replace it with a no-op test double —
+            // the inline submit path runs unconditionally because GetTransactionAsync
+            // is mocked to return a sealed predecessor (see ApplyDefaultMockSetups).
+            // The advancement enqueue (success path, line 477+) becomes a no-op,
+            // which is fine: the integration tests assert on sentinel state and
+            // validator submissions, not on advancement timing (covered by unit tests).
+            services.RemoveAll<IPresentationSealCoordinator>();
+            services.AddSingleton<IPresentationSealCoordinator, NoOpPresentationSealCoordinator>();
+
             ApplyDefaultMockSetups();
         });
     }
+}
+
+/// <summary>
+/// No-op test double for <see cref="IPresentationSealCoordinator"/>. The
+/// production <c>RedisPresentationSealCoordinator</c> needs a real Redis
+/// database, which the integration test factory does not provide. Tests that
+/// exercise the deferred submit/advancement paths live in
+/// <c>PresentationLifecycleServiceTests</c> with a Moq'd coordinator.
+/// </summary>
+internal sealed class NoOpPresentationSealCoordinator : IPresentationSealCoordinator
+{
+    public Task EnqueueSubmissionAsync(SealAwaitingSubmission submission, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task EnqueueAdvancementAsync(SealAwaitingAdvancement advancement, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<int> DrainOnSealAsync(string sealedTxId, CancellationToken cancellationToken = default)
+        => Task.FromResult(0);
+
+    public Task<SweepResult> RunRecoverySweepAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new SweepResult(0, 0));
 }
 
 /// <summary>
