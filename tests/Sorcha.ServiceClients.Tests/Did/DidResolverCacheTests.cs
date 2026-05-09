@@ -182,6 +182,30 @@ public class DidResolverCacheTests
     }
 
     [Fact]
+    public async Task GetOrAddAsync_FactoryThrows_ExceptionPropagates_AndEntryEvictedSoNextCallRetries()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var cache = CreateCache(clock);
+        var calls = 0;
+
+        Task<DidDocument?> ThrowingFactory()
+        {
+            calls++;
+            return Task.FromException<DidDocument?>(new InvalidOperationException("boom"));
+        }
+
+        var first = async () => await cache.GetOrAddAsync("did:web:example.com", ThrowingFactory);
+        await first.Should().ThrowAsync<InvalidOperationException>();
+
+        // Entry should be evicted (or expired) so the next call retries.
+        Task<DidDocument?> SuccessFactory() { calls++; return Task.FromResult<DidDocument?>(Doc("did:web:example.com")); }
+        var second = await cache.GetOrAddAsync("did:web:example.com", SuccessFactory);
+
+        second.Should().NotBeNull();
+        calls.Should().Be(2);
+    }
+
+    [Fact]
     public void Invalidate_NullOrEmpty_NoThrow()
     {
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);

@@ -98,18 +98,29 @@ public sealed class DidResolverCache
             _did = did;
             _lazy = new Lazy<Task<DidDocument?>>(async () =>
             {
-                var result = await factory().ConfigureAwait(false);
-                _expiresAtAfterFactory = ComputeExpiry(_did, result, _clock.GetUtcNow(), _options);
-                return result;
+                try
+                {
+                    var result = await factory().ConfigureAwait(false);
+                    _expiresAtAfterFactory = ComputeExpiry(_did, result, _clock.GetUtcNow(), _options);
+                    return result;
+                }
+                catch
+                {
+                    // Faulted resolutions must not get stuck in the cache. Mark expired
+                    // immediately so the next GetOrAddAsync replaces this entry; in-flight
+                    // concurrent callers still see the original exception.
+                    _expiresAtAfterFactory = _clock.GetUtcNow();
+                    throw;
+                }
             }, LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
         public Task<DidDocument?> Task => _lazy.Value;
 
         public DateTimeOffset ExpiresAt =>
-            _lazy.IsValueCreated && _lazy.Value.IsCompletedSuccessfully
-                ? _expiresAtAfterFactory
-                : DateTimeOffset.MaxValue; // in-flight: keep coalescing
+            !_lazy.IsValueCreated || !_lazy.Value.IsCompleted
+                ? DateTimeOffset.MaxValue   // in-flight: keep coalescing
+                : _expiresAtAfterFactory;   // success path: TTL applies; fault path: already-now
     }
 
     private static DateTimeOffset ComputeExpiry(

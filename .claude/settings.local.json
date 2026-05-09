@@ -52,7 +52,13 @@
       "Read(//c/Users/StuartFraser/.claude/projects/C--projects-Sorcha/memory/**)",
       "PowerShell(& .specify/scripts/powershell/setup-plan.ps1 -Json)",
       "PowerShell(& .specify/scripts/powershell/check-prerequisites.ps1 -Json)",
-      "PowerShell(& .specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)"
+      "PowerShell(& .specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)",
+      "PowerShell(dotnet test tests\\\\Sorcha.UI.E2E.Tests\\\\Sorcha.UI.E2E.Tests.csproj --no-build --nologo --filter \"FullyQualifiedName~CitizenWalletPushTests\" -- --report-trx 2>&1)",
+      "PowerShell(cd C:\\\\Projects\\\\Sorcha; $walletDir = \"C:\\\\Projects\\\\Sorcha\\\\walkthroughs\\\\AssuredIdentity\\\\wallet\"; $state = Get-Content walkthroughs\\\\AssuredIdentity\\\\state.json -Raw | ConvertFrom-Json; Write-Host \"Gateway: $\\($state.gatewayUrl\\)\"; Get-ChildItem $walletDir -Recurse | Select-Object Name,Length)",
+      "PowerShell(cd C:\\\\Projects\\\\Sorcha; $env:VERIFICATION_ADMIN_PASSWORD = \"Dev_Pass_2025!\"; $env:CITIZEN_PASSWORD = \"Dev_Pass_2025!\"; $env:LICENSING_ADMIN_PASSWORD = \"Dev_Pass_2025!\"; ./walkthroughs/AssuredIdentity/run-phase2-licence.ps1 2>&1 | Select-Object -Last 80)",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(Tee-Object *)",
+      "PowerShell(docker compose ps *)"
     ],
     "deny": [],
     "ask": []
