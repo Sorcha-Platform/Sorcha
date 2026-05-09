@@ -564,18 +564,13 @@ public class PresentationRequestService : IPresentationRequestService
 
         if (!verification.IsValid)
         {
-            // Map verifier errors to a coarse failure reason. The substring is matched
-            // against an exact phrase that the current SdJwtService implementation emits
-            // (see Sorcha.Cryptography.SdJwt.SdJwtService.VerifyTokenAsync, the
-            // "Failed to parse disclosure" branch). This is brittle: a future SdJwt
-            // library wording change will silently re-bucket disclosure errors as
-            // SignatureInvalid. Tracked as a follow-up — proper fix is to add a typed
-            // ErrorKind enum or sentinel to SdJwtVerificationResult so this mapping
-            // does not depend on internal phrasing.
-            const string DisclosureErrorPhrase = "Failed to parse disclosure";
-
-            var hasDisclosureError = verification.Errors
-                .Any(e => e?.StartsWith(DisclosureErrorPhrase, StringComparison.Ordinal) == true);
+            // Map verifier errors to a coarse failure reason via the typed SdJwtErrorKind
+            // enum on SdJwtVerificationResult.ErrorDetails (issue #221 item 2). The previous
+            // implementation substring-matched the human-readable Errors strings against an
+            // exact phrase from SdJwtService — brittle to wording drift. The structural enum
+            // is stable across library refactors.
+            var hasDisclosureError = verification.ErrorDetails
+                .Any(e => e.Kind == SdJwtErrorKind.DisclosureIntegrityFailure);
 
             var failureReason = hasDisclosureError
                 ? "DisclosureIntegrityFailure"

@@ -23,9 +23,19 @@ public class SdJwtVerificationResult
     public Dictionary<string, object> Claims { get; set; } = new();
 
     /// <summary>
-    /// Verification error messages, if any.
+    /// Verification error messages, if any. Plain-string projection of <see cref="ErrorDetails"/>;
+    /// retained for backward compatibility with existing log call sites and assertion tests.
+    /// New consumers should branch on <see cref="ErrorDetails"/> + <see cref="SdJwtError.Kind"/>
+    /// instead of substring-matching these strings (issue #221).
     /// </summary>
     public List<string> Errors { get; set; } = new();
+
+    /// <summary>
+    /// Structured verification errors, each carrying a typed <see cref="SdJwtErrorKind"/>
+    /// and the same human-readable message that appears in <see cref="Errors"/>. Populated
+    /// in lock-step with <see cref="Errors"/> by <c>SdJwtService</c>.
+    /// </summary>
+    public List<SdJwtError> ErrorDetails { get; set; } = new();
 
     /// <summary>
     /// The issuer identifier from the token payload.

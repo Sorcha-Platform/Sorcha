@@ -203,7 +203,15 @@ public class PresentationRequestVerificationTests
             .ReturnsAsync(new SdJwtVerificationResult
             {
                 IsValid = false,
-                Errors = { "Failed to parse disclosure: abc..." }
+                Errors = { "Failed to parse disclosure: abc..." },
+                ErrorDetails =
+                {
+                    new SdJwtError
+                    {
+                        Kind = SdJwtErrorKind.DisclosureIntegrityFailure,
+                        Message = "Failed to parse disclosure: abc..."
+                    }
+                }
             });
 
         _storeMock
