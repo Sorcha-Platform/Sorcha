@@ -1,0 +1,160 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Org DID Document Endpoint
+  version: 1.0.0
+  summary: Public endpoint for resolving organisation DID documents (Feature 120).
+  description: |
+    Sorcha publishes a W3C DID document for every organisation that has an active issuance key.
+    The document is reachable at a stable, well-known URL conforming to the `did:web` resolution
+    rules in W3C DID Core 1.0.
+
+    For an organisation hosted under the platform domain `{platform-domain}` with id `{orgId}`,
+    the federated DID identifier is:
+
+        did:web:{platform-domain}:orgs:{orgId}
+
+    Per the `did:web` method specification, this DID resolves to the URL:
+
+        https://{platform-domain}/orgs/{orgId}/did.json
+
+    External standards-compliant DID resolvers can dereference this document with no
+    Sorcha-specific knowledge.
+
+    The endpoint is anonymous, CDN-cacheable, and conforms to the W3C DID Core 1.0 document
+    schema (https://www.w3.org/TR/did-core/).
+
+servers:
+  - url: https://{platformDomain}
+    variables:
+      platformDomain:
+        default: example.sorcha.dev
+        description: Platform domain configured at deploy time.
+
+paths:
+  /orgs/{orgId}/did.json:
+    get:
+      summary: Resolve an organisation's DID document.
+      description: |
+        Returns the published W3C DID document for the organisation `orgId`. The document
+        declares the organisation's signing keys (verification methods) and an `alsoKnownAs`
+        link to the equivalent `did:sorcha:org:{walletAddress}` identifier.
+
+        Cache headers: `Cache-Control: public, max-age=21600` (6 hours). Explicit cache
+        invalidation occurs on key events (rotation, revocation, additional key derivation).
+      operationId: resolveOrgDidDocument
+      tags: [Discovery]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The organisation's platform identifier.
+      security: []  # Anonymous; CDN-cacheable.
+      responses:
+        '200':
+          description: DID document found and returned.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: Always `public, max-age=21600`.
+          content:
+            application/did+json:
+              schema:
+                $ref: '#/components/schemas/DidDocument'
+              examples:
+                exampleOrg:
+                  summary: An organisation with one active issuance key.
+                  value:
+                    "@context":
+                      - "https://www.w3.org/ns/did/v1"
+                      - "https://w3id.org/security/suites/jws-2020/v1"
+                    id: "did:web:example.sorcha.dev:orgs:abc-123-def-456-789-aaaaaaaaaaaa"
+                    alsoKnownAs:
+                      - "did:sorcha:org:ws1qta0sk6m4yzgf5...example..."
+                    verificationMethod:
+                      - id: "did:web:example.sorcha.dev:orgs:abc-123-def-456-789-aaaaaaaaaaaa#vc-issuance-1"
+                        type: "JsonWebKey2020"
+                        controller: "did:web:example.sorcha.dev:orgs:abc-123-def-456-789-aaaaaaaaaaaa"
+                        publicKeyMultibase: "z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH"
+                      - id: "did:web:example.sorcha.dev:orgs:abc-123-def-456-789-aaaaaaaaaaaa#dGhpc0lzVGhlVGh1bWJwcmludE9mVGhlS2V5LjEyMzQ"
+                        type: "JsonWebKey2020"
+                        controller: "did:web:example.sorcha.dev:orgs:abc-123-def-456-789-aaaaaaaaaaaa"
+                        publicKeyMultibase: "z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH"
+                    assertionMethod:
+                      - "did:web:example.sorcha.dev:orgs:abc-123-def-456-789-aaaaaaaaaaaa#vc-issuance-1"
+                      - "did:web:example.sorcha.dev:orgs:abc-123-def-456-789-aaaaaaaaaaaa#dGhpc0lzVGhlVGh1bWJwcmludE9mVGhlS2V5LjEyMzQ"
+        '404':
+          description: |
+            No DID document found for this organisation. Either the organisation does not exist,
+            or it has not yet issued its first credential (no issuance key derived).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+components:
+  schemas:
+    DidDocument:
+      type: object
+      description: |
+        W3C DID Document per https://www.w3.org/TR/did-core/. Sorcha-issued documents always
+        carry `alsoKnownAs`, dual `verificationMethod` entries per active key (one versioned,
+        one thumbprint-keyed), and `assertionMethod` referencing all active VMs.
+      required: ["@context", "id", "verificationMethod", "assertionMethod"]
+      properties:
+        "@context":
+          type: array
+          items: { type: string }
+          minItems: 1
+        id:
+          type: string
+          description: The primary DID this document describes.
+        alsoKnownAs:
+          type: array
+          items: { type: string }
+          description: Equivalent identifiers for this organisation (e.g., did:sorcha:org form).
+        verificationMethod:
+          type: array
+          items: { $ref: '#/components/schemas/VerificationMethod' }
+          minItems: 1
+        assertionMethod:
+          type: array
+          items: { type: string }
+          description: Verification method ids permitted for credential issuance.
+        authentication:
+          type: array
+          items: { type: string }
+          description: Verification method ids permitted for authentication.
+
+    VerificationMethod:
+      type: object
+      required: [id, type, controller]
+      properties:
+        id:
+          type: string
+          description: |
+            Fragment-suffixed identifier. Sorcha publishes two per active key:
+              - Versioned: `{did}#vc-issuance-{n}` (n is monotonic, starts at 1)
+              - Thumbprint: `{did}#{rfc7638-base64url-thumbprint}` (43 chars, no padding)
+        type:
+          type: string
+          description: W3C verification method type (e.g., Ed25519VerificationKey2020, JsonWebKey2020).
+        controller:
+          type: string
+        publicKeyMultibase:
+          type: string
+          description: Multibase-encoded (base58btc) multicodec public key.
+        publicKeyJwk:
+          type: object
+          description: JWK form (alternative to multibase). Sorcha currently emits multibase.
+
+    ProblemDetails:
+      type: object
+      description: RFC 7807 problem details.
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
