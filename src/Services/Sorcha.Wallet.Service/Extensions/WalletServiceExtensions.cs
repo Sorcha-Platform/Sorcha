@@ -79,6 +79,16 @@ public static class WalletServiceExtensions
         services.AddScoped<Credentials.ICredentialStore, Credentials.CredentialStore>();
         services.AddScoped<Credentials.CredentialMatcher>();
 
+        // Feature 120 US2 — per-org issuance key service + cross-service DID-doc client.
+        services.AddScoped<Services.Interfaces.IIssuanceKeyService,
+            Services.Implementation.IssuanceKeyService>();
+        services.AddHttpClient<Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient,
+            Sorcha.ServiceClients.OrgDidDocument.OrgDidDocumentClient>(client =>
+            {
+                client.BaseAddress = new Uri(
+                    configuration["ServiceClients:Tenant:BaseAddress"] ?? "http://tenant-service");
+            });
+
         return services;
     }
 

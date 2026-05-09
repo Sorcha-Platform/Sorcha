@@ -43,6 +43,9 @@ public class TenantDbContext : DbContext
     public DbSet<InvitationNonce> InvitationNonces => Set<InvitationNonce>();
     public DbSet<InboxEntry> InboxEntries => Set<InboxEntry>();
 
+    /// <summary>Feature 120 US2 — published per-org DID documents.</summary>
+    public DbSet<OrgDidDocument> OrgDidDocuments => Set<OrgDidDocument>();
+
     // Public schema entities for custom domain resolution
     public DbSet<CustomDomainMapping> CustomDomainMappings => Set<CustomDomainMapping>();
 
@@ -168,6 +171,42 @@ public class TenantDbContext : DbContext
 
         // Configure InboxEntry entity (public schema) — Feature 118 / US3 (durable user inbox)
         ConfigureInboxEntry(modelBuilder);
+
+        // Configure OrgDidDocument entity (public schema) — Feature 120 US2.
+        ConfigureOrgDidDocument(modelBuilder);
+    }
+
+    /// <summary>Feature 120 US2 — published per-org DID documents.</summary>
+    private void ConfigureOrgDidDocument(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<OrgDidDocument>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("OrgDidDocuments");
+            else
+                entity.ToTable("OrgDidDocuments", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.OrganizationId).IsRequired();
+            entity.Property(e => e.PrimaryDid).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.FederatedDid).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.DocumentJson).IsRequired().HasMaxLength(16384);
+            entity.Property(e => e.KeyVersionFingerprint).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.LastRegenerationReason).HasConversion<int>().IsRequired();
+            entity.Property(e => e.LastRegeneratedAt).IsRequired();
+            entity.Property(e => e.Version).IsRequired();
+
+            entity.HasIndex(e => e.OrganizationId).IsUnique()
+                .HasDatabaseName("IX_OrgDidDocuments_OrganizationId");
+            entity.HasIndex(e => e.PrimaryDid)
+                .HasDatabaseName("IX_OrgDidDocuments_PrimaryDid");
+            entity.HasIndex(e => e.FederatedDid)
+                .HasDatabaseName("IX_OrgDidDocuments_FederatedDid");
+        });
     }
 
     /// <summary>Feature 118 / US3 — durable per-user notification entries.</summary>

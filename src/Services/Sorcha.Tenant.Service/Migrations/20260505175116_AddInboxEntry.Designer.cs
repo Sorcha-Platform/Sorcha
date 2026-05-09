@@ -497,6 +497,59 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("LinkedWalletAddresses", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.OrgDidDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DocumentJson")
+                        .IsRequired()
+                        .HasMaxLength(16384)
+                        .HasColumnType("character varying(16384)");
+
+                    b.Property<string>("FederatedDid")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("KeyVersionFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("LastRegeneratedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LastRegenerationReason")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PrimaryDid")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FederatedDid")
+                        .HasDatabaseName("IX_OrgDidDocuments_FederatedDid");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_OrgDidDocuments_OrganizationId");
+
+                    b.HasIndex("PrimaryDid")
+                        .HasDatabaseName("IX_OrgDidDocuments_PrimaryDid");
+
+                    b.ToTable("OrgDidDocuments", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.OrgInvitation", b =>
                 {
                     b.Property<Guid>("Id")

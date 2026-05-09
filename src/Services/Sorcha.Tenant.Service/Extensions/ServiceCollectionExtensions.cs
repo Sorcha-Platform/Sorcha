@@ -99,6 +99,11 @@ public static class ServiceCollectionExtensions
         // on per deployment via the DemoEnvironment__Enabled env var.
         services.Configure<DemoEnvironmentSettings>(configuration.GetSection("DemoEnvironment"));
 
+        // Feature 120 US2 — per-org DID document service.
+        services.Configure<Configuration.TenantSettings>(
+            configuration.GetSection(Configuration.TenantSettings.SectionName));
+        services.AddScoped<IOrgDidDocumentService, OrgDidDocumentService>();
+
         // Add FIDO2/WebAuthn services
         services.AddFido2WebAuthn(configuration);
 
