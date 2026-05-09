@@ -490,6 +490,8 @@ Two pre-existing chain-integrity races in the lifecycle outcome path are closed 
 - `HandleOutcomeAsync` and `HandleAbandonmentAsync` check predecessor seal via `IRegisterServiceClient.GetTransactionAsync` before submitting — sealed → submit inline (existing path, unchanged); pending → enqueue and return.
 - The FR-015 advancement on outcome success is enqueued to the advance queue rather than fired via `Task.Run`. The coordinator's drain creates a fresh DI scope and calls `CompleteAfterPresentationAsync` with `CancellationToken.None` (mirrors PR #583 lifetime contract).
 
+**Validator carve-out** (Feature 119, `Sorcha.Validator.Service/Services/ValidationEngine.cs`): `VAL_BP_003` route reachability check is **skipped** when the current transaction's metadata `Type` is `PresentationOutcome` or `PresentationAbandoned`. These are intra-action lifecycle terminals — the outcome and abandonment chain off the same action's `PresentationInitiated` (both with the same `MetaData.ActionId = N`), and reflexively checking "is action N reachable from action N via routes" would always fail. Chain integrity is still enforced by `VAL_CHAIN_001` and `VAL_CHAIN_FORK`; only the workflow-routing check is bypassed for these specific tx types. `PresentationInitiated` still gets the full route check (it does advance from action N-1 to action N). See `specs/119-presentation-seal-ordering/EXECUTION-DEVIATIONS.md` for the forensic trail of why a Blueprint-only fix was impossible.
+
 **Sentinel state machine extension** (additive — see XML doc on `IPendingPresentationStore.GetOutcomeSentinelAsync`):
 
 - `outcome-pending-seal` — writer claimed; outcome submission deferred until predecessor seals. Treated as an idempotent-replay state alongside `outcome-pending-write`.
