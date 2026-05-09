@@ -584,6 +584,12 @@ public class DocketBuildTriggerService : BackgroundService
                             }
                         },
                         RecipientsWallets = t.RecipientsWallets ?? new List<string>(),
+                        // AUTHORITATIVE WRITE-PATH PROJECTION (post-Feature 119 note):
+                        // This block is the single source of truth for what TransactionMetaData
+                        // gets persisted to MongoDB. Blueprint Service's BuiltTransaction does
+                        // NOT have an equivalent ToTransactionModel() method any more — three
+                        // Feature 119 attempts modified that dead method and confirmed it was
+                        // never on the write path. ALL persisted-metadata changes go here.
                         MetaData = new Sorcha.Register.Models.TransactionMetaData
                         {
                             RegisterId = t.RegisterId,

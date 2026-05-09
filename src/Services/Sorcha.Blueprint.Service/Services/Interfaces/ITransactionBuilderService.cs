@@ -695,32 +695,13 @@ public class BuiltTransaction
         _ => "Action"
     };
 
-    /// <summary>
-    /// Converts to a TransactionModel for submission to the Register Service
-    /// </summary>
-    public Sorcha.Register.Models.TransactionModel ToTransactionModel()
-    {
-        var metaData = new Sorcha.Register.Models.TransactionMetaData
-        {
-            BlueprintId = Metadata.GetValueOrDefault("blueprintId")?.ToString(),
-            InstanceId = Metadata.GetValueOrDefault("instanceId")?.ToString()
-        };
-
-        if (Metadata.TryGetValue("actionId", out var actionIdObj) && actionIdObj is int actionId)
-        {
-            metaData.ActionId = (uint)actionId;
-        }
-
-        return new Sorcha.Register.Models.TransactionModel
-        {
-            TxId = TxId,
-            RegisterId = RegisterId,
-            SenderWallet = SenderWallet,
-            Signature = Signature != null ? Base64Url.EncodeToString(Signature) : string.Empty,
-            MetaData = metaData,
-            PayloadCount = 0,
-            Payloads = Array.Empty<Sorcha.Register.Models.PayloadModel>(),
-            TimeStamp = DateTime.UtcNow
-        };
-    }
+    // ToTransactionModel() removed in post-Feature-119 cleanup. The method had no
+    // production callers — write-path persistence is owned by the Validator Service
+    // (see Sorcha.Validator.Service/Services/DocketBuildTriggerService.cs around
+    // line 587 where TransactionMetaData is constructed inline from the submission
+    // DTO). Three Feature 119 implementation attempts modified this dead method
+    // believing it was on the production write path; the walkthrough kept failing
+    // until the asymmetry was traced. The reverse mapping (persisted document ->
+    // API response model) lives at Sorcha.Register.Storage.MongoDB/Mappers/
+    // MongoDocumentMapper.ToTransactionModel(MongoTransactionDocument).
 }
