@@ -266,7 +266,9 @@ Sorcha/
 │   │   │   │   └── BlockchainGatewayException.cs
 │   │   │   ├── Resolvers/  (NEW)
 │   │   │   │   ├── IUniversalResolver.cs
-│   │   │   │   ├── IDIDResolver.cs
+│   │   │   │   ├── IDIDResolver.cs    # Historical — actual W3C-shaped resolver
+│   │   │   │   │                      # lives in Sorcha.ServiceClients.Http/Did/
+│   │   │   │   │                      # as IDidResolverRegistry (Feature 120 Phase 0)
 │   │   │   │   ├── DIDDocument.cs
 │   │   │   │   └── ResolverConfiguration.cs
 │   │   │   ├── Events/
@@ -2082,6 +2084,8 @@ Content-Type: application/json
 
 ### Phase 11: Universal DID Resolver (Sprint 16-17)
 **Goal:** W3C-compliant DID resolution across blockchains
+
+> **Historical note (Feature 120 Phase 0, 2026-05-09):** The W3C-shaped resolver registry (`IDidResolverRegistry` in `Sorcha.ServiceClients.Http/Did/`) supersedes the proposed `IDIDResolver` per-method shape described below. The Sorcha-specific `IDIDResolver` interface that previously lived in `Sorcha.Register.Core/Services/` was retired in Feature 120 Phase 0 — it had no consumers.
 
 **Tasks:**
 - REG-060: Define IUniversalResolver and IDIDResolver interfaces

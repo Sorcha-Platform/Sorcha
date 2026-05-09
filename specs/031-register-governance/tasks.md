@@ -118,6 +118,8 @@
 
 ### Implementation for User Story 5
 
+> **Historical (Feature 120 Phase 0, 2026-05-09):** The `IDIDResolver` interface and `DIDResolver` implementation referenced in T043–T046 were retired in favour of the W3C-shaped `IDidResolverRegistry` stack (`src/Common/Sorcha.ServiceClients.Http/Did/`). The legacy types had no consumers and were deleted together with their DI registration. Tasks below are preserved for traceability.
+
 - [ ] T043 [P] [US5] Create `IDIDResolver` interface with `ResolveAsync(string did)` returning `DIDResolutionResult` (public key, algorithm, DID type) in `src/Core/Sorcha.Register.Core/Services/IDIDResolver.cs`
 - [ ] T044 [US5] Implement `DIDResolver` — wallet DID via `IWalletServiceClient.GetWalletAsync()`, register DID via `IRegisterServiceClient.GetTransactionAsync()` in `src/Core/Sorcha.Register.Core/Services/DIDResolver.cs`
 - [ ] T045 [US5] Add P2P fallback for register DID resolution when local register not available — use `IPeerServiceClient` in `src/Core/Sorcha.Register.Core/Services/DIDResolver.cs`

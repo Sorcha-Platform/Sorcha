@@ -53,7 +53,7 @@
 
 | ID | Task | Priority | Effort | Status | Notes |
 |----|------|----------|--------|--------|-------|
-| GOV-1 | ZKP-based admin credentials via register DIDs | P4 | 40h | 📋 Deferred | IDIDResolver interface designed for extensibility; requires ZKP library integration |
+| GOV-1 | ZKP-based admin credentials via register DIDs | P4 | 40h | 📋 Deferred | DID resolution lives in `IDidResolverRegistry` (W3C shape, retired the legacy `IDIDResolver` in Feature 120 Phase 0); requires ZKP library integration |
 | GOV-2 | Social recovery for lost Owner wallet access | P4 | 24h | 📋 Deferred | Multi-party recovery blueprints or ZKP-based recovery; currently register becomes unmodifiable |
 | GOV-3 | Concurrent governance proposals | P3 | 16h | 📋 Deferred | Current: single proposal at a time (implicit queueing via blueprint loop); future: multi-instance or queue-based |
 | GOV-4 | Enhanced DID resolution with retry & fallback | P3 | 12h | 📋 Deferred | Retry with exponential backoff, consensus-based fallback for unreachable registers |
