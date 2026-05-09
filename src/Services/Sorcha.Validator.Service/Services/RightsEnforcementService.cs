@@ -7,6 +7,7 @@ using System.Text.Json;
 using Sorcha.Register.Core.Services;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
+using Sorcha.Validator.Service.Diagnostics;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
 
@@ -42,6 +43,7 @@ public class RightsEnforcementService : IRightsEnforcementService
     {
         ArgumentNullException.ThrowIfNull(transaction);
 
+        using var _section = RuleTelemetry.TimeSection("GovernanceRights");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
@@ -141,6 +143,7 @@ public class RightsEnforcementService : IRightsEnforcementService
                     }
                     else
                     {
+                        using var _quorumScope = RuleTelemetry.TimeRule("VAL_PERM_006");
                         var quorumResult = await _rosterService.ValidateQuorumAsync(
                             transaction.RegisterId, operation, operation.ApprovalSignatures, ct);
 
@@ -224,14 +227,20 @@ public class RightsEnforcementService : IRightsEnforcementService
         string code,
         string message,
         string? field = null,
-        bool isFatal = false) => new()
+        bool isFatal = false)
     {
-        Code = code,
-        Message = message,
-        Category = ValidationErrorCategory.Permission,
-        Field = field,
-        IsFatal = isFatal
-    };
+        // Gated emission counter — see ValidationEngine.CreateError.
+        RuleTelemetry.RuleEmitted(code);
+
+        return new ValidationEngineError
+        {
+            Code = code,
+            Message = message,
+            Category = ValidationErrorCategory.Permission,
+            Field = field,
+            IsFatal = isFatal,
+        };
+    }
 
     private static ValidationEngineResult CreateFailureResult(
         Transaction transaction,

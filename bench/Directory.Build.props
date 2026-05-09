@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    Bench projects do not inherit the test-platform settings from tests/.
+    Each bench project sets its own TargetFramework and SDK.
+  -->
+  <PropertyGroup>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+</Project>

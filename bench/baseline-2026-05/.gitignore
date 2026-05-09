@@ -1,0 +1,7 @@
+# Capture outputs are committed deliberately so the baseline becomes a record.
+# The diagnostic socket mount point is ephemeral.
+bench-diag/
+*.sock
+
+# BenchmarkDotNet temp files
+BenchmarkDotNet.Artifacts/

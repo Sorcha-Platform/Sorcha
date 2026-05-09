@@ -140,6 +140,10 @@ builder.Services.AddVerifiedTransactionQueue(builder.Configuration);
 // Add validation engine (schema validation, chain validation)
 builder.Services.AddValidationEngine(builder.Configuration);
 
+// Add gated benchmark instrumentation. No-op when Validator:Benchmark:Enabled
+// is false. See bench/baseline-2026-05/README.md for the capture procedure.
+builder.Services.AddValidatorBenchmarking(builder.Configuration);
+
 // Configure gRPC channel for Wallet Service (T014)
 builder.Services.AddSingleton(sp =>
 {
@@ -252,5 +256,10 @@ app.MapGroup("/api/v1/validators/threshold")
 
 // Map metrics endpoints (protected — requires authentication)
 app.MapMetricsEndpoints();
+
+// Map benchmark/telemetry endpoints (no-op when telemetry disabled)
+app.MapGroup("")
+    .RequireAuthorization("RequireService")
+    .MapBenchmarkEndpoints();
 
 app.Run();
