@@ -27,6 +27,15 @@ public interface IIssuerKeyResolver
     /// the credential carried) and only return keys for issuers they trust.
     /// </summary>
     Task<JsonElement?> ResolveAsync(string issuer, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the issuer's public JWK matched to the credential's <paramref name="kid"/> header
+    /// if known, else null. Feature 120 introduced this overload so DID-resolver-backed
+    /// implementations can pick the correct verification method out of a multi-key DID
+    /// document. Default implementation falls back to the legacy <see cref="ResolveAsync(string, CancellationToken)"/>.
+    /// </summary>
+    Task<JsonElement?> ResolveAsync(string issuer, string? kid, CancellationToken ct = default)
+        => ResolveAsync(issuer, ct);
 }
 
 /// <summary>
