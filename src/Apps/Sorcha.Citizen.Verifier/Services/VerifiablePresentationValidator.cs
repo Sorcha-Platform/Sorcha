@@ -158,7 +158,11 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 errors.Add("Credential is missing iss claim.");
                 return Failure(errors);
             }
-            var issuerJwk = await _issuerKeys.ResolveAsync(issuer, ct);
+            // Feature 120 — pass the credential's JWS kid header to the resolver so DID-resolver-backed
+            // implementations can pick the correct verification method out of multi-key documents.
+            var credentialHeader = TryParseJwtHeader(credentialJwt);
+            var credentialKid = credentialHeader is { } h ? TryGetString(h, "kid") : null;
+            var issuerJwk = await _issuerKeys.ResolveAsync(issuer, credentialKid, ct);
             if (issuerJwk is not null)
             {
                 if (!VerifyJwsSignature(credentialJwt, issuerJwk.Value, out _))
@@ -276,6 +280,22 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             var parts = jwt.Split('.');
             if (parts.Length != 3) return null;
             var bytes = Base64Url.DecodeFromChars(parts[1]);
+            return JsonSerializer.Deserialize<JsonElement>(bytes);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Parse a JWT's protected header to a JsonElement; returns null if malformed.</summary>
+    internal static JsonElement? TryParseJwtHeader(string jwt)
+    {
+        try
+        {
+            var parts = jwt.Split('.');
+            if (parts.Length != 3) return null;
+            var bytes = Base64Url.DecodeFromChars(parts[0]);
             return JsonSerializer.Deserialize<JsonElement>(bytes);
         }
         catch

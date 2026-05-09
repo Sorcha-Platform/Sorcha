@@ -18,7 +18,7 @@ builder.Services.AddHttpClient();
 
 // Feature 114: verifier services (status list cache; VP validator + presentation
 // request builder land with T088-T091).
-builder.Services.AddCitizenVerifier();
+builder.Services.AddCitizenVerifier(builder.Configuration);
 
 var app = builder.Build();
 
