@@ -159,7 +159,7 @@ public class ValidationEngine : IValidationEngine
             }
 
             // 4e. Validate revocation transaction rules
-            if (IsRevocationTransaction(transaction))
+            if (TransactionTypeClassifier.IsRevocationTransaction(transaction))
             {
                 var revResult = await ValidateRevocationAsync(transaction, ct);
                 if (!revResult.IsValid)
@@ -189,7 +189,7 @@ public class ValidationEngine : IValidationEngine
             }
 
             // 5b. Validate sequence number for replay protection (SEC-AUDIT 4.2)
-            if (_walletSequenceRepository != null && !IsGenesisOrControlTransaction(transaction))
+            if (_walletSequenceRepository != null && !TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction))
             {
                 try
                 {
@@ -333,7 +333,7 @@ public class ValidationEngine : IValidationEngine
 
         // BlueprintId and ActionId are required for blueprint-based transactions
         // but not for Participant transactions (which have no blueprint context)
-        if (!IsParticipantTransaction(transaction))
+        if (!TransactionTypeClassifier.IsParticipantTransaction(transaction))
         {
             if (string.IsNullOrWhiteSpace(transaction.BlueprintId))
             {
@@ -428,7 +428,7 @@ public class ValidationEngine : IValidationEngine
         try
         {
             // Genesis/control transactions skip schema validation but MUST have valid signatures (SEC-AUDIT 4.10)
-            if (IsGenesisOrControlTransaction(transaction))
+            if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction))
             {
                 _logger.LogDebug("Validating signatures for genesis/control transaction {TransactionId}",
                     transaction.TransactionId);
@@ -466,14 +466,14 @@ public class ValidationEngine : IValidationEngine
             }
 
             // Participant transactions use a built-in schema instead of blueprint schemas
-            if (IsParticipantTransaction(transaction))
+            if (TransactionTypeClassifier.IsParticipantTransaction(transaction))
             {
                 return ValidateParticipantSchema(transaction, sw);
             }
 
             // Skip schema validation for rejection transactions (payload contains rejection
             // metadata, not the action's data schema)
-            if (IsRejectionTransaction(transaction))
+            if (TransactionTypeClassifier.IsRejectionTransaction(transaction))
             {
                 _logger.LogDebug("Skipping schema validation for rejection transaction {TransactionId}",
                     transaction.TransactionId);
@@ -970,7 +970,7 @@ public class ValidationEngine : IValidationEngine
         var errors = new List<ValidationEngineError>();
 
         // Skip for genesis/control transactions
-        if (IsGenesisOrControlTransaction(transaction))
+        if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction))
         {
             return ValidationEngineResult.Success(
                 transaction.TransactionId,
@@ -979,7 +979,7 @@ public class ValidationEngine : IValidationEngine
         }
 
         // Skip for participant transactions (no blueprint context)
-        if (IsParticipantTransaction(transaction))
+        if (TransactionTypeClassifier.IsParticipantTransaction(transaction))
         {
             _logger.LogDebug("Skipping blueprint conformance for participant transaction {TransactionId}",
                 transaction.TransactionId);
@@ -990,7 +990,7 @@ public class ValidationEngine : IValidationEngine
         }
 
         // Skip for rejection transactions (payload contains rejection metadata, not action data)
-        if (IsRejectionTransaction(transaction))
+        if (TransactionTypeClassifier.IsRejectionTransaction(transaction))
         {
             _logger.LogDebug("Skipping blueprint conformance for rejection transaction {TransactionId}",
                 transaction.TransactionId);
@@ -1152,11 +1152,7 @@ public class ValidationEngine : IValidationEngine
             //    VAL_BP_003 reflexively (action N is not reachable from action N). Skip the
             //    route check for these tx types — chain integrity is still enforced by
             //    VAL_CHAIN_001 / VAL_CHAIN_FORK; only the workflow-routing check is bypassed.
-            var isIntraActionLifecycleTx =
-                (transaction.Metadata.TryGetValue("Type", out var lifecycleType) &&
-                 lifecycleType is not null &&
-                 (string.Equals(lifecycleType, "PresentationOutcome", StringComparison.OrdinalIgnoreCase) ||
-                  string.Equals(lifecycleType, "PresentationAbandoned", StringComparison.OrdinalIgnoreCase)));
+            var isIntraActionLifecycleTx = TransactionTypeClassifier.IsIntraActionLifecycleTerminal(transaction);
 
             if (!isIntraActionLifecycleTx && !string.IsNullOrWhiteSpace(transaction.PreviousTransactionId))
             {
@@ -1282,54 +1278,8 @@ public class ValidationEngine : IValidationEngine
     }
 
 
-    private static bool IsGenesisOrControlTransaction(Transaction transaction)
-    {
-        if (string.Equals(transaction.BlueprintId, GenesisConstants.BlueprintId, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (transaction.Metadata.TryGetValue("Type", out var typeStr) &&
-            (string.Equals(typeStr, "Genesis", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(typeStr, "Control", StringComparison.OrdinalIgnoreCase)))
-            return true;
-
-        return false;
-    }
-
-    private static bool IsParticipantTransaction(Transaction transaction)
-    {
-        return transaction.Metadata.TryGetValue("Type", out var typeStr) &&
-               string.Equals(typeStr, "Participant", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsRejectionTransaction(Transaction transaction)
-    {
-        // Check metadata "Type" key (primary — set by ToTransactionSubmission)
-        if (transaction.Metadata.TryGetValue("Type", out var typeStr) &&
-            string.Equals(typeStr, "Rejection", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Check payload for "type":"rejection" field (fallback — set by BuildRejectionTransactionAsync)
-        if (transaction.Payload.ValueKind == System.Text.Json.JsonValueKind.Object &&
-            transaction.Payload.TryGetProperty("type", out var payloadType) &&
-            string.Equals(payloadType.GetString(), "rejection", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
-    }
-
-    private static bool IsRevocationTransaction(Transaction transaction)
-    {
-        if (transaction.Metadata.TryGetValue("Type", out var typeStr) &&
-            string.Equals(typeStr, "Revocation", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Fallback: check alternative metadata key
-        if (transaction.Metadata.TryGetValue("transactionType", out var txType) &&
-            string.Equals(txType, "Revocation", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
-    }
+    // Transaction-type predicates moved to TransactionTypeClassifier (post-Feature 119
+    // rule-base cleanup). All call sites in this engine route through the classifier.
 
     /// <summary>
     /// Validates a revocation transaction: checks target exists, not already revoked,
