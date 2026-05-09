@@ -1,6 +1,6 @@
 # Feature Specification: Programmable Validation Rule Set (Genesis-Embedded, Governance-Updateable)
 
-**Feature Branch**: `120-programmable-validation-rules`
+**Feature Branch**: `121-programmable-validation-rules`
 **Created**: 2026-05-09
 **Status**: Exploration / not scheduled
 **Source**: View 2 of the post-Feature 119 validator audit (2026-05-09 conversation, Saturday-afternoon thinking session)
