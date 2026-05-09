@@ -213,6 +213,7 @@ app.MapUserPreferenceEndpoints();
 app.MapPlatformUserDeviceEndpoints();
 app.MapPersonaEndpoints();
 app.MapAddressLookupEndpoints();
+app.MapOrgDidDocumentEndpoints();
 app.MapTotpEndpoints();
 app.MapIdpConfigurationEndpoints();
 app.MapOidcEndpoints();

@@ -68,11 +68,57 @@ namespace Sorcha.Tenant.Service.Migrations
                 table: "InboxEntries",
                 columns: new[] { "PlatformUserId", "SourceEventId" },
                 unique: true);
+
+            // Feature 120 US2 — published per-org DID documents.
+            // Squashed into AddInboxEntry per the preproduction migration-squash rule:
+            // no new top-level migration files added for F120's persistence layer.
+            migrationBuilder.CreateTable(
+                name: "OrgDidDocuments",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    PrimaryDid = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    FederatedDid = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    DocumentJson = table.Column<string>(type: "character varying(16384)", maxLength: 16384, nullable: false),
+                    KeyVersionFingerprint = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    LastRegeneratedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    LastRegenerationReason = table.Column<int>(type: "integer", nullable: false),
+                    Version = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OrgDidDocuments", x => x.Id);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgDidDocuments_FederatedDid",
+                schema: "public",
+                table: "OrgDidDocuments",
+                column: "FederatedDid");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgDidDocuments_OrganizationId",
+                schema: "public",
+                table: "OrgDidDocuments",
+                column: "OrganizationId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgDidDocuments_PrimaryDid",
+                schema: "public",
+                table: "OrgDidDocuments",
+                column: "PrimaryDid");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "OrgDidDocuments",
+                schema: "public");
+
             migrationBuilder.DropTable(
                 name: "InboxEntries",
                 schema: "public");

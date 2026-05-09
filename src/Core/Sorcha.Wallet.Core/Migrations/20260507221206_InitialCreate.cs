@@ -677,11 +677,55 @@ namespace Sorcha.Wallet.Core.Migrations
                 schema: "wallet",
                 table: "WalletTransactions",
                 column: "State");
+
+            // Feature 120 US2 — per-organisation VC issuance key state.
+            migrationBuilder.CreateTable(
+                name: "IssuanceKeyStates",
+                schema: "wallet",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Slot = table.Column<int>(type: "integer", nullable: false),
+                    RotationIndex = table.Column<int>(type: "integer", nullable: false),
+                    Status = table.Column<int>(type: "integer", nullable: false),
+                    PublicKey = table.Column<byte[]>(type: "bytea", nullable: false),
+                    Algorithm = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    Thumbprint = table.Column<string>(type: "character varying(43)", maxLength: 43, nullable: false),
+                    DerivedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    RotatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    RevokedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    RevocationReason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    RevokedByGovernanceOpId = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_IssuanceKeyStates", x => x.Id);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssuanceKeyStates_Org_Rotation",
+                schema: "wallet",
+                table: "IssuanceKeyStates",
+                columns: new[] { "OrganizationId", "RotationIndex" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssuanceKeyStates_Org_Slot_Active",
+                schema: "wallet",
+                table: "IssuanceKeyStates",
+                columns: new[] { "OrganizationId", "Slot" },
+                unique: true,
+                filter: "\"Status\" = 0");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "IssuanceKeyStates",
+                schema: "wallet");
+
             migrationBuilder.DropTable(
                 name: "CitizenCredentialEventLog",
                 schema: "wallet");

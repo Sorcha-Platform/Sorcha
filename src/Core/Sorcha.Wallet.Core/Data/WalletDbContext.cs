@@ -95,6 +95,11 @@ public class WalletDbContext : DbContext
     public DbSet<CitizenCredentialEventLog> CitizenCredentialEventLog => Set<CitizenCredentialEventLog>();
 
     /// <summary>
+    /// Per-organisation VC issuance key lifecycle state (Feature 120 US2, data-model §4).
+    /// </summary>
+    public DbSet<IssuanceKeyState> IssuanceKeyStates => Set<IssuanceKeyState>();
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="WalletDbContext"/> class.
     /// </summary>
     /// <param name="options">The database context options configured with PostgreSQL connection string.</param>
@@ -137,6 +142,37 @@ public class WalletDbContext : DbContext
         ConfigureCitizenWalletSyncCursor(modelBuilder);
         ConfigureCitizenHolderIndex(modelBuilder);
         ConfigureCitizenCredentialEventLog(modelBuilder);
+        ConfigureIssuanceKeyState(modelBuilder);
+    }
+
+    private static void ConfigureIssuanceKeyState(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<IssuanceKeyState>(entity =>
+        {
+            entity.ToTable("IssuanceKeyStates");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.OrganizationId).IsRequired();
+            entity.Property(e => e.Slot).IsRequired();
+            entity.Property(e => e.RotationIndex).IsRequired();
+            entity.Property(e => e.Status).HasConversion<int>().IsRequired();
+            entity.Property(e => e.PublicKey).IsRequired();
+            entity.Property(e => e.Algorithm).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Thumbprint).IsRequired().HasMaxLength(43);
+            entity.Property(e => e.DerivedAt).IsRequired();
+            entity.Property(e => e.RevocationReason).HasMaxLength(500);
+
+            // FR-016 — at most one Active key per (Org, Slot).
+            entity.HasIndex(e => new { e.OrganizationId, e.Slot })
+                .HasFilter("\"Status\" = 0")
+                .IsUnique()
+                .HasDatabaseName("IX_IssuanceKeyStates_Org_Slot_Active");
+
+            // FR-011 — RotationIndex unique per Org.
+            entity.HasIndex(e => new { e.OrganizationId, e.RotationIndex })
+                .IsUnique()
+                .HasDatabaseName("IX_IssuanceKeyStates_Org_Rotation");
+        });
     }
 
     private static void ConfigureWallet(ModelBuilder modelBuilder)

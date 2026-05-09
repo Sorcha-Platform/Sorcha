@@ -348,6 +348,68 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.ToTable("DerivedKeyRecords", "wallet");
                 });
 
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.IssuanceKeyState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Algorithm")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset>("DerivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RevokedByGovernanceOpId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("RotatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RotationIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Thumbprint")
+                        .IsRequired()
+                        .HasMaxLength(43)
+                        .HasColumnType("character varying(43)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "RotationIndex")
+                        .IsUnique()
+                        .HasDatabaseName("IX_IssuanceKeyStates_Org_Rotation");
+
+                    b.HasIndex("OrganizationId", "Slot")
+                        .IsUnique()
+                        .HasDatabaseName("IX_IssuanceKeyStates_Org_Slot_Active")
+                        .HasFilter("\"Status\" = 0");
+
+                    b.ToTable("IssuanceKeyStates", "wallet");
+                });
+
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.OrgMasterKey", b =>
                 {
                     b.Property<Guid>("Id")
