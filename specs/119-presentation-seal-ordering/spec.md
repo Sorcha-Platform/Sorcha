@@ -126,7 +126,7 @@ When a citizen starts a presentation but never completes it, the platform record
 - Decoupling presentation lifecycle records from chain participation entirely (rejected as option (C) for this feature — kept on the table as a clean future migration if the seal-wait latency proves unacceptable in production).
 - Any generalised "submit-after-seal" primitive for non-presentation flows. The mechanism stays scoped to presentation lifecycle until a second use case appears.
 - Changes to FR-014, FR-015, or FR-017 of the Feature 111 spec.
-- Changes to the validator's chain-integrity rules.
+- Generalised changes to the validator's chain-integrity rules. (A narrow VAL_BP_003 carve-out for `presentation-outcome` and `presentation-abandoned` lifecycle terminals was forced into being during execution after three failed Blueprint-only attempts hit a dead-code path — see `EXECUTION-DEVIATIONS.md` § "Resolution 2026-05-09" and the eight-line change in `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`. VAL_CHAIN_001 and VAL_CHAIN_FORK are unchanged. `presentation-initiated` still gets the full reachability check.)
 - Any feature flag or in-flight migration. The new behaviour replaces the old code path outright (Feature 111 is master-only and clean-start per its FR-017).
 
 ## Assumptions
