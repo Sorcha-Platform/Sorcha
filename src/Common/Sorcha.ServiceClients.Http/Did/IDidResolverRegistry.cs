@@ -26,9 +26,12 @@ public interface IDidResolverRegistry
     /// to resolve, or if verification keys diverge across the equivalence chain.
     /// </summary>
     /// <remarks>
-    /// Phase 1 stub delegates to <see cref="ResolveAsync"/> (passthrough). Full
-    /// cross-resolution algorithm lands in Feature 120 US4 (T055-T059) per
-    /// <c>contracts/did-resolver-registry-contract.md</c>.
+    /// Implements the deterministic six-step cross-resolution algorithm in
+    /// <c>contracts/did-resolver-registry-contract.md</c> "Resolution algorithm" — primary
+    /// resolution, alsoKnownAs walk, key-material intersection, cycle protection, merged
+    /// document construction. Cached at the registry layer per
+    /// <see cref="DidResolverCache"/>; cross-resolution counters and the
+    /// <c>did.resolve.cross</c> span are wired in production.
     /// </remarks>
     Task<DidDocument?> ResolveWithAlsoKnownAsAsync(string did, CancellationToken ct = default);
 }
