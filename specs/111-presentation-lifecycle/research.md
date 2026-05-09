@@ -154,6 +154,41 @@ Metrics (Prometheus via OTel exporter):
 
 **Alternatives considered**: Nothing substantive — this is standard Sorcha telemetry wiring.
 
+## R10 — Seal-aware ordering of chain-bearing lifecycle txs (added 2026-05-08, Feature 119)
+
+**Decision.** Outcome and abandonment transactions, plus the FR-015 workflow
+advancement that depends on a sealed outcome, must wait for their predecessor
+to be observed sealed (via the existing `transaction:confirmed` Redis Streams
+event) before being submitted or fired. The waiting is materialised by a new
+singleton `IPresentationSealCoordinator` (Redis-backed two-queue design) plus a
+`PresentationSealSubscriber : BackgroundService` (event drain + 5 s recovery
+sweep). Three call sites change: `HandleOutcomeAsync`, `HandleAbandonmentAsync`,
+and the FR-015 advancement (formerly a `Task.Run`).
+
+**Rationale.** Two pre-existing chain-integrity races (VAL_CHAIN_001 outcome-
+before-initiated-seal, and VAL_BP_003 advancement-before-outcome-seal) caused
+roughly 50% of fast-citizen presentations to fail in the AssuredIdentity
+walkthrough. Both share a single root cause: chain-pointer decisions used
+`built.TxId` (mempool-known) while validator chain rules read sealed-only.
+Seal-aware ordering closes both races at every site without changing validator
+chain invariants and without decoupling the lifecycle txs from the chain.
+
+**Alternatives considered.**
+
+- *(B) Validator-side forward-reference tolerance.* Queue txs whose predecessor
+  is in mempool, release on seal. Rejected — changes validator chain invariants
+  for a problem only two tx types have.
+- *(C) Decouple lifecycle txs from the chain entirely.* Make them register
+  annotations correlated by `presentationRequestId`. Rejected for now — clean
+  end-state but much larger blast radius into validator + state-reconstruction.
+  Forward-compatible: option (A) preserves the seal-event subscription, the
+  `outcome-sentinel` requestId-correlation handle, and the consumer abstraction,
+  all of which carry into (C) unchanged.
+
+**Source-of-truth design:** `docs/superpowers/specs/2026-05-08-feature-111-chain-races-design.md`.
+**Implementation spec:** `specs/119-presentation-seal-ordering/`.
+**Sentinel-state-machine and queue-schema additions:** `specs/111-presentation-lifecycle/data-model.md` §1.4.
+
 ## Summary
 
-All spec-level clarifications (Q1, Q2, Q3) were resolved during `/speckit.specify` review and are reflected in the implementation decisions above. No further `NEEDS CLARIFICATION` markers remain. Phase 0 research complete — ready for Phase 1 design.
+All spec-level clarifications (Q1, Q2, Q3) were resolved during `/speckit.specify` review and are reflected in the implementation decisions above. No further `NEEDS CLARIFICATION` markers remain. Phase 0 research complete — ready for Phase 1 design. R10 added 2026-05-08 to record the seal-aware ordering decision (Feature 119).

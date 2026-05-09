@@ -41,8 +41,18 @@ public interface IPendingPresentationStore
 
     /// <summary>
     /// Read the current outcome sentinel value. Returns null if unset.
-    /// Values: "outcome-pending-write", "success", "decline", "abandoned", "abandoned+outcome".
     /// </summary>
+    /// <remarks>
+    /// Known values:
+    /// <list type="bullet">
+    ///   <item><c>outcome-pending-write</c> — writer claimed; inline submission in flight (Feature 111).</item>
+    ///   <item><c>success</c>, <c>decline</c> — terminal outcome (Feature 111).</item>
+    ///   <item><c>abandoned</c>, <c>abandoned+outcome</c> — terminal abandonment, optionally with a late outcome (Feature 111).</item>
+    ///   <item><c>outcome-pending-seal</c> — writer claimed; outcome submission deferred until predecessor seals (Feature 119).</item>
+    ///   <item><c>failed-predecessor-not-sealed</c> — never-seals timeout fired by the recovery sweeper (Feature 119).</item>
+    ///   <item><c>failed-validator-reject</c> — should-not-happen path: queued tx rejected on drain (Feature 119).</item>
+    /// </list>
+    /// </remarks>
     Task<string?> GetOutcomeSentinelAsync(Guid presentationRequestId, CancellationToken ct = default);
 
     /// <summary>

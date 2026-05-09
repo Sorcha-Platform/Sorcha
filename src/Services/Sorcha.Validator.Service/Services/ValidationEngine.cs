@@ -1145,8 +1145,20 @@ public class ValidationEngine : IValidationEngine
                 }
             }
 
-            // 3. Action sequencing — if PreviousTransactionId is set, validate route reachability
-            if (!string.IsNullOrWhiteSpace(transaction.PreviousTransactionId))
+            // 3. Action sequencing — if PreviousTransactionId is set, validate route reachability.
+            //    Feature 119: presentation-outcome and presentation-abandoned are intra-action
+            //    lifecycle events that chain off the same action's presentation-initiated.
+            //    Their predecessor carries the same ActionId, which would otherwise trip
+            //    VAL_BP_003 reflexively (action N is not reachable from action N). Skip the
+            //    route check for these tx types — chain integrity is still enforced by
+            //    VAL_CHAIN_001 / VAL_CHAIN_FORK; only the workflow-routing check is bypassed.
+            var isIntraActionLifecycleTx =
+                (transaction.Metadata.TryGetValue("Type", out var lifecycleType) &&
+                 lifecycleType is not null &&
+                 (string.Equals(lifecycleType, "PresentationOutcome", StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(lifecycleType, "PresentationAbandoned", StringComparison.OrdinalIgnoreCase)));
+
+            if (!isIntraActionLifecycleTx && !string.IsNullOrWhiteSpace(transaction.PreviousTransactionId))
             {
                 var previousTx = await _registerClient.GetTransactionAsync(
                     transaction.RegisterId, transaction.PreviousTransactionId, ct);

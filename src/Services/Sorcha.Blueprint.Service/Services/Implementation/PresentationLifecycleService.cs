@@ -15,6 +15,7 @@ using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.PresentationLifecycle.Abstractions;
 using Sorcha.ServiceClients.Haip;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
 using ActionModel = Sorcha.Blueprint.Models.Action;
@@ -46,15 +47,18 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly ITransactionBuilderService _transactionBuilder;
     private readonly IWalletServiceClient _walletClient;
     private readonly IValidatorServiceClient _validatorClient;
+    private readonly IRegisterServiceClient? _registerClient;
+    private readonly IPresentationSealCoordinator? _sealCoordinator;
     private readonly IHaipServiceClient? _haipClient;
     private readonly IPendingPresentationStore _pendingStore;
     private readonly IEnumerable<IPresentationConsumer> _consumers;
     private readonly IOptions<PresentationLifecycleOptions> _options;
     private readonly PresentationLifecycleMetrics? _metrics;
     private readonly IClock _clock;
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceProvider? _serviceProvider;
     private readonly ILogger<PresentationLifecycleService> _logger;
 
+    /// <summary>Constructor — DI-friendly.</summary>
     public PresentationLifecycleService(
         ITransactionBuilderService transactionBuilder,
         IWalletServiceClient walletClient,
@@ -62,11 +66,13 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IPendingPresentationStore pendingStore,
         IEnumerable<IPresentationConsumer> consumers,
         IOptions<PresentationLifecycleOptions> options,
-        IServiceProvider serviceProvider,
         ILogger<PresentationLifecycleService> logger,
         IHaipServiceClient? haipClient = null,
         PresentationLifecycleMetrics? metrics = null,
-        IClock? clock = null)
+        IClock? clock = null,
+        IServiceProvider? serviceProvider = null,
+        IRegisterServiceClient? registerClient = null,
+        IPresentationSealCoordinator? sealCoordinator = null)
     {
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
@@ -74,11 +80,13 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _pendingStore = pendingStore ?? throw new ArgumentNullException(nameof(pendingStore));
         _consumers = consumers ?? throw new ArgumentNullException(nameof(consumers));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _haipClient = haipClient;
         _metrics = metrics;
         _clock = clock ?? new SystemClock();
+        _serviceProvider = serviceProvider;
+        _registerClient = registerClient;
+        _sealCoordinator = sealCoordinator;
     }
 
     public async Task<PresentationInitiationResult> InitiateAsync(
@@ -267,7 +275,9 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         if (!isLateAfterAbandonment &&
             (string.Equals(existingSentinel, "success", StringComparison.Ordinal) ||
              string.Equals(existingSentinel, "decline", StringComparison.Ordinal) ||
-             string.Equals(existingSentinel, "abandoned+outcome", StringComparison.Ordinal)))
+             string.Equals(existingSentinel, "abandoned+outcome", StringComparison.Ordinal) ||
+             // Feature 119 — writer-claimed-but-deferred state, deduplicate replays just like outcome-pending-write.
+             string.Equals(existingSentinel, "outcome-pending-seal", StringComparison.Ordinal)))
         {
             _logger.LogInformation(
                 "Idempotent replay of outcome callback for requestId {RequestId}: sentinel already {Sentinel}",
@@ -354,6 +364,69 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         var nextSeqNum = await _validatorClient.GetNextSequenceNumberAsync(
             pending.RegisterId, pending.SubmitterWallet, cancellationToken);
         var submission = built.ToTransactionSubmission(signResult, nextSeqNum);
+
+        // Feature 119 — seal-aware ordering. The outcome tx's previousTransactionId
+        // points at the initiated tx. If that predecessor has not yet sealed, submitting
+        // here races the validator's chain check (VAL_CHAIN_001). Defer to the
+        // coordinator and return a "pending-seal" reply; the seal subscriber drains
+        // the queue after the predecessor's transaction:confirmed event arrives.
+        // Late-after-abandonment branch keeps the inline path: by sweeper-fire time
+        // the initiated tx has long since sealed.
+        if (!isLateAfterAbandonment &&
+            _registerClient is not null &&
+            _sealCoordinator is not null &&
+            !string.IsNullOrEmpty(pending.InitiatedTransactionId))
+        {
+            var predecessorSealed = await IsPredecessorSealedAsync(
+                pending.RegisterId, pending.InitiatedTransactionId!, cancellationToken);
+            if (!predecessorSealed)
+            {
+                var targetSentinel = (outcome.Kind == PresentationOutcomeKind.Success) ? "success" : "decline";
+                await _pendingStore.SetOutcomeSentinelAsync(
+                    presentationRequestId, "outcome-pending-seal",
+                    pending.ValidityWindowSeconds, cancellationToken);
+                await _sealCoordinator.EnqueueSubmissionAsync(new SealAwaitingSubmission(
+                    PresentationRequestId: presentationRequestId,
+                    PredecessorTxId: pending.InitiatedTransactionId!,
+                    Site: SealAwaitingSubmissionSite.Outcome,
+                    Submission: submission,
+                    TargetSentinelOnSuccess: targetSentinel,
+                    ValidityWindowSeconds: pending.ValidityWindowSeconds,
+                    EnqueuedAt: _clock.UtcNow,
+                    TraceContext: System.Diagnostics.Activity.Current?.Id ?? string.Empty),
+                    cancellationToken);
+
+                if (outcome.Kind == PresentationOutcomeKind.Success)
+                {
+                    await _sealCoordinator.EnqueueAdvancementAsync(new SealAwaitingAdvancement(
+                        PresentationRequestId: presentationRequestId,
+                        OutcomeTxId: built.TxId,
+                        InstanceId: pending.InstanceId,
+                        CompletedActionId: pending.ActionId,
+                        RegisterId: pending.RegisterId,
+                        DraftPayload: draftPayload,
+                        EnqueuedAt: _clock.UtcNow,
+                        TraceContext: System.Diagnostics.Activity.Current?.Id ?? string.Empty),
+                        cancellationToken);
+                }
+
+                _logger.LogInformation(
+                    "Presentation outcome deferred (predecessor {PredecessorTxId} not sealed) requestId={RequestId} txId={TxId} kind={Kind}",
+                    pending.InitiatedTransactionId, presentationRequestId, built.TxId, outcome.Kind);
+
+                _metrics?.RecordOutcome(
+                    consumer: consumerName,
+                    kind: outcome.Kind.ToString().ToLowerInvariant(),
+                    reason: outcome.Reason?.ToString());
+
+                return new PresentationOutcomeResult(
+                    Kind: outcome.Kind,
+                    OutcomeTransactionId: built.TxId,
+                    IsIdempotentReplay: false,
+                    IsLateAfterAbandonment: false);
+            }
+        }
+
         var validatorResult = await _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
 
         if (!validatorResult.Success)
@@ -393,25 +466,30 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             kind: outcome.Kind.ToString().ToLowerInvariant(),
             seconds: (_clock.UtcNow - pending.CreatedAt).TotalSeconds);
 
-        // FR-015 — on success, advance the originating action: evaluate routing
-        // against the saved draft payload, update the instance, notify the next
-        // participant. Decline / abandonment paths do not advance — they
-        // terminate or reroute via their own logic (HandleAbandonmentAsync,
-        // rejectionConfig). Lazy-resolve IActionExecutionService to break the
-        // ctor-time DI cycle (ActionExecutionService injects this lifecycle
-        // service for InitiateAsync).
-        //
-        // Fire-and-forget on the success path: the callback HTTP request is
-        // typically a short-lived service-to-service POST whose CT is cancelled
-        // when the verifier closes the connection. The action-advancement
-        // includes a confirmation wait for the outcome tx to seal in a docket
-        // (~5-15s) which would otherwise be cut short. We launch the advancement
-        // on a detached Task with CancellationToken.None and a fresh DI scope so
-        // it survives the callback returning. Failures are logged via the
-        // service's own logger; the outcome is already on the register, so the
-        // worst case is a stuck instance that can be diagnosed from logs.
-        if (outcome.Kind == PresentationOutcomeKind.Success)
+        // Feature 119 — FR-015 advancement, seal-aware. After a success outcome,
+        // we used to fire-and-forget Task.Run → CompleteAfterPresentationAsync, but
+        // that races StateReconstructionService (sealed-only reads) when the
+        // outcome tx hasn't sealed yet (VAL_BP_003). The coordinator now holds the
+        // advancement until the outcome's transaction:confirmed event arrives, in
+        // a fresh DI scope with CancellationToken.None (same lifetime contract as
+        // PR #583). CompleteAfterPresentationAsync's idempotency guard handles
+        // replays cleanly. Decline / abandonment paths do not advance.
+        if (outcome.Kind == PresentationOutcomeKind.Success && _sealCoordinator is not null)
         {
+            await _sealCoordinator.EnqueueAdvancementAsync(new SealAwaitingAdvancement(
+                PresentationRequestId: presentationRequestId,
+                OutcomeTxId: built.TxId,
+                InstanceId: pending.InstanceId,
+                CompletedActionId: pending.ActionId,
+                RegisterId: pending.RegisterId,
+                DraftPayload: draftPayload,
+                EnqueuedAt: _clock.UtcNow,
+                TraceContext: System.Diagnostics.Activity.Current?.Id ?? string.Empty),
+                cancellationToken);
+        }
+        else if (outcome.Kind == PresentationOutcomeKind.Success && _serviceProvider is not null)
+        {
+            // Legacy fallback for unit-test paths that don't wire up the coordinator.
             var instanceIdStr = pending.InstanceId.ToString();
             var completedActionId = pending.ActionId;
             var outcomeTxId = built.TxId;
@@ -552,6 +630,38 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         var nextSeqNum = await _validatorClient.GetNextSequenceNumberAsync(
             pending.RegisterId, pending.SubmitterWallet, cancellationToken);
         var submission = built.ToTransactionSubmission(signResult, nextSeqNum);
+
+        // Feature 119 — seal-aware ordering. The abandonment tx's
+        // previousTransactionId points at the initiated tx. Race window is much
+        // smaller than the outcome path (sweeper fires after validity-window
+        // expiry), but the same defect exists. Defer to the coordinator if the
+        // predecessor has not yet sealed.
+        if (_registerClient is not null &&
+            _sealCoordinator is not null &&
+            !string.IsNullOrEmpty(pending.InitiatedTransactionId))
+        {
+            var predecessorSealed = await IsPredecessorSealedAsync(
+                pending.RegisterId, pending.InitiatedTransactionId!, cancellationToken);
+            if (!predecessorSealed)
+            {
+                await _sealCoordinator.EnqueueSubmissionAsync(new SealAwaitingSubmission(
+                    PresentationRequestId: presentationRequestId,
+                    PredecessorTxId: pending.InitiatedTransactionId!,
+                    Site: SealAwaitingSubmissionSite.Abandonment,
+                    Submission: submission,
+                    TargetSentinelOnSuccess: "abandoned",
+                    ValidityWindowSeconds: pending.ValidityWindowSeconds,
+                    EnqueuedAt: _clock.UtcNow,
+                    TraceContext: System.Diagnostics.Activity.Current?.Id ?? string.Empty),
+                    cancellationToken);
+
+                _logger.LogInformation(
+                    "Abandonment tx deferred (predecessor {PredecessorTxId} not sealed) requestId={RequestId} txId={TxId}",
+                    pending.InitiatedTransactionId, presentationRequestId, built.TxId);
+                return;
+            }
+        }
+
         var validatorResult = await _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
 
         if (!validatorResult.Success)
@@ -583,6 +693,28 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             built.TxId, presentationRequestId, pending.ConsumerName, pending.BlueprintId);
         activity?.SetTag("tx.id", built.TxId);
         _metrics?.RecordAbandoned(pending.ConsumerName, pending.BlueprintId);
+    }
+
+    /// <summary>
+    /// Feature 119 — check whether a predecessor transaction has already sealed in the
+    /// register. Returns false on any failure (treating "uncertain" as "not sealed" so
+    /// we defer rather than risk VAL_CHAIN_001).
+    /// </summary>
+    private async Task<bool> IsPredecessorSealedAsync(string registerId, string txId, CancellationToken ct)
+    {
+        if (_registerClient is null) return true;
+        try
+        {
+            var tx = await _registerClient.GetTransactionAsync(registerId, txId, ct);
+            return tx is not null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Predecessor seal-check threw for tx {TxId} on register {RegisterId}; deferring submission",
+                txId, registerId);
+            return false;
+        }
     }
 
     /// <summary>
