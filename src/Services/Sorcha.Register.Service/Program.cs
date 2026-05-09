@@ -202,8 +202,6 @@ builder.Services.AddScoped<Sorcha.Register.Service.Services.CryptoPolicyService>
 // Register governance roster service
 builder.Services.AddScoped<Sorcha.Register.Core.Services.IGovernanceRosterService,
     Sorcha.Register.Core.Services.GovernanceRosterService>();
-builder.Services.AddScoped<Sorcha.Register.Core.Services.IDIDResolver,
-    Sorcha.Register.Core.Services.DIDResolver>();
 
 // Feature 048: Register policy service (reads policy from control chain via direct repository access)
 builder.Services.AddScoped<Sorcha.Register.Core.Services.ISystemBlueprintValidator,
