@@ -112,6 +112,8 @@
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.5" />
     <!-- Microsoft Extensions - Service Discovery -->
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.4.0" />
+    <!-- Microsoft Extensions - Time Provider (test fakes) -->
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.10.0" />
     <!-- Microsoft JSInterop -->
     <PackageVersion Include="Microsoft.JSInterop" Version="10.0.5" />
     <!-- Testing - SDK -->

@@ -18,6 +18,14 @@ public class DidDocument
     public required string Id { get; set; }
 
     /// <summary>
+    /// W3C DID Core <c>alsoKnownAs</c> — equivalent DIDs that controllers may
+    /// federate against (Feature 120 D4 cross-resolution).
+    /// </summary>
+    [JsonPropertyName("alsoKnownAs")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? AlsoKnownAs { get; set; }
+
+    /// <summary>
     /// Public keys and their types used for cryptographic operations.
     /// </summary>
     [JsonPropertyName("verificationMethod")]

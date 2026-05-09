@@ -99,9 +99,11 @@ public static class HttpServiceCollectionExtensions
 
     /// <summary>
     /// Registers DID resolver infrastructure: IDidResolverRegistry and all built-in resolvers
-    /// (did:sorcha, did:web, did:key).
+    /// (did:sorcha, did:web, did:key), the Feature 120 cross-resolution cache, and OTel meters.
     /// </summary>
-    public static IServiceCollection AddDidResolvers(this IServiceCollection services)
+    public static IServiceCollection AddDidResolvers(
+        this IServiceCollection services,
+        IConfiguration? configuration = null)
     {
         // SorchaDidResolver depends on IWalletServiceClient (Scoped), so it must also be Scoped.
         // KeyDidResolver has no scoped dependencies — Singleton is fine.
@@ -128,6 +130,31 @@ public static class HttpServiceCollectionExtensions
             return registry;
         });
 
+        // Feature 120 — cross-resolution cache (singleton; per-method TTLs) and OTel meter.
+        if (configuration is not null)
+        {
+            services.Configure<DidResolverCacheOptions>(
+                configuration.GetSection(DidResolverCacheOptions.SectionName));
+        }
+        else
+        {
+            services.AddOptions<DidResolverCacheOptions>();
+        }
+        services.AddSingleton<DidResolverCache>();
+        services.AddSingleton<DidResolverMetrics>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Wires the <see cref="DidSorchaCacheInvalidationService"/> hosted service that drains
+    /// confirmed-transaction events into <see cref="DidResolverCache"/> invalidations.
+    /// Callers MUST register an <see cref="IDidCacheTransactionEventSource"/> implementation
+    /// (typically a thin adapter over the service-level <c>IEventSubscriber</c>).
+    /// </summary>
+    public static IServiceCollection AddDidSorchaCacheInvalidation(this IServiceCollection services)
+    {
+        services.AddHostedService<DidSorchaCacheInvalidationService>();
         return services;
     }
 }
