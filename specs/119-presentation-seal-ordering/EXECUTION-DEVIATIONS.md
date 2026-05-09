@@ -207,3 +207,41 @@ reflexive-action carve-out for lifecycle txs"), reference this deviation log
 section, and decide between (A) and (B) before merging the Feature 119 PR.
 The current PR (#584) ships seal-aware ordering correctly; it just exposes a
 second pre-existing chain-rule defect that needs its own fix.
+
+**Resolution 2026-05-09.** User chose option A. Three implementation attempts
+showed it was impossible without a validator change:
+
+- *v1* dropped `actionId` from the metadata dict for outcome and abandonment.
+  Broke VAL_STRUCT_004 — the validator requires the submission DTO's top-level
+  string `ActionId` field, which is read from the same dict via line 676 of
+  `ITransactionBuilderService.cs`.
+- *v2* kept `actionId` in the metadata dict (so VAL_STRUCT_004 passes) but
+  patched `ToTransactionModel()` to skip projecting onto `MetaData.ActionId`
+  for lifecycle-terminal types. Walkthrough still failed — `ToTransactionModel`
+  is **not on the production write path**. Only `MongoDocumentMapper` calls
+  it. The validator owns persistence via `DocketBuildTriggerService.cs:591`
+  (`ActionId = uint.TryParse(t.ActionId, out var actionId) ? actionId : null`),
+  which projects unconditionally from the submission DTO's string field.
+- *v3* extended v2 to also include `presentation-initiated`. Same dead-code
+  problem.
+
+Option A is therefore impossible without a validator change. Pivoted to a
+minimal validator-side fix at `Sorcha.Validator.Service/Services/ValidationEngine.cs`:
+skip the VAL_BP_003 route reachability check when the current transaction's
+metadata Type is `PresentationOutcome` or `PresentationAbandoned`. Eight lines.
+Chain integrity (VAL_CHAIN_001 / VAL_CHAIN_FORK) unchanged; only workflow-
+routing reachability bypassed for these intra-action terminals.
+`PresentationInitiated` still gets the full check — it really does advance
+from action N-1 to action N.
+
+**Verified.** AssuredIdentity Phase 2 walkthrough now passes end-to-end:
+Phase 1 ✓ (0:31), Phase 2 ✓ (0:58). Step 6 reports
+`Action 3 ready (waited 2s)` — the FR-015 advancement queued in the seal
+coordinator drained correctly once the outcome tx sealed.
+
+Commit: `d027a535` on branch `119-presentation-seal-ordering`.
+
+**Spec implication.** The `spec.md` non-goal "Validator chain rules
+(VAL_CHAIN_001, VAL_CHAIN_FORK, VAL_BP_003) are unchanged" no longer holds
+— VAL_BP_003 has the new carve-out documented above. Update spec.md before
+merging PR #584, or note the deviation in the PR body.
