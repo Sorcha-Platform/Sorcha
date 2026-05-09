@@ -71,6 +71,16 @@ public class DidResolverRegistry : IDidResolverRegistry
         }
     }
 
+    /// <inheritdoc />
+    public Task<DidDocument?> ResolveWithAlsoKnownAsAsync(string did, CancellationToken ct = default)
+    {
+        // TODO(Feature 120 US4): cross-resolve alsoKnownAs with key-material verification.
+        // Phase 1 stub delegates to ResolveAsync so US1 work can compile against the
+        // contract while the deterministic six-step algorithm in
+        // contracts/did-resolver-registry-contract.md is built out in T055-T059.
+        return ResolveAsync(did, ct);
+    }
+
     /// <summary>
     /// Extracts the method component from a DID string (e.g., "sorcha" from "did:sorcha:w:addr").
     /// </summary>
