@@ -55,6 +55,27 @@ public static class IssuanceKeyEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status500InternalServerError);
 
+        group.MapPost("/rotate", RotateIssuanceKey)
+            .WithName("RotateOrgIssuanceKey")
+            .WithSummary("Rotate the org's Active issuance key (Feature 120 US6)")
+            .WithDescription(
+                "Marks the existing Active key as Rotated and derives a new key at the next " +
+                "rotation index. Triggers DID document regeneration. Body carries the " +
+                "governance-op id that authorised the rotation (auditing).")
+            .Produces<EnsureIssuanceKeyResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapPost("/revoke", RevokeIssuanceKey)
+            .WithName("RevokeOrgIssuanceKey")
+            .WithSummary("Revoke a specific issuance key by rotation index (Feature 120 US6)")
+            .WithDescription(
+                "Marks the named rotation as Revoked, records the reason and authorising " +
+                "governance op, and triggers DID document regeneration. The published " +
+                "DID document drops the revoked key from assertionMethod so verifiers " +
+                "reject credentials signed by it. Idempotent on already-revoked keys.")
+            .Produces<RevokeIssuanceKeyResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
         // Anonymous DID-document resolution endpoint for did:sorcha:org:{addr}.
         // Verifiers (e.g. Sorcha.Haip.Service.HaipPresentationVerifier via SorchaDidResolver)
         // need the public key bytes for an org's issuance key, but the wallet GET endpoint
@@ -96,6 +117,45 @@ public static class IssuanceKeyEndpoints
             DerivedAt: state.DerivedAt));
     }
 
+    private static async Task<IResult> RotateIssuanceKey(
+        [FromRoute] Guid orgId,
+        [FromBody] RotateIssuanceKeyRequest request,
+        [FromServices] IIssuanceKeyService service,
+        CancellationToken ct)
+    {
+        var newRow = await service.RotateAsync(orgId, request.GovernanceOpId, ct);
+        if (newRow is null)
+            return Results.NotFound(new { error = "No Active issuance key to rotate" });
+
+        return Results.Ok(new EnsureIssuanceKeyResponse(
+            OrganizationId: newRow.OrganizationId,
+            RotationIndex: newRow.RotationIndex,
+            Algorithm: newRow.Algorithm,
+            Thumbprint: newRow.Thumbprint,
+            DerivedAt: newRow.DerivedAt));
+    }
+
+    private static async Task<IResult> RevokeIssuanceKey(
+        [FromRoute] Guid orgId,
+        [FromBody] RevokeIssuanceKeyRequest request,
+        [FromServices] IIssuanceKeyService service,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Reason))
+            return Results.BadRequest(new { error = "Reason is required" });
+
+        var row = await service.RevokeAsync(
+            orgId, request.RotationIndex, request.Reason, request.GovernanceOpId, ct);
+        if (row is null)
+            return Results.NotFound(new { error = "No issuance key found for the supplied rotation index" });
+
+        return Results.Ok(new RevokeIssuanceKeyResponse(
+            OrganizationId: row.OrganizationId,
+            RotationIndex: row.RotationIndex,
+            Status: row.Status.ToString(),
+            RevokedAt: row.RevokedAt));
+    }
+
     private static async Task<IResult> ResolveWalletDidDocument(
         [FromRoute] string address,
         [FromServices] Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository walletRepository,
@@ -112,18 +172,16 @@ public static class IssuanceKeyEndpoints
         var publicKeyB64 = wallet.PublicKey ?? "";
         var algorithm = wallet.Algorithm;
 
-        // Probe for an Active issuance key for this wallet's controlling org so we can
-        // emit a #vc-issuance-{n} alias VM. Skip silently when the wallet isn't an
-        // issuance-key wallet.
-        int? rotationIndex = null;
+        // Feature 120 US6 — emit one VM per issuance-key row, marking revoked rows by
+        // EXCLUDING them from assertionMethod / authentication. Revoked VMs remain in the
+        // document for verifiable history (a verifier inspecting an old credential's
+        // signature can still read the public key) but cannot be used to assert new
+        // credentials. Result: revocation enforcement is a property of the published
+        // document shape, not a separate verifier-side lookup.
+        IReadOnlyList<Sorcha.Wallet.Core.Domain.Entities.IssuanceKeyState>? allKeys = null;
         if (Guid.TryParse(wallet.Tenant, out var orgId))
         {
-            var material = await issuanceKeyService.GetActiveAsync(orgId, ct);
-            if (material is not null)
-            {
-                rotationIndex = material.RotationIndex;
-                System.Security.Cryptography.CryptographicOperations.ZeroMemory(material.PublicKey);
-            }
+            allKeys = await issuanceKeyService.ListAllAsync(orgId, ct);
         }
 
         var vmId = $"{did}#key-1";
@@ -138,15 +196,25 @@ public static class IssuanceKeyEndpoints
                 publicKeyJwk = vmJwk
             }
         };
-        if (rotationIndex is not null)
+        var assertionIds = new List<string> { vmId };
+
+        if (allKeys is not null)
         {
-            vms.Add(new
+            foreach (var k in allKeys)
             {
-                id = $"{did}#vc-issuance-{rotationIndex}",
-                type = MapAlgorithmToKeyType(algorithm),
-                controller = did,
-                publicKeyJwk = vmJwk
-            });
+                var kid = $"{did}#vc-issuance-{k.RotationIndex}";
+                vms.Add(new
+                {
+                    id = kid,
+                    type = MapAlgorithmToKeyType(k.Algorithm),
+                    controller = did,
+                    publicKeyJwk = vmJwk
+                });
+                if (k.Status == Sorcha.Wallet.Core.Domain.Enums.IssuanceKeyStatus.Active)
+                {
+                    assertionIds.Add(kid);
+                }
+            }
         }
 
         var doc = new Dictionary<string, object>
@@ -154,8 +222,8 @@ public static class IssuanceKeyEndpoints
             ["@context"] = new[] { "https://www.w3.org/ns/did/v1", "https://w3id.org/security/jwk/v1" },
             ["id"] = did,
             ["verificationMethod"] = vms,
-            ["assertionMethod"] = vms.Select((v, i) => i == 0 ? vmId : $"{did}#vc-issuance-{rotationIndex}").ToArray(),
-            ["authentication"] = vms.Select((v, i) => i == 0 ? vmId : $"{did}#vc-issuance-{rotationIndex}").ToArray()
+            ["assertionMethod"] = assertionIds.ToArray(),
+            ["authentication"] = assertionIds.ToArray()
         };
         return Results.Json(doc, contentType: "application/did+json");
     }
@@ -241,6 +309,19 @@ public sealed record EnsureIssuanceKeyResponse(
     string Algorithm,
     string Thumbprint,
     DateTimeOffset DerivedAt);
+
+/// <summary>Request body for rotation — carries the authorising governance-op id.</summary>
+public sealed record RotateIssuanceKeyRequest(Guid GovernanceOpId);
+
+/// <summary>Request body for revocation.</summary>
+public sealed record RevokeIssuanceKeyRequest(int RotationIndex, string Reason, Guid GovernanceOpId);
+
+/// <summary>Response for revocation.</summary>
+public sealed record RevokeIssuanceKeyResponse(
+    Guid OrganizationId,
+    int RotationIndex,
+    string Status,
+    DateTimeOffset? RevokedAt);
 
 /// <summary>Request body for sign-on-behalf — base64url-encoded bytes to sign.</summary>
 public sealed record SignWithIssuanceKeyRequest(string DataBase64Url);

@@ -242,6 +242,174 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             RotationIndex: state.RotationIndex);
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<IssuanceKeyState>> ListAllAsync(
+        Guid organizationId, CancellationToken ct = default)
+    {
+        return await _db.IssuanceKeyStates
+            .Where(k => k.OrganizationId == organizationId && k.Slot == IssuanceSlot)
+            .OrderBy(k => k.RotationIndex)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IssuanceKeyState?> RotateAsync(
+        Guid organizationId, Guid governanceOpId, CancellationToken ct = default)
+    {
+        var existing = await _db.IssuanceKeyStates
+            .FirstOrDefaultAsync(
+                k => k.OrganizationId == organizationId
+                  && k.Slot == IssuanceSlot
+                  && k.Status == IssuanceKeyStatus.Active,
+                ct)
+            .ConfigureAwait(false);
+
+        if (existing is null)
+        {
+            _logger.LogWarning(
+                "Cannot rotate issuance key for org {OrgId}: no Active row exists. Did you mean to call GetOrDeriveAsync first?",
+                organizationId);
+            return null;
+        }
+
+        // Move existing Active → Rotated.
+        existing.Status = IssuanceKeyStatus.Rotated;
+        existing.RotatedAt = DateTimeOffset.UtcNow;
+
+        // V1 rotation is a kid-bump only — Feature 083's OrgKeyDerivationService
+        // hardcodes KeyIndex=0 and re-derives the same key on every call, so the
+        // public key bytes don't change between rotation indices. The new IssuanceKeyState
+        // row inherits PublicKey + Thumbprint from the previous Active row; what changes is
+        // the kid suffix (#vc-issuance-{newIndex}). Real cryptographic rotation
+        // (different key bytes per index) lands when OrgKeyDerivationService gains an
+        // explicit rotation-index parameter — separate F083 follow-up.
+        var newRow = new IssuanceKeyState
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organizationId,
+            Slot = IssuanceSlot,
+            RotationIndex = existing.RotationIndex + 1,
+            Status = IssuanceKeyStatus.Active,
+            PublicKey = existing.PublicKey,
+            Algorithm = existing.Algorithm,
+            Thumbprint = existing.Thumbprint,
+            DerivedAt = DateTimeOffset.UtcNow
+        };
+        _db.IssuanceKeyStates.Add(newRow);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Issuance key rotated for org {OrgId}: {OldIdx} → {NewIdx} (governance op {GovOp})",
+            organizationId, existing.RotationIndex, newRow.RotationIndex, governanceOpId);
+
+        // DID document regeneration triggered with the new active-keys snapshot.
+        // Look up the wallet address from any DerivedKeyRecord — the address doesn't
+        // change between rotations under the v1 same-key model.
+        var derivedRecord = await _db.DerivedKeyRecords
+            .FirstOrDefaultAsync(
+                d => d.OrganizationId == organizationId.ToString()
+                  && d.KeyUsage == KeyUsage.VCIssuance,
+                ct)
+            .ConfigureAwait(false);
+        if (derivedRecord is not null)
+        {
+            await PushDidDocumentSnapshotAsync(
+                organizationId, derivedRecord.WalletAddress, "IssuanceKeyRotated", ct)
+                .ConfigureAwait(false);
+        }
+
+        return newRow;
+    }
+
+    /// <inheritdoc />
+    public async Task<IssuanceKeyState?> RevokeAsync(
+        Guid organizationId,
+        int rotationIndex,
+        string reason,
+        Guid governanceOpId,
+        CancellationToken ct = default)
+    {
+        var row = await _db.IssuanceKeyStates
+            .FirstOrDefaultAsync(
+                k => k.OrganizationId == organizationId
+                  && k.Slot == IssuanceSlot
+                  && k.RotationIndex == rotationIndex,
+                ct)
+            .ConfigureAwait(false);
+
+        if (row is null) return null;
+
+        if (row.Status == IssuanceKeyStatus.Revoked)
+        {
+            _logger.LogDebug(
+                "Issuance key already revoked for org {OrgId} rotation {Idx} — idempotent no-op",
+                organizationId, rotationIndex);
+            return row;
+        }
+
+        row.Status = IssuanceKeyStatus.Revoked;
+        row.RevokedAt = DateTimeOffset.UtcNow;
+        row.RevocationReason = reason;
+        row.RevokedByGovernanceOpId = governanceOpId;
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        _logger.LogWarning(
+            "Issuance key revoked for org {OrgId} rotation {Idx} reason='{Reason}' (governance op {GovOp})",
+            organizationId, rotationIndex, reason, governanceOpId);
+
+        // Trigger DID document regeneration so the published doc drops the revoked VM
+        // from assertionMethod (verifier-side rejection follows from the W3C doc shape,
+        // no additional check needed in DidResolverBackedIssuerKeyResolver).
+        var derivedRecord = await _db.DerivedKeyRecords
+            .FirstOrDefaultAsync(
+                d => d.OrganizationId == organizationId.ToString()
+                  && d.KeyUsage == KeyUsage.VCIssuance
+                  && d.Status == DerivedKeyStatus.Active,
+                ct)
+            .ConfigureAwait(false);
+        if (derivedRecord is not null)
+        {
+            await PushDidDocumentSnapshotAsync(
+                organizationId, derivedRecord.WalletAddress, "IssuanceKeyRevoked", ct)
+                .ConfigureAwait(false);
+        }
+
+        return row;
+    }
+
+    /// <summary>
+    /// Builds an active-keys snapshot from the current persisted state and pushes it
+    /// to the Tenant Service via <see cref="IOrgDidDocumentClient"/>. Used after
+    /// rotation/revocation to regenerate the published DID document.
+    /// </summary>
+    private async Task PushDidDocumentSnapshotAsync(
+        Guid organizationId, string walletAddress, string keyEventReason, CancellationToken ct)
+    {
+        var activeKeys = await _db.IssuanceKeyStates
+            .Where(k => k.OrganizationId == organizationId
+                     && k.Slot == IssuanceSlot
+                     && k.Status == IssuanceKeyStatus.Active)
+            .OrderBy(k => k.RotationIndex)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var snapshotKeys = activeKeys
+            .Select(k => new OrgDidActiveKey(
+                RotationIndex: k.RotationIndex,
+                Algorithm: k.Algorithm,
+                PublicKeyJwk: BuildJwk(k.Algorithm, k.PublicKey),
+                Thumbprint: k.Thumbprint))
+            .ToList();
+
+        var snapshot = new OrgDidRegenerateRequest(
+            OrganizationId: organizationId,
+            KeyEventReason: keyEventReason,
+            WalletAddress: walletAddress,
+            ActiveKeys: snapshotKeys);
+        await _didDocClient.RegenerateAsync(snapshot, ct).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Builds the JWK JSON for an issuance public key. Currently supports the wallet
     /// algorithms exposed by <see cref="IOrgKeyDerivationService"/> — ED25519 (OKP),

@@ -50,6 +50,36 @@ public interface IIssuanceKeyService
     /// </remarks>
     Task<IssuanceSigningMaterial?> GetActiveSigningMaterialAsync(
         Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns every <see cref="IssuanceKeyState"/> row for an org regardless of status.
+    /// Used by the published-DID-document path so callers can decide whether to emit a
+    /// revoked key's VM (default: drop from <c>assertionMethod</c> + omit from VM list).
+    /// </summary>
+    Task<IReadOnlyList<IssuanceKeyState>> ListAllAsync(
+        Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Rotates the org's Active issuance key (Feature 120 US6 / T067). Marks the
+    /// existing Active row as <c>Rotated</c> and derives a fresh key at the next
+    /// rotation index. Triggers DID document regeneration with reason
+    /// <c>IssuanceKeyRotated</c>.
+    /// </summary>
+    Task<IssuanceKeyState?> RotateAsync(
+        Guid organizationId, Guid governanceOpId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes a specific issuance key by rotation index (Feature 120 US6 / T068).
+    /// Marks <c>Status=Revoked</c> with <c>RevokedAt</c>, <c>RevocationReason</c>,
+    /// <c>RevokedByGovernanceOpId</c>. Idempotent on already-revoked keys.
+    /// Triggers DID document regeneration with reason <c>IssuanceKeyRevoked</c>.
+    /// </summary>
+    Task<IssuanceKeyState?> RevokeAsync(
+        Guid organizationId,
+        int rotationIndex,
+        string reason,
+        Guid governanceOpId,
+        CancellationToken ct = default);
 }
 
 /// <summary>
