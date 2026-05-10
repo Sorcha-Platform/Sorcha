@@ -52,7 +52,7 @@ public class SdJwtService : ISdJwtService
         string? kid = null)
     {
         return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
-            algorithm, holderJwk: null, expiresAt, x5cChain, kid, cancellationToken);
+            algorithm, holderJwk: null, expiresAt, x5cChain, kid, externalSigner: null, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -70,10 +70,30 @@ public class SdJwtService : ISdJwtService
         string? kid = null)
     {
         return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
-            algorithm, holderJwk, expiresAt, x5cChain, kid, cancellationToken);
+            algorithm, holderJwk, expiresAt, x5cChain, kid, externalSigner: null, cancellationToken);
     }
 
-    private Task<SdJwtToken> CreateTokenCoreAsync(
+    /// <inheritdoc />
+    public Task<SdJwtToken> CreateTokenAsync(
+        Dictionary<string, object> claims,
+        IEnumerable<string>? disclosableClaims,
+        string issuer,
+        string subject,
+        string algorithm,
+        Func<byte[], CancellationToken, Task<byte[]>> externalSigner,
+        JsonElement? holderJwk,
+        string? kid,
+        DateTimeOffset? expiresAt = null,
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<byte[]>? x5cChain = null)
+    {
+        ArgumentNullException.ThrowIfNull(externalSigner);
+        return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject,
+            signingKey: Array.Empty<byte>(), algorithm, holderJwk, expiresAt, x5cChain, kid,
+            externalSigner, cancellationToken);
+    }
+
+    private async Task<SdJwtToken> CreateTokenCoreAsync(
         Dictionary<string, object> claims,
         IEnumerable<string>? disclosableClaims,
         string issuer,
@@ -84,13 +104,19 @@ public class SdJwtService : ISdJwtService
         DateTimeOffset? expiresAt,
         IReadOnlyList<byte[]>? x5cChain,
         string? kid,
+        Func<byte[], CancellationToken, Task<byte[]>>? externalSigner,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(claims);
         ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-        ArgumentNullException.ThrowIfNull(signingKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(algorithm);
+
+        // signingKey is required when no externalSigner is supplied; ignored otherwise.
+        if (externalSigner is null)
+        {
+            ArgumentNullException.ThrowIfNull(signingKey);
+        }
 
         var disclosableList = disclosableClaims?.ToList() ?? claims.Keys.ToList();
 
@@ -193,7 +219,10 @@ public class SdJwtService : ISdJwtService
         var headerB64 = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(header));
         var payloadB64 = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(payload));
         var signingInput = $"{headerB64}.{payloadB64}";
-        var signature = Sign(Encoding.UTF8.GetBytes(signingInput), signingKey, algorithm);
+        var signingInputBytes = Encoding.UTF8.GetBytes(signingInput);
+        var signature = externalSigner is not null
+            ? await externalSigner(signingInputBytes, cancellationToken).ConfigureAwait(false)
+            : Sign(signingInputBytes, signingKey, algorithm);
         var signatureB64 = Base64UrlEncode(signature);
 
         // Assemble the SD-JWT: header.payload.signature~disclosure1~disclosure2~
@@ -210,7 +239,7 @@ public class SdJwtService : ISdJwtService
             RawToken = rawToken
         };
 
-        return Task.FromResult(token);
+        return token;
     }
 
     /// <inheritdoc />

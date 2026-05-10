@@ -507,6 +507,11 @@ public class ActionExecutionService : IActionExecutionService
         //     carried forward to the claim action via Route.OutputMapping.
         //     Internal Sorcha issuance (issuedCredential) still runs later at
         //     step 9d because it depends on the built transaction context.
+        // Caller's org context — used both for the HAIP offer (so HAIP can swap to the
+        // org's issuance key) and for SorchaLocalWallet credential issuance below.
+        var callerIssuerOrgName = caller?.FindFirst("org_name")?.Value;
+        var callerIssuerTenantId = caller?.FindFirst("org_id")?.Value;
+
         CreateOfferResult? haipOfferResult = null;
         if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet)
@@ -537,9 +542,13 @@ public class ActionExecutionService : IActionExecutionService
                     actionDef.CredentialIssuanceConfig.CredentialType,
                     string.Join(", ", haipClaimsForWire.Keys));
 
+                // Feature 120 — pass the issuer's actual TenantId (org_id from caller
+                // JWT) so HAIP's /credential endpoint can swap to the org's issuance
+                // key. Previously this argument was `instance.RegisterId`, which made
+                // the offer's TenantId a register UUID and bypassed the kid-swap path.
                 haipOfferResult = await _haipClient.CreateCredentialOfferAsync(
                     request.SenderWallet,
-                    instance.RegisterId,
+                    callerIssuerTenantId ?? instance.RegisterId,
                     actionDef.CredentialIssuanceConfig.CredentialType,
                     haipClaimsForWire,
                     actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
@@ -567,8 +576,10 @@ public class ActionExecutionService : IActionExecutionService
         //     Contract: specs/106-register-native-credentials/contracts/credential-issuance-config.md
         CredentialIssuanceResult? localWalletCredential = null;
         string? localWalletRecipient = null;
-        var issuerOrgName = caller?.FindFirst("org_name")?.Value;
-        var issuerTenantId = caller?.FindFirst("org_id")?.Value;
+        // Reuse the caller's org context computed earlier (used by both the HAIP path
+        // and SorchaLocalWallet path).
+        var issuerOrgName = callerIssuerOrgName;
+        var issuerTenantId = callerIssuerTenantId;
         if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience is TargetAudience.SorchaLocalWallet
                 or TargetAudience.SorchaInternal)

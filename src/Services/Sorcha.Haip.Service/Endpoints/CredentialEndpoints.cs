@@ -336,21 +336,62 @@ public static class CredentialEndpoints
 
         try
         {
-            var credential = await minter.MintCredentialAsync(
-                issuerDid: issuerUrl,
-                holderJwk: holderJwk ?? default,
-                credentialType: credentialType,
-                claims: claims,
-                disclosablePaths: disclosablePaths,
-                signingKey: signingKey,
-                algorithm: signingAlgorithm,
-                expiresAt: DateTimeOffset.UtcNow.AddYears(1),
-                ct: ct);
+            string credential;
+
+            // Feature 120 kid-swap (#605) — try wallet sign-on-behalf when the offer
+            // carries a TenantId for an org with an Active issuance key. The signed
+            // credential carries kid=did:sorcha:org:{addr}#vc-issuance-{n} so verifiers
+            // resolve to the published DID document rather than HAIP's local key.
+            Sorcha.ServiceClients.IssuanceKey.IssuanceSignResult? signResultProbe = null;
+            if (Guid.TryParse(offer.TenantId, out var orgIdForSign))
+            {
+                signResultProbe = await issuanceKeyClient.SignAsync(orgIdForSign, new byte[] { 0 }, ct);
+            }
+
+            if (signResultProbe is not null)
+            {
+                Func<byte[], CancellationToken, Task<byte[]>> externalSigner = async (data, signCt) =>
+                {
+                    var signed = await issuanceKeyClient.SignAsync(orgIdForSign, data, signCt);
+                    if (signed is null)
+                        throw new InvalidOperationException("Issuance sign-on-behalf returned null mid-mint");
+                    return signed.Signature;
+                };
+
+                credential = await minter.MintCredentialWithExternalSignerAsync(
+                    issuerDid: signResultProbe.IssuerDid,
+                    holderJwk: holderJwk ?? default,
+                    credentialType: credentialType,
+                    claims: claims,
+                    disclosablePaths: disclosablePaths,
+                    externalSigner: externalSigner,
+                    algorithm: signResultProbe.Algorithm,
+                    kid: signResultProbe.Kid,
+                    expiresAt: DateTimeOffset.UtcNow.AddYears(1),
+                    ct: ct);
+            }
+            else
+            {
+                credential = await minter.MintCredentialAsync(
+                    issuerDid: issuerUrl,
+                    holderJwk: holderJwk ?? default,
+                    credentialType: credentialType,
+                    claims: claims,
+                    disclosablePaths: disclosablePaths,
+                    signingKey: signingKey,
+                    algorithm: signingAlgorithm,
+                    expiresAt: DateTimeOffset.UtcNow.AddYears(1),
+                    ct: ct);
+            }
 
             // Inject issuer public key into JWS header for verifier key resolution.
-            // In production this would be an x5c chain; for dev/walkthrough mode we
-            // embed the issuer's public JWK so the verifier can self-resolve.
-            credential = InjectIssuerJwkInHeader(credential, signingKey, signingAlgorithm);
+            // Skipped on the sign-on-behalf path because kid already points to the
+            // published DID document VM — verifier resolves the key via DID resolution
+            // rather than reading it inline from the JWS header.
+            if (signResultProbe is null)
+            {
+                credential = InjectIssuerJwkInHeader(credential, signingKey, signingAlgorithm);
+            }
 
             // Generate a fresh c_nonce for the next request
             var (newNonce, nonceExpiresIn) = await nonceStore.CreateAsync(ct);
