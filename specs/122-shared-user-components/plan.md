@@ -1,7 +1,9 @@
 # Implementation Plan: Shared User-Facing UI Component Library
 
-**Branch**: `122-shared-user-components` | **Date**: 2026-05-10 | **Spec**: [spec.md](./spec.md)
+**Branch**: `122-shared-user-components` | **Date**: 2026-05-10 (revised 2026-05-11) | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/122-shared-user-components/spec.md`
+
+> **2026-05-11 status:** Phase 1 (scaffold) complete. Phase 2 (atomic file move) attempted, rolled back. Discovery documented in [phase-2-discovery.md](./phase-2-discovery.md). Phases 2-7 are blocked on **Feature 123 (UI.Core User/Admin Type-Level Boundary Refactor)** — a pre-migration refactor that splits the bi-modal `IRegisterService` interface, classifies the mixed `Models/Registers/` folder per audience, and extracts shared DTOs from admin-service files. When Feature 123 merges, Feature 122 resumes from Phase 1's commit with an updated Phase 0 research pass and Phase 2 re-attempted against the cleaner target.
 
 ## Summary
 

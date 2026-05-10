@@ -41,13 +41,19 @@ description: "Task list for Feature 122 — Shared User-Facing UI Component Libr
 
 ---
 
-## Phase 2: Foundational — Atomic File Move Across Folders
+## Phase 2: Foundational — Atomic File Move Across Folders  🛑 BLOCKED ON FEATURE 123
+
+**⚠️ STATUS — 2026-05-11:** Attempted, rolled back. See `phase-2-discovery.md` for full forensic narrative. Phase 2 is blocked on **Feature 123 (UI.Core User/Admin Type-Level Boundary Refactor)** because the user-facing/admin-facing boundary in `Sorcha.UI.Core` does not hold at the *type* level (bi-modal `IRegisterService`, mixed `Models/Registers/`, shared types co-located with admin services). Phase 0 research's `@inject`-grep methodology missed the return-type and parameter-type coupling channels.
+
+When Feature 123 merges, the steps below execute against a cleaner target. The original task descriptions stay below as the eventual instruction set; the verdict tables in `research.md` will need refreshing during Feature 122's resume to reflect Feature 123's outcome.
 
 **Purpose**: Move all user-facing components, services, and models from `Sorcha.UI.Core` into the new library in a single coherent change set. Add the UI.Core → new-library reference so the six host apps transparently see the moved files. After this phase, the entire Sorcha.UI family must still build and pass tests with no consumer-side changes.
 
 **⚠️ CRITICAL**: This is a single commit. Every file move within this phase happens together. No intermediate state.
 
 **Namespace policy**: Files moved into the new library **preserve their existing namespaces** (e.g., a file that declared `namespace Sorcha.UI.Core.Components.Forms;` keeps that namespace verbatim after the move). This is what lets the six existing host apps continue to compile without touching their `@using` directives.
+
+**Namespace policy addendum (2026-05-11):** the empty new library currently sets no `<RootNamespace>`. The Phase 2 attempt found that the simplest way to honour the namespace-preservation policy is `<RootNamespace>Sorcha.UI.Core</RootNamespace>` in the new csproj — files moved retain their original namespaces automatically, with no per-file edits. Post-Feature-123, when Phase 2 resumes, that csproj setting should be added before the moves begin.
 
 - [ ] T006 Move `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/` (all subfolders: root .razor files, `Controls/`, `Layouts/`, `Panels/`, including `SorchaFormRenderer.razor` + `.css`, `ControlDispatcher.razor`, `ReviewSummaryRenderer.razor`, `PersonaFillSummary.razor` + `.css`, `IdCardLayout.razor` + `.css`, and every other file in the tree) to `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Forms/`. Preserve namespaces verbatim. Use `git mv` so renames are tracked.
 - [ ] T007 [P] Move `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/` (13 files: `CredentialAcceptCard`, `CredentialCard`, `CredentialCardList`, `CredentialDetailView`, `CredentialLifecycleDialog`, `DisclosurePicker`, `IssuanceSummaryPanel`, `PresentationRequestDetail`, `PresentationRequestDialog`, `PresentationRequestList`, `PresentationSubmitDialog`, `QrPresentationDisplay`, `VerificationTrustView`) → `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Credentials/`. Preserve namespaces. Use `git mv`.
