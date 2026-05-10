@@ -486,6 +486,7 @@ public static class CredentialEndpoints
         ICredentialStore store,
         ILoggerFactory loggerFactory,
         Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
+        Sorcha.Wallet.Service.Services.Interfaces.IIssuanceKeyService? issuanceKeyService = null,
         IOrgCertChainProvider? orgCertChainProvider = null,
         CancellationToken cancellationToken = default)
     {
@@ -535,6 +536,25 @@ public static class CredentialEndpoints
         }
 
         var logger = loggerFactory.CreateLogger("Sorcha.Wallet.Service.Endpoints.CredentialEndpoints");
+
+        // Feature 120 T039 — ensure the org's VC issuance key + published DID
+        // document exist before signing (FR-004 "no later than first issuance"
+        // guarantee). Idempotent on retries; non-throwing — signing remains
+        // wallet-key-based pending the kid-swap follow-up.
+        if (issuanceKeyService is not null
+            && Guid.TryParse(request.TenantId, out var issuanceOrgId))
+        {
+            try
+            {
+                _ = await issuanceKeyService.GetOrDeriveAsync(issuanceOrgId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Issuance key derivation failed for org {OrgId} during credential issuance — falling through to wallet-key signing",
+                    issuanceOrgId);
+            }
+        }
 
         // 2. Decrypt the wallet's private key
         var privateKey = await keyManagement.DecryptPrivateKeyAsync(
