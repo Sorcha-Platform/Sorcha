@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System;
+using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Http.Utilities;
 using Sorcha.ServiceClients.Wallet;
@@ -24,9 +25,24 @@ public class SorchaDidResolver : IDidResolver
     private readonly IWalletServiceClient _walletClient;
     private readonly ILogger<SorchaDidResolver> _logger;
 
+    private readonly HttpClient? _publicDidHttp;
+
     public SorchaDidResolver(IWalletServiceClient walletClient, ILogger<SorchaDidResolver> logger)
     {
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Constructor variant with an injected <see cref="HttpClient"/> for anonymous DID
+    /// resolution via wallet's public <c>/api/v1/wallets/{addr}/did-document</c> endpoint
+    /// (Feature 120). Used by services that don't have the service-auth bearer needed
+    /// for the auth-gated wallet GET (notably Sorcha.Haip.Service's verifier path).
+    /// </summary>
+    public SorchaDidResolver(IWalletServiceClient walletClient, HttpClient publicDidHttp, ILogger<SorchaDidResolver> logger)
+    {
+        _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
+        _publicDidHttp = publicDidHttp;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -60,6 +76,31 @@ public class SorchaDidResolver : IDidResolver
         {
             _logger.LogWarning("Organization DID has empty address: {Did}", did);
             return null;
+        }
+
+        // Feature 120 — try the public did-document endpoint first when we have a
+        // pre-configured HttpClient for it. This path doesn't require service-auth and
+        // returns the W3C-shaped doc with publicKeyJwk + the #vc-issuance-{n} alias VM
+        // baked in. Fall back to the auth-gated GetWalletAsync path on failure.
+        if (_publicDidHttp is not null)
+        {
+            try
+            {
+                using var resp = await _publicDidHttp
+                    .GetAsync($"/api/v1/wallets/{address}/did-document", ct)
+                    .ConfigureAwait(false);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var doc = await resp.Content.ReadFromJsonAsync<DidDocument>(ct).ConfigureAwait(false);
+                    if (doc is not null) return doc;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex,
+                    "Public DID resolution path failed for {Did}; falling through to auth-gated wallet client",
+                    did);
+            }
         }
 
         WalletInfo? wallet;
@@ -146,6 +187,16 @@ public class SorchaDidResolver : IDidResolver
             {
                 verificationMethod.PublicKeyMultibase = multibase;
             }
+
+            // Feature 120 — also emit publicKeyJwk so verifiers that only support the
+            // JWK form (notably Sorcha.Haip.Service.HaipPresentationVerifier) can read
+            // the key material. Wallet-derived multibase + JWK reference the same bytes.
+            var jwkJson = TryBuildJwk(wallet.Algorithm, rawKey);
+            if (jwkJson is not null)
+            {
+                using var jwkDoc = System.Text.Json.JsonDocument.Parse(jwkJson);
+                verificationMethod.PublicKeyJwk = jwkDoc.RootElement.Clone();
+            }
             else
             {
                 // Algorithm not in the multicodec table (for example PQC): fail closed.
@@ -167,13 +218,53 @@ public class SorchaDidResolver : IDidResolver
             }
         }
 
+        // Feature 120 — when resolving did:sorcha:org:*, also emit a `#vc-issuance-1`
+        // alias VM pointing at the same key bytes. Credentials minted via the kid-swap
+        // path (#604, #605) carry kid=did:sorcha:org:{addr}#vc-issuance-{n}; verifier
+        // exact-match resolves through this alias. Rotation index >1 lands with US6.
+        var vms = new List<VerificationMethod> { verificationMethod };
+        if (did.StartsWith("did:sorcha:org:", StringComparison.Ordinal))
+        {
+            var issuanceVmId = $"{did}#vc-issuance-1";
+            vms.Add(new VerificationMethod
+            {
+                Id = issuanceVmId,
+                Type = keyType,
+                Controller = did,
+                PublicKeyMultibase = verificationMethod.PublicKeyMultibase,
+                PublicKeyJwk = verificationMethod.PublicKeyJwk
+            });
+        }
+
         return new DidDocument
         {
             Id = did,
-            VerificationMethod = [verificationMethod],
-            Authentication = [keyId],
-            AssertionMethod = [keyId]
+            VerificationMethod = vms,
+            Authentication = vms.Select(v => v.Id).ToList(),
+            AssertionMethod = vms.Select(v => v.Id).ToList()
         };
+    }
+
+    /// <summary>
+    /// Best-effort JWK construction from raw public-key bytes for the algorithms
+    /// Sorcha currently supports. Returns null on unsupported algorithms or when the
+    /// raw byte shape doesn't match the expected encoding.
+    /// </summary>
+    private static string? TryBuildJwk(string algorithm, byte[] rawKey)
+    {
+        var b64u = (byte[] b) =>
+            Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var algo = algorithm?.ToUpperInvariant();
+        if (algo is "ED25519")
+            return $"{{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"{b64u(rawKey)}\"}}";
+        if (algo is "NIST-P256" or "NISTP256" or "P-256" or "P256" or "ECDSA-P256"
+            && rawKey.Length == 65 && rawKey[0] == 0x04)
+        {
+            var x = b64u(rawKey.AsSpan(1, 32).ToArray());
+            var y = b64u(rawKey.AsSpan(33, 32).ToArray());
+            return $"{{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"{x}\",\"y\":\"{y}\"}}";
+        }
+        return null;
     }
 
     private DidDocument? ResolveRegisterDid(string did)

@@ -74,6 +74,26 @@ public interface ISdJwtService
         string? kid = null);
 
     /// <summary>
+    /// External-signer overload for sign-on-behalf flows (Feature 120 HAIP kid-swap).
+    /// The caller supplies an <paramref name="externalSigner"/> that produces the
+    /// signature for the unsigned JWS bytes; <paramref name="signingKey"/> may be
+    /// null/empty when the external signer is supplied. Used by HAIP service to
+    /// delegate signing to wallet without holding private key material.
+    /// </summary>
+    Task<SdJwtToken> CreateTokenAsync(
+        Dictionary<string, object> claims,
+        IEnumerable<string>? disclosableClaims,
+        string issuer,
+        string subject,
+        string algorithm,
+        Func<byte[], CancellationToken, Task<byte[]>> externalSigner,
+        JsonElement? holderJwk,
+        string? kid,
+        DateTimeOffset? expiresAt = null,
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<byte[]>? x5cChain = null);
+
+    /// <summary>
     /// Verifies an SD-JWT token's signature, structure, and extracts all disclosed claims.
     /// </summary>
     /// <param name="rawToken">The serialized SD-JWT token.</param>
