@@ -538,27 +538,43 @@ public static class CredentialEndpoints
         var logger = loggerFactory.CreateLogger("Sorcha.Wallet.Service.Endpoints.CredentialEndpoints");
 
         // Feature 120 T039 — ensure the org's VC issuance key + published DID
-        // document exist before signing (FR-004 "no later than first issuance"
-        // guarantee). Idempotent on retries; non-throwing — signing remains
-        // wallet-key-based pending the kid-swap follow-up.
+        // document exist before signing (FR-004 "no later than first issuance").
+        // Then attempt to swap to the issuance key for signing (kid-swap, #604):
+        // when the org has an Active issuance key, the credential is signed with
+        // it and the JWS kid header carries did:sorcha:org:{addr}#vc-issuance-{n}
+        // so verifiers resolve to the published DID document.
+        Sorcha.Wallet.Service.Services.Interfaces.IssuanceSigningMaterial? issuanceMaterial = null;
         if (issuanceKeyService is not null
             && Guid.TryParse(request.TenantId, out var issuanceOrgId))
         {
             try
             {
                 _ = await issuanceKeyService.GetOrDeriveAsync(issuanceOrgId, cancellationToken);
+                issuanceMaterial = await issuanceKeyService
+                    .GetActiveSigningMaterialAsync(issuanceOrgId, cancellationToken);
             }
             catch (Exception ex)
             {
                 logger.LogWarning(ex,
-                    "Issuance key derivation failed for org {OrgId} during credential issuance — falling through to wallet-key signing",
+                    "Issuance key path failed for org {OrgId} — falling through to wallet-key signing",
                     issuanceOrgId);
             }
         }
 
-        // 2. Decrypt the wallet's private key
-        var privateKey = await keyManagement.DecryptPrivateKeyAsync(
-            wallet.EncryptedPrivateKey, wallet.EncryptionKeyId);
+        // 2. Decrypt the wallet's private key (only used when issuance-key swap is unavailable).
+        var privateKey = issuanceMaterial?.PrivateKey
+            ?? await keyManagement.DecryptPrivateKeyAsync(
+                wallet.EncryptedPrivateKey, wallet.EncryptionKeyId);
+        var signingAlgorithm = issuanceMaterial?.Algorithm ?? wallet.Algorithm;
+        var signingIssuer = issuanceMaterial?.IssuerDid ?? walletAddress;
+        var signingKid = issuanceMaterial?.Kid;
+
+        if (issuanceMaterial is not null)
+        {
+            logger.LogInformation(
+                "Feature 120 kid-swap: signing credential with org issuance key kid={Kid} for org {OrgId}",
+                signingKid, issuanceMaterial.OrganizationId);
+        }
 
         // 3. Calculate expiry
         var issuedAt = DateTimeOffset.UtcNow;
@@ -632,13 +648,14 @@ public static class CredentialEndpoints
         var token = await sdJwtService.CreateTokenAsync(
             claims,
             request.DisclosableClaims,
-            walletAddress,
-            request.RecipientWallet,
-            privateKey,
-            wallet.Algorithm,
-            expiresAt,
-            cancellationToken,
-            x5cChain);
+            issuer: signingIssuer,
+            subject: request.RecipientWallet,
+            signingKey: privateKey,
+            algorithm: signingAlgorithm,
+            expiresAt: expiresAt,
+            cancellationToken: cancellationToken,
+            x5cChain: x5cChain,
+            kid: signingKid);
 
         // 5. Generate credential ID
         var credentialId = $"urn:uuid:{Guid.NewGuid()}";
