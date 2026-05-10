@@ -360,16 +360,22 @@ public class PresentationRequestService : IPresentationRequestService
             });
         }
 
-        // 4. Issuer check
-        if (request.AcceptedIssuers is { Length: > 0 } &&
-            !request.AcceptedIssuers.Contains(credential.IssuerDid))
+        // 4. Issuer check — Feature 120 US5 honours DID alsoKnownAs equivalence
+        // when an IDidResolverRegistry is wired (production path); falls back to
+        // direct-string match when not (legacy / test composition).
+        if (request.AcceptedIssuers is { Length: > 0 })
         {
-            errors.Add(new VerificationError
+            var accepted = await Credentials.IssuerEquivalenceMatcher.IsAcceptedAsync(
+                credential.IssuerDid, request.AcceptedIssuers, _didRegistry);
+            if (!accepted)
             {
-                RequirementType = request.CredentialType,
-                FailureReason = "UntrustedIssuer",
-                Message = $"Issuer '{credential.IssuerDid}' not in accepted issuers list"
-            });
+                errors.Add(new VerificationError
+                {
+                    RequirementType = request.CredentialType,
+                    FailureReason = "UntrustedIssuer",
+                    Message = $"Issuer '{credential.IssuerDid}' not in accepted issuers list"
+                });
+            }
         }
 
         // 5. Status check (active)
