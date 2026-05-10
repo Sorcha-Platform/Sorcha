@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Sorcha.Blueprint.Models.Credentials;
+using Sorcha.ServiceClients.Did;
 using Sorcha.Wallet.Core.Domain.Entities;
 
 namespace Sorcha.Wallet.Service.Credentials;
@@ -13,6 +14,21 @@ namespace Sorcha.Wallet.Service.Credentials;
 /// </summary>
 public class CredentialMatcher
 {
+    private readonly IDidResolverRegistry? _registry;
+
+    /// <summary>Default constructor — sync direct-string allowlist matching only.</summary>
+    public CredentialMatcher() { }
+
+    /// <summary>
+    /// DI constructor — when wired with an <see cref="IDidResolverRegistry"/>,
+    /// <see cref="MatchAsync"/> honours the Feature 120 US5 alsoKnownAs
+    /// equivalence rules. The legacy sync <see cref="Match"/> path is unchanged.
+    /// </summary>
+    public CredentialMatcher(IDidResolverRegistry registry)
+    {
+        _registry = registry;
+    }
+
     /// <summary>
     /// For each requirement, finds the best matching credential from the stored credentials.
     /// </summary>
@@ -96,6 +112,69 @@ public class CredentialMatcher
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Async match honouring DID alsoKnownAs equivalence (Feature 120 US5 / FR-014).
+    /// Behaves identically to <see cref="Match"/> when the matcher is constructed
+    /// without a resolver registry.
+    /// </summary>
+    public async Task<Dictionary<string, CredentialEntity?>> MatchAsync(
+        IEnumerable<CredentialRequirement> requirements,
+        IReadOnlyList<CredentialEntity> credentials,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(requirements);
+        ArgumentNullException.ThrowIfNull(credentials);
+
+        var result = new Dictionary<string, CredentialEntity?>();
+        foreach (var requirement in requirements)
+        {
+            CredentialEntity? match = null;
+            foreach (var credential in credentials)
+            {
+                if (!string.Equals(credential.Type, requirement.Type, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Feature 120 US5 — equivalence-aware allowlist match.
+                if (!await IssuerEquivalenceMatcher.IsAcceptedAsync(
+                        credential.IssuerDid,
+                        requirement.AcceptedIssuers?.ToArray(),
+                        _registry, ct).ConfigureAwait(false))
+                    continue;
+
+                if (credential.ExpiresAt.HasValue && credential.ExpiresAt.Value <= DateTimeOffset.UtcNow)
+                    continue;
+                if (credential.Status != CredentialStatus.Active)
+                    continue;
+
+                if (requirement.RequiredClaims?.Any() == true)
+                {
+                    var claims = ParseClaims(credential.ClaimsJson);
+                    if (claims is null) continue;
+
+                    var claimsMatch = true;
+                    foreach (var constraint in requirement.RequiredClaims)
+                    {
+                        if (!claims.TryGetValue(constraint.ClaimName, out var value))
+                        {
+                            claimsMatch = false; break;
+                        }
+                        if (constraint.ExpectedValue != null
+                            && !string.Equals(constraint.ExpectedValue.ToString(), value?.ToString(), StringComparison.Ordinal))
+                        {
+                            claimsMatch = false; break;
+                        }
+                    }
+                    if (!claimsMatch) continue;
+                }
+
+                match = credential;
+                break;
+            }
+            result[requirement.Type] = match;
+        }
+        return result;
     }
 
     private static Dictionary<string, object>? ParseClaims(string claimsJson)

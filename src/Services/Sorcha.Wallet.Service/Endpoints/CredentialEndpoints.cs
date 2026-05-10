@@ -275,7 +275,8 @@ public static class CredentialEndpoints
         CancellationToken cancellationToken = default)
     {
         var credentials = await store.GetByWalletAsync(walletAddress, cancellationToken);
-        var matches = matcher.Match(requirements, credentials);
+        // Feature 120 US5 — async path honours DID alsoKnownAs equivalence.
+        var matches = await matcher.MatchAsync(requirements, credentials, cancellationToken);
 
         var response = matches.Select(kvp => new
         {

@@ -183,13 +183,13 @@ US3 is mostly testing/validation of US2's output. The implementation work is sma
 
 ### Tests for User Story 5
 
-- [ ] T060 [P] [US5] Unit tests for `CredentialMatcher` allowlist equivalence at `tests/Sorcha.Wallet.Service.Tests/Credentials/CredentialMatcherAlsoKnownAsTests.cs`. Cover: direct-match (regression — existing behaviour preserved), credential-iss-resolves-to-allowed-DID, allowed-DID-resolves-to-credential-iss, mismatch (no equivalence), unreachable resolution path.
+- [x] T060 [P] [US5] Unit tests at `tests/Sorcha.Wallet.Service.Tests/Credentials/IssuerEquivalenceMatcherTests.cs`. Covers empty allowlist, direct match (no resolve calls), no-registry direct-only, both alsoKnownAs directions, no equivalence, unreachable-then-step3 fallback.
 
 ### Implementation for User Story 5
 
-- [ ] T061 [US5] Update `CredentialMatcher.IsIssuerAcceptedAsync` (or extract the new method if not present) at `src/Services/Sorcha.Wallet.Service/Credentials/CredentialMatcher.cs:51-52`. Algorithm per `contracts/did-resolver-registry-contract.md` "Consumer expectations": (1) direct-string match, (2) credential issuer's `alsoKnownAs` contains an allowed DID, (3) any allowed DID's `alsoKnownAs` contains the credential issuer. Short-circuit on first match.
-- [ ] T062 [US5] Mirror the same equivalence-aware logic in `PresentationRequestService.cs:364-365` and `PresentationLifecycleService.cs:133`. Refactor into a shared static helper `IssuerEquivalenceMatcher` at `src/Services/Sorcha.Wallet.Service/Credentials/IssuerEquivalenceMatcher.cs` consumed by all three call sites. Single source of truth.
-- [ ] T063 [US5] Confirm publish-time validator `OPEN_CREDENTIAL_ISSUER` warning continues to fire for empty `acceptedIssuers`. Regression test in `tests/Sorcha.Blueprint.Models.Tests/Credentials/CredentialModelsTests.cs`.
+- [x] T061 [US5] `CredentialMatcher.MatchAsync` now routes the issuer check through `IssuerEquivalenceMatcher.IsAcceptedAsync`. Sync `Match` retained for back-compat (direct-string only).
+- [x] T062 [US5] Shared static helper `IssuerEquivalenceMatcher` consumed by `CredentialMatcher.MatchAsync` and `PresentationRequestService.VerifyPresentationAsync`. *(third call site `PresentationLifecycleService.cs:133` was a passthrough — no allowlist match logic at that line; nothing to update there.)*
+- [ ] T063 [US5] Confirm `OPEN_CREDENTIAL_ISSUER` publish-time warning regression test. *(deferred — pre-existing publish-time warning untouched by this PR; spec callout treated as a paired regression check rather than a new test.)*
 
 **Checkpoint**: US5 closes the blueprint-author UX edge that empty-or-strict allowlists would otherwise create.
 
