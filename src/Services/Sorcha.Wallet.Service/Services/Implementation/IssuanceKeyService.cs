@@ -31,6 +31,7 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
     private readonly WalletDbContext _db;
     private readonly IOrgKeyDerivationService _orgKey;
     private readonly IOrgDidDocumentClient _didDocClient;
+    private readonly Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProtectionProvider _orgKeyProtection;
     private readonly ILogger<IssuanceKeyService> _logger;
 
     /// <summary>DI-friendly constructor.</summary>
@@ -38,11 +39,13 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         WalletDbContext db,
         IOrgKeyDerivationService orgKey,
         IOrgDidDocumentClient didDocClient,
+        Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProtectionProvider orgKeyProtection,
         ILogger<IssuanceKeyService> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _orgKey = orgKey ?? throw new ArgumentNullException(nameof(orgKey));
         _didDocClient = didDocClient ?? throw new ArgumentNullException(nameof(didDocClient));
+        _orgKeyProtection = orgKeyProtection ?? throw new ArgumentNullException(nameof(orgKeyProtection));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -161,6 +164,82 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         var jwkJson = BuildJwk(row.Algorithm, row.PublicKey);
         using var doc = JsonDocument.Parse(jwkJson);
         return doc.RootElement.Clone();
+    }
+
+    /// <inheritdoc />
+    public async Task<Sorcha.Wallet.Service.Services.Interfaces.IssuanceSigningMaterial?> GetActiveSigningMaterialAsync(
+        Guid organizationId, CancellationToken ct = default)
+    {
+        var state = await _db.IssuanceKeyStates
+            .FirstOrDefaultAsync(
+                k => k.OrganizationId == organizationId
+                  && k.Slot == IssuanceSlot
+                  && k.Status == IssuanceKeyStatus.Active,
+                ct)
+            .ConfigureAwait(false);
+        if (state is null) return null;
+
+        // The issuance key's private material lives in the Wallet that
+        // OrgKeyDerivationService created when the key was derived. Look it up via
+        // the DerivedKeyRecord (KeyUsage = VCIssuance) for this org.
+        var derivedRecord = await _db.DerivedKeyRecords
+            .FirstOrDefaultAsync(
+                d => d.OrganizationId == organizationId.ToString()
+                  && d.KeyUsage == KeyUsage.VCIssuance
+                  && d.Status == DerivedKeyStatus.Active,
+                ct)
+            .ConfigureAwait(false);
+        if (derivedRecord is null)
+        {
+            _logger.LogWarning(
+                "IssuanceKeyState row exists for org {OrgId} but no matching DerivedKeyRecord was found — schema drift",
+                organizationId);
+            return null;
+        }
+
+        var wallet = await _db.Wallets
+            .FirstOrDefaultAsync(w => w.Address == derivedRecord.WalletAddress, ct)
+            .ConfigureAwait(false);
+        if (wallet is null || string.IsNullOrEmpty(wallet.EncryptedPrivateKey))
+        {
+            _logger.LogWarning(
+                "DerivedKeyRecord points at wallet {Addr} but the wallet has no encrypted private key — recovery state",
+                derivedRecord.WalletAddress);
+            return null;
+        }
+
+        byte[] privateKey;
+        try
+        {
+            // Org-derived wallets are encrypted via IOrgKeyProtectionProvider (uses
+            // OrgKeyProtection:EncryptionKey) NOT IKeyManagementService (uses the
+            // wallet-master-key from LinuxSecretService). Mismatching providers gives
+            // an AES-GCM AuthenticationTagMismatchException at runtime.
+            privateKey = await _orgKeyProtection
+                .DecryptSeedAsync(
+                    Convert.FromBase64String(wallet.EncryptedPrivateKey),
+                    wallet.EncryptionKeyId,
+                    ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to decrypt issuance private key for org {OrgId} wallet {Addr}",
+                organizationId, derivedRecord.WalletAddress);
+            return null;
+        }
+
+        var issuerDid = $"did:sorcha:org:{derivedRecord.WalletAddress}";
+        var kid = $"{issuerDid}#vc-issuance-{state.RotationIndex}";
+
+        return new Sorcha.Wallet.Service.Services.Interfaces.IssuanceSigningMaterial(
+            OrganizationId: organizationId,
+            IssuerDid: issuerDid,
+            Kid: kid,
+            PrivateKey: privateKey,
+            Algorithm: state.Algorithm,
+            RotationIndex: state.RotationIndex);
     }
 
     /// <summary>

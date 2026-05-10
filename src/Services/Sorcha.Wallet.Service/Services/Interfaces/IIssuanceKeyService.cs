@@ -38,4 +38,33 @@ public interface IIssuanceKeyService
     /// </summary>
     Task<System.Text.Json.JsonElement?> GetPublicJwkAsync(
         Guid organizationId, int rotationIndex, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the active issuance key's signing material (decrypted private key + kid +
+    /// algorithm + issuer DID), or null when the org has no Active issuance key.
+    /// </summary>
+    /// <remarks>
+    /// Production credential-mint callers use this to swap from wallet-key-signing to
+    /// org-issuance-key-signing (Feature 120 kid-swap). Emits the versioned kid form
+    /// <c>did:sorcha:org:{addr}#vc-issuance-{rotationIndex}</c> per platform default (D3).
+    /// </remarks>
+    Task<IssuanceSigningMaterial?> GetActiveSigningMaterialAsync(
+        Guid organizationId, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Decrypted signing material for an org's active VC issuance key (Feature 120 kid-swap).
+/// </summary>
+/// <param name="OrganizationId">Owning organisation.</param>
+/// <param name="IssuerDid">Canonical issuer DID — <c>did:sorcha:org:{addr}</c>.</param>
+/// <param name="Kid">JWS <c>kid</c> header value — versioned form <c>did:sorcha:org:{addr}#vc-issuance-{rotationIndex}</c>.</param>
+/// <param name="PrivateKey">Decrypted private key bytes — must be wiped by caller after signing.</param>
+/// <param name="Algorithm">Signing algorithm string (e.g., <c>ED25519</c>).</param>
+/// <param name="RotationIndex">Monotonic rotation counter.</param>
+public sealed record IssuanceSigningMaterial(
+    Guid OrganizationId,
+    string IssuerDid,
+    string Kid,
+    byte[] PrivateKey,
+    string Algorithm,
+    int RotationIndex);

@@ -43,7 +43,8 @@ public interface ISdJwtService
         string algorithm,
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default,
-        IReadOnlyList<byte[]>? x5cChain = null);
+        IReadOnlyList<byte[]>? x5cChain = null,
+        string? kid = null);
 
     /// <summary>
     /// Creates a new SD-JWT VC token with selective disclosure and holder key binding (cnf).
@@ -69,7 +70,8 @@ public interface ISdJwtService
         JsonElement holderJwk,
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default,
-        IReadOnlyList<byte[]>? x5cChain = null);
+        IReadOnlyList<byte[]>? x5cChain = null,
+        string? kid = null);
 
     /// <summary>
     /// Verifies an SD-JWT token's signature, structure, and extracts all disclosed claims.

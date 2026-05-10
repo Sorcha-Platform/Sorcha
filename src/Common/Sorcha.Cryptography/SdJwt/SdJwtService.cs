@@ -48,10 +48,11 @@ public class SdJwtService : ISdJwtService
         string algorithm,
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default,
-        IReadOnlyList<byte[]>? x5cChain = null)
+        IReadOnlyList<byte[]>? x5cChain = null,
+        string? kid = null)
     {
         return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
-            algorithm, holderJwk: null, expiresAt, x5cChain, cancellationToken);
+            algorithm, holderJwk: null, expiresAt, x5cChain, kid, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -65,10 +66,11 @@ public class SdJwtService : ISdJwtService
         JsonElement holderJwk,
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default,
-        IReadOnlyList<byte[]>? x5cChain = null)
+        IReadOnlyList<byte[]>? x5cChain = null,
+        string? kid = null)
     {
         return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
-            algorithm, holderJwk, expiresAt, x5cChain, cancellationToken);
+            algorithm, holderJwk, expiresAt, x5cChain, kid, cancellationToken);
     }
 
     private Task<SdJwtToken> CreateTokenCoreAsync(
@@ -81,6 +83,7 @@ public class SdJwtService : ISdJwtService
         JsonElement? holderJwk,
         DateTimeOffset? expiresAt,
         IReadOnlyList<byte[]>? x5cChain,
+        string? kid,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(claims);
@@ -170,6 +173,14 @@ public class SdJwtService : ISdJwtService
             ["alg"] = MapAlgorithm(algorithm),
             ["typ"] = "vc+sd-jwt"
         };
+
+        // Feature 120 — kid header for issuer-key resolution. Production callers pass
+        // the versioned form (`did:sorcha:org:{addr}#vc-issuance-{n}`) so verifiers can
+        // resolve the matching VerificationMethod via DidResolverBackedIssuerKeyResolver.
+        if (!string.IsNullOrEmpty(kid))
+        {
+            header["kid"] = kid;
+        }
 
         // Feature 096 US3 — x5c chain, if the caller supplied one. RFC 7515 §4.1.6
         // mandates base64 (NOT base64url) encoding for x5c entries.
