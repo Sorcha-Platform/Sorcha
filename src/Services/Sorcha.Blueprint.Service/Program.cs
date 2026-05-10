@@ -1199,6 +1199,13 @@ actionsGroup.MapPost("/", async (
             TxId = txHashHex,
             RegisterId = request.RegisterAddress,
             SenderWallet = request.SenderWallet,
+            // RecipientsWallets parity with the action-executor path so the Register
+            // Service's InboundTransactionRouter can notify recipients on seal. The
+            // encryptedPayloads dictionary is keyed by recipient wallet address, so
+            // its keys ARE the recipients list. The action-executor path populates
+            // this via BuiltTransaction.RecipientsWallets; this legacy /api/actions
+            // POST entry point was dropping it.
+            RecipientsWallets = encryptedPayloads.Keys.ToList(),
             TimeStamp = DateTime.UtcNow,
             PrevTxId = previousTxId ?? string.Empty,
             MetaData = transaction.Metadata != null ?
