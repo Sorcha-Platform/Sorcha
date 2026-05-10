@@ -19,7 +19,13 @@ public interface IIssuanceKeyService
     /// <summary>
     /// Returns the active issuance key for the org, deriving it on first call. Idempotent.
     /// </summary>
-    Task<IssuanceKeyState> GetOrDeriveAsync(Guid organizationId, CancellationToken ct = default);
+    /// <remarks>
+    /// Returns null when the org has no provisioned <c>OrgMasterKey</c> — issuance keys
+    /// are derived from the master, so the master must exist before lazy derivation can
+    /// run. Callers that hit a null return should treat F120 lazy derivation as
+    /// not-yet-applicable for this org and continue without it.
+    /// </remarks>
+    Task<IssuanceKeyState?> GetOrDeriveAsync(Guid organizationId, CancellationToken ct = default);
 
     /// <summary>
     /// Returns the currently-active issuance key for the org, or null if none has been derived.

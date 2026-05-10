@@ -130,6 +130,19 @@ builder.Services.AddHttpClient<Sorcha.Haip.Service.Services.PresentationCallback
     client.Timeout = TimeSpan.FromSeconds(15);
 });
 
+// Feature 120 T039 — cross-service trigger for the wallet's lazy issuance-key
+// derivation. HAIP's /credential endpoint calls this before minting so the
+// org's published DID document is in place by the time a verifier resolves it.
+builder.Services.AddHttpClient<
+    Sorcha.ServiceClients.IssuanceKey.IIssuanceKeyClient,
+    Sorcha.ServiceClients.IssuanceKey.IssuanceKeyClient>(client =>
+{
+    var walletAddress = builder.Configuration["ServiceClients:WalletService:Address"]
+        ?? "http://wallet-service:8080";
+    client.BaseAddress = new Uri(walletAddress);
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
 var app = builder.Build();
 
 // OpenAPI and Scalar UI

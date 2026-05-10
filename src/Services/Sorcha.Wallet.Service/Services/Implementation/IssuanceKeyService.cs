@@ -47,7 +47,7 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
     }
 
     /// <inheritdoc />
-    public async Task<IssuanceKeyState> GetOrDeriveAsync(Guid organizationId, CancellationToken ct = default)
+    public async Task<IssuanceKeyState?> GetOrDeriveAsync(Guid organizationId, CancellationToken ct = default)
     {
         // Idempotency — return any existing Active row first.
         var existing = await _db.IssuanceKeyStates
@@ -60,12 +60,28 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         if (existing is not null) return existing;
 
         // Derive via Feature 083 — uses orgId as both controller and subject for the org's own key.
-        var derived = await _orgKey.DeriveUserKeyAsync(
-            organizationId.ToString(),
-            organizationId.ToString(),
-            departmentId: 0,
-            usage: KeyUsage.VCIssuance,
-            ct: ct).ConfigureAwait(false);
+        // OrgKeyDerivationService throws InvalidOperationException when the org has no
+        // provisioned master key. Treat that as 'F120 lazy derivation not yet applicable'
+        // and return null rather than blowing up the credential-mint call site — master keys
+        // are an explicit org-setup step, not something we want to silently provision here
+        // (provisioning generates a recovery mnemonic that must be backed up).
+        DerivedKeyResult derived;
+        try
+        {
+            derived = await _orgKey.DeriveUserKeyAsync(
+                organizationId.ToString(),
+                organizationId.ToString(),
+                departmentId: 0,
+                usage: KeyUsage.VCIssuance,
+                ct: ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("No active master key", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation(
+                "Issuance key derivation skipped for org {OrgId}: no provisioned master key — Feature 083 setup not yet run for this org.",
+                organizationId);
+            return null;
+        }
 
         // Look up the persisted wallet to read the public key bytes.
         var wallet = await _db.Wallets
