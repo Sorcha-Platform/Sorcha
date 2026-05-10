@@ -298,7 +298,12 @@ services:
       # requires ALPN which requires TLS.
       ServiceClients__RegisterService__GrpcAddress: http://register-service:5001
       ServiceClients__BlueprintService__Address: http://blueprint-service:8080
-      OrgKeyProtection__EncryptionKey: "dGhpcy1pcy1hLTMyLWJ5dGUtdGVzdC1rZXkh"
+      # Dev-mode AES-256 key (32 bytes base64). The previous placeholder decoded to
+      # 27 bytes, which OrgKeyProtectionProvider's strict validator rejects. The key
+      # only matters when OrgKeyDerivationService actually fires (Feature 083 derived
+      # keys + Feature 120 issuance-key lazy derivation). Production deployments
+      # override this via secret.
+      OrgKeyProtection__EncryptionKey: "OVL5NaJzR/Hpy2H5YgjYBX51Sws+q8oQXDG234SYnQw="
       # Encryption Provider Configuration
       # LinuxSecretService with fallback to file-based key storage (Docker doesn't have D-Bus)
       EncryptionProvider__Type: LinuxSecretService

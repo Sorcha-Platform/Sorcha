@@ -263,6 +263,7 @@ app.MapDelegationEndpoints();
 app.MapCredentialEndpoints();
 app.MapPresentationEndpoints();
 app.MapOrgKeyEndpoints();
+app.MapIssuanceKeyEndpoints();
 app.MapFileDownloadEndpoints();
 app.MapPersonaCryptoEndpoints();
 

@@ -46,6 +46,7 @@ public static class CredentialEndpoints
         CredentialOfferService offerService,
         IConfiguration configuration,
         ILoggerFactory loggerFactory,
+        Sorcha.ServiceClients.IssuanceKey.IIssuanceKeyClient issuanceKeyClient,
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger("Sorcha.Haip.Service.Endpoints.CredentialEndpoints");
@@ -305,6 +306,24 @@ public static class CredentialEndpoints
 
         var issuerUrl = configuration.GetValue<string>("Haip:IssuerUrl")
             ?? "https://sorcha.example/haip";
+
+        // Feature 120 T039 — ensure the org's VC issuance key + published DID
+        // document exist before signing. Lazy-derives on first issuance for
+        // the org (FR-004), idempotent on retries, non-throwing — falls back
+        // to ephemeral / config signing-key on any wallet failure.
+        if (Guid.TryParse(offer.TenantId, out var issuanceOrgId))
+        {
+            try
+            {
+                await issuanceKeyClient.EnsureAsync(issuanceOrgId, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Issuance key ensure failed for org {OrgId} during HAIP credential mint — DID document publish skipped",
+                    issuanceOrgId);
+            }
+        }
 
         // Use the offer resolved above — every branch below is guaranteed to have
         // a valid offer because the Bearer / lookup gates already rejected the
