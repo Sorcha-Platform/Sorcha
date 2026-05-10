@@ -113,11 +113,16 @@ public static class HttpServiceCollectionExtensions
         services.AddScoped<IDidResolver>(sp => sp.GetRequiredService<SorchaDidResolver>());
         services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<KeyDidResolver>());
 
-        // Registry must be Scoped to resolve the Scoped SorchaDidResolver
+        // Registry must be Scoped to resolve the Scoped SorchaDidResolver. Production
+        // wiring passes the Singleton DidResolverCache + DidResolverMetrics so the
+        // cross-resolution algorithm (Feature 120 US4) honours per-method TTLs and
+        // emits OTel counters.
         services.AddScoped<IDidResolverRegistry>(sp =>
         {
             var registry = new DidResolverRegistry(
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DidResolverRegistry>>());
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DidResolverRegistry>>(),
+                sp.GetRequiredService<DidResolverCache>(),
+                sp.GetRequiredService<DidResolverMetrics>());
 
             foreach (var resolver in sp.GetServices<IDidResolver>())
             {
