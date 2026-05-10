@@ -215,15 +215,48 @@ public class HaipPresentationVerifier
                         var didDoc = await _didResolver.ResolveAsync(issuerDid, ct);
                         if (didDoc?.VerificationMethod?.Count > 0)
                         {
-                            var vm = didDoc.VerificationMethod[0];
-                            if (vm.PublicKeyJwk.HasValue)
+                            // Feature 120 — match the credential's JWS kid header to a VM
+                            // in the resolved doc (exact id match). Falls back to the
+                            // first VM only when the credential carries no kid (legacy
+                            // single-key documents).
+                            var kid = header.TryGetProperty("kid", out var kidEl) ? kidEl.GetString() : null;
+                            VerificationMethod? matched = null;
+                            if (!string.IsNullOrEmpty(kid))
                             {
-                                var keyBytes = ExtractPublicKeyFromJwk(vm.PublicKeyJwk.Value);
-                                if (keyBytes != null)
-                                {
-                                    _logger.LogInformation("Resolved issuer key from DID: {Did}", issuerDid);
-                                    return (keyBytes, null);
-                                }
+                                matched = didDoc.VerificationMethod
+                                    .FirstOrDefault(v => string.Equals(v.Id, kid, StringComparison.Ordinal));
+                            }
+                            matched ??= didDoc.VerificationMethod.FirstOrDefault(v => v.PublicKeyJwk.HasValue);
+
+                            if (matched is null || !matched.PublicKeyJwk.HasValue)
+                            {
+                                _logger.LogWarning(
+                                    "DID document resolved but no VM matched kid {Kid} for {Did}",
+                                    kid, issuerDid);
+                                return (null, null);
+                            }
+
+                            // Feature 120 US6 — reject if the matched VM is not in
+                            // assertionMethod (revoked / rotated keys are dropped from
+                            // assertionMethod by IssuanceKeyService while remaining in
+                            // verificationMethod for verifiable history).
+                            if (didDoc.AssertionMethod is { Count: > 0 } assertion
+                                && !assertion.Any(id => string.Equals(id, matched.Id, StringComparison.Ordinal)))
+                            {
+                                _logger.LogWarning(
+                                    "Issuer VM matched but is not in assertionMethod (revoked/rotated): " +
+                                    "iss={Did} kid={Kid} matched_vm={VmId}",
+                                    issuerDid, kid, matched.Id);
+                                return (null, null);
+                            }
+
+                            var keyBytes = ExtractPublicKeyFromJwk(matched.PublicKeyJwk.Value);
+                            if (keyBytes != null)
+                            {
+                                _logger.LogInformation(
+                                    "Resolved issuer key from DID: {Did} kid={Kid}",
+                                    issuerDid, kid ?? "(first-vm)");
+                                return (keyBytes, null);
                             }
                         }
                     }
