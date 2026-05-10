@@ -116,6 +116,22 @@ public sealed class DidResolverBackedIssuerKeyResolver : IIssuerKeyResolver, IDi
             return null;
         }
 
+        // Feature 120 US6 — reject if the matched VM is not in assertionMethod.
+        // The published DID doc drops revoked-status keys from assertionMethod while
+        // keeping their entry in verificationMethod for verifiable history. A credential
+        // whose kid resolves to a present-but-not-asserting VM was signed by a key
+        // that's been revoked or is otherwise not authorised for assertion.
+        if (doc.AssertionMethod is { Count: > 0 } assertion
+            && !assertion.Any(id => string.Equals(id, matched.Id, StringComparison.Ordinal)))
+        {
+            RecordOutcome(activity, "key-revoked", matchMode);
+            _logger.LogWarning(
+                "Issuer key matched but is not in assertionMethod (revoked or otherwise unauthorised): " +
+                "iss={Issuer} kid={Kid} matched_vm={VmId}",
+                issuer, kid, matched.Id);
+            return null;
+        }
+
         RecordOutcome(activity, "success", matchMode);
         return matched.PublicKeyJwk;
     }
