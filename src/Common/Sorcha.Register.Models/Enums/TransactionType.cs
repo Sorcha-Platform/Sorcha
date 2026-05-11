@@ -49,5 +49,15 @@ public enum TransactionType
     /// Presentation-abandoned transaction (Feature 111 — validity window expired
     /// with no callback; opt-in per blueprint).
     /// </summary>
-    PresentationAbandoned = 7
+    PresentationAbandoned = 7,
+
+    /// <summary>
+    /// Credential status change (multi-node audit CRITICAL #2 — issuer revokes /
+    /// suspends / reinstates a credential. Recipient is the holder's wallet
+    /// address; the transaction propagates the new status to the holder's node
+    /// via the existing InboundTransactionRouter pipeline. Status list bitstring
+    /// remains the authoritative cross-node check for verifiers — this tx exists
+    /// to keep the holder's locally-cached row in sync.)
+    /// </summary>
+    CredentialStatusChange = 8
 }
