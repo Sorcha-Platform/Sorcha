@@ -101,6 +101,10 @@ builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Implementation.Inbo
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IInboundCredentialDetector,
     Sorcha.Wallet.Service.Services.Implementation.InboundCredentialDetector>();
 
+// Multi-node audit CRITICAL #2: Inbound credential status change handler
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IInboundCredentialStatusHandler,
+    Sorcha.Wallet.Service.Services.Implementation.InboundCredentialStatusHandler>();
+
 // Feature 047: Digest notification batching (US5)
 builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.Implementation.NotificationDigestWorker>();
 

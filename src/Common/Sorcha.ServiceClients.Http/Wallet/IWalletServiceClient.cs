@@ -447,6 +447,14 @@ public class CredentialIssuanceResult
     /// Index position in the Bitstring Status List.
     /// </summary>
     public int? StatusListIndex { get; init; }
+
+    /// <summary>
+    /// Register the credential was issued against. Needed by Blueprint Service
+    /// credential-lifecycle endpoints (revoke / suspend / reinstate) to submit
+    /// the corresponding <c>CredentialStatusChange</c> register transaction
+    /// (multi-node audit CRITICAL #2).
+    /// </summary>
+    public string? RegisterId { get; init; }
 }
 
 /// <summary>

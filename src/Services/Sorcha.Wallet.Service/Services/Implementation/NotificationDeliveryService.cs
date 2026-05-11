@@ -51,6 +51,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
     private readonly IParticipantServiceClient _participants;
     private readonly IPlatformInboxClient _inbox;
     private readonly IInboundCredentialDetector? _credentialDetector;
+    private readonly IInboundCredentialStatusHandler? _credentialStatusHandler;
     private readonly ILogger<NotificationDeliveryService> _logger;
 
     /// <summary>Initialises a new <see cref="NotificationDeliveryService"/>.</summary>
@@ -63,7 +64,8 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         IParticipantServiceClient participants,
         IPlatformInboxClient inbox,
         ILogger<NotificationDeliveryService> logger,
-        IInboundCredentialDetector? credentialDetector = null)
+        IInboundCredentialDetector? credentialDetector = null,
+        IInboundCredentialStatusHandler? credentialStatusHandler = null)
     {
         _walletRepository = walletRepository;
         _rateLimiter = rateLimiter;
@@ -73,6 +75,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         _participants = participants;
         _inbox = inbox;
         _credentialDetector = credentialDetector;
+        _credentialStatusHandler = credentialStatusHandler;
         _logger = logger;
     }
 
@@ -130,6 +133,29 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
                 // implementation drift so a detector bug never breaks notification delivery.
                 _logger.LogError(ex,
                     "InboundCredentialDetector threw for wallet {Wallet} tx {TxId} — delivery will proceed without credential enrichment",
+                    recipientAddress, transactionId);
+            }
+        }
+
+        // Step 2c: Multi-node audit CRITICAL #2 — apply inbound CredentialStatusChange
+        // transactions to the holder's locally cached credential row. Runs alongside the
+        // F106 detector; the handler is contracted to never throw and to no-op on any
+        // non-CredentialStatusChange tx.
+        if (_credentialStatusHandler is not null)
+        {
+            try
+            {
+                await _credentialStatusHandler.TryApplyAsync(
+                    recipientAddress, transactionId, registerId, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "InboundCredentialStatusHandler threw for wallet {Wallet} tx {TxId} — delivery will proceed without status update",
                     recipientAddress, transactionId);
             }
         }
