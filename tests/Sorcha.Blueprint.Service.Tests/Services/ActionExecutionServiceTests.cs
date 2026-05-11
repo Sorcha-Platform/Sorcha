@@ -74,7 +74,17 @@ public class ActionExecutionServiceTests
             _mockActionStore.Object,
             _mockExecutionEngine.Object,
             _mockLogger.Object,
-            new ConfigurationBuilder().Build());
+            new ConfigurationBuilder().Build(),
+            walletOwnershipSettings: Microsoft.Extensions.Options.Options.Create(
+                new Sorcha.Blueprint.Service.Configuration.WalletOwnershipSettings
+                {
+                    // Preserve pre-CRITICAL-#3 fail-open behaviour for the existing test
+                    // suite which documents graceful-degradation expectations. New tests
+                    // covering the fail-closed default live in ActionExecutionServiceWalletOwnershipTests.
+                    EnforcementMode = Sorcha.Blueprint.Service.Configuration.WalletOwnershipEnforcementMode.FailOpen,
+                    AllowMissingParticipant = true,
+                    AllowUnlinkedWallet = true,
+                }));
     }
 
     #region Constructor Tests
@@ -1267,6 +1277,198 @@ public class ActionExecutionServiceTests
 
         // Assert
         actual.Should().Be(expected, "formula must match the Register Service implementation");
+    }
+
+    #endregion
+
+    #region Multi-node audit CRITICAL #3 — fail-closed wallet ownership
+
+    private ActionExecutionService BuildFailClosedService(
+        bool allowMissingParticipant = false,
+        bool allowUnlinkedWallet = false)
+    {
+        return new ActionExecutionService(
+            _mockActionResolver.Object,
+            _mockStateReconstruction.Object,
+            _mockTransactionBuilder.Object,
+            _mockRegisterClient.Object,
+            _mockValidatorClient.Object,
+            _mockWalletClient.Object,
+            _mockParticipantClient.Object,
+            _mockNotificationService.Object,
+            _mockInstanceStore.Object,
+            _mockActionStore.Object,
+            _mockExecutionEngine.Object,
+            _mockLogger.Object,
+            new ConfigurationBuilder().Build(),
+            walletOwnershipSettings: Microsoft.Extensions.Options.Options.Create(
+                new Sorcha.Blueprint.Service.Configuration.WalletOwnershipSettings
+                {
+                    EnforcementMode = Sorcha.Blueprint.Service.Configuration.WalletOwnershipEnforcementMode.FailClosed,
+                    AllowMissingParticipant = allowMissingParticipant,
+                    AllowUnlinkedWallet = allowUnlinkedWallet,
+                }));
+    }
+
+    [Fact]
+    public async Task FailClosed_ParticipantServiceThrows_RejectsWithUnauthorized()
+    {
+        var instanceId = "test-instance";
+        var actionId = 1;
+        var request = CreateTestRequest();
+        var instance = CreateTestInstance(instanceId, "blueprint-1");
+        var blueprint = CreateTestBlueprint();
+        var action = blueprint.Actions!.First(a => a.Id == actionId);
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var caller = CreateUserPrincipal(userId, orgId);
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+
+        _mockParticipantClient
+            .Setup(x => x.GetByUserAndOrgAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("participant service unreachable"));
+
+        var service = BuildFailClosedService();
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.ExecuteAsync(instanceId, actionId, request, "token", caller));
+    }
+
+    [Fact]
+    public async Task FailClosed_MissingParticipantProfile_RejectsWithUnauthorized()
+    {
+        var instanceId = "test-instance";
+        var actionId = 1;
+        var request = CreateTestRequest();
+        var instance = CreateTestInstance(instanceId, "blueprint-1");
+        var blueprint = CreateTestBlueprint();
+        var action = blueprint.Actions!.First(a => a.Id == actionId);
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var caller = CreateUserPrincipal(userId, orgId);
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+
+        _mockParticipantClient
+            .Setup(x => x.GetByUserAndOrgAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ParticipantInfo?)null);
+
+        var service = BuildFailClosedService();
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.ExecuteAsync(instanceId, actionId, request, "token", caller));
+    }
+
+    [Fact]
+    public async Task FailClosed_GetLinkedWalletsThrows_RejectsWithUnauthorized()
+    {
+        var instanceId = "test-instance";
+        var actionId = 1;
+        var request = CreateTestRequest();
+        var instance = CreateTestInstance(instanceId, "blueprint-1");
+        var blueprint = CreateTestBlueprint();
+        var action = blueprint.Actions!.First(a => a.Id == actionId);
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var participantId = Guid.NewGuid();
+        var caller = CreateUserPrincipal(userId, orgId);
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+
+        _mockParticipantClient
+            .Setup(x => x.GetByUserAndOrgAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ParticipantInfo
+            {
+                Id = participantId,
+                Status = "Active",
+                OrganizationId = orgId,
+                UserId = userId,
+                DisplayName = "Test",
+                Email = "test@example.com",
+            });
+        _mockParticipantClient
+            .Setup(x => x.GetLinkedWalletsAsync(participantId, true, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("linked-wallets lookup failed"));
+
+        var service = BuildFailClosedService();
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.ExecuteAsync(instanceId, actionId, request, "token", caller));
+    }
+
+    [Fact]
+    public async Task FailClosed_UnlinkedWallet_RejectsWithUnauthorized()
+    {
+        var instanceId = "test-instance";
+        var actionId = 1;
+        var request = CreateTestRequest();
+        var instance = CreateTestInstance(instanceId, "blueprint-1");
+        var blueprint = CreateTestBlueprint();
+        var action = blueprint.Actions!.First(a => a.Id == actionId);
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var participantId = Guid.NewGuid();
+        var caller = CreateUserPrincipal(userId, orgId);
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+
+        _mockParticipantClient
+            .Setup(x => x.GetByUserAndOrgAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ParticipantInfo
+            {
+                Id = participantId,
+                Status = "Active",
+                OrganizationId = orgId,
+                UserId = userId,
+                DisplayName = "Test",
+                Email = "test@example.com",
+            });
+        _mockParticipantClient
+            .Setup(x => x.GetLinkedWalletsAsync(participantId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<LinkedWalletInfo>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    WalletAddress = "some-other-wallet",
+                    Algorithm = "ED25519",
+                    Status = "Active",
+                }
+            });
+
+        var service = BuildFailClosedService();
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.ExecuteAsync(instanceId, actionId, request, "token", caller));
+    }
+
+    [Fact]
+    public async Task FailClosed_AllowMissingParticipant_BypassesRejection()
+    {
+        var instanceId = "test-instance";
+        var actionId = 1;
+        var request = CreateTestRequest();
+        var instance = CreateTestInstance(instanceId, "blueprint-1");
+        var blueprint = CreateTestBlueprint();
+        var action = blueprint.Actions!.First(a => a.Id == actionId);
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var caller = CreateUserPrincipal(userId, orgId);
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+
+        _mockParticipantClient
+            .Setup(x => x.GetByUserAndOrgAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ParticipantInfo?)null);
+
+        var service = BuildFailClosedService(allowMissingParticipant: true);
+
+        // Execution proceeds past wallet validation and will throw later at
+        // transaction building (unmocked), NOT UnauthorizedAccessException.
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() =>
+            service.ExecuteAsync(instanceId, actionId, request, "token", caller));
+        Assert.IsNotType<UnauthorizedAccessException>(ex);
     }
 
     #endregion

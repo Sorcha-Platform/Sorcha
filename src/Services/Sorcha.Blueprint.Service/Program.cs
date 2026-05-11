@@ -208,6 +208,10 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionE
 // Feature 111: Timebound Presentation Lifecycle — Redis-backed transient state and rate limiting.
 builder.Services.Configure<Sorcha.Blueprint.Service.Configuration.PresentationLifecycleOptions>(
     builder.Configuration.GetSection("PresentationLifecycle"));
+
+// Multi-node audit CRITICAL #3 — fail-closed wallet ownership validation.
+builder.Services.Configure<Sorcha.Blueprint.Service.Configuration.WalletOwnershipSettings>(
+    builder.Configuration.GetSection(Sorcha.Blueprint.Service.Configuration.WalletOwnershipSettings.SectionName));
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IPendingPresentationStore,
     Sorcha.Blueprint.Service.Storage.Presentations.RedisPendingPresentationStore>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IPresentationRateLimiter,
