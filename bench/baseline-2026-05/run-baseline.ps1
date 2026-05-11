@@ -22,7 +22,7 @@ param(
 
     [string] $OutputRoot = $PSScriptRoot,
 
-    [string] $ValidatorBaseUrl = "http://localhost:5004",
+    [string] $ValidatorBaseUrl = "http://localhost:5800",
 
     [int] $TotalRuns = 100,
 
@@ -113,25 +113,21 @@ if (-not $SkipCounters) {
 }
 
 # 4. Walkthrough runs
+# Note: ConstructionPermit + PayloadTests use different param shapes
+# (-Scenario A/B/C/all and -FileSize/-Rounds respectively, no -Profile),
+# and need their own setup.ps1 runs to seed state. Baseline v1 narrows to
+# AssuredIdentity only; CP + PT can be added once their harness wiring is
+# proven separately. Walkthrough list is data, not code — edit here when
+# adding more.
 $walkthroughs = @(
     @{
+        # Call the phase scripts directly; the wrapping run.ps1 re-runs setup
+        # which short-returns when state.json exists, leaving $LASTEXITCODE in
+        # an undefined state that trips its own throw. Setup is a one-time
+        # prerequisite for the bench harness.
         name        = "AssuredIdentity"
-        runCommand  = "& '$RepoRoot\walkthroughs\AssuredIdentity\run.ps1' -Profile docker"
+        runCommand  = "& '$RepoRoot\walkthroughs\AssuredIdentity\run-phase1-identity.ps1'; if (`$LASTEXITCODE -eq 0) { & '$RepoRoot\walkthroughs\AssuredIdentity\run-phase2-licence.ps1' }"
         category    = "presentation-lifecycle"
-    }
-    # Governance-heavy and file-reference walkthroughs added below — adjust
-    # entries when those walkthroughs become available, or when you choose
-    # different targets. The walkthrough list is data, not code; this is
-    # explicitly the place to edit.
-    @{
-        name        = "ConstructionPermit"
-        runCommand  = "& '$RepoRoot\walkthroughs\ConstructionPermit\run.ps1' -Profile docker"
-        category    = "governance-mixed"
-    }
-    @{
-        name        = "PayloadTests"
-        runCommand  = "& '$RepoRoot\walkthroughs\PayloadTests\run.ps1' -Profile docker"
-        category    = "file-reference"
     }
 )
 

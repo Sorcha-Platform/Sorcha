@@ -193,7 +193,78 @@ bench/baseline-2026-05/
 
 ## Top finding
 
-(Populated after the capture by `summarise.ps1`. Until then, this section
-reads "TBD — capture not yet run.")
+**Validator is chain-bound. Rule evaluation cost is rounding error.**
 
-> TBD — capture not yet run.
+Captured 2026-05-11 on a 32-core / 64 GB Windows box, .NET 10.0.203, single-node
+docker-compose stack. Aggregated 90 post-warmup sequential `AssuredIdentity`
+runs (10 actions per run = 720 per-transaction validations).
+
+| Metric | Value |
+|---|---|
+| End-to-end validation p50 | **11.98 ms** |
+| End-to-end validation p99 | 12.05 ms (single observation) — max observed 38.90 ms |
+| Chain section share of Total | **71%** (4.85 s of 6.79 s aggregate) |
+| Crypto + schema share of Total | ~2% (signatures 92 ms, schema 116 ms, payload hash 35 ms) |
+| Programmable-rule budget headroom | ~2 ms per validation before changing the headline |
+
+Per-rule top spenders (90 runs × 720 evals):
+
+| Rule | Total | p99 | Evaluations |
+|---|---:|---:|---:|
+| `VAL_CHAIN_DOCKET` | 2.60 s | 23.83 ms | 720 |
+| `VAL_CHAIN_PREDECESSOR_LOOKUP` | 2.26 s | 19.40 ms | 720 |
+| `VAL_BP_003` (route reachability) | 1.08 s | 7.45 ms | 450 |
+| `VAL_CHAIN_FORK` | 693 ms | 10.60 ms | 360 |
+| `VAL_SIG_VERIFY` | 89 ms | 444 µs | 720 |
+| `VAL_SCHEMA_004` (JSON Schema) | 37 ms | 812 µs | 540 |
+| `VAL_BP_002` (signer auth) | 3.6 ms | 50 µs | 360 |
+| `VAL_BP_RESOLVE` | 1.6 ms | 417 µs | 540 |
+
+Single-if rule families captured at section level only (Structure 1.5 ms,
+Timing 0.88 ms, GovernanceRights 0.81 ms across all 720 evaluations). These
+groups together account for less than 0.1% of validator time — wrapping them
+with per-rule timers is not worth the instrumentation overhead.
+
+### What this means for the programmable-rules thesis
+
+1. **The headline budget is 2 ms per validation.** That's what programmable
+   rules can spend on interpretation without making validation visibly slower
+   to the user (10% of p50). Any design that exceeds this needs explicit
+   justification.
+2. **Chain access patterns matter 35× more than rule logic.** A change that
+   reduces `VAL_CHAIN_DOCKET` + `VAL_CHAIN_PREDECESSOR_LOOKUP` by 10% buys
+   ~1.2 ms — more headroom than the entire programmable rule overhead can
+   afford. Cache the predecessor lookup or batch the docket fetch and the
+   thesis's perf risk evaporates.
+3. **Crypto is not a bottleneck.** `VAL_SIG_VERIFY` p99 is 444 µs — replacing
+   it with a slower programmable-rule-driven crypto verifier still wouldn't
+   crack the top three.
+4. **VAL_BP_003 is the one rule worth re-examining first.** 7.45 ms p99 on
+   only 450 evaluations means individual evaluations can be expensive
+   (graph traversal scaling with blueprint size). Programmable rewrites of
+   route-reachability should benchmark this rule specifically.
+
+### Reproducibility
+
+- Sequential 90 runs, 10 warmup discarded.
+- Microbenchmarks (`bench/Sorcha.Validator.Benchmarks`) ran separately —
+  confirmed zero-overhead-when-disabled claim (TimeRule_Empty_x16 with
+  TelemetryEnabled=false: ~4.7 ns vs ~1062 ns enabled — 226× faster, but the
+  enabled cost is 1 µs amortised over the 12 ms validation = 0.008%).
+- Concurrent N=10 burst captured to `walkthrough-runs/AssuredIdentity/concurrent-N10.json`.
+- Sweep wall time: ~2 h 39 min sequential + ~15 min concurrent + ~3 min microbench
+  ≈ 3 h total.
+
+### Reproducibility caveats not yet addressed in this run
+
+- **`dotnet-counters` was skipped.** The `DOTNET_DiagnosticPorts=suspend=false`
+  config in `docker-compose.benchmark.yml` does not actually prevent runtime
+  startup suspension in .NET 10 — the validator hangs at boot when the diag
+  socket is mounted. Working around this needs either an in-process counter
+  collector or a different diagnostic-port mode. Telemetry-by-rule numbers
+  above are accurate; allocation rate / GC pause numbers are NOT captured.
+- **`ConstructionPermit` and `PayloadTests`** are not in this baseline.
+  Their `run.ps1` param shapes (`-Scenario A/B/C/all` and `-FileSize/-Rounds`)
+  differ from `AssuredIdentity`, and they need their own setup runs. The
+  harness's walkthrough list is intentionally narrowed to AssuredIdentity for
+  v1; expand once those harness paths are validated.

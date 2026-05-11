@@ -5,3 +5,4 @@ bench-diag/
 
 # BenchmarkDotNet temp files
 BenchmarkDotNet.Artifacts/
+bench/baseline-2026-05/.jwt

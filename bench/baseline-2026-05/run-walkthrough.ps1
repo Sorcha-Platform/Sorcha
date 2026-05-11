@@ -24,18 +24,41 @@ param(
 
     [int] $Concurrency = 1,
 
-    [string] $ValidatorBaseUrl = "http://localhost:5004",
+    [string] $ValidatorBaseUrl = "http://localhost:5800",
 
     [string] $ServiceToken = $env:SORCHA_BENCH_SERVICE_TOKEN,
 
     [Parameter(Mandatory)]
-    [string] $OutputRoot
+    [string] $OutputRoot,
+
+    [string] $StateFile = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "walkthroughs\AssuredIdentity\state.json")
 )
 
 $ErrorActionPreference = "Stop"
 
+# Mint a fresh JWT from the walkthrough state file at startup. JWTs expire in
+# ~1h; a full sweep takes ~3h. Self-minting avoids the manual env-var dance
+# and ensures the token is fresh for the duration of this script's invocation.
+function New-BenchJwt {
+    param([string] $StatePath)
+    $modulePath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "walkthroughs\modules\SorchaWalkthrough\SorchaWalkthrough.psm1"
+    Import-Module $modulePath -Force 6> $null
+    $state = Get-Content $StatePath -Raw | ConvertFrom-Json
+    $role = $state.roles.licensingOfficer
+    # Connect-SorchaUser writes status to the Information stream (Write-Host).
+    # Redirect ONLY stream 6 (information) to $null — `*> $null` would also
+    # swallow the success stream (return value) and the JWT would come back null.
+    $session = Connect-SorchaUser -TenantUrl $state.tenantUrl -Email $role.email -Password $role.password -OrganizationId $role.organizationId 6> $null
+    return $session.Headers.Authorization -replace '^Bearer ', ''
+}
+
 if ([string]::IsNullOrWhiteSpace($ServiceToken)) {
-    throw "SORCHA_BENCH_SERVICE_TOKEN env var (or -ServiceToken) is required to call /api/internal/benchmark/*"
+    if (Test-Path $StateFile) {
+        Write-Host "[bench] Minting fresh JWT from $StateFile" -ForegroundColor DarkGray
+        $ServiceToken = New-BenchJwt -StatePath $StateFile
+    } else {
+        throw "No -ServiceToken / SORCHA_BENCH_SERVICE_TOKEN and -StateFile '$StateFile' not found"
+    }
 }
 
 $headers = @{ "Authorization" = "Bearer $ServiceToken" }
@@ -61,6 +84,13 @@ Invoke-BenchEndpoint "/api/internal/benchmark/reset" | Out-Null
 if ($Concurrency -le 1) {
     # Sequential mode — flush per run for per-run distributions
     for ($i = 1; $i -le $TotalRuns; $i++) {
+        # Re-mint JWT every 20 runs (~30 min @ 100s/run) to stay ahead of the
+        # 1h token expiry. Cheap (~200ms) compared to a single AssuredIdentity run.
+        if (($i % 20) -eq 1 -and $i -gt 1 -and (Test-Path $StateFile)) {
+            Write-Host "[bench] Refreshing JWT" -ForegroundColor DarkGray
+            $script:headers = @{ "Authorization" = "Bearer $(New-BenchJwt -StatePath $StateFile)" }
+            $headers = $script:headers
+        }
         $runLabel = "{0:D3}" -f $i
         $isWarmup = $i -le $WarmupRuns
         Write-Host "[$Walkthrough] run $runLabel/$TotalRuns $(if ($isWarmup) { '(warmup)' } else { '' })..." -ForegroundColor DarkGray

@@ -15,4 +15,4 @@ services:
       Validator__Benchmark__FlushIntervalSeconds: "0"
       DOTNET_DiagnosticPorts: "/tmp/diag/sorcha-validator-diag.sock,suspend=false"
     volumes:
-      - ./bench-diag:/tmp/diag
+      - ./bench/baseline-2026-05/bench-diag:/tmp/diag
