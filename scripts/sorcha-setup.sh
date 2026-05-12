@@ -408,6 +408,76 @@ ENVFILE
 }
 
 # -----------------------------------------------------------------------------
+# Dev HTTPS certificate generation
+# -----------------------------------------------------------------------------
+
+ensure_dev_cert() {
+    # docker-compose mounts ./docker/certs:/https into api-gateway, which is
+    # configured to bind https://+:8443 with /https/aspnetapp.pfx. The .pfx
+    # files are .gitignored (private keys must never be committed), so a fresh
+    # clone has an empty docker/certs/ directory and the api-gateway crashes
+    # on startup with FileNotFoundException. This step generates a self-signed
+    # dev cert on Linux/macOS using openssl — matches the existing Windows
+    # script scripts/generate-dev-cert.ps1. Idempotent.
+    local cert_dir="$PROJECT_DIR/docker/certs"
+    local pfx="$cert_dir/aspnetapp.pfx"
+    local password="SorchaDev2025"   # matches docker-compose api-gateway env
+
+    if [ -f "$pfx" ]; then
+        success "Dev certificate already present at $pfx"
+        return 0
+    fi
+
+    info "Generating self-signed dev certificate for HTTPS..."
+    mkdir -p "$cert_dir"
+
+    if ! command -v openssl &> /dev/null; then
+        warn "openssl not installed — api-gateway HTTPS endpoint will fail to bind. Install openssl or set ASPNETCORE_URLS=http://+:8080 only."
+        return 0
+    fi
+
+    local tmp_key tmp_crt tmp_cnf
+    tmp_key=$(mktemp)
+    tmp_crt=$(mktemp)
+    tmp_cnf=$(mktemp)
+
+    cat > "$tmp_cnf" <<'EOF'
+[req]
+distinguished_name = req_dn
+x509_extensions    = v3_ca
+prompt             = no
+[req_dn]
+CN = localhost
+[v3_ca]
+keyUsage         = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName   = @alt_names
+[alt_names]
+DNS.1 = localhost
+DNS.2 = api-gateway
+DNS.3 = sorcha-ui-web
+IP.1  = 127.0.0.1
+EOF
+
+    openssl req -x509 -newkey rsa:2048 -days 730 -nodes \
+        -keyout "$tmp_key" -out "$tmp_crt" -config "$tmp_cnf" \
+        -extensions v3_ca > /dev/null 2>&1
+
+    openssl pkcs12 -export -out "$pfx" \
+        -inkey "$tmp_key" -in "$tmp_crt" \
+        -password "pass:$password" > /dev/null 2>&1
+
+    rm -f "$tmp_key" "$tmp_crt" "$tmp_cnf"
+
+    if [ ! -f "$pfx" ]; then
+        warn "openssl did not produce $pfx — api-gateway HTTPS bind will fail"
+        return 0
+    fi
+
+    success "Generated dev certificate at $pfx"
+}
+
+# -----------------------------------------------------------------------------
 # Pull and start services
 # -----------------------------------------------------------------------------
 
@@ -508,6 +578,7 @@ main() {
         ask_yes_no "Overwrite with new configuration?" "n" OVERWRITE
         if [ "$OVERWRITE" != "y" ]; then
             info "Keeping existing .env. Starting services..."
+            ensure_dev_cert
             start_services
             wait_for_health
             print_summary
@@ -517,6 +588,7 @@ main() {
 
     ask_configuration
     write_env_file
+    ensure_dev_cert
     pull_images
     start_services
     if ! wait_for_health; then
