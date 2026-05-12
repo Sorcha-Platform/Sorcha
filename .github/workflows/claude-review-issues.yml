@@ -45,6 +45,18 @@ jobs:
           echo "has_comments=true" >> "$GITHUB_OUTPUT"
           echo "$COMMENTS" > /tmp/claude-comments.json
 
+      - name: Ensure claude-review label exists
+        if: steps.get-comments.outputs.has_comments == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Self-heal: previous runs failed with "label 'claude-review' not found".
+          # Create idempotently — `|| true` swallows the conflict on re-run,
+          # so the workflow tolerates manual deletion of the label.
+          gh label create claude-review \
+            --description "Auto-created from Claude code review workflow" \
+            --color 5319e7 || true
+
       - name: Create issues from actionable comments
         if: steps.get-comments.outputs.has_comments == 'true'
         env:
