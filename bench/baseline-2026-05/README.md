@@ -3,8 +3,9 @@
 **Status:** TOOLING-READY. Capture has not been run on a quiescent machine yet.
 **Branch:** `bench/validator-baseline-2026-05`
 **Goal:** Honest pre-thesis baseline of validator performance so the eventual
-programmable-rules ([thesis](../../Project%20Sorcha/Validator2/2026-05-09-programmable-validation-thesis.md))
-work has numbers to compare against — not opinion.
+programmable-rules work (spec `specs/121-programmable-validation-rules/`;
+companion architectural memo `Project Sorcha/Validator2/2026-05-09-programmable-validation-thesis.md`
+held in shared memory outside this repo) has numbers to compare against — not opinion.
 
 ---
 
