@@ -224,7 +224,12 @@ public class HubBackplaneCrossReplicaTests
 }
 
 /// <summary>
-/// xUnit Skip-based gating helper for SkippableFact behaviour.
+/// xUnit v3 skip-gating helper. Calls <see cref="Assert.Skip(string)"/> which the
+/// runner records as a Skipped outcome (not a failure). The previous implementation
+/// threw a custom <c>SkipException</c> in the hope that xUnit would treat it as a
+/// skip — it didn't, and every CI run without the required env var counted these
+/// as 3 hard failures in <c>build-and-test</c>. <c>Assert.Skip</c> is the native
+/// xUnit v3 API and behaves correctly.
 /// </summary>
 internal static class Skip
 {
@@ -232,17 +237,15 @@ internal static class Skip
     {
         if (!condition)
         {
-            throw new SkipException(reason);
+            Assert.Skip(reason);
         }
     }
 }
 
-internal sealed class SkipException(string reason) : Exception(reason);
-
 /// <summary>
-/// Marker attribute used in lieu of the Xunit.SkippableFact NuGet package — keeps
-/// the dependency surface minimal. The xUnit runner treats the SkipException above
-/// as a skip when raised from a Fact body.
+/// Marker attribute paired with <see cref="Skip.IfNot"/>. The skip itself is performed
+/// inside the Fact body via <c>Assert.Skip</c> — the attribute is retained as
+/// documentation that the test is conditionally gated.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
 internal sealed class SkippableFactAttribute : FactAttribute { }
