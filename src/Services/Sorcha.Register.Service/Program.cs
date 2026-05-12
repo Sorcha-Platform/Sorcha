@@ -1545,7 +1545,16 @@ docketsGroup.MapPost("/", async (
         var hasControlTx = request.Transactions.Any(t => t.MetaData?.TransactionType == TransactionType.Control);
         if (hasControlTx)
         {
-            _ = Task.Run(() => relationshipNotifier.PublishIfChangedAsync(registerId));
+            // Fire-and-forget: PublishIfChangedAsync has its own try/catch internally,
+            // but tag the task with a ContinueWith so any escape (cancellation during
+            // shutdown, unexpected scheduler error) is logged rather than silently
+            // abandoned to the unobserved-task pipeline.
+            _ = Task.Run(() => relationshipNotifier.PublishIfChangedAsync(registerId))
+                .ContinueWith(
+                    t => logger.LogWarning(t.Exception,
+                        "RelationshipChangeNotifier.PublishIfChangedAsync escaped for register {RegisterId}",
+                        registerId),
+                    TaskContinuationOptions.OnlyOnFaulted);
         }
 
         // Publish docket confirmed event

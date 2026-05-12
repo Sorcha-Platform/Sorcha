@@ -104,9 +104,16 @@ public sealed class ObservationStore : IObservationStore
         string registerId,
         ConcurrentDictionary<string, PeerHeightObservation> perRegister)
     {
-        var oldest = perRegister.Values
-            .OrderBy(o => o.ObservedAt)
-            .FirstOrDefault();
+        // Single-pass min-scan. The previous OrderBy(...).FirstOrDefault() allocated
+        // an array and an enumerator on every advert-ingest. At the 16-peer cap this
+        // is negligible, but the method is called from the hot path so the cheaper
+        // form is preferred.
+        PeerHeightObservation? oldest = null;
+        foreach (var obs in perRegister.Values)
+        {
+            if (oldest is null || obs.ObservedAt < oldest.ObservedAt)
+                oldest = obs;
+        }
         if (oldest is null) return false;
 
         if (perRegister.TryRemove(oldest.SourcePeerId, out _))

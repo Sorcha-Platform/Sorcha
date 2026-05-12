@@ -45,7 +45,6 @@ public static class ValidationEndpoints
         [FromBody] ValidateTransactionRequest request,
         [FromServices] ITransactionValidator validator,
         [FromServices] ITransactionPoolPoller poolPoller,
-        [FromServices] IRegisterMonitoringRegistry monitoringRegistry,
         [FromServices] IHashProvider hashProvider,
         [FromServices] ILogger<Program> logger,
         CancellationToken cancellationToken)
@@ -152,13 +151,9 @@ public static class ValidationEndpoints
             logger.LogInformation("Transaction {TransactionId} validated and submitted to unverified pool", request.TransactionId);
 
             // Feature 108 — monitoring enrolment is now roster-driven via RegisterMonitoringBootstrap.
-            // We intentionally do NOT call monitoringRegistry.RegisterForMonitoring(registerId) here
-            // any more. Nodes that are not on the register's validator roster will accept the
-            // transaction into their mempool for onward forwarding, but will not produce dockets.
-            // The `monitoringRegistry` dependency is kept in the endpoint signature because other
-            // code paths may still reference it — it's a no-op in this handler now.
-            _ = monitoringRegistry;
-
+            // No per-submission registration call here. Nodes that are not on the register's
+            // validator roster accept the transaction into their mempool for onward forwarding
+            // but do not produce dockets.
             return Results.Ok(new
             {
                 IsValid = true,

@@ -68,19 +68,29 @@ public record RegisterViewModel
     public string? SyncState { get; init; }
 
     /// <summary>
-    /// Computed: Whether the register is currently syncing or in a sync-related state
+    /// Computed: Whether the register is currently syncing or in a sync-related state.
+    /// Includes both legacy lifecycle values (Subscribing) and Feature 108 sync-state
+    /// enum values (Indeterminate, Syncing).
     /// </summary>
-    public bool IsInSyncLifecycle => SyncState is "Subscribing" or "Syncing" or "Error";
+    public bool IsInSyncLifecycle => SyncState is "Subscribing" or "Syncing" or "Error" or "Indeterminate";
 
     /// <summary>
-    /// Computed: Human-readable sync state text
+    /// Computed: Human-readable sync state text. Covers the legacy lifecycle strings
+    /// (Subscribing / Synced) AND the Feature 108 <c>RegisterSyncState</c> enum
+    /// (Indeterminate / Syncing / CaughtUp / Error). "Syncing (N behind)" would
+    /// require <c>RegisterSyncStateView.NetworkHeightHighWaterMark - LocalHeight</c>,
+    /// which is not currently surfaced on this VM — surfacing it is a follow-up.
     /// </summary>
     public string SyncStateText => SyncState switch
     {
-        "Subscribing" => "Subscribing...",
+        // Feature 108 RegisterSyncState enum values.
+        "Indeterminate" => "Unknown",
         "Syncing" => "Syncing...",
+        "CaughtUp" => "Caught up",
+        "Error" => "Error",
+        // Legacy lifecycle strings (pre-F108) retained for backward compat.
+        "Subscribing" => "Subscribing...",
         "Synced" => "Synced",
-        "Error" => "Sync Error",
         _ => ""
     };
 
