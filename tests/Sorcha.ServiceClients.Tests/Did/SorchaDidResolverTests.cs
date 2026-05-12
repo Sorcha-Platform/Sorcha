@@ -171,10 +171,20 @@ public class SorchaDidResolverTests
 
         doc.Should().NotBeNull();
         doc!.Id.Should().Be("did:sorcha:org:org-addr-456");
-        doc.VerificationMethod.Should().HaveCount(1);
-        doc.VerificationMethod[0].Type.Should().Be("Ed25519VerificationKey2020");
+
+        // Feature 120 kid-swap (#604/#605): org DIDs emit two VMs — the canonical
+        // `#key-1` and a `#vc-issuance-1` alias pointing at the same key bytes so
+        // credentials carrying kid=did:sorcha:org:{addr}#vc-issuance-{n} resolve
+        // via exact-match. Both must be Ed25519VerificationKey2020.
+        doc.VerificationMethod.Should().HaveCount(2);
+        doc.VerificationMethod[0].Id.Should().Be("did:sorcha:org:org-addr-456#key-1");
+        doc.VerificationMethod[1].Id.Should().Be("did:sorcha:org:org-addr-456#vc-issuance-1");
+        doc.VerificationMethod.Should().AllSatisfy(vm =>
+            vm.Type.Should().Be("Ed25519VerificationKey2020"));
 
         // Feature 093 US3 FR-015: org DIDs produce the same valid multibase as wallet DIDs.
+        // Both VMs point at the same key bytes, so verify the multibase on the canonical
+        // #key-1 entry.
         var multibase = doc.VerificationMethod[0].PublicKeyMultibase;
         multibase.Should().NotBeNull();
         multibase!.Should().StartWith("z");
@@ -184,8 +194,12 @@ public class SorchaDidResolverTests
         decoded[1].Should().Be(0x01);
         decoded.Skip(2).Should().Equal(Ed25519KeyBytes);
 
+        // The issuance alias shares the same key material as the canonical VM.
+        doc.VerificationMethod[1].PublicKeyMultibase.Should().Be(multibase);
+
         doc.Authentication.Should().Contain("did:sorcha:org:org-addr-456#key-1");
         doc.AssertionMethod.Should().Contain("did:sorcha:org:org-addr-456#key-1");
+        doc.AssertionMethod.Should().Contain("did:sorcha:org:org-addr-456#vc-issuance-1");
     }
 
     [Fact]
