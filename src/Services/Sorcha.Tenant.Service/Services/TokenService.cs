@@ -111,7 +111,7 @@ public class TokenService : ITokenService
         var refreshTokenExpiry = DateTimeOffset.UtcNow.AddHours(_config.RefreshTokenLifetimeHours);
 
         var accessToken = GenerateToken(claims, accessTokenExpiry);
-        var refreshToken = GenerateRefreshToken(refreshTokenJti, user.Id.ToString(), organization.Id.ToString(), refreshTokenExpiry);
+        var refreshToken = GenerateRefreshToken(refreshTokenJti, user.Id.ToString(), organization.Id.ToString(), refreshTokenExpiry, platformUserId.ToString());
 
         // Track tokens for potential bulk revocation
         await _revocationService.TrackTokenAsync(
@@ -272,8 +272,20 @@ public class TokenService : ITokenService
                 claims.Add(new Claim(TokenClaimConstants.OrgId, orgId));
             }
 
-            // Add platform user ID if present in refresh token
+            // Add platform user ID if present in refresh token. For refresh
+            // tokens minted before this claim was persisted, fall back to the
+            // UserIdentity row — UserIdentity.PlatformUserId is the canonical
+            // source — so existing sessions don't lose access to PlatformUser-
+            // scoped endpoints (inbox, /hubs/wallet, persona) after the next
+            // refresh.
             var platformUserId = principal.FindFirst("platform_user_id")?.Value;
+            if (string.IsNullOrEmpty(platformUserId) && user.PlatformUserId != Guid.Empty)
+            {
+                platformUserId = user.PlatformUserId.ToString();
+                _logger.LogDebug(
+                    "Refresh token for user {UserId} lacked platform_user_id claim; recovered from UserIdentity.PlatformUserId",
+                    user.Id);
+            }
             if (!string.IsNullOrEmpty(platformUserId))
             {
                 claims.Add(new Claim("platform_user_id", platformUserId));
@@ -459,7 +471,7 @@ public class TokenService : ITokenService
         return _tokenHandler.WriteToken(token);
     }
 
-    private string GenerateRefreshToken(string jti, string userId, string? orgId, DateTimeOffset expiry)
+    private string GenerateRefreshToken(string jti, string userId, string? orgId, DateTimeOffset expiry, string? platformUserId = null)
     {
         var claims = new List<Claim>
         {
@@ -471,6 +483,16 @@ public class TokenService : ITokenService
         if (!string.IsNullOrEmpty(orgId))
         {
             claims.Add(new Claim(TokenClaimConstants.OrgId, orgId));
+        }
+
+        // Persist platform_user_id on the refresh token so RefreshTokenAsync
+        // can re-emit it on the rebuilt access token. Without this, every
+        // refreshed access token drops the claim and all PlatformUser-scoped
+        // endpoints (inbox, /hubs/wallet, persona) start 401-ing within the
+        // access-token lifetime.
+        if (!string.IsNullOrEmpty(platformUserId))
+        {
+            claims.Add(new Claim("platform_user_id", platformUserId));
         }
 
         return GenerateToken(claims, expiry);
