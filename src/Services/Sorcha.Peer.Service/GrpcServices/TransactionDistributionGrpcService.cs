@@ -301,7 +301,12 @@ public class TransactionDistributionGrpcService : TransactionDistribution.Transa
             {
                 Accepted = result.Success,
                 RejectReason = result.Success ? string.Empty : $"{result.ErrorCode}: {result.ErrorMessage}",
-                ReceiverIsValidator = true // receiver has its own enrolment path; we don't gate here
+                // ReceiverIsValidator left at proto default (false). Honest signal: the
+                // peer service forwards to its local validator-service via gRPC and reports
+                // the result; whether the receiving NODE is itself on the register's roster
+                // is a separate question we can't answer without consulting
+                // IRegisterLocalRelationshipService.IsValidator(registerId). Wiring that
+                // through is tracked as Feature 108 follow-up #1.
             };
         }
         catch (Exception ex)
