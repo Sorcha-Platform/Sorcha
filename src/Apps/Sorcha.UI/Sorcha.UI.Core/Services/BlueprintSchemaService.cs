@@ -6,11 +6,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Sorcha.UI.Core.Services;
 
-/// <summary>
-/// Lightweight label/description pair extracted from a JSON Schema property
-/// for annotating payload fields in the Transaction Explorer.
-/// </summary>
-public record SchemaOverlayFieldInfo(string Label, string? Description);
+// SchemaOverlayFieldInfo extracted to Services/Shared/Blueprints/ (Feature 123)
+// so user-facing JSON-tree components can declare it as a parameter type
+// without inheriting the BlueprintSchemaService admin/designer surface.
+// Namespace preserved (Sorcha.UI.Core.Services).
 
 /// <summary>
 /// Fetches blueprint action schemas and extracts field labels/descriptions
