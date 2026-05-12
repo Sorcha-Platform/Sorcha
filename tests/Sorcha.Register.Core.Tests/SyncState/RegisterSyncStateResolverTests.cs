@@ -88,6 +88,38 @@ public class RegisterSyncStateResolverTests
     }
 
     [Fact]
+    public void PrunedOwner_ReceivesStaleAdvertFromTrailingPeer_ReturnsCaughtUp()
+    {
+        // Scenario from the Feature 108 follow-up audit: a register owner has pruned
+        // dockets locally (LocalHeight advanced past a docket that has since been
+        // archived/replicated) and then receives a peer advert from a node that's
+        // genuinely trailing. The advert is "old" in the sense that its NetworkHeight
+        // is lower than the owner's LocalHeight. The owner must NOT regress to
+        // Syncing/Indeterminate on the strength of a trailing peer's claim — the
+        // resolver should report CaughtUp because local >= hwm.
+        //
+        // Constructed independently of LocalAheadOfHwm_ReturnsCaughtUp so a future
+        // refactor that mistakenly clamps LocalHeight against hwm gets caught here
+        // even if that test changes.
+        var trailingPeerAdvert = new[]
+        {
+            new PeerHeightObservation(RegisterId, "trailing-peer", 100, DateTimeOffset.UtcNow.AddSeconds(-30))
+        };
+        var view = BuildResolver().Resolve(
+            RegisterId,
+            localHeight: 250,  // owner has pruned past height 100, retains tip 250
+            observations: trailingPeerAdvert,
+            validatorSealing: null,
+            persistedState: null,
+            lastErrorMessage: null);
+
+        view.State.Should().Be(RegisterSyncState.CaughtUp);
+        view.LocalHeight.Should().Be(250);
+        view.NetworkHeightHighWaterMark.Should().Be(100);
+        view.DistinctPeerObservers.Should().Be(1);
+    }
+
+    [Fact]
     public void PersistedError_IsSticky_EvenWhenObservationsFresh()
     {
         var obs = new[] { new PeerHeightObservation(RegisterId, "n1", 10, DateTimeOffset.UtcNow) };
