@@ -9,34 +9,22 @@ using Sorcha.UI.Core.Models.Registers;
 namespace Sorcha.UI.Core.Services;
 
 /// <summary>
-/// Service for interacting with the Register API.
+/// Admin / governance operations on a register. Consumed by admin pages that
+/// initiate registers, edit policy, propose policy updates, view governance
+/// rosters, or toggle developer-mode controls.
 /// </summary>
-public interface IRegisterService
+/// <remarks>
+/// Split from <c>IRegisterService</c> as part of Feature 123. The user-facing
+/// read half lives in <see cref="IRegisterReadService"/>. Pages that need both
+/// halves inject both narrower interfaces — no derivation between them, per
+/// the cross-audience convention documented in
+/// <c>specs/123-ui-core-boundary-split/research.md</c> R7.
+/// </remarks>
+public interface IRegisterGovernanceService
 {
-    /// <summary>
-    /// Gets all accessible registers for the current user's organisation.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of registers.</returns>
-    Task<IReadOnlyList<RegisterViewModel>> GetRegistersAsync(
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets a single register by ID.
-    /// </summary>
-    /// <param name="registerId">Register identifier.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Register details or null if not found.</returns>
-    Task<RegisterViewModel?> GetRegisterAsync(
-        string registerId,
-        CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Gets the governance roster for a register.
     /// </summary>
-    /// <param name="registerId">Register identifier.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Governance roster or null if not found.</returns>
     Task<Sorcha.UI.Core.Models.Blueprints.GovernanceRosterViewModel?> GetGovernanceRosterAsync(
         string registerId,
         CancellationToken cancellationToken = default);
@@ -44,9 +32,6 @@ public interface IRegisterService
     /// <summary>
     /// Initiates register creation (phase 1 of genesis).
     /// </summary>
-    /// <param name="request">Register creation request.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Initiate response with attestations to sign.</returns>
     Task<InitiateRegisterResponse?> InitiateRegisterAsync(
         CreateRegisterRequest request,
         CancellationToken cancellationToken = default);
@@ -54,9 +39,6 @@ public interface IRegisterService
     /// <summary>
     /// Finalizes register creation (phase 2 of genesis).
     /// </summary>
-    /// <param name="request">Finalize request with signed attestations.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Finalize response or null on failure.</returns>
     Task<FinalizeRegisterResponse?> FinalizeRegisterAsync(
         FinalizeRegisterRequest request,
         CancellationToken cancellationToken = default);
@@ -71,6 +53,13 @@ public interface IRegisterService
     /// </summary>
     Task DisableDevModeAsync(string registerId, CancellationToken ct = default);
 }
+
+// =====================================================================
+// Governance request/response DTOs.
+// These types are consumed only by the methods on IRegisterGovernanceService
+// and were originally co-located with IRegisterService.cs. Kept here together
+// because they're tightly coupled to the initiate/finalize flow.
+// =====================================================================
 
 /// <summary>
 /// Request model for creating a new register (matches InitiateRegisterCreationRequest).

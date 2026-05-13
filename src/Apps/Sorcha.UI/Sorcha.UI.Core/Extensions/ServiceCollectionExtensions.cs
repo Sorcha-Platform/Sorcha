@@ -849,8 +849,12 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddRegisterServices(this IServiceCollection services, string baseAddress)
     {
-        // Register Service
-        services.AddScoped<IRegisterService>(sp =>
+        // Register Service — split into IRegisterReadService (user) +
+        // IRegisterGovernanceService (admin) by Feature 123. Both interfaces
+        // resolve to the same scoped RegisterService instance, matching the
+        // pre-refactor behaviour where any IRegisterService injection got one
+        // instance per scope.
+        services.AddScoped<RegisterService>(sp =>
         {
             var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
             handler.InnerHandler = new HttpClientHandler();
@@ -863,6 +867,8 @@ public static class ServiceCollectionExtensions
             var logger = sp.GetRequiredService<ILogger<RegisterService>>();
             return new RegisterService(httpClient, logger);
         });
+        services.AddScoped<IRegisterReadService>(sp => sp.GetRequiredService<RegisterService>());
+        services.AddScoped<IRegisterGovernanceService>(sp => sp.GetRequiredService<RegisterService>());
 
         // Payload Decoder Service
         services.AddSingleton<IPayloadDecoderService, PayloadDecoderService>();

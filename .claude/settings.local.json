@@ -58,7 +58,11 @@
       "PowerShell(cd C:\\\\Projects\\\\Sorcha; $env:VERIFICATION_ADMIN_PASSWORD = \"Dev_Pass_2025!\"; $env:CITIZEN_PASSWORD = \"Dev_Pass_2025!\"; $env:LICENSING_ADMIN_PASSWORD = \"Dev_Pass_2025!\"; ./walkthroughs/AssuredIdentity/run-phase2-licence.ps1 2>&1 | Select-Object -Last 80)",
       "PowerShell(Remove-Item *)",
       "PowerShell(Tee-Object *)",
-      "PowerShell(docker compose ps *)"
+      "PowerShell(docker compose ps *)",
+      "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\setup-plan.ps1 -Json)",
+      "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\update-agent-context.ps1 -AgentType claude)",
+      "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)",
+      "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1 -Json)"
     ],
     "deny": [],
     "ask": []

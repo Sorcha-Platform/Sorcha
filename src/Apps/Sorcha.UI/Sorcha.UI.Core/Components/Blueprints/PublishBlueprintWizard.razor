@@ -7,7 +7,8 @@
 @using Sorcha.UI.Core.Services
 
 @inject IBlueprintApiService BlueprintApi
-@inject IRegisterService RegisterService
+@inject IRegisterReadService RegisterReadService
+@inject IRegisterGovernanceService RegisterGovernanceService
 @inject IRegisterSubscriptionService SubscriptionService
 
 <MudDialog>
@@ -459,7 +460,7 @@
         {
             var subscriptions = await SubscriptionService.GetMySubscribedRegistersAsync();
             var subscribedIds = subscriptions.Select(s => s.RegisterId).Where(id => !string.IsNullOrEmpty(id)).ToHashSet();
-            var allRegisters = await RegisterService.GetRegistersAsync();
+            var allRegisters = await RegisterReadService.GetRegistersAsync();
             _registers = allRegisters.Where(r => subscribedIds.Contains(r.Id)).ToList();
         }
         catch
@@ -496,7 +497,7 @@
 
         try
         {
-            var roster = await RegisterService.GetGovernanceRosterAsync(_state.SelectedRegisterId);
+            var roster = await RegisterGovernanceService.GetGovernanceRosterAsync(_state.SelectedRegisterId);
             if (roster is null || roster.Members is null || roster.Members.Count == 0)
             {
                 // No roster or empty roster — new register with no governance yet

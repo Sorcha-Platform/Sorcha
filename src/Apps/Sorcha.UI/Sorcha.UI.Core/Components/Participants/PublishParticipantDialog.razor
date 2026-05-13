@@ -197,7 +197,7 @@
 
 @code {
     [Inject] private IParticipantPublishingService PublishingService { get; set; } = default!;
-    [Inject] private IRegisterService RegisterService { get; set; } = default!;
+    [Inject] private IRegisterReadService RegisterService { get; set; } = default!;
     [Inject] private IRegisterSubscriptionService SubscriptionService { get; set; } = default!;
 
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
