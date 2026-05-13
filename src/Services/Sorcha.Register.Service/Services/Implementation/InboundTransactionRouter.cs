@@ -46,11 +46,15 @@ public sealed class InboundTransactionRouter : IInboundTransactionRouter
         bool isRecovery = false,
         CancellationToken cancellationToken = default)
     {
-        // Only route action-type transactions
-        if (transactionType != TransactionType.Action)
+        // Route action-type transactions and credential lifecycle events. Both flow
+        // through the same wallet-notification pipeline; the wallet-side handler
+        // inspects the fetched transaction to decide what to do with it (credential
+        // detector for Action, status-change handler for CredentialStatusChange).
+        if (transactionType != TransactionType.Action
+            && transactionType != TransactionType.CredentialStatusChange)
         {
             _logger.LogDebug(
-                "Skipping non-action transaction {TxId} (type: {Type})",
+                "Skipping non-routed transaction {TxId} (type: {Type})",
                 transactionId, transactionType);
             return 0;
         }

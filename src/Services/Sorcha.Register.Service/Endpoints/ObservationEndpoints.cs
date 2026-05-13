@@ -9,6 +9,7 @@ using Sorcha.Register.Core.LocalRelationship;
 using Sorcha.Register.Core.Observations;
 using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models.Observations;
+using Sorcha.ServiceDefaults;
 
 namespace Sorcha.Register.Service.Endpoints;
 
@@ -57,6 +58,7 @@ public static class ObservationEndpoints
         .WithSummary("Record a peer's advert-height claim for a register (Feature 108)")
         .WithDescription("Internal service-to-service endpoint called by Peer.Service when it observes a remote peer advertising a docket height for a register. The observation feeds the sync-state resolver so the local node can tell whether it is at network head or trailing. Rejects observations more than ±5 minutes from local clock to bound skew. Not part of the public API surface.")
         .RequireAuthorization(AuthorizationPolicies.CanReportRegisterObservation)
+        .RequireRateLimiting(RateLimitPolicies.Api)
         .Produces(StatusCodes.Status202Accepted)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
@@ -115,6 +117,7 @@ public static class ObservationEndpoints
         .WithSummary("Record the local validator's sealing progress for a register (Feature 108)")
         .WithDescription("Internal service-to-service endpoint called by Validator.Service when it seals a docket. Records the last sealed height and current mempool depth so the sync-state resolver knows the local node's contribution to network progress. The caller must present its validator public key via the X-Validator-Public-Key header and must be on the register's roster. Not part of the public API surface.")
         .RequireAuthorization(AuthorizationPolicies.CanReportRegisterObservation)
+        .RequireRateLimiting(RateLimitPolicies.Api)
         .Produces(StatusCodes.Status202Accepted)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)

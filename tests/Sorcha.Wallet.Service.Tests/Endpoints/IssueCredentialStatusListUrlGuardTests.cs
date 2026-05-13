@@ -104,6 +104,7 @@ public sealed class IssueCredentialStatusListUrlGuardTests
             null!, // ICredentialStore
             new NullLoggerFactory(),
             null!, // IWalletInboxWriter — not reached by the URL guard
+            null,  // IIssuanceKeyService (optional — F120)
             null,  // IOrgCertChainProvider (optional)
             CancellationToken.None
         ]);

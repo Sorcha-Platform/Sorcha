@@ -17,7 +17,6 @@ package sorcha.peer.distribution.v2;
 
 option csharp_namespace = "Sorcha.Peer.Service.Protos";
 
-import "google/protobuf/timestamp.proto";
 
 // Extension to the existing TransactionDistribution service.
 service TransactionDistributionV2 {
@@ -42,8 +41,9 @@ message SubmitTransactionRequest {
   // detection in any future multi-hop gossip).
   string origin_peer_id = 3;
 
-  // When the originator accepted the user's submission.
-  google.protobuf.Timestamp submitted_at = 4;
+  // When the originator accepted the user's submission (Unix epoch milliseconds).
+  // Matches the implemented wire shape in src/Services/Sorcha.Peer.Service/Protos/transaction_distribution.proto.
+  int64 submitted_at_unix_ms = 4;
 }
 
 message SubmitTransactionResponse {
