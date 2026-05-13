@@ -1,0 +1,11 @@
+# Smoke variant of the benchmark overlay — enables RuleTelemetry collection
+# without the dotnet-counters diagnostic socket. The full overlay
+# (docker-compose.benchmark.yml) mounts a Unix-socket diagnostic endpoint
+# which currently hangs the runtime startup (DOTNET suspend semantics quirk);
+# the full-sweep run can use that overlay once the suspend behaviour is fixed,
+# or simply with `--SkipCounters` on the harness side.
+services:
+  validator-service:
+    environment:
+      Validator__Benchmark__Enabled: "true"
+      Validator__Benchmark__FlushIntervalSeconds: "0"

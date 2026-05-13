@@ -1,0 +1,217 @@
+{
+  "walkthrough": "AssuredIdentity",
+  "mode": "sequential",
+  "run": 80,
+  "wallTimeMs": 124000,
+  "walkthroughExitCode": 0,
+  "telemetry": {
+    "captureLabel": null,
+    "startedAtUnixMs": 1778528567034,
+    "endedAtUnixMs": 1778528691043,
+    "tickFrequency": 1000000000,
+    "sections": {
+      "CryptoPolicy": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 27232,
+        "minNanos": 919,
+        "maxNanos": 4485,
+        "p50Nanos": 4096,
+        "p95Nanos": 4485,
+        "p99Nanos": 4485
+      },
+      "PayloadHash": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 442611,
+        "minNanos": 27242,
+        "maxNanos": 167798,
+        "p50Nanos": 65536,
+        "p95Nanos": 167798,
+        "p99Nanos": 167798
+      },
+      "FileReferences": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 30169,
+        "minNanos": 1762,
+        "maxNanos": 8952,
+        "p50Nanos": 4096,
+        "p95Nanos": 8952,
+        "p99Nanos": 8952
+      },
+      "Timing": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 8119,
+        "minNanos": 759,
+        "maxNanos": 1292,
+        "p50Nanos": 1024,
+        "p95Nanos": 1292,
+        "p99Nanos": 1292
+      },
+      "GovernanceRights": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 8333,
+        "minNanos": 927,
+        "maxNanos": 1475,
+        "p50Nanos": 1024,
+        "p95Nanos": 1475,
+        "p99Nanos": 1475
+      },
+      "Chain": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 53326670,
+        "minNanos": 5275614,
+        "maxNanos": 8362407,
+        "p50Nanos": 8362407,
+        "p95Nanos": 8362407,
+        "p99Nanos": 8362407
+      },
+      "Structure": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 17754,
+        "minNanos": 1864,
+        "maxNanos": 2632,
+        "p50Nanos": 2632,
+        "p95Nanos": 2632,
+        "p99Nanos": 2632
+      },
+      "SequenceReplay": {
+        "evaluations": 6,
+        "emissions": 0,
+        "totalNanos": 5499668,
+        "minNanos": 843937,
+        "maxNanos": 1062524,
+        "p50Nanos": 1048576,
+        "p95Nanos": 1062524,
+        "p99Nanos": 1062524
+      },
+      "Total": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 72781486,
+        "minNanos": 6325311,
+        "maxNanos": 11118942,
+        "p50Nanos": 11118942,
+        "p95Nanos": 11118942,
+        "p99Nanos": 11118942
+      },
+      "BlueprintConformance": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 11486124,
+        "minNanos": 1551,
+        "maxNanos": 2409424,
+        "p50Nanos": 2097152,
+        "p95Nanos": 2409424,
+        "p99Nanos": 2409424
+      },
+      "Signatures": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 1106411,
+        "minNanos": 94287,
+        "maxNanos": 258452,
+        "p50Nanos": 131072,
+        "p95Nanos": 258452,
+        "p99Nanos": 258452
+      },
+      "Schema": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 651700,
+        "minNanos": 3583,
+        "maxNanos": 216474,
+        "p50Nanos": 131072,
+        "p95Nanos": 216474,
+        "p99Nanos": 216474
+      }
+    },
+    "rules": {
+      "VAL_CHAIN_FORK": {
+        "evaluations": 4,
+        "emissions": 0,
+        "totalNanos": 8000754,
+        "minNanos": 1757971,
+        "maxNanos": 2460680,
+        "p50Nanos": 2097152,
+        "p95Nanos": 2460680,
+        "p99Nanos": 2460680
+      },
+      "VAL_SCHEMA_004": {
+        "evaluations": 6,
+        "emissions": 0,
+        "totalNanos": 295270,
+        "minNanos": 26681,
+        "maxNanos": 107952,
+        "p50Nanos": 65536,
+        "p95Nanos": 107952,
+        "p99Nanos": 107952
+      },
+      "VAL_SIG_VERIFY": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 1079700,
+        "minNanos": 91555,
+        "maxNanos": 252193,
+        "p50Nanos": 131072,
+        "p95Nanos": 252193,
+        "p99Nanos": 252193
+      },
+      "VAL_BP_002": {
+        "evaluations": 4,
+        "emissions": 0,
+        "totalNanos": 32912,
+        "minNanos": 7774,
+        "maxNanos": 8984,
+        "p50Nanos": 8192,
+        "p95Nanos": 8984,
+        "p99Nanos": 8984
+      },
+      "VAL_BP_RESOLVE": {
+        "evaluations": 6,
+        "emissions": 0,
+        "totalNanos": 12592,
+        "minNanos": 1419,
+        "maxNanos": 3556,
+        "p50Nanos": 2048,
+        "p95Nanos": 3556,
+        "p99Nanos": 3556
+      },
+      "VAL_BP_003": {
+        "evaluations": 5,
+        "emissions": 0,
+        "totalNanos": 11377866,
+        "minNanos": 2058269,
+        "maxNanos": 2393988,
+        "p50Nanos": 2393988,
+        "p95Nanos": 2393988,
+        "p99Nanos": 2393988
+      },
+      "VAL_CHAIN_DOCKET": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 28634550,
+        "minNanos": 3156421,
+        "maxNanos": 4293301,
+        "p50Nanos": 4194304,
+        "p95Nanos": 4293301,
+        "p99Nanos": 4293301
+      },
+      "VAL_CHAIN_PREDECESSOR_LOOKUP": {
+        "evaluations": 8,
+        "emissions": 0,
+        "totalNanos": 24664343,
+        "minNanos": 1811340,
+        "maxNanos": 4953392,
+        "p50Nanos": 4194304,
+        "p95Nanos": 4953392,
+        "p99Nanos": 4953392
+      }
+    }
+  }
+}

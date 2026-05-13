@@ -15,6 +15,7 @@ using Sorcha.Cryptography.Utilities;
 using Sorcha.Register.Models.Constants;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Configuration;
+using Sorcha.Validator.Service.Diagnostics;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
@@ -89,6 +90,7 @@ public class ValidationEngine : IValidationEngine
 
         var sw = Stopwatch.StartNew();
         Interlocked.Increment(ref _inProgress);
+        using var _totalScope = RuleTelemetry.TimeSection("Total");
 
         try
         {
@@ -194,6 +196,7 @@ public class ValidationEngine : IValidationEngine
             // 5b. Validate sequence number for replay protection (SEC-AUDIT 4.2)
             if (_walletSequenceRepository != null && !TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction))
             {
+                using var _replayScope = RuleTelemetry.TimeSection("SequenceReplay");
                 try
                 {
                     if (transaction.SequenceNumber == 0)
@@ -318,6 +321,7 @@ public class ValidationEngine : IValidationEngine
     {
         ArgumentNullException.ThrowIfNull(transaction);
 
+        using var _section = RuleTelemetry.TimeSection("Structure");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
@@ -415,6 +419,7 @@ public class ValidationEngine : IValidationEngine
     {
         ArgumentNullException.ThrowIfNull(transaction);
 
+        using var _section = RuleTelemetry.TimeSection("Schema");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
@@ -590,7 +595,11 @@ public class ValidationEngine : IValidationEngine
                     continue;
                 }
 
-                var result = jsonSchema.Evaluate(payloadToValidate, evalOptions);
+                EvaluationResults result;
+                using (RuleTelemetry.TimeRule("VAL_SCHEMA_004"))
+                {
+                    result = jsonSchema.Evaluate(payloadToValidate, evalOptions);
+                }
 
                 if (!result.IsValid)
                 {
@@ -649,6 +658,7 @@ public class ValidationEngine : IValidationEngine
     {
         ArgumentNullException.ThrowIfNull(transaction);
 
+        using var _section = RuleTelemetry.TimeSection("Signatures");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
@@ -662,6 +672,7 @@ public class ValidationEngine : IValidationEngine
 
             foreach (var signature in transaction.Signatures)
             {
+                using var _sigScope = RuleTelemetry.TimeRule("VAL_SIG_VERIFY");
                 try
                 {
                     // Parse the algorithm
@@ -729,6 +740,7 @@ public class ValidationEngine : IValidationEngine
     /// </summary>
     private ValidationEngineResult ValidateCryptoPolicy(Transaction transaction)
     {
+        using var _section = RuleTelemetry.TimeSection("CryptoPolicy");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
@@ -789,6 +801,7 @@ public class ValidationEngine : IValidationEngine
     {
         ArgumentNullException.ThrowIfNull(transaction);
 
+        using var _section = RuleTelemetry.TimeSection("Chain");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
@@ -808,6 +821,7 @@ public class ValidationEngine : IValidationEngine
             var previousTxId = transaction.PreviousTransactionId;
             if (!string.IsNullOrWhiteSpace(previousTxId))
             {
+                using var _predecessorScope = RuleTelemetry.TimeRule("VAL_CHAIN_PREDECESSOR_LOOKUP");
                 // Cached predecessor lookup — sealed register transactions are
                 // immutable, so the L1+L2 cache (Redis + local) shaves the
                 // MongoDB roundtrip out of the hot path for repeat lookups
@@ -845,6 +859,7 @@ public class ValidationEngine : IValidationEngine
                         || previousTx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control;
                     if (!isControlTx)
                     {
+                        using var _forkScope = RuleTelemetry.TimeRule("VAL_CHAIN_FORK");
                         // Fetch up to 50 existing successors so we can distinguish an
                         // idempotent resubmission (same TxId already present) from a
                         // genuine fork (different TxId with the same parent). Without
@@ -877,6 +892,7 @@ public class ValidationEngine : IValidationEngine
             }
 
             // 2. Docket-level chain validation
+            using var _docketScope = RuleTelemetry.TimeRule("VAL_CHAIN_DOCKET");
             var height = await _registerClient.GetRegisterHeightAsync(transaction.RegisterId, ct);
 
             if (height > 0)
@@ -978,6 +994,7 @@ public class ValidationEngine : IValidationEngine
     {
         ArgumentNullException.ThrowIfNull(transaction);
 
+        using var _section = RuleTelemetry.TimeSection("BlueprintConformance");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
@@ -1015,7 +1032,11 @@ public class ValidationEngine : IValidationEngine
         try
         {
             // Blueprint + action lookup (reuse logic from ValidateSchemaAsync)
-            var blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, ct);
+            BlueprintModel? blueprint;
+            using (RuleTelemetry.TimeRule("VAL_BP_RESOLVE"))
+            {
+                blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, ct);
+            }
             if (blueprint == null)
             {
                 errors.Add(CreateError("VAL_SCHEMA_001",
@@ -1063,6 +1084,7 @@ public class ValidationEngine : IValidationEngine
             }
             else if (transaction.Signatures.Count > 0)
             {
+                using var _bp002Scope = RuleTelemetry.TimeRule("VAL_BP_002");
                 var firstSig = transaction.Signatures[0];
 
                 if (AlgorithmMapper.TryParseAlgorithm(firstSig.Algorithm, out var sigNetwork))
@@ -1168,6 +1190,7 @@ public class ValidationEngine : IValidationEngine
 
             if (!isIntraActionLifecycleTx && !string.IsNullOrWhiteSpace(transaction.PreviousTransactionId))
             {
+                using var _bp003Scope = RuleTelemetry.TimeRule("VAL_BP_003");
                 // Same predecessor lookup as the chain section — reuse the cache so
                 // repeated route-reachability checks within a docket don't double-fetch.
                 var previousTx = _chainTxCache is not null
@@ -1248,6 +1271,7 @@ public class ValidationEngine : IValidationEngine
         Transaction transaction,
         Stopwatch sw)
     {
+        using var _section = RuleTelemetry.TimeSection("ParticipantSchema");
         var errors = new List<ValidationEngineError>();
 
         try
@@ -1307,6 +1331,7 @@ public class ValidationEngine : IValidationEngine
         Transaction transaction,
         CancellationToken ct)
     {
+        using var _section = RuleTelemetry.TimeSection("Revocation");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
@@ -1350,6 +1375,7 @@ public class ValidationEngine : IValidationEngine
             }
 
             // Check target transaction exists
+            using var _rev002Scope = RuleTelemetry.TimeRule("VAL_REV_002");
             var targetTx = await _registerClient.GetTransactionAsync(
                 transaction.RegisterId, revocationPayload.OriginalTxId, ct);
             if (targetTx == null)
@@ -1370,6 +1396,7 @@ public class ValidationEngine : IValidationEngine
             }
 
             // Check not already revoked (cheap DB query — run before expensive authority check)
+            using var _rev003Scope = RuleTelemetry.TimeRule("VAL_REV_003");
             var existingRevocations = await _registerClient.GetTransactionsByPrevTxIdAsync(
                 transaction.RegisterId, revocationPayload.OriginalTxId, 1, 10, ct);
             var existingRevocation = existingRevocations?.Transactions?.FirstOrDefault(t =>
@@ -1389,6 +1416,7 @@ public class ValidationEngine : IValidationEngine
             if (!string.IsNullOrEmpty(revokerWallet) && !string.IsNullOrEmpty(targetSender) &&
                 !string.Equals(revokerWallet, targetSender, StringComparison.OrdinalIgnoreCase))
             {
+                using var _rev005Scope = RuleTelemetry.TimeRule("VAL_REV_005");
                 // Not the original signer — check governance roster for Owner/Admin role
                 var govResult = await _rightsEnforcementService.ValidateGovernanceRightsAsync(transaction, ct);
                 if (!govResult.IsValid)
@@ -1496,6 +1524,7 @@ public class ValidationEngine : IValidationEngine
 
     private ValidationEngineResult ValidatePayloadHash(Transaction transaction)
     {
+        using var _section = RuleTelemetry.TimeSection("PayloadHash");
         var sw = Stopwatch.StartNew();
 
         try
@@ -1536,6 +1565,7 @@ public class ValidationEngine : IValidationEngine
 
     private ValidationEngineResult ValidateTiming(Transaction transaction)
     {
+        using var _section = RuleTelemetry.TimeSection("Timing");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
         var now = DateTimeOffset.UtcNow;
@@ -1593,6 +1623,7 @@ public class ValidationEngine : IValidationEngine
     /// </remarks>
     private ValidationEngineResult ValidateFileReferences(Transaction transaction)
     {
+        using var _section = RuleTelemetry.TimeSection("FileReferences");
         var sw = Stopwatch.StartNew();
         var errors = new List<ValidationEngineError>();
 
@@ -1797,6 +1828,11 @@ public class ValidationEngine : IValidationEngine
         string? field = null,
         bool isFatal = false)
     {
+        // Gated emission counter — no-op when benchmark telemetry is disabled.
+        // Captures every rule fire across the whole engine via the single
+        // CreateError choke point. See bench/baseline-2026-05/README.md.
+        RuleTelemetry.RuleEmitted(code);
+
         return new ValidationEngineError
         {
             Code = code,
