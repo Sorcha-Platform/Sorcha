@@ -166,7 +166,22 @@ owner=validator:{validatorId}, name=system-wallet-{validatorId}` so
 validator-service finds it. Currently `AllowAnonymous`, so no auth
 header needed.
 
-**Procedure:**
+**Procedure (automated — preferred):**
+
+```powershell
+# From your dev box, one command does it all:
+.\scripts\n1-reset.ps1 `
+  -ResourceGroup sorcha-n1-uk `
+  -UpdateCompose `
+  -ImportValidatorKeyPath .\genesis-validator-key.json `
+  -Yes
+```
+
+The script handles the full sequence: tear down with `-v`, bring up wallet-service alone, wait for healthy, POST the mnemonic to `/api/v1/wallets/system/recover` over the compose network, bring up the rest of the stack, then shred the uploaded key file. Mnemonic is never echoed to logs and never appears in process args (passed on stdin to a one-shot curl container).
+
+`-ValidatorId` defaults to `local-validator` and must match `Validator__ValidatorId` on the validator-service.
+
+**Procedure (manual fallback — only if the script can't run):**
 
 ```bash
 # Step 5a: tear down with volumes wiped
