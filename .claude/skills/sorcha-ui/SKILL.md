@@ -231,6 +231,26 @@ PageTest (Playwright NUnit)
 - [patterns](references/patterns.md) - Page implementation and test patterns
 - [workflows](references/workflows.md) - Development workflow and checklist
 
+## Audience-tag convention (Feature 123)
+
+`Sorcha.UI.Core` is partitioned by **audience** at the folder level — `Services/User/`, `Services/Admin/`, `Services/Shared/`, with the same three folders under `Models/`. When you add a new service interface or model type, the audience determines the folder.
+
+**Pick the audience by asking: "does an end user on a user-facing page need this?"**
+- Only end users → `Services/User/<Subject>/` or `Models/User/<Subject>/`
+- Only admin/designer → `Services/Admin/<Subject>/` or `Models/Admin/<Subject>/`
+- Both → `Services/Shared/<Subject>/` with a narrow `I<Subject>ReadService` interface (the Shared read interface does NOT inherit from the Admin interface — admin pages that need both inject both)
+
+**Namespaces stay at the subject level** — a file in `Models/User/Forms/` declares `namespace Sorcha.UI.Core.Models.Forms;`, not `…Models.User.Forms;`. The audience folder is filesystem metadata, not part of the type's address. This is what keeps consumer `using` directives stable across moves.
+
+**Bi-modal smell detector** — stop and refactor before any of these solidify:
+- An interface directly under `Services/` (not in an audience folder).
+- A plain `IFooService` whose methods mix "list things for the signed-in user" with "manage admin policy" — split it into two interfaces, same concrete class.
+- A DTO record defined inside a service-interface file (extract to `Services/Shared/<Subject>/<Dto>.cs`, keep the original namespace).
+- A user-facing component injecting `*AdminService`.
+- An admin page injecting a Shared read interface and transitively pulling admin-only types from its return values — the "Shared" interface isn't actually shared.
+
+Full convention + worked examples: `src/Apps/Sorcha.UI/Sorcha.UI.Core/README.md`. Motivating discovery (what bi-modal coupling did to Feature 122 Phase 2): `specs/122-shared-user-components/phase-2-discovery.md`.
+
 ## Related Skills
 
 - See the **blazor** skill for Blazor WASM component architecture

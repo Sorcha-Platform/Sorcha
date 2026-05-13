@@ -78,6 +78,8 @@ dotnet restore && dotnet build && dotnet test
 
 **Designer UI:** `/designer/blueprint` is the canonical route (replaces legacy `/designer` and `/designer/chat`).
 
+**Sorcha.UI.Core audience convention (Feature 123):** user-facing and admin-facing code in `Sorcha.UI.Core` is partitioned at folder level into `Services/User/`, `Services/Admin/`, `Services/Shared/` (and the same pattern under `Models/`). Folders carry the audience; namespaces stay at the subject level so consumer `using` directives are stable across moves. See `src/Apps/Sorcha.UI/Sorcha.UI.Core/README.md` for the full convention and bi-modal smell detector.
+
 Full project tree: `docs/reference/project-structure.md`. Architecture diagrams: `docs/reference/architecture.md`.
 
 ---

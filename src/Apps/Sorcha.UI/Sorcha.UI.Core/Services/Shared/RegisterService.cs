@@ -14,7 +14,7 @@ namespace Sorcha.UI.Core.Services;
 /// <summary>
 /// HTTP client implementation for Register API operations.
 /// </summary>
-public class RegisterService : IRegisterService
+public class RegisterService : IRegisterReadService, IRegisterGovernanceService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<RegisterService> _logger;

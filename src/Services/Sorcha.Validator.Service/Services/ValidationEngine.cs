@@ -35,6 +35,7 @@ public class ValidationEngine : IValidationEngine
     private readonly ICryptoModule _cryptoModule;
     private readonly IWalletUtilities _walletUtilities;
     private readonly IRegisterServiceClient _registerClient;
+    private readonly IChainTransactionCache? _chainTxCache;
     private readonly IRightsEnforcementService _rightsEnforcementService;
     private readonly IWalletSequenceRepository? _walletSequenceRepository;
     private readonly ILogger<ValidationEngine> _logger;
@@ -58,7 +59,8 @@ public class ValidationEngine : IValidationEngine
         IRightsEnforcementService rightsEnforcementService,
         ILogger<ValidationEngine> logger,
         IBlueprintFetcher? blueprintFetcher = null,
-        IWalletSequenceRepository? walletSequenceRepository = null)
+        IWalletSequenceRepository? walletSequenceRepository = null,
+        IChainTransactionCache? chainTxCache = null)
     {
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _blueprintCache = blueprintCache ?? throw new ArgumentNullException(nameof(blueprintCache));
@@ -68,6 +70,7 @@ public class ValidationEngine : IValidationEngine
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
         _walletUtilities = walletUtilities ?? throw new ArgumentNullException(nameof(walletUtilities));
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
+        _chainTxCache = chainTxCache;
         _rightsEnforcementService = rightsEnforcementService ?? throw new ArgumentNullException(nameof(rightsEnforcementService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -805,8 +808,17 @@ public class ValidationEngine : IValidationEngine
             var previousTxId = transaction.PreviousTransactionId;
             if (!string.IsNullOrWhiteSpace(previousTxId))
             {
-                var previousTx = await _registerClient.GetTransactionAsync(
-                    transaction.RegisterId, previousTxId, ct);
+                // Cached predecessor lookup — sealed register transactions are
+                // immutable, so the L1+L2 cache (Redis + local) shaves the
+                // MongoDB roundtrip out of the hot path for repeat lookups
+                // within a docket batch. Falls through to direct fetch when
+                // the cache is not wired up (legacy DI / tests).
+                var previousTx = _chainTxCache is not null
+                    ? await _chainTxCache.GetOrFetchAsync(
+                        transaction.RegisterId, previousTxId,
+                        (reg, tx, token) => _registerClient.GetTransactionAsync(reg, tx, token), ct)
+                    : await _registerClient.GetTransactionAsync(
+                        transaction.RegisterId, previousTxId, ct);
 
                 if (previousTx == null)
                 {
@@ -1156,8 +1168,14 @@ public class ValidationEngine : IValidationEngine
 
             if (!isIntraActionLifecycleTx && !string.IsNullOrWhiteSpace(transaction.PreviousTransactionId))
             {
-                var previousTx = await _registerClient.GetTransactionAsync(
-                    transaction.RegisterId, transaction.PreviousTransactionId, ct);
+                // Same predecessor lookup as the chain section — reuse the cache so
+                // repeated route-reachability checks within a docket don't double-fetch.
+                var previousTx = _chainTxCache is not null
+                    ? await _chainTxCache.GetOrFetchAsync(
+                        transaction.RegisterId, transaction.PreviousTransactionId,
+                        (reg, tx, token) => _registerClient.GetTransactionAsync(reg, tx, token), ct)
+                    : await _registerClient.GetTransactionAsync(
+                        transaction.RegisterId, transaction.PreviousTransactionId, ct);
 
                 if (previousTx?.MetaData?.ActionId != null)
                 {

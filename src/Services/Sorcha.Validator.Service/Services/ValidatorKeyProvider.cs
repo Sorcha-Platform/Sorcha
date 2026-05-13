@@ -14,9 +14,20 @@ namespace Sorcha.Validator.Service.Services;
 /// is the key we need; the signature itself is discarded.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Probe-by-sign is the simplest path that doesn't require changing the Wallet.Service API
 /// surface. The sentinel is a fixed 32-byte hash, pre-hashed, so the operation is fast and
 /// adds no side effects. Result is cached for the process lifetime.
+/// </para>
+/// <para>
+/// Security note — the sentinel bytes (<c>"sorcha:validator-key-probe"</c> zero-padded to
+/// 32 bytes) are PUBLIC and not a valid docket-hash. A signature over the sentinel cannot
+/// be replayed against any Sorcha verifier: <see cref="Sorcha.Cryptography.Utilities.DocketHasher"/>
+/// produces 32-byte SHA-256 outputs of canonical docket envelopes, and the sentinel is
+/// neither (it's lower-case ASCII followed by null bytes). Audit logs that capture all
+/// validator-key-signing operations will see one signature per validator startup over
+/// this constant — that's expected and benign, not a credential leak.
+/// </para>
 /// </remarks>
 public sealed class ValidatorKeyProvider : IValidatorKeyProvider
 {

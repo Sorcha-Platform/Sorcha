@@ -153,29 +153,12 @@ public interface IOrganizationAdminService
 
 }
 
-/// <summary>
-/// Organization DTO for client-side use.
-/// </summary>
-public record OrganizationDto
-{
-    public Guid Id { get; init; }
-    public string Name { get; init; } = string.Empty;
-    public string Subdomain { get; init; } = string.Empty;
-    public string Status { get; init; } = "Active";
-    public DateTimeOffset CreatedAt { get; init; }
-    public BrandingDto? Branding { get; init; }
-}
-
-/// <summary>
-/// Branding configuration DTO.
-/// </summary>
-public record BrandingDto
-{
-    public string? LogoUrl { get; init; }
-    public string? PrimaryColor { get; init; }
-    public string? SecondaryColor { get; init; }
-    public string? CompanyTagline { get; init; }
-}
+// OrganizationDto + BrandingDto extracted to Services/Shared/Organization/
+// (Feature 123) so user-facing components can declare them as parameter
+// types without inheriting this admin-service file's surface. Namespace
+// preserved (Sorcha.UI.Core.Services) so consumer using directives remain
+// unchanged. The remaining DTOs below (CreateOrganizationDto,
+// UpdateOrganizationDto, UserDto, etc.) are admin-only and stay co-located.
 
 /// <summary>
 /// Request to create an organization.

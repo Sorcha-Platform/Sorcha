@@ -36,6 +36,11 @@ public sealed class ConfiguredLocalIdentityProvider : ILocalIdentityProvider
     private readonly IOptionsMonitor<LocalIdentityOptions> _options;
     private readonly ILogger<ConfiguredLocalIdentityProvider>? _logger;
     private LocalIdentitySnapshot? _cached;
+    // Sync lock is correct here: the critical section in GetAsync does no awaiting
+    // (configuration read + Base64 decode + cache set are all synchronous), so the
+    // heavier SemaphoreSlim primitive used by ValidatorKeyProvider would be wasted.
+    // The two providers' lock-type choice intentionally differs based on whether
+    // their critical sections cross an await boundary.
     private readonly object _gate = new();
 
     public ConfiguredLocalIdentityProvider(

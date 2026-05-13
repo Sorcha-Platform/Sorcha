@@ -4,12 +4,16 @@
 #pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
 
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 using Microsoft.AspNetCore.Mvc;
 
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Blueprint.Service.Services;
+using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.Blueprint.Service.Endpoints;
@@ -95,6 +99,7 @@ public static class CredentialEndpoints
         string credentialId,
         [FromBody] RevokeCredentialRequest request,
         IWalletServiceClient walletClient,
+        IRegisterServiceClient registerClient,
         IStatusListManager statusListManager,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -122,6 +127,12 @@ public static class CredentialEndpoints
 
         await TryUpdateRecipientStatus(credential.Value, request.IssuerWallet, credentialId, "Revoked", walletClient, logger, cancellationToken);
 
+        // Multi-node audit CRITICAL #2 — propagate the status change to the holder's node
+        // via a register transaction. Direct UpdateRecipientStatus HTTP only reaches the
+        // holder when issuer + holder share a wallet service; this is the cross-node path.
+        await TrySubmitStatusChangeTransactionAsync(
+            credential.Value, request.IssuerWallet, "Revoked", request.Reason, registerClient, logger, cancellationToken);
+
         // Update bitstring status list (set bit = revoked)
         var statusListUpdated = await TryUpdateStatusListBit(
             credential.Value, true, request.Reason ?? "Revoked", statusListManager, logger, cancellationToken);
@@ -146,6 +157,7 @@ public static class CredentialEndpoints
         string credentialId,
         [FromBody] LifecycleCredentialRequest request,
         IWalletServiceClient walletClient,
+        IRegisterServiceClient registerClient,
         IStatusListManager statusListManager,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -169,6 +181,10 @@ public static class CredentialEndpoints
 
         await TryUpdateRecipientStatus(credential.Value, request.IssuerWallet, credentialId, "Suspended", walletClient, logger, cancellationToken);
 
+        // Multi-node audit CRITICAL #2 — see RevokeCredential for the same path.
+        await TrySubmitStatusChangeTransactionAsync(
+            credential.Value, request.IssuerWallet, "Suspended", request.Reason, registerClient, logger, cancellationToken);
+
         // Update bitstring status list (set bit = suspended)
         var statusListUpdated = await TryUpdateStatusListBit(
             credential.Value, true, request.Reason ?? "Suspended", statusListManager, logger, cancellationToken);
@@ -191,6 +207,7 @@ public static class CredentialEndpoints
         string credentialId,
         [FromBody] LifecycleCredentialRequest request,
         IWalletServiceClient walletClient,
+        IRegisterServiceClient registerClient,
         IStatusListManager statusListManager,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -213,6 +230,10 @@ public static class CredentialEndpoints
             return Results.Problem("Failed to reinstate credential");
 
         await TryUpdateRecipientStatus(credential.Value, request.IssuerWallet, credentialId, "Active", walletClient, logger, cancellationToken);
+
+        // Multi-node audit CRITICAL #2 — see RevokeCredential for the same path.
+        await TrySubmitStatusChangeTransactionAsync(
+            credential.Value, request.IssuerWallet, "Active", request.Reason, registerClient, logger, cancellationToken);
 
         // Clear bitstring status list (clear bit = active again)
         var statusListUpdated = await TryUpdateStatusListBit(
@@ -348,6 +369,111 @@ public static class CredentialEndpoints
                 "Failed to update status list bit for credential {CredentialId}",
                 credential.CredentialId);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Submits a <see cref="TransactionType.CredentialStatusChange"/> register transaction
+    /// so the holder's wallet node — which may be on a different node than the issuer —
+    /// receives the lifecycle event via the existing InboundTransactionRouter pipeline and
+    /// applies the new status to its locally cached credential row. Best-effort: any failure
+    /// here is logged but does not break the lifecycle endpoint (the issuer's local row and
+    /// the BitstringStatusList are already updated and remain the authoritative artefacts).
+    /// </summary>
+    /// <remarks>
+    /// Multi-node audit CRITICAL #2 fix. The direct <c>TryUpdateRecipientStatus</c> HTTP
+    /// call is retained as a same-node fast path — on cross-node deployments it silently
+    /// no-ops (points at the issuer's wallet service), and this register-tx path is what
+    /// actually reaches the holder.
+    /// </remarks>
+    private static async Task TrySubmitStatusChangeTransactionAsync(
+        CredentialIssuanceResult credential,
+        string issuerWallet,
+        string newStatus,
+        string? reason,
+        IRegisterServiceClient registerClient,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(credential.RegisterId))
+        {
+            // Pre-Feature 106 credentials don't carry the originating RegisterId — there's
+            // nowhere to post the lifecycle tx to. Verifier-side checks still work via the
+            // BitstringStatusList; only the holder-side cached row will be stale.
+            logger.LogDebug(
+                "Skipping CredentialStatusChange register tx for {CredentialId}: no RegisterId on credential record",
+                credential.CredentialId);
+            return;
+        }
+
+        try
+        {
+            var payload = new CredentialStatusChangePayload
+            {
+                CredentialId = credential.CredentialId,
+                NewStatus = newStatus,
+                IssuerWallet = issuerWallet,
+                SubjectDid = credential.SubjectDid,
+                Reason = reason,
+                ChangedAt = DateTimeOffset.UtcNow,
+            };
+
+            var payloadJson = JsonSerializer.Serialize(payload);
+            var payloadBytes = Encoding.UTF8.GetBytes(payloadJson);
+
+            // Tx id = SHA-256(registerId : credentialId : newStatus : unix-ms). Deterministic
+            // enough for log correlation while colliding only on duplicate same-millisecond
+            // submissions (which would themselves be no-ops on the receiver).
+            var txIdSource = $"{credential.RegisterId}:{credential.CredentialId}:{newStatus}:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            var txIdHash = SHA256.HashData(Encoding.UTF8.GetBytes(txIdSource));
+            var txId = Convert.ToHexString(txIdHash).ToLowerInvariant();
+
+            var tx = new TransactionModel
+            {
+                TxId = txId,
+                RegisterId = credential.RegisterId,
+                SenderWallet = issuerWallet,
+                RecipientsWallets = new List<string> { credential.SubjectDid },
+                TimeStamp = DateTime.UtcNow,
+                PrevTxId = string.Empty,
+                MetaData = new TransactionMetaData
+                {
+                    RegisterId = credential.RegisterId,
+                    TransactionType = TransactionType.CredentialStatusChange,
+                    TrackingData = new Dictionary<string, string>
+                    {
+                        ["credentialId"] = credential.CredentialId,
+                        ["newStatus"] = newStatus,
+                    },
+                },
+                PayloadCount = 1,
+                Payloads = new[]
+                {
+                    new PayloadModel
+                    {
+                        Data = Convert.ToBase64String(payloadBytes),
+                        ContentType = "application/json",
+                        ContentEncoding = "base64",
+                        WalletAccess = new[] { credential.SubjectDid },
+                    },
+                },
+                Signature = issuerWallet,
+            };
+
+            await registerClient.SubmitTransactionAsync(credential.RegisterId, tx);
+
+            logger.LogInformation(
+                "CredentialStatusChange tx {TxId} submitted: credential {CredentialId} → {NewStatus} (subject {Subject})",
+                txId, credential.CredentialId, newStatus, credential.SubjectDid);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort — log and continue. The BitstringStatusList update is what
+            // gates verifier-side checks; the holder UI will be stale until a future
+            // rebuild or manual refresh.
+            logger.LogWarning(ex,
+                "Failed to submit CredentialStatusChange register tx for {CredentialId} → {NewStatus}",
+                credential.CredentialId, newStatus);
         }
     }
 

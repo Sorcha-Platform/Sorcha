@@ -67,6 +67,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IInstanceBindingCache? _bindingCache;
     private readonly TransactionConfirmationOptions _confirmationOptions;
     private readonly bool _credentialStatusEmbeddingEnabled;
+    private readonly Configuration.WalletOwnershipSettings _walletOwnershipSettings;
     private readonly ILogger<ActionExecutionService> _logger;
     private static readonly ActivitySource ActivitySource = new("Sorcha.Blueprint.Service.ActionExecution");
 
@@ -102,7 +103,8 @@ public class ActionExecutionService : IActionExecutionService
         IPeerServiceClient? peerClient = null,
         IPresentationLifecycleService? presentationLifecycle = null,
         IPresentationRateLimiter? presentationRateLimiter = null,
-        PresentationLifecycleMetrics? presentationMetrics = null)
+        PresentationLifecycleMetrics? presentationMetrics = null,
+        IOptions<Configuration.WalletOwnershipSettings>? walletOwnershipSettings = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -136,6 +138,9 @@ public class ActionExecutionService : IActionExecutionService
         // behaviour for dev environments that do not run a status list manager.
         _credentialStatusEmbeddingEnabled =
             configuration?.GetValue<bool?>("CredentialStatus:EnableEmbedding") ?? true;
+
+        _walletOwnershipSettings = walletOwnershipSettings?.Value
+            ?? new Configuration.WalletOwnershipSettings();
     }
 
     /// <inheritdoc/>
@@ -2186,8 +2191,10 @@ public class ActionExecutionService : IActionExecutionService
         }
 
         // Look up participant for this user + org.
-        // If the Participant Service is unavailable or the user has no profile,
-        // degrade gracefully — the user is already authenticated via JWT.
+        // Multi-node audit CRITICAL #3 — cross-node Participant Service failures
+        // (network blips between nodes) must NOT silently degrade authorization
+        // to "any authenticated user". Enforcement mode is fail-closed by default;
+        // dev environments opt out via Security:WalletOwnership:EnforcementMode=FailOpen.
         ParticipantInfo? participant;
         try
         {
@@ -2195,14 +2202,33 @@ public class ActionExecutionService : IActionExecutionService
         }
         catch (Exception ex)
         {
+            if (_walletOwnershipSettings.EnforcementMode == Configuration.WalletOwnershipEnforcementMode.FailClosed)
+            {
+                _logger.LogError(ex,
+                    "Participant Service unavailable for wallet ownership check — rejecting request (fail-closed). Wallet: {Wallet}",
+                    senderWallet);
+                throw new UnauthorizedAccessException(
+                    "Participant Service unavailable; cannot verify wallet ownership.");
+            }
+
             _logger.LogWarning(ex,
-                "Participant Service unavailable for wallet ownership check — allowing authenticated user. Wallet: {Wallet}",
+                "Participant Service unavailable for wallet ownership check — allowing authenticated user (fail-open). Wallet: {Wallet}",
                 senderWallet);
             return;
         }
 
         if (participant == null)
         {
+            if (!_walletOwnershipSettings.AllowMissingParticipant
+                && _walletOwnershipSettings.EnforcementMode == Configuration.WalletOwnershipEnforcementMode.FailClosed)
+            {
+                _logger.LogWarning(
+                    "No participant profile found for user {UserId} in org {OrgId} — rejecting request (fail-closed). Wallet: {Wallet}",
+                    userId, orgId, senderWallet);
+                throw new UnauthorizedAccessException(
+                    "No participant profile linked to authenticated user.");
+            }
+
             _logger.LogWarning(
                 "No participant profile found for user {UserId} in org {OrgId} — allowing authenticated user. Wallet: {Wallet}",
                 userId, orgId, senderWallet);
@@ -2222,8 +2248,17 @@ public class ActionExecutionService : IActionExecutionService
         }
         catch (Exception ex)
         {
+            if (_walletOwnershipSettings.EnforcementMode == Configuration.WalletOwnershipEnforcementMode.FailClosed)
+            {
+                _logger.LogError(ex,
+                    "Failed to fetch linked wallets for participant {ParticipantId} — rejecting request (fail-closed)",
+                    participant.Id);
+                throw new UnauthorizedAccessException(
+                    "Linked-wallets lookup failed; cannot verify wallet ownership.");
+            }
+
             _logger.LogWarning(ex,
-                "Failed to fetch linked wallets for participant {ParticipantId} — allowing authenticated user",
+                "Failed to fetch linked wallets for participant {ParticipantId} — allowing authenticated user (fail-open)",
                 participant.Id);
             return;
         }
@@ -2233,6 +2268,16 @@ public class ActionExecutionService : IActionExecutionService
 
         if (!walletMatch)
         {
+            if (!_walletOwnershipSettings.AllowUnlinkedWallet
+                && _walletOwnershipSettings.EnforcementMode == Configuration.WalletOwnershipEnforcementMode.FailClosed)
+            {
+                _logger.LogWarning(
+                    "Wallet {Wallet} is not linked to participant {ParticipantId} — rejecting request (fail-closed)",
+                    senderWallet, participant.Id);
+                throw new UnauthorizedAccessException(
+                    "Sender wallet is not linked to authenticated participant.");
+            }
+
             _logger.LogWarning(
                 "Wallet {Wallet} is not linked to participant {ParticipantId} — allowing authenticated user (participant system may not be fully configured)",
                 senderWallet, participant.Id);

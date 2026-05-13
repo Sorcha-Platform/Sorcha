@@ -252,6 +252,25 @@ public static class JwtAuthenticationExtensions
                         var userId = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                         var orgId = context.Principal?.FindFirst("org_id")?.Value;
 
+                        // Defensive observability: every user-type token must carry
+                        // platform_user_id — it's the key for PlatformUser-scoped tables
+                        // (inbox, wallet hub groups, persona, etc). A missing claim
+                        // means callers will hit silent 401 storms on endpoints that
+                        // scope by that key. We've seen this happen when stale Docker
+                        // images get promoted to `latest` without rebuilding from the
+                        // current source. Surface it as a single warning at validation
+                        // time rather than a flood of 401s from downstream handlers.
+                        var tokenType = context.Principal?.FindFirst("token_type")?.Value;
+                        if (string.Equals(tokenType, "user", StringComparison.Ordinal)
+                            && string.IsNullOrEmpty(context.Principal?.FindFirst("platform_user_id")?.Value))
+                        {
+                            logger.LogWarning(
+                                "User-type JWT validated WITHOUT platform_user_id claim on {RequestPath} (sub: {Sub}, org: {OrgId}). " +
+                                "PlatformUser-scoped endpoints (inbox, /hubs/wallet, persona) will return 401. " +
+                                "This typically means the tenant-service image was built before the platform_user_id claim was added — rebuild and redeploy from current master.",
+                                context.HttpContext.Request.Path, userId, orgId);
+                        }
+
                         // Check token revocation if a revocation store is registered (FR-006)
                         var revocationStore = context.HttpContext.RequestServices
                             .GetService<ITokenRevocationStore>();
