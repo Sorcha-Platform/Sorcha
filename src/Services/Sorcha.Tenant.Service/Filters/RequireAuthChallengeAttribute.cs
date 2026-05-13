@@ -56,6 +56,7 @@ public sealed class RequireAuthChallengeFilter : IEndpointFilter
     {
         var http = context.HttpContext;
         var repository = http.RequestServices.GetRequiredService<IAuthChallengeRepository>();
+        var identityRepository = http.RequestServices.GetRequiredService<IIdentityRepository>();
         var metrics = http.RequestServices.GetRequiredService<AuthMetrics>();
         var logger = http.RequestServices.GetRequiredService<ILogger<RequireAuthChallengeFilter>>();
 
@@ -83,7 +84,7 @@ public sealed class RequireAuthChallengeFilter : IEndpointFilter
         }
 
         // Step 3a: caller matches token owner.
-        var callerPlatformUserId = TryGetPlatformUserId(http);
+        var callerPlatformUserId = await TryGetPlatformUserIdAsync(http, identityRepository, http.RequestAborted);
         if (callerPlatformUserId is null || callerPlatformUserId.Value != token.PlatformUserId)
         {
             metrics.RecordChallengeConsumed(token.Method, _expectedOperation, ChallengeConsumeOutcome.Mismatch);
@@ -138,15 +139,28 @@ public sealed class RequireAuthChallengeFilter : IEndpointFilter
         return await next(context);
     }
 
-    private static Guid? TryGetPlatformUserId(HttpContext http)
+    private static async Task<Guid?> TryGetPlatformUserIdAsync(
+        HttpContext http,
+        IIdentityRepository identityRepository,
+        CancellationToken cancellationToken)
     {
         // Active sessions carry PlatformUserId as a custom claim (set by
-        // TokenService.GenerateUserTokenAsync). Falls back to the canonical
-        // sub claim only if the custom claim is absent — defensive, since
-        // sub holds UserIdentity.Id, not PlatformUserId.
+        // TokenService.GenerateUserTokenAsync). Falls back to sub →
+        // IIdentityRepository.GetUserByIdAsync.PlatformUserId for tokens
+        // that only carry the canonical sub claim (e.g. test JWTs from
+        // TestAuthHandler, or any future token issuer that omits the
+        // custom claim). Matches the resolver shape used by
+        // AuthMethodsEndpoints and PasskeyEndpoints.
         var pid = http.User.FindFirst("platform_user_id")?.Value
                   ?? http.User.FindFirst("pid")?.Value;
-        return Guid.TryParse(pid, out var id) ? id : null;
+        if (Guid.TryParse(pid, out var id)) return id;
+
+        var sub = http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                  ?? http.User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(sub, out var userIdentityId)) return null;
+
+        var user = await identityRepository.GetUserByIdAsync(userIdentityId, cancellationToken);
+        return user?.PlatformUserId;
     }
 
     private static string ComputeSha256Hex(string raw)

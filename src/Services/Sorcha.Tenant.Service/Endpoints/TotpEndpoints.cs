@@ -3,6 +3,8 @@
 
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Sorcha.Tenant.Service.Filters;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Endpoints;
@@ -72,13 +74,19 @@ public static class TotpEndpoints
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
 
-        // Disable — requires authenticated user
+        // Disable — requires authenticated user + a fresh re-authentication challenge
+        // (Feature 116 US3 / FR-024 — closes the hijacked-session unguarded-prune gap
+        // that would otherwise let a stolen bearer disable 2FA without proof of
+        // possession of any other factor).
         group.MapDelete("/", Disable)
             .WithName("TotpDisable")
             .WithSummary("Disable TOTP 2FA")
             .WithDescription("Removes TOTP two-factor authentication for the current user. "
-                + "The user will no longer need a TOTP code to log in.")
+                + "Requires a fresh X-Auth-Challenge token issued for Disable2Fa — the "
+                + "user must prove possession of another sign-in method before the second "
+                + "factor can be cleared.")
             .RequireAuthorization()
+            .RequireAuthChallenge(ScopedOperation.Disable2Fa)
             .Produces<TotpStatusResponse>()
             .Produces(StatusCodes.Status401Unauthorized);
 
