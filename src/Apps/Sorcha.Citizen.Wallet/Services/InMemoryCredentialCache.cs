@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Collections.Concurrent;
-using Sorcha.Citizen.Wallet.Services.Presentation;
+using Sorcha.UI.Core.Models.Presentation;
 
 namespace Sorcha.Citizen.Wallet.Services;
 

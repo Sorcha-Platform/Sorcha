@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using Sorcha.Citizen.Wallet.Services.Presentation;
+using Sorcha.UI.Core.Models.Presentation;
 
 namespace Sorcha.Citizen.Wallet.Services;
 

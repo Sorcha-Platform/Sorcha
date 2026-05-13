@@ -251,6 +251,17 @@ PageTest (Playwright NUnit)
 
 Full convention + worked examples: `src/Apps/Sorcha.UI/Sorcha.UI.Core/README.md`. Motivating discovery (what bi-modal coupling did to Feature 122 Phase 2): `specs/122-shared-user-components/phase-2-discovery.md`.
 
+## Shared user-facing component library (Feature 122)
+
+User-facing components shared between `Sorcha.UI` (web) and `Sorcha.Citizen.Wallet` (PWA) live in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`. The PWA references `Sorcha.UI.Components.User` directly; `Sorcha.UI.Core` ProjectReferences it (transparent re-export to the six web host apps).
+
+**Placement rule when adding a new component:**
+- User-facing, possibly shared with PWA → `Sorcha.UI.Components.User/Components/<Subject>/`
+- Admin / designer / explorer only → `Sorcha.UI.Core/Components/<Subject>/`
+- User-facing models the PWA also needs → `Sorcha.UI.Components.User/Models/User/<Subject>/` (folder is metadata; namespace stays `Sorcha.UI.Core.Models.<Subject>` per the audience-tag convention above)
+
+Full placement matrix + worked examples: `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/README.md`. CI bundle-hygiene gate: `scripts/check-pwa-bundle.ps1` (wired into `nuget-ci.yml`) asserts forbidden assemblies absent + `Sorcha.UI.Components.User` present in the PWA bundle on every push.
+
 ## Related Skills
 
 - See the **blazor** skill for Blazor WASM component architecture

@@ -153,18 +153,18 @@ When Feature 123 merges, the steps below execute against a cleaner target. The o
 
 ### Implementation — Inverse migration (PWA-grown components elevated to the library)
 
-- [ ] T041 [US4] Move `src/Apps/Sorcha.Citizen.Wallet/Components/ConsentSheet.razor` → `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Presentation/ConsentSheet.razor`. Update its namespace to `Sorcha.UI.Components.User.Components.Presentation`. Use `git mv`.
-- [ ] T042 [US4] [P] Move `src/Apps/Sorcha.Citizen.Wallet/Components/CredentialPickerDialog.razor` → `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Presentation/CredentialPickerDialog.razor`. Update namespace. Use `git mv`.
-- [ ] T043 [US4] [P] Move `src/Apps/Sorcha.Citizen.Wallet/Components/NoMatchingCredentialDialog.razor` → `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Presentation/NoMatchingCredentialDialog.razor`. Update namespace. Use `git mv`.
-- [ ] T044 [US4] Update `src/Apps/Sorcha.Citizen.Wallet/_Imports.razor` and every Citizen.Wallet page that referenced the three moved components to use the new `Sorcha.UI.Components.User.Components.Presentation` namespace. Grep for `Sorcha.Citizen.Wallet.Components.ConsentSheet`, `...CredentialPickerDialog`, `...NoMatchingCredentialDialog` to find all consumers.
-- [ ] T045 [US4] Run `dotnet build src/Apps/Sorcha.Citizen.Wallet/Sorcha.Citizen.Wallet.csproj`. **Required outcome**: zero errors. Run `scripts/check-pwa-bundle.ps1` to confirm bundle hygiene preserved.
+- [x] T041 [US4] Move `src/Apps/Sorcha.Citizen.Wallet/Components/ConsentSheet.razor` → `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Presentation/ConsentSheet.razor`. **Namespace deviation**: post-F123, `Sorcha.UI.Components.User` carries `RootNamespace=Sorcha.UI.Core`, so the actual landing namespace is `Sorcha.UI.Core.Components.Presentation` (not the spec's `Sorcha.UI.Components.User.Components.Presentation`). Used `git mv`.
+- [x] T042 [US4] [P] Move `CredentialPickerDialog.razor` to `Sorcha.UI.Core.Components.Presentation` (same namespace deviation as T041). Used `git mv`.
+- [x] T043 [US4] [P] Move `NoMatchingCredentialDialog.razor` to `Sorcha.UI.Core.Components.Presentation` (same namespace deviation). Used `git mv`.
+- [x] T044 [US4] Updated `Sorcha.Citizen.Wallet/_Imports.razor` (+ `@using Sorcha.UI.Core.Components.Presentation` and `@using Sorcha.UI.Core.Models.Presentation`). Records `ParsedPresentationRequest`, `CachedCredential`, `CredentialMatch` moved from `Sorcha.Citizen.Wallet/Services/Presentation/Models.cs` → `Sorcha.UI.Components.User/Models/User/Presentation/PresentationModels.cs` (namespace `Sorcha.UI.Core.Models.Presentation`); 4 service files (`ICredentialCache`, `IndexedDbCredentialCache`, `InMemoryCredentialCache`, `ISyncService`) swapped their using; 2 engine files (`IPresentationEngine`, `PresentationEngine`) added an extra using (engines stay PWA-side); 2 test files updated.
+- [x] T045 [US4] `dotnet build Sorcha.Citizen.Wallet.csproj` 0 errors; `scripts/check-pwa-bundle.ps1` PASSED (107 assemblies, forbidden absent, Sorcha.UI.Components.User present).
 
 ### Implementation — Documentation
 
-- [ ] T046 [US4] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/README.md` containing a condensed version of `specs/122-shared-user-components/quickstart.md`: the consume / add-new / decide-where-it-belongs workflows plus the worked-examples table. Keep it under 200 lines.
-- [ ] T047 [US4] Update `CLAUDE.md` — add a one-line pointer under the existing "Sorcha.UI" or Architecture subsection: "User-facing components shared between `Sorcha.UI` and `Sorcha.Citizen.Wallet` live in `Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`." Match the existing style of the surrounding lines.
-- [ ] T048 [US4] Update `.claude/skills/sorcha-ui/SKILL.md` — add a section "Shared user-facing component library" pointing at `Sorcha.UI.Components.User` with a brief description of the boundary rule. This ensures future skill-driven work places new components correctly on the first attempt (SC-005).
-- [ ] T049 [US4] Commit with message `feat(122): inverse-migrate PWA consent/picker dialogs to shared library; document boundary`.
+- [x] T046 [US4] Component-library `README.md` shipped in F122 PR #657 (Phase 5+6 follow-up) — predates this PR. Already covers the consume / add-new / decide-where-it-belongs workflows.
+- [x] T047 [US4] Added two-paragraph pointer in `CLAUDE.md` directly below the F123 audience-convention block.
+- [x] T048 [US4] Added "Shared user-facing component library (Feature 122)" section to `.claude/skills/sorcha-ui/SKILL.md` with placement rule + bundle-hygiene gate reference.
+- [x] T049 [US4] Commit message: `feat(122 US4): inverse-migrate PWA consent/picker dialogs to shared library; document boundary`.
 
 **Checkpoint**: Inverse migration complete, library boundary documented in three places (library README, CLAUDE.md, sorcha-ui skill). User Story 4 satisfied — developer-experience outcome shipped.
 

@@ -11,8 +11,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.Citizen.Wallet.Services;
-using Sorcha.Citizen.Wallet.Services.Presentation;
 using Sorcha.ServiceClients.CitizenWallet;
+using Sorcha.UI.Core.Models.Presentation;
 using Xunit;
 
 namespace Sorcha.Citizen.Wallet.Tests.Services;

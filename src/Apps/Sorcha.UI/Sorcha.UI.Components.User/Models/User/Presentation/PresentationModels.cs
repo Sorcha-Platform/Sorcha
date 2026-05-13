@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-namespace Sorcha.Citizen.Wallet.Services.Presentation;
+namespace Sorcha.UI.Core.Models.Presentation;
 
 /// <summary>Parsed shape of an <c>openid4vp://</c> cross-device deep link.</summary>
 public sealed record ParsedPresentationRequest
