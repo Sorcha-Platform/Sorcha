@@ -4,7 +4,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using Sorcha.CitizenWallet.Abstractions.Models;
-using Sorcha.Citizen.Wallet.Services.Presentation;
+using Sorcha.UI.Core.Models.Presentation;
 using Sorcha.ServiceClients.CitizenWallet;
 
 namespace Sorcha.Citizen.Wallet.Services;

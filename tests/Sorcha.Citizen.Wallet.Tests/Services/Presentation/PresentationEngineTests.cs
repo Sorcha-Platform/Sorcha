@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sorcha.Citizen.Wallet.Services.Presentation;
+using Sorcha.UI.Core.Models.Presentation;
 using Xunit;
 
 namespace Sorcha.Citizen.Wallet.Tests.Services.Presentation;

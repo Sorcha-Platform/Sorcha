@@ -3,7 +3,7 @@
 
 using System.Text.Json;
 using Microsoft.JSInterop;
-using Sorcha.Citizen.Wallet.Services.Presentation;
+using Sorcha.UI.Core.Models.Presentation;
 
 namespace Sorcha.Citizen.Wallet.Services;
 

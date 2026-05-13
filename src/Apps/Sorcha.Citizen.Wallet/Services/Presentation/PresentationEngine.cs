@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Web;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Models.Presentation;
 
 namespace Sorcha.Citizen.Wallet.Services.Presentation;
 
