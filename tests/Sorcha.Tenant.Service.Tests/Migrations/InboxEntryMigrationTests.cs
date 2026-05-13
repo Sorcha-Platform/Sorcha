@@ -11,8 +11,9 @@ using Xunit;
 namespace Sorcha.Tenant.Service.Tests.Migrations;
 
 /// <summary>
-/// Feature 118 T054 — guards the EF model that backs the
-/// <c>20260505175116_AddInboxEntry</c> migration: the table exists in the
+/// Feature 118 T054 — guards the EF model that backs the InboxEntry
+/// migration (originally <c>20260505175116_AddInboxEntry</c>, squashed
+/// into <c>InitialCreate</c> pre-release): the table exists in the
 /// configured schema, every required column is present with the expected
 /// nullability + length, and the four indexes on
 /// <c>PlatformUserId</c>-prefixed columns are declared (one of them

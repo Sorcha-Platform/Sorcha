@@ -145,6 +145,26 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "OrgDidDocuments",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    PrimaryDid = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    FederatedDid = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    DocumentJson = table.Column<string>(type: "character varying(16384)", maxLength: 16384, nullable: false),
+                    KeyVersionFingerprint = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    LastRegeneratedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    LastRegenerationReason = table.Column<int>(type: "integer", nullable: false),
+                    Version = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OrgDidDocuments", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "OrgInvitations",
                 schema: "public",
                 columns: table => new
@@ -543,6 +563,65 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "AuthChallengeTokens",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TokenHash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    Method = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    ScopedOperation = table.Column<string>(type: "character varying(24)", maxLength: 24, nullable: false),
+                    IssuedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    ConsumedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AuthChallengeTokens", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_AuthChallengeTokens_PlatformUsers_PlatformUserId",
+                        column: x => x.PlatformUserId,
+                        principalSchema: "public",
+                        principalTable: "PlatformUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "InboxEntries",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Category = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    Severity = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    CorrelationKey = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    DetailHref = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: false),
+                    SourceEventId = table.Column<Guid>(type: "uuid", nullable: false),
+                    OccurredAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    ReadAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    DismissedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    Title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Summary = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    IconKey = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
+                    ChannelHints = table.Column<int>(type: "integer", nullable: false),
+                    WriterServiceId = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InboxEntries", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_InboxEntries_PlatformUsers_PlatformUserId",
+                        column: x => x.PlatformUserId,
+                        principalSchema: "public",
+                        principalTable: "PlatformUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PasskeyCredentials",
                 schema: "public",
                 columns: table => new
@@ -593,6 +672,40 @@ namespace Sorcha.Tenant.Service.Migrations
                     table.PrimaryKey("PK_PlatformSocialLogins", x => x.Id);
                     table.ForeignKey(
                         name: "FK_PlatformSocialLogins_PlatformUsers_PlatformUserId",
+                        column: x => x.PlatformUserId,
+                        principalSchema: "public",
+                        principalTable: "PlatformUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PlatformUserDevices",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Label = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
+                    DevicePublicJwkThumbprint = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    DevicePublicJwkJson = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    Platform = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
+                    UserAgent = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    Status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    EnrolledAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    RevokedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    RevokedByPlatformUserId = table.Column<Guid>(type: "uuid", nullable: true),
+                    LastSeenAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    DelegationExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    DelegationCredentialJti = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    StatusListId = table.Column<int>(type: "integer", nullable: false),
+                    StatusListIndex = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PlatformUserDevices", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PlatformUserDevices_PlatformUsers_PlatformUserId",
                         column: x => x.PlatformUserId,
                         principalSchema: "public",
                         principalTable: "PlatformUsers",
@@ -714,6 +827,26 @@ namespace Sorcha.Tenant.Service.Migrations
                 column: "Timestamp");
 
             migrationBuilder.CreateIndex(
+                name: "IX_AuthChallengeToken_ExpiresAt",
+                schema: "public",
+                table: "AuthChallengeTokens",
+                column: "ExpiresAt");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuthChallengeToken_User_Active",
+                schema: "public",
+                table: "AuthChallengeTokens",
+                columns: new[] { "PlatformUserId", "ConsumedAt" },
+                filter: "\"ConsumedAt\" IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "UQ_AuthChallengeToken_TokenHash",
+                schema: "public",
+                table: "AuthChallengeTokens",
+                column: "TokenHash",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_CustomDomainMappings_Domain",
                 schema: "public",
                 table: "CustomDomainMappings",
@@ -738,6 +871,31 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public",
                 table: "IdentityProviderConfigurations",
                 columns: new[] { "OrganizationId", "ProviderPreset" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InboxEntries_PlatformUserId_Category_OccurredAt",
+                schema: "public",
+                table: "InboxEntries",
+                columns: new[] { "PlatformUserId", "Category", "OccurredAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InboxEntries_PlatformUserId_CorrelationKey_OccurredAt",
+                schema: "public",
+                table: "InboxEntries",
+                columns: new[] { "PlatformUserId", "CorrelationKey", "OccurredAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InboxEntries_PlatformUserId_OccurredAt",
+                schema: "public",
+                table: "InboxEntries",
+                columns: new[] { "PlatformUserId", "OccurredAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InboxEntries_PlatformUserId_SourceEventId",
+                schema: "public",
+                table: "InboxEntries",
+                columns: new[] { "PlatformUserId", "SourceEventId" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -800,6 +958,25 @@ namespace Sorcha.Tenant.Service.Migrations
                 table: "Organizations",
                 column: "Subdomain",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgDidDocuments_FederatedDid",
+                schema: "public",
+                table: "OrgDidDocuments",
+                column: "FederatedDid");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgDidDocuments_OrganizationId",
+                schema: "public",
+                table: "OrgDidDocuments",
+                column: "OrganizationId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgDidDocuments_PrimaryDid",
+                schema: "public",
+                table: "OrgDidDocuments",
+                column: "PrimaryDid");
 
             migrationBuilder.CreateIndex(
                 name: "IX_OrgInvitations_OrganizationId_Email_Status",
@@ -885,6 +1062,24 @@ namespace Sorcha.Tenant.Service.Migrations
                 table: "PlatformSocialLogins",
                 columns: new[] { "Provider", "Subject" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PlatformUserDevices_DevicePublicJwkThumbprint",
+                schema: "public",
+                table: "PlatformUserDevices",
+                column: "DevicePublicJwkThumbprint");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PlatformUserDevices_PlatformUserId_Status",
+                schema: "public",
+                table: "PlatformUserDevices",
+                columns: new[] { "PlatformUserId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PlatformUserDevices_StatusListIndex",
+                schema: "public",
+                table: "PlatformUserDevices",
+                column: "StatusListIndex");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PlatformUserOrgMemberships_OrganizationId",
@@ -1042,11 +1237,19 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public");
 
             migrationBuilder.DropTable(
+                name: "AuthChallengeTokens",
+                schema: "public");
+
+            migrationBuilder.DropTable(
                 name: "CustomDomainMappings",
                 schema: "public");
 
             migrationBuilder.DropTable(
                 name: "IdentityProviderConfigurations",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "InboxEntries",
                 schema: "public");
 
             migrationBuilder.DropTable(
@@ -1063,6 +1266,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "OrganizationRegisterSubscriptions",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "OrgDidDocuments",
                 schema: "public");
 
             migrationBuilder.DropTable(
@@ -1087,6 +1294,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "PlatformSocialLogins",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "PlatformUserDevices",
                 schema: "public");
 
             migrationBuilder.DropTable(
