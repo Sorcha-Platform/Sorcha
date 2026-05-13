@@ -115,37 +115,20 @@ public class SystemRegisterCreateCommand : Command
         var mnemonic = new Mnemonic(Wordlist.English, WordCount.TwentyFour);
         var mnemonicWords = mnemonic.ToString();
 
-        // The runtime wallet-service derives purpose keys via this chain (see
-        // Sorcha.Wallet.Core.Services.Implementation.{KeyManagementService,WalletManager}):
-        //   1. Mnemonic → master ExtKey → take its 32-byte private key as "masterKey"
-        //   2. RecoverWalletAsync stores the BIP44 0/0/0/0 *leaf* private key (after
-        //      ExtKey.CreateFromSeed(masterKey) wrapping) as EncryptedPrivateKey
-        //   3. Sign with derivationPath="sorcha:docket-signing" decrypts that leaf
-        //      and runs ExtKey.CreateFromSeed(leaf) → derives m/44'/0'/0'/0/102
-        // The genesis ceremony MUST replicate this exact chain so the roster pubkey
-        // matches what validator-service signs with at runtime. The previous direct
-        // mnemonic→m/44'/0'/0'/0/102 derivation produced a roster the validator
-        // could never match, leaving the system register stuck pre-seal forever
-        // (#461 phase 4 federation deadlock).
-        var masterKey = mnemonic.DeriveExtKey().PrivateKey.ToBytes();
+        // Direct BIP32 derivation off the master ExtKey — this matches the
+        // runtime sign path post-#471 (wallet-service decrypts the master
+        // seed blob and derives purpose keys with a single HMAC). Pre-#471
+        // the runtime walked a double-HMAC chain (wrap leaf as fresh seed,
+        // derive again); the CLI had to replicate that quirk verbatim to
+        // keep the genesis roster matching the runtime. With the runtime
+        // fixed, the CLI uses the standard BIP32 chain too.
+        var masterExtKey = mnemonic.DeriveExtKey();
 
-        // Derive the BIP44 0/0/0/0 primary leaf the same way RecoverWalletAsync does:
-        // wrap masterKey as a fresh seed, derive 0/0/0/0, take its bytes, generate
-        // an ED25519 keypair — that keypair's PRIVATE KEY is what the wallet stores.
-        var fakeMaster1 = ExtKey.CreateFromSeed(masterKey);
-        var primaryLeafBytes = fakeMaster1.Derive(new KeyPath("m/44'/0'/0'/0/0")).PrivateKey.ToBytes();
-        var primaryKeyResult = await crypto.GenerateKeySetAsync(network, seed: primaryLeafBytes, cancellationToken: ct);
-        if (!primaryKeyResult.IsSuccess)
-        {
-            ConsoleHelper.WriteError($"Primary key generation failed: {primaryKeyResult.ErrorMessage}");
-            return ExitCodes.GeneralError;
-        }
-        var storedPrivateKey = primaryKeyResult.Value!.PrivateKey.Key!;
-
-        // Now derive sorcha:docket-signing the way SignTransactionAsync does:
-        // re-wrap the stored leaf private key as a seed, derive m/44'/0'/0'/0/102.
-        var fakeMaster2 = ExtKey.CreateFromSeed(storedPrivateKey);
-        var derivedPrivateKeyBytes = fakeMaster2.Derive(new KeyPath("m/44'/0'/0'/0/102")).PrivateKey.ToBytes();
+        // Derive sorcha:docket-signing (m/44'/0'/0'/0/102) directly off the
+        // master ExtKey. The resulting public key goes into the genesis
+        // validator roster and the validator-service signs dockets with
+        // the same key derived through the same chain at runtime.
+        var derivedPrivateKeyBytes = masterExtKey.Derive(new KeyPath("m/44'/0'/0'/0/102")).PrivateKey.ToBytes();
 
         // Generate ED25519 keypair from derived 32-byte seed
         var keyResult = await crypto.GenerateKeySetAsync(network, seed: derivedPrivateKeyBytes, cancellationToken: ct);
@@ -160,8 +143,8 @@ public class SystemRegisterCreateCommand : Command
         var privateKeyBytes = keySet.PrivateKey.Key!;
 
         // Also derive the register-control key (m/44'/0'/0'/0/101) for signing the genesis transaction.
-        // Same chain as docket-signing — wrap the stored leaf again, derive at /101.
-        var controlPrivateKeyBytes = fakeMaster2.Derive(new KeyPath("m/44'/0'/0'/0/101")).PrivateKey.ToBytes();
+        // Same direct-master chain as docket-signing — derive off the master ExtKey directly.
+        var controlPrivateKeyBytes = masterExtKey.Derive(new KeyPath("m/44'/0'/0'/0/101")).PrivateKey.ToBytes();
         var controlKeyResult = await crypto.GenerateKeySetAsync(network, seed: controlPrivateKeyBytes, cancellationToken: ct);
         if (!controlKeyResult.IsSuccess)
         {

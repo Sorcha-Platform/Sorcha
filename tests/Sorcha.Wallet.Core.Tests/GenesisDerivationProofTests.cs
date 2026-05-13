@@ -69,30 +69,22 @@ public class GenesisDerivationProofTests
         var (mnemonicWords, expectedRosterPubKey) = loaded.Value;
         var crypto = new CryptoModule();
 
-        // Replicate the wallet-service runtime chain — the path that
-        // ValidatorKeyProvider walks when asking for the validator's
-        // docket-signing public key:
+        // Post-#471 chain — runtime + CLI both derive purpose keys directly off
+        // the master ExtKey with a single HMAC inside ExtKey.CreateFromSeed.
         //
-        // 1. Mnemonic.DeriveSeed() returns mnemonic.DeriveExtKey().PrivateKey.ToBytes()
-        //    — the master ExtKey's 32-byte private key (NOT the BIP39 PBKDF2 seed).
+        // Runtime path (WalletManager.SignTransactionAsync, post-#471):
+        //   1. Decrypt wallet.EncryptedMasterKeyBlob → 64-byte BIP39 PBKDF2 seed
+        //   2. ExtKey.CreateFromSeed(seed) → master ExtKey
+        //   3. masterExtKey.Derive("m/44'/0'/0'/0/102") → docket-signing key
+        //
+        // CLI ceremony path (SystemRegisterCommands.ExecuteCreateAsync) does
+        // the same derivation off mnemonic.DeriveExtKey() (which is equivalent
+        // to ExtKey.CreateFromSeed(mnemonic.DeriveSeed())). The genesis file
+        // pubkey we load below was minted by the CLI; this test asserts the
+        // runtime would arrive at the same pubkey from the stored mnemonic.
         var mnemonic = new Mnemonic(mnemonicWords);
-        var masterKey = mnemonic.DeriveExtKey().PrivateKey.ToBytes();
-
-        // 2. RecoverWalletAsync derives the BIP44 0/0/0/0 primary leaf via
-        //    ExtKey.CreateFromSeed(masterKey) — this WRAPS the master priv as
-        //    a fresh seed (extra HMAC-SHA512 layer) — and stores the resulting
-        //    ED25519 private key as EncryptedPrivateKey.
-        var fakeMaster1 = ExtKey.CreateFromSeed(masterKey);
-        var primaryLeafBytes = fakeMaster1.Derive(new KeyPath("m/44'/0'/0'/0/0")).PrivateKey.ToBytes();
-        var primaryKey = await crypto.GenerateKeySetAsync(WalletNetworks.ED25519, seed: primaryLeafBytes);
-        primaryKey.IsSuccess.Should().BeTrue();
-        var storedPrivateKey = primaryKey.Value!.PrivateKey.Key!;
-
-        // 3. SignTransactionAsync with derivationPath="sorcha:docket-signing"
-        //    decrypts the leaf and runs ExtKey.CreateFromSeed(leaf) again,
-        //    deriving m/44'/0'/0'/0/102 from this fake-fresh master.
-        var fakeMaster2 = ExtKey.CreateFromSeed(storedPrivateKey);
-        var docketSigningSeed = fakeMaster2.Derive(new KeyPath("m/44'/0'/0'/0/102")).PrivateKey.ToBytes();
+        var masterExtKey = mnemonic.DeriveExtKey();
+        var docketSigningSeed = masterExtKey.Derive(new KeyPath("m/44'/0'/0'/0/102")).PrivateKey.ToBytes();
         var docketKey = await crypto.GenerateKeySetAsync(WalletNetworks.ED25519, seed: docketSigningSeed);
         docketKey.IsSuccess.Should().BeTrue();
 

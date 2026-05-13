@@ -61,14 +61,37 @@ public record Mnemonic
     public int WordCount => _mnemonic.Words.Length;
 
     /// <summary>
-    /// Derives a seed from the mnemonic with optional passphrase
+    /// Derives a seed from the mnemonic with optional passphrase.
     /// </summary>
+    /// <remarks>
+    /// Despite the name, this returns the 32-byte master ExtKey private key
+    /// (the output of HMAC-SHA512 over the BIP39 PBKDF2 seed), NOT the raw
+    /// BIP39 PBKDF2 seed itself. Wallet creation has always used this value
+    /// and the address-deriving chain depends on it; renaming the method
+    /// would break wallet-address stability. Prefer <see cref="DeriveBip39Seed"/>
+    /// for new code that needs to round-trip an ExtKey via
+    /// <c>ExtKey.CreateFromSeed(...)</c> without an extra HMAC round.
+    /// </remarks>
     /// <param name="passphrase">Optional passphrase for additional security</param>
-    /// <returns>The derived seed bytes</returns>
+    /// <returns>The derived 32-byte master private key</returns>
     public byte[] DeriveSeed(string? passphrase = null)
     {
         var extKey = _mnemonic.DeriveExtKey(passphrase);
         return extKey.PrivateKey.ToBytes();
+    }
+
+    /// <summary>
+    /// Derives the raw BIP39 PBKDF2 seed (64 bytes) from the mnemonic.
+    /// This is the canonical input to <c>NBitcoin.ExtKey.CreateFromSeed</c>
+    /// for BIP32 hierarchical derivation — feed it in once, derive purpose
+    /// keys directly with the path (e.g. <c>m/44'/0'/0'/0/102</c>) and no
+    /// additional HMAC round.
+    /// </summary>
+    /// <param name="passphrase">Optional BIP39 passphrase</param>
+    /// <returns>The 64-byte BIP39 PBKDF2 seed</returns>
+    public byte[] DeriveBip39Seed(string? passphrase = null)
+    {
+        return _mnemonic.DeriveSeed(passphrase ?? string.Empty);
     }
 
     /// <summary>

@@ -207,6 +207,43 @@ public class WalletManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task RecoverWalletAsync_ShouldPopulateEncryptedMasterKeyBlob_WithBip39Seed()
+    {
+        // Issue #471: RecoverWalletAsync must populate EncryptedMasterKeyBlob
+        // with the BIP39 PBKDF2 seed (64 bytes) so SignTransactionAsync can
+        // derive purpose keys directly via ExtKey.CreateFromSeed(seed) rather
+        // than the legacy double-HMAC chain off the BIP44 0/0/0/0 leaf.
+        var mnemonic = Mnemonic.Generate(12);
+
+        var wallet = await _walletManager.RecoverWalletAsync(
+            mnemonic, "Test", "ED25519", "user1", "tenant1");
+
+        wallet.EncryptedMasterKeyBlob.Should().NotBeNullOrEmpty(
+            "the master seed blob is the entry point for direct-master derivation");
+        wallet.RecoveryEnabled.Should().BeFalse(
+            "the recovered system wallet blob is wallet-service-managed, not a Feature 060 recovery-key blob");
+
+        // The blob round-trips through the wallet's own EncryptionKeyId, so
+        // wallet-service can decrypt it at sign time without needing a
+        // separately-issued recovery key.
+        var keyManagement = new KeyManagementService(
+            (Sorcha.Wallet.Core.Encryption.Interfaces.IKeyProtectionProvider)_encryptionProvider,
+            _mockCryptoModule.Object,
+            _mockWalletUtilities.Object,
+            Mock.Of<ILogger<KeyManagementService>>());
+        var decrypted = await keyManagement.DecryptPrivateKeyAsync(
+            wallet.EncryptedMasterKeyBlob!, wallet.EncryptionKeyId);
+        decrypted.Length.Should().Be(64,
+            "BIP39 PBKDF2 derives a 64-byte seed — this length is what differentiates the new blob from the legacy 32-byte master priv");
+
+        // The decrypted seed must equal the same NBitcoin BIP39 seed the
+        // mnemonic produces — i.e. the canonical input to ExtKey.CreateFromSeed.
+        var expectedSeed = new NBitcoin.Mnemonic(mnemonic.Phrase).DeriveSeed(string.Empty);
+        decrypted.Should().Equal(expectedSeed,
+            "the blob carries the canonical BIP39 PBKDF2 seed, not the post-HMAC 32-byte master priv");
+    }
+
+    [Fact]
     public async Task RecoverWalletAsync_ShouldThrow_WhenWalletAlreadyExists()
     {
         // Arrange
