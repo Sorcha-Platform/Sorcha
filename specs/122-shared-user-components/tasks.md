@@ -41,9 +41,9 @@ description: "Task list for Feature 122 — Shared User-Facing UI Component Libr
 
 ---
 
-## Phase 2: Foundational — Atomic File Move Across Folders  🛑 BLOCKED ON FEATURE 123
+## Phase 2: Foundational — Atomic File Move Across Folders
 
-**⚠️ STATUS — 2026-05-11:** Attempted, rolled back. See `phase-2-discovery.md` for full forensic narrative. Phase 2 is blocked on **Feature 123 (UI.Core User/Admin Type-Level Boundary Refactor)** because the user-facing/admin-facing boundary in `Sorcha.UI.Core` does not hold at the *type* level (bi-modal `IRegisterService`, mixed `Models/Registers/`, shared types co-located with admin services). Phase 0 research's `@inject`-grep methodology missed the return-type and parameter-type coupling channels.
+**STATUS — 2026-05-13:** Unblocked. Feature 123 (PR #641, merged 2026-05-13) shipped the audience-folder split in `Sorcha.UI.Core`. The bi-modal coupling that broke the 2026-05-11 Phase 2 attempt is resolved: `IRegisterService` is now `IRegisterReadService` + `IRegisterGovernanceService`, and shared DTOs live in `Services/Shared/`. See `phase-2-discovery.md` for the historical forensic narrative and `research.md` for the refreshed verdict tables.
 
 When Feature 123 merges, the steps below execute against a cleaner target. The original task descriptions stay below as the eventual instruction set; the verdict tables in `research.md` will need refreshing during Feature 122's resume to reflect Feature 123's outcome.
 

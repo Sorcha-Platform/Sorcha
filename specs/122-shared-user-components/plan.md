@@ -3,7 +3,7 @@
 **Branch**: `122-shared-user-components` | **Date**: 2026-05-10 (revised 2026-05-11) | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/122-shared-user-components/spec.md`
 
-> **2026-05-11 status:** Phase 1 (scaffold) complete. Phase 2 (atomic file move) attempted, rolled back. Discovery documented in [phase-2-discovery.md](./phase-2-discovery.md). Phases 2-7 are blocked on **Feature 123 (UI.Core User/Admin Type-Level Boundary Refactor)** — a pre-migration refactor that splits the bi-modal `IRegisterService` interface, classifies the mixed `Models/Registers/` folder per audience, and extracts shared DTOs from admin-service files. When Feature 123 merges, Feature 122 resumes from Phase 1's commit with an updated Phase 0 research pass and Phase 2 re-attempted against the cleaner target.
+> **2026-05-13 status:** Phase 1 (scaffold) complete. Phase 2 unblocked — Feature 123 (UI.Core audience-folder split) merged to master via PR #641 on 2026-05-13. `Sorcha.UI.Core` now partitions Services and Models into `User/`, `Admin/`, `Shared/` audience folders; `IRegisterService` is split into `IRegisterReadService` + `IRegisterGovernanceService`; `OrganizationDto`/`BrandingDto`/`SchemaOverlayFieldInfo` live in `Services/Shared/`. Phase 2 resumes with a refreshed Phase 0 research pass — see [phase-2-discovery.md](./phase-2-discovery.md) for the original forensic narrative, and the updated `research.md` for the verdict tables that reflect the post-Feature-123 codebase.
 
 ## Summary
 

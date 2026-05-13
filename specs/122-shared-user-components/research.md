@@ -1,8 +1,10 @@
 # Phase 0 Research: Shared User-Facing UI Component Library
 
 **Feature**: 122-shared-user-components
-**Date**: 2026-05-10
-**Status**: Complete
+**Date**: 2026-05-10 (refreshed 2026-05-13 after Feature 123 merged)
+**Status**: Refreshed — verdict tables updated to reflect post-Feature-123 audience folders
+
+> **2026-05-13 refresh note:** Feature 123 (PR #641) split `Sorcha.UI.Core/Services/` and `Sorcha.UI.Core/Models/` into `User/`, `Admin/`, `Shared/` audience folders before this feature resumed. The migration verdict is now folder-level rather than file-by-file: every `Services/User/*` and `Models/User/*` folder moves wholesale; every `Services/Shared/*` and `Models/Shared/*` folder also moves (both audiences need them — admin reaches them transitively via UI.Core → Components.User ProjectReference, PWA reaches them directly); every `Admin/*` folder stays in UI.Core. R2 (host service coupling) is superseded by the folder-level verdicts in §R1' below; the original R2 grep methodology missed return-type and parameter-type coupling, which the audience folders now encode structurally. The pre-F123 file-by-file verdicts (R1, R3) are retained as historical context.
 
 This document resolves the technical unknowns identified in `plan.md` Technical Context and consolidates evidence for the Phase 1 design.
 
@@ -84,6 +86,71 @@ The three movable wallet-local components illustrate the inverse migration direc
 - *Move all of `Shared`*: rejected — `BreadcrumbNav` / `UserProfileMenu` / `LogoutConfirmDialog` are web-chrome with auth assumptions the PWA does not share. Moving them would force the PWA's host to register web-chrome services it does not need.
 - *Move all of UI.Core wholesale and rely on trimming*: rejected — Blazor WASM trimming is reflection-unfriendly for Razor components (2026-05-10 spike evidence: `Z.Blazor.Diagrams` and `YamlDotNet` shipped in the PWA bundle even though no user code referenced them). Physical absence beats trimming.
 - *Move just `SorchaFormRenderer`*: rejected — would still leave the PWA unable to render credential cards, consent sheets, persona panels. The user value (US1) requires the headline form renderer **and** its supporting cast.
+
+---
+
+## R1' — Refreshed verdicts after Feature 123 (2026-05-13)
+
+Feature 123 reorganised `Sorcha.UI.Core` so that the audience signal lives in the folder, not in individual file inspection. Phase 2's atomic move becomes a folder-level operation:
+
+### Services — what moves
+
+| Folder | Verdict | Reason |
+|--------|---------|--------|
+| `Services/User/AddressLookup` | MOVE | user form helpers |
+| `Services/User/Credentials` | MOVE | credential UX services |
+| `Services/User/Forms` | MOVE | form schema + rendering services |
+| `Services/User/Participants` | MOVE | participant publishing |
+| `Services/User/Persona` | MOVE | persona autofill |
+| `Services/User/Wallet` | MOVE | user wallet operations |
+| `Services/User/*` (top-level files) | MOVE | TransactionService, WalletPreferenceService, WorkflowService, RegisterSubscriptionService, etc. |
+| `Services/Shared/Authentication` | MOVE | TokenRefreshService and friends — both audiences |
+| `Services/Shared/Blueprints` | MOVE | SchemaOverlayFieldInfo (F123 extraction) + schema helpers |
+| `Services/Shared/Encryption` | MOVE | both audiences |
+| `Services/Shared/Http` | MOVE | cross-cutting HTTP helpers |
+| `Services/Shared/Identity` | MOVE | identity context |
+| `Services/Shared/Navigation` | MOVE | both audiences |
+| `Services/Shared/Organization` | MOVE | F123 extraction — OrganizationDto, BrandingDto |
+| `Services/Admin/*` | STAY | admin / designer / configuration — UI.Core's reason for existing |
+
+### Models — what moves
+
+| Folder | Verdict | Reason |
+|--------|---------|--------|
+| `Models/User/Actions` | MOVE | action models |
+| `Models/User/Authentication` | MOVE | user-side auth models |
+| `Models/User/Credentials` | MOVE | credential view models |
+| `Models/User/Dashboard` | MOVE | dashboard view models |
+| `Models/User/Forms` | MOVE | form models |
+| `Models/User/Participants` | MOVE | participant view models |
+| `Models/User/Registers` | MOVE | user-facing register view models (F123 split out from mixed folder) |
+| `Models/User/Wallet` | MOVE | wallet view models |
+| `Models/User/Workflows` | MOVE | workflow view models |
+| `Models/Shared/Authentication` | MOVE | both audiences |
+| `Models/Shared/Common` | MOVE | OperationResult, paging, etc. |
+| `Models/Shared/Encryption` | MOVE | both audiences |
+| `Models/Admin/*` | STAY | admin / blueprints / chat / configuration / designer / explorer / registers (governance) / schema library / templates / wallet (org wallets) |
+
+### Components — unchanged from R1
+
+Feature 123 did not touch `Components/`. The R1 verdict per-folder still applies:
+
+- MOVE: `Components/Forms`, `Components/Credentials`, `Components/Wallet`, `Components/Participants`, `Components/Shared` (8 of 11 files — `BreadcrumbNav`, `UserProfileMenu`, `LogoutConfirmDialog` stay).
+- STAY: `Components/Admin`, `Components/Blueprints`, `Components/Configuration`, `Components/Designer`, `Components/Encryption`, `Components/Explorer`, `Components/Registers`, `Components/Templates`, `Components/Wallets`, `Components/Workflows`.
+
+### Namespace policy — unchanged
+
+The new csproj sets `<RootNamespace>Sorcha.UI.Core</RootNamespace>` so files moved from `Sorcha.UI.Core.*` namespaces keep their type names identical. Consumer `using` directives in the six host apps need no edits.
+
+### Reference graph — unchanged
+
+The Phase 2 attempt's empirical observation stands: UI.Core gains a single `ProjectReference` to Components.User; PWA gains a single direct `ProjectReference`; the six host apps remain untouched. Admin code in UI.Core that needs Shared/* types still reaches them through the UI.Core → Components.User edge.
+
+### Type-level coupling check
+
+The `IRegisterService` bi-modality that broke the 2026-05-11 attempt is resolved: Feature 123 split it into `IRegisterReadService` (in `Services/User/`) and `IRegisterGovernanceService` (in `Services/Admin/`). User-facing components inject the read interface; the governance interface stays in UI.Core. Same pattern applied to `OrganizationDto`/`BrandingDto` (moved to `Services/Shared/Organization/`) and `SchemaOverlayFieldInfo` (moved to `Services/Shared/Blueprints/`).
+
+Any residual type coupling will surface as build errors against the new library; the Phase 2 attempt's wave-fix methodology (83 → 37 → 22 → 24 errors) is unnecessary because the audience folders pre-classify the surface.
 
 ---
 
