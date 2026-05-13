@@ -174,6 +174,11 @@ if [ -n "$IMPORT_KEY_FILE" ]; then
     # Response body lands in a host-side /tmp file (mounted into the container)
     # so we can extract the address after the curl container exits.
     RECOVER_RESP_FILE=$(mktemp /tmp/recover-resp.XXXXXX)
+    # Don't use `|| echo "000"` inline — pipefail interactions can let curl's
+    # successful %{http_code} stdout AND the fallback echo both land in the
+    # captured string (e.g. "201000"), which then fails to match any expected
+    # status. Capture stdout and exit code separately instead.
+    set +e
     HTTP_STATUS=$(printf '%s' "$RECOVER_BODY" | docker run --rm -i \
         --network="$COMPOSE_NETWORK" \
         -v "$RECOVER_RESP_FILE:/recover-resp" \
@@ -181,8 +186,13 @@ if [ -n "$IMPORT_KEY_FILE" ]; then
         -sk -o /recover-resp -w '%{http_code}' \
         -X POST http://wallet-service:8080/api/v1/wallets/system/recover \
         -H 'Content-Type: application/json' \
-        -d @- 2>/dev/null || echo "000")
+        -d @- 2>/dev/null)
+    CURL_EXIT=$?
+    set -e
     unset RECOVER_BODY  # zeroize once curl has consumed it
+    if [ "$CURL_EXIT" -ne 0 ]; then
+        HTTP_STATUS="000"
+    fi
 
     if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "201" ]; then
         ok "System wallet recovered (HTTP $HTTP_STATUS)"
