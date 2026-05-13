@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
     <ProjectReference Include="..\..\..\Core\Sorcha.Blueprint.Schemas.Client\Sorcha.Blueprint.Schemas.Client.csproj" />
+    <ProjectReference Include="..\Sorcha.UI.Components.User\Sorcha.UI.Components.User.csproj" />
   </ItemGroup>
 
 </Project>
