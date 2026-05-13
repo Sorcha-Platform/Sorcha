@@ -62,7 +62,8 @@
       "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\setup-plan.ps1 -Json)",
       "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\update-agent-context.ps1 -AgentType claude)",
       "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)",
-      "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1 -Json)"
+      "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1 -Json)",
+      "PowerShell(./scripts/check-pwa-bundle.ps1 2>&1 | Select-Object -Last 30)"
     ],
     "deny": [],
     "ask": []
