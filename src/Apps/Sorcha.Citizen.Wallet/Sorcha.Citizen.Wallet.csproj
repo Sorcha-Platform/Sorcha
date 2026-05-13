@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Common\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
+    <ProjectReference Include="..\Sorcha.UI\Sorcha.UI.Components.User\Sorcha.UI.Components.User.csproj" />
   </ItemGroup>
 
   <ItemGroup>

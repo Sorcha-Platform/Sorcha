@@ -1,0 +1,32 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 122 T028 — shared-component integration proof.
+
+    Renders a minimal SorchaFormRenderer and an EmptyState from the new
+    Sorcha.UI.Components.User library to prove the PWA reference resolves
+    at runtime. Underscore-prefixed filename keeps the page off the
+    navigation but reachable at /dev/shared-components-proof.
+*@
+
+@page "/dev/shared-components-proof"
+@using Sorcha.UI.Core.Components.Shared
+
+<PageTitle>Shared Components Proof</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="pa-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Feature 122 — Shared Components Proof</MudText>
+
+    <MudText Typo="Typo.subtitle1" Class="mb-2">EmptyState (from Sorcha.UI.Components.User)</MudText>
+    <MudPaper Class="pa-4 mb-4" Outlined="true">
+        <EmptyState Icon="@Icons.Material.Filled.Inbox"
+                    Title="Empty by design"
+                    Description="If you see this, the PWA picked up the EmptyState component from the shared library." />
+    </MudPaper>
+
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Smoke test</MudText>
+    <MudAlert Severity="Severity.Success">
+        Page rendered. Sorcha.UI.Components.User reference is live in the PWA.
+    </MudAlert>
+</MudContainer>
