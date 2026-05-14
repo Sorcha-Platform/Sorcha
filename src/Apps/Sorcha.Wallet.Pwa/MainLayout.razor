@@ -12,12 +12,16 @@
     interactive when the user only holds the Personal context.
 *@
 @using Sorcha.UI.Components.User.Components.Context
+@using Sorcha.UI.Components.User.Components.Onboarding
+@using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Context
+@using Sorcha.Wallet.Pwa.Services.Onboarding
 @inherits LayoutComponentBase
 @implements IAsyncDisposable
 @inject NavigationManager Nav
 @inject IUserContext UserContext
 @inject IUserOrgMembershipsClient MembershipsClient
+@inject IWalletFlagsStore WalletFlags
 
 <MudThemeProvider />
 <MudPopoverProvider />
@@ -56,6 +60,14 @@
                        data-testid="footer-nav-settings"
                        aria-label="Settings" />
     </MudAppBar>
+
+    @* Feature 125 / PR-F (T104-T108) — guided tour on first wallet open
+       after enrolment. WalletFlagsRecord.TourDismissedAt is the per-device
+       flag; Replay tour from Settings resets it to null. *@
+    <GuidedTourScaffold Steps="@WalletTourSteps.Default"
+                       ShouldRun="@_tourShouldRun"
+                       OnCompleted="@PersistTourDismissedAsync"
+                       OnDismissedEarly="@PersistTourDismissedAsync" />
 </MudLayout>
 
 @code {
@@ -63,6 +75,7 @@
     private IReadOnlyList<ContextChipSwitcher.ContextChipMembership> _chipMemberships =
         Array.Empty<ContextChipSwitcher.ContextChipMembership>();
     private string _activeLabel = "Personal";
+    private bool _tourShouldRun;
 
     protected override async Task OnInitializedAsync()
     {
@@ -70,6 +83,27 @@
         await UserContext.InitializeAsync();
         await ReloadMembershipsAsync();
         UpdateActiveLabel();
+        await EvaluateTourEligibilityAsync();
+    }
+
+    private async Task EvaluateTourEligibilityAsync()
+    {
+        // Tour fires once per device — gated on TourDismissedAt being null.
+        // The flag is reset to null by Settings → Replay tour.
+        var flags = await WalletFlags.GetAsync();
+        _tourShouldRun = flags?.TourDismissedAt is null;
+        StateHasChanged();
+    }
+
+    private async Task PersistTourDismissedAsync()
+    {
+        var current = await WalletFlags.GetAsync();
+        var updated = new WalletFlagsRecord(
+            WelcomedAt: current?.WelcomedAt,
+            TourDismissedAt: DateTimeOffset.UtcNow);
+        await WalletFlags.SetAsync(updated);
+        _tourShouldRun = false;
+        StateHasChanged();
     }
 
     private async Task ReloadMembershipsAsync()

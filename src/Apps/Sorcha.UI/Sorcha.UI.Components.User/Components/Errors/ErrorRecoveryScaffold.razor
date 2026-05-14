@@ -1,0 +1,64 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Error recovery scaffold (Feature 125, T110). Standard error surface:
+    plain-English title + description, optional expandable technical
+    detail for support, and a primary recovery action. Used across the
+    wallet on every error path per FR-031.
+*@
+@namespace Sorcha.UI.Components.User.Components.Errors
+
+<MudAlert Severity="@Severity"
+          Variant="Variant.Outlined"
+          Class="ma-2"
+          NoIcon="false"
+          data-testid="@($"error-recovery-{Severity.ToString().ToLowerInvariant()}")">
+    <MudStack Spacing="2">
+        <MudText Typo="Typo.subtitle1" data-testid="error-recovery-title">@Title</MudText>
+        <MudText Typo="Typo.body2" data-testid="error-recovery-description">@Description</MudText>
+
+        @if (!string.IsNullOrEmpty(TechnicalDetail))
+        {
+            <MudExpansionPanels Elevation="0">
+                <MudExpansionPanel Text="What just happened" data-testid="error-recovery-technical">
+                    <pre style="white-space:pre-wrap;font-size:0.8em;">@TechnicalDetail</pre>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+
+        @if (OnRecover.HasDelegate)
+        {
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@(RecoveryIcon ?? Icons.Material.Filled.Refresh)"
+                       OnClick="@(async () => await OnRecover.InvokeAsync())"
+                       data-testid="error-recovery-action">
+                @RecoveryLabel
+            </MudButton>
+        }
+    </MudStack>
+</MudAlert>
+
+@code {
+    /// <summary>Plain-English title of the error (e.g. "Couldn't reach the registry").</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = "Something went wrong";
+
+    /// <summary>Plain-English description of what happened and what the user can do.</summary>
+    [Parameter, EditorRequired] public string Description { get; set; } = string.Empty;
+
+    /// <summary>Optional technical detail surfaced under the expander; never shown when null.</summary>
+    [Parameter] public string? TechnicalDetail { get; set; }
+
+    /// <summary>Severity of the surface; drives the colour treatment.</summary>
+    [Parameter] public Severity Severity { get; set; } = Severity.Error;
+
+    /// <summary>Label for the recovery action button. Defaults to "Try again".</summary>
+    [Parameter] public string RecoveryLabel { get; set; } = "Try again";
+
+    /// <summary>Optional icon for the recovery button.</summary>
+    [Parameter] public string? RecoveryIcon { get; set; }
+
+    /// <summary>Fires when the user taps the recovery button. Button hides when no delegate is wired.</summary>
+    [Parameter] public EventCallback OnRecover { get; set; }
+}
