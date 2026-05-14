@@ -4,7 +4,7 @@
 #
 # Feature 122 bundle-hygiene check.
 #
-# The Sorcha.Citizen.Wallet PWA must not bundle admin / designer
+# The Sorcha.Wallet.Pwa PWA must not bundle admin / designer
 # assemblies. This script publishes the PWA, inspects the produced
 # wwwroot/_framework/ assembly set, and fails CI when forbidden
 # assemblies are present.
@@ -25,14 +25,14 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$pwaCsproj = Join-Path $repoRoot 'src/Apps/Sorcha.Citizen.Wallet/Sorcha.Citizen.Wallet.csproj'
+$pwaCsproj = Join-Path $repoRoot 'src/Apps/Sorcha.Wallet.Pwa/Sorcha.Wallet.Pwa.csproj'
 
 if (-not $PublishDir) {
-    $PublishDir = Join-Path $repoRoot 'src/Apps/Sorcha.Citizen.Wallet/bin/Release/net10.0/publish'
+    $PublishDir = Join-Path $repoRoot 'src/Apps/Sorcha.Wallet.Pwa/bin/Release/net10.0/publish'
 }
 
 if (-not $SkipPublish) {
-    Write-Host "[i] Publishing Sorcha.Citizen.Wallet (Release)..."
+    Write-Host "[i] Publishing Sorcha.Wallet.Pwa (Release)..."
     & dotnet publish $pwaCsproj -c Release -o $PublishDir --nologo /p:CompressionEnabled=false | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Error "dotnet publish failed (exit $LASTEXITCODE)"

@@ -85,7 +85,7 @@ public sealed class PersonaServiceTests : IDisposable
     [Fact]
     public async Task GetAsync_ActingAsOther_ThrowsValidationException()
     {
-        var act = async () => await _sut.GetAsync(_userId, new PersonaReadOptions { ActingAs = "delegate" });
+        var act = async () => await _sut.GetAsync(_userId, options: new PersonaReadOptions { ActingAs = "delegate" });
 
         var ex = await act.Should().ThrowAsync<PersonaValidationException>();
         ex.Which.Errors.Should().ContainKey("actingAs");
@@ -115,7 +115,8 @@ public sealed class PersonaServiceTests : IDisposable
         result.GivenName!.Value.Should().Be("Ada");
         result.DefaultEmail!.Value.Value.Should().Be("ada@example.com");
 
-        var row = await _db.PlatformUserPersonas.FindAsync(_userId);
+        // Feature 125 composite key: (PlatformUserId, ContextOrgId). Personal context = Guid.Empty.
+        var row = await _db.PlatformUserPersonas.FindAsync(_userId, Guid.Empty);
         row.Should().NotBeNull();
         row!.CiphertextBlob.Should().Equal(1, 2, 3);
         row.WrappedKeyRef.Should().Be(WalletAddress);
@@ -334,7 +335,8 @@ public sealed class PersonaServiceTests : IDisposable
 
         await _sut.DeleteAsync(_userId);
 
-        var row = await _db.PlatformUserPersonas.FindAsync(_userId);
+        // Feature 125 composite key: (PlatformUserId, ContextOrgId). Personal context = Guid.Empty.
+        var row = await _db.PlatformUserPersonas.FindAsync(_userId, Guid.Empty);
         row.Should().BeNull();
 
         _events.Verify(

@@ -581,7 +581,7 @@ await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
 
 ## Citizen Wallet PWA (Feature 114) — server + PWA + reference verifier surface
 
-End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). Wallet PWA (`Sorcha.Citizen.Wallet`, Blazor WASM) and reference verifier (`Sorcha.Citizen.Verifier`, Blazor Server) are real projects in `src/Apps/`. The flow: sign in via Settings → Enrol device → credentials sync → present with full holder→device chain + issuer-signature verification → wallet auto-renews delegation 30 days before expiry. Demo-mint bridge (`/verify/demo/mint`) generates per-mint issuer keys for the demo until US4 ships real credential issuance.
+End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). Wallet PWA (`Sorcha.Wallet.Pwa`, Blazor WASM) and reference verifier (`Sorcha.Verifier`, Blazor Server) are real projects in `src/Apps/`. The flow: sign in via Settings → Enrol device → credentials sync → present with full holder→device chain + issuer-signature verification → wallet auto-renews delegation 30 days before expiry. Demo-mint bridge (`/verify/demo/mint`) generates per-mint issuer keys for the demo until US4 ships real credential issuance.
 
 ### Endpoints
 
@@ -694,12 +694,12 @@ Hub URL `/hubs/wallet`. `[Authorize(AuthenticationSchemes = "Bearer")]`. On conn
 | `src/Services/Sorcha.Tenant.Service/Endpoints/InternalEndpoints.cs` | `/api/internal/platform-user-devices` bridge |
 | `src/Common/Sorcha.ServiceClients.Http/PlatformUserDevice/` | Wallet → Tenant s2s client (`RegisterAsync`, `GetByIdAsync`) |
 | `src/Common/Sorcha.ServiceClients.Http/CitizenWallet/` | PWA → Wallet client (enrol, sync, list-credentials, renew-delegation) |
-| `src/Apps/Sorcha.Citizen.Wallet/` | Blazor WASM PWA (mounted at `/wallet/` via gateway `PathRemovePrefix`). Pages: Index/Enrol/Present/CredentialDetail/Settings/Devices/Activity. Components: ConsentSheet/CredentialPickerDialog/NoMatchingCredentialDialog. wwwroot/js: webcrypto-bridge.js, indexeddb-bridge.js. |
-| `src/Apps/Sorcha.Citizen.Wallet/Services/` | All PWA services: WebCryptoDeviceKeyService, IndexedDb{Credential,Delegation,StatusList,DeviceMeta,SyncCursor,AccessToken}Store, AuthService, EnrolmentService, SyncService, DelegationRenewalClient, BearerTokenHandler, ServerClockHandler, ServerClockObserver, **CitizenWalletHubConnection** (US4 — singleton SignalR client at `/hubs/wallet`, subscribes to `CredentialAvailable` + `DeviceRevoked`) |
-| `src/Apps/Sorcha.Citizen.Wallet/Pages/Index.razor` | Home page; subscribes to `CitizenWalletHubConnection` events in `OnInitializedAsync`, fires `SyncNowAsync` / `RenewIfDueAsync`, `IAsyncDisposable` detach |
-| `src/Apps/Sorcha.Citizen.Wallet/wwwroot/service-worker.published.js` | US4 — handles Background Sync `sync` events tagged `citizen-credential-sync` to replay `/sync` while document is hidden |
-| `src/Apps/Sorcha.Citizen.Verifier/` | Blazor Server reference verifier (mounted at `/verify/`). Pages: Index/VerifierSession/Outcome. Endpoints: PresentationResponseEndpoints, DemoMintEndpoint. |
-| `src/Apps/Sorcha.Citizen.Verifier/Services/IIssuerKeyResolver.cs` | Issuer-signature verification seam — OptOut + JwkRegistry impls |
+| `src/Apps/Sorcha.Wallet.Pwa/` | Blazor WASM PWA (mounted at `/wallet/` via gateway `PathRemovePrefix`). Pages: Index/Enrol/Present/CredentialDetail/Settings/Devices/Activity. Components: ConsentSheet/CredentialPickerDialog/NoMatchingCredentialDialog. wwwroot/js: webcrypto-bridge.js, indexeddb-bridge.js. |
+| `src/Apps/Sorcha.Wallet.Pwa/Services/` | All PWA services: WebCryptoDeviceKeyService, IndexedDb{Credential,Delegation,StatusList,DeviceMeta,SyncCursor,AccessToken}Store, AuthService, EnrolmentService, SyncService, DelegationRenewalClient, BearerTokenHandler, ServerClockHandler, ServerClockObserver, **CitizenWalletHubConnection** (US4 — singleton SignalR client at `/hubs/wallet`, subscribes to `CredentialAvailable` + `DeviceRevoked`) |
+| `src/Apps/Sorcha.Wallet.Pwa/Pages/Index.razor` | Home page; subscribes to `CitizenWalletHubConnection` events in `OnInitializedAsync`, fires `SyncNowAsync` / `RenewIfDueAsync`, `IAsyncDisposable` detach |
+| `src/Apps/Sorcha.Wallet.Pwa/wwwroot/service-worker.published.js` | US4 — handles Background Sync `sync` events tagged `citizen-credential-sync` to replay `/sync` while document is hidden |
+| `src/Apps/Sorcha.Verifier/` | Blazor Server reference verifier (mounted at `/verify/`). Pages: Index/VerifierSession/Outcome. Endpoints: PresentationResponseEndpoints, DemoMintEndpoint. |
+| `src/Apps/Sorcha.Verifier/Services/IIssuerKeyResolver.cs` | Issuer-signature verification seam — OptOut + JwkRegistry impls |
 | `specs/114-citizen-wallet-pwa/` | Spec, plan, contracts, data model, tasks |
 | `docs/superpowers/specs/2026-04-26-citizen-wallet-pwa-design.md` | Brainstorm design doc |
 
@@ -811,7 +811,7 @@ All three scoped to the calling `PlatformUserId` via JWT; rate-limited by `RateL
 
 ### PWA — per-device flags + waiting state + welcome takeover
 
-- **`IWalletFlagsStore`** / `IndexedDbWalletFlagsStore` / `InMemoryWalletFlagsStore` (`Sorcha.Citizen.Wallet.Services`) — per-device flags persisted in IndexedDB store `device` at key `flags`. Co-tenants the existing `DeviceMetaRecord` (key `enrolment`). Single record `WalletFlagsRecord(DateTimeOffset? WelcomedAt)`. One-way transition: null → UTC timestamp on dismissal, no un-welcome.
+- **`IWalletFlagsStore`** / `IndexedDbWalletFlagsStore` / `InMemoryWalletFlagsStore` (`Sorcha.Wallet.Pwa.Services`) — per-device flags persisted in IndexedDB store `device` at key `flags`. Co-tenants the existing `DeviceMetaRecord` (key `enrolment`). Single record `WalletFlagsRecord(DateTimeOffset? WelcomedAt)`. One-way transition: null → UTC timestamp on dismissal, no un-welcome.
 - **`IPendingApplicationClient`** / `HttpPendingApplicationClient` — thin HTTP client over the three endpoints, uses the wallet's `BearerTokenHandler` + `ServerClockHandler` chain.
 - **`Components/WaitingCard.razor`** — pulsing skeleton card, plain HTML + CSS, `aria-live="polite"`. Rendered on Home empty-credentials branch when `IPendingApplicationClient.GetAsync()` returns a non-null notice.
 - **`Components/WelcomeTakeover.razor`** — full-screen overlay reusing the cross-cutting `IdCardLayout` (umbrella invariant FR-015 — *one* visual component across form preview / reviewer pending / wallet detail) with `Watermark = Issued`, `ColourTheme = IdentityNavy`. Constructs the `IdCardLayoutConfig` from `CachedCredential` (header only; body sections empty until Spec 2's wallet UX foundations land). Pure CSS keyframes (200ms fade-in), `role="dialog" aria-modal="true"`.
@@ -832,12 +832,12 @@ All three scoped to the calling `PlatformUserId` via JWT; rate-limited by `RateL
 | `src/Services/Sorcha.Wallet.Service/Services/Implementation/RedisPendingApplicationStore.cs` | Distributed cache store |
 | `src/Services/Sorcha.Wallet.Service/Models/PendingApplicationContracts.cs` | DTOs (`PendingApplicationNotice`, `PendingApplicationEnvelope`, `SetPendingApplicationRequest`) |
 | `src/Services/Sorcha.Wallet.Service/Validators/SetPendingApplicationRequestValidator.cs` | FluentValidation rules |
-| `src/Apps/Sorcha.Citizen.Wallet/Services/IWalletFlagsStore.cs` | Per-device flags interface + InMemory + IndexedDB impls + `WalletFlagsRecord` |
-| `src/Apps/Sorcha.Citizen.Wallet/Services/IPendingApplicationClient.cs` | PWA HTTP client + `PendingApplicationView` |
-| `src/Apps/Sorcha.Citizen.Wallet/Components/WaitingCard.razor` | Pulsing skeleton card |
-| `src/Apps/Sorcha.Citizen.Wallet/Components/WelcomeTakeover.razor` | Full-screen welcome overlay |
-| `src/Apps/Sorcha.Citizen.Wallet/wwwroot/css/welcome-takeover.css` | Animations + overlay styling |
-| `src/Apps/Sorcha.Citizen.Wallet/Pages/Index.razor` | Eligibility + dismissal orchestration |
+| `src/Apps/Sorcha.Wallet.Pwa/Services/IWalletFlagsStore.cs` | Per-device flags interface + InMemory + IndexedDB impls + `WalletFlagsRecord` |
+| `src/Apps/Sorcha.Wallet.Pwa/Services/IPendingApplicationClient.cs` | PWA HTTP client + `PendingApplicationView` |
+| `src/Apps/Sorcha.Wallet.Pwa/Components/WaitingCard.razor` | Pulsing skeleton card |
+| `src/Apps/Sorcha.Wallet.Pwa/Components/WelcomeTakeover.razor` | Full-screen welcome overlay |
+| `src/Apps/Sorcha.Wallet.Pwa/wwwroot/css/welcome-takeover.css` | Animations + overlay styling |
+| `src/Apps/Sorcha.Wallet.Pwa/Pages/Index.razor` | Eligibility + dismissal orchestration |
 | `walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1` | `Set-`/`Clear-SorchaCitizenPendingApplication` helpers |
 
 Spec: `specs/124-assured-identity-pwa/`. Umbrella: `docs/superpowers/specs/2026-05-13-strathcarron-citizen-arc.md`. Detailed design: `docs/superpowers/specs/2026-05-13-spec-1-assured-identity-on-pwa-design.md`.

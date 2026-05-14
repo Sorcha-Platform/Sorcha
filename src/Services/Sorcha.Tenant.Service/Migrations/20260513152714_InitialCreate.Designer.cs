@@ -1249,6 +1249,9 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Property<Guid>("PlatformUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("ContextOrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<byte[]>("CiphertextBlob")
                         .IsRequired()
                         .HasColumnType("bytea");
@@ -1272,7 +1275,7 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
-                    b.HasKey("PlatformUserId");
+                    b.HasKey("PlatformUserId", "ContextOrgId");
 
                     b.ToTable("PlatformUserPersonas", "public");
                 });
@@ -1815,8 +1818,8 @@ namespace Sorcha.Tenant.Service.Migrations
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserPersona", b =>
                 {
                     b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
-                        .WithOne()
-                        .HasForeignKey("Sorcha.Tenant.Service.Models.PlatformUserPersona", "PlatformUserId")
+                        .WithMany()
+                        .HasForeignKey("PlatformUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

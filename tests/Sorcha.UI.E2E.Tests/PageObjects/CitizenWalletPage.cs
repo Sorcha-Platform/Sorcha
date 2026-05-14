@@ -9,7 +9,7 @@ namespace Sorcha.UI.E2E.Tests.PageObjects;
 /// <summary>
 /// Feature 114 / US4 — page object for the Citizen Wallet PWA Home
 /// (<c>/wallet/</c>). Locators bind to the <c>data-testid</c> attributes
-/// added in <c>Sorcha.Citizen.Wallet/Pages/Index.razor</c> so structural
+/// added in <c>Sorcha.Wallet.Pwa/Pages/Index.razor</c> so structural
 /// changes to MudBlazor markup do not break tests.
 /// </summary>
 public class CitizenWalletPage
