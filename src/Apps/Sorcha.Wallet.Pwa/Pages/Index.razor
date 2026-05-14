@@ -45,10 +45,17 @@
 }
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
-    @* Feature 125 / PR-B — hero Present action above the credential list.
-       VerifyHomeAction lands in PR-C (US1) alongside the QR/NFC scanner. *@
-    <PresentHomeAction CredentialCount="@(_credentials?.Count ?? 0)"
-                       OnPresentRequested="@HandlePresentRequestedAsync" />
+    @* Feature 125 / PR-B + PR-C — hero row: Present (holder) + Verify
+       (citizen-as-verifier). Two taps to either capability from Home. *@
+    <MudStack Row="true" Spacing="2">
+        <div style="flex:1;">
+            <PresentHomeAction CredentialCount="@(_credentials?.Count ?? 0)"
+                               OnPresentRequested="@HandlePresentRequestedAsync" />
+        </div>
+        <div style="flex:1;">
+            <VerifyHomeAction OnVerifyRequested="@OpenVerifyAsync" />
+        </div>
+    </MudStack>
 
     @* Feature 125 / PR-B — Needs-attention band. Conditional render — the
        band hides entirely when no items. Derived from F124's pending-app
@@ -263,6 +270,12 @@
         {
             _needsAttentionItems = Array.Empty<NeedsAttentionBand.NeedsAttentionItem>();
         }
+    }
+
+    private Task OpenVerifyAsync()
+    {
+        Nav.NavigateTo("verify");
+        return Task.CompletedTask;
     }
 
     private Task HandlePresentRequestedAsync()

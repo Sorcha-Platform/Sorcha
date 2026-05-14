@@ -87,10 +87,15 @@
     return bytesToB64Url(sig);
   }
 
+  function disposeKey(id) {
+    keys.delete(id);
+  }
+
   globalThis.SorchaWebCrypto = {
     generateEcdsaP256,
     getPublicJwk,
     getThumbprint,
     signEs256,
+    disposeKey,
   };
 })();
