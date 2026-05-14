@@ -81,7 +81,7 @@
             </MudAlert>
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.PhoneIphone"
-                       OnClick="@(() => Nav.NavigateTo("/enrol"))" FullWidth="true" Class="mb-2"
+                       OnClick="@(() => Nav.NavigateTo("enrol"))" FullWidth="true" Class="mb-2"
                        data-testid="enrol-device-button">
                 Enrol this device
             </MudButton>
@@ -93,7 +93,7 @@
             @foreach (var c in _credentials)
             {
                 <MudCard Class="mb-3" Style="cursor:pointer;"
-                         @onclick="@(() => Nav.NavigateTo($"/credentials/{c.Id}"))"
+                         @onclick="@(() => Nav.NavigateTo($"credentials/{c.Id}"))"
                          data-testid="@($"credential-card-{c.Id}")">
                     <MudCardContent>
                         <MudText Typo="Typo.subtitle1">@(c.DisplayLabel ?? c.Vct)</MudText>
@@ -110,7 +110,7 @@
     <MudStack Row="true" Spacing="2" Class="mt-4">
         <MudButton Color="Color.Primary" Variant="Variant.Filled"
                    StartIcon="@Icons.Material.Filled.QrCodeScanner"
-                   OnClick="@(() => Nav.NavigateTo("/present"))"
+                   OnClick="@(() => Nav.NavigateTo("present"))"
                    Disabled="@(_credentials is null || _credentials.Count == 0)">
             Present a credential
         </MudButton>
