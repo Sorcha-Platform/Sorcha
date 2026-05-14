@@ -1,0 +1,165 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Portrait capture control (Feature 125, T052). Used by form fields
+    declaring x-file.capture: "user" + embedAs: "image-token-jpeg-240x320"
+    (Feature 107). Tries the native camera via IWebCameraService; falls
+    back to a file picker when the camera isn't supported or the user
+    cancels.
+
+    Emits the captured / chosen image as a base64 JPEG token via the
+    OnCaptured callback — the consuming form renderer embeds it at the
+    appropriate pointer (e.g. /1/payload/portrait/tokenImageBase64).
+*@
+@namespace Sorcha.UI.Components.User.Components.Capture
+@using Sorcha.UI.Components.User.Services.Capture
+@inject IWebCameraService Camera
+@inject IJSRuntime JS
+
+<MudPaper Class="pa-3" Outlined="true" data-testid="portrait-capture">
+    @if (!string.IsNullOrEmpty(_previewBase64))
+    {
+        <img src="@($"data:image/jpeg;base64,{_previewBase64}")"
+             alt="Captured portrait"
+             style="display:block;width:120px;height:160px;object-fit:cover;border-radius:8px;"
+             data-testid="portrait-capture-preview" />
+        <MudStack Row="true" Spacing="2" Class="mt-2">
+            <MudButton Variant="Variant.Text" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="@RetakeAsync" Disabled="@_busy"
+                       data-testid="portrait-capture-retake">
+                Retake
+            </MudButton>
+        </MudStack>
+    }
+    else
+    {
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">@HelpText</MudText>
+            @if (_cameraSupported)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.CameraAlt"
+                           OnClick="@CaptureFromCameraAsync" Disabled="@_busy"
+                           data-testid="portrait-capture-camera">
+                    @(_busy ? "Working…" : "Take photo")
+                </MudButton>
+            }
+            <InputFile OnChange="@HandleFileChangedAsync"
+                       accept="image/jpeg,image/png"
+                       disabled="@_busy"
+                       data-testid="portrait-capture-upload" />
+        </MudStack>
+    }
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2"
+                  data-testid="portrait-capture-error">@_error</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    /// <summary>Help text shown above the camera / file picker affordances.</summary>
+    [Parameter] public string HelpText { get; set; } = "Take a photo or upload an image.";
+
+    /// <summary>Target output width in pixels (default 240, per Feature 107 embedAs).</summary>
+    [Parameter] public int TargetWidth { get; set; } = 240;
+
+    /// <summary>Target output height in pixels (default 320, per Feature 107 embedAs).</summary>
+    [Parameter] public int TargetHeight { get; set; } = 320;
+
+    /// <summary>Encoder quality (0..1; default 0.85).</summary>
+    [Parameter] public double JpegQuality { get; set; } = 0.85;
+
+    /// <summary>Fires when an image has been captured or selected; payload is the base64 JPEG token.</summary>
+    [Parameter] public EventCallback<string> OnCaptured { get; set; }
+
+    private string? _previewBase64;
+    private bool _busy;
+    private bool _cameraSupported;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cameraSupported = await Camera.IsCameraSupportedAsync();
+    }
+
+    private async Task CaptureFromCameraAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var b64 = await Camera.CapturePortraitAsync(
+                new PortraitCaptureRequest(TargetWidth, TargetHeight, JpegQuality));
+            if (b64 is not null)
+            {
+                _previewBase64 = b64;
+                if (OnCaptured.HasDelegate) await OnCaptured.InvokeAsync(b64);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = "Couldn't open the camera. Check your browser's camera permission, or upload a photo instead.";
+            await InvokeAsync(StateHasChanged);
+            await Task.Yield();
+            // Swallow the exception detail — surface only the user-safe message.
+            _ = ex;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task HandleFileChangedAsync(InputFileChangeEventArgs args)
+    {
+        if (args.File is null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            using var stream = args.File.OpenReadStream(maxAllowedSize: 16 * 1024 * 1024);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            var bytes = memory.ToArray();
+            var b64 = await JS.InvokeAsync<string>(
+                "SorchaPortrait.resizeJpeg",
+                Convert.ToBase64String(bytes),
+                TargetWidth, TargetHeight, JpegQuality);
+            _previewBase64 = b64 ?? Convert.ToBase64String(bytes);
+            if (OnCaptured.HasDelegate) await OnCaptured.InvokeAsync(_previewBase64);
+        }
+        catch (Microsoft.JSInterop.JSException)
+        {
+            // No JS bridge yet — emit the original (uncompressed) image as
+            // the token. The bridge resizer lands alongside the native
+            // camera path; until then the form server enforces the size
+            // cap via Feature 107's WARN_CRED_PORTRAIT_OVERSIZE_001 guard.
+            if (args.File is { } f)
+            {
+                using var stream = f.OpenReadStream(maxAllowedSize: 16 * 1024 * 1024);
+                using var memory = new MemoryStream();
+                await stream.CopyToAsync(memory);
+                _previewBase64 = Convert.ToBase64String(memory.ToArray());
+                if (OnCaptured.HasDelegate) await OnCaptured.InvokeAsync(_previewBase64);
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Couldn't read that image. Try a different file.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task RetakeAsync()
+    {
+        _previewBase64 = null;
+        _error = null;
+        return Task.CompletedTask;
+    }
+}

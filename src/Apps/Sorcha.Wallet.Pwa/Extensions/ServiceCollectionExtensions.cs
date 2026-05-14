@@ -3,10 +3,13 @@
 
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Sorcha.Wallet.Pwa.Services;
+using Sorcha.Wallet.Pwa.Services.Applications;
+using Sorcha.Wallet.Pwa.Services.Capture;
 using Sorcha.Wallet.Pwa.Services.Context;
 using Sorcha.Wallet.Pwa.Services.Presentation;
 using Sorcha.Wallet.Pwa.Services.Signing;
 using Sorcha.Wallet.Pwa.Services.Verification;
+using Sorcha.UI.Components.User.Services.Capture;
 using Sorcha.UI.Components.User.Services.Signing;
 using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.ServiceClients.CitizenWallet;
@@ -62,6 +65,17 @@ public static class ServiceCollectionExtensions
         // follow-up extraction PR.
         services.AddSingleton<IEphemeralVerifierIdentityService, EphemeralVerifierIdentityService>();
         services.AddSingleton<IVerifierEngine, StubVerifierEngine>();
+
+        // Feature 125 / PR-D — application-from-phone (US2). PortraitCaptureControl
+        // routes through IWebCameraService; the file-upload fallback is the
+        // v1 path until webcamera-bridge.js + native camera land in a
+        // follow-up. IApplicationSubmissionService signs payloads through
+        // IUserSigner under the active context and surfaces the in-progress
+        // state via F124's pending-application notice; the real HTTP
+        // submission to the blueprint endpoints lands alongside the
+        // application catalogue API.
+        services.AddSingleton<IWebCameraService, FileFallbackWebCameraService>();
+        services.AddSingleton<IApplicationSubmissionService, StubApplicationSubmissionService>();
 
         // Server-clock observer (T101) — populated by the ServerClockHandler on
         // every outbound HTTP call; read by Pages/Index.razor to surface a
