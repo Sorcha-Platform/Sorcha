@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.0.11205.157
@@ -237,13 +237,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.CitizenWallet.Abstra
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.CitizenWallet.Abstractions.Tests", "tests\Sorcha.CitizenWallet.Abstractions.Tests\Sorcha.CitizenWallet.Abstractions.Tests.csproj", "{C4CA8191-4C11-4482-878C-118173F84528}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Citizen.Wallet", "src\Apps\Sorcha.Citizen.Wallet\Sorcha.Citizen.Wallet.csproj", "{C9F03914-4E69-4B24-9E4E-AC4DEB2E14F7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Wallet.Pwa", "src\Apps\Sorcha.Wallet.Pwa\Sorcha.Wallet.Pwa.csproj", "{C9F03914-4E69-4B24-9E4E-AC4DEB2E14F7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Citizen.Verifier", "src\Apps\Sorcha.Citizen.Verifier\Sorcha.Citizen.Verifier.csproj", "{24CC7B38-1F6C-4F19-B377-44B3E3898D30}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Verifier", "src\Apps\Sorcha.Verifier\Sorcha.Verifier.csproj", "{24CC7B38-1F6C-4F19-B377-44B3E3898D30}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Citizen.Wallet.Tests", "tests\Sorcha.Citizen.Wallet.Tests\Sorcha.Citizen.Wallet.Tests.csproj", "{E16AD058-DC37-4A9D-BEBF-96F5923BC36F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Wallet.Pwa.Tests", "tests\Sorcha.Wallet.Pwa.Tests\Sorcha.Wallet.Pwa.Tests.csproj", "{E16AD058-DC37-4A9D-BEBF-96F5923BC36F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Citizen.Verifier.Tests", "tests\Sorcha.Citizen.Verifier.Tests\Sorcha.Citizen.Verifier.Tests.csproj", "{876767DE-2998-4A4C-9B35-D09B781C587A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Verifier.Tests", "tests\Sorcha.Verifier.Tests\Sorcha.Verifier.Tests.csproj", "{876767DE-2998-4A4C-9B35-D09B781C587A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.AtomicCache", "src\Common\Sorcha.AtomicCache\Sorcha.AtomicCache.csproj", "{E7F90AAB-879F-461E-AA4F-6D576406FC6E}"
 EndProject

@@ -80,7 +80,7 @@ dotnet restore && dotnet build && dotnet test
 
 **Sorcha.UI.Core audience convention (Feature 123):** user-facing and admin-facing code in `Sorcha.UI.Core` is partitioned at folder level into `Services/User/`, `Services/Admin/`, `Services/Shared/` (and the same pattern under `Models/`). Folders carry the audience; namespaces stay at the subject level so consumer `using` directives are stable across moves. See `src/Apps/Sorcha.UI/Sorcha.UI.Core/README.md` for the full convention and bi-modal smell detector.
 
-**Shared user-facing component library (Feature 122):** user-facing components shared between `Sorcha.UI` (web) and `Sorcha.Citizen.Wallet` (PWA) live in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`. The PWA references `Sorcha.UI.Components.User` directly; `Sorcha.UI.Core` re-exports via ProjectReference so web hosts pick the same components up transparently. See `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/README.md` for placement rules.
+**Shared user-facing component library (Feature 122):** user-facing components shared between `Sorcha.UI` (web) and `Sorcha.Wallet.Pwa` (PWA) live in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`. The PWA references `Sorcha.UI.Components.User` directly; `Sorcha.UI.Core` re-exports via ProjectReference so web hosts pick the same components up transparently. See `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/README.md` for placement rules.
 
 Full project tree: `docs/reference/project-structure.md`. Architecture diagrams: `docs/reference/architecture.md`.
 

@@ -652,38 +652,38 @@ services:
       - sorcha-network
 
   # Feature 114: Citizen wallet PWA (standalone Blazor WASM served via nginx)
-  sorcha-citizen-wallet:
+  sorcha-wallet-pwa:
     build:
       context: .
-      dockerfile: src/Apps/Sorcha.Citizen.Wallet/Dockerfile
-    image: sorchadev/citizen-wallet:latest
-    container_name: sorcha-citizen-wallet
+      dockerfile: src/Apps/Sorcha.Wallet.Pwa/Dockerfile
+    image: sorchadev/wallet-pwa:latest
+    container_name: sorcha-wallet-pwa
     restart: unless-stopped
     mem_limit: 128m
-    # Reachable internally via http://sorcha-citizen-wallet:8080 (gateway routes /wallet/*).
+    # Reachable internally via http://sorcha-wallet-pwa:8080 (gateway routes /wallet/*).
     # Optionally pin a host port for direct dev access.
     ports:
-      - "${CITIZEN_WALLET_PORT:-7400}:8080"
+      - "${WALLET_PWA_PORT:-7400}:8080"
     networks:
       - sorcha-network
     depends_on:
       - api-gateway
 
   # Feature 114: Reference verifier (Blazor Server)
-  sorcha-citizen-verifier:
+  sorcha-verifier:
     build:
       context: .
-      dockerfile: src/Apps/Sorcha.Citizen.Verifier/Dockerfile
-    image: sorchadev/citizen-verifier:latest
-    container_name: sorcha-citizen-verifier
+      dockerfile: src/Apps/Sorcha.Verifier/Dockerfile
+    image: sorchadev/verifier:latest
+    container_name: sorcha-verifier
     restart: unless-stopped
     <<: *app-hardening
     mem_limit: 256m
     ports:
-      - "${CITIZEN_VERIFIER_PORT:-7401}:8080"
+      - "${VERIFIER_PORT:-7401}:8080"
     environment:
       <<: [*otel-env, *jwt-env]
-      OTEL_SERVICE_NAME: citizen-verifier
+      OTEL_SERVICE_NAME: verifier
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
       ApiGateway__BaseUrl: http://api-gateway:8080

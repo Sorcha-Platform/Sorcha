@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
-# AssuredIdentity — Phase 1 (Identity issuance to the Citizen Wallet PWA)
+# AssuredIdentity — Phase 1 (Identity issuance to the Sorcha Wallet (PWA))
 # Feature 124 swapped this from the legacy HAIP filesystem-wallet path to the
-# Citizen Wallet PWA (SorchaLocalWallet target audience). The credential now
+# Sorcha Wallet (PWA) (SorchaLocalWallet target audience). The credential now
 # lands directly in the citizen's PWA via register-native delivery, so the
 # script no longer drives sorcha-agent haip receive.
 #
@@ -143,7 +143,7 @@ $null = Invoke-SorchaAction `
 # ============================================================================
 # Step 4: Set the pending-application notice (Feature 124 US2 / FR-009)
 # ============================================================================
-Write-WtStep "Step 4: Set pending-application notice on Citizen Wallet"
+Write-WtStep "Step 4: Set pending-application notice on Sorcha Wallet"
 
 Set-SorchaCitizenPendingApplication `
     -WalletUrl $state.walletUrl `
@@ -176,7 +176,7 @@ Write-WtSuccess "Action 2 approved — credential issuance triggered (target: So
 # ============================================================================
 # Step 6: Poll the citizen's wallet for the credential, then clear the notice
 # ============================================================================
-Write-WtStep "Step 6: Poll Citizen Wallet /credentials for AssuredIdentityCredential"
+Write-WtStep "Step 6: Poll Sorcha Wallet /credentials for AssuredIdentityCredential"
 
 $deadline = (Get-Date).AddSeconds($DeliveryTimeoutSeconds)
 $delivered = $false

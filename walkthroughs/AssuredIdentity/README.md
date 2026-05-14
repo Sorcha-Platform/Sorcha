@@ -4,10 +4,10 @@ Feature 107 + Feature 124 — single canonical citizen-identity workflow. A
 citizen submits a polished 5-page wizard (name + DOB, address, contact,
 optional photo, review), the Acme Verification Co. verification analyst
 approves, and the citizen receives an **AssuredIdentityCredential** in the
-Citizen Wallet PWA. The first-credential **welcome takeover** (Feature 124)
+Sorcha Wallet (PWA). The first-credential **welcome takeover** (Feature 124)
 fires when the credential lands.
 
-> **Feature 124 swapped this walkthrough to the Citizen Wallet PWA**
+> **Feature 124 swapped this walkthrough to the Sorcha Wallet (PWA)**
 > (`SorchaLocalWallet` target audience). The legacy HAIP filesystem-wallet
 > path is gone (FR-011). Phase 2 (Driving Licence) is currently a stub —
 > the umbrella citizen arc routes the credential-gated second service

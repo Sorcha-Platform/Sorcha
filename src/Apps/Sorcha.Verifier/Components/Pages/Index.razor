@@ -1,0 +1,96 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Reference verifier landing page (Feature 114, T092). The operator chooses what
+    to ask for, hits Start, and is sent to the QR session page.
+*@
+@page "/"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Http
+@using Sorcha.Verifier.Services
+@inject IPresentationRequestBuilder Builder
+@inject NavigationManager Nav
+@inject IHttpContextAccessor? HttpAccessor
+
+<PageTitle>Sorcha Reference Verifier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudText Typo="Typo.h4" Class="mb-4">Sorcha Reference Verifier</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6">
+        Build an OID4VP cross-device presentation request and show its QR. Citizens
+        scan the code with the Sorcha wallet PWA, approve disclosure, and the result
+        appears here in real time.
+    </MudText>
+
+    <MudPaper Elevation="1" Class="pa-4">
+        <MudStack Spacing="3">
+            <MudTextField @bind-Value="_purpose" Label="Purpose"
+                          HelperText="Shown to the citizen on the consent sheet."
+                          Required="true" />
+            <MudTextField @bind-Value="_vct" Label="Required credential type (vct)"
+                          Required="true" />
+            <MudTextField @bind-Value="_required" Label="Required claims (comma separated)" />
+            <MudTextField @bind-Value="_optional" Label="Optional claims (comma separated)" />
+            <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                       OnClick="StartAsync" Disabled="@_starting">
+                @(_starting ? "Starting…" : "Start verification")
+            </MudButton>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error">@_error</MudAlert>
+            }
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private string _purpose = "Confirm identity";
+    private string _vct = "https://sorcha.dev/vc/test/v1";
+    private string _required = "givenName";
+    private string _optional = "familyName";
+    private bool _starting;
+    private string? _error;
+
+    private async Task StartAsync()
+    {
+        _error = null;
+        _starting = true;
+        try
+        {
+            var required = SplitCsv(_required);
+            var optional = SplitCsv(_optional);
+            // Demo verifier org id is deterministic — trusts that the citizen wallet pins this kid.
+            var verifierOrgId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+            var baseUri = ResolveBaseUri();
+            var result = await Builder.CreateAsync(
+                verifierOrgId, _purpose, _vct, required, optional, baseUri);
+            Nav.NavigateTo($"s/{result.Session.SessionId}");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _starting = false;
+        }
+    }
+
+    private static List<string> SplitCsv(string raw) => raw
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToList();
+
+    private string ResolveBaseUri()
+    {
+        // Behind the gateway the verifier sees /verify/* as its mount prefix; build the
+        // response URI relative to whatever host scanned the QR.
+        var ctx = HttpAccessor?.HttpContext;
+        if (ctx is not null)
+        {
+            return $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}";
+        }
+        return Nav.BaseUri.TrimEnd('/');
+    }
+}

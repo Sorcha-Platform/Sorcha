@@ -25,8 +25,8 @@
     <ProjectReference Include="..\..\Services\Sorcha.Validator.Service\Sorcha.Validator.Service.csproj" />
     <ProjectReference Include="..\..\Services\Sorcha.Haip.Service\Sorcha.Haip.Service.csproj" />
     <!-- Feature 114 -->
-    <ProjectReference Include="..\Sorcha.Citizen.Wallet\Sorcha.Citizen.Wallet.csproj" />
-    <ProjectReference Include="..\Sorcha.Citizen.Verifier\Sorcha.Citizen.Verifier.csproj" />
+    <ProjectReference Include="..\Sorcha.Wallet.Pwa\Sorcha.Wallet.Pwa.csproj" />
+    <ProjectReference Include="..\Sorcha.Verifier\Sorcha.Verifier.csproj" />
   </ItemGroup>
 
 </Project>

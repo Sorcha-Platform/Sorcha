@@ -1,0 +1,87 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 124 (US3, FR-004, FR-015). Full-screen welcome takeover rendered
+    the first time a citizen sees their first credential on this device.
+
+    Reuses the cross-cutting IdCardLayout component (umbrella invariant —
+    one visual component, three contexts: form preview / reviewer pending /
+    wallet detail) with watermark=Issued. The CachedCredential carries only
+    a thin slice of the data IdCardLayoutConfig was designed for, so v1
+    renders the card with header (issuer + credential name) and no body
+    sections — the celebration moment doesn't need a credential audit.
+    Spec 2 (wallet UX foundations) is the umbrella's planned home for the
+    fuller wallet-detail wiring; this slice intentionally matches the
+    existing CredentialDetail.razor surface area.
+*@
+
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Blueprint.Models
+@using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Components.Forms.Layouts
+
+<div class="sorcha-welcome-overlay" role="dialog" aria-modal="true"
+     aria-labelledby="sorcha-welcome-headline" data-testid="welcome-takeover">
+    <div class="sorcha-welcome-content">
+        <h2 id="sorcha-welcome-headline" class="sorcha-welcome-headline">
+            Welcome to your wallet
+        </h2>
+        <p class="sorcha-welcome-subhead">
+            Your first credential has arrived.
+        </p>
+
+        <div class="sorcha-welcome-card-frame">
+            <IdCardLayout Config="@_config" />
+        </div>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                   FullWidth="true" Class="mt-4"
+                   OnClick="HandleOpenAsync"
+                   data-testid="welcome-takeover-open">
+            Open
+        </MudButton>
+    </div>
+</div>
+
+@code {
+    /// <summary>The freshly-arrived credential being celebrated.</summary>
+    [Parameter, EditorRequired] public required CachedCredential Credential { get; set; }
+
+    /// <summary>Fires when the citizen taps Open. The host persists the dismissal record.</summary>
+    [Parameter] public EventCallback OnDismiss { get; set; }
+
+    private IdCardLayoutConfig _config = default!;
+
+    protected override void OnParametersSet()
+    {
+        _config = new IdCardLayoutConfig
+        {
+            IssuerName = ResolveIssuerName(Credential),
+            CredentialName = Credential.DisplayLabel ?? Credential.Vct,
+            ColourTheme = XReviewColourTheme.IdentityNavy,
+            Watermark = IdCardWatermark.Issued,
+            FieldValues = new Dictionary<string, object?>(),
+            Sections = Array.Empty<IdCardSection>(),
+            Editable = false,
+        };
+    }
+
+    private static string ResolveIssuerName(CachedCredential credential)
+    {
+        // CachedCredential carries the issuer DID, not a human-readable name.
+        // Until the wallet caches issuer org-display metadata (Spec 2 territory),
+        // surface a friendly fallback so the takeover doesn't show
+        // "did:sorcha:org:abc…" as the issuer label.
+        if (string.IsNullOrWhiteSpace(credential.IssuerDid)) return "Your issuer";
+        return credential.IssuerDid;
+    }
+
+    private async Task HandleOpenAsync()
+    {
+        if (OnDismiss.HasDelegate)
+        {
+            await OnDismiss.InvokeAsync();
+        }
+    }
+}

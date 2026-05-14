@@ -1,0 +1,174 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Citizen wallet present page (Feature 114, T096-T100). v1 MVP:
+    paste an openid4vp:// deep link, pick a credential, approve disclosure
+    (required claims locked, optional toggleable), POST the vp_token to the
+    verifier's response_uri. QR scanner integration is queued for hardening.
+*@
+@page "/present"
+@layout MainLayout
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Text.Json
+@using Sorcha.Wallet.Pwa.Components
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Presentation
+@inject IPresentationEngine Engine
+@inject ICredentialCache Credentials
+@inject IDeviceKeyService DeviceKey
+@inject IDelegationStore Delegation
+@inject IStatusListService StatusList
+@inject HttpClient Http
+
+<PageTitle>Present a credential</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Present a credential</MudText>
+
+    @if (_phase == Phase.AwaitingDeepLink)
+    {
+        <MudPaper Elevation="1" Class="pa-4">
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Paste the verifier's <code>openid4vp://</code> link. (QR camera scan
+                lands in a follow-up; for the MVP demo we paste.)
+            </MudText>
+            <MudTextField @bind-Value="_deepLink"
+                          Label="Verifier deep link"
+                          Lines="3" Variant="Variant.Outlined" />
+            <MudButton Class="mt-3" Color="Color.Primary" Variant="Variant.Filled"
+                       OnClick="ParseAsync">
+                Continue
+            </MudButton>
+        </MudPaper>
+    }
+    else if (_phase == Phase.NoMatch)
+    {
+        <NoMatchingCredentialDialog RequiredVct="@_request?.RequiredVct"
+                                    OnCancel="Reset" />
+    }
+    else if (_phase == Phase.PickCredential && _matches is not null)
+    {
+        <CredentialPickerDialog Matches="_matches"
+                                OnChosen="OnCredentialChosen"
+                                OnCancel="Reset" />
+    }
+    else if (_phase == Phase.Consent && _selected is not null && _request is not null)
+    {
+        <ConsentSheet Selected="_selected"
+                      Request="_request"
+                      OptionalToggles="_optionalToggles"
+                      Busy="_busy"
+                      OnConfirm="ConfirmAsync"
+                      OnCancel="Reset" />
+    }
+    else if (_phase == Phase.Done)
+    {
+        <MudAlert Severity="@(_responseStatus == "ok" ? Severity.Success : Severity.Error)" Class="mb-3">
+            @_responseMessage
+        </MudAlert>
+        <MudButton Variant="Variant.Outlined" OnClick="Reset">Done</MudButton>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+</MudContainer>
+
+@code {
+    private enum Phase { AwaitingDeepLink, NoMatch, PickCredential, Consent, Done }
+
+    private Phase _phase = Phase.AwaitingDeepLink;
+    private string _deepLink = string.Empty;
+    private string? _error;
+    private bool _busy;
+    private ParsedPresentationRequest? _request;
+    private IReadOnlyList<CredentialMatch>? _matches;
+    private CredentialMatch? _selected;
+    private Dictionary<string, bool> _optionalToggles = new();
+    private string _responseStatus = string.Empty;
+    private string _responseMessage = string.Empty;
+
+    private async Task ParseAsync()
+    {
+        _error = null;
+        try
+        {
+            _request = Engine.Parse(_deepLink.Trim());
+            var creds = await Credentials.ListAsync();
+            _matches = Engine.Match(_request, creds);
+            if (_matches.Count == 0) { _phase = Phase.NoMatch; return; }
+            if (_matches.Count == 1)
+            {
+                _selected = _matches[0];
+                EnterConsent();
+                return;
+            }
+            _phase = Phase.PickCredential;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void OnCredentialChosen(CredentialMatch? match)
+    {
+        if (match is null) return;
+        _selected = match;
+        EnterConsent();
+    }
+
+    private void EnterConsent()
+    {
+        _optionalToggles = (_selected?.AvailableOptional ?? Array.Empty<string>())
+            .ToDictionary(n => n, _ => false);
+        _phase = Phase.Consent;
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_selected is null || _request is null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var approved = _selected.SatisfiedRequired
+                .Concat(_optionalToggles.Where(kv => kv.Value).Select(kv => kv.Key))
+                .ToList();
+
+            var deviceJwk = await DeviceKey.GetPublicJwkAsync();
+            var vp = await Engine.BuildVpTokenAsync(
+                _selected, approved, _request, deviceJwk, DeviceKey.SignAsync);
+
+            var delegationJwt = await Delegation.GetCurrentAsync();
+            var body = new { vpToken = vp, delegation = delegationJwt };
+            var resp = await Http.PostAsJsonAsync(_request.ResponseUri, body);
+            if (resp.IsSuccessStatusCode)
+            {
+                _responseStatus = "ok";
+                _responseMessage = "Verifier accepted the presentation.";
+            }
+            else
+            {
+                _responseStatus = "fail";
+                _responseMessage = $"Verifier returned {(int)resp.StatusCode} {resp.StatusCode}.";
+            }
+            _phase = Phase.Done;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private void Reset()
+    {
+        _phase = Phase.AwaitingDeepLink;
+        _deepLink = string.Empty;
+        _request = null;
+        _matches = null;
+        _selected = null;
+        _optionalToggles = new();
+        _error = null;
+        _responseMessage = string.Empty;
+        _responseStatus = string.Empty;
+    }
+}
