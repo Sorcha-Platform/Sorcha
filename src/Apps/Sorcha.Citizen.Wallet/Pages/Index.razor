@@ -23,11 +23,22 @@
 @inject CitizenWalletHubConnection Hub
 @inject HttpClient Http
 @inject IPendingApplicationClient PendingApplications
+@inject IWalletFlagsStore WalletFlags
 @inject NavigationManager Nav
 @inject ILogger<Index> Logger
 @implements IAsyncDisposable
 
 <PageTitle>Sorcha Wallet</PageTitle>
+
+@* Feature 124 (US3/US4/US5, FR-004 to FR-007). The welcome takeover sits
+   *outside* MudContainer so its full-screen overlay covers Home cleanly.
+   Eligibility check: a credential is visible AND WelcomedAt is null AND
+   the takeover hasn't been dismissed in this render cycle. *@
+@if (_showWelcomeTakeover && _credentials is { Count: > 0 })
+{
+    <WelcomeTakeover Credential="@_credentials[0]"
+                     OnDismiss="HandleWelcomeDismissedAsync" />
+}
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
     <MudText Typo="Typo.h5" Class="mb-3">Your credentials</MudText>
@@ -133,10 +144,29 @@
     private string? _syncStatus;
     private Severity _syncSeverity = Severity.Info;
 
+    // Feature 124 (US3/US4/US5). The takeover fires exactly once per wallet
+    // per device. _flagsLoaded gates eligibility until the IndexedDB flags
+    // record has been read, so we don't accidentally render the takeover
+    // *before* discovering the citizen already dismissed it on this device.
+    private WalletFlagsRecord? _flags;
+    private bool _flagsLoaded;
+    private bool _showWelcomeTakeover;
+
     protected override async Task OnInitializedAsync()
     {
+        // Load wallet flags before evaluating any eligibility — we must NOT
+        // show the takeover before the per-device WelcomedAt has been read.
+        _flags = await WalletFlags.GetAsync();
+        _flagsLoaded = true;
+
         _credentials = await Credentials.ListAsync();
         await RefreshPendingNoticeAsync();
+
+        // Feature 124 (US4 cold-open). If credentials already exist in cache
+        // and the citizen has never been welcomed on this device, fire the
+        // takeover on first paint — before any further user action.
+        EvaluateTakeoverEligibility();
+
         // Fire-and-forget background sync — refreshes the cache from server without
         // blocking first paint. UI updates via StateHasChanged when sync completes.
         _ = SyncNowAsync(silentSuccess: true);
@@ -158,6 +188,12 @@
         _ = InvokeAsync(async () =>
         {
             await SyncNowAsync(silentSuccess: true);
+            // Feature 124 (US3, R-011 belt-and-braces). SyncNowAsync already
+            // calls EvaluateTakeoverEligibility on its happy path, but the
+            // explicit check here defends against the case where sync was
+            // a no-op (credential pushed by hub already cached) and the
+            // foreground branch should still raise the welcome.
+            EvaluateTakeoverEligibility();
         });
     }
 
@@ -206,6 +242,55 @@
     }
 
     /// <summary>
+    /// Feature 124 (US3/US4/US5, FR-004 to FR-007). Decides whether the
+    /// welcome takeover should be visible right now. Idempotent — once the
+    /// citizen dismisses it and <see cref="WalletFlagsRecord.WelcomedAt"/> is
+    /// persisted, this method becomes a no-op on this device for the lifetime
+    /// of the wallet's IndexedDB (the per-device invariant from FR-006). The
+    /// check is intentionally cheap so we can call it from multiple sites
+    /// (init, hub push, sync completion) per R-011 belt-and-braces ordering.
+    /// </summary>
+    private void EvaluateTakeoverEligibility()
+    {
+        // Gate until the per-device flags record has been loaded so we never
+        // raise the takeover before discovering a prior dismissal (US5 / FR-006).
+        if (!_flagsLoaded) return;
+
+        var shouldShow = _flags?.WelcomedAt is null
+                         && _credentials is { Count: > 0 };
+
+        if (shouldShow && !_showWelcomeTakeover)
+        {
+            _showWelcomeTakeover = true;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Feature 124 (US3 dismissal / US5 invariant). Persists the WelcomedAt
+    /// timestamp via <see cref="IWalletFlagsStore"/> so the takeover never
+    /// fires again on this device, and hides the overlay.
+    /// </summary>
+    private async Task HandleWelcomeDismissedAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _flags = new WalletFlagsRecord(WelcomedAt: now);
+        try
+        {
+            await WalletFlags.SetAsync(_flags);
+        }
+        catch (Exception ex)
+        {
+            // Persisting the dismissal record is best-effort. If it fails, the
+            // takeover will re-fire next open (acceptable per the edge-case
+            // table in the spec — "wallet local-data clear ≡ new wallet").
+            Logger.LogWarning(ex, "Failed to persist WalletFlags.WelcomedAt");
+        }
+        _showWelcomeTakeover = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
     /// Feature 124 (US2). Re-reads the citizen's pending-application notice on
     /// every Home render trigger. Silently swallows transport errors — the
     /// notice is purely a UX hint, not a correctness primitive.
@@ -246,6 +331,12 @@
             {
                 await RefreshPendingNoticeAsync();
             }
+
+            // Feature 124 (US3 foreground / US4 cold-open). The eligibility
+            // check runs on every successful sync completion. It's
+            // idempotent — once the citizen dismisses the takeover and
+            // WelcomedAt is set, this is a no-op (US5 invariant, FR-006).
+            EvaluateTakeoverEligibility();
             _syncSeverity = Severity.Success;
             _syncStatus = outcome.Mode == SyncMode.FullSnapshot
                 ? $"Synced — pulled full snapshot ({outcome.Added} credential(s))."
