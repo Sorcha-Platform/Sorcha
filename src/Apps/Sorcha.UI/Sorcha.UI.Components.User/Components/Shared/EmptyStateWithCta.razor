@@ -1,0 +1,59 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Empty-state-with-CTA (Feature 125, T111). Every empty surface in the
+    wallet uses this — no bare "zero count" messages allowed (FR-030).
+    Pairs a plain-English explanation with a suggested action.
+*@
+@namespace Sorcha.UI.Components.User.Components.Shared
+
+<MudPaper Class="pa-4 ma-2 d-flex flex-column align-center justify-center"
+          Elevation="0"
+          Outlined="true"
+          data-testid="@($"empty-state-{(Slug ?? "default")}")">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <MudIcon Icon="@Icon" Size="Size.Large" Color="Color.Tertiary" Class="mb-2" />
+    }
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <MudText Typo="Typo.subtitle1" Align="Align.Center">@Title</MudText>
+    }
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3" Align="Align.Center">
+        @Description
+    </MudText>
+    @if (OnAction.HasDelegate && !string.IsNullOrEmpty(ActionLabel))
+    {
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@ActionIcon"
+                   OnClick="@(async () => await OnAction.InvokeAsync())"
+                   data-testid="@($"empty-state-action-{(Slug ?? "default")}")">
+            @ActionLabel
+        </MudButton>
+    }
+</MudPaper>
+
+@code {
+    /// <summary>Test-id slug suffix; lets callers disambiguate multiple empty states on a page.</summary>
+    [Parameter] public string? Slug { get; set; }
+
+    /// <summary>Optional icon shown above the title.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Optional short title (e.g. "No credentials yet").</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Plain-English description of why the surface is empty and what the user can do.</summary>
+    [Parameter, EditorRequired] public string Description { get; set; } = string.Empty;
+
+    /// <summary>Label for the suggested action button. Button hides when empty.</summary>
+    [Parameter] public string? ActionLabel { get; set; }
+
+    /// <summary>Optional icon for the action button.</summary>
+    [Parameter] public string? ActionIcon { get; set; }
+
+    /// <summary>Fires when the user taps the suggested action.</summary>
+    [Parameter] public EventCallback OnAction { get; set; }
+}

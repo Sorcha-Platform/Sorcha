@@ -1,0 +1,110 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Guided tour scaffold (Feature 125, T104). Hand-rolled — no third-party
+    tour library — to keep PWA bundle weight low. Renders a sequence of
+    tooltips above highlighted regions; dismiss-persistence is the host's
+    responsibility (typically WalletFlagsRecord.TourDismissedAt).
+
+    Layout: per step, a centred MudDialog with the step copy and a row of
+    Skip / Next / Done buttons. Final step's Next becomes Done and fires
+    OnCompleted. Skip at any point fires OnDismissedEarly. Both signal
+    paths the host uses to persist the dismissal flag.
+*@
+@namespace Sorcha.UI.Components.User.Components.Onboarding
+
+@if (_open && CurrentStep is not null)
+{
+    <MudDialog @bind-Visible="_open" Options="DialogOptions" data-testid="guided-tour-scaffold">
+        <DialogContent>
+            <MudStack Spacing="2">
+                <MudText Typo="Typo.subtitle1">@CurrentStep.Title</MudText>
+                <MudText Typo="Typo.body2">@CurrentStep.Body</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    Step @(StepIndex + 1) of @TotalSteps
+                </MudText>
+            </MudStack>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@SkipAsync"
+                       Variant="Variant.Text"
+                       Color="Color.Default"
+                       data-testid="guided-tour-skip">
+                Skip
+            </MudButton>
+            <MudButton OnClick="@NextAsync"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       data-testid="@(IsLastStep ? "guided-tour-done" : "guided-tour-next")">
+                @(IsLastStep ? "Done" : "Next")
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    /// <summary>Tour steps to render in order. Tour does not render when empty.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<GuidedTourStep> Steps { get; set; } = Array.Empty<GuidedTourStep>();
+
+    /// <summary>True to open the tour on initial render. Hosts gate this on the dismissal flag.</summary>
+    [Parameter] public bool ShouldRun { get; set; }
+
+    /// <summary>Fires when the user reaches the Done step.</summary>
+    [Parameter] public EventCallback OnCompleted { get; set; }
+
+    /// <summary>Fires when the user skips before completion.</summary>
+    [Parameter] public EventCallback OnDismissedEarly { get; set; }
+
+    private bool _open;
+    private int StepIndex { get; set; }
+
+    private GuidedTourStep? CurrentStep =>
+        Steps is { Count: > 0 } && StepIndex < Steps.Count ? Steps[StepIndex] : null;
+    private int TotalSteps => Steps?.Count ?? 0;
+    private bool IsLastStep => StepIndex >= TotalSteps - 1;
+
+    private static DialogOptions DialogOptions { get; } = new()
+    {
+        CloseButton = false,
+        BackdropClick = false,
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (ShouldRun && Steps is { Count: > 0 } && !_open && StepIndex == 0)
+        {
+            _open = true;
+        }
+        else if (!ShouldRun)
+        {
+            _open = false;
+        }
+    }
+
+    private async Task NextAsync()
+    {
+        if (IsLastStep)
+        {
+            _open = false;
+            StepIndex = 0;
+            if (OnCompleted.HasDelegate) await OnCompleted.InvokeAsync();
+        }
+        else
+        {
+            StepIndex++;
+        }
+    }
+
+    private async Task SkipAsync()
+    {
+        _open = false;
+        StepIndex = 0;
+        if (OnDismissedEarly.HasDelegate) await OnDismissedEarly.InvokeAsync();
+    }
+
+    /// <summary>One step in the tour.</summary>
+    public sealed record GuidedTourStep(string Title, string Body);
+}

@@ -52,6 +52,44 @@ public sealed class WalletFlagsStoreTests
     }
 
     [Fact]
+    public async Task SetAsync_TourDismissedAt_RoundTrips()
+    {
+        // Feature 125 / PR-F (T107) — TourDismissedAt persists alongside
+        // WelcomedAt; the two fields transition independently.
+        var store = new InMemoryWalletFlagsStore();
+        var dismissedAt = DateTimeOffset.UtcNow;
+
+        await store.SetAsync(new WalletFlagsRecord(WelcomedAt: null, TourDismissedAt: dismissedAt));
+
+        var read = await store.GetAsync();
+        read.Should().NotBeNull();
+        read!.TourDismissedAt.Should().Be(dismissedAt);
+        read.WelcomedAt.Should().BeNull("the tour flag must not pollute the welcome flag.");
+    }
+
+    [Fact]
+    public async Task SetAsync_ReplayResetsTourOnly_PreservesWelcomedAt()
+    {
+        // Feature 125 / PR-F (T108) — Replay tour resets TourDismissedAt
+        // to null but leaves WelcomedAt unchanged; the welcome ceremony is
+        // a once-per-device beat and must not re-fire on replay.
+        var store = new InMemoryWalletFlagsStore();
+        var welcomed = DateTimeOffset.UtcNow.AddDays(-1);
+        var tourDismissed = DateTimeOffset.UtcNow;
+        await store.SetAsync(new WalletFlagsRecord(welcomed, tourDismissed));
+
+        // Replay: WelcomedAt preserved, TourDismissedAt cleared.
+        var current = await store.GetAsync();
+        await store.SetAsync(new WalletFlagsRecord(
+            WelcomedAt: current!.WelcomedAt,
+            TourDismissedAt: null));
+
+        var read = await store.GetAsync();
+        read!.WelcomedAt.Should().Be(welcomed);
+        read.TourDismissedAt.Should().BeNull("Replay tour must clear only the tour flag.");
+    }
+
+    [Fact]
     public async Task SetAsync_NullWelcomedAt_IsPersisted()
     {
         // Edge case: the store accepts a record with null WelcomedAt — this
