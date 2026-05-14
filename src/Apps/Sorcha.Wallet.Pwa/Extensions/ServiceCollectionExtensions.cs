@@ -6,7 +6,9 @@ using Sorcha.Wallet.Pwa.Services;
 using Sorcha.Wallet.Pwa.Services.Context;
 using Sorcha.Wallet.Pwa.Services.Presentation;
 using Sorcha.Wallet.Pwa.Services.Signing;
+using Sorcha.Wallet.Pwa.Services.Verification;
 using Sorcha.UI.Components.User.Services.Signing;
+using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.ServiceClients.CitizenWallet;
 
 namespace Sorcha.Wallet.Pwa.Extensions;
@@ -51,6 +53,15 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IActiveContextStore, IndexedDbActiveContextStore>();
         services.AddSingleton<IPerContextPersonaCache, IndexedDbPerContextPersonaCache>();
         services.AddSingleton<IVerificationHistoryStore, IndexedDbVerificationHistoryStore>();
+
+        // Feature 125 / PR-C — doorstep verification (US1). EphemeralVerifierIdentity
+        // generates a fresh EC P-256 key per session via webcrypto-bridge.js;
+        // StubVerifierEngine ships the v1 verify pipeline as a parseable
+        // demo offer envelope. Real local-validation lifts
+        // VerifiablePresentationValidator out of Sorcha.Verifier in a
+        // follow-up extraction PR.
+        services.AddSingleton<IEphemeralVerifierIdentityService, EphemeralVerifierIdentityService>();
+        services.AddSingleton<IVerifierEngine, StubVerifierEngine>();
 
         // Server-clock observer (T101) — populated by the ServerClockHandler on
         // every outbound HTTP call; read by Pages/Index.razor to surface a
