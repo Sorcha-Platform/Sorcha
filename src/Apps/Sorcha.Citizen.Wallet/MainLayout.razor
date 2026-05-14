@@ -21,20 +21,20 @@
         <MudSpacer />
         <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner"
                        Color="Color.Inherit"
-                       OnClick="@(() => Nav.NavigateTo("/present"))"
+                       OnClick="@(() => Nav.NavigateTo("present"))"
                        aria-label="Present a credential" />
     </MudAppBar>
     <MudMainContent Class="pb-16">
         @Body
     </MudMainContent>
     <MudAppBar Bottom="true" Fixed="true" Elevation="4" Color="Color.Surface" Class="d-flex justify-space-around">
-        <MudIconButton Icon="@Icons.Material.Filled.Home" OnClick="@(() => Nav.NavigateTo("/"))"
+        <MudIconButton Icon="@Icons.Material.Filled.Home" OnClick="@(() => Nav.NavigateTo(""))"
                        aria-label="Home" />
-        <MudIconButton Icon="@Icons.Material.Filled.PhoneIphone" OnClick="@(() => Nav.NavigateTo("/devices"))"
+        <MudIconButton Icon="@Icons.Material.Filled.PhoneIphone" OnClick="@(() => Nav.NavigateTo("devices"))"
                        aria-label="Devices" />
-        <MudIconButton Icon="@Icons.Material.Filled.History" OnClick="@(() => Nav.NavigateTo("/activity"))"
+        <MudIconButton Icon="@Icons.Material.Filled.History" OnClick="@(() => Nav.NavigateTo("activity"))"
                        aria-label="Activity" />
-        <MudIconButton Icon="@Icons.Material.Filled.Settings" OnClick="@(() => Nav.NavigateTo("/settings"))"
+        <MudIconButton Icon="@Icons.Material.Filled.Settings" OnClick="@(() => Nav.NavigateTo("settings"))"
                        aria-label="Settings" />
     </MudAppBar>
 </MudLayout>
