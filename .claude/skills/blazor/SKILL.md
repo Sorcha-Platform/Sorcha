@@ -138,6 +138,63 @@ if (result is { Canceled: false })
 }
 ```
 
+### PWA navigation when mounted under a path prefix
+
+Blazor's `NavigationManager` treats paths with a **leading slash** as origin-relative (absolute), NOT base-href-relative. When the app is mounted under a prefix like `/wallet/` (via API Gateway `PathRemovePrefix` or similar) with `<base href="/wallet/" />` in `index.html`, this matters:
+
+```razor
+@* WRONG — resolves to https://host/enrol — 404 in production *@
+<MudButton OnClick="@(() => Nav.NavigateTo("/enrol"))">Enrol</MudButton>
+<MudLink Href="/settings">Settings</MudLink>
+
+@* RIGHT — resolves to https://host/wallet/enrol via base href *@
+<MudButton OnClick="@(() => Nav.NavigateTo("enrol"))">Enrol</MudButton>
+<MudLink Href="settings">Settings</MudLink>
+
+@* RIGHT — Home button: NavigateTo("") lands at base, NOT NavigateTo("/") *@
+<MudIconButton OnClick="@(() => Nav.NavigateTo(""))" />
+```
+
+**Why it ships broken**: localhost-dev often serves the PWA at the origin root (no prefix), so leading-slash calls *happen to work*. The bug only manifests when the PWA is served under a prefix in production. Citizen Wallet PWA hit this on n1 — see PR #698.
+
+**Test coverage**: every nav-triggering element must have a click+URL-assertion test. The page-object-without-clicks anti-pattern (see the **playwright** skill) is how this slips through CI.
+
+### nginx caching for Blazor WASM — fingerprinted vs entry-point assets
+
+Two classes of file live under `_framework/` and they need different cache policies:
+
+| Class | Example | URL stable? | Contents change? | Cache |
+|---|---|---|---|---|
+| Fingerprinted | `Sorcha.Citizen.Wallet.b0fgy5dpkq.wasm` | No (hash in URL) | No (hash *is* the contents key) | `immutable, max-age=31536000` ✅ |
+| Entry-point | `dotnet.js`, `blazor.webassembly.js` | Yes | **Yes** — embeds the fingerprint manifest of which wasm files to load | `no-cache, no-store, must-revalidate` ✅ |
+
+A nginx regex like `location ~* ^/_framework/.*\.(dll|wasm|js)$` that marks **everything** as `immutable` is the trap — it catches the non-fingerprinted entry points. On redeploy, the wasm fingerprints rotate but browsers holding the year-cached `dotnet.js` keep referencing dead hashes. Manifests as "the wallet won't navigate after a redeploy on a returning device." See PR #699.
+
+**Correct nginx pattern** (exact-match locations win over regex):
+
+```nginx
+# Non-fingerprinted entry points — revalidate every visit.
+location = /_framework/dotnet.js {
+    add_header Cache-Control "no-cache, no-store, must-revalidate";
+    try_files $uri =404;
+}
+location = /_framework/blazor.webassembly.js {
+    add_header Cache-Control "no-cache, no-store, must-revalidate";
+    try_files $uri =404;
+}
+
+# Fingerprinted assets — safe to cache forever.
+location ~* ^/_framework/.*\.(dll|wasm|js|json|blat|dat)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+    try_files $uri =404;
+}
+```
+
+**Regression guard**: HTTP probe test that asserts `dotnet.js` does *not* contain `immutable` in `Cache-Control`. See `tests/Sorcha.UI.E2E.Tests/Docker/CitizenWallet/CitizenWalletNginxCacheHeadersTests.cs`.
+
+**The one-time penalty**: existing browsers that visited before the fix landed still hold the year-cached `dotnet.js`. They keep showing broken nav until their cache TTL expires OR they hard-refresh. New visitors (and incognito sessions) are unaffected.
+
 ## See Also
 
 - [patterns](references/patterns.md) - Component and authentication patterns
