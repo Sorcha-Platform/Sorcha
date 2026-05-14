@@ -1,7 +1,7 @@
 {
   "id": "assured-identity-v1",
   "title": "Assured Identity",
-  "description": "Single canonical citizen-identity workflow. A public-org citizen submits a short 5-page wizard (name + DOB, address, contact, optional photo, review), a verification analyst (or background sorcha-agent) approves, and the AssuredIdentityCredential is delivered via the Wave 14b claim-card pattern. Feature 107 supersedes the earlier Features 103 / 106 demo blueprints.",
+  "description": "Single canonical citizen-identity workflow. A public-org citizen submits a short 5-page wizard (name + DOB, address, contact, optional photo, review), a verification analyst (or background sorcha-agent) approves, and the AssuredIdentityCredential is delivered to the citizen's Sorcha wallet. Feature 124 swapped this from the legacy HAIP filesystem wallet to the Citizen Wallet PWA (SorchaLocalWallet target audience).",
   "version": 1,
   "category": "identity",
   "tags": ["assured-identity", "identity", "haip", "oid4vci", "verifiable-credential", "credential-claim", "citizen-application", "core-primitives", "portrait"],
@@ -24,7 +24,7 @@
         "id": "citizen",
         "name": "Citizen",
         "organisation": "Public",
-        "description": "Submits an Assured Identity application and claims the credential into their Sorcha wallet or an external HAIP wallet"
+        "description": "Submits an Assured Identity application and receives the credential in their Citizen Wallet PWA"
       },
       {
         "id": "verification-analyst",
@@ -158,7 +158,7 @@
         ],
         "credentialIssuanceConfig": {
           "credentialType": "AssuredIdentityCredential",
-          "targetAudience": "HaipExternalWallet",
+          "targetAudience": "SorchaLocalWallet",
           "recipientParticipantId": "citizen",
           "claimMappings": [
             { "claimName": "givenName",   "sourceField": "/name/givenName" },
@@ -205,7 +205,7 @@
       {
         "id": 3,
         "title": "Claim your Assured Identity credential",
-        "description": "Your Assured Identity credential is ready. Click Claim to store it in your Sorcha wallet, or scan the QR code to load it into an external HAIP-compatible wallet. Declining will cancel the claim and no credential will be issued.",
+        "description": "Your Assured Identity credential is ready. Click Claim to deliver it to your Citizen Wallet PWA. Declining will cancel the claim and no credential will be issued.",
         "sender": "citizen",
         "requiredPriorActions": [2],
         "dataSchemas": [

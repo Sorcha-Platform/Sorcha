@@ -1,0 +1,85 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+
+   Feature 124 animation primitives. Mobile-first, GPU-composited keyframes.
+   Two consumers in v1:
+   - WaitingCard.razor (US2, T021) — pulsing skeleton placeholder while a
+     citizen's application is in review.
+   - WelcomeTakeover.razor (US3, T028) — fade-in + dismiss-out for the
+     first-credential takeover overlay. Added in the PR-C slice. */
+
+@keyframes sorcha-skeleton-pulse {
+    0%   { opacity: 0.4; }
+    50%  { opacity: 0.8; }
+    100% { opacity: 0.4; }
+}
+
+.sorcha-waiting-card {
+    border-radius: 16px;
+    padding: 24px;
+    margin-top: 16px;
+    background: linear-gradient(135deg, #e6e9ef 0%, #f3f5f9 100%);
+    min-height: 180px;
+    animation: sorcha-skeleton-pulse 1.4s ease-in-out infinite;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.sorcha-waiting-card__line {
+    height: 12px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.08);
+    margin-bottom: 12px;
+}
+
+.sorcha-waiting-card__line--short { width: 40%; }
+.sorcha-waiting-card__line--mid   { width: 65%; }
+.sorcha-waiting-card__line--long  { width: 90%; }
+
+/* Feature 124 (US3, T028). Welcome takeover — full-screen overlay over Home,
+   id-card centred, fade-in/dismiss-out. CSS-only (no JS animation), GPU-
+   composited transforms. */
+
+@keyframes sorcha-takeover-fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.sorcha-welcome-overlay {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(180deg, #f3f5f9 0%, #e6e9ef 100%);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: sorcha-takeover-fade-in 200ms ease-out both;
+}
+
+.sorcha-welcome-content {
+    max-width: 480px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+}
+
+.sorcha-welcome-headline {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+    color: #1c2540;
+}
+
+.sorcha-welcome-subhead {
+    font-size: 1rem;
+    color: rgba(28, 37, 64, 0.7);
+    margin: 0 0 24px 0;
+}
+
+.sorcha-welcome-card-frame {
+    margin: 0 auto;
+    max-width: 380px;
+    width: 100%;
+}

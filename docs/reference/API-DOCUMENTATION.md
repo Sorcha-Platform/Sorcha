@@ -1244,6 +1244,44 @@ Downloads a decrypted file attachment from a stored data transaction. The wallet
 
 **Auth:** JWT Bearer required. The caller's wallet must be able to decrypt the field (owner or delegated ReadOnly+).
 
+#### 10. Pending Application Notice (Feature 124)
+
+A small, citizen-scoped surface that drives the Citizen Wallet PWA's waiting-state UX. The notice carries only a human-readable label — no credential content. Set by the walkthrough script (or a future application-submission flow) when a citizen submits a credential application; the PWA reads it on every Home render to decide whether to show the waiting card; cleared on credential delivery (or auto-expires after 24 hours).
+
+All three endpoints require the citizen-wallet audience JWT (`sorcha:citizen-wallet`) and are scoped to the caller's `PlatformUserId`. Rate-limited by `RateLimitPolicies.Strict`. Contract: [`specs/124-assured-identity-pwa/contracts/pending-application-notice.openapi.yaml`](../../specs/124-assured-identity-pwa/contracts/pending-application-notice.openapi.yaml).
+
+##### GET /api/v1/wallet/pending-applications
+
+Returns the active notice for the calling citizen, or `null` if none is set.
+
+**Response:** `200 OK`
+```json
+{ "notice": { "label": "Assured Identity", "setAt": "2026-05-14T09:41:22Z" } }
+```
+or
+```json
+{ "notice": null }
+```
+
+##### PUT /api/v1/wallet/pending-applications
+
+Set or replace the citizen's notice. Idempotent — re-setting with a new label replaces the prior one and resets the 24-hour TTL.
+
+**Request Body:**
+```json
+{ "label": "Assured Identity" }
+```
+
+**Validation:** label non-empty + non-whitespace + ≤ 80 characters.
+
+**Response:** `200 OK` with the same envelope shape as GET.
+
+##### DELETE /api/v1/wallet/pending-applications
+
+Clear the citizen's notice. Idempotent — returns `204 No Content` whether or not a notice was present.
+
+**Response:** `204 No Content`
+
 ---
 
 ## Register Service API

@@ -2,15 +2,15 @@
 .SYNOPSIS
     Launches autonomous actor agents for the AssuredIdentity walkthrough.
 .DESCRIPTION
-    Starts verification-analyst and licensing-officer agents in background, each in rules
-    mode (citizen is reference-only — script-driven), so the citizen-side run scripts can
-    drive the workflow end-to-end without a human at the analyst UI. Feature 107 PR 3 (US3).
+    Starts the verification-analyst agent in background rules mode (citizen
+    is reference-only — script-driven), so the citizen-side run scripts can
+    drive Phase 1 end-to-end without a human at the analyst UI. Feature 107
+    PR 3 (US3), updated by Feature 124.
 
-    verification-analyst auto-approves the identity application (Phase 1 Action 2).
-    licensing-officer auto-issues the driving licence (Phase 2 Action 3). The
-    verification step (Phase 2 Action 2) remains script-driven because it
-    creates the HAIP presentation request the citizen must respond to —
-    see README for the scope rationale.
+    verification-analyst auto-approves the identity application (Phase 1
+    Action 2). Phase 2 (Driving Licence) is currently deferred to Spec 4 of
+    the citizen arc — the licensing-officer agent is not launched because
+    there is no Phase 2 action for it to fire on.
 .PARAMETER StatePath
     Path to state.json. Default: auto-detected from walkthrough directory.
 .PARAMETER TimeoutMinutes
@@ -72,9 +72,11 @@ $expiry = (Get-Date).AddYears(10).ToString("yyyy-MM-dd")
 [Environment]::SetEnvironmentVariable("LICENCE_NUMBER", ("DL-ACME-{0:D5}" -f (Get-Random -Maximum 100000)))
 
 # ---------- Agents ----------
+# Feature 124 — Phase 2 (Driving Licence) deferred to Spec 4 of the citizen
+# arc; the licensing-officer agent is intentionally not launched here. Re-add
+# when Spec 4 lands the credential-gated second service flow.
 $actors = @(
     @{ File = "verification-analyst.json"; Name = "verification-analyst" }
-    @{ File = "licensing-officer.json";    Name = "licensing-officer"    }
 )
 
 Write-Host "`n=== AssuredIdentity Agent Launcher ===" -ForegroundColor Cyan

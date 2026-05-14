@@ -1,0 +1,165 @@
+openapi: 3.1.0
+info:
+  title: Citizen Wallet — Pending Application Notice API
+  version: "0.1.0"
+  description: |
+    Citizen-scoped endpoints for setting, reading, and clearing the
+    pending-application notice that drives the wallet's waiting state.
+    Part of Feature 124 (AssuredIdentity on the PWA) — the first sub-spec
+    of the Strathcarron citizen arc.
+
+    All endpoints require the citizen wallet audience JWT
+    (`sorcha:citizen-wallet`) and are scoped to the calling
+    `PlatformUserId`. No credential content travels through this surface;
+    the notice carries only a human-readable label.
+
+    Mounted under `/api/v1/wallet` alongside the existing
+    `CitizenWalletEndpoints`. Rate-limited by the existing
+    `RateLimitPolicies.Strict` policy.
+
+servers:
+  - url: https://{host}/api/v1/wallet
+    description: API gateway path
+    variables:
+      host:
+        default: localhost
+
+security:
+  - citizenWalletJwt: []
+
+paths:
+  /pending-applications:
+    get:
+      operationId: GetPendingApplication
+      summary: Read the citizen's current pending-application notice
+      description: |
+        Returns the active notice or `null`. Used by the wallet on every
+        Home render to decide whether to show the waiting state.
+      tags:
+        - Citizen Wallet
+      responses:
+        "200":
+          description: Notice present or absent (body shape always defined)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingApplicationEnvelope"
+              examples:
+                present:
+                  summary: A notice is currently active
+                  value:
+                    notice:
+                      label: "Assured Identity"
+                      setAt: "2026-05-14T09:41:22Z"
+                absent:
+                  summary: No notice
+                  value:
+                    notice: null
+        "401":
+          description: Caller is not authenticated with the citizen-wallet audience
+
+    put:
+      operationId: SetPendingApplication
+      summary: Set or replace the citizen's pending-application notice
+      description: |
+        Idempotent. If a prior notice exists, it is replaced — the new label
+        takes effect immediately and the TTL resets. Notice expires after
+        24 hours unless explicitly cleared first.
+      tags:
+        - Citizen Wallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPendingApplicationRequest"
+            example:
+              label: "Assured Identity"
+      responses:
+        "200":
+          description: Notice set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingApplicationEnvelope"
+              example:
+                notice:
+                  label: "Assured Identity"
+                  setAt: "2026-05-14T09:41:22Z"
+        "400":
+          description: Validation failure (label empty, too long, or otherwise invalid)
+        "401":
+          description: Caller is not authenticated with the citizen-wallet audience
+
+    delete:
+      operationId: ClearPendingApplication
+      summary: Clear the citizen's pending-application notice
+      description: |
+        Idempotent. Returns `204` regardless of whether a notice was
+        present. The wallet's waiting state should clear within one
+        second on next Home render (FR-003 / SC-008).
+      tags:
+        - Citizen Wallet
+      responses:
+        "204":
+          description: Cleared (idempotent — same response when no notice was present)
+        "401":
+          description: Caller is not authenticated with the citizen-wallet audience
+
+components:
+  securitySchemes:
+    citizenWalletJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT issued by the Tenant Service with the `sorcha:citizen-wallet`
+        audience. Subject claim provides the PlatformUserId scope.
+
+  schemas:
+    PendingApplicationEnvelope:
+      type: object
+      required:
+        - notice
+      properties:
+        notice:
+          oneOf:
+            - $ref: "#/components/schemas/PendingApplicationNotice"
+            - type: "null"
+          description: |
+            The active notice, or null when no application is pending.
+            Envelope shape simplifies wallet-side deserialisation: the
+            field is always present, the value distinguishes presence.
+
+    PendingApplicationNotice:
+      type: object
+      required:
+        - label
+        - setAt
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: |
+            Human-readable application label shown inline in the wallet's
+            waiting message. Plain text only — no HTML, no claim content,
+            no credential payload.
+          example: "Assured Identity"
+        setAt:
+          type: string
+          format: date-time
+          description: UTC time when the notice was set. Informational only.
+          example: "2026-05-14T09:41:22Z"
+
+    SetPendingApplicationRequest:
+      type: object
+      required:
+        - label
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: The label to set or replace.
+          example: "Assured Identity"
