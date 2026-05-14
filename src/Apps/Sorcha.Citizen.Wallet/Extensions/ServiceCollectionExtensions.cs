@@ -34,6 +34,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IEnrolmentService, EnrolmentService>();
         services.AddSingleton<IDelegationRenewalClient, DelegationRenewalClient>();
 
+        // Feature 124 — per-device wallet flags (welcome-takeover dismissal).
+        services.AddSingleton<IWalletFlagsStore, IndexedDbWalletFlagsStore>();
+
         // Server-clock observer (T101) — populated by the ServerClockHandler on
         // every outbound HTTP call; read by Pages/Index.razor to surface a
         // clock-skew banner if the device drifts far from the server.
@@ -51,6 +54,13 @@ public static class ServiceCollectionExtensions
         // Citizen wallet client: every outbound call automatically carries the
         // wallet's stored bearer token AND records server clock observations.
         services.AddHttpClient<ICitizenWalletClient, CitizenWalletClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        // Feature 124 — pending-application notice client. Same auth chain as
+        // the citizen wallet client (BearerTokenHandler + ServerClockHandler).
+        services.AddHttpClient<IPendingApplicationClient, HttpPendingApplicationClient>(c =>
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
