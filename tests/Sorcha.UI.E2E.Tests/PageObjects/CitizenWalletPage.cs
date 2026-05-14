@@ -45,6 +45,43 @@ public class CitizenWalletPage
     /// <summary>"Present a credential" button on Home.</summary>
     public ILocator PresentButton => _page.Locator("button:has-text('Present a credential')");
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Nav-bar locators (covered by CitizenWalletNavigationTests). Filed
+    // against issue #700 — every PWA nav element gets a stable data-testid
+    // and a click+URL assertion so the leading-slash NavigateTo regression
+    // (PR #698) cannot reappear silently.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Top-bar Present icon (MainLayout AppBar).</summary>
+    public ILocator TopBarPresentButton => _page.Locator("[data-testid='topbar-present-button']");
+
+    /// <summary>Footer Home nav button.</summary>
+    public ILocator FooterNavHome => _page.Locator("[data-testid='footer-nav-home']");
+
+    /// <summary>Footer Devices nav button.</summary>
+    public ILocator FooterNavDevices => _page.Locator("[data-testid='footer-nav-devices']");
+
+    /// <summary>Footer Activity nav button.</summary>
+    public ILocator FooterNavActivity => _page.Locator("[data-testid='footer-nav-activity']");
+
+    /// <summary>Footer Settings nav button.</summary>
+    public ILocator FooterNavSettings => _page.Locator("[data-testid='footer-nav-settings']");
+
+    /// <summary>Home "Present a credential" button (data-testid'd variant).</summary>
+    public ILocator HomePresentButton => _page.Locator("[data-testid='home-present-button']");
+
+    /// <summary>Enrol-page "Open Settings" link (Welcome step, signed-out branch).</summary>
+    public ILocator EnrolOpenSettingsLink => _page.Locator("[data-testid='enrol-open-settings-link']");
+
+    /// <summary>Enrol-page "Open wallet" button (Done step).</summary>
+    public ILocator EnrolDoneOpenWalletButton => _page.Locator("[data-testid='enrol-done-open-wallet-button']");
+
+    /// <summary>CredentialDetail "Back" button.</summary>
+    public ILocator CredentialDetailBackButton => _page.Locator("[data-testid='credential-detail-back-button']");
+
+    /// <summary>CredentialDetail "Present this credential" button.</summary>
+    public ILocator CredentialDetailPresentButton => _page.Locator("[data-testid='credential-detail-present-button']");
+
     /// <summary>
     /// Returns the locator for a specific credential card by id. The id must
     /// match what the PWA stores in <c>CachedCredential.Id</c> (Guid).
