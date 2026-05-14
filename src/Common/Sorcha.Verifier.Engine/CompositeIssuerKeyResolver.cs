@@ -3,7 +3,7 @@
 
 using System.Text.Json;
 
-namespace Sorcha.Verifier.Services;
+namespace Sorcha.Verifier.Engine;
 
 /// <summary>
 /// Composite resolver that tries each underlying <see cref="IIssuerKeyResolver"/>

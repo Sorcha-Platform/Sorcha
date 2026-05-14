@@ -6,9 +6,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Sorcha.Verifier.Services.Models;
+using Sorcha.Verifier.Engine.Models;
 
-namespace Sorcha.Verifier.Services;
+namespace Sorcha.Verifier.Engine;
 
 /// <summary>
 /// v1 reference verifier validator. Performs the offline chain check the citizen

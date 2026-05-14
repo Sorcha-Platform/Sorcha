@@ -13,7 +13,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Verifier.Services;
 using Sorcha.ServiceClients.Did;
-using Xunit;
+using Xunit;using Sorcha.Verifier.Engine;
+
 
 namespace Sorcha.Verifier.Tests.Services;
 

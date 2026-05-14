@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Collections.Concurrent;
-using Sorcha.Verifier.Services.Models;
+using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.Verifier.Services;
 

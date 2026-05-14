@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-namespace Sorcha.Verifier.Services.Models;
+namespace Sorcha.Verifier.Engine.Models;
 
 /// <summary>
 /// In-memory verifier session — the link between a generated presentation request

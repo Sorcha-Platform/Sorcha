@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.0.11205.157
@@ -264,6 +264,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Validator.Service.Tests", "tests\Sorcha.Validator.Service.Tests\Sorcha.Validator.Service.Tests.csproj", "{147FFC46-B2C1-4882-AD8C-4971246BECB7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Register.Service.Tests", "tests\Sorcha.Register.Service.Tests\Sorcha.Register.Service.Tests.csproj", "{1DE87EF3-6C25-479F-9C99-E52A6E8A7857}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Verifier.Engine", "src\Common\Sorcha.Verifier.Engine\Sorcha.Verifier.Engine.csproj", "{90291A53-A836-43C8-9073-66A3E333CCD1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -1475,6 +1477,18 @@ Global
 		{1DE87EF3-6C25-479F-9C99-E52A6E8A7857}.Release|x64.Build.0 = Release|Any CPU
 		{1DE87EF3-6C25-479F-9C99-E52A6E8A7857}.Release|x86.ActiveCfg = Release|Any CPU
 		{1DE87EF3-6C25-479F-9C99-E52A6E8A7857}.Release|x86.Build.0 = Release|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Debug|x64.Build.0 = Debug|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Debug|x86.Build.0 = Debug|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Release|x64.ActiveCfg = Release|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Release|x64.Build.0 = Release|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Release|x86.ActiveCfg = Release|Any CPU
+		{90291A53-A836-43C8-9073-66A3E333CCD1}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1586,5 +1600,6 @@ Global
 		{CD0765A6-3A03-490A-9ABD-95B422A67C5B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{147FFC46-B2C1-4882-AD8C-4971246BECB7} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{1DE87EF3-6C25-479F-9C99-E52A6E8A7857} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{90291A53-A836-43C8-9073-66A3E333CCD1} = {BFF2DF6E-AA54-47C7-211F-79ACCBB4577C}
 	EndGlobalSection
 EndGlobal
