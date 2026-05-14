@@ -1,0 +1,30 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Auth methods page (Feature 125, T096). v1 stub explaining the
+    recoverability story; the full passkey / social / password
+    management surface is migrated from Sorcha.UI.Web.Client (Feature 116)
+    into the shared library in a follow-up PR.
+*@
+@page "/auth-methods"
+@layout MainLayout
+
+<PageTitle>Auth methods · Sorcha Wallet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Auth methods</MudText>
+    <MudPaper Class="pa-4" Elevation="1" data-testid="auth-methods-placeholder">
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body1">
+                Manage how you sign in.
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                The more sign-in methods you have — passkey, social account, or
+                a recovery email — the easier it is to get back in if you lose
+                your phone. Detailed management arrives soon; for now, use your
+                council's website to update auth methods.
+            </MudText>
+        </MudStack>
+    </MudPaper>
+</MudContainer>

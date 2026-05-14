@@ -27,6 +27,18 @@
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
     <MudText Typo="Typo.h5" Class="mb-3">Your devices</MudText>
 
+    @* Feature 125 / PR-E (T099) — "Lost my phone" recovery copy. The
+       wallet's recovery story is "sign in on another device, revoke the
+       lost one from there" — no mnemonic required (managed mode). *@
+    <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="devices-lost-phone-help">
+        <MudText Typo="Typo.subtitle2">Lost your phone?</MudText>
+        <MudText Typo="Typo.body2">
+            Sign in on another device and revoke the lost one from here. Your
+            credentials and history stay safe — only that device loses access.
+            Adding a second device now makes recovery easier later.
+        </MudText>
+    </MudAlert>
+
     @if (_loading)
     {
         <MudProgressCircular Indeterminate="true" />
