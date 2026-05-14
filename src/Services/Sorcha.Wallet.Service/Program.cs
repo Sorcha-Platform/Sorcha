@@ -190,6 +190,13 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceRevo
 builder.Services.AddValidatorsFromAssemblyContaining<
     Sorcha.CitizenWallet.Abstractions.Validators.DeviceEnrolmentRequestValidator>();
 
+// Feature 124: pending-application notice store + validators in the Wallet
+// Service assembly (SetPendingApplicationRequestValidator).
+builder.Services.AddValidatorsFromAssemblyContaining<
+    Sorcha.Wallet.Service.Validators.SetPendingApplicationRequestValidator>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IPendingApplicationStore,
+    Sorcha.Wallet.Service.Services.Implementation.RedisPendingApplicationStore>();
+
 // Feature 118 — multi-node hub fan-out via Redis backplane (US1).
 // Wires JWT auth + Redis backplane (ChannelPrefix=sorcha:signalr:wallet) +
 // reconnect-with-jitter + OpenTelemetry instrumentation.
@@ -277,6 +284,9 @@ app.MapCitizenStatusListEndpoints();
 // Feature 114: Citizen wallet PWA endpoints (device enrolment, sync, etc.)
 app.MapCitizenWalletEndpoints();
 app.MapCitizenStatusListInternalEndpoints();
+
+// Feature 124: Pending-application notice endpoints (Set / Get / Clear)
+app.MapPendingApplicationEndpoints();
 
 // Feature 114: Citizen wallet SignalR hub. Routed via API Gateway as `/hubs/wallet`.
 // Mapped via MapSorchaHubs from the AddSorchaHub registry (Feature 118 US1).
