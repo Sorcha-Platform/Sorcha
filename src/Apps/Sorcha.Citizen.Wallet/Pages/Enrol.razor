@@ -109,10 +109,22 @@
         <MudStep Title="Done">
             @if (_result is not null)
             {
-                <MudAlert Severity="Severity.Success" Class="mb-3">
-                    Enrolled. Loaded <strong>@_result.CredentialsLoaded</strong> credential(s).
-                    Delegation valid until <strong>@_result.DelegationExpiresAt.ToLocalTime():f</strong>.
-                </MudAlert>
+                @if (_result.CredentialsLoaded == 0)
+                {
+                    @* Feature 124 (US1, FR-001): forward-looking copy for first-time citizens
+                       so a freshly-enrolled wallet doesn't read as "something is missing". *@
+                    <MudAlert Severity="Severity.Success" Class="mb-3">
+                        Enrolled. Your wallet is ready — submit your council application
+                        to receive your first credential.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Success" Class="mb-3">
+                        Enrolled. Loaded <strong>@_result.CredentialsLoaded</strong> credential(s).
+                        Delegation valid until <strong>@_result.DelegationExpiresAt.ToLocalTime():f</strong>.
+                    </MudAlert>
+                }
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
                            OnClick="@(() => Nav.NavigateTo("/"))">
                     Open wallet
