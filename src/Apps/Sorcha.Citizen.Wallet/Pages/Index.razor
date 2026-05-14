@@ -22,6 +22,7 @@
 @inject IServerClockObserver ServerClock
 @inject CitizenWalletHubConnection Hub
 @inject HttpClient Http
+@inject IPendingApplicationClient PendingApplications
 @inject NavigationManager Nav
 @inject ILogger<Index> Logger
 @implements IAsyncDisposable
@@ -55,15 +56,25 @@
     }
     else if (_credentials.Count == 0)
     {
-        <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="home-empty-state">
-            No credentials yet. Enrol this device to load yours, or try the demo card.
-        </MudAlert>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.PhoneIphone"
-                   OnClick="@(() => Nav.NavigateTo("/enrol"))" FullWidth="true" Class="mb-2"
-                   data-testid="enrol-device-button">
-            Enrol this device
-        </MudButton>
+        @* Feature 124 (US2, FR-002): when a pending-application notice is set,
+           replace the bare empty state with the waiting-card so the citizen sees
+           a designed in-progress beat rather than "nothing here". *@
+        @if (_pendingNotice is not null)
+        {
+            <WaitingCard Label="@_pendingNotice.Label" data-testid="home-waiting-state" />
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="home-empty-state">
+                No credentials yet. Enrol this device to load yours, or try the demo card.
+            </MudAlert>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PhoneIphone"
+                       OnClick="@(() => Nav.NavigateTo("/enrol"))" FullWidth="true" Class="mb-2"
+                       data-testid="enrol-device-button">
+                Enrol this device
+            </MudButton>
+        }
     }
     else
     {
@@ -115,6 +126,7 @@
 
 @code {
     private IReadOnlyList<CachedCredential>? _credentials;
+    private PendingApplicationView? _pendingNotice;
     private bool _seeding;
     private bool _syncing;
     private string? _seedError;
@@ -124,6 +136,7 @@
     protected override async Task OnInitializedAsync()
     {
         _credentials = await Credentials.ListAsync();
+        await RefreshPendingNoticeAsync();
         // Fire-and-forget background sync — refreshes the cache from server without
         // blocking first paint. UI updates via StateHasChanged when sync completes.
         _ = SyncNowAsync(silentSuccess: true);
@@ -192,6 +205,25 @@
         }
     }
 
+    /// <summary>
+    /// Feature 124 (US2). Re-reads the citizen's pending-application notice on
+    /// every Home render trigger. Silently swallows transport errors — the
+    /// notice is purely a UX hint, not a correctness primitive.
+    /// </summary>
+    private async Task RefreshPendingNoticeAsync()
+    {
+        try
+        {
+            _pendingNotice = await PendingApplications.GetAsync();
+        }
+        catch (Exception ex)
+        {
+            // Notice fetch is best-effort; never block Home on it.
+            Logger.LogDebug(ex, "Pending-application notice fetch failed");
+            _pendingNotice = null;
+        }
+    }
+
     private async Task SyncNowAsync(bool silentSuccess = false)
     {
         if (_syncing) return;
@@ -201,6 +233,19 @@
         {
             var outcome = await Sync.SyncAsync();
             _credentials = await Credentials.ListAsync();
+
+            // Feature 124 (US2, FR-003): the waiting state drops as soon as a
+            // credential is visible. Server-side clearing is the walkthrough
+            // script's job; the wallet's UX rule is "credentials present →
+            // no waiting card".
+            if (_credentials.Count > 0)
+            {
+                _pendingNotice = null;
+            }
+            else
+            {
+                await RefreshPendingNoticeAsync();
+            }
             _syncSeverity = Severity.Success;
             _syncStatus = outcome.Mode == SyncMode.FullSnapshot
                 ? $"Synced — pulled full snapshot ({outcome.Added} credential(s))."
