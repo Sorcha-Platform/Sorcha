@@ -34,3 +34,52 @@
 .sorcha-waiting-card__line--short { width: 40%; }
 .sorcha-waiting-card__line--mid   { width: 65%; }
 .sorcha-waiting-card__line--long  { width: 90%; }
+
+/* Feature 124 (US3, T028). Welcome takeover — full-screen overlay over Home,
+   id-card centred, fade-in/dismiss-out. CSS-only (no JS animation), GPU-
+   composited transforms. */
+
+@keyframes sorcha-takeover-fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.sorcha-welcome-overlay {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(180deg, #f3f5f9 0%, #e6e9ef 100%);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: sorcha-takeover-fade-in 200ms ease-out both;
+}
+
+.sorcha-welcome-content {
+    max-width: 480px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+}
+
+.sorcha-welcome-headline {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+    color: #1c2540;
+}
+
+.sorcha-welcome-subhead {
+    font-size: 1rem;
+    color: rgba(28, 37, 64, 0.7);
+    margin: 0 0 24px 0;
+}
+
+.sorcha-welcome-card-frame {
+    margin: 0 auto;
+    max-width: 380px;
+    width: 100%;
+}
