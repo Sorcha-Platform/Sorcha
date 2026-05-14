@@ -6,7 +6,7 @@
 # Feature 107 + Feature 124. Creates the Acme Verification Co. issuing
 # organisation, provisions its trust anchor + HAIP issuer enrolment,
 # creates the citizen public-org account, and publishes the AssuredIdentity
-# blueprint (now configured to deliver into the Citizen Wallet PWA via
+# blueprint (now configured to deliver into the Sorcha Wallet (PWA) via
 # SorchaLocalWallet target audience).
 #
 # After setup, sign the citizen into the wallet host once on the demo
@@ -399,7 +399,7 @@ $state = @{
     registerId                = $register.RegisterId
     blueprintId               = $blueprint.BlueprintId
     # walletDir removed in Feature 124 — credential delivery now lands in the
-    # Citizen Wallet PWA (SorchaLocalWallet target audience), not in a
+    # Sorcha Wallet (PWA) (SorchaLocalWallet target audience), not in a
     # filesystem wallet on the operator host.
     # PR 2 additions — licensing org, licensing wallet, Driving Licence blueprint id.
     licensingOrgId            = $licensingOrgId

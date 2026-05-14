@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using Microsoft.JSInterop;
+
+namespace Sorcha.Wallet.Pwa.Services;
+
+/// <summary>
+/// Per-device flags persisted client-side in IndexedDB (Feature 124).
+/// Initially carries only the welcome-takeover dismissal record; designed to
+/// accept further flags as later specs land. Co-tenants the existing
+/// <c>device</c> store alongside <see cref="DeviceMetaRecord"/> at key
+/// <c>flags</c>.
+/// </summary>
+public interface IWalletFlagsStore
+{
+    /// <summary>Returns the persisted flags, or null if never written.</summary>
+    Task<WalletFlagsRecord?> GetAsync(CancellationToken ct = default);
+
+    /// <summary>Persist (or replace) the flags record.</summary>
+    Task SetAsync(WalletFlagsRecord record, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Per-device wallet flags. Each flag transitions independently from null
+/// to a UTC timestamp once on dismissal. <see cref="WelcomedAt"/> is the
+/// Feature 124 first-credential welcome takeover; <see cref="TourDismissedAt"/>
+/// is the Feature 125 guided-tour completion (replayable from Settings, which
+/// resets the field back to null).
+/// </summary>
+/// <param name="WelcomedAt">UTC time the welcome takeover was dismissed (Feature 124).</param>
+/// <param name="TourDismissedAt">UTC time the guided tour was completed or dismissed (Feature 125).</param>
+public sealed record WalletFlagsRecord(
+    DateTimeOffset? WelcomedAt,
+    DateTimeOffset? TourDismissedAt = null);
+
+/// <summary>In-memory <see cref="IWalletFlagsStore"/> for tests.</summary>
+public sealed class InMemoryWalletFlagsStore : IWalletFlagsStore
+{
+    private WalletFlagsRecord? _record;
+    /// <inheritdoc />
+    public Task<WalletFlagsRecord?> GetAsync(CancellationToken ct = default) => Task.FromResult(_record);
+    /// <inheritdoc />
+    public Task SetAsync(WalletFlagsRecord record, CancellationToken ct = default)
+    {
+        _record = record;
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>IndexedDB-backed <see cref="IWalletFlagsStore"/>.</summary>
+public sealed class IndexedDbWalletFlagsStore : IWalletFlagsStore
+{
+    private const string StoreName = "device";
+    private const string Key = "flags";
+
+    private readonly IJSRuntime _js;
+    /// <summary>Initialises a new instance.</summary>
+    public IndexedDbWalletFlagsStore(IJSRuntime js) => _js = js ?? throw new ArgumentNullException(nameof(js));
+
+    /// <inheritdoc />
+    public async Task<WalletFlagsRecord?> GetAsync(CancellationToken ct = default)
+        => await _js.InvokeAsync<WalletFlagsRecord?>("SorchaIndexedDb.get", ct, StoreName, Key);
+
+    /// <inheritdoc />
+    public async Task SetAsync(WalletFlagsRecord record, CancellationToken ct = default)
+        => await _js.InvokeVoidAsync("SorchaIndexedDb.put", ct, StoreName, record, Key);
+}

@@ -3,8 +3,10 @@
 
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sorcha.ServiceDefaults;
 using Sorcha.Tenant.Models.Persona;
+using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Endpoints;
@@ -31,37 +33,48 @@ public static class PersonaEndpoints
 
         group.MapGet("/", GetMyPersona)
             .WithName("GetMyPersona")
-            .WithSummary("Get the signed-in user's persona")
+            .WithSummary("Get the signed-in user's persona for a context")
             .WithDescription(
-                "Returns the decrypted persona in PersonaReadModelV1 form. Scalar attributes are " +
-                "wrapped in PersonaAttribute<T> carrying provenance (always SelfAsserted in v1). " +
-                "An empty persona (new user or no row) returns 200 with all fields null / empty " +
-                "lists — never 404. The optional 'actingAs' query parameter is reserved for future " +
-                "delegation; only the literal value 'self' is accepted in v1.")
+                "Returns the decrypted persona in PersonaReadModelV1 form for the requested " +
+                "organisational context (Feature 125). Omit the 'context' query parameter for the " +
+                "Personal context. Scalar attributes are wrapped in PersonaAttribute<T> carrying " +
+                "provenance (always SelfAsserted in v1). An empty persona (new user or no row) " +
+                "returns 200 with all fields null / empty lists — never 404. The optional " +
+                "'actingAs' query parameter is reserved for future delegation; only the literal " +
+                "value 'self' is accepted in v1. 403 when the caller's JWT lacks an OrgMembership " +
+                "for the requested context.")
             .Produces<PersonaReadModelV1>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         group.MapPut("/", ReplaceMyPersona)
             .WithName("ReplaceMyPersona")
-            .WithSummary("Replace the signed-in user's persona (full replace)")
+            .WithSummary("Replace the signed-in user's persona for a context (full replace)")
             .WithDescription(
                 "Validates the supplied PersonaAttributesV1 against the invariants in data-model.md " +
                 "§2 (list cap of 5, exactly one default per multi-value list, RFC 5322 email, E.164 " +
                 "phone, ISO 3166-1 alpha-2 country). Encrypts via the Wallet Service under the " +
-                "sorcha:persona-vault purpose and upserts the row. Returns the canonical read model.")
+                "sorcha:persona-vault purpose and upserts the row keyed by " +
+                "(PlatformUserId, ContextOrgId). Omit the 'context' query parameter for the " +
+                "Personal context (Feature 125). Returns the canonical read model. 403 when the " +
+                "caller's JWT lacks an OrgMembership for the requested context.")
             .Produces<PersonaReadModelV1>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapDelete("/", DeleteMyPersona)
             .WithName("DeleteMyPersona")
-            .WithSummary("Wipe the signed-in user's persona")
-            .WithDescription("Hard-deletes the persona row. Idempotent — returns 204 whether or not " +
-                "a row existed.")
+            .WithSummary("Wipe the signed-in user's persona for a context")
+            .WithDescription("Hard-deletes the persona row for the requested context. Idempotent " +
+                "— returns 204 whether or not a row existed. Omit the 'context' query parameter " +
+                "for the Personal context (Feature 125). 403 when the caller's JWT lacks an " +
+                "OrgMembership for the requested context.")
             .Produces(StatusCodes.Status204NoContent)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         return app;
     }
@@ -69,16 +82,21 @@ public static class PersonaEndpoints
     private static async Task<IResult> GetMyPersona(
         HttpContext context,
         IPersonaService personaService,
+        TenantDbContext db,
         CancellationToken ct,
+        [FromQuery(Name = "context")] Guid? contextParam = null,
         string? actingAs = null)
     {
         var userId = GetUserId(context);
         if (userId == Guid.Empty) return TypedResults.Unauthorized();
 
+        if (!await CallerHasContextAsync(db, userId, contextParam, ct))
+            return ForbiddenContextResult();
+
         try
         {
             var options = new PersonaReadOptions { ActingAs = actingAs ?? "self" };
-            var result = await personaService.GetAsync(userId, options, ct);
+            var result = await personaService.GetAsync(userId, contextParam, options, ct);
             return TypedResults.Ok(result);
         }
         catch (PersonaValidationException ex)
@@ -90,17 +108,22 @@ public static class PersonaEndpoints
     private static async Task<IResult> ReplaceMyPersona(
         HttpContext context,
         IPersonaService personaService,
+        TenantDbContext db,
         PersonaAttributesV1 body,
-        CancellationToken ct)
+        CancellationToken ct,
+        [FromQuery(Name = "context")] Guid? contextParam = null)
     {
         var userId = GetUserId(context);
         if (userId == Guid.Empty) return TypedResults.Unauthorized();
+
+        if (!await CallerHasContextAsync(db, userId, contextParam, ct))
+            return ForbiddenContextResult();
 
         var walletAddress = context.User.FindFirst("wallet_address")?.Value;
 
         try
         {
-            var result = await personaService.ReplaceAsync(userId, walletAddress, body, ct);
+            var result = await personaService.ReplaceAsync(userId, walletAddress, body, contextParam, ct);
             return TypedResults.Ok(result);
         }
         catch (PersonaValidationException ex)
@@ -120,14 +143,40 @@ public static class PersonaEndpoints
     private static async Task<IResult> DeleteMyPersona(
         HttpContext context,
         IPersonaService personaService,
-        CancellationToken ct)
+        TenantDbContext db,
+        CancellationToken ct,
+        [FromQuery(Name = "context")] Guid? contextParam = null)
     {
         var userId = GetUserId(context);
         if (userId == Guid.Empty) return TypedResults.Unauthorized();
 
-        await personaService.DeleteAsync(userId, ct);
+        if (!await CallerHasContextAsync(db, userId, contextParam, ct))
+            return ForbiddenContextResult();
+
+        await personaService.DeleteAsync(userId, contextParam, ct);
         return TypedResults.NoContent();
     }
+
+    /// <summary>
+    /// Returns true if the caller is allowed to operate on a persona for the
+    /// requested context. The Personal context (null / empty query param) is
+    /// always allowed; any non-empty context must match an OrgMembership the
+    /// caller holds.
+    /// </summary>
+    private static async Task<bool> CallerHasContextAsync(
+        TenantDbContext db, Guid platformUserId, Guid? contextOrgId, CancellationToken ct)
+    {
+        if (contextOrgId is null || contextOrgId == Guid.Empty) return true;
+        return await db.PlatformUserOrgMemberships
+            .AnyAsync(m => m.PlatformUserId == platformUserId && m.OrganizationId == contextOrgId.Value, ct);
+    }
+
+    private static IResult ForbiddenContextResult() =>
+        TypedResults.Problem(
+            title: "Not a member of the requested context",
+            detail: "You do not hold an organisation membership for that context.",
+            statusCode: StatusCodes.Status403Forbidden,
+            type: "https://sorcha.platform/errors/persona_context_forbidden");
 
     /// <summary>
     /// Resolves the caller's <see cref="PlatformUser"/> id from the

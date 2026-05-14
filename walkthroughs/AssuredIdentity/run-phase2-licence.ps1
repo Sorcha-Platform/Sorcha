@@ -8,7 +8,7 @@
 # the AssuredIdentityCredential to the licensing officer via sorcha-agent
 # haip present and (b) receive the DrivingLicenceCredential into the same
 # filesystem wallet. Feature 124 swapped the AssuredIdentityCredential
-# delivery to the Citizen Wallet PWA — the filesystem-wallet path is gone
+# delivery to the Sorcha Wallet (PWA) — the filesystem-wallet path is gone
 # (FR-011) — and the HAIP presentation flow that Phase 2 depended on cannot
 # run scripted against the PWA.
 #
@@ -41,7 +41,7 @@ What's deferred:
     wallet
 
 What still works after Phase 1:
-  - The citizen holds an AssuredIdentityCredential in the Citizen Wallet
+  - The citizen holds an AssuredIdentityCredential in the Sorcha Wallet
     PWA (verify on the wallet device's Home).
 
 Run 'pwsh walkthroughs/AssuredIdentity/run-phase1-identity.ps1' to land

@@ -228,7 +228,7 @@ PageTest (Playwright NUnit)
 
 ## Citizen Wallet PWA — path-prefix gotchas
 
-The Citizen Wallet PWA (`Sorcha.Citizen.Wallet`) mounts at **`/wallet/`** behind the API Gateway via `PathRemovePrefix`. Two rules apply only here, not to the main `Sorcha.UI.Web` app:
+The Citizen Wallet PWA (`Sorcha.Wallet.Pwa`) mounts at **`/wallet/`** behind the API Gateway via `PathRemovePrefix`. Two rules apply only here, not to the main `Sorcha.UI.Web` app:
 
 1. **All `NavigateTo` / `Href` paths must be base-relative**, not origin-absolute. `NavigateTo("enrol")` ✓ — `NavigateTo("/enrol")` 404s in production. Home is `NavigateTo("")`, not `NavigateTo("/")`. Full rationale in the **blazor** skill → "PWA navigation when mounted under a path prefix". Twelve broken nav buttons shipped through CI as PR #698; the fix scope was global across `MainLayout.razor`, `Index.razor`, `Enrol.razor`, `CredentialDetail.razor`.
 
@@ -263,7 +263,7 @@ Full convention + worked examples: `src/Apps/Sorcha.UI/Sorcha.UI.Core/README.md`
 
 ## Shared user-facing component library (Feature 122)
 
-User-facing components shared between `Sorcha.UI` (web) and `Sorcha.Citizen.Wallet` (PWA) live in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`. The PWA references `Sorcha.UI.Components.User` directly; `Sorcha.UI.Core` ProjectReferences it (transparent re-export to the six web host apps).
+User-facing components shared between `Sorcha.UI` (web) and `Sorcha.Wallet.Pwa` (PWA) live in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`. The PWA references `Sorcha.UI.Components.User` directly; `Sorcha.UI.Core` ProjectReferences it (transparent re-export to the six web host apps).
 
 **Placement rule when adding a new component:**
 - User-facing, possibly shared with PWA → `Sorcha.UI.Components.User/Components/<Subject>/`

@@ -1,0 +1,213 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Devices (Feature 114, T120 — US3 PR4). Lists the citizen's enrolled
+    wallet devices with per-row rename + revoke. Backed by:
+      GET    /api/v1/wallet/devices  (PR3)
+      PUT    /api/v1/wallet/devices/{id}/label  (PR3)
+      DELETE /api/v1/wallet/devices/{id}  (PR2b — flips status-list bit
+              + broadcasts WalletHub.DeviceRevoked)
+
+    Revocation is destructive across the device's whole lifecycle —
+    confirm gate before calling; status changes show in the list as
+    Revoked once the call returns.
+*@
+@page "/devices"
+@layout MainLayout
+@using Sorcha.CitizenWallet.Abstractions.Models
+@using Sorcha.ServiceClients.CitizenWallet
+@inject ICitizenWalletClient WalletClient
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject ILogger<Devices> Logger
+
+<PageTitle>Devices</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Your devices</MudText>
+
+    @* Feature 125 / PR-E (T099) — "Lost my phone" recovery copy. The
+       wallet's recovery story is "sign in on another device, revoke the
+       lost one from there" — no mnemonic required (managed mode). *@
+    <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="devices-lost-phone-help">
+        <MudText Typo="Typo.subtitle2">Lost your phone?</MudText>
+        <MudText Typo="Typo.body2">
+            Sign in on another device and revoke the lost one from here. Your
+            credentials and history stay safe — only that device loses access.
+            Adding a second device now makes recovery easier later.
+        </MudText>
+    </MudAlert>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
+        <MudButton Variant="Variant.Outlined" OnClick="LoadAsync">Retry</MudButton>
+    }
+    else if (_devices is null || _devices.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">
+            No devices enrolled yet. Once you enrol on this device, it will appear here.
+        </MudAlert>
+    }
+    else
+    {
+        <MudList T="DeviceSummary" Dense="false" data-testid="device-list">
+            @foreach (var device in _devices)
+            {
+                <MudListItem T="DeviceSummary" data-testid="@($"device-row-{device.DeviceId}")">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Class="w-100">
+                        <MudStack Row="false" Spacing="0" Class="flex-grow-1">
+                            <MudText Typo="Typo.body1">
+                                <strong>@device.Label</strong>
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @device.Platform · enrolled @device.EnrolledAt.ToLocalTime().ToString("d MMM yyyy")
+                            </MudText>
+                            <MudText Typo="Typo.caption">
+                                @if (device.Status == DeviceStatus.Active)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Active</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">Revoked</MudChip>
+                                    @if (device.RevokedAt is not null)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ms-1" Inline="true">
+                                            @device.RevokedAt.Value.ToLocalTime().ToString("d MMM yyyy")
+                                        </MudText>
+                                    }
+                                }
+                            </MudText>
+                        </MudStack>
+                        @if (device.Status == DeviceStatus.Active)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                           data-testid="@($"rename-{device.DeviceId}")"
+                                           Disabled="@(_busyDeviceId == device.DeviceId)"
+                                           OnClick="() => RenameAsync(device)" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Color="Color.Error"
+                                           data-testid="@($"revoke-{device.DeviceId}")"
+                                           Disabled="@(_busyDeviceId == device.DeviceId)"
+                                           OnClick="() => RevokeAsync(device)" />
+                        }
+                    </MudStack>
+                </MudListItem>
+            }
+        </MudList>
+    }
+</MudContainer>
+
+@code {
+    private List<DeviceSummary>? _devices;
+    private bool _loading = true;
+    private string? _loadError;
+    private Guid? _busyDeviceId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        try
+        {
+            var response = await WalletClient.ListDevicesAsync();
+            _devices = response.Devices.ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load devices");
+            _loadError = "Could not load devices. Check your connection and try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RenameAsync(DeviceSummary device)
+    {
+        var parameters = new DialogParameters
+        {
+            ["CurrentLabel"] = device.Label,
+        };
+        var dialog = await Dialogs.ShowAsync<RenameDeviceDialog>("Rename device", parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string newLabel) return;
+        if (string.Equals(newLabel, device.Label, StringComparison.Ordinal)) return;
+
+        _busyDeviceId = device.DeviceId;
+        try
+        {
+            var ok = await WalletClient.RenameDeviceAsync(device.DeviceId, newLabel);
+            if (ok)
+            {
+                // Optimistic UI update — server already accepted the change.
+                var idx = _devices!.FindIndex(d => d.DeviceId == device.DeviceId);
+                _devices[idx] = device with { Label = newLabel };
+                Snackbar.Add("Device renamed.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Device not found.", Severity.Warning);
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Rename device failed");
+            Snackbar.Add($"Rename failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busyDeviceId = null;
+        }
+    }
+
+    private async Task RevokeAsync(DeviceSummary device)
+    {
+        var parameters = new DialogParameters
+        {
+            ["DeviceLabel"] = device.Label,
+        };
+        var dialog = await Dialogs.ShowAsync<ConfirmRevokeDialog>("Revoke device", parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        _busyDeviceId = device.DeviceId;
+        try
+        {
+            var ok = await WalletClient.RevokeDeviceAsync(device.DeviceId);
+            if (ok)
+            {
+                var idx = _devices!.FindIndex(d => d.DeviceId == device.DeviceId);
+                _devices[idx] = device with { Status = DeviceStatus.Revoked, RevokedAt = DateTimeOffset.UtcNow };
+                Snackbar.Add("Device revoked.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Device not found.", Severity.Warning);
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Revoke device failed");
+            Snackbar.Add($"Revoke failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busyDeviceId = null;
+        }
+    }
+}

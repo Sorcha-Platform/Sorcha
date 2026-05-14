@@ -38,7 +38,7 @@ New orgs added for the third-party-verifier leg as needed: a refuse collection c
 |---|----------|--------|-------------|
 | 1 | PWA vs Sorcha.UI.Web positioning | **Co-equal** citizen surfaces | Neither is a satellite. Web↔PWA handoff is a first-class recurring pattern, not a one-shot onboarding moment. |
 | 2 | Account model | **Email/password is the durable anchor**; passkey and social are equivalence-class entry points to the same account; wallet devices sit on top | Recovery story is "sign in by any of your methods, revoke lost device, re-enrol new one" — no mnemonic for Sarah. Holder key is server-anchored at slot 108 and re-derives on enrolment. |
-| 3 | Council-page-to-wallet entry mechanism | **Hybrid universal QR** — one URL, served as both a scannable QR (cross-device) and a tap-able link (same-device); copy-paste as a third fallback | OID4VP-aligned. Council pages render the QR unconditionally. Verifier code in `Sorcha.Citizen.Verifier` is the reference. |
+| 3 | Council-page-to-wallet entry mechanism | **Hybrid universal QR** — one URL, served as both a scannable QR (cross-device) and a tap-able link (same-device); copy-paste as a third fallback | OID4VP-aligned. Council pages render the QR unconditionally. Verifier code in `Sorcha.Verifier` is the reference. |
 | 4 | Cross-device QR vs same-device deep-link default | **Subsumed by Q3** | One artifact with two resolution paths; no separate default to pick. |
 | 5 | Cross-org scope | **Council-focused, with council-contracted third parties as verifier-not-issuer** | Sarah's experience stays brand-coherent (all "council services"); the verifier-isn't-issuer architecture is still exercised for real. Avoids the cold-start trust narrative of public/private cross-org demos. |
 

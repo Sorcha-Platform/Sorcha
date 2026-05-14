@@ -1,0 +1,97 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Recent activity feed (Feature 125, T072). Last 3-5 events on Home; full
+    Activity page is the tap target. Hidden when the events list is empty.
+*@
+@namespace Sorcha.UI.Components.User.Components.Home
+
+@if (Events is { Count: > 0 })
+{
+    <MudPaper Class="pa-3 ma-2" Elevation="1" data-testid="home-recent-activity">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudText Typo="Typo.subtitle1">Recent</MudText>
+            @if (OnSeeAll.HasDelegate)
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                           OnClick="@(async () => await OnSeeAll.InvokeAsync())"
+                           data-testid="home-recent-see-all">
+                    See all
+                </MudButton>
+            }
+        </MudStack>
+        <MudList T="RecentActivityEntry" Dense="true">
+            @foreach (var entry in Events.Take(MaxVisible))
+            {
+                <MudListItem T="RecentActivityEntry" Value="@entry"
+                             Icon="@IconForKind(entry.Kind)"
+                             OnClick="@(async () => await Activate(entry))"
+                             data-testid="@($"home-recent-entry-{entry.Id}")">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2">@entry.Summary</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@FormatWhen(entry.At)</MudText>
+                    </MudStack>
+                </MudListItem>
+            }
+        </MudList>
+    </MudPaper>
+}
+
+@code {
+    /// <summary>Maximum entries rendered inline (default 5).</summary>
+    [Parameter] public int MaxVisible { get; set; } = 5;
+
+    /// <summary>The events to render; section hides entirely when null or empty.</summary>
+    [Parameter] public IReadOnlyList<RecentActivityEntry>? Events { get; set; }
+
+    /// <summary>Fires when an entry is tapped, with the entry id.</summary>
+    [Parameter] public EventCallback<string> OnEntryActivated { get; set; }
+
+    /// <summary>Fires when "See all" is tapped.</summary>
+    [Parameter] public EventCallback OnSeeAll { get; set; }
+
+    private async Task Activate(RecentActivityEntry entry)
+    {
+        if (OnEntryActivated.HasDelegate)
+            await OnEntryActivated.InvokeAsync(entry.Id);
+    }
+
+    private static string IconForKind(RecentActivityKind kind) => kind switch
+    {
+        RecentActivityKind.Issuance => Icons.Material.Filled.AddCircle,
+        RecentActivityKind.Presentation => Icons.Material.Filled.North,
+        RecentActivityKind.Verification => Icons.Material.Filled.VerifiedUser,
+        RecentActivityKind.Submission => Icons.Material.Filled.Send,
+        RecentActivityKind.Revocation => Icons.Material.Filled.Block,
+        _ => Icons.Material.Filled.Event
+    };
+
+    private static string FormatWhen(DateTimeOffset at)
+    {
+        var delta = DateTimeOffset.UtcNow - at;
+        return delta.TotalDays switch
+        {
+            < 1 => $"{Math.Max(1, (int)delta.TotalHours)} h ago",
+            < 7 => $"{(int)delta.TotalDays} d ago",
+            _ => at.ToLocalTime().ToString("d MMM")
+        };
+    }
+
+    /// <summary>One row in the recent feed.</summary>
+    public sealed record RecentActivityEntry(
+        string Id,
+        RecentActivityKind Kind,
+        string Summary,
+        DateTimeOffset At);
+
+    /// <summary>Logical kind for icon selection.</summary>
+    public enum RecentActivityKind
+    {
+        Issuance,
+        Presentation,
+        Verification,
+        Submission,
+        Revocation
+    }
+}

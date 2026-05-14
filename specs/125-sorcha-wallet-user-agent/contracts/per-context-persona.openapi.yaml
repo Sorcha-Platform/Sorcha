@@ -1,0 +1,254 @@
+openapi: 3.1.0
+info:
+  title: Per-Context Persona API
+  version: "1.0.0"
+  description: |
+    Spec 2 extension to the Feature 092 Consumer Persona surface. Adds an
+    optional `context` query parameter to the existing `/me/persona`
+    endpoints so a single platform user can hold one persona per
+    organisational context (Personal, employer, council-service-provider,
+    etc.).
+
+    `context` omitted or set to the empty string resolves to the Personal
+    persona (the default behaviour preserved for backward compatibility).
+    A non-empty `context` must be the GUID of an organisation the calling
+    user holds an OrgMembership for; mismatches return 403.
+
+    The encryption envelope (XChaCha20-Poly1305, content key derived
+    server-side via Wallet Service under `sorcha:persona-vault`) is
+    unchanged. The schema delta is a row discriminator on
+    `PlatformUserPersona`.
+
+servers:
+  - url: https://{host}/api
+    description: API gateway path
+    variables:
+      host:
+        default: localhost
+
+security:
+  - tenantUserJwt: []
+
+paths:
+  /me/persona:
+    get:
+      operationId: GetPersona
+      summary: Read the calling user's persona for a context
+      description: |
+        Returns the persona for the calling user under the requested context.
+        Omit `context` for the Personal persona. Returns a default empty
+        persona structure (not 404) when no persona has been saved for that
+        context — same behaviour as today's single-persona endpoint.
+      tags:
+        - Persona
+      parameters:
+        - name: context
+          in: query
+          required: false
+          description: |
+            Organisation id for the context to read. Omit (or set to empty)
+            for the Personal context.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Persona for the requested context (or empty default)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaReadModelV1"
+        "401":
+          description: Caller is not authenticated
+        "403":
+          description: |
+            Caller authenticated but lacks an OrgMembership for the requested
+            context. Distinct from 401 to help client surfaces explain the
+            failure clearly (e.g. context was removed from the user).
+
+    put:
+      operationId: SavePersona
+      summary: Replace the calling user's persona for a context
+      description: |
+        Idempotent. Replaces any prior persona for the same
+        (PlatformUserId, ContextOrgId) pair. Encryption envelope is recomputed
+        server-side (Wallet Service derives the content key from the wallet
+        address under `sorcha:persona-vault`).
+      tags:
+        - Persona
+      parameters:
+        - name: context
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonaAttributesV1"
+      responses:
+        "200":
+          description: Persona saved; returns the new persona state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaReadModelV1"
+        "400":
+          description: Validation failure (attribute caps, format errors)
+        "401":
+          description: Caller is not authenticated
+        "403":
+          description: Caller lacks OrgMembership for the requested context
+
+    delete:
+      operationId: DeletePersona
+      summary: Delete the calling user's persona for a context
+      description: |
+        Idempotent. Returns 204 whether or not a persona existed for the pair.
+        Other contexts' personas are unaffected.
+      tags:
+        - Persona
+      parameters:
+        - name: context
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Cleared (idempotent)
+        "401":
+          description: Caller is not authenticated
+        "403":
+          description: Caller lacks OrgMembership for the requested context
+
+components:
+  securitySchemes:
+    tenantUserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    PersonaAttributesV1:
+      type: object
+      description: |
+        Plaintext write-side shape. Multi-value attributes capped at 5 with
+        exactly one default. Unchanged from Feature 092.
+      properties:
+        givenName: { type: string, maxLength: 120 }
+        familyName: { type: string, maxLength: 120 }
+        fullName: { type: string, maxLength: 240 }
+        dateOfBirth: { type: string, format: date }
+        emails:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            required: [value]
+            properties:
+              value: { type: string, format: email }
+              isDefault: { type: boolean }
+        phones:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            required: [value]
+            properties:
+              value: { type: string }
+              isDefault: { type: boolean }
+        addresses:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/PostalAddress"
+        nationalities:
+          type: array
+          maxItems: 5
+          items: { type: string }
+
+    PersonaReadModelV1:
+      type: object
+      description: |
+        Wire shape returned by GET / PUT. Each attribute wrapped with
+        provenance via PersonaAttribute<T>. Unchanged from Feature 092.
+      properties:
+        givenName: { $ref: "#/components/schemas/PersonaAttribute_string" }
+        familyName: { $ref: "#/components/schemas/PersonaAttribute_string" }
+        fullName: { $ref: "#/components/schemas/PersonaAttribute_string" }
+        dateOfBirth: { $ref: "#/components/schemas/PersonaAttribute_date" }
+        defaultEmail: { $ref: "#/components/schemas/PersonaAttribute_string" }
+        allEmails:
+          type: array
+          items: { $ref: "#/components/schemas/PersonaAttribute_string" }
+        defaultPhone: { $ref: "#/components/schemas/PersonaAttribute_string" }
+        allPhones:
+          type: array
+          items: { $ref: "#/components/schemas/PersonaAttribute_string" }
+        defaultAddress: { $ref: "#/components/schemas/PersonaAttribute_address" }
+        allAddresses:
+          type: array
+          items: { $ref: "#/components/schemas/PersonaAttribute_address" }
+        nationalities:
+          type: array
+          items: { $ref: "#/components/schemas/PersonaAttribute_string" }
+
+    PostalAddress:
+      type: object
+      properties:
+        line1: { type: string, maxLength: 120 }
+        line2: { type: string, maxLength: 120 }
+        town: { type: string, maxLength: 80 }
+        region: { type: string, maxLength: 80 }
+        postcode: { type: string, maxLength: 24 }
+        country: { type: string, maxLength: 80 }
+
+    PersonaAttribute_string:
+      type: object
+      properties:
+        value: { type: string, nullable: true }
+        source:
+          type: string
+          enum: [SelfAsserted, VerifiedCredential]
+        verifiedBy:
+          type: string
+          nullable: true
+        lastUpdated:
+          type: string
+          format: date-time
+
+    PersonaAttribute_date:
+      type: object
+      properties:
+        value: { type: string, format: date, nullable: true }
+        source:
+          type: string
+          enum: [SelfAsserted, VerifiedCredential]
+        verifiedBy:
+          type: string
+          nullable: true
+        lastUpdated:
+          type: string
+          format: date-time
+
+    PersonaAttribute_address:
+      type: object
+      properties:
+        value:
+          allOf:
+            - $ref: "#/components/schemas/PostalAddress"
+          nullable: true
+        source:
+          type: string
+          enum: [SelfAsserted, VerifiedCredential]
+        verifiedBy:
+          type: string
+          nullable: true
+        lastUpdated:
+          type: string
+          format: date-time

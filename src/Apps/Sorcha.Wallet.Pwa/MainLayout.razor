@@ -1,0 +1,149 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Wallet shell layout (Feature 114, T067). Top app bar plus a bottom nav
+    rail with the four v1 destinations: Home / Devices / Activity / Settings.
+    The Devices/Activity/Settings pages land with US2-US5; the nav entries are
+    placed now so the app shape is final from the MVP demo on.
+
+    Feature 125 / PR-B — hosts the ContextChipSwitcher in the app bar so the
+    active organisational context is always visible. The chip is non-
+    interactive when the user only holds the Personal context.
+*@
+@using Sorcha.UI.Components.User.Components.Context
+@using Sorcha.UI.Components.User.Components.Onboarding
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Context
+@using Sorcha.Wallet.Pwa.Services.Onboarding
+@inherits LayoutComponentBase
+@implements IAsyncDisposable
+@inject NavigationManager Nav
+@inject IUserContext UserContext
+@inject IUserOrgMembershipsClient MembershipsClient
+@inject IWalletFlagsStore WalletFlags
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudText Typo="Typo.h6">Sorcha Wallet</MudText>
+        <MudSpacer />
+        <ContextChipSwitcher ActiveLabel="@_activeLabel"
+                             ActiveContextOrgId="@UserContext.ActiveContextOrgId"
+                             Memberships="@_chipMemberships"
+                             OnContextSelected="@OnContextSelectedAsync" />
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner"
+                       Color="Color.Inherit"
+                       OnClick="@(() => Nav.NavigateTo("present"))"
+                       data-testid="topbar-present-button"
+                       aria-label="Present a credential" />
+    </MudAppBar>
+    <MudMainContent Class="pb-16">
+        @Body
+    </MudMainContent>
+    <MudAppBar Bottom="true" Fixed="true" Elevation="4" Color="Color.Surface" Class="d-flex justify-space-around">
+        <MudIconButton Icon="@Icons.Material.Filled.Home" OnClick="@(() => Nav.NavigateTo(""))"
+                       data-testid="footer-nav-home"
+                       aria-label="Home" />
+        <MudIconButton Icon="@Icons.Material.Filled.PhoneIphone" OnClick="@(() => Nav.NavigateTo("devices"))"
+                       data-testid="footer-nav-devices"
+                       aria-label="Devices" />
+        <MudIconButton Icon="@Icons.Material.Filled.History" OnClick="@(() => Nav.NavigateTo("activity"))"
+                       data-testid="footer-nav-activity"
+                       aria-label="Activity" />
+        <MudIconButton Icon="@Icons.Material.Filled.Settings" OnClick="@(() => Nav.NavigateTo("settings"))"
+                       data-testid="footer-nav-settings"
+                       aria-label="Settings" />
+    </MudAppBar>
+
+    @* Feature 125 / PR-F (T104-T108) — guided tour on first wallet open
+       after enrolment. WalletFlagsRecord.TourDismissedAt is the per-device
+       flag; Replay tour from Settings resets it to null. *@
+    <GuidedTourScaffold Steps="@WalletTourSteps.Default"
+                       ShouldRun="@_tourShouldRun"
+                       OnCompleted="@PersistTourDismissedAsync"
+                       OnDismissedEarly="@PersistTourDismissedAsync" />
+</MudLayout>
+
+@code {
+    private IReadOnlyList<UserOrgMembership> _memberships = Array.Empty<UserOrgMembership>();
+    private IReadOnlyList<ContextChipSwitcher.ContextChipMembership> _chipMemberships =
+        Array.Empty<ContextChipSwitcher.ContextChipMembership>();
+    private string _activeLabel = "Personal";
+    private bool _tourShouldRun;
+
+    protected override async Task OnInitializedAsync()
+    {
+        UserContext.OnContextChanged += HandleContextChanged;
+        await UserContext.InitializeAsync();
+        await ReloadMembershipsAsync();
+        UpdateActiveLabel();
+        await EvaluateTourEligibilityAsync();
+    }
+
+    private async Task EvaluateTourEligibilityAsync()
+    {
+        // Tour fires once per device — gated on TourDismissedAt being null.
+        // The flag is reset to null by Settings → Replay tour.
+        var flags = await WalletFlags.GetAsync();
+        _tourShouldRun = flags?.TourDismissedAt is null;
+        StateHasChanged();
+    }
+
+    private async Task PersistTourDismissedAsync()
+    {
+        var current = await WalletFlags.GetAsync();
+        var updated = new WalletFlagsRecord(
+            WelcomedAt: current?.WelcomedAt,
+            TourDismissedAt: DateTimeOffset.UtcNow);
+        await WalletFlags.SetAsync(updated);
+        _tourShouldRun = false;
+        StateHasChanged();
+    }
+
+    private async Task ReloadMembershipsAsync()
+    {
+        _memberships = await MembershipsClient.ListAsync();
+        _chipMemberships = _memberships
+            .Select(m => new ContextChipSwitcher.ContextChipMembership(m.OrganizationId, m.Name))
+            .ToList();
+    }
+
+    private void UpdateActiveLabel()
+    {
+        var orgId = UserContext.ActiveContextOrgId;
+        _activeLabel = orgId is { } id
+            ? _memberships.FirstOrDefault(m => m.OrganizationId == id)?.Name ?? "Active context"
+            : "Personal";
+    }
+
+    private async Task OnContextSelectedAsync(Guid? orgId)
+    {
+        var ok = await UserContext.SetActiveContextAsync(orgId);
+        if (!ok)
+        {
+            // Surface the failure inline; toast will be replaced by ErrorRecoveryScaffold in PR-F.
+            return;
+        }
+        UpdateActiveLabel();
+        StateHasChanged();
+    }
+
+    private async Task HandleContextChanged(UserContextChangedEventArgs args)
+    {
+        UpdateActiveLabel();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        UserContext.OnContextChanged -= HandleContextChanged;
+        return ValueTask.CompletedTask;
+    }
+}
+

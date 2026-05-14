@@ -1,0 +1,34 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Quiet "peek" footer (Feature 125, T073) — surfaces the presence of
+    content in non-active contexts so other contexts never feel hidden.
+    Hides entirely when the user holds no content elsewhere.
+*@
+@namespace Sorcha.UI.Components.User.Components.Context
+
+@if (OtherCount > 0 && !string.IsNullOrEmpty(OtherContextName))
+{
+    <MudButton Variant="Variant.Text"
+               Color="Color.Default"
+               StartIcon="@Icons.Material.Filled.SwapHoriz"
+               FullWidth="true"
+               OnClick="@(async () => await OnSwitchRequested.InvokeAsync())"
+               data-testid="context-peek-footer">
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+            + @OtherCount @(OtherCount == 1 ? "credential" : "credentials") in @OtherContextName
+        </MudText>
+    </MudButton>
+}
+
+@code {
+    /// <summary>How many credentials live in non-active contexts combined.</summary>
+    [Parameter] public int OtherCount { get; set; }
+
+    /// <summary>The name of the other context (or a comma-separated list if many).</summary>
+    [Parameter] public string? OtherContextName { get; set; }
+
+    /// <summary>Fires when the footer is tapped — caller opens the context switcher.</summary>
+    [Parameter] public EventCallback OnSwitchRequested { get; set; }
+}

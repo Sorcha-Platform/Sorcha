@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Sorcha.Wallet.Pwa.Services;
+using Sorcha.Wallet.Pwa.Services.Applications;
+using Sorcha.Wallet.Pwa.Services.Capture;
+using Sorcha.Wallet.Pwa.Services.Context;
+using Sorcha.Wallet.Pwa.Services.Presentation;
+using Sorcha.Wallet.Pwa.Services.Signing;
+using Sorcha.Wallet.Pwa.Services.Verification;
+using Sorcha.UI.Components.User.Services.Capture;
+using Sorcha.UI.Components.User.Services.Signing;
+using Sorcha.UI.Components.User.Services.Verification;
+using Sorcha.ServiceClients.CitizenWallet;
+
+namespace Sorcha.Wallet.Pwa.Extensions;
+
+/// <summary>DI extensions for the citizen wallet PWA (Feature 114, T065).</summary>
+public static class ServiceCollectionExtensions
+{
+    /// <summary>
+    /// Register the PWA's services as singletons (single-user-per-tab).
+    /// Production wiring uses WebCrypto for device keys and IndexedDB for the
+    /// credential cache, delegation store, and status list cache — all backed
+    /// by <c>indexeddb-bridge.js</c>. The in-memory variants are kept for unit
+    /// tests where IJSRuntime isn't available.
+    /// </summary>
+    public static IServiceCollection AddCitizenWalletServices(
+        this IServiceCollection services, string gatewayBaseAddress)
+    {
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IPresentationEngine, PresentationEngine>();
+        services.AddSingleton<IDeviceKeyService, WebCryptoDeviceKeyService>();
+        services.AddSingleton<ICredentialCache, IndexedDbCredentialCache>();
+        services.AddSingleton<IDelegationStore, IndexedDbDelegationStore>();
+        services.AddSingleton<IStatusListService, IndexedDbStatusListService>();
+        services.AddSingleton<ISyncCursorStore, IndexedDbSyncCursorStore>();
+        services.AddSingleton<IAccessTokenStore, IndexedDbAccessTokenStore>();
+        services.AddSingleton<ISyncService, SyncService>();
+        services.AddSingleton<IDeviceMetaStore, IndexedDbDeviceMetaStore>();
+        services.AddSingleton<IEnrolmentService, EnrolmentService>();
+        services.AddSingleton<IDelegationRenewalClient, DelegationRenewalClient>();
+
+        // Feature 124 — per-device wallet flags (welcome-takeover dismissal,
+        // plus Feature 125 guided-tour dismissal).
+        services.AddSingleton<IWalletFlagsStore, IndexedDbWalletFlagsStore>();
+
+        // Feature 125 — PR-A foundation. The signing seam (IUserSigner) and
+        // its v1 managed-mode implementation; per-device stores for active
+        // org context, per-context persona cache, verification history. The
+        // ephemeral verifier identity implementation lands in PR-C (US1)
+        // along with the QR/NFC scanner; the interface is already in place
+        // so its consumers compile against the contract.
+        services.AddSingleton<IUserSigner, ManagedUserSigner>();
+        services.AddSingleton<IActiveContextStore, IndexedDbActiveContextStore>();
+        services.AddSingleton<IPerContextPersonaCache, IndexedDbPerContextPersonaCache>();
+        services.AddSingleton<IVerificationHistoryStore, IndexedDbVerificationHistoryStore>();
+
+        // Feature 125 / PR-C — doorstep verification (US1). EphemeralVerifierIdentity
+        // generates a fresh EC P-256 key per session via webcrypto-bridge.js;
+        // StubVerifierEngine ships the v1 verify pipeline as a parseable
+        // demo offer envelope. Real local-validation lifts
+        // VerifiablePresentationValidator out of Sorcha.Verifier in a
+        // follow-up extraction PR.
+        services.AddSingleton<IEphemeralVerifierIdentityService, EphemeralVerifierIdentityService>();
+        services.AddSingleton<IVerifierEngine, StubVerifierEngine>();
+
+        // Feature 125 / PR-D — application-from-phone (US2). PortraitCaptureControl
+        // routes through IWebCameraService; the file-upload fallback is the
+        // v1 path until webcamera-bridge.js + native camera land in a
+        // follow-up. IApplicationSubmissionService signs payloads through
+        // IUserSigner under the active context and surfaces the in-progress
+        // state via F124's pending-application notice; the real HTTP
+        // submission to the blueprint endpoints lands alongside the
+        // application catalogue API.
+        services.AddSingleton<IWebCameraService, FileFallbackWebCameraService>();
+        services.AddSingleton<IApplicationSubmissionService, StubApplicationSubmissionService>();
+
+        // Server-clock observer (T101) — populated by the ServerClockHandler on
+        // every outbound HTTP call; read by Pages/Index.razor to surface a
+        // clock-skew banner if the device drifts far from the server.
+        services.AddSingleton<IServerClockObserver, ServerClockObserver>();
+        services.AddTransient<ServerClockHandler>();
+
+        // Auth surface: a separate HttpClient that does NOT inject the bearer
+        // token (so sign-in requests don't carry stale tokens). Still observes
+        // the server clock — sign-in is a great moment to capture initial drift.
+        services.AddTransient<BearerTokenHandler>();
+        services.AddHttpClient<IAuthService, AuthService>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        // Citizen wallet client: every outbound call automatically carries the
+        // wallet's stored bearer token AND records server clock observations.
+        services.AddHttpClient<ICitizenWalletClient, CitizenWalletClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        // Feature 124 — pending-application notice client. Same auth chain as
+        // the citizen wallet client (BearerTokenHandler + ServerClockHandler).
+        services.AddHttpClient<IPendingApplicationClient, HttpPendingApplicationClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        // Feature 125 / PR-B — user context (active org) + memberships client.
+        // ManagedUserContext drives /api/auth/switch-org through the bearer-
+        // and clock-handler chain so the new JWT is acquired with the
+        // currently-stored token. Both surfaces register as singletons so the
+        // context-changed event reaches every subscriber across the wallet.
+        services.AddHttpClient<IUserOrgMembershipsClient, HttpUserOrgMembershipsClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+        services.AddHttpClient("UserContextSwitchOrg", c => c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+        services.AddSingleton<IUserContext>(sp => new ManagedUserContext(
+            sp.GetRequiredService<IActiveContextStore>(),
+            sp.GetRequiredService<IAccessTokenStore>(),
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("UserContextSwitchOrg"),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ManagedUserContext>>()));
+
+        // Feature 114 / US4 — citizen wallet hub connection. Singleton so the
+        // PWA holds a single live SignalR socket across page navigation; the
+        // connection authenticates lazily via the access-token store.
+        services.AddSingleton(sp => new CitizenWalletHubConnection(
+            gatewayBaseAddress,
+            sp.GetRequiredService<IAccessTokenStore>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CitizenWalletHubConnection>>()));
+
+        return services;
+    }
+}

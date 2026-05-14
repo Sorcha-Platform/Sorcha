@@ -165,7 +165,7 @@ Two classes of file live under `_framework/` and they need different cache polic
 
 | Class | Example | URL stable? | Contents change? | Cache |
 |---|---|---|---|---|
-| Fingerprinted | `Sorcha.Citizen.Wallet.b0fgy5dpkq.wasm` | No (hash in URL) | No (hash *is* the contents key) | `immutable, max-age=31536000` ✅ |
+| Fingerprinted | `Sorcha.Wallet.Pwa.b0fgy5dpkq.wasm` | No (hash in URL) | No (hash *is* the contents key) | `immutable, max-age=31536000` ✅ |
 | Entry-point | `dotnet.js`, `blazor.webassembly.js` | Yes | **Yes** — embeds the fingerprint manifest of which wasm files to load | `no-cache, no-store, must-revalidate` ✅ |
 
 A nginx regex like `location ~* ^/_framework/.*\.(dll|wasm|js)$` that marks **everything** as `immutable` is the trap — it catches the non-fingerprinted entry points. On redeploy, the wasm fingerprints rotate but browsers holding the year-cached `dotnet.js` keep referencing dead hashes. Manifests as "the wallet won't navigate after a redeploy on a returning device." See PR #699.

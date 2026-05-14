@@ -8,7 +8,7 @@ namespace Sorcha.UI.Components.User.Extensions;
 
 /// <summary>
 /// Dependency-injection extension points for the shared user-facing UI component library.
-/// Host applications (Sorcha.UI.* web apps and Sorcha.Citizen.Wallet PWA) call
+/// Host applications (Sorcha.UI.* web apps and Sorcha.Wallet.Pwa PWA) call
 /// <see cref="AddSorchaUserComponents"/> from their <c>Program.cs</c> to register the
 /// services the shared components consume via <c>@inject</c>.
 /// </summary>

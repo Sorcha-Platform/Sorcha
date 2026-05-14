@@ -1,6 +1,6 @@
 # Sorcha.UI.Components.User
 
-Shared user-facing Razor component library consumed by both the Sorcha.UI web app family and the `Sorcha.Citizen.Wallet` PWA.
+Shared user-facing Razor component library consumed by both the Sorcha.UI web app family and the `Sorcha.Wallet.Pwa` PWA.
 
 ## Why this library exists
 
