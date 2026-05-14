@@ -1882,3 +1882,63 @@ function Switch-SorchaOrganization {
         Headers        = @{ Authorization = "Bearer $token" }
     }
 }
+
+# ============================================================================
+# Set-SorchaCitizenPendingApplication / Clear-SorchaCitizenPendingApplication
+# Feature 124 — drives the wallet PWA's waiting-state UX from the walkthrough.
+# ============================================================================
+
+function Set-SorchaCitizenPendingApplication {
+    <#
+    .SYNOPSIS
+        Set the citizen's pending-application notice on the Wallet Service.
+    .DESCRIPTION
+        Calls PUT /api/v1/wallet/pending-applications with the supplied label.
+        Idempotent — calling with a new label replaces the prior one and
+        resets the TTL. The PWA reads this notice on every Home render to
+        decide whether to show the waiting-card.
+    .PARAMETER WalletUrl
+        The wallet service base URL (e.g. http://localhost/api).
+    .PARAMETER Label
+        Human-readable application label (1..80 chars). Plain text — no
+        credential content.
+    .PARAMETER Headers
+        Citizen-scope authorization headers (Bearer JWT carrying
+        platform_user_id claim).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+
+    $body = @{ label = $Label }
+    $response = Invoke-SorchaApi -Method PUT `
+        -Uri "$WalletUrl/v1/wallet/pending-applications" `
+        -Body $body `
+        -Headers $Headers
+    Write-WtInfo "Pending-application notice set: $Label"
+    return $response.notice
+}
+
+function Clear-SorchaCitizenPendingApplication {
+    <#
+    .SYNOPSIS
+        Clear the citizen's pending-application notice.
+    .DESCRIPTION
+        Calls DELETE /api/v1/wallet/pending-applications. Idempotent —
+        returns 204 whether or not a notice was present. The PWA drops
+        the waiting-card within one second of next Home render.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+
+    # Use RawResponse so we don't try to parse a 204 No Content body.
+    $null = Invoke-SorchaApi -Method DELETE `
+        -Uri "$WalletUrl/v1/wallet/pending-applications" `
+        -Headers $Headers `
+        -RawResponse
+    Write-WtInfo "Pending-application notice cleared"
+}
