@@ -448,16 +448,16 @@ Write-WtSuccess "State saved to $stateFile"
 
 # Feature 124 — surface the citizen credentials so the operator can sign
 # the demo citizen into the PWA host before running phase 1.
-Write-WtInfo ""
+Write-Host ""
 Write-WtInfo "Next step: sign the citizen into the wallet host."
 Write-WtInfo "  URL:       http://localhost/wallet/ (or your gateway equivalent)"
 Write-WtInfo "  Settings → Sign in"
 Write-WtInfo "  Email:     $citizenEmail"
 Write-WtInfo "  Password:  $citizenPassword"
-Write-WtInfo ""
+Write-Host ""
 Write-WtInfo "Then enrol the device on the wallet PWA. In two terminals:"
 Write-WtInfo "  T1> pwsh walkthroughs/AssuredIdentity/run-agents.ps1"
 Write-WtInfo "  T2> pwsh walkthroughs/AssuredIdentity/run-phase1-identity.ps1"
-Write-WtInfo ""
+Write-Host ""
 
 Write-WtBanner "AssuredIdentity — Setup Complete"
