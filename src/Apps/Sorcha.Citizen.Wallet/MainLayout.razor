@@ -22,6 +22,7 @@
         <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner"
                        Color="Color.Inherit"
                        OnClick="@(() => Nav.NavigateTo("present"))"
+                       data-testid="topbar-present-button"
                        aria-label="Present a credential" />
     </MudAppBar>
     <MudMainContent Class="pb-16">
@@ -29,12 +30,16 @@
     </MudMainContent>
     <MudAppBar Bottom="true" Fixed="true" Elevation="4" Color="Color.Surface" Class="d-flex justify-space-around">
         <MudIconButton Icon="@Icons.Material.Filled.Home" OnClick="@(() => Nav.NavigateTo(""))"
+                       data-testid="footer-nav-home"
                        aria-label="Home" />
         <MudIconButton Icon="@Icons.Material.Filled.PhoneIphone" OnClick="@(() => Nav.NavigateTo("devices"))"
+                       data-testid="footer-nav-devices"
                        aria-label="Devices" />
         <MudIconButton Icon="@Icons.Material.Filled.History" OnClick="@(() => Nav.NavigateTo("activity"))"
+                       data-testid="footer-nav-activity"
                        aria-label="Activity" />
         <MudIconButton Icon="@Icons.Material.Filled.Settings" OnClick="@(() => Nav.NavigateTo("settings"))"
+                       data-testid="footer-nav-settings"
                        aria-label="Settings" />
     </MudAppBar>
 </MudLayout>

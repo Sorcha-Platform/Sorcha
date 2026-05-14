@@ -42,7 +42,7 @@
             {
                 <MudAlert Severity="Severity.Warning" Class="mb-3">
                     You need to sign in first.
-                    <MudLink Href="settings">Open Settings</MudLink> to sign in,
+                    <MudLink Href="settings" data-testid="enrol-open-settings-link">Open Settings</MudLink> to sign in,
                     then come back here.
                 </MudAlert>
             }
@@ -126,7 +126,8 @@
                     </MudAlert>
                 }
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="@(() => Nav.NavigateTo(""))">
+                           OnClick="@(() => Nav.NavigateTo(""))"
+                           data-testid="enrol-done-open-wallet-button">
                     Open wallet
                 </MudButton>
             }
