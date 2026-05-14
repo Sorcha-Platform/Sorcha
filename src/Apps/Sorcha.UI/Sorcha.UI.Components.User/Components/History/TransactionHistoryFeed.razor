@@ -1,0 +1,99 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Transaction history feed (Feature 125, T084). Mobile-first thumb-scroll
+    feed of significant wallet events — credential issuance, presentation,
+    verification, application submission, revocation. Each entry is
+    tappable into a detail surface (drawer or page) supplied by the host.
+
+    v1 surface ships the feed list + per-row tap. The detail drawer +
+    ReceiptProofCard + TransactionLifecycleTicks compositions land
+    alongside the real transaction history HTTP source in a follow-up.
+*@
+@namespace Sorcha.UI.Components.User.Components.History
+
+@if (Entries is { Count: > 0 })
+{
+    <MudList T="HistoryFeedEntry" Dense="true" data-testid="transaction-history-feed">
+        @foreach (var entry in Entries)
+        {
+            <MudListItem T="HistoryFeedEntry" Value="@entry"
+                         Icon="@IconForKind(entry.Kind)"
+                         OnClick="@(async () => await Activate(entry))"
+                         data-testid="@($"history-entry-{entry.Id}")">
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.body1">@entry.Title</MudText>
+                    @if (!string.IsNullOrEmpty(entry.Subtitle))
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">@entry.Subtitle</MudText>
+                    }
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@FormatWhen(entry.At)</MudText>
+                </MudStack>
+            </MudListItem>
+            <MudDivider />
+        }
+    </MudList>
+}
+else
+{
+    <MudPaper Class="pa-4 ma-2" Elevation="0" data-testid="transaction-history-empty">
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            Nothing recent. Your activity will show here once you start using credentials.
+        </MudText>
+    </MudPaper>
+}
+
+@code {
+    /// <summary>The events to render, newest first. Empty / null shows the empty state.</summary>
+    [Parameter] public IReadOnlyList<HistoryFeedEntry>? Entries { get; set; }
+
+    /// <summary>Fires when an entry is tapped; payload is the entry id.</summary>
+    [Parameter] public EventCallback<string> OnEntryActivated { get; set; }
+
+    private async Task Activate(HistoryFeedEntry entry)
+    {
+        if (OnEntryActivated.HasDelegate)
+            await OnEntryActivated.InvokeAsync(entry.Id);
+    }
+
+    private static string IconForKind(HistoryFeedKind kind) => kind switch
+    {
+        HistoryFeedKind.Issuance => Icons.Material.Filled.AddCircle,
+        HistoryFeedKind.Presentation => Icons.Material.Filled.North,
+        HistoryFeedKind.Verification => Icons.Material.Filled.VerifiedUser,
+        HistoryFeedKind.Submission => Icons.Material.Filled.Send,
+        HistoryFeedKind.Revocation => Icons.Material.Filled.Block,
+        _ => Icons.Material.Filled.Event
+    };
+
+    private static string FormatWhen(DateTimeOffset at)
+    {
+        var delta = DateTimeOffset.UtcNow - at;
+        return delta.TotalHours switch
+        {
+            < 1 => $"{Math.Max(1, (int)delta.TotalMinutes)} min ago",
+            < 24 => $"{(int)delta.TotalHours} h ago",
+            < 24 * 7 => $"{(int)(delta.TotalDays)} d ago",
+            _ => at.ToLocalTime().ToString("d MMM yyyy")
+        };
+    }
+
+    /// <summary>One row in the feed.</summary>
+    public sealed record HistoryFeedEntry(
+        string Id,
+        HistoryFeedKind Kind,
+        string Title,
+        string? Subtitle,
+        DateTimeOffset At);
+
+    /// <summary>Logical event kind; drives the icon.</summary>
+    public enum HistoryFeedKind
+    {
+        Issuance,
+        Presentation,
+        Verification,
+        Submission,
+        Revocation
+    }
+}

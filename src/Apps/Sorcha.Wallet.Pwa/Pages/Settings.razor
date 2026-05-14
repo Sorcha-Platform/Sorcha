@@ -13,12 +13,45 @@
 @using Sorcha.Wallet.Pwa.Services
 @inject IJSRuntime Js
 @inject IAuthService Auth
+@inject NavigationManager Nav
 @inject ILogger<Settings> Logger
 
 <PageTitle>Settings</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
     <MudText Typo="Typo.h5" Class="mb-3">Settings</MudText>
+
+    @* Feature 125 / PR-E (T098) — Settings hub. Quick links to the
+       Profile, Devices, Auth-methods, and Activity surfaces; the existing
+       Storage + sign-in/out controls stay below. *@
+    <MudPaper Class="mb-3" Elevation="1" data-testid="settings-hub">
+        <MudList T="string" Dense="false">
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Person"
+                         OnClick="@GoProfile"
+                         data-testid="settings-link-profile">
+                <MudText Typo="Typo.body1">Profile</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Your personal details for form autofill.</MudText>
+            </MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.PhoneIphone"
+                         OnClick="@GoDevices"
+                         data-testid="settings-link-devices">
+                <MudText Typo="Typo.body1">Devices</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Phones and tablets enrolled to your account.</MudText>
+            </MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Key"
+                         OnClick="@GoAuthMethods"
+                         data-testid="settings-link-auth-methods">
+                <MudText Typo="Typo.body1">Auth methods</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Passkeys, social logins, and recovery email.</MudText>
+            </MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.History"
+                         OnClick="@GoActivity"
+                         data-testid="settings-link-activity">
+                <MudText Typo="Typo.body1">Activity</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Recent credential and verification events.</MudText>
+            </MudListItem>
+        </MudList>
+    </MudPaper>
 
     <MudCard Class="mb-3">
         <MudCardHeader>
@@ -110,6 +143,11 @@
 </MudContainer>
 
 @code {
+    private void GoProfile() => Nav.NavigateTo("profile");
+    private void GoDevices() => Nav.NavigateTo("devices");
+    private void GoAuthMethods() => Nav.NavigateTo("auth-methods");
+    private void GoActivity() => Nav.NavigateTo("activity");
+
     private StorageInfo? _storage;
     private string? _signedInEmail;
     private string _email = string.Empty;

@@ -2,16 +2,90 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Placeholder Activity page (T142 — full implementation lands with US5).
+    Activity page (Feature 125, T086). Renders the TransactionHistoryFeed
+    component from the shared library — v1 sources entries from the
+    per-device IVerificationHistoryStore so doorstep verifications the
+    user has performed (PR-C) appear here scoped to the active context.
+
+    Future PRs feed in real issuance / presentation / submission /
+    revocation events via IUserHistoryClient against a server-side
+    history endpoint.
 *@
 @page "/activity"
 @layout MainLayout
+@using Sorcha.UI.Components.User.Components.History
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Context
+@implements IAsyncDisposable
+@inject IVerificationHistoryStore VerificationHistory
+@inject IUserContext UserContext
+@inject NavigationManager Nav
 
-<PageTitle>Activity</PageTitle>
+<PageTitle>Activity · Sorcha Wallet</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
-    <MudText Typo="Typo.h5">Activity</MudText>
-    <MudAlert Severity="Severity.Info" Class="mt-3">
-        Local presentation log lands with US5.
-    </MudAlert>
+    <MudText Typo="Typo.h5" Class="mb-3">Activity</MudText>
+    @if (_loading)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" data-testid="activity-loading" />
+    }
+    else
+    {
+        <TransactionHistoryFeed Entries="@_entries" OnEntryActivated="@HandleEntryAsync" />
+    }
 </MudContainer>
+
+@code {
+    private IReadOnlyList<TransactionHistoryFeed.HistoryFeedEntry>? _entries;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        UserContext.OnContextChanged += HandleContextChangedAsync;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var records = await VerificationHistory.ListByContextAsync(UserContext.ActiveContextOrgId);
+            _entries = records
+                .Select(r => new TransactionHistoryFeed.HistoryFeedEntry(
+                    Id: r.Id.ToString("N"),
+                    Kind: TransactionHistoryFeed.HistoryFeedKind.Verification,
+                    Title: $"Verified {r.HolderDisplayName}",
+                    Subtitle: $"{r.IssuerOrgName} · {r.CredentialType} · {r.Outcome}",
+                    At: r.VerifiedAt))
+                .ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task HandleContextChangedAsync(UserContextChangedEventArgs args)
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private Task HandleEntryAsync(string entryId)
+    {
+        // Future: navigate to a per-entry detail drawer / page that
+        // re-renders the trust panel from VerificationRecord.TrustPanelJson.
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync()
+    {
+        UserContext.OnContextChanged -= HandleContextChangedAsync;
+        return ValueTask.CompletedTask;
+    }
+}
