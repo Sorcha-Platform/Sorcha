@@ -210,6 +210,12 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IFileReasse
 // Add Redis for notification rate limiting and pub/sub
 builder.AddRedisClient("redis");
 
+// Feature 124 — IDistributedCache backing for RedisPendingApplicationStore.
+// Re-uses the same "redis" connection registered above; Aspire wires the
+// StackExchange.Redis distributed-cache implementation on top of the
+// existing IConnectionMultiplexer.
+builder.AddRedisDistributedCache("redis");
+
 // Add service clients for inter-service communication
 builder.Services.AddServiceClients(builder.Configuration);
 
