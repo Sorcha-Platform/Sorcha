@@ -22,13 +22,17 @@ public interface IWalletFlagsStore
 }
 
 /// <summary>
-/// Per-device wallet flags. <see cref="WelcomedAt"/> only ever transitions
-/// from null to a UTC timestamp on first dismissal of the welcome takeover;
-/// there is no "un-welcome" path on this device.
+/// Per-device wallet flags. Each flag transitions independently from null
+/// to a UTC timestamp once on dismissal. <see cref="WelcomedAt"/> is the
+/// Feature 124 first-credential welcome takeover; <see cref="TourDismissedAt"/>
+/// is the Feature 125 guided-tour completion (replayable from Settings, which
+/// resets the field back to null).
 /// </summary>
-/// <param name="WelcomedAt">UTC time the welcome takeover was dismissed.</param>
+/// <param name="WelcomedAt">UTC time the welcome takeover was dismissed (Feature 124).</param>
+/// <param name="TourDismissedAt">UTC time the guided tour was completed or dismissed (Feature 125).</param>
 public sealed record WalletFlagsRecord(
-    DateTimeOffset? WelcomedAt);
+    DateTimeOffset? WelcomedAt,
+    DateTimeOffset? TourDismissedAt = null);
 
 /// <summary>In-memory <see cref="IWalletFlagsStore"/> for tests.</summary>
 public sealed class InMemoryWalletFlagsStore : IWalletFlagsStore

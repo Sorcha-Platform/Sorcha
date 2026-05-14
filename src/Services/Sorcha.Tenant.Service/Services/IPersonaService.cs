@@ -13,13 +13,19 @@ namespace Sorcha.Tenant.Service.Services;
 public interface IPersonaService
 {
     /// <summary>
-    /// Loads the persona for a platform user and returns the read-side wire
-    /// shape. A user who has never saved a persona receives an empty
+    /// Loads the persona for a platform user under a given organisational
+    /// context and returns the read-side wire shape. A user who has never
+    /// saved a persona for the requested context receives an empty
     /// <see cref="PersonaReadModelV1"/> (all fields null / empty lists) —
     /// never a "not found" error.
     /// </summary>
+    /// <param name="platformUserId">Cross-org PlatformUser id from the caller's JWT.</param>
+    /// <param name="contextOrgId">Organisation context for the persona; null = Personal (Feature 125).</param>
+    /// <param name="options">Read options (e.g. <c>actingAs</c>); v1 only supports <c>self</c>.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<PersonaReadModelV1> GetAsync(
         Guid platformUserId,
+        Guid? contextOrgId = null,
         PersonaReadOptions? options = null,
         CancellationToken ct = default);
 
@@ -48,13 +54,18 @@ public interface IPersonaService
         Guid platformUserId,
         string? walletAddress,
         PersonaAttributesV1 plaintext,
+        Guid? contextOrgId = null,
         CancellationToken ct = default);
 
     /// <summary>
-    /// Deletes the persona for a platform user. Idempotent — returns silently
-    /// whether or not a row existed.
+    /// Deletes the persona for a platform user under the given context.
+    /// Idempotent — returns silently whether or not a row existed.
+    /// <paramref name="contextOrgId"/> null means the Personal context (Feature 125).
     /// </summary>
-    Task DeleteAsync(Guid platformUserId, CancellationToken ct = default);
+    Task DeleteAsync(
+        Guid platformUserId,
+        Guid? contextOrgId = null,
+        CancellationToken ct = default);
 }
 
 /// <summary>

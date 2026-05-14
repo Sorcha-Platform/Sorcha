@@ -58,6 +58,7 @@ public sealed partial class PersonaService : IPersonaService
     /// <inheritdoc />
     public async Task<PersonaReadModelV1> GetAsync(
         Guid platformUserId,
+        Guid? contextOrgId = null,
         PersonaReadOptions? options = null,
         CancellationToken ct = default)
     {
@@ -75,9 +76,14 @@ public sealed partial class PersonaService : IPersonaService
             });
         }
 
+        // Feature 125 — per-context scoping. Personal context (null on the
+        // wire) is represented as Guid.Empty in the database, which keeps
+        // the composite primary key (PlatformUserId, ContextOrgId)
+        // non-nullable.
+        var scope = contextOrgId ?? Guid.Empty;
         var row = await _db.PlatformUserPersonas
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId, ct);
+            .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId && p.ContextOrgId == scope, ct);
 
         if (row is null)
         {
@@ -172,9 +178,13 @@ public sealed partial class PersonaService : IPersonaService
         Guid platformUserId,
         string? walletAddress,
         PersonaAttributesV1 plaintext,
+        Guid? contextOrgId = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(plaintext);
+
+        // Feature 125 — Personal context = Guid.Empty.
+        var scope = contextOrgId ?? Guid.Empty;
 
         // 1. Validate invariants.
         var normalised = ValidateAndNormalise(plaintext);
@@ -214,10 +224,11 @@ public sealed partial class PersonaService : IPersonaService
         while (true)
         {
             row = await _db.PlatformUserPersonas
-                .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId, ct)
+                .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId && p.ContextOrgId == scope, ct)
                 ?? new PlatformUserPersona
                 {
                     PlatformUserId = platformUserId,
+                    ContextOrgId = scope,
                     CreatedAt = now
                 };
 
@@ -274,10 +285,14 @@ public sealed partial class PersonaService : IPersonaService
     }
 
     /// <inheritdoc />
-    public async Task DeleteAsync(Guid platformUserId, CancellationToken ct = default)
+    public async Task DeleteAsync(
+        Guid platformUserId,
+        Guid? contextOrgId = null,
+        CancellationToken ct = default)
     {
+        var scope = contextOrgId ?? Guid.Empty;
         var row = await _db.PlatformUserPersonas
-            .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId, ct);
+            .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId && p.ContextOrgId == scope, ct);
 
         if (row is null)
         {

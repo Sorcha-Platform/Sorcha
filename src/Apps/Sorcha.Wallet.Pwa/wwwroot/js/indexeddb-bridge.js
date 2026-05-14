@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 //
-// IndexedDB bridge for the Sorcha citizen wallet PWA (Feature 114, T054).
-// Database name: 'sorcha-wallet', version 1. Five object stores per data-model §B:
-//   device       — singleton, key='self'  — keys, wrapping artefacts, enrolment metadata
-//   delegation   — singleton, key='self'  — current device delegation JWT
-//   credentials  — keyed by id (UUID)     — encrypted SD-JWT VCs
-//   statusLists  — keyed by uri           — cached signed status list JWTs
-//   syncQueue    — autoincrement key      — pending outbound mutations
+// IndexedDB bridge for the Sorcha Wallet PWA (Feature 114, T054 — extended by Feature 125).
+// Database name: 'sorcha-wallet', version 2.
+//   v1 stores (Feature 114):
+//     device       — singleton, key='self'  — keys, wrapping artefacts, enrolment metadata
+//     delegation   — singleton, key='self'  — current device delegation JWT
+//     credentials  — keyed by id (UUID)     — encrypted SD-JWT VCs
+//     statusLists  — keyed by uri           — cached signed status list JWTs
+//     syncQueue    — autoincrement key      — pending outbound mutations
+//   v2 additions (Feature 125 — Sorcha Wallet full user-agent v1):
+//     context       — singleton, key='active'    — active org context (per-device)
+//     verifications — keyed by id (GUID)         — verification history records
+//     personas      — keyed by contextKey string — per-context persona cache
 //
 // Content-key strategy (deviation from data-model §B1, documented in the wallet README):
 // v1 uses a non-extractable AES-GCM-256 CryptoKey generated on first run and stored
@@ -28,7 +33,7 @@
   }
 
   const DB_NAME = "sorcha-wallet";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const CONTENT_KEY_ID = "content-key/v1";
 
   let dbPromise = null;
@@ -44,6 +49,10 @@
         if (!db.objectStoreNames.contains("credentials")) db.createObjectStore("credentials", { keyPath: "id" });
         if (!db.objectStoreNames.contains("statusLists")) db.createObjectStore("statusLists", { keyPath: "uri" });
         if (!db.objectStoreNames.contains("syncQueue")) db.createObjectStore("syncQueue", { keyPath: "id", autoIncrement: true });
+        // v2 (Feature 125) — keep these guarded for forward compatibility.
+        if (!db.objectStoreNames.contains("context")) db.createObjectStore("context");
+        if (!db.objectStoreNames.contains("verifications")) db.createObjectStore("verifications", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("personas")) db.createObjectStore("personas");
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);

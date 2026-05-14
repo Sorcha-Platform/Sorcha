@@ -1081,7 +1081,14 @@ public class TenantDbContext : DbContext
             else
                 entity.ToTable("PlatformUserPersonas", "public");
 
-            entity.HasKey(e => e.PlatformUserId);
+            // Composite key (Feature 125) — one persona per (user, context).
+            // ContextOrgId == Guid.Empty represents the Personal context;
+            // non-empty values are an organisation id the user holds an
+            // OrgMembership for.
+            entity.HasKey(e => new { e.PlatformUserId, e.ContextOrgId });
+
+            entity.Property(e => e.ContextOrgId)
+                .IsRequired();
 
             entity.Property(e => e.CiphertextBlob)
                 .IsRequired();
@@ -1103,12 +1110,14 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .IsRequired();
 
-            // One-to-one with PlatformUser. Cascade delete is load-bearing
-            // for FR-007a — the persona must be wiped atomically with the
-            // user account (GDPR right-to-erasure).
+            // Many-to-one with PlatformUser (Feature 125 changed from
+            // one-to-one when the per-context column was added). Cascade
+            // delete is load-bearing for FR-007a — every persona row across
+            // every context must be wiped atomically with the user account
+            // (GDPR right-to-erasure).
             entity.HasOne(e => e.PlatformUser)
-                .WithOne()
-                .HasForeignKey<PlatformUserPersona>(e => e.PlatformUserId)
+                .WithMany()
+                .HasForeignKey(e => e.PlatformUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

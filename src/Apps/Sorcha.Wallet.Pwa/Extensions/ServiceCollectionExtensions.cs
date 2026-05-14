@@ -4,6 +4,8 @@
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Sorcha.Wallet.Pwa.Services;
 using Sorcha.Wallet.Pwa.Services.Presentation;
+using Sorcha.Wallet.Pwa.Services.Signing;
+using Sorcha.UI.Components.User.Services.Signing;
 using Sorcha.ServiceClients.CitizenWallet;
 
 namespace Sorcha.Wallet.Pwa.Extensions;
@@ -34,8 +36,20 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IEnrolmentService, EnrolmentService>();
         services.AddSingleton<IDelegationRenewalClient, DelegationRenewalClient>();
 
-        // Feature 124 — per-device wallet flags (welcome-takeover dismissal).
+        // Feature 124 — per-device wallet flags (welcome-takeover dismissal,
+        // plus Feature 125 guided-tour dismissal).
         services.AddSingleton<IWalletFlagsStore, IndexedDbWalletFlagsStore>();
+
+        // Feature 125 — PR-A foundation. The signing seam (IUserSigner) and
+        // its v1 managed-mode implementation; per-device stores for active
+        // org context, per-context persona cache, verification history. The
+        // ephemeral verifier identity implementation lands in PR-C (US1)
+        // along with the QR/NFC scanner; the interface is already in place
+        // so its consumers compile against the contract.
+        services.AddSingleton<IUserSigner, ManagedUserSigner>();
+        services.AddSingleton<IActiveContextStore, IndexedDbActiveContextStore>();
+        services.AddSingleton<IPerContextPersonaCache, IndexedDbPerContextPersonaCache>();
+        services.AddSingleton<IVerificationHistoryStore, IndexedDbVerificationHistoryStore>();
 
         // Server-clock observer (T101) — populated by the ServerClockHandler on
         // every outbound HTTP call; read by Pages/Index.razor to surface a

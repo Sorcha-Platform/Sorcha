@@ -749,6 +749,9 @@ namespace Sorcha.Tenant.Service.Migrations
                 columns: table => new
                 {
                     PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    // Feature 125 — per-context persona scoping. Guid.Empty
+                    // (all-zero) represents the Personal context.
+                    ContextOrgId = table.Column<Guid>(type: "uuid", nullable: false, defaultValue: Guid.Empty),
                     CiphertextBlob = table.Column<byte[]>(type: "bytea", nullable: false),
                     Nonce = table.Column<byte[]>(type: "bytea", maxLength: 24, nullable: false),
                     WrappedKeyRef = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
@@ -758,7 +761,7 @@ namespace Sorcha.Tenant.Service.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_PlatformUserPersonas", x => x.PlatformUserId);
+                    table.PrimaryKey("PK_PlatformUserPersonas", x => new { x.PlatformUserId, x.ContextOrgId });
                     table.ForeignKey(
                         name: "FK_PlatformUserPersonas_PlatformUsers_PlatformUserId",
                         column: x => x.PlatformUserId,
