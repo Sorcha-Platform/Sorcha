@@ -226,6 +226,16 @@ PageTest (Playwright NUnit)
 | Docker tests | `tests/Sorcha.UI.E2E.Tests/Docker/` |
 | MudBlazor helpers | `tests/Sorcha.UI.E2E.Tests/PageObjects/Shared/MudBlazorHelpers.cs` |
 
+## Citizen Wallet PWA — path-prefix gotchas
+
+The Citizen Wallet PWA (`Sorcha.Citizen.Wallet`) mounts at **`/wallet/`** behind the API Gateway via `PathRemovePrefix`. Two rules apply only here, not to the main `Sorcha.UI.Web` app:
+
+1. **All `NavigateTo` / `Href` paths must be base-relative**, not origin-absolute. `NavigateTo("enrol")` ✓ — `NavigateTo("/enrol")` 404s in production. Home is `NavigateTo("")`, not `NavigateTo("/")`. Full rationale in the **blazor** skill → "PWA navigation when mounted under a path prefix". Twelve broken nav buttons shipped through CI as PR #698; the fix scope was global across `MainLayout.razor`, `Index.razor`, `Enrol.razor`, `CredentialDetail.razor`.
+
+2. **`nginx.conf` cache rules must exclude `dotnet.js` and `blazor.webassembly.js`** from the `immutable` regex. Those two files are NOT fingerprinted but DO change every build — caching them as immutable for a year breaks return-visits after every redeploy. Pattern in the **blazor** skill → "nginx caching for Blazor WASM" plus PR #699. Regression guard: `tests/Sorcha.UI.E2E.Tests/Docker/CitizenWallet/CitizenWalletNginxCacheHeadersTests.cs`.
+
+PWA test coverage discipline (every nav element gets `data-testid` + click+URL test) is in the **playwright** skill. Issue #700 tracks the broader PWA test-coverage gap.
+
 ## See Also
 
 - [patterns](references/patterns.md) - Page implementation and test patterns
