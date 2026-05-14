@@ -6,9 +6,18 @@
     rail with the four v1 destinations: Home / Devices / Activity / Settings.
     The Devices/Activity/Settings pages land with US2-US5; the nav entries are
     placed now so the app shape is final from the MVP demo on.
+
+    Feature 125 / PR-B — hosts the ContextChipSwitcher in the app bar so the
+    active organisational context is always visible. The chip is non-
+    interactive when the user only holds the Personal context.
 *@
+@using Sorcha.UI.Components.User.Components.Context
+@using Sorcha.Wallet.Pwa.Services.Context
 @inherits LayoutComponentBase
+@implements IAsyncDisposable
 @inject NavigationManager Nav
+@inject IUserContext UserContext
+@inject IUserOrgMembershipsClient MembershipsClient
 
 <MudThemeProvider />
 <MudPopoverProvider />
@@ -18,6 +27,11 @@
 <MudLayout>
     <MudAppBar Elevation="1">
         <MudText Typo="Typo.h6">Sorcha Wallet</MudText>
+        <MudSpacer />
+        <ContextChipSwitcher ActiveLabel="@_activeLabel"
+                             ActiveContextOrgId="@UserContext.ActiveContextOrgId"
+                             Memberships="@_chipMemberships"
+                             OnContextSelected="@OnContextSelectedAsync" />
         <MudSpacer />
         <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner"
                        Color="Color.Inherit"
@@ -43,4 +57,59 @@
                        aria-label="Settings" />
     </MudAppBar>
 </MudLayout>
+
+@code {
+    private IReadOnlyList<UserOrgMembership> _memberships = Array.Empty<UserOrgMembership>();
+    private IReadOnlyList<ContextChipSwitcher.ContextChipMembership> _chipMemberships =
+        Array.Empty<ContextChipSwitcher.ContextChipMembership>();
+    private string _activeLabel = "Personal";
+
+    protected override async Task OnInitializedAsync()
+    {
+        UserContext.OnContextChanged += HandleContextChanged;
+        await UserContext.InitializeAsync();
+        await ReloadMembershipsAsync();
+        UpdateActiveLabel();
+    }
+
+    private async Task ReloadMembershipsAsync()
+    {
+        _memberships = await MembershipsClient.ListAsync();
+        _chipMemberships = _memberships
+            .Select(m => new ContextChipSwitcher.ContextChipMembership(m.OrganizationId, m.Name))
+            .ToList();
+    }
+
+    private void UpdateActiveLabel()
+    {
+        var orgId = UserContext.ActiveContextOrgId;
+        _activeLabel = orgId is { } id
+            ? _memberships.FirstOrDefault(m => m.OrganizationId == id)?.Name ?? "Active context"
+            : "Personal";
+    }
+
+    private async Task OnContextSelectedAsync(Guid? orgId)
+    {
+        var ok = await UserContext.SetActiveContextAsync(orgId);
+        if (!ok)
+        {
+            // Surface the failure inline; toast will be replaced by ErrorRecoveryScaffold in PR-F.
+            return;
+        }
+        UpdateActiveLabel();
+        StateHasChanged();
+    }
+
+    private async Task HandleContextChanged(UserContextChangedEventArgs args)
+    {
+        UpdateActiveLabel();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        UserContext.OnContextChanged -= HandleContextChanged;
+        return ValueTask.CompletedTask;
+    }
+}
 

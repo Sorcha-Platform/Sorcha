@@ -12,7 +12,10 @@
 @using System.Net.Http
 @using System.Net.Http.Json
 @using System.Text.Json
+@using Sorcha.UI.Components.User.Components.Context
+@using Sorcha.UI.Components.User.Components.Home
 @using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Context
 @using Sorcha.Wallet.Pwa.Services.Presentation
 @inject ICredentialCache Credentials
 @inject IDelegationStore Delegation
@@ -24,6 +27,7 @@
 @inject HttpClient Http
 @inject IPendingApplicationClient PendingApplications
 @inject IWalletFlagsStore WalletFlags
+@inject IUserContext UserContext
 @inject NavigationManager Nav
 @inject ILogger<Index> Logger
 @implements IAsyncDisposable
@@ -41,6 +45,18 @@
 }
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    @* Feature 125 / PR-B — hero Present action above the credential list.
+       VerifyHomeAction lands in PR-C (US1) alongside the QR/NFC scanner. *@
+    <PresentHomeAction CredentialCount="@(_credentials?.Count ?? 0)"
+                       OnPresentRequested="@HandlePresentRequestedAsync" />
+
+    @* Feature 125 / PR-B — Needs-attention band. Conditional render — the
+       band hides entirely when no items. Derived from F124's pending-app
+       notice today; future PRs add expiring-credential and action-required
+       sources. *@
+    <NeedsAttentionBand Items="@_needsAttentionItems"
+                       OnItemActivated="@HandleNeedsAttentionActivatedAsync" />
+
     <MudText Typo="Typo.h5" Class="mb-3">Your credentials</MudText>
 
     @{
@@ -107,14 +123,15 @@
         </div>
     }
 
+    @* Feature 125 / PR-B — Recent activity feed. Hides when no events. The
+       data source (transaction history) lands with US4 / PR-E; until then
+       this passes an empty list and the section hides. *@
+    <RecentActivityFeed Events="@_recentActivityEntries"
+                       OnSeeAll="@(() => Nav.NavigateTo("activity"))" />
+
+    @* Feature 125 / PR-B — Sync + demo controls. The old "Present a
+       credential" button is superseded by the PresentHomeAction hero above. *@
     <MudStack Row="true" Spacing="2" Class="mt-4">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled"
-                   StartIcon="@Icons.Material.Filled.QrCodeScanner"
-                   OnClick="@(() => Nav.NavigateTo("present"))"
-                   data-testid="home-present-button"
-                   Disabled="@(_credentials is null || _credentials.Count == 0)">
-            Present a credential
-        </MudButton>
         <MudButton Color="Color.Tertiary" Variant="Variant.Outlined"
                    StartIcon="@Icons.Material.Filled.Sync"
                    OnClick="@(() => SyncNowAsync(false))" Disabled="@_syncing">
@@ -125,6 +142,12 @@
             @(_seeding ? "Loading…" : "Load demo credential")
         </MudButton>
     </MudStack>
+
+    @* Feature 125 / PR-B — Peek footer for other-context content. Hides when
+       the user has zero credentials in non-active contexts. *@
+    <ContextPeekFooter OtherCount="@_otherContextCount"
+                      OtherContextName="@_otherContextName"
+                      OnSwitchRequested="@HandlePeekSwitchRequestedAsync" />
 
     @if (!string.IsNullOrEmpty(_syncStatus))
     {
@@ -144,6 +167,17 @@
     private string? _seedError;
     private string? _syncStatus;
     private Severity _syncSeverity = Severity.Info;
+
+    // Feature 125 / PR-B — Home band state. NeedsAttention is derived from
+    // the pending-application notice today; RecentActivity + ContextPeek
+    // wire to real data sources in PR-E + later PRs. For PR-B these stay
+    // empty so the bands hide gracefully.
+    private IReadOnlyList<NeedsAttentionBand.NeedsAttentionItem> _needsAttentionItems =
+        Array.Empty<NeedsAttentionBand.NeedsAttentionItem>();
+    private IReadOnlyList<RecentActivityFeed.RecentActivityEntry> _recentActivityEntries =
+        Array.Empty<RecentActivityFeed.RecentActivityEntry>();
+    private int _otherContextCount;
+    private string? _otherContextName;
 
     // Feature 124 (US3/US4/US5). The takeover fires exactly once per wallet
     // per device. _flagsLoaded gates eligibility until the IndexedDB flags
@@ -181,6 +215,86 @@
         Hub.OnCredentialAvailable += OnHubCredentialAvailable;
         Hub.OnDeviceRevoked += OnHubDeviceRevoked;
         _ = Hub.StartAsync();
+
+        // Feature 125 / PR-B — subscribe to context-switch events so Home
+        // refreshes whenever the user picks a different organisation.
+        UserContext.OnContextChanged += HandleContextChangedAsync;
+        RecomputeNeedsAttention();
+    }
+
+    private async Task HandleContextChangedAsync(UserContextChangedEventArgs args)
+    {
+        Logger.LogInformation("Context switch {From} → {To}; refreshing Home.",
+            args.FromContextOrgId, args.ToContextOrgId);
+        await InvokeAsync(async () =>
+        {
+            _credentials = null;
+            StateHasChanged();
+            _credentials = await Credentials.ListAsync();
+            await RefreshPendingNoticeAsync();
+            RecomputeNeedsAttention();
+            // Drop any pending takeover when switching context — the welcome
+            // ceremony belongs to the user's first credential in the wallet,
+            // not to a context switch.
+            _showWelcomeTakeover = false;
+            StateHasChanged();
+        });
+        // Background refresh of credentials in the new context.
+        _ = SyncNowAsync(silentSuccess: true);
+    }
+
+    private void RecomputeNeedsAttention()
+    {
+        // PR-B v1: surface the pending-application notice as a needs-
+        // attention row when present. PR-D (US2) adds in-flight application
+        // tracking; PR-E (US4) adds expiring-credential + revocation rows.
+        if (_pendingNotice is not null)
+        {
+            _needsAttentionItems = new[]
+            {
+                new NeedsAttentionBand.NeedsAttentionItem(
+                    Id: "pending-application",
+                    Kind: NeedsAttentionBand.NeedsAttentionKind.PendingApplication,
+                    Title: _pendingNotice.Label,
+                    SubTitle: "Application in review")
+            };
+        }
+        else
+        {
+            _needsAttentionItems = Array.Empty<NeedsAttentionBand.NeedsAttentionItem>();
+        }
+    }
+
+    private Task HandlePresentRequestedAsync()
+    {
+        if (_credentials is null || _credentials.Count == 0)
+        {
+            // No credentials in this context — nothing to present. PR-F's
+            // EmptyStateWithCta on the Credentials band points users to
+            // the application catalogue; nothing for the hero to do here.
+            return Task.CompletedTask;
+        }
+        // PR-C wires picker UX for multi-credential cases. PR-B navigates to
+        // the existing Present page which already handles selection.
+        Nav.NavigateTo("present");
+        return Task.CompletedTask;
+    }
+
+    private Task HandleNeedsAttentionActivatedAsync(string itemId)
+    {
+        // PR-B v1: pending-application items have no navigation target yet.
+        // PR-D opens the in-flight application detail page when the user
+        // taps a pending-application row.
+        Logger.LogInformation("Needs-attention item activated: {Id}", itemId);
+        return Task.CompletedTask;
+    }
+
+    private Task HandlePeekSwitchRequestedAsync()
+    {
+        // PR-B v1: footer is wired but other-context content count is 0
+        // until PR-E wires the cross-context lookup. When non-zero, this
+        // re-opens the chip switcher.
+        return Task.CompletedTask;
     }
 
     private void OnHubCredentialAvailable(string credentialId)
@@ -212,6 +326,7 @@
     {
         Hub.OnCredentialAvailable -= OnHubCredentialAvailable;
         Hub.OnDeviceRevoked -= OnHubDeviceRevoked;
+        UserContext.OnContextChanged -= HandleContextChangedAsync;
         // The hub itself is a Singleton owned by the DI container; we only
         // detach our handlers here. The container disposes the connection on
         // application shutdown.
