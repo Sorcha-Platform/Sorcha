@@ -3,9 +3,16 @@
 # Copyright (c) 2026 Sorcha Contributors
 #
 # AssuredIdentity — Setup
-# Feature 107. Creates the Acme Verification Co. issuing organisation,
-# provisions its trust anchor + HAIP issuer enrolment, creates the citizen
-# public-org account, and publishes the AssuredIdentity blueprint.
+# Feature 107 + Feature 124. Creates the Acme Verification Co. issuing
+# organisation, provisions its trust anchor + HAIP issuer enrolment,
+# creates the citizen public-org account, and publishes the AssuredIdentity
+# blueprint (now configured to deliver into the Citizen Wallet PWA via
+# SorchaLocalWallet target audience).
+#
+# After setup, sign the citizen into the wallet host once on the demo
+# device: open http://localhost/wallet/, tap Settings, sign in with the
+# citizen credentials printed at the end of this script.
+#
 # Idempotent — safe to run multiple times.
 
 param(
@@ -391,7 +398,9 @@ $state = @{
     citizenWalletAddress      = $citizenWallet.Address
     registerId                = $register.RegisterId
     blueprintId               = $blueprint.BlueprintId
-    walletDir                 = (Join-Path $scriptDir "wallet")
+    # walletDir removed in Feature 124 — credential delivery now lands in the
+    # Citizen Wallet PWA (SorchaLocalWallet target audience), not in a
+    # filesystem wallet on the operator host.
     # PR 2 additions — licensing org, licensing wallet, Driving Licence blueprint id.
     licensingOrgId            = $licensingOrgId
     licensingWalletAddress    = $licensingWallet.Address
@@ -436,4 +445,19 @@ $state = @{
 
 $state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile
 Write-WtSuccess "State saved to $stateFile"
+
+# Feature 124 — surface the citizen credentials so the operator can sign
+# the demo citizen into the PWA host before running phase 1.
+Write-WtInfo ""
+Write-WtInfo "Next step: sign the citizen into the wallet host."
+Write-WtInfo "  URL:       http://localhost/wallet/ (or your gateway equivalent)"
+Write-WtInfo "  Settings → Sign in"
+Write-WtInfo "  Email:     $citizenEmail"
+Write-WtInfo "  Password:  $citizenPassword"
+Write-WtInfo ""
+Write-WtInfo "Then enrol the device on the wallet PWA. In two terminals:"
+Write-WtInfo "  T1> pwsh walkthroughs/AssuredIdentity/run-agents.ps1"
+Write-WtInfo "  T2> pwsh walkthroughs/AssuredIdentity/run-phase1-identity.ps1"
+Write-WtInfo ""
+
 Write-WtBanner "AssuredIdentity — Setup Complete"

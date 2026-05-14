@@ -2,15 +2,30 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
-# AssuredIdentity — Phase 1 (Identity issuance)
-# Feature 107. Creates the blueprint instance, submits the citizen's Assured
-# Identity application (Action 1), the verification analyst approves (Action 2),
-# and the citizen claims the AssuredIdentityCredential into their external
-# HAIP wallet via sorcha-agent haip receive.
+# AssuredIdentity — Phase 1 (Identity issuance to the Citizen Wallet PWA)
+# Feature 124 swapped this from the legacy HAIP filesystem-wallet path to the
+# Citizen Wallet PWA (SorchaLocalWallet target audience). The credential now
+# lands directly in the citizen's PWA via register-native delivery, so the
+# script no longer drives sorcha-agent haip receive.
+#
+# Script-driven beats (the operator runs this from a terminal while the
+# citizen's wallet is open on a phone/second browser):
+#   1. Citizen creates a blueprint instance
+#   2. Citizen submits Action 1 — application details
+#   3. Set the wallet's pending-application notice ("Assured Identity")
+#      — the PWA now shows the waiting-card on Home
+#   4. Verification analyst approves Action 2 → credential mints into the
+#      citizen's PWA register-natively
+#   5. Poll the citizen's wallet /credentials snapshot until the credential
+#      appears, then Clear the pending-application notice
+#
+# When the credential lands, the PWA's CredentialAvailable hub push (or its
+# poll-on-open path) fires the first-credential takeover (Feature 124 US3/US4).
 
 param(
     [switch]$ShowJson,
-    [switch]$IncludePortrait
+    [switch]$IncludePortrait,
+    [int]$DeliveryTimeoutSeconds = 60
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,14 +33,12 @@ $ErrorActionPreference = "Stop"
 $modulePath = Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) "modules/SorchaWalkthrough/SorchaWalkthrough.psm1"
 Import-Module $modulePath -Force
 
-Write-WtBanner "AssuredIdentity — Phase 1 (Identity)"
+Write-WtBanner "AssuredIdentity — Phase 1 (Identity, PWA delivery)"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stateFile = Join-Path $scriptDir "state.json"
 if (-not (Test-Path $stateFile)) { Write-WtFail "No state.json. Run setup.ps1 first."; exit 1 }
 $state = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
-
-$walletDir = Join-Path $scriptDir "wallet"
 
 # ============================================================================
 # Step 1: Authenticate both roles
@@ -128,9 +141,21 @@ $null = Invoke-SorchaAction `
     -PayloadData $payloadData
 
 # ============================================================================
-# Step 4: Verification Analyst approves Action 2
+# Step 4: Set the pending-application notice (Feature 124 US2 / FR-009)
 # ============================================================================
-Write-WtStep "Step 4: Verification Analyst verifies application (Action 2)"
+Write-WtStep "Step 4: Set pending-application notice on Citizen Wallet"
+
+Set-SorchaCitizenPendingApplication `
+    -WalletUrl $state.walletUrl `
+    -Label "Assured Identity" `
+    -Headers $citizenSession.Headers | Out-Null
+
+Write-WtInfo "PWA will now render the waiting-card on Home"
+
+# ============================================================================
+# Step 5: Verification Analyst approves Action 2
+# ============================================================================
+Write-WtStep "Step 5: Verification Analyst verifies application (Action 2)"
 
 $actionResponse = Invoke-SorchaAction `
     -BlueprintUrl $state.blueprintUrl `
@@ -146,51 +171,55 @@ $actionResponse = Invoke-SorchaAction `
     }
 
 if ($ShowJson) { $actionResponse | ConvertTo-Json -Depth 5 | Write-Host }
+Write-WtSuccess "Action 2 approved — credential issuance triggered (target: SorchaLocalWallet)"
 
-$credentialOffer = $actionResponse.credentialOffer
-if (-not $credentialOffer) {
-    Write-WtFail "Action 2 did not return a credentialOffer. HAIP response pipeline may be misconfigured."
+# ============================================================================
+# Step 6: Poll the citizen's wallet for the credential, then clear the notice
+# ============================================================================
+Write-WtStep "Step 6: Poll Citizen Wallet /credentials for AssuredIdentityCredential"
+
+$deadline = (Get-Date).AddSeconds($DeliveryTimeoutSeconds)
+$delivered = $false
+$credentialId = $null
+
+while ((Get-Date) -lt $deadline) {
+    try {
+        $snapshot = Invoke-SorchaApi -Method GET `
+            -Uri "$($state.walletUrl)/v1/wallet/credentials" `
+            -Headers $citizenSession.Headers
+        if ($snapshot.credentials -and $snapshot.credentials.Count -gt 0) {
+            $hit = $snapshot.credentials | Where-Object { $_.vct -match "AssuredIdentity" -or $_.displayLabel -match "Assured" } | Select-Object -First 1
+            if ($hit) {
+                $delivered = $true
+                $credentialId = $hit.id
+                break
+            }
+        }
+    } catch {
+        Write-WtWarn "  /credentials poll transient error: $($_.Exception.Message)"
+    }
+    Start-Sleep -Seconds 2
+}
+
+if (-not $delivered) {
+    # Best-effort clear so the wallet doesn't sit in a stale waiting-state on failure.
+    try { Clear-SorchaCitizenPendingApplication -WalletUrl $state.walletUrl -Headers $citizenSession.Headers } catch { }
+    Write-WtFail "AssuredIdentityCredential did not land in the citizen's wallet within $DeliveryTimeoutSeconds s."
     exit 1
 }
 
-$offerUri = $credentialOffer.credentialOfferUri
-Write-WtSuccess "Credential offer created: $($credentialOffer.offerId)"
-Write-WtInfo "Type: $($credentialOffer.credentialType)"
-Write-WtInfo "Expires: $($credentialOffer.expiresAt)"
-$truncatedUri = $offerUri.Substring(0, [Math]::Min(80, $offerUri.Length))
-Write-WtInfo "Offer URI: $truncatedUri..."
+Write-WtSuccess "AssuredIdentityCredential delivered to PWA (credentialId=$credentialId)"
 
-# ============================================================================
-# Step 5: sorcha-agent haip receive (simulates citizen's external wallet)
-# ============================================================================
-Write-WtStep "Step 5: sorcha-agent haip receive"
+Clear-SorchaCitizenPendingApplication `
+    -WalletUrl $state.walletUrl `
+    -Headers $citizenSession.Headers
 
-$agentProject = Join-Path (Split-Path -Parent (Split-Path -Parent $scriptDir)) "src/Apps/Sorcha.Agent"
-
-& dotnet run --project $agentProject -- haip receive --offer-uri $offerUri --wallet-dir $walletDir
-if ($LASTEXITCODE -ne 0) {
-    Write-WtFail "sorcha-agent haip receive failed (exit $LASTEXITCODE)"
-    exit $LASTEXITCODE
-}
-
-# ============================================================================
-# Step 6: Verify Credential
-# ============================================================================
-Write-WtStep "Step 6: Verify Credential"
-
-$credFile = Join-Path $walletDir "credentials/AssuredIdentityCredential.sdjwt"
-if (Test-Path $credFile) {
-    $credSize = (Get-Item $credFile).Length
-    Write-WtSuccess "Credential stored: $credFile ($credSize bytes)"
-} else {
-    Write-WtFail "Credential file not found at $credFile"
-    exit 1
-}
-
+# Persist phase outcomes — no walletDir, no credentialPath; the credential
+# lives in the PWA's IndexedDB on the citizen's device, not on the operator
+# host. We only record the instance + credential id for cross-script use.
 $state | Add-Member -NotePropertyName "instanceId" -NotePropertyValue $instanceId -Force
-$state | Add-Member -NotePropertyName "credentialPath" -NotePropertyValue $credFile -Force
-$state | Add-Member -NotePropertyName "walletDir" -NotePropertyValue $walletDir -Force
+$state | Add-Member -NotePropertyName "credentialId" -NotePropertyValue $credentialId -Force
 $state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile
 
 Write-WtBanner "AssuredIdentity — Phase 1 Complete"
-Write-WtSuccess "AssuredIdentityCredential issued to citizen wallet via blueprint action"
+Write-WtSuccess "Open the citizen's PWA — the first-credential welcome takeover should now fire."

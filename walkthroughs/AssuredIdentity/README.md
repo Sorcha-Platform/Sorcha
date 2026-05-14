@@ -1,12 +1,20 @@
 # Assured Identity Walkthrough
 
-Feature 107 — single canonical citizen-identity workflow. A citizen submits a
-polished 5-page wizard (name + DOB, address, contact, optional photo, review),
-the Acme Verification Co. verification analyst approves, and the citizen
-receives an **AssuredIdentityCredential** in their chosen wallet.
+Feature 107 + Feature 124 — single canonical citizen-identity workflow. A
+citizen submits a polished 5-page wizard (name + DOB, address, contact,
+optional photo, review), the Acme Verification Co. verification analyst
+approves, and the citizen receives an **AssuredIdentityCredential** in the
+Citizen Wallet PWA. The first-credential **welcome takeover** (Feature 124)
+fires when the credential lands.
+
+> **Feature 124 swapped this walkthrough to the Citizen Wallet PWA**
+> (`SorchaLocalWallet` target audience). The legacy HAIP filesystem-wallet
+> path is gone (FR-011). Phase 2 (Driving Licence) is currently a stub —
+> the umbrella citizen arc routes the credential-gated second service
+> through Spec 4, which redesigns the wallet-side presentation UX.
 
 > **Replaces `HaipVerifiedCitizen` and `HaipDrivingLicence`.** Those walkthroughs
-> will be deleted in Phase 7 of this feature, after the driving-licence chain
+> will be deleted in Phase 7 of that feature, after the driving-licence chain
 > and cross-peer smoke tests land.
 
 ## What it proves
@@ -26,8 +34,8 @@ receives an **AssuredIdentityCredential** in their chosen wallet.
 
 | Phase | What runs | Script |
 |---|---|---|
-| 1 | Citizen → verification analyst → `AssuredIdentityCredential` | `run-phase1-identity.ps1` |
-| 2 | Citizen → licensing officer (HAIP presentation) → `DrivingLicenceCredential` | `run-phase2-licence.ps1` |
+| 1 | Citizen → verification analyst → `AssuredIdentityCredential` lands in the PWA → welcome takeover fires | `run-phase1-identity.ps1` |
+| 2 | DEFERRED to Spec 4 (citizen-arc credential-gated second service). The stub script explains the deferral and exits. | `run-phase2-licence.ps1` |
 
 ## Unattended reviewer agents (PR 3 / US3)
 
@@ -93,6 +101,5 @@ walkthroughs/AssuredIdentity/
 │   └── assured-identity.json        # Three actions: submit, verify, claim
 ├── data/
 │   └── sample-portrait.jpg          # Optional pre-sized token for -IncludePortrait
-├── wallet/                          # HAIP filesystem wallet (produced by run-phase1)
 └── state.json                       # Per-run state, written by setup.ps1
 ```
