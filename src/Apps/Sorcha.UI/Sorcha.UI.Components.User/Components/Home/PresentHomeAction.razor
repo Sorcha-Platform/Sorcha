@@ -1,0 +1,46 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Hero "Present a credential" tile (Feature 125, T070). One tap to present
+    when the user has exactly one credential; two taps (tile → picker) when
+    they have multiple. Caller wires <see cref="OnPresentRequested"/>.
+*@
+@namespace Sorcha.UI.Components.User.Components.Home
+
+<MudPaper Class="pa-4 ma-2 cursor-pointer"
+          Elevation="3"
+          Outlined="false"
+          @onclick="HandleClick"
+          data-testid="home-present-action"
+          role="button"
+          aria-label="Present a credential">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+        <MudIcon Icon="@Icons.Material.Filled.Badge" Size="Size.Large" Color="Color.Primary" />
+        <div>
+            <MudText Typo="Typo.h6">Present</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">@DescriptionText</MudText>
+        </div>
+    </MudStack>
+</MudPaper>
+
+@code {
+    /// <summary>Number of credentials in the active context (drives the description).</summary>
+    [Parameter] public int CredentialCount { get; set; }
+
+    /// <summary>Fired when the tile is tapped.</summary>
+    [Parameter] public EventCallback OnPresentRequested { get; set; }
+
+    private string DescriptionText => CredentialCount switch
+    {
+        0 => "No credentials to show yet.",
+        1 => "Show your credential.",
+        _ => $"Choose from {CredentialCount} credentials."
+    };
+
+    private async Task HandleClick()
+    {
+        if (OnPresentRequested.HasDelegate)
+            await OnPresentRequested.InvokeAsync();
+    }
+}

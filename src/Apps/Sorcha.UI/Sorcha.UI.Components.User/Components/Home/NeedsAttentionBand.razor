@@ -1,0 +1,81 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Needs-attention band (Feature 125, T071). Surfaces pending applications,
+    expiring credentials, action-required items. Hides entirely when the
+    items list is empty — no empty-state render.
+*@
+@namespace Sorcha.UI.Components.User.Components.Home
+
+@if (Items is { Count: > 0 })
+{
+    <MudPaper Class="pa-3 ma-2" Elevation="1" data-testid="home-needs-attention">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Needs attention</MudText>
+        <MudList T="NeedsAttentionItem" Dense="true">
+            @foreach (var item in Items.Take(MaxVisible))
+            {
+                <MudListItem T="NeedsAttentionItem" Value="@item"
+                             Icon="@IconForKind(item.Kind)"
+                             OnClick="@(async () => await Activate(item))"
+                             data-testid="@($"needs-attention-item-{item.Id}")">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body1">@item.Title</MudText>
+                        @if (!string.IsNullOrEmpty(item.SubTitle))
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@item.SubTitle</MudText>
+                        }
+                    </MudStack>
+                </MudListItem>
+            }
+        </MudList>
+        @if (Items.Count > MaxVisible)
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary ms-3" data-testid="needs-attention-more">
+                and @(Items.Count - MaxVisible) more →
+            </MudText>
+        }
+    </MudPaper>
+}
+
+@code {
+    /// <summary>Maximum items rendered inline before the "and N more" hint shows.</summary>
+    [Parameter] public int MaxVisible { get; set; } = 3;
+
+    /// <summary>The items to render; band hides entirely when null or empty.</summary>
+    [Parameter] public IReadOnlyList<NeedsAttentionItem>? Items { get; set; }
+
+    /// <summary>Fires when an item is tapped, with the item id.</summary>
+    [Parameter] public EventCallback<string> OnItemActivated { get; set; }
+
+    private async Task Activate(NeedsAttentionItem item)
+    {
+        if (OnItemActivated.HasDelegate)
+            await OnItemActivated.InvokeAsync(item.Id);
+    }
+
+    private static string IconForKind(NeedsAttentionKind kind) => kind switch
+    {
+        NeedsAttentionKind.PendingApplication => Icons.Material.Filled.HourglassEmpty,
+        NeedsAttentionKind.ExpiringCredential => Icons.Material.Filled.WarningAmber,
+        NeedsAttentionKind.ActionRequired => Icons.Material.Filled.PriorityHigh,
+        NeedsAttentionKind.RevocationAlert => Icons.Material.Filled.Cancel,
+        _ => Icons.Material.Filled.Notifications
+    };
+
+    /// <summary>One row of the needs-attention band.</summary>
+    public sealed record NeedsAttentionItem(
+        string Id,
+        NeedsAttentionKind Kind,
+        string Title,
+        string? SubTitle = null);
+
+    /// <summary>Logical kind of a needs-attention item; selects the icon.</summary>
+    public enum NeedsAttentionKind
+    {
+        PendingApplication,
+        ExpiringCredential,
+        ActionRequired,
+        RevocationAlert
+    }
+}

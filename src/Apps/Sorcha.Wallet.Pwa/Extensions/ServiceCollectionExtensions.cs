@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Sorcha.Wallet.Pwa.Services;
+using Sorcha.Wallet.Pwa.Services.Context;
 using Sorcha.Wallet.Pwa.Services.Presentation;
 using Sorcha.Wallet.Pwa.Services.Signing;
 using Sorcha.UI.Components.User.Services.Signing;
@@ -78,6 +79,24 @@ public static class ServiceCollectionExtensions
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
+
+        // Feature 125 / PR-B — user context (active org) + memberships client.
+        // ManagedUserContext drives /api/auth/switch-org through the bearer-
+        // and clock-handler chain so the new JWT is acquired with the
+        // currently-stored token. Both surfaces register as singletons so the
+        // context-changed event reaches every subscriber across the wallet.
+        services.AddHttpClient<IUserOrgMembershipsClient, HttpUserOrgMembershipsClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+        services.AddHttpClient("UserContextSwitchOrg", c => c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+        services.AddSingleton<IUserContext>(sp => new ManagedUserContext(
+            sp.GetRequiredService<IActiveContextStore>(),
+            sp.GetRequiredService<IAccessTokenStore>(),
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("UserContextSwitchOrg"),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ManagedUserContext>>()));
 
         // Feature 114 / US4 — citizen wallet hub connection. Singleton so the
         // PWA holds a single live SignalR socket across page navigation; the
