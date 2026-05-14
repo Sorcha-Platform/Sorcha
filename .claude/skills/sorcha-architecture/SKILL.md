@@ -787,6 +787,63 @@ The seam is shipped (PR #434); production hardening swaps `OptOutIssuerKeyResolv
 
 ---
 
+## AssuredIdentity on the PWA (Feature 124) — pending-application notice + first-credential takeover
+
+Spec 1 of the Strathcarron citizen arc. The PWA's first user-visible UX beat on top of Feature 114: a designed waiting state while an application is in review and a single-fire welcome takeover when the first credential lands.
+
+### Endpoints
+
+#### Wallet Service — citizen JWT, `/api/v1/wallet/pending-applications`
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/wallet/pending-applications` | Read the active notice or null. Wallet calls this on every Home render. |
+| PUT | `/api/v1/wallet/pending-applications` | Set or replace the notice (label, 1..80 chars). Idempotent; TTL resets. 24-hour TTL. |
+| DELETE | `/api/v1/wallet/pending-applications` | Clear. Idempotent (204 whether or not present). |
+
+All three scoped to the calling `PlatformUserId` via JWT; rate-limited by `RateLimitPolicies.Strict`. Contract: `specs/124-assured-identity-pwa/contracts/pending-application-notice.openapi.yaml`.
+
+### Server-side store
+
+- **`PendingApplicationNotice`** record (`Sorcha.Wallet.Service.Models`): `Label` + `SetAt`. Compile-time enforces "no credential content" by accepting only `string Label`.
+- **`IPendingApplicationStore`** / **`RedisPendingApplicationStore`** (Wallet Service) — `IDistributedCache`-backed (Redis in prod, in-memory in tests). Key `sorcha:wallet:pending-app:{platformUserId:N}`, 24-hour absolute TTL. No EF migration; stays off the storage-audit-gated path.
+- **OpenTelemetry counter**: `sorcha_pending_application_notice_total{op=set|clear|read}` on the existing `Sorcha.Wallet.Service` meter.
+
+### PWA — per-device flags + waiting state + welcome takeover
+
+- **`IWalletFlagsStore`** / `IndexedDbWalletFlagsStore` / `InMemoryWalletFlagsStore` (`Sorcha.Citizen.Wallet.Services`) — per-device flags persisted in IndexedDB store `device` at key `flags`. Co-tenants the existing `DeviceMetaRecord` (key `enrolment`). Single record `WalletFlagsRecord(DateTimeOffset? WelcomedAt)`. One-way transition: null → UTC timestamp on dismissal, no un-welcome.
+- **`IPendingApplicationClient`** / `HttpPendingApplicationClient` — thin HTTP client over the three endpoints, uses the wallet's `BearerTokenHandler` + `ServerClockHandler` chain.
+- **`Components/WaitingCard.razor`** — pulsing skeleton card, plain HTML + CSS, `aria-live="polite"`. Rendered on Home empty-credentials branch when `IPendingApplicationClient.GetAsync()` returns a non-null notice.
+- **`Components/WelcomeTakeover.razor`** — full-screen overlay reusing the cross-cutting `IdCardLayout` (umbrella invariant FR-015 — *one* visual component across form preview / reviewer pending / wallet detail) with `Watermark = Issued`, `ColourTheme = IdentityNavy`. Constructs the `IdCardLayoutConfig` from `CachedCredential` (header only; body sections empty until Spec 2's wallet UX foundations land). Pure CSS keyframes (200ms fade-in), `role="dialog" aria-modal="true"`.
+- **`wwwroot/css/welcome-takeover.css`** — keyframes (`sorcha-skeleton-pulse`, `sorcha-takeover-fade-in`) + the overlay/card-frame classes.
+- **`Pages/Index.razor`** orchestration — injects `IWalletFlagsStore`, loads the flags record in `OnInitializedAsync` *before* eligibility evaluation, runs `EvaluateTakeoverEligibility` at three sites per R-011 belt-and-braces ordering: init (cold-open / US4), every `SyncNowAsync` completion (foreground / US3), `OnHubCredentialAvailable` (push-then-sync). Idempotent once `WelcomedAt` is non-null (US5 / FR-006).
+
+### Walkthrough integration
+
+- `walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1` exports `Set-SorchaCitizenPendingApplication` and `Clear-SorchaCitizenPendingApplication`. Phase 1 brackets the verification analyst's approval with these calls.
+- `walkthroughs/AssuredIdentity/blueprints/assured-identity.json` — action 2's `credentialIssuanceConfig.targetAudience` is `"SorchaLocalWallet"` (the load-bearing flip from `HaipExternalWallet`). The credential lands directly in the citizen's PWA via register-native delivery; no out-of-band claim step needed.
+- Phase 2 (Driving Licence) is currently a stub — the HAIP presentation flow it depended on can't run scripted against the PWA. Deferred to Spec 4 of the citizen arc.
+
+### Runtime source
+
+| File | Purpose |
+|------|---------|
+| `src/Services/Sorcha.Wallet.Service/Endpoints/PendingApplicationEndpoints.cs` | GET/PUT/DELETE handlers |
+| `src/Services/Sorcha.Wallet.Service/Services/Implementation/RedisPendingApplicationStore.cs` | Distributed cache store |
+| `src/Services/Sorcha.Wallet.Service/Models/PendingApplicationContracts.cs` | DTOs (`PendingApplicationNotice`, `PendingApplicationEnvelope`, `SetPendingApplicationRequest`) |
+| `src/Services/Sorcha.Wallet.Service/Validators/SetPendingApplicationRequestValidator.cs` | FluentValidation rules |
+| `src/Apps/Sorcha.Citizen.Wallet/Services/IWalletFlagsStore.cs` | Per-device flags interface + InMemory + IndexedDB impls + `WalletFlagsRecord` |
+| `src/Apps/Sorcha.Citizen.Wallet/Services/IPendingApplicationClient.cs` | PWA HTTP client + `PendingApplicationView` |
+| `src/Apps/Sorcha.Citizen.Wallet/Components/WaitingCard.razor` | Pulsing skeleton card |
+| `src/Apps/Sorcha.Citizen.Wallet/Components/WelcomeTakeover.razor` | Full-screen welcome overlay |
+| `src/Apps/Sorcha.Citizen.Wallet/wwwroot/css/welcome-takeover.css` | Animations + overlay styling |
+| `src/Apps/Sorcha.Citizen.Wallet/Pages/Index.razor` | Eligibility + dismissal orchestration |
+| `walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1` | `Set-`/`Clear-SorchaCitizenPendingApplication` helpers |
+
+Spec: `specs/124-assured-identity-pwa/`. Umbrella: `docs/superpowers/specs/2026-05-13-strathcarron-citizen-arc.md`. Detailed design: `docs/superpowers/specs/2026-05-13-spec-1-assured-identity-on-pwa-design.md`.
+
+---
+
 ## Storage Provider Audit (Feature 113)
 
 Every audited storage interface registration goes through `IStorageRegistrationLog` from `Sorcha.ServiceDefaults.Storage`. Production and Staging refuse to start when an audited interface lands on an in-memory implementation. Operators see `[STORAGE-FALLBACK]` warnings at boot, the `storage-providers` health check reports `Degraded`, and the `Sorcha.Storage` OpenTelemetry meter exposes `sorcha_storage_provider_info` and `sorcha_storage_fallback_active` for dashboards.
