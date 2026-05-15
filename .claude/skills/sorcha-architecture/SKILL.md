@@ -1023,3 +1023,68 @@ Each published doc carries YAML frontmatter (`title`, `description`, `standards[
 ### Tone source for any new content
 
 `docs/strategic-context.md` — canonical voice and framing for every machine-readable artefact. Read before writing or revising `info.description`, `llms.txt`, MCP tool descriptions, or any of the published docs. Marketing adjectives (revolutionary, best-in-class, industry-leading, cutting-edge, world-class, seamless, game-changing, next-generation, state-of-the-art) are deny-listed and CI-enforced.
+
+## Council application enrolment gate (Feature 126)
+
+Spec 3 of the Strathcarron citizen arc. The cold-start onboarding gate that turns a council-page visitor into a Sorcha-account-holding, wallet-enrolled citizen as a side-effect of the application form they came for. **Drop-in library component** consumed by any council page.
+
+### Three citizen tiers (derived, never persisted)
+
+| `/whoami` | `/me/devices.Count` | Tier | Surface |
+|---|---|---|---|
+| 401 | — | 3 (ColdStart) | `PreflightSignupSurface` — explainer + signup CTA. No QR. |
+| 200 | 0 | 2 (MiniGate) | `WalletPairingSurface` with `TierMode.MiniGate` copy. |
+| 200 | ≥1 | 1 (FastPath) | `ChildContent` — the application form. |
+
+Tier is recomputed on every visit. Transitions are one-way (ColdStart → MiniGate → FastPath).
+
+### Server surface (Sorcha.Tenant.Service)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/auth/enrol-session` | Mint a one-time enrolment session JWT for the signed-in caller. Returns `{ sessionToken, qrUrl, expiresAt }`. Scope `"enrol"`, 10-min TTL, signed with the existing auth signing key. |
+| `POST` | `/api/auth/enrol-session/redeem` | Anonymous. Validates signature + scope + expiry, atomically consumes the JTI via `IAtomicDistributedCache.GetAndRemoveAsync`, returns `{ accessToken, expiresIn, displayName, email }`. 400 / 409 / 410 mapped to `RedeemEnrolSessionErrorCode`. |
+
+Single-use enforcement: `EnrolSessionService.MintAsync` writes a sentinel value at `sorcha:enrol-session:{jti}`; `RedeemAsync` consumes it atomically. First redeem wins; absent-at-redeem with a still-valid JWT means "already used". The displayName + email come fresh from `PlatformUser` at redeem time so the PWA dialog reflects the user's current profile.
+
+### TenantHub.DeviceEnrolled event
+
+`Task DeviceEnrolled(Guid platformUserId, Guid deviceId)` on `ITenantHubClient`. Published from `PlatformUserDeviceService.RegisterAsync` (including idempotent re-register) to the per-user group via `TenantHubGroups.User`. Try/log/swallow on publish failure — never fails the device write. Thin-signal payload — opaque IDs only, council page fetches details via the existing `GET /api/v1/me/devices`.
+
+### `?returnTo=` allowlist
+
+`ReturnToAllowlistOptions` from `Auth:ReturnToAllowlist:Hosts` — HTTPS-only-except-`http://localhost`, exact-host or `*.host` suffix. Open redirects fail closed. Wired into `LoginModel.IsValidReturnUrl` and `SignupModel.IsValidReturnUrl` as an overload that accepts the allowlist alongside the existing relative-only path.
+
+### Library component
+
+`EnrolGateComponent` in `Sorcha.UI.Components.User` (under `Sorcha.UI.Core.Components.EnrolGate` namespace). Consumer-side API:
+
+```razor
+<EnrolGateComponent CouncilName="Strathcarron Council"
+                    ServiceLabel="driving licence application"
+                    OnReady="@HandleCitizenReady">
+    <!-- the form goes here; renders only after the gate clears -->
+    <DrivingLicenceForm />
+</EnrolGateComponent>
+```
+
+`OnReady` fires with the resolved platformUserId once the citizen reaches FastPath. Sub-components: `PreflightSignupSurface`, `WalletPairingSurface` (with `TierMode.MiniGate` / `TierMode.PostSignup` copy), `HybridQrAffordance` (with `HybridQrLayout.Auto` / `QrFirst` / `LinkFirst` for FR-008 same-device mobile prominence).
+
+### Cross-device pairing signal
+
+`IEnrolPairingSignal` composes `TenantHubConnection.OnDeviceEnrolled` (SignalR, primary) with a 3-second `/api/v1/me/devices` poll (fallback after 2 s of no hub connection). Manual-recovery affordance fires after 60 s of no signal (FR-016 / SC-005). On signal, the surface flips to "Phone ready ✓" and `OnReady` cascades up to the consuming council page.
+
+### Observability
+
+`Sorcha.Enrolment` OTel meter — three instruments per research §R-010:
+- `sorcha_enrol_session_minted_total` counter, tag `purpose ∈ {tier3_first_qr, regenerate}`
+- `sorcha_enrol_session_redeemed_total` counter, tag `outcome ∈ {success, expired, replay, scope_mismatch, signature_fail, malformed}`
+- `sorcha_enrol_pairing_signal_latency_seconds` histogram, tag `path ∈ {signalr, polling}`
+
+### Non-obvious patterns worth keeping
+
+- **Custom `LifetimeValidator` returning `false` raises `SecurityTokenInvalidLifetimeException`, NOT `SecurityTokenExpiredException`.** For deterministic Expired detection with an injected `TimeProvider`: set `ValidateLifetime=false` and check the `exp` claim manually after `ValidateToken`.
+- **`Sorcha.AtomicCache` ProjectReference is NOT transitive** through `Sorcha.ServiceDefaults`. Services calling `AddAtomicDistributedCache` need explicit ProjectReference; test projects too if they mock `InMemoryAtomicDistributedCache`.
+- **`Sorcha.UI.Components.User` RootNamespace is `Sorcha.UI.Core`** — files live under `Components.User/...` folders but namespaces are rooted at `Sorcha.UI.Core`, so consumers `using Sorcha.UI.Core.Components.EnrolGate`.
+- **Single-use enforcement on `IAtomicDistributedCache`** uses SetAsync-at-create + GetAndRemoveAsync-at-consume (the established `Sorcha.Haip.Service.NonceStore` pattern). No native `SET NX` on the interface — this pattern is the convention.
+- **Idempotent re-register publishes `DeviceEnrolled` too.** A council page that missed the original signal (refresh, hub disconnect during first enrolment) still advances. Subscribers tolerate the repeat.

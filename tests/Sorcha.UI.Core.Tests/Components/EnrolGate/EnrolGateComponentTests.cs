@@ -281,6 +281,34 @@ public sealed class WalletPairingSurfaceCopyTests : BunitContext
         });
     }
 
+    [Fact]
+    public void Expired_Token_Surfaces_Regenerate_Affordance()
+    {
+        // Mint handler returns a token whose ExpiresAt is in the past.
+        // The component's WatchForExpiryAsync sees delta <= TimeSpan.Zero
+        // and flips _expired immediately. Strip every registered HttpClient
+        // first (bunit's TestContext can register more than one).
+        foreach (var desc in Services.Where(s => s.ServiceType == typeof(HttpClient)).ToList())
+        {
+            Services.Remove(desc);
+        }
+        Services.AddSingleton(new HttpClient(new ExpiredStubHandler())
+        {
+            BaseAddress = new Uri("http://test.local")
+        });
+
+        var cut = Render<WalletPairingSurface>(parameters => parameters
+            .Add(p => p.PlatformUserId, Guid.NewGuid())
+            .Add(p => p.Mode, WalletPairingSurface.TierMode.PostSignup));
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("data-testid=\"enrol-pairing-expired\"");
+            cut.Markup.Should().Contain("data-testid=\"enrol-regenerate\"");
+            cut.Markup.Should().Contain("QR expired");
+        });
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -289,6 +317,19 @@ public sealed class WalletPairingSurfaceCopyTests : BunitContext
             {
                 Content = new StringContent(
                     "{\"sessionToken\":\"jwt\",\"qrUrl\":\"http://x/?session=jwt\",\"expiresAt\":\"2030-01-01T00:00:00Z\"}",
+                    System.Text.Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
+    private sealed class ExpiredStubHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"sessionToken\":\"jwt\",\"qrUrl\":\"http://x/?session=jwt\",\"expiresAt\":\"2020-01-01T00:00:00Z\"}",
                     System.Text.Encoding.UTF8, "application/json")
             });
         }

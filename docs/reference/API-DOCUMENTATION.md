@@ -2156,6 +2156,47 @@ Categories today: `Action`, `Credential`, `Membership`, `Security`. Each writer 
 
 ---
 
+## Enrolment Session API (Feature 126)
+
+Backs the council-page cold-start onboarding gate. Two endpoints; full contract at `specs/126-enrol-inside-wizard/contracts/enrol-session.openapi.yaml`.
+
+### `POST /api/auth/enrol-session` — mint
+
+Authenticated. Mints a one-time enrolment session JWT bound to the calling user. Returns:
+
+```json
+{
+  "sessionToken": "<JWT — scope: \"enrol\", exp = iat + 600>",
+  "qrUrl": "https://<council-origin>/wallet/enrol?session=<sessionToken>",
+  "expiresAt": "2026-05-15T12:30:00Z"
+}
+```
+
+### `POST /api/auth/enrol-session/redeem` — redeem
+
+Anonymous (the session token is the credential). Validates signature + scope + expiry, atomically consumes the JTI, returns the bound user's identifying details:
+
+```json
+{
+  "accessToken": "<full citizen access token>",
+  "expiresIn": 3600,
+  "displayName": "Sarah Example",
+  "email": "sarah@example.test"
+}
+```
+
+Errors map 1:1 to status: `400` (malformed_token / invalid_signature / scope_mismatch), `409` (already_used), `410` (expired). Body shape: `{ "code": "<error_code>", "message": "<human readable>" }`.
+
+### Cross-device pairing signal
+
+`TenantHub.DeviceEnrolled(platformUserId, deviceId)` fires on every successful `PlatformUserDeviceService.RegisterAsync` (including idempotent re-register). Per-user group via `TenantHubGroups.User(platformUserId)`. Council pages subscribe via the existing `/hubs/tenant` connection.
+
+### Return-to allowlist
+
+`Auth:ReturnToAllowlist:Hosts` — entries are exact-host or `*.host` suffix. HTTPS only, with `http://localhost` accepted for dev. F116 signup / login pages consult this before honouring `?returnUrl=` against an external host.
+
+---
+
 ## Error Handling
 
 ### Standard Error Response
