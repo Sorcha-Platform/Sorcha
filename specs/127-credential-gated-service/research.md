@@ -63,7 +63,7 @@ Most of the load-bearing research for Spec 4 was done in the design brainstorm (
 
 ### Q-T1: docker-compose entry for the sample portal
 
-- **Decision**: New service `strathcarron-portal` in `docker-compose.yml`. Internal port 80, exposed locally on `5300`. Depends on `gateway` (Sorcha's YARP front door). Reachable at `http://localhost:5300/` for local dev. Does NOT route through the gateway — it's a peer of the platform, not a hosted-by-platform surface.
+- **Decision**: New service `strathcarron-portal` in `docker-compose.yml`. Internal port 80, exposed locally on `5400`. Depends on `gateway` (Sorcha's YARP front door). Reachable at `http://localhost:5400/` for local dev. Does NOT route through the gateway — it's a peer of the platform, not a hosted-by-platform surface.
 - **Rationale**: Matches the boundary doc's intent — the sample is a separate deployable that *calls* Sorcha. Routing through the platform's own gateway would muddy that demonstration.
 - **Alternatives considered**: hosting the sample behind `gateway` at a sub-path (rejected — encodes the wrong narrative); reverse-proxy-fronted with a `strathcarron.localhost` hostname (deferred to operator's domain prep, follow-up after Spec 5).
 
@@ -88,7 +88,7 @@ Most of the load-bearing research for Spec 4 was done in the design brainstorm (
 ### Q-T5: Existing tests / artifacts that touch the moved F126 page
 
 - **Decision**: After PR-A moves `CouncilApplicationDrivingLicence.razor`:
-  - Update `walkthroughs/Strathcarron/setup-cold-start-demo.ps1` to point operators at `http://localhost:5300/services/driving-licence` (was `http://localhost/strathcarron/services/driving-licence`).
+  - Update `walkthroughs/Strathcarron/setup-cold-start-demo.ps1` to point operators at `http://localhost:5400/services/driving-licence` (was `http://localhost/strathcarron/services/driving-licence`).
   - Update `state.json` schema field `councilPage` accordingly.
   - Update any Playwright tests touching `data-testid="driving-licence-submit"` to land on the new URL (those test selectors already use the testid, so only the navigation target changes).
   - Update `Sorcha.UI.Web.Client/Sorcha.UI.Web.Client.csproj` — remove the moved file from compilation (handled automatically by `git mv` + Razor's wildcard `<Content>` includes).
@@ -102,5 +102,5 @@ These are tactical implementation choices that don't need a Phase 0 decision but
 
 - Exact CSS strategy for the council sample (plain CSS vs CSS modules vs MudBlazor with a custom theme). Likely: plain CSS in `wwwroot/css/council.css` to keep the sample free of MudBlazor's bulk; library components consumed from `Sorcha.UI.Components.User` will already carry their MudBlazor flavour for the gate surfaces — that's fine, the gate is the part that should look like Sorcha is doing something.
 - Whether `BlueBadge.razor` shares form-state plumbing with `DrivingLicence.razor` via a shared base component, or duplicates. Default: duplicate; refactor only if a third sample page appears.
-- Specific port for `strathcarron-portal` in docker-compose (5300 reserved here; reconfirm against the existing `docs/getting-started/PORT-CONFIGURATION.md`).
+- Specific port for `strathcarron-portal` in docker-compose (5400 reserved here; reconfirm against the existing `docs/getting-started/PORT-CONFIGURATION.md`).
 - Whether the CI grep gate runs as a separate workflow step or piggybacks on an existing CI check.

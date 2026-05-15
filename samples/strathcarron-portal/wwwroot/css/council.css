@@ -1,0 +1,242 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+
+   Strathcarron Council sample portal — distinct council styling.
+   Intentionally not MudBlazor's defaults: serif body, navy primary,
+   pale parchment background. The MudBlazor-powered gate components
+   render inside this chrome — they retain their MudBlazor look, which
+   helpfully signals "Sorcha is doing something here" to the citizen. */
+
+:root {
+    --council-navy: #1F3A5F;
+    --council-navy-dark: #142844;
+    --council-navy-light: #3A5A82;
+    --council-cream: #F6F2E7;
+    --council-paper: #FFFFFF;
+    --council-ink: #1A1F2C;
+    --council-muted: #5B6675;
+    --council-rule: #D9CFB4;
+    --council-link: #B23A2F;
+    --council-link-hover: #7D261E;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--council-cream);
+    color: var(--council-ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.55;
+}
+
+a {
+    color: var(--council-link);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
+a:hover, a:focus {
+    color: var(--council-link-hover);
+}
+
+main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 3rem 1.25rem;
+}
+
+h1, h2, h3, h4 {
+    color: var(--council-navy-dark);
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+}
+
+h1 {
+    font-size: 2.1rem;
+    margin: 0 0 0.5rem 0;
+}
+
+h2 {
+    font-size: 1.45rem;
+    margin: 1.5rem 0 0.5rem 0;
+}
+
+/* ============ Header ============ */
+
+.council-header {
+    background: var(--council-navy);
+    color: #FFFFFF;
+    border-bottom: 4px solid var(--council-navy-dark);
+}
+
+.council-header .header-inner {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.council-header .logotype {
+    height: 48px;
+    width: auto;
+    flex: 0 0 auto;
+}
+
+.council-header .wordmark {
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: 0.02em;
+    line-height: 1.1;
+}
+
+.council-header .wordmark small {
+    display: block;
+    font-weight: 400;
+    font-size: 0.8rem;
+    opacity: 0.85;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-top: 2px;
+}
+
+.council-header nav {
+    margin-left: auto;
+}
+
+.council-header nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 1.25rem;
+}
+
+.council-header nav a {
+    color: #FFFFFF;
+    text-decoration: none;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 0.95rem;
+}
+
+.council-header nav a:hover,
+.council-header nav a:focus {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+}
+
+/* ============ Footer ============ */
+
+.council-footer {
+    background: var(--council-navy-dark);
+    color: #E8EDF3;
+    margin-top: 3rem;
+    padding: 1.5rem 1.25rem;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 0.85rem;
+}
+
+.council-footer .footer-inner {
+    max-width: 880px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    justify-content: space-between;
+}
+
+.council-footer .address {
+    line-height: 1.5;
+}
+
+.council-footer .links a {
+    color: #BCD0E8;
+    margin-right: 1rem;
+    text-decoration: none;
+}
+
+.council-footer .links a:hover {
+    text-decoration: underline;
+}
+
+.council-footer .copyright {
+    color: #8FA2BA;
+    margin-top: 1rem;
+    width: 100%;
+    border-top: 1px solid #2F4868;
+    padding-top: 0.75rem;
+    font-size: 0.78rem;
+}
+
+/* ============ Service card grid (Index page) ============ */
+
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.service-card {
+    background: var(--council-paper);
+    border: 1px solid var(--council-rule);
+    border-left: 4px solid var(--council-navy);
+    padding: 1.25rem;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.05);
+}
+
+.service-card h3 {
+    margin: 0 0 0.4rem 0;
+    font-size: 1.15rem;
+}
+
+.service-card p {
+    margin: 0 0 0.75rem 0;
+    color: var(--council-muted);
+    font-size: 0.95rem;
+}
+
+.service-card a.cta {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.service-card.coming-soon {
+    border-left-color: var(--council-muted);
+    opacity: 0.85;
+}
+
+.service-card .pill-soon {
+    display: inline-block;
+    background: var(--council-rule);
+    color: var(--council-navy-dark);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 2px;
+    margin-bottom: 0.5rem;
+}
+
+/* ============ Mobile layout ============ */
+
+@media (max-width: 640px) {
+    .council-header .header-inner {
+        flex-wrap: wrap;
+    }
+    .council-header nav {
+        margin-left: 0;
+        width: 100%;
+    }
+    .council-header nav ul {
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+}

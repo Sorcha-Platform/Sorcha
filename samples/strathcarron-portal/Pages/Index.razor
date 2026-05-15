@@ -1,0 +1,41 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Strathcarron Council services landing page. PR-A ships with the
+    Driving Licence card live (the F126 page, moved here from
+    Sorcha.UI.Web.Client) and the Blue Badge card as a "coming soon"
+    placeholder. PR-C of Feature 127 activates the Blue Badge card.
+*@
+@page "/"
+
+<PageTitle>Strathcarron Council — services</PageTitle>
+
+<h1>Council services</h1>
+<p>
+    Apply for council services online. Most services are linked to your
+    Strathcarron Council account; once you've applied for one, the next
+    time you apply we'll already know who you are.
+</p>
+
+<div class="service-grid">
+    <article class="service-card">
+        <h3>Driving Licence</h3>
+        <p>Apply for or renew your driving licence. New applicants will be issued a Strathcarron Assured Identity credential when their application is accepted.</p>
+        <a class="cta" href="/services/driving-licence">Apply for a driving licence →</a>
+    </article>
+
+    <article class="service-card coming-soon">
+        <span class="pill-soon">Coming soon</span>
+        <h3>Blue Badge</h3>
+        <p>Apply for a Blue Badge parking permit. This service uses your existing Assured Identity, so most of the form is filled in for you.</p>
+        <span class="cta" style="color: var(--council-muted);">Available shortly</span>
+    </article>
+</div>
+
+<h2>Other services</h2>
+<p style="color: var(--council-muted);">
+    Council Tax, refuse collection, planning applications and other services
+    are available at our service desk in person — online applications for
+    those services are being added over the coming months.
+</p>

@@ -28,8 +28,8 @@ This is a web/multi-service project. Repo root contains `src/`, `samples/`, `tes
 **Purpose**: Capture baseline before any change; reserve infrastructure slots.
 
 - [ ] T001 Capture baseline test counts for the five projects Spec 4 touches and record in the PR-A draft body: `dotnet test src/Services/Sorcha.Blueprint.Service.Tests`, `dotnet test src/Apps/Sorcha.UI/Sorcha.UI.Components.User.Tests`, `dotnet test src/Apps/Sorcha.UI/Sorcha.Wallet.Pwa.Tests`, `dotnet test src/Services/Sorcha.Verifier.Tests`, `dotnet test src/Services/Sorcha.Tenant.Service.Tests`. SC-006 verification will compare against these.
-- [ ] T002 [P] Reserve port 5300 for `strathcarron-portal` in `docs/getting-started/PORT-CONFIGURATION.md` — add the new entry alongside the existing service ports.
-- [ ] T003 [P] Reserve env-var key `STRATHCARRON_PORTAL_URL` in the operator-facing docs so PowerShell walkthroughs can override the default `http://localhost:5300/` if needed.
+- [x] T002 [P] Reserve port 5400 for `strathcarron-portal` in `docs/getting-started/PORT-CONFIGURATION.md` — add the new entry alongside the existing service ports.
+- [x] T003 [P] Reserve env-var key `STRATHCARRON_PORTAL_URL` in the operator-facing docs so PowerShell walkthroughs can override the default `http://localhost:5400/` if needed.
 
 ---
 
@@ -39,9 +39,9 @@ This is a web/multi-service project. Repo root contains `src/`, `samples/`, `tes
 
 **⚠️ CRITICAL**: No user story work can begin until Phase 2 is complete.
 
-- [ ] T004 Create top-level `samples/` directory and write `samples/README.md` explaining the boundary contract: "Code in `samples/` is application-specific; no `ProjectReference` into `src/Apps/Sorcha.UI/` other than `Sorcha.UI.Components.User`. CI grep gate enforces. See `docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md`."
-- [ ] T005 Create `scripts/check-samples-references.ps1` — PowerShell script that globs `samples/**/*.csproj`, parses each for `<ProjectReference>` entries, fails with a clear message if any reference points into `src/Apps/Sorcha.UI/` and is not `Sorcha.UI.Components.User`. Exit code 1 on violation, 0 on clean.
-- [ ] T006 Wire `scripts/check-samples-references.ps1` into the existing GitHub Actions CI workflow (`.github/workflows/ci.yml` or whichever file currently runs `dotnet test`) — runs alongside the build step; build fails if the gate fails.
+- [x] T004 Create top-level `samples/` directory and write `samples/README.md` explaining the boundary contract: "Code in `samples/` is application-specific; no `ProjectReference` into `src/Apps/Sorcha.UI/` other than `Sorcha.UI.Components.User`. CI grep gate enforces. See `docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md`."
+- [x] T005 Create `scripts/check-samples-references.ps1` — PowerShell script that globs `samples/**/*.csproj`, parses each for `<ProjectReference>` entries, fails with a clear message if any reference points into `src/Apps/Sorcha.UI/` and is not `Sorcha.UI.Components.User`. Exit code 1 on violation, 0 on clean.
+- [x] T006 Wire `scripts/check-samples-references.ps1` into the existing GitHub Actions CI workflow (`.github/workflows/ci.yml` or whichever file currently runs `dotnet test`) — runs alongside the build step; build fails if the gate fails.
 - [ ] T007 Verify `Sorcha.AtomicCache` `ProjectReference` is present in `src/Services/Sorcha.Blueprint.Service/Sorcha.Blueprint.Service.csproj` (F126 lesson — `Sorcha.AtomicCache` is NOT transitive through `Sorcha.ServiceDefaults`). Add if missing.
 
 **Checkpoint**: `samples/` exists; CI fails on a forbidden reference; the Blueprint Service can resolve `IAtomicDistributedCache`. Story implementation can begin.
@@ -52,48 +52,48 @@ This is a web/multi-service project. Repo root contains `src/`, `samples/`, `tes
 
 **Goal**: The Strathcarron council site is a separate deployable. PR-A creates `samples/strathcarron-portal/`, moves the F126 driving-licence page out of `Sorcha.UI.Web.Client`, and proves the F126 cold-start walkthrough still works end-to-end against the new sample.
 
-**Independent Test**: After PR-A, the F126 walkthrough (cold-start journey) runs end-to-end against `http://localhost:5300/services/driving-licence`. The old route in `Sorcha.UI.Web.Client` no longer responds. CI grep gate fails the build when a deliberate forbidden reference is added.
+**Independent Test**: After PR-A, the F126 walkthrough (cold-start journey) runs end-to-end against `http://localhost:5400/services/driving-licence`. The old route in `Sorcha.UI.Web.Client` no longer responds. CI grep gate fails the build when a deliberate forbidden reference is added.
 
 ### Sample project skeleton
 
-- [ ] T008 [P] [US2] Create `samples/strathcarron-portal/Sorcha.Sample.StrathcarronPortal.csproj` — Blazor WASM, `net10.0`, nullable enabled, no warnings as errors. `ProjectReference` entries: `Sorcha.UI.Components.User`, `Sorcha.ServiceClients`, `Sorcha.CitizenWallet.Abstractions` (for shared models). NO other references into `src/Apps/Sorcha.UI/`.
-- [ ] T009 [P] [US2] Create `samples/strathcarron-portal/Program.cs` — Blazor WASM host setup: `WebAssemblyHostBuilder.CreateDefault`, `AddSorchaServiceClients(builder.Configuration)`, `AddHttpClient<ITierProbeService, HttpTierProbeService>(…)`, `AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(…)`, base address pointed at `builder.HostEnvironment.BaseAddress`. License header per CLAUDE.md §7.
-- [ ] T010 [P] [US2] Create `samples/strathcarron-portal/App.razor` — standard Blazor `<Router>` with `RouteView` using `CouncilLayout`.
-- [ ] T011 [P] [US2] Create `samples/strathcarron-portal/wwwroot/index.html` — standard Blazor WASM template, page title "Strathcarron Council", link to `css/council.css`, viewport meta for mobile.
-- [ ] T012 [P] [US2] Create `samples/strathcarron-portal/wwwroot/css/council.css` — distinct council styling: serif header font, navy primary colour (`#1F3A5F` — not MudBlazor's purple), pale background, accessible link colour, simple grid for service cards.
-- [ ] T013 [P] [US2] Create `samples/strathcarron-portal/wwwroot/images/strathcarron-logotype.svg` — placeholder council mark (simple shield with "SC" monogram + "STRATHCARRON COUNCIL" wordmark).
+- [x] T008 [P] [US2] Create `samples/strathcarron-portal/Sorcha.Sample.StrathcarronPortal.csproj` — Blazor WASM, `net10.0`, nullable enabled, no warnings as errors. `ProjectReference` entries: `Sorcha.UI.Components.User`, `Sorcha.ServiceClients`, `Sorcha.CitizenWallet.Abstractions` (for shared models). NO other references into `src/Apps/Sorcha.UI/`.
+- [x] T009 [P] [US2] Create `samples/strathcarron-portal/Program.cs` — Blazor WASM host setup: `WebAssemblyHostBuilder.CreateDefault`, `AddSorchaServiceClients(builder.Configuration)`, `AddHttpClient<ITierProbeService, HttpTierProbeService>(…)`, `AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(…)`, base address pointed at `builder.HostEnvironment.BaseAddress`. License header per CLAUDE.md §7.
+- [x] T010 [P] [US2] Create `samples/strathcarron-portal/App.razor` — standard Blazor `<Router>` with `RouteView` using `CouncilLayout`.
+- [x] T011 [P] [US2] Create `samples/strathcarron-portal/wwwroot/index.html` — standard Blazor WASM template, page title "Strathcarron Council", link to `css/council.css`, viewport meta for mobile.
+- [x] T012 [P] [US2] Create `samples/strathcarron-portal/wwwroot/css/council.css` — distinct council styling: serif header font, navy primary colour (`#1F3A5F` — not MudBlazor's purple), pale background, accessible link colour, simple grid for service cards.
+- [x] T013 [P] [US2] Create `samples/strathcarron-portal/wwwroot/images/strathcarron-logotype.svg` — placeholder council mark (simple shield with "SC" monogram + "STRATHCARRON COUNCIL" wordmark).
 
 ### Council chrome (PR-A baseline IA)
 
-- [ ] T014 [P] [US2] Create `samples/strathcarron-portal/Layout/CouncilLayout.razor` — `LayoutComponentBase`, renders `<CouncilHeader /> <main>@Body</main> <CouncilFooter />`.
-- [ ] T015 [P] [US2] Create `samples/strathcarron-portal/Layout/CouncilHeader.razor` — logotype on the left, wordmark, primary nav: Services / About / Contact us / My account. Plain `<nav>` markup, no MudBlazor.
-- [ ] T016 [P] [US2] Create `samples/strathcarron-portal/Layout/CouncilFooter.razor` — postal address ("Strathcarron Council, Main Street, Strathcarron"), accessibility statement link, privacy notice link, copyright line.
+- [x] T014 [P] [US2] Create `samples/strathcarron-portal/Layout/CouncilLayout.razor` — `LayoutComponentBase`, renders `<CouncilHeader /> <main>@Body</main> <CouncilFooter />`.
+- [x] T015 [P] [US2] Create `samples/strathcarron-portal/Layout/CouncilHeader.razor` — logotype on the left, wordmark, primary nav: Services / About / Contact us / My account. Plain `<nav>` markup, no MudBlazor.
+- [x] T016 [P] [US2] Create `samples/strathcarron-portal/Layout/CouncilFooter.razor` — postal address ("Strathcarron Council, Main Street, Strathcarron"), accessibility statement link, privacy notice link, copyright line.
 
 ### Services landing page
 
-- [ ] T017 [P] [US2] Create `samples/strathcarron-portal/Pages/Index.razor` — `@page "/"`, "Strathcarron Council — services" page heading, two service cards in a CSS grid: **Driving Licence** (live link to `/services/driving-licence`) and **Blue Badge** (rendered as a "coming soon" placeholder card with disabled affordance; PR-C activates it).
+- [x] T017 [P] [US2] Create `samples/strathcarron-portal/Pages/Index.razor` — `@page "/"`, "Strathcarron Council — services" page heading, two service cards in a CSS grid: **Driving Licence** (live link to `/services/driving-licence`) and **Blue Badge** (rendered as a "coming soon" placeholder card with disabled affordance; PR-C activates it).
 
 ### Move the F126 driving-licence page
 
-- [ ] T018 [US2] `git mv src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CouncilApplicationDrivingLicence.razor samples/strathcarron-portal/Pages/DrivingLicence.razor`. Update `@page` to `"/services/driving-licence"`. Update `@layout` to `CouncilLayout`. Remove the `using Sorcha.UI.Web.Client.Components.Layout` line. Update the header to remove the F126 "stand-in" doc-comment (the new home is no longer a stand-in).
-- [ ] T019 [US2] Extract the form body of `samples/strathcarron-portal/Pages/DrivingLicence.razor` into `samples/strathcarron-portal/Components/DrivingLicenceForm.razor` so PR-C's `BlueBadge.razor` can mirror the shape. Preserve every `data-testid` attribute exactly (F126 Playwright tests depend on `driving-licence-submit`).
-- [ ] T020 [P] [US2] Create `samples/strathcarron-portal/Components/DrivingLicenceForm.razor` (target of T019's extract) — `@bind-Value`-driven form with full-name, date-of-birth, address fields and the submit button.
+- [x] T018 [US2] `git mv src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CouncilApplicationDrivingLicence.razor samples/strathcarron-portal/Pages/DrivingLicence.razor`. Update `@page` to `"/services/driving-licence"`. Update `@layout` to `CouncilLayout`. Remove the `using Sorcha.UI.Web.Client.Components.Layout` line. Update the header to remove the F126 "stand-in" doc-comment (the new home is no longer a stand-in).
+- [x] T019 [US2] Extract the form body of `samples/strathcarron-portal/Pages/DrivingLicence.razor` into `samples/strathcarron-portal/Components/DrivingLicenceForm.razor` so PR-C's `BlueBadge.razor` can mirror the shape. Preserve every `data-testid` attribute exactly (F126 Playwright tests depend on `driving-licence-submit`).
+- [x] T020 [P] [US2] Create `samples/strathcarron-portal/Components/DrivingLicenceForm.razor` (target of T019's extract) — `@bind-Value`-driven form with full-name, date-of-birth, address fields and the submit button.
 
 ### Container + compose
 
-- [ ] T021 [P] [US2] Create `samples/strathcarron-portal/Dockerfile` — multi-stage: `mcr.microsoft.com/dotnet/sdk:10.0` build stage runs `dotnet publish -c Release -o /app/publish`; `nginx:alpine` final stage copies `/app/publish/wwwroot/` to `/usr/share/nginx/html/` and uses default nginx config (port 80).
-- [ ] T022 [US2] Add `strathcarron-portal` service to `docker-compose.yml`: `build.context: ./samples/strathcarron-portal/`, `ports: ["5300:80"]`, `depends_on: [gateway]`, `networks: [sorcha]`. Verify no port clash via `docs/getting-started/PORT-CONFIGURATION.md`.
+- [x] T021 [P] [US2] Create `samples/strathcarron-portal/Dockerfile` — multi-stage: `mcr.microsoft.com/dotnet/sdk:10.0` build stage runs `dotnet publish -c Release -o /app/publish`; `nginx:alpine` final stage copies `/app/publish/wwwroot/` to `/usr/share/nginx/html/` and uses default nginx config (port 80).
+- [x] T022 [US2] Add `strathcarron-portal` service to `docker-compose.yml`: `build.context: ./samples/strathcarron-portal/`, `ports: ["5400:80"]`, `depends_on: [gateway]`, `networks: [sorcha]`. Verify no port clash via `docs/getting-started/PORT-CONFIGURATION.md`.
 
 ### Update F126 references after the move
 
-- [ ] T023 [US2] Update `walkthroughs/Strathcarron/setup-cold-start-demo.ps1` — `state.json.councilPage` now points at `http://localhost:5300/services/driving-licence`. Update the operator-facing `Write-WtInfo` messages to match.
-- [ ] T024 [US2] Update F126 Playwright nav-coverage suite (search `tests/` for tests that reference `/strathcarron/services/driving-licence` or `/app/strathcarron/services/driving-licence`) — switch to the new URL. Verify `data-testid="driving-licence-submit"` still resolves.
-- [ ] T025 [US2] Update doc propagation for the move: `.claude/skills/sorcha-architecture/SKILL.md` "Council application enrolment gate (Feature 126)" section, `.specify/MASTER-TASKS.md` if it references the old URL, `MEMORY.md` "n1 SPA path quirk" bullet (note that the quirk now applies only to surfaces inside Sorcha.UI.Web.Client; council pages no longer live there).
+- [x] T023 [US2] Update `walkthroughs/Strathcarron/setup-cold-start-demo.ps1` — `state.json.councilPage` now points at `http://localhost:5400/services/driving-licence`. Update the operator-facing `Write-WtInfo` messages to match.
+- [x] T024 [US2] Update F126 Playwright nav-coverage suite (search `tests/` for tests that reference `/strathcarron/services/driving-licence` or `/app/strathcarron/services/driving-licence`) — switch to the new URL. Verify `data-testid="driving-licence-submit"` still resolves.
+- [x] T025 [US2] Update doc propagation for the move: `.claude/skills/sorcha-architecture/SKILL.md` "Council application enrolment gate (Feature 126)" section, `.specify/MASTER-TASKS.md` if it references the old URL, `MEMORY.md` "n1 SPA path quirk" bullet (note that the quirk now applies only to surfaces inside Sorcha.UI.Web.Client; council pages no longer live there).
 
 ### PR-A validation
 
-- [ ] T026 [US2] Bring up the local Docker stack and walk the F126 cold-start journey end-to-end against `http://localhost:5300/services/driving-licence`. Confirm: preflight signup → wallet-pairing QR → PWA redeem + confirm dialog → device pairing → council page advances → form → "watch your wallet". This is the SC-006 gate.
-- [ ] T027 [P] [US2] Verify `scripts/check-samples-references.ps1` rejects a deliberate violation: temporarily add `<ProjectReference Include="..\..\src\Apps\Sorcha.UI\Sorcha.UI.Core\Sorcha.UI.Core.csproj" />` to the sample csproj, run the gate, assert exit 1 with a clear message naming the forbidden reference, revert.
+- [ ] T026 [US2] Bring up the local Docker stack and walk the F126 cold-start journey end-to-end against `http://localhost:5400/services/driving-licence`. Confirm: preflight signup → wallet-pairing QR → PWA redeem + confirm dialog → device pairing → council page advances → form → "watch your wallet". This is the SC-006 gate.
+- [x] T027 [P] [US2] Verify `scripts/check-samples-references.ps1` rejects a deliberate violation: temporarily add `<ProjectReference Include="..\..\src\Apps\Sorcha.UI\Sorcha.UI.Core\Sorcha.UI.Core.csproj" />` to the sample csproj, run the gate, assert exit 1 with a clear message naming the forbidden reference, revert.
 
 **Checkpoint**: PR-A is shippable. The F126 cold-start walkthrough works against the new sample. The CI grep gate is live. No new functionality yet — this is the structural prerequisite.
 
@@ -103,7 +103,7 @@ This is a web/multi-service project. Repo root contains `src/`, `samples/`, `tes
 
 **Goal**: Sarah returns to Strathcarron, presents her `AssuredIdentityCredential` against the Blue Badge gate, the form is autofilled, she submits, the `BlueBadgeCredential` lands in her wallet.
 
-**Independent Test**: After PR-B + PR-C land, run `walkthroughs/Strathcarron/setup-blue-badge-demo.ps1`, sign in as the returning citizen at `http://localhost:5300/services/blue-badge`, walk the journey. End-to-end in under 45 seconds, new credential in the wallet within ~5 s of submit.
+**Independent Test**: After PR-B + PR-C land, run `walkthroughs/Strathcarron/setup-blue-badge-demo.ps1`, sign in as the returning citizen at `http://localhost:5400/services/blue-badge`, walk the journey. End-to-end in under 45 seconds, new credential in the wallet within ~5 s of submit.
 
 ### Platform-side data models (PR-B)
 

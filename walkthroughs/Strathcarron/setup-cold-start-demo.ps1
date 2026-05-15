@@ -16,7 +16,10 @@
 # Re-run with -Force to reset all three test accounts to their target tier.
 #
 # After setup:
-#   1. Browse  http://localhost/strathcarron/services/driving-licence
+#   1. Browse  http://localhost:5400/services/driving-licence
+#      (the Strathcarron Council sample portal — F127 PR-A moved this page
+#      out of Sorcha.UI.Web.Client into samples/strathcarron-portal/ per
+#      the platform-vs-consumer boundary contract).
 #   2. For Tier 3: just click "Sign in or create your account" — the
 #      preflight surface fires; create the cold-start-* account and walk
 #      the post-signup pairing flow.
@@ -243,7 +246,7 @@ $state = @{
     councilWalletAddress   = $councilWallet.Address
     registerId             = $register.RegisterId
     blueprintId            = $blueprint.BlueprintId
-    councilPage            = "$($sorchaEnv.GatewayUrl)/strathcarron/services/driving-licence"
+    councilPage            = $env:STRATHCARRON_PORTAL_URL ?? "http://localhost:5400/services/driving-licence"
     citizens = @{
         coldStart = @{
             tier  = 3
@@ -271,7 +274,7 @@ Write-WtSuccess "State saved to $stateFile"
 
 Write-Host ""
 Write-WtInfo "Demo URLs:"
-Write-WtInfo "  Council page: $($state.councilPage)"
+Write-WtInfo "  Council page: $($state.councilPage) (Strathcarron sample portal — separate container)"
 Write-WtInfo "  Wallet PWA:   $($sorchaEnv.GatewayUrl)/wallet/"
 Write-Host ""
 Write-WtInfo "Citizens:"
