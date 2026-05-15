@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sorcha.dev/schemas/blueprint/prerequisites-presentation-requests.json",
+  "title": "Blueprint starting-action: prerequisites.presentationRequests",
+  "description": "Declares a credential gate on a blueprint starting action. The action cannot run until the citizen presents a credential satisfying the gate.",
+  "type": "object",
+  "properties": {
+    "prerequisites": {
+      "type": "object",
+      "properties": {
+        "presentationRequests": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/CredentialGate"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "CredentialGate": {
+      "type": "object",
+      "required": ["id", "credentialType", "issuerAllowlist", "requiredClaims"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "description": "Kebab-case identifier, unique within the action. Used by x-persona.presentation to bind disclosed claims to autofill targets."
+        },
+        "credentialType": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Credential type the gate accepts (e.g. AssuredIdentityCredential)."
+        },
+        "issuerAllowlist": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^did:[a-z0-9]+:.+$",
+            "description": "DID URI of an accepted issuer."
+          }
+        },
+        "requiredClaims": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Claim name (top-level credentialSubject property) required by the form."
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "prerequisites": {
+        "presentationRequests": [
+          {
+            "id": "assured-identity-check",
+            "credentialType": "AssuredIdentityCredential",
+            "issuerAllowlist": ["did:sorcha:org:strathcarron-council"],
+            "requiredClaims": ["givenName", "familyName", "dateOfBirth", "homeAddress"]
+          }
+        ]
+      }
+    }
+  ]
+}
