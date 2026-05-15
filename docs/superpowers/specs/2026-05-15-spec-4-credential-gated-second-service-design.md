@@ -1,7 +1,7 @@
 # Spec 4 — Credential-gated second service (Blue Badge)
 
 **Date:** 2026-05-15
-**Status:** Design locked. Brainstorm complete — six decisions captured in §10.
+**Status:** Design locked. Brainstorm complete — six decisions captured in §10. **Amended 2026-05-15** to honour the platform-vs-consumer boundary — see [`2026-05-15-platform-consumer-boundary-design.md`](2026-05-15-platform-consumer-boundary-design.md); changes affect §1, §5, §12, §13.
 **Umbrella:** [`2026-05-13-strathcarron-citizen-arc.md`](2026-05-13-strathcarron-citizen-arc.md)
 **Spec 1 implementation tag:** `spec-124-complete`
 **Spec 2 implementation tag:** `spec-125-complete`
@@ -27,13 +27,25 @@ This is the spec where the existing wallet stops being "the thing that received 
 
 ## §1 — What ships
 
-The visible deliverables:
+Spec 4 ships **two artifacts**, on opposite sides of the platform-vs-consumer boundary (see [`2026-05-15-platform-consumer-boundary-design.md`](2026-05-15-platform-consumer-boundary-design.md)).
+
+### Platform-side (in `src/`)
 
 1. **`BlueBadgeCredential` blueprint** (issuer: Strathcarron Council, target audience: `SorchaLocalWallet`, same shape as `AssuredIdentityCredential`).
-2. **Credential-gated starting action** — the Blue Badge application's first action requires the citizen to present an `AssuredIdentityCredential` from their wallet. Open-participant late binding is preserved (Feature 103 / `x-review` machinery).
-3. **PWA picker + ConsentSheet** — when the council page asks the wallet to present a credential satisfying the gate, the PWA renders the existing F125 picker (designed in Spec 2) and a ConsentSheet showing the claims being disclosed.
-4. **Autofill on the council form** — the disclosed claims from the presented credential pre-populate fields on the Blue Badge form (per the existing `PersonaAutofillResolver` + `x-persona` extension contract from Feature 092, with the **credential as the source** instead of the persona).
-5. **Issuance of `BlueBadgeCredential`** after the citizen submits — lands in the same PWA wallet via the existing F124 register-native delivery path.
+2. **Credential-gated starting action** — `prerequisites.presentationRequests` syntax in the blueprint, and the Blueprint Service runtime that resolves it. Open-participant late binding is preserved (Feature 103 / `x-review` machinery).
+3. **Two new Blueprint Service endpoints** (`POST /api/blueprint/presentation-requests`, `POST` and `GET /api/blueprint/presentation-responses/{nonce}`). `Sorcha.Verifier.Engine` is the server-side validator — first non-PWA consumer.
+4. **`CredentialGateComponent`** in `Sorcha.UI.Components.User`. Drop-in for any consumer page that needs to gate on a credential. Designed to be consumed via the published library surface (NuGet shape) the same way a real third-party council would consume it.
+5. **PWA picker + ConsentSheet integration** — wires the existing F125 picker into the present-from-council-page flow; ConsentSheet renders the claims being disclosed.
+
+### Consumer-side (in `samples/`)
+
+6. **Blue Badge page** hosted by `samples/strathcarron-portal/Pages/BlueBadge.razor` — the council's application form. Lives in the `strathcarron-portal` sample created when Spec 4 PR-A extracts the F126 driving-licence page out of `Sorcha.UI.Web.Client`.
+7. **Autofill on the council form** — same `PersonaAutofillResolver` + `x-persona` extension contract from Feature 092, with the credential as the source, exercised by the sample.
+8. **Issuance of `BlueBadgeCredential`** after the citizen submits — lands in the PWA via the existing F124 register-native delivery path. Triggered by the sample's submit endpoint hitting the Blueprint Service over HTTP, the same way a real council deployment would.
+
+### Structural prerequisite (Spec 4 PR-A)
+
+Before any of the above lands, Spec 4 opens with a structural PR that creates `samples/strathcarron-portal/` (csproj, Dockerfile, docker-compose entry, baseline council chrome), moves `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CouncilApplicationDrivingLicence.razor` into it as `Pages/DrivingLicence.razor`, and proves the sample runs as a standalone container against the rest of the docker-compose stack. The credential-gating work follows in PR-B onward, with the Blue Badge page added directly in the sample.
 
 ## §2 — The returning-citizen journey, step by step
 
@@ -129,9 +141,13 @@ The blueprint runtime resolves `prerequisites.presentationRequests` into the OID
 
 ## §5 — Library component growth
 
-A new component, `CredentialGateComponent`, sits **above** `EnrolGateComponent` (or alongside it) in the council page composition. Composition pattern:
+A new component, `CredentialGateComponent`, sits **above** `EnrolGateComponent` (or alongside it) in the consumer page composition. Below is what the consumer's page in `samples/strathcarron-portal/Pages/BlueBadge.razor` looks like:
 
 ```razor
+@page "/services/blue-badge"
+@using Sorcha.UI.Core.Components.EnrolGate
+@using Sorcha.UI.Core.Components.CredentialGate
+
 <EnrolGateComponent CouncilName="Strathcarron Council" OnReady="@HandleReady">
     <CredentialGateComponent BlueprintId="@_blueprintId"
                              StartingActionId="submit-blue-badge-application"
@@ -141,6 +157,8 @@ A new component, `CredentialGateComponent`, sits **above** `EnrolGateComponent` 
     </CredentialGateComponent>
 </EnrolGateComponent>
 ```
+
+The library is intentionally designed so the consumer's Razor file is the same shape it would be in a third-party deployment. The host (`samples/strathcarron-portal/`) consumes `Sorcha.UI.Components.User` via its published surface — no other `ProjectReference` into `src/Apps/Sorcha.UI/` is allowed (CI grep gate enforces; see SC-4-007).
 
 `CredentialGateComponent` owns: minting the presentation request, rendering the hybrid QR/link/paste affordance, subscribing to the `PresentationReceived` SignalR event, fetching the disclosed claims, and firing `OnPresented` with the claim dictionary.
 
@@ -290,14 +308,16 @@ Architecturally, `CredentialGateComponent` is a peer of `EnrolGateComponent`. Bu
 | **SC-4-004** | The presentation-completion signal reaches the council page within 2 s of PWA signing in 95% of attempts. | OTel histogram on the new `IPresentationSignal` |
 | **SC-4-005** | A revoked `AssuredIdentityCredential` presented against the Blue Badge gate is rejected on the server with an actionable message. | Integration test |
 | **SC-4-006** | Existing F124 + F125 + F126 test suites stay green. | Standard CI |
+| **SC-4-007** | `samples/strathcarron-portal/` builds and runs as a standalone container against the rest of the docker-compose stack. Its csproj contains no `ProjectReference` into `src/Apps/Sorcha.UI/` other than `Sorcha.UI.Components.User`. CI grep gate enforces. | Build + grep-gate test |
 
 ## §13 — Open items for plan-phase
 
-Locked once Q1-Q6 are brainstormed:
+Locked once Q1-Q6 are brainstormed and the platform-vs-consumer boundary is locked:
 
-1. `CredentialGateComponent` lives in `Sorcha.UI.Components.User` (library), alongside `EnrolGateComponent`. Drop-in for any council page.
+1. `CredentialGateComponent` lives in `Sorcha.UI.Components.User` (library), alongside `EnrolGateComponent`. Drop-in for any consumer page.
 2. `Sorcha.Blueprint.Service` owns the presentation request / response endpoints.
 3. `Sorcha.Verifier.Engine` is the validation layer — first non-PWA consumer.
+4. **Spec 4 PR-A** = structural extract. Creates `samples/strathcarron-portal/` (csproj, Dockerfile, docker-compose entry, baseline council chrome — header, nav, footer), moves `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CouncilApplicationDrivingLicence.razor` into it, proves the sample runs as a standalone container. CI grep gate against `samples/**/*.csproj` lands here. **No n1 deployment in Spec 4** — operator-owned domain / services work is separate. PR-B onward adds the Blue Badge page in the sample alongside the credential-gating platform work.
 
 ## References
 
