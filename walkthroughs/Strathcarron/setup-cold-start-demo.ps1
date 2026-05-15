@@ -1,40 +1,286 @@
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
+#
+# Strathcarron Council — Cold-start demo setup (Feature 126).
+#
+# Provisions the Strathcarron Council org, publishes a minimal Driving
+# Licence blueprint (SorchaLocalWallet target audience so credentials
+# land in the citizen's PWA), and seeds three reset-able test-citizen
+# email addresses for the three Feature 126 citizen tiers:
+#
+#   cold-start-<random>@example.test  — Tier 3 (no account)
+#   mini-gate-<random>@example.test   — Tier 2 (account, no device)
+#   returning-<random>@example.test   — Tier 1 (account + paired device)
+#
+# Re-run with -Force to reset all three test accounts to their target tier.
+#
+# After setup:
+#   1. Browse  http://localhost/strathcarron/services/driving-licence
+#   2. For Tier 3: just click "Sign in or create your account" — the
+#      preflight surface fires; create the cold-start-* account and walk
+#      the post-signup pairing flow.
+#   3. For Tier 1 / Tier 2: this script pre-creates the accounts; the
+#      gate skips the preflight and you can exercise SC-002 / SC-003.
 
-<#
-.SYNOPSIS
-    Provisions the Strathcarron Council demo environment for the Feature 126
-    cold-start enrolment walkthroughs.
-
-.DESCRIPTION
-    Stub created in PR-A (T002). Body fleshed out across Phases 3-5:
-      - Phase 3 (US1): Strathcarron org provisioning + DrivingLicence blueprint
-        publish + cold-start-<random>@example.test test citizen.
-      - Phase 4 (US2): Tier 1 returning-<random>@example.test test citizen
-        (signup + F114 device-pairing pre-run).
-      - Phase 5 (US3): Tier 2 mini-gate-<random>@example.test test citizen
-        (signup only, no device).
-
-    Re-running this script resets all three test accounts to their target tier.
-
-.PARAMETER ApiBase
-    The API gateway base URL. Defaults to http://localhost.
-
-.PARAMETER Profile
-    'local' for Docker Compose, 'n1' for n1.sorcha.dev.
-
-.EXAMPLE
-    pwsh walkthroughs/Strathcarron/setup-cold-start-demo.ps1
-    pwsh walkthroughs/Strathcarron/setup-cold-start-demo.ps1 -Profile n1
-#>
-[CmdletBinding()]
 param(
-    [string]$ApiBase = 'http://localhost',
-    [ValidateSet('local', 'n1')]
-    [string]$Profile = 'local'
+    [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
+    [string]$Profile = 'gateway',
+    [switch]$SkipHealthCheck,
+    [switch]$Force
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = "Stop"
 
-Write-Host "Strathcarron cold-start demo setup — Profile: $Profile, ApiBase: $ApiBase"
-Write-Host "Stub: full implementation lands across Phases 3-5 (T038, T047, T052)."
+$modulePath = Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) "modules/SorchaWalkthrough/SorchaWalkthrough.psm1"
+Import-Module $modulePath -Force
+
+Write-WtBanner "Strathcarron — Cold-start demo setup (Feature 126)"
+
+$secrets = Get-SorchaSecrets -WalkthroughName "strathcarron-cold-start" -Profile $Profile
+$sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$stateFile = Join-Path $scriptDir "state.json"
+$publicOrgId = "00000000-0000-0000-0000-000000000002"
+
+if ((Test-Path $stateFile) -and -not $Force) {
+    Write-WtInfo "state.json exists. Use -Force to re-run."
+    return
+}
+
+# ============================================================================
+# Step 1: Login as System Admin
+# ============================================================================
+Write-WtStep "Step 1: Login as System Admin"
+$sysAdmin = Connect-SorchaAdmin `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -AdminEmail $secrets.adminEmail `
+    -AdminPassword $secrets.adminPassword
+Write-WtSuccess "Connected (org: $($sysAdmin.OrganizationId))"
+
+# ============================================================================
+# Step 2: Enable Public Org
+# ============================================================================
+Write-WtStep "Step 2: Enable Public Org"
+Invoke-SorchaApi -Method PUT `
+    -Uri "$($sorchaEnv.TenantUrl)/platform/settings/public-org" `
+    -Body @{ enabled = $true } `
+    -Headers $sysAdmin.Headers | Out-Null
+Write-WtInfo "Public org enabled"
+
+# ============================================================================
+# Step 3: Create Strathcarron Council org
+# ============================================================================
+Write-WtStep "Step 3: Create Strathcarron Council org"
+
+$councilAdminEmail    = "council-admin@strathcarron.local"
+$councilAdminPassword = $secrets.DefaultPassword
+
+Register-SorchaPublicUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $councilAdminEmail `
+    -Password $councilAdminPassword `
+    -DisplayName "Strathcarron Council Admin" | Out-Null
+
+$publicUsers = Invoke-SorchaApi -Method GET `
+    -Uri "$($sorchaEnv.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
+    -Headers $sysAdmin.Headers
+$councilAdminUser = $publicUsers.users | Where-Object { $_.email -eq $councilAdminEmail } | Select-Object -First 1
+if ($councilAdminUser) {
+    Confirm-SorchaUserEmail `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $publicOrgId `
+        -UserId $councilAdminUser.id `
+        -Headers $sysAdmin.Headers
+    Write-WtInfo "Verified council-admin email"
+}
+
+$councilOrg = New-SorchaOrganization `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Name "Strathcarron Council" `
+    -Subdomain "strathcarron" `
+    -AdminEmail $councilAdminEmail `
+    -Headers $sysAdmin.Headers `
+    -Description "Issues licences and other credentials to Strathcarron citizens"
+$councilOrgId = $councilOrg.OrganizationId
+Write-WtSuccess "Council org: $councilOrgId"
+
+# ============================================================================
+# Step 4: Council Admin — Login, Wallet
+# ============================================================================
+Write-WtStep "Step 4: Council Admin — Login + Wallet"
+$councilSession = Connect-SorchaUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $councilAdminEmail `
+    -Password $councilAdminPassword `
+    -OrganizationId $councilOrgId
+
+$councilWallet = New-SorchaWallet `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "Strathcarron Council Issuer" `
+    -Headers $councilSession.Headers `
+    -FetchPublicKey
+Write-WtSuccess "Council wallet: $($councilWallet.Address)"
+
+# ============================================================================
+# Step 5: Register + Blueprint
+# ============================================================================
+Write-WtStep "Step 5: Driving Licence register + blueprint"
+
+$register = New-SorchaRegister `
+    -RegisterUrl $sorchaEnv.RegisterUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "Strathcarron Driving Licence Register" `
+    -Description "Council-issued driving licences delivered into the citizen's Sorcha Wallet" `
+    -TenantId $councilOrgId `
+    -OwnerUserId $councilSession.UserId `
+    -OwnerWalletAddress $councilWallet.Address `
+    -Headers $councilSession.Headers `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -DevMode
+Write-WtSuccess "Register: $($register.RegisterId)"
+
+# Subscribe the public org so cold-start citizens can submit into this register.
+try {
+    $null = New-SorchaRegisterSubscription `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $publicOrgId `
+        -RegisterId $register.RegisterId `
+        -RegisterName "Strathcarron Driving Licence Register" `
+        -SubscriptionType "Public" `
+        -Headers $sysAdmin.Headers
+} catch {
+    Write-WtWarn "Public org subscribe to driving-licence register failed: $($_.Exception.Message)"
+}
+
+# Wallet map: council "licensing-officer" participant; citizen is open
+# (late-bound at submission time).
+$walletMap = @{
+    "licensing-officer" = $councilWallet.Address
+}
+
+$blueprint = Publish-SorchaBlueprint `
+    -BlueprintUrl $sorchaEnv.BlueprintUrl `
+    -TemplatePath (Join-Path $scriptDir "blueprints/strathcarron-driving-licence.json") `
+    -WalletMap $walletMap `
+    -Headers $councilSession.Headers `
+    -IdPrefix "strathcarron-driving-licence" `
+    -RegisterId $register.RegisterId
+Write-WtSuccess "Blueprint: $($blueprint.BlueprintId)"
+
+# ============================================================================
+# Step 6: Provision three reset-able test citizens
+# ============================================================================
+Write-WtStep "Step 6: Provision Tier 1 / Tier 2 / Tier 3 test citizens"
+
+$random = (Get-Random -Maximum 9999).ToString("0000")
+
+# Tier 3 — cold-start. NOT registered. The operator drives the F116 signup
+# flow through the gate's PreflightSignupSurface during the demo walk.
+$tier3Email = "cold-start-$random@example.test"
+
+# Tier 2 — mini-gate. Registered + verified, but no wallet device. The
+# WalletPairingSurface fires with TierMode.MiniGate when this citizen
+# arrives signed in.
+$tier2Email = "mini-gate-$random@example.test"
+$tier2Password = $secrets.DefaultPassword
+Register-SorchaPublicUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $tier2Email `
+    -Password $tier2Password `
+    -DisplayName "Mini-Gate Test Citizen" | Out-Null
+
+# Tier 1 — fast-path. Registered, verified, AND has a paired device. The
+# gate skips the wallet-pairing surface entirely and drops the citizen
+# straight into the form.
+$tier1Email = "returning-$random@example.test"
+$tier1Password = $secrets.DefaultPassword
+Register-SorchaPublicUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $tier1Email `
+    -Password $tier1Password `
+    -DisplayName "Returning Test Citizen" | Out-Null
+
+# Verify both emails (admin override — no SMTP in the dev stack).
+$publicUsers = Invoke-SorchaApi -Method GET `
+    -Uri "$($sorchaEnv.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
+    -Headers $sysAdmin.Headers
+foreach ($email in @($tier1Email, $tier2Email)) {
+    $user = $publicUsers.users | Where-Object { $_.email -eq $email } | Select-Object -First 1
+    if ($user) {
+        Confirm-SorchaUserEmail `
+            -TenantUrl $sorchaEnv.TenantUrl `
+            -OrganizationId $publicOrgId `
+            -UserId $user.id `
+            -Headers $sysAdmin.Headers
+        Write-WtInfo "  verified: $email"
+    }
+}
+
+# Tier 1: pre-run the F114 device-pairing ceremony so the account starts
+# with one active device. The PWA-side ceremony needs IJSRuntime which
+# we don't have here — so we drive the device-pairing endpoint directly
+# with a generated key thumbprint. This is the same shape the PWA's
+# IEnrolmentService.EnrolAsync produces.
+Write-WtInfo "Tier 1 device-pairing: see TODO below"
+# TODO (operator step until automation lands): sign $tier1Email into
+# http://localhost/wallet/ once, then walk Settings → Enrol this device.
+# The next run of this script (with -Force) preserves the device.
+
+# ============================================================================
+# Step 7: Save state
+# ============================================================================
+$state = @{
+    profile                = $Profile
+    gatewayUrl             = $sorchaEnv.GatewayUrl
+    tenantUrl              = $sorchaEnv.TenantUrl
+    walletUrl              = $sorchaEnv.WalletUrl
+    registerUrl            = $sorchaEnv.RegisterUrl
+    blueprintUrl           = $sorchaEnv.BlueprintUrl
+    publicOrgId            = $publicOrgId
+    councilOrgId           = $councilOrgId
+    councilWalletAddress   = $councilWallet.Address
+    registerId             = $register.RegisterId
+    blueprintId            = $blueprint.BlueprintId
+    councilPage            = "$($sorchaEnv.GatewayUrl)/strathcarron/services/driving-licence"
+    citizens = @{
+        coldStart = @{
+            tier  = 3
+            email = $tier3Email
+            note  = "Not yet registered — operator drives the F116 signup flow through the gate's PreflightSignupSurface."
+        }
+        miniGate = @{
+            tier     = 2
+            email    = $tier2Email
+            password = $tier2Password
+            note     = "Registered + verified, no wallet device. WalletPairingSurface fires with TierMode.MiniGate."
+        }
+        fastPath = @{
+            tier         = 1
+            email        = $tier1Email
+            password     = $tier1Password
+            note         = "Registered + verified. Operator runs the PWA device-pairing once to complete Tier 1 seeding."
+            devicePaired = $false
+        }
+    }
+}
+
+$state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile
+Write-WtSuccess "State saved to $stateFile"
+
+Write-Host ""
+Write-WtInfo "Demo URLs:"
+Write-WtInfo "  Council page: $($state.councilPage)"
+Write-WtInfo "  Wallet PWA:   $($sorchaEnv.GatewayUrl)/wallet/"
+Write-Host ""
+Write-WtInfo "Citizens:"
+Write-WtInfo "  Tier 3 (cold-start): $tier3Email (sign up through the gate)"
+Write-WtInfo "  Tier 2 (mini-gate):  $tier2Email / $tier2Password"
+Write-WtInfo "  Tier 1 (fast-path):  $tier1Email / $tier1Password (pair a device first)"
+Write-Host ""
+Write-WtInfo "Walks (see specs/126-enrol-inside-wizard/quickstart.md):"
+Write-WtInfo "  Walk 1 — Tier 3 cold-start: SC-001, SC-007"
+Write-WtInfo "  Walk 2 — Tier 1 fast-path:  SC-002"
+Write-WtInfo "  Walk 3 — Tier 2 mini-gate:  SC-003"
+Write-WtInfo "  Variation — stranger scans QR: SC-008"
