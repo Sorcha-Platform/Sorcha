@@ -66,13 +66,27 @@ public interface IPresentationLifecycleService
 /// the QR URI for rendering and the transaction id of the initiated record for
 /// audit and client polling.
 /// </summary>
+/// <param name="PresentationRequestId">Unique id for this attempt.</param>
+/// <param name="AuthorizationRequestUri">OID4VP authorization request URI (the QR / tap-link payload).</param>
+/// <param name="RequestUri">Optional alternative request URI shape.</param>
+/// <param name="Nonce">Optional nonce echoed in the verifiable presentation.</param>
+/// <param name="ExpiresAt">When the presentation validity window ends.</param>
+/// <param name="InitiatedTransactionId">Register transaction id for the <c>presentation-initiated</c> record.</param>
+/// <param name="ClaimsFetchToken">
+/// Feature 127 — single-use token bound to <paramref name="PresentationRequestId"/>, returned ONLY to
+/// consumers that opt into claims-fetch (currently <c>"sorcha-wallet"</c>). The originator presents this
+/// on <c>GET /api/presentations/{id}/disclosed-claims?token=…</c> to retrieve the disclosed claims in
+/// plaintext for council-page autofill. <c>null</c> on HAIP and other consumers that do not produce
+/// council-page-readable claims.
+/// </param>
 public sealed record PresentationInitiationResult(
     Guid PresentationRequestId,
     string AuthorizationRequestUri,
     string? RequestUri,
     string? Nonce,
     DateTimeOffset ExpiresAt,
-    string InitiatedTransactionId);
+    string InitiatedTransactionId,
+    string? ClaimsFetchToken = null);
 
 /// <summary>
 /// Result of <see cref="IPresentationLifecycleService.HandleOutcomeAsync"/>.

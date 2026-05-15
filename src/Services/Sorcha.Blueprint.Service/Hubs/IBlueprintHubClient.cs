@@ -48,4 +48,17 @@ public interface IBlueprintHubClient
     /// <param name="occurredAt">Server timestamp at which the signal was emitted.</param>
     /// <param name="traceId">W3C trace-id for correlation.</param>
     Task WorkflowCompleted(string instanceId, DateTimeOffset occurredAt, string traceId);
+
+    /// <summary>
+    /// F111 has just written a <c>presentation-outcome</c> record (success OR
+    /// decline) for the given presentation request. Council pages subscribed
+    /// to <see cref="BlueprintHubGroups.PresentationNonce"/> should:
+    /// <list type="bullet">
+    ///   <item><description>call <c>GET /api/presentations/{id}/status</c> to learn the outcome kind, and</description></item>
+    ///   <item><description>on success, call <c>GET /api/presentations/{id}/disclosed-claims?token=…</c> to retrieve the disclosed claims in plaintext for autofill (Feature 127).</description></item>
+    /// </list>
+    /// Thin-signal — carries opaque ID only; no claim content crosses this wire.
+    /// </summary>
+    /// <param name="presentationRequestId">Outstanding presentation the outcome belongs to. Hex-encoded GUID (N format).</param>
+    Task PresentationOutcomeReady(string presentationRequestId);
 }

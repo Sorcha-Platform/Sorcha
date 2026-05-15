@@ -22,4 +22,12 @@ public static class BlueprintHubGroups
 
     /// <summary>Per-organisation group. Hosts org-scoped workflow events.</summary>
     public static string Org(Guid orgId) => $"org:{orgId:N}";
+
+    /// <summary>
+    /// Per-presentation group (Feature 127). Hosts the
+    /// <see cref="IBlueprintHubClient.PresentationOutcomeReady"/> signal so the
+    /// council page that initiated a presentation flow can react with low
+    /// latency when F111 writes the <c>presentation-outcome</c> transaction.
+    /// </summary>
+    public static string PresentationNonce(Guid presentationRequestId) => $"presentation:{presentationRequestId:N}";
 }

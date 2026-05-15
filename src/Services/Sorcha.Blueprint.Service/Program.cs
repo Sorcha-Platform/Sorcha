@@ -229,6 +229,26 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.P
 builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
     Sorcha.Blueprint.Service.Services.Implementation.HaipPresentationConsumer>();
 
+// Feature 127 — Sorcha-wallet consumer. Verifies SD-JWT presentations posted
+// by the citizen's Sorcha wallet via Sorcha.Verifier.Engine. The first
+// non-HAIP IPresentationConsumer, implementing the new BuildInitiationAsync
+// extension on the consumer contract.
+builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
+    Sorcha.Blueprint.Service.Services.Implementation.SorchaWalletPresentationConsumer>();
+
+// Feature 127 — single-use ClaimsFetchToken store. Minted by InitiateAsync
+// (for Sorcha-wallet only); consumed atomically by the disclosed-claims
+// endpoint. Backed by Redis via the existing IConnectionMultiplexer the
+// F111 stores already share.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IClaimsFetchTokenStore,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisClaimsFetchTokenStore>();
+
+// Feature 127 — short-TTL plaintext stash of disclosed claims, written
+// alongside the outcome tx for the disclosed-claims endpoint to read.
+// Avoids re-decrypting the register tx on every council-page fetch.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IDisclosedClaimsStore,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisDisclosedClaimsStore>();
+
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.AbandonmentSweeper>();
 
 // Feature 119 — seal-aware ordering for chain-pointer-bearing presentation lifecycle
