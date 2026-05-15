@@ -1,0 +1,57 @@
+@namespace Sorcha.Wallet.Pwa.Components
+
+@*
+    Feature 126 — friend-scans-by-mistake mitigation. Surfaces the bound
+    user's display name + email BEFORE the device-pairing call runs, so an
+    unintended recipient can cancel without registering a device against
+    someone else's account.
+
+    Per spec acceptance scenario US1 #3 + FR-010 + FR-011 / US4. Cancel
+    routes the citizen to /wallet/cancelled-enrolment (lands in PR-C);
+    Confirm proceeds to the F114 device-pairing ceremony in Enrol.razor.
+*@
+
+<div class="enrol-confirm" role="dialog" aria-modal="true" data-testid="enrol-confirm-dialog">
+    <h2 class="enrol-confirm__heading">Is this you?</h2>
+
+    <p class="enrol-confirm__body">
+        You're about to enrol this device for <strong>@Email</strong>
+        @if (!string.IsNullOrWhiteSpace(DisplayName))
+        {
+            <span> (@DisplayName)</span>
+        }.
+    </p>
+
+    <p class="enrol-confirm__warning">
+        If that's not you, close this page.
+    </p>
+
+    <div class="enrol-confirm__actions">
+        <button type="button"
+                class="enrol-confirm__confirm"
+                data-testid="enrol-confirm-yes"
+                @onclick="OnConfirm">
+            Yes, that's me — continue
+        </button>
+        <button type="button"
+                class="enrol-confirm__cancel"
+                data-testid="enrol-confirm-no"
+                @onclick="OnCancel">
+            This isn't me
+        </button>
+    </div>
+</div>
+
+@code {
+    /// <summary>Display name of the bound platform user — surfaced for recognition.</summary>
+    [Parameter] public string? DisplayName { get; set; }
+
+    /// <summary>Email of the bound platform user — surfaced as the primary recognition key.</summary>
+    [Parameter, EditorRequired] public string Email { get; set; } = "";
+
+    /// <summary>Fires when the citizen confirms they are the bound user.</summary>
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    /// <summary>Fires when the citizen indicates this isn't them. Routes to cancelled-enrolment landing.</summary>
+    [Parameter] public EventCallback OnCancel { get; set; }
+}

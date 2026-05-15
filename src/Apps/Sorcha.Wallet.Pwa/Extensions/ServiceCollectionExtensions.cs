@@ -6,6 +6,7 @@ using Sorcha.Wallet.Pwa.Services;
 using Sorcha.Wallet.Pwa.Services.Applications;
 using Sorcha.Wallet.Pwa.Services.Capture;
 using Sorcha.Wallet.Pwa.Services.Context;
+using Sorcha.Wallet.Pwa.Services.Enrolment;
 using Sorcha.Wallet.Pwa.Services.Presentation;
 using Sorcha.Wallet.Pwa.Services.Signing;
 using Sorcha.Wallet.Pwa.Services.Verification;
@@ -102,6 +103,14 @@ public static class ServiceCollectionExtensions
         // the server clock — sign-in is a great moment to capture initial drift.
         services.AddTransient<BearerTokenHandler>();
         services.AddHttpClient<IAuthService, AuthService>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        // Feature 126 — enrolment-session redeem client. Anonymous: the
+        // session token in the request body is the credential. Still
+        // observes the server clock so a clock-skew banner can surface
+        // before the citizen confirms.
+        services.AddHttpClient<IEnrolSessionRedeemer, EnrolSessionRedeemer>(c =>
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<ServerClockHandler>();
 

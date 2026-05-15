@@ -1,0 +1,75 @@
+@namespace Sorcha.UI.Core.Components.EnrolGate
+@using Sorcha.UI.Core.Services
+@inject IQrPresentationService QrService
+@inject IJSRuntime JSRuntime
+
+@*
+    Feature 126 — three equivalent resolutions of the enrolment URL:
+    QR (scan from another device), tap-able link (same-device mobile),
+    copy-link (accessibility / "I'll set this up later" fallback).
+
+    Phase 7 (T061) will adapt prominence by viewport — mobile gets the
+    tap-link up top, desktop keeps the QR dominant. This PR-A skeleton
+    renders all three side-by-side; tier-aware layout follows.
+*@
+
+<div class="enrol-hybrid-qr" data-testid="enrol-hybrid-qr">
+    @if (!string.IsNullOrEmpty(QrUrl))
+    {
+        <div class="enrol-hybrid-qr__qr" aria-label="Enrolment QR code">
+            @((MarkupString)_qrSvg)
+        </div>
+
+        <p class="enrol-hybrid-qr__tap">
+            <a href="@QrUrl" class="enrol-hybrid-qr__link" data-testid="enrol-tap-link">
+                Open on this device
+            </a>
+        </p>
+
+        <button type="button"
+                class="enrol-hybrid-qr__copy"
+                data-testid="enrol-copy-link"
+                @onclick="CopyToClipboardAsync">
+            @(_copied ? "Copied ✓" : "Copy link")
+        </button>
+    }
+</div>
+
+@code {
+    /// <summary>The fully-formed enrolment URL embedding the session token.</summary>
+    [Parameter, EditorRequired] public string QrUrl { get; set; } = "";
+
+    /// <summary>Absolute expiry of the embedded session token — surfaced for diagnostics; not rendered.</summary>
+    [Parameter] public DateTimeOffset ExpiresAt { get; set; }
+
+    /// <summary>QR image side length in pixels per module. 6 = ~250 px QR for a standard URL.</summary>
+    [Parameter] public int PixelsPerModule { get; set; } = 6;
+
+    private string _qrSvg = "";
+    private bool _copied;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(QrUrl))
+        {
+            _qrSvg = QrService.GenerateSvgFromUri(QrUrl, PixelsPerModule);
+        }
+    }
+
+    private async Task CopyToClipboardAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", QrUrl);
+            _copied = true;
+            StateHasChanged();
+        }
+        catch
+        {
+            // Clipboard API may be unavailable (insecure context, denied
+            // permission) — silently skip rather than crash the UI. The
+            // copy-link button remains visible so the user can long-press
+            // and copy manually.
+        }
+    }
+}
