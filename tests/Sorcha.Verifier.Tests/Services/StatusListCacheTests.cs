@@ -17,7 +17,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Moq.Protected;
 using Sorcha.Verifier.Services;
-using Xunit;
+using Xunit;using Sorcha.Verifier.Engine;
+
 
 namespace Sorcha.Verifier.Tests.Services;
 

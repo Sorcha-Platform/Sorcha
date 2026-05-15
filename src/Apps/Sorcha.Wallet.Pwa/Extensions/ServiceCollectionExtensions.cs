@@ -64,7 +64,21 @@ public static class ServiceCollectionExtensions
         // VerifiablePresentationValidator out of Sorcha.Verifier in a
         // follow-up extraction PR.
         services.AddSingleton<IEphemeralVerifierIdentityService, EphemeralVerifierIdentityService>();
-        services.AddSingleton<IVerifierEngine, StubVerifierEngine>();
+
+        // Real validator + adapter (Feature 126, replaces the PR-C stub).
+        // VerifiablePresentationValidator was extracted to Sorcha.Verifier.Engine
+        // so the wallet runs the same OID4VP pipeline as the desk verifier.
+        // StubVerifierEngine stays in the assembly for tests / debug staging
+        // but is no longer DI-registered.
+        services.AddSingleton<Sorcha.Verifier.Engine.IStatusListCache, Sorcha.Verifier.Engine.StatusListCache>();
+        services.AddSingleton<Sorcha.Verifier.Engine.IIssuerKeyResolver, Sorcha.Verifier.Engine.OptOutIssuerKeyResolver>();
+        services.AddSingleton<Sorcha.Verifier.Engine.IVerifiablePresentationValidator>(sp =>
+            new Sorcha.Verifier.Engine.VerifiablePresentationValidator(
+                sp.GetRequiredService<Sorcha.Verifier.Engine.IStatusListCache>(),
+                sp.GetRequiredService<Sorcha.Verifier.Engine.IIssuerKeyResolver>(),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Sorcha.Verifier.Engine.VerifiablePresentationValidator>>()));
+        services.AddSingleton<IVerifierEngine, RealVerifierEngine>();
 
         // Feature 125 / PR-D — application-from-phone (US2). PortraitCaptureControl
         // routes through IWebCameraService; the file-upload fallback is the

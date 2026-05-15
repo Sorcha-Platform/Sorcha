@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Common\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.ServiceDefaults\Sorcha.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Verifier.Engine\Sorcha.Verifier.Engine.csproj" />
   </ItemGroup>
 
 </Project>

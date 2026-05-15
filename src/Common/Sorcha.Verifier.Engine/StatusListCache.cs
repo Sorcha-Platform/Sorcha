@@ -8,7 +8,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Sorcha.Verifier.Services;
+namespace Sorcha.Verifier.Engine;
 
 /// <summary>
 /// Default <see cref="IStatusListCache"/>. In-memory cache keyed by status list

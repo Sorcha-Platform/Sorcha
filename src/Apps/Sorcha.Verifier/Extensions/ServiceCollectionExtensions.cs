@@ -5,7 +5,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Sorcha.Verifier.Services;
-using Sorcha.ServiceClients.Http.Extensions;
+using Sorcha.ServiceClients.Http.Extensions;using Sorcha.Verifier.Engine;
+
 
 namespace Sorcha.Verifier.Extensions;
 

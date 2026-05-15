@@ -7,7 +7,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Did;
 
-namespace Sorcha.Verifier.Services;
+namespace Sorcha.Verifier.Engine;
 
 /// <summary>
 /// Production <see cref="IIssuerKeyResolver"/> — resolves the credential's

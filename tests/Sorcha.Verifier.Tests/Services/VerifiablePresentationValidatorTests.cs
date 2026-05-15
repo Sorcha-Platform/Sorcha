@@ -9,8 +9,9 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Verifier.Services;
-using Sorcha.Verifier.Services.Models;
-using Xunit;
+using Sorcha.Verifier.Engine.Models;
+using Xunit;using Sorcha.Verifier.Engine;
+
 
 namespace Sorcha.Verifier.Tests.Services;
 

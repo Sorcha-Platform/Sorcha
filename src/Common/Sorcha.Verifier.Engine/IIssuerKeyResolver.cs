@@ -4,7 +4,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 
-namespace Sorcha.Verifier.Services;
+namespace Sorcha.Verifier.Engine;
 
 /// <summary>
 /// Resolves the issuer's public signing key for a credential, given the
