@@ -186,4 +186,111 @@ public sealed class HybridQrAffordanceTests : BunitContext
         cut.Markup.Should().NotContain("data-testid=\"enrol-tap-link\"");
         cut.Markup.Should().NotContain("data-testid=\"enrol-copy-link\"");
     }
+
+    [Fact]
+    public void Layout_LinkFirst_Renders_TapLink_Above_QR_Expander()
+    {
+        var cut = Render<HybridQrAffordance>(parameters => parameters
+            .Add(p => p.QrUrl, "https://strathcarron.gov/wallet/enrol?session=jwt")
+            .Add(p => p.Layout, HybridQrAffordance.HybridQrLayout.LinkFirst));
+
+        cut.Markup.Should().Contain("data-testid=\"enrol-qr-expander\"",
+            "LinkFirst layout collapses the QR behind a Show QR expander");
+        cut.Markup.Should().Contain("enrol-hybrid-qr__tap--primary",
+            "tap-link gets the primary class in LinkFirst mode");
+        cut.Markup.Should().Contain("enrol-hybrid-qr--link-first");
+    }
+
+    [Fact]
+    public void Layout_QrFirst_Does_Not_Render_Expander()
+    {
+        var cut = Render<HybridQrAffordance>(parameters => parameters
+            .Add(p => p.QrUrl, "https://strathcarron.gov/wallet/enrol?session=jwt")
+            .Add(p => p.Layout, HybridQrAffordance.HybridQrLayout.QrFirst));
+
+        cut.Markup.Should().NotContain("data-testid=\"enrol-qr-expander\"");
+        cut.Markup.Should().Contain("enrol-hybrid-qr--qr-first");
+        cut.Markup.Should().Contain("data-testid=\"enrol-tap-link\"");
+    }
+
+    [Fact]
+    public void Layout_Auto_Default_Uses_Auto_Class_For_CSS_To_Adapt()
+    {
+        var cut = Render<HybridQrAffordance>(parameters => parameters
+            .Add(p => p.QrUrl, "https://strathcarron.gov/wallet/enrol?session=jwt"));
+
+        cut.Markup.Should().Contain("enrol-hybrid-qr--auto",
+            "Auto is the default; CSS @media drives prominence");
+    }
+}
+
+/// <summary>
+/// Tests for <see cref="WalletPairingSurface"/> — tier-aware copy (T054).
+/// Renders the surface with each TierMode and asserts the heading + sub-copy
+/// match the contract from spec §3 (Tier 2 mini-gate vs Tier 3 post-signup).
+/// </summary>
+public sealed class WalletPairingSurfaceCopyTests : BunitContext
+{
+    private readonly Mock<IEnrolPairingSignal> _signal = new();
+    private readonly Mock<IQrPresentationService> _qr = new();
+
+    public WalletPairingSurfaceCopyTests()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddSingleton(_signal.Object);
+        Services.AddSingleton(_qr.Object);
+        Services.AddSingleton(new HttpClient(new StubHandler())
+        {
+            BaseAddress = new Uri("http://test.local")
+        });
+
+        _qr.Setup(q => q.GenerateSvgFromUri(It.IsAny<string>(), It.IsAny<int>()))
+            .Returns("<svg/>");
+        _signal.Setup(s => s.StartAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _signal.Setup(s => s.StopAsync()).Returns(Task.CompletedTask);
+    }
+
+    [Fact]
+    public void MiniGate_Mode_Renders_Lets_Pair_This_Device_Copy()
+    {
+        var cut = Render<WalletPairingSurface>(parameters => parameters
+            .Add(p => p.PlatformUserId, Guid.NewGuid())
+            .Add(p => p.Mode, WalletPairingSurface.TierMode.MiniGate));
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("Let's pair this device with your wallet",
+                "Tier 2 mini-gate copy per spec §3 — lost-phone citizens shouldn't see signup-style copy");
+            cut.Markup.Should().NotContain("Almost there — open your wallet");
+        });
+    }
+
+    [Fact]
+    public void PostSignup_Mode_Renders_Almost_There_Copy()
+    {
+        var cut = Render<WalletPairingSurface>(parameters => parameters
+            .Add(p => p.PlatformUserId, Guid.NewGuid())
+            .Add(p => p.Mode, WalletPairingSurface.TierMode.PostSignup));
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("Almost there — open your wallet",
+                "Tier 3 post-signup copy per spec §2 Step 3");
+            cut.Markup.Should().NotContain("Let's pair this device with your wallet");
+        });
+    }
+
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"sessionToken\":\"jwt\",\"qrUrl\":\"http://x/?session=jwt\",\"expiresAt\":\"2030-01-01T00:00:00Z\"}",
+                    System.Text.Encoding.UTF8, "application/json")
+            });
+        }
+    }
 }
