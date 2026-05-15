@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
 using Sorcha.Sample.StrathcarronPortal;
 using Sorcha.UI.Core.Services.User.Enrolment;
+using Sorcha.UI.Core.Services.User.Presentation;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
@@ -27,6 +28,12 @@ builder.Services.AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(client =
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 });
+
+// F127 credential-gate services. The council page subscribes to
+// BlueprintHub unauthenticated — the per-presentation group is keyed by a
+// high-entropy nonce, so knowledge of the requestId is the auth scope.
+builder.Services.AddSorchaPresentationGate(builder.HostEnvironment.BaseAddress);
+
 builder.Services.AddSingleton(TimeProvider.System);
 
 await builder.Build().RunAsync();
