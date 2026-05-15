@@ -94,7 +94,7 @@ Locked at umbrella level. Specs may not violate without amending this doc.
 4. **Wallet reuses the `x-review` id-card renderer** (`ReviewSummaryRenderer.razor` + `IdCardLayout.razor`) with state-driven watermark (`Draft` / `Pending` / `Issued`). One visual component, three contexts (form preview, reviewer pending, wallet detail). Shared-user-components library (Feature 122, currently parked) is the right eventual home for this; the arc's success makes 122's eventual landing more load-bearing.
 5. **Hybrid universal QR is the only invocation mechanism.** No service-specific entry-point variations. Same artifact, three resolution paths (scan, tap, paste).
 6. **Email/password is the account anchor.** Passkey and social are alternative entry methods, never substitutes. Holder key is server-anchored; recovery is account recovery, not seed-phrase recovery.
-7. **PWA and Sorcha.UI.Web are co-equal.** No spec assumes Sarah is on one device or the other except as a per-screen affordance.
+7. **PWA and Sorcha.UI.Web are co-equal _Sorcha-branded_ citizen surfaces.** No spec assumes Sarah is on one device or the other except as a per-screen affordance. (Council-branded citizen pages were never the subject of #7 — they live in `samples/` per the platform-vs-consumer boundary doc, `2026-05-15-platform-consumer-boundary-design.md`.)
 
 ## What's out of scope
 
