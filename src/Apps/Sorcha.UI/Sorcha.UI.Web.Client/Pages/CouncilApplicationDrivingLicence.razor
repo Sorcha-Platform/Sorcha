@@ -1,0 +1,87 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 126 / T032 — example council application page that demonstrates
+    how a consuming web shell hosts EnrolGateComponent. Stand-in for the
+    real Strathcarron driving-licence form (which lives in the council's
+    own deployment); this page is enough to exercise the cold-start
+    journey end-to-end on the development stack.
+
+    The form below is intentionally minimal — the umbrella's defining beat
+    is the gate that gets the citizen a wallet, not the form behind it.
+    Spec 4/5 picks up the catalogue + form-rendering polish.
+*@
+@page "/strathcarron/services/driving-licence"
+@layout Sorcha.UI.Web.Client.Components.Layout.MainLayout
+@using Sorcha.UI.Core.Components.EnrolGate
+
+<PageTitle>Strathcarron Council — Driving Licence Application</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-2">Apply for a driving licence</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        Strathcarron Council — sample application
+    </MudText>
+
+    <EnrolGateComponent CouncilName="Strathcarron Council"
+                        ServiceLabel="driving licence application"
+                        OnReady="HandleCitizenReadyAsync">
+        @* ChildContent renders only once the citizen has a paired wallet
+           device (Tier 1 / FastPath). *@
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-3">Driving licence application</MudText>
+
+            <MudTextField @bind-Value="_fullName" Label="Full name"
+                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Class="mb-3" />
+
+            <MudDatePicker @bind-Date="_dateOfBirth" Label="Date of birth"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Class="mb-3" />
+
+            <MudTextField @bind-Value="_address" Label="Home address"
+                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Lines="3" Class="mb-4" />
+
+            @if (_submitted)
+            {
+                <MudAlert Severity="Severity.Success" Class="mb-3">
+                    Your application is in. Watch your wallet — your credential will
+                    arrive within a few seconds.
+                </MudAlert>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="SubmitAsync"
+                           Disabled="@(string.IsNullOrWhiteSpace(_fullName))"
+                           data-testid="driving-licence-submit">
+                    Submit application
+                </MudButton>
+            }
+        </MudPaper>
+    </EnrolGateComponent>
+</MudContainer>
+
+@code {
+    private string _fullName = "";
+    private DateTime? _dateOfBirth;
+    private string _address = "";
+    private bool _submitted;
+    private Guid? _platformUserId;
+
+    private Task HandleCitizenReadyAsync(Guid? platformUserId)
+    {
+        _platformUserId = platformUserId;
+        return Task.CompletedTask;
+    }
+
+    private Task SubmitAsync()
+    {
+        // Demo stand-in — real submission against the blueprint application
+        // endpoints lands with Spec 4's application-catalogue work.
+        _submitted = true;
+        return Task.CompletedTask;
+    }
+}

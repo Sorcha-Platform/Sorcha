@@ -15,8 +15,12 @@
 @layout MainLayout
 @using Microsoft.JSInterop
 @using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Enrolment
+@using Sorcha.Wallet.Pwa.Components
 @inject IAuthService Auth
 @inject IEnrolmentService Enrolment
+@inject IAccessTokenStore AccessTokenStore
+@inject IEnrolSessionRedeemer Redeemer
 @inject IJSRuntime Js
 @inject NavigationManager Nav
 @inject ILogger<Enrol> Logger
@@ -24,6 +28,26 @@
 <PageTitle>Enrol this device</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    @if (_redeemError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3" data-testid="enrol-redeem-error">
+            @_redeemError
+        </MudAlert>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   OnClick="@(() => Nav.NavigateTo(""))">
+            Back to wallet
+        </MudButton>
+    }
+    else if (_awaitingConfirm)
+    {
+        <EnrolmentRedeemConfirmDialog
+            DisplayName="@_redeemed?.DisplayName"
+            Email="@(_redeemed?.Email ?? string.Empty)"
+            OnConfirm="HandleConfirmAsync"
+            OnCancel="HandleCancelAsync" />
+    }
+    else
+    {
     <MudText Typo="Typo.h5" Class="mb-3">Enrol this device</MudText>
 
     <MudStepper @ref="_stepper" Linear="true" NonLinear="false">
@@ -133,6 +157,7 @@
             }
         </MudStep>
     </MudStepper>
+    }
 </MudContainer>
 
 @code {
@@ -145,10 +170,87 @@
     private string? _error;
     private EnrolmentResult? _result;
 
+    // Feature 126 — session-redeem flow state.
+    private bool _awaitingConfirm;
+    private EnrolRedeemResult? _redeemed;
+    private string? _redeemError;
+
     protected override async Task OnInitializedAsync()
     {
+        // Feature 126: if the URL carries ?session=<token>, redeem it for a
+        // citizen access token before the normal enrolment flow proceeds.
+        // Surface the bound user's display name + email in a confirmation
+        // dialog before any device-pairing call runs — the friend-scans-by-
+        // mistake mitigation. Once confirmed, the redeemed access token is
+        // persisted via IAccessTokenStore and the existing stepper flow
+        // takes over with the citizen already signed in.
+        var sessionToken = TryReadSessionToken();
+        if (!string.IsNullOrEmpty(sessionToken))
+        {
+            var result = await Redeemer.RedeemAsync(sessionToken);
+            if (result.IsSuccess)
+            {
+                _redeemed = result;
+                _awaitingConfirm = true;
+                return;
+            }
+
+            _redeemError = result.ErrorCode switch
+            {
+                EnrolRedeemErrorCode.Expired => "This link has expired. Open the council page on your other device for a new code.",
+                EnrolRedeemErrorCode.AlreadyUsed => "This link has already been used. If you're trying to set up another device, generate a fresh code from the council page.",
+                EnrolRedeemErrorCode.Network => "Couldn't reach Sorcha. Check your connection and try again.",
+                _ => "This enrolment link couldn't be redeemed.",
+            };
+            return;
+        }
+
         _signedInEmail = await Auth.GetSignedInEmailAsync();
         _signedIn = _signedInEmail is not null;
+    }
+
+    private string? TryReadSessionToken()
+    {
+        var uri = new Uri(Nav.Uri);
+        if (string.IsNullOrEmpty(uri.Query)) return null;
+        var query = uri.Query.TrimStart('?');
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq < 0) continue;
+            var key = Uri.UnescapeDataString(part[..eq]);
+            if (string.Equals(key, "session", StringComparison.Ordinal))
+            {
+                return Uri.UnescapeDataString(part[(eq + 1)..]);
+            }
+        }
+        return null;
+    }
+
+    private async Task HandleConfirmAsync()
+    {
+        if (_redeemed is null || _redeemed.AccessToken is null)
+        {
+            return;
+        }
+
+        var expiresAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, _redeemed.ExpiresInSeconds));
+        await AccessTokenStore.SetAsync(new AccessTokenRecord(
+            _redeemed.AccessToken, expiresAt, _redeemed.Email));
+
+        // Drop the dialog and re-resolve signed-in state. The existing
+        // stepper renders the welcome step with the citizen now signed in.
+        _awaitingConfirm = false;
+        _signedInEmail = _redeemed.Email;
+        _signedIn = true;
+        StateHasChanged();
+    }
+
+    private void HandleCancelAsync()
+    {
+        // Friend-scans-by-mistake path: no device registered. Route to a
+        // landing that makes the "this wasn't for me" outcome clear.
+        Nav.NavigateTo("cancelled-enrolment");
     }
 
     private async Task EnrolAsync()
