@@ -1,0 +1,183 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 127 / PR-C — Strathcarron Council Blue Badge application
+    page. Composes the F126 EnrolGateComponent (gets the citizen signed
+    in and wallet-paired) with the new F127 CredentialGateComponent
+    (gets the citizen's AssuredIdentityCredential presented) around the
+    Blue Badge form (gets the citizen-specific fields submitted).
+
+    Page-level responsibilities:
+      (1) submit the verify-identity action against F111's lifecycle
+          endpoint; receive (PresentationRequestId, AuthorizationRequestUri,
+          ClaimsFetchToken); hand to CredentialGateComponent.
+      (2) receive disclosed claims from the gate's OnPresented callback;
+          pass them to BlueBadgeForm for autofill.
+      (3) on form submit, send the second action (submit-blue-badge) to
+          the blueprint runtime with the form payload + disclosed claims.
+
+    The blueprint-submission HTTP calls (1) and (3) are placeholders for
+    PR-D wiring — operator runs the demo against the local Docker stack;
+    the page renders a clear "the demo path needs blueprint-service
+    plumbing" notice when those calls fail.
+*@
+@page "/services/blue-badge"
+@layout Sorcha.Sample.StrathcarronPortal.Layout.CouncilLayout
+@inject HttpClient Http
+@inject Microsoft.Extensions.Logging.ILogger<BlueBadge> Logger
+
+<PageTitle>Strathcarron Council — Blue Badge</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-2">Apply for a Blue Badge</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        Strathcarron Council — for residents with limited mobility, vision impairments, or registered carers.
+    </MudText>
+
+    <EnrolGateComponent CouncilName="Strathcarron Council"
+                        ServiceLabel="Blue Badge application"
+                        OnReady="HandleCitizenReadyAsync">
+        @if (_initError is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                <strong>We couldn't start the Blue Badge journey:</strong> @_initError
+            </MudAlert>
+        }
+        else if (_init is null)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-3" />
+            <MudText Typo="Typo.body2">Setting up your Blue Badge application…</MudText>
+        }
+        else
+        {
+            <CredentialGateComponent Init="@_init"
+                                     OnPresented="HandlePresentedAsync"
+                                     LinkBackUrl="/services/driving-licence"
+                                     NameOfMissingCredentialType="Assured Identity">
+                <BlueBadgeForm Disclosed="@_disclosed"
+                               OnSubmit="HandleFormSubmitAsync" />
+            </CredentialGateComponent>
+        }
+    </EnrolGateComponent>
+</MudContainer>
+
+@code {
+    private Guid? _platformUserId;
+    private CredentialGateInit? _init;
+    private string? _initError;
+    private DisclosedClaimsResponse? _disclosed;
+
+    private async Task HandleCitizenReadyAsync(Guid? platformUserId)
+    {
+        _platformUserId = platformUserId;
+
+        // Submit the verify-identity starting action to F111's lifecycle to
+        // mint a presentation request. The endpoint shape is currently a
+        // placeholder until PR-D wires the blueprint-runtime client; for now
+        // the page surfaces a clear "needs Docker stack" notice if the call
+        // fails (e.g. running against an empty register).
+        try
+        {
+            // Placeholder — real wire-up reads blueprint id from the seed
+            // walkthrough's state.json. For the demo path, the operator
+            // brings up the Docker stack, runs setup-blue-badge-demo.ps1,
+            // and the page consumes the resulting blueprint id from config
+            // (PR-D scope). Until then, this stub surfaces gracefully.
+            var blueprintId = await ResolveBlueprintIdAsync();
+            if (blueprintId is null)
+            {
+                _initError = "the Blue Badge blueprint hasn't been provisioned on this stack yet. Run walkthroughs/Strathcarron/setup-blue-badge-demo.ps1 against the local Docker stack and reload this page.";
+                return;
+            }
+
+            var initResponse = await Http.PostAsJsonAsync(
+                $"/api/blueprint/blueprints/{blueprintId}/instances",
+                new
+                {
+                    startingActionId = "verify-identity",
+                    payload = new { },
+                    submitterPlatformUserId = platformUserId
+                });
+
+            if (!initResponse.IsSuccessStatusCode)
+            {
+                _initError = $"the council's application service returned {(int)initResponse.StatusCode}. Try again in a moment.";
+                Logger.LogWarning(
+                    "Blue Badge init returned {Status}", initResponse.StatusCode);
+                return;
+            }
+
+            var init = await initResponse.Content.ReadFromJsonAsync<InitiationProbeShape>();
+            if (init?.PresentationRequestId is null || init.AuthorizationRequestUri is null)
+            {
+                _initError = "the council's application service didn't return the credential-gate fields we need.";
+                return;
+            }
+
+            _init = new CredentialGateInit(
+                PresentationRequestId: init.PresentationRequestId.Value,
+                AuthorizationRequestUri: init.AuthorizationRequestUri,
+                ClaimsFetchToken: init.ClaimsFetchToken);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initiate Blue Badge verify-identity action");
+            _initError = "we couldn't reach the council's application service. Try again in a moment.";
+        }
+    }
+
+    private Task<Guid?> ResolveBlueprintIdAsync()
+    {
+        // PR-C placeholder. PR-D wires this to a config endpoint or env var.
+        // The demo path resolves the blueprint id from
+        // walkthroughs/Strathcarron/state.json after setup-blue-badge-demo.ps1
+        // populates it. Returning null surfaces the operator-facing error
+        // state above gracefully.
+        return Task.FromResult<Guid?>(null);
+    }
+
+    private Task HandlePresentedAsync(DisclosedClaimsResponse disclosed)
+    {
+        _disclosed = disclosed;
+        Logger.LogInformation(
+            "Blue Badge gate cleared; {ClaimCount} claims disclosed for autofill",
+            disclosed.Claims?.Count ?? 0);
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleFormSubmitAsync(BlueBadgeForm.BlueBadgeSubmission submission)
+    {
+        if (_init is null || _disclosed is null) return;
+
+        try
+        {
+            await Http.PostAsJsonAsync(
+                $"/api/blueprint/presentations/{_init.PresentationRequestId:D}/submit-action",
+                new
+                {
+                    actionId = "submit-blue-badge",
+                    payload = new
+                    {
+                        mobilityCondition = submission.MobilityCondition,
+                        previousBadgeNumber = submission.PreviousBadgeNumber
+                    }
+                });
+            // BlueBadgeForm renders the "Watch your wallet" success copy on its
+            // own; we don't need to push state here. PR-D smoke-tests the
+            // end-to-end issuance against the Docker stack.
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Blue Badge form submission failed");
+        }
+    }
+
+    /// <summary>Tolerant shape for the F111 initiation response — fields may be absent if the platform-side wiring isn't finished yet.</summary>
+    private sealed record InitiationProbeShape
+    {
+        public Guid? PresentationRequestId { get; init; }
+        public string? AuthorizationRequestUri { get; init; }
+        public string? ClaimsFetchToken { get; init; }
+    }
+}

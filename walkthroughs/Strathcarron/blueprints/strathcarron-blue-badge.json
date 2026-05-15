@@ -1,0 +1,79 @@
+{
+  "title": "Strathcarron Blue Badge",
+  "description": "Feature 127 demo blueprint — Spec 4 of the Strathcarron citizen arc. Citizen returns to the council weeks after their cold-start, applies for a Blue Badge parking permit. The three-action chain gates the application on the citizen's existing AssuredIdentityCredential (issued by F126 / Spec 3), pre-populates the form from the disclosed claims, and issues a BlueBadgeCredential into the same Sorcha Wallet on success. F111 timebound presentation lifecycle is the substrate; the new SorchaWalletPresentationConsumer is the verifier (Sorcha.Verifier.Engine server-side).",
+  "instanceReference": {
+    "prefix": "BB",
+    "components": [
+      { "field": "/mobilityCondition", "transform": "FirstWord", "chars": 4 }
+    ]
+  },
+  "participants": [
+    { "id": "citizen", "displayName": "Citizen", "open": true },
+    { "id": "licensing-officer", "displayName": "Licensing Officer" }
+  ],
+  "actions": [
+    {
+      "id": "verify-identity",
+      "title": "Verify identity from your Sorcha Wallet",
+      "description": "Citizen presents their AssuredIdentityCredential from their Sorcha Wallet PWA. The credential's disclosed claims (givenName, familyName, dateOfBirth, homeAddress) pre-populate the Blue Badge form on the council page.",
+      "isStartingAction": true,
+      "actor": "citizen",
+      "credentialRequirements": [
+        {
+          "type": "AssuredIdentityCredential",
+          "presentationSource": "SorchaWallet",
+          "requiredClaims": [
+            { "claimName": "givenName" },
+            { "claimName": "familyName" },
+            { "claimName": "dateOfBirth" },
+            { "claimName": "homeAddress" }
+          ],
+          "revocationCheckPolicy": "FailClosed",
+          "description": "Strathcarron Council issues the citizen's Assured Identity credential at the end of the Spec 3 driving-licence flow. The Blue Badge form gates on it so the citizen doesn't re-type identity fields they've already given the council."
+        }
+      ],
+      "next": "submit-blue-badge"
+    },
+    {
+      "id": "submit-blue-badge",
+      "title": "Submit Blue Badge application",
+      "description": "Citizen fills the Blue Badge-specific fields (reason for the badge + optional previous badge number) and submits. Identity fields are autofilled from the disclosed AssuredIdentityCredential claims.",
+      "actor": "citizen",
+      "schema": {
+        "type": "object",
+        "required": ["mobilityCondition"],
+        "properties": {
+          "mobilityCondition": {
+            "type": "string",
+            "title": "Reason for the Blue Badge",
+            "description": "Tell us why you need a Blue Badge — e.g. limited mobility, vision impairment, registered carer."
+          },
+          "previousBadgeNumber": {
+            "type": "string",
+            "title": "Previous Blue Badge number (if any)",
+            "description": "If you've held a Blue Badge before, enter the previous number so we can find your records."
+          }
+        }
+      },
+      "x-persona": {
+        "presentation": "verify-identity"
+      },
+      "next": "issue-blue-badge"
+    },
+    {
+      "id": "issue-blue-badge",
+      "title": "Issue Blue Badge",
+      "description": "Strathcarron Council reviews the application and issues a BlueBadgeCredential into the citizen's Sorcha Wallet via SorchaLocalWallet target audience.",
+      "actor": "licensing-officer",
+      "credentialIssuance": {
+        "credentialType": "BlueBadgeCredential",
+        "subject": "citizen",
+        "targetAudience": "SorchaLocalWallet"
+      }
+    }
+  ],
+  "routes": [
+    { "from": "verify-identity", "to": "submit-blue-badge" },
+    { "from": "submit-blue-badge", "to": "issue-blue-badge" }
+  ]
+}
