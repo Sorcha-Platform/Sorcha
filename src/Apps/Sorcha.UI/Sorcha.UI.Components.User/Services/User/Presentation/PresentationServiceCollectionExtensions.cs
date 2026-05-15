@@ -12,13 +12,13 @@ namespace Sorcha.UI.Core.Services.User.Presentation;
 /// services. Consumer hosts (the Strathcarron sample portal in
 /// <c>samples/strathcarron-portal/</c>, or any third-party council
 /// deployment) call <see cref="AddSorchaPresentationGate"/> from their
-/// <c>Program.cs</c> to wire <see cref="BlueprintHubConnection"/> +
+/// <c>Program.cs</c> to wire <see cref="PresentationHubConnection"/> +
 /// <see cref="IPresentationSignal"/>.
 /// </summary>
 public static class PresentationServiceCollectionExtensions
 {
     /// <summary>
-    /// Register <see cref="BlueprintHubConnection"/> and
+    /// Register <see cref="PresentationHubConnection"/> and
     /// <see cref="IPresentationSignal"/>. The hub connects unauthenticated
     /// (council pages have no user session); subscription is keyed by the
     /// high-entropy presentation request id.
@@ -40,7 +40,7 @@ public static class PresentationServiceCollectionExtensions
         string baseAddress,
         Func<IServiceProvider, Func<Task<string?>>?>? accessTokenProvider = null)
     {
-        services.AddScoped<BlueprintHubConnection>(sp =>
+        services.AddScoped<PresentationHubConnection>(sp =>
         {
             string hubBaseUrl;
             if (Uri.TryCreate(baseAddress, UriKind.Absolute, out var uri))
@@ -52,9 +52,9 @@ public static class PresentationServiceCollectionExtensions
                 hubBaseUrl = baseAddress;
             }
 
-            var logger = sp.GetRequiredService<ILogger<BlueprintHubConnection>>();
+            var logger = sp.GetRequiredService<ILogger<PresentationHubConnection>>();
             var tokenProvider = accessTokenProvider?.Invoke(sp);
-            return new BlueprintHubConnection(hubBaseUrl, tokenProvider, logger);
+            return new PresentationHubConnection(hubBaseUrl, tokenProvider, logger);
         });
 
         services.AddHttpClient<IPresentationSignal, PresentationSignal>(client =>

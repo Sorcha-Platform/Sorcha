@@ -22,11 +22,11 @@ namespace Sorcha.UI.Core.Services;
 /// <para>The reconnect schedule (0/2/5/10/30 s) mirrors the other hub
 /// wrappers in this library.</para>
 /// </remarks>
-public sealed class BlueprintHubConnection : IAsyncDisposable
+public sealed class PresentationHubConnection : IAsyncDisposable
 {
     private readonly string _hubUrl;
     private readonly Func<Task<string?>>? _accessTokenProvider;
-    private readonly ILogger<BlueprintHubConnection> _logger;
+    private readonly ILogger<PresentationHubConnection> _logger;
 
     private HubConnection? _hubConnection;
     private readonly HashSet<string> _subscribedGroups = new(StringComparer.Ordinal);
@@ -45,10 +45,10 @@ public sealed class BlueprintHubConnection : IAsyncDisposable
     /// Pass <paramref name="accessTokenProvider"/> = <c>null</c> for
     /// unauthenticated council-page subscriptions.
     /// </summary>
-    public BlueprintHubConnection(
+    public PresentationHubConnection(
         string baseUrl,
         Func<Task<string?>>? accessTokenProvider,
-        ILogger<BlueprintHubConnection> logger)
+        ILogger<PresentationHubConnection> logger)
     {
         _hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/blueprint";
         _accessTokenProvider = accessTokenProvider;

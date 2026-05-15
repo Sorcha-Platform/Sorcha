@@ -10,7 +10,7 @@ namespace Sorcha.UI.Core.Services.User.Presentation;
 
 /// <summary>
 /// Default <see cref="IPresentationSignal"/> implementation backed by
-/// <see cref="BlueprintHubConnection"/> (SignalR primary) and a periodic poll
+/// <see cref="PresentationHubConnection"/> (SignalR primary) and a periodic poll
 /// against F111's <c>GET /api/presentations/{id}/status</c> endpoint
 /// (fallback). Mirrors F126's <c>EnrolPairingSignal</c> shape.
 /// </summary>
@@ -25,7 +25,7 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
         "success", "decline", "abandoned", "abandoned-with-late-outcome", "expired"
     };
 
-    private readonly BlueprintHubConnection _hub;
+    private readonly PresentationHubConnection _hub;
     private readonly HttpClient _http;
     private readonly TimeProvider _time;
     private readonly ILogger<PresentationSignal> _logger;
@@ -42,7 +42,7 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
     public event Action? OnManualRecoveryRequired;
 
     public PresentationSignal(
-        BlueprintHubConnection hub,
+        PresentationHubConnection hub,
         HttpClient http,
         TimeProvider timeProvider,
         ILogger<PresentationSignal> logger)
@@ -92,7 +92,19 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
         // miss the first event due to subscribe-race, and a late-arriving
         // event would otherwise hang the council page. The loop self-terminates
         // when a terminal signal is received.
-        _pollingLoop = PollingLoopAsync(winner == hubStart ? null : "hub-timeout", _cts.Token);
+        //
+        // Determine engageReason — distinguishes "hub never connected" from
+        // "hub healthy, polling running for safety":
+        //   * winner == deadline → hub-connect timed out; polling is the primary.
+        //   * winner == hubStart but !_hub.IsConnected → hub failed fast (the
+        //     typical council-page case where the hub URL isn't routable);
+        //     polling is the primary.
+        //   * winner == hubStart AND _hub.IsConnected → hub is up; polling is
+        //     belt-and-braces for late events. No fallback signal needed.
+        var engageReason = winner == hubStart
+            ? (_hub.IsConnected ? null : "hub-connect-failed")
+            : "hub-timeout";
+        _pollingLoop = PollingLoopAsync(engageReason, _cts.Token);
     }
 
     public Task StopAsync() => StopInternalAsync();
