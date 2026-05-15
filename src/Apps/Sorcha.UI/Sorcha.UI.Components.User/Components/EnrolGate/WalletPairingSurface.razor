@@ -25,6 +25,18 @@
         </p>
         <button type="button" @onclick="MintAsync" class="enrol-pairing__retry">Try again</button>
     }
+    else if (_minted is not null && _expired)
+    {
+        <p class="enrol-pairing__status enrol-pairing__status--expired" data-testid="enrol-pairing-expired">
+            QR expired — let's get you a new one.
+        </p>
+        <button type="button"
+                class="enrol-pairing__regenerate"
+                data-testid="enrol-regenerate"
+                @onclick="MintAsync">
+            Regenerate code
+        </button>
+    }
     else if (_minted is not null)
     {
         <h2 class="enrol-pairing__heading">@HeadingText</h2>
@@ -70,6 +82,8 @@
     private string? _mintError;
     private string _statusText = "Waiting for your phone…";
     private bool _manualRecovery;
+    private bool _expired;
+    private CancellationTokenSource? _expiryWatcher;
 
     private string HeadingText => Mode == TierMode.MiniGate
         ? "Let's pair this device with your wallet"
@@ -95,6 +109,9 @@
         _minting = true;
         _mintError = null;
         _manualRecovery = false;
+        _expired = false;
+        _expiryWatcher?.Cancel();
+        _expiryWatcher = new CancellationTokenSource();
         StateHasChanged();
 
         try
@@ -106,6 +123,10 @@
                 return;
             }
             _minted = await response.Content.ReadFromJsonAsync<MintEnrolSessionResponseShape>();
+            if (_minted is not null)
+            {
+                _ = WatchForExpiryAsync(_minted.ExpiresAt, _expiryWatcher.Token);
+            }
         }
         catch (Exception)
         {
@@ -118,8 +139,38 @@
         }
     }
 
+    private async Task WatchForExpiryAsync(DateTimeOffset expiresAt, CancellationToken ct)
+    {
+        var delta = expiresAt - DateTimeOffset.UtcNow;
+        if (delta <= TimeSpan.Zero)
+        {
+            _expired = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(delta, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (ct.IsCancellationRequested) return;
+        if (_signalReceived) return;
+
+        _expired = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private bool _signalReceived;
+
     private async Task HandleDeviceEnrolled(Guid deviceId)
     {
+        _signalReceived = true;
+        _expiryWatcher?.Cancel();
         _statusText = "Phone ready ✓ — continuing";
         StateHasChanged();
         if (OnPaired.HasDelegate)
@@ -147,6 +198,9 @@
     {
         PairingSignal.OnDeviceEnrolled -= HandleDeviceEnrolled;
         PairingSignal.OnManualRecoveryRequired -= HandleManualRecovery;
+        _expiryWatcher?.Cancel();
+        _expiryWatcher?.Dispose();
+        _expiryWatcher = null;
         try { await PairingSignal.StopAsync(); } catch { /* tolerate dispose errors */ }
     }
 

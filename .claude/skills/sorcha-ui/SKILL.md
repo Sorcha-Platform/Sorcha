@@ -272,6 +272,34 @@ User-facing components shared between `Sorcha.UI` (web) and `Sorcha.Wallet.Pwa` 
 
 Full placement matrix + worked examples: `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/README.md`. CI bundle-hygiene gate: `scripts/check-pwa-bundle.ps1` (wired into `nuget-ci.yml`) asserts forbidden assemblies absent + `Sorcha.UI.Components.User` present in the PWA bundle on every push.
 
+## Council application enrolment gate (Feature 126)
+
+Drop-in component `EnrolGateComponent` in `Sorcha.UI.Components.User/Components/EnrolGate/` (namespace `Sorcha.UI.Core.Components.EnrolGate`). Any council page that needs to onboard a citizen as a side-effect of an application form wraps the form in it:
+
+```razor
+<EnrolGateComponent CouncilName="Strathcarron Council"
+                    ServiceLabel="driving licence application"
+                    OnReady="@HandleCitizenReadyAsync">
+    <DrivingLicenceForm />
+</EnrolGateComponent>
+```
+
+The component owns:
+- Tier detection (parallel `/whoami` + `/me/devices` probes, 200 ms timeout each).
+- Surface branching — `PreflightSignupSurface` (Tier 3 / ColdStart) → `WalletPairingSurface` with `TierMode.MiniGate` (Tier 2) or `TierMode.PostSignup` (Tier 3 post-signup) → `ChildContent` (Tier 1 / FastPath).
+- Session-token mint + lifecycle: calls `POST /api/auth/enrol-session`, renders the returned QR via `HybridQrAffordance`, watches expiry via a `Task.Delay(ExpiresAt - now)` and flips to a regenerate affordance when the token times out without a pairing signal.
+- Cross-device coordination: subscribes to `IEnrolPairingSignal.OnDeviceEnrolled` (`TenantHubConnection.OnDeviceEnrolled` + 3-second `/me/devices` poll fallback) and fires `OnReady` once the citizen reaches FastPath.
+
+`HybridQrAffordance.Layout` (enum: `Auto` / `QrFirst` / `LinkFirst`) controls prominence. `Auto` (default) emits an `enrol-hybrid-qr--auto` CSS class so a `@media (max-width: 600px)` rule can swap ordering on mobile — no `IJSRuntime` probe needed.
+
+**PWA-side wire-up** lives in `Sorcha.Wallet.Pwa`:
+- `Pages/Enrol.razor` reads `?session=<token>` from the URL, calls `IEnrolSessionRedeemer.RedeemAsync`, renders `EnrolmentRedeemConfirmDialog` with the bound user's email + display name (the friend-scans-by-mistake mitigation), then on Confirm stores the access token via `IAccessTokenStore` and falls through to the existing F114 device-pairing stepper.
+- Cancel from the dialog routes to `Pages/CancelledEnrolment.razor` — no device registered.
+
+Test patterns (UI.Core.Tests):
+- `BunitContext` + `JSInterop.Mode = JSRuntimeMode.Loose` for any EnrolGate component that calls JS (clipboard, QR SVG render).
+- Stub HttpClient via a custom `HttpMessageHandler` for the gate's whoami / mint round-trips — `EnrolGateComponent.ResolveBoundPlatformUserIdAsync` will hang the test if the gateway URL doesn't resolve.
+
 ## Related Skills
 
 - See the **blazor** skill for Blazor WASM component architecture
