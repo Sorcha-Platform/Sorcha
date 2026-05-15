@@ -238,10 +238,16 @@ builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresent
 
 // Feature 127 — single-use ClaimsFetchToken store. Minted by InitiateAsync
 // (for Sorcha-wallet only); consumed atomically by the disclosed-claims
-// endpoint (T034, lands next turn). Backed by Redis via the existing
-// IConnectionMultiplexer the F111 stores already share.
+// endpoint. Backed by Redis via the existing IConnectionMultiplexer the
+// F111 stores already share.
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IClaimsFetchTokenStore,
     Sorcha.Blueprint.Service.Storage.Presentations.RedisClaimsFetchTokenStore>();
+
+// Feature 127 — short-TTL plaintext stash of disclosed claims, written
+// alongside the outcome tx for the disclosed-claims endpoint to read.
+// Avoids re-decrypting the register tx on every council-page fetch.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IDisclosedClaimsStore,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisDisclosedClaimsStore>();
 
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.AbandonmentSweeper>();
 

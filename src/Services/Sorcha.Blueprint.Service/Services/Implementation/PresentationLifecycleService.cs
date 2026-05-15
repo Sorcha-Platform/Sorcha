@@ -55,6 +55,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly IHaipServiceClient? _haipClient;
     private readonly IPendingPresentationStore _pendingStore;
     private readonly IClaimsFetchTokenStore? _claimsFetchTokenStore;
+    private readonly IDisclosedClaimsStore? _disclosedClaimsStore;
     private readonly IHubContext<BlueprintHub, IBlueprintHubClient>? _hubContext;
     private readonly IEnumerable<IPresentationConsumer> _consumers;
     private readonly IOptions<PresentationLifecycleOptions> _options;
@@ -79,6 +80,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IRegisterServiceClient? registerClient = null,
         IPresentationSealCoordinator? sealCoordinator = null,
         IClaimsFetchTokenStore? claimsFetchTokenStore = null,
+        IDisclosedClaimsStore? disclosedClaimsStore = null,
         IHubContext<BlueprintHub, IBlueprintHubClient>? hubContext = null)
     {
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
@@ -95,6 +97,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _registerClient = registerClient;
         _sealCoordinator = sealCoordinator;
         _claimsFetchTokenStore = claimsFetchTokenStore;
+        _disclosedClaimsStore = disclosedClaimsStore;
         _hubContext = hubContext;
     }
 
@@ -563,6 +566,39 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             built.TxId, presentationRequestId, outcome.Kind, finalSentinel, isLateAfterAbandonment);
         activity?.SetTag("outcome.kind", outcome.Kind.ToString());
         activity?.SetTag("tx.id", built.TxId);
+
+        // Feature 127 — on success, stash disclosed claims in Redis so the
+        // council page's claims-fetch endpoint can return them in plaintext
+        // without re-decrypting the register record. TTL = remaining validity
+        // window. MUST happen BEFORE the hub publish so the council page can
+        // race-safely fetch claims the moment it receives the signal.
+        if (outcome.Kind == PresentationOutcomeKind.Success &&
+            outcome.VerifiedClaims is not null &&
+            _disclosedClaimsStore is not null)
+        {
+            var remainingTtl = pending.CreatedAt
+                .AddSeconds(pending.ValidityWindowSeconds) - _clock.UtcNow;
+            // Floor at 10 s so even a near-expiry outcome leaves some room for
+            // the council page to fetch.
+            if (remainingTtl < TimeSpan.FromSeconds(10))
+            {
+                remainingTtl = TimeSpan.FromSeconds(10);
+            }
+            try
+            {
+                await _disclosedClaimsStore.StoreAsync(
+                    presentationRequestId,
+                    outcome.VerifiedClaims,
+                    remainingTtl,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to stash disclosed claims for requestId {RequestId}; council-page autofill will fail back to manual entry",
+                    presentationRequestId);
+            }
+        }
 
         // Feature 127 — thin-signal hub publish so council pages subscribed to
         // BlueprintHubGroups.PresentationNonce learn of the outcome with low
