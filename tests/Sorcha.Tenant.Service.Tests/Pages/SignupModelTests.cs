@@ -29,7 +29,8 @@ public class SignupModelTests
             _registrationService.Object,
             NullLogger<SignupModel>.Instance,
             Options.Create(new DemoEnvironmentSettings()),
-            _socialLoginService.Object);
+            _socialLoginService.Object,
+            Options.Create(new ReturnToAllowlistOptions()));
 
         var httpContext = new DefaultHttpContext();
         model.PageContext = new PageContext(new ActionContext(

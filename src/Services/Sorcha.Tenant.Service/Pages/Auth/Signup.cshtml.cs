@@ -20,6 +20,7 @@ public class SignupModel : PageModel
     private readonly ILogger<SignupModel> _logger;
     private readonly DemoEnvironmentSettings _demoSettings;
     private readonly ISocialLoginService _socialLoginService;
+    private readonly ReturnToAllowlistOptions _returnToAllowlist;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SignupModel"/> class.
@@ -28,12 +29,14 @@ public class SignupModel : PageModel
         IRegistrationService registrationService,
         ILogger<SignupModel> logger,
         IOptions<DemoEnvironmentSettings> demoSettings,
-        ISocialLoginService socialLoginService)
+        ISocialLoginService socialLoginService,
+        IOptions<ReturnToAllowlistOptions> returnToAllowlist)
     {
         _registrationService = registrationService;
         _logger = logger;
         _demoSettings = demoSettings.Value;
         _socialLoginService = socialLoginService;
+        _returnToAllowlist = returnToAllowlist?.Value ?? new ReturnToAllowlistOptions();
     }
 
     /// <summary>Demo-environment banner flag — when true the page shows the warning notice.</summary>
@@ -186,11 +189,29 @@ public class SignupModel : PageModel
     }
 
     /// <summary>
-    /// Validates a return URL to prevent open redirects.
+    /// Validates a return URL to prevent open redirects. Accepts internal
+    /// relative paths; rejects protocol-relative and absolute URLs.
     /// </summary>
+    /// <remarks>
+    /// Existing callers/tests use this signature; the Feature 126 overload
+    /// <see cref="IsValidReturnUrl(string?, ReturnToAllowlistOptions)"/> adds
+    /// allowlist-aware support for absolute council-page URLs.
+    /// </remarks>
     internal static bool IsValidReturnUrl(string? url)
     {
         if (string.IsNullOrEmpty(url)) return false;
         return url.StartsWith('/') && !url.StartsWith("//");
+    }
+
+    /// <summary>
+    /// Feature 126 — validates a return URL against the relative-only rules
+    /// PLUS the configured external-host allowlist. Council pages
+    /// (strathcarron.gov, *.strathcarron.gov, etc.) hit this path; everything
+    /// else falls back to the relative-only rule.
+    /// </summary>
+    internal static bool IsValidReturnUrl(string? url, ReturnToAllowlistOptions allowlist)
+    {
+        if (IsValidReturnUrl(url)) return true;
+        return allowlist.IsAllowed(url);
     }
 }
