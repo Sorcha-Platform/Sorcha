@@ -1,0 +1,77 @@
+@namespace Sorcha.UI.Core.Components.EnrolGate
+@using Sorcha.UI.Core.Services.User.Enrolment
+@inject ITierProbeService TierProbe
+@inject IEnrolPairingSignal PairingSignal
+
+@*
+    Feature 126 — top-level enrolment gate component.
+    Consumers wrap a form in this; ChildContent only renders once the citizen
+    has reached the FastPath tier (signed in + at least one wallet device).
+
+    PR-A skeleton: tier branching renders placeholder text for ColdStart /
+    MiniGate. Tier-specific surfaces (PreflightSignupSurface,
+    WalletPairingSurface) replace those placeholders in Phase 3 (T031) and
+    Phase 5 (T051).
+*@
+
+@if (_isProbing)
+{
+    <p class="enrol-gate__probing">Checking your account…</p>
+}
+else
+{
+    switch (_tier)
+    {
+        case CitizenTier.FastPath:
+            @ChildContent
+            break;
+        case CitizenTier.MiniGate:
+            <p class="enrol-gate__placeholder enrol-gate__placeholder--mini-gate">
+                Let's pair this device with your wallet. (Phase 5)
+            </p>
+            break;
+        case CitizenTier.ColdStart:
+            <p class="enrol-gate__placeholder enrol-gate__placeholder--cold-start">
+                You'll need an account and a wallet to continue. (Phase 3)
+            </p>
+            break;
+    }
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Display name for the council whose page is hosting the gate. Used by
+    /// tier-specific copy in Phase 3+.
+    /// </summary>
+    [Parameter] public string CouncilName { get; set; } = "this council";
+
+    /// <summary>
+    /// Fired once the citizen reaches <see cref="CitizenTier.FastPath"/>, with
+    /// the bound platform user id when available. Consumers typically use this
+    /// to restore form state.
+    /// </summary>
+    [Parameter] public EventCallback<Guid?> OnReady { get; set; }
+
+    private bool _isProbing = true;
+    private CitizenTier _tier = CitizenTier.ColdStart;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isProbing = true;
+        try
+        {
+            _tier = await TierProbe.ProbeAsync(CancellationToken.None);
+        }
+        finally
+        {
+            _isProbing = false;
+        }
+
+        if (_tier == CitizenTier.FastPath && OnReady.HasDelegate)
+        {
+            await OnReady.InvokeAsync(null);
+        }
+    }
+}

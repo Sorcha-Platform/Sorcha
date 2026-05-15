@@ -5,9 +5,12 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Sorcha.AddressLookup;
+using Sorcha.AtomicCache.Extensions;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.Tenant.Service.Hubs;
+using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Services;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceDefaults.Hubs;
 using Sorcha.ServiceDefaults.Storage;
@@ -145,6 +148,14 @@ builder.Services.AddHttpClient<Sorcha.Tenant.Service.Services.IPersonaCryptoClie
     client.BaseAddress = new Uri(walletBase);
 });
 
+// Feature 126: enrolment-session service + atomic single-use JTI registry.
+// AddAtomicDistributedCache is idempotent across services (Feature 113 primitive).
+builder.Services.AddAtomicDistributedCache(builder.Configuration, "Tenant");
+builder.Services.AddSingleton<EnrolSessionMetrics>();
+builder.Services.AddScoped<IEnrolSessionService, EnrolSessionService>();
+builder.Services.Configure<ReturnToAllowlistOptions>(
+    builder.Configuration.GetSection(ReturnToAllowlistOptions.SectionName));
+
 // Feature 103 US3: address lookup service + providers. postcodes.io is
 // registered as the default-on provider (no key, no rate limit, MIT). OS
 // Places is conditionally registered when Tenant:AddressLookup:OsPlaces:ApiKey
@@ -234,6 +245,7 @@ app.MapEventEndpoints();
 app.MapRegisterSubscriptionEndpoints();
 app.MapRegisterInvitationEndpoints();
 app.MapTrustEndpoints();
+app.MapEnrolSessionEndpoints();
 app.MapRazorPages();
 
 // Feature 118 — map TenantHub at /hubs/tenant (US2). Routed via API Gateway.

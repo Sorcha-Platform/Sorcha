@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Service.Hubs;
 using Sorcha.Tenant.Service.Models;
 
 namespace Sorcha.Tenant.Service.Services;
@@ -15,13 +17,21 @@ namespace Sorcha.Tenant.Service.Services;
 public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
 {
     private readonly TenantDbContext _db;
+    private readonly IHubContext<TenantHub, ITenantHubClient>? _hubContext;
     private readonly ILogger<PlatformUserDeviceService> _logger;
 
     /// <summary>Initialises a new instance of the <see cref="PlatformUserDeviceService"/> class.</summary>
-    public PlatformUserDeviceService(TenantDbContext db, ILogger<PlatformUserDeviceService> logger)
+    public PlatformUserDeviceService(
+        TenantDbContext db,
+        ILogger<PlatformUserDeviceService> logger,
+        IHubContext<TenantHub, ITenantHubClient>? hubContext = null)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        // Hub context is optional so unit tests without SignalR wiring can
+        // construct the service directly. Production registration is via
+        // AddSorchaHub which guarantees the hub context exists.
+        _hubContext = hubContext;
     }
 
     /// <inheritdoc />
@@ -115,7 +125,35 @@ public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
             "platform={Platform}, statusList={StatusListId}#{StatusListIndex}, exp={Exp:O})",
             device.Id, platformUserId, platform, statusListId, statusListIndex, delegationExpiresAt);
 
+        // Feature 126: notify any subscribed council pages that this user's
+        // wallet device is now enrolled. Try/log/swallow — a hub-publish
+        // failure must not fail the device registration.
+        await PublishDeviceEnrolledAsync(platformUserId, device.Id, ct).ConfigureAwait(false);
+
         return device;
+    }
+
+    private async Task PublishDeviceEnrolledAsync(Guid platformUserId, Guid deviceId, CancellationToken ct)
+    {
+        if (_hubContext is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _hubContext.Clients
+                .Group(TenantHubGroups.User(platformUserId))
+                .DeviceEnrolled(platformUserId, deviceId)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to publish TenantHub.DeviceEnrolled (platformUser={PlatformUserId}, device={DeviceId}) — registration committed regardless",
+                platformUserId, deviceId);
+        }
     }
 
     /// <inheritdoc />
