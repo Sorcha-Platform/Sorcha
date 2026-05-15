@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT
+     Copyright (c) 2026 Sorcha Contributors
+     Placeholder council mark for the Strathcarron sample portal. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Strathcarron Council">
+  <!-- Shield outline -->
+  <path d="M32 4 L56 12 L56 30 C56 46 44 56 32 60 C20 56 8 46 8 30 L8 12 Z"
+        fill="#142844" stroke="#F6F2E7" stroke-width="2"/>
+  <!-- Saltire (St Andrew's cross style accent) -->
+  <path d="M16 18 L48 50 M48 18 L16 50"
+        stroke="#F6F2E7" stroke-width="2" opacity="0.35"/>
+  <!-- Monogram -->
+  <text x="32" y="40" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="22" font-weight="700" fill="#F6F2E7">SC</text>
+</svg>

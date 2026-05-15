@@ -1,0 +1,18 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+*@
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(CouncilLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Page not found — Strathcarron Council</PageTitle>
+        <LayoutView Layout="@typeof(CouncilLayout)">
+            <h1>Page not found</h1>
+            <p>Sorry, we couldn't find that page.</p>
+            <p><a href="/">Back to council services</a></p>
+        </LayoutView>
+    </NotFound>
+</Router>

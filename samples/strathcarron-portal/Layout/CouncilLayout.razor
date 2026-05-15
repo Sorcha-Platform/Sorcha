@@ -1,0 +1,23 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Default layout for the Strathcarron Council sample portal.
+    Plain HTML/CSS chrome (no MudBlazor in the layout itself) so the
+    council site reads as a council site, not a MudBlazor app. The
+    Sorcha-provided gate components inside the chrome carry their
+    MudBlazor look — which usefully signals the moment Sorcha takes
+    over the surface.
+*@
+@inherits LayoutComponentBase
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<CouncilHeader />
+<main>
+    @Body
+</main>
+<CouncilFooter />

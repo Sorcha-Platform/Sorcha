@@ -11,11 +11,11 @@
 docker-compose up -d
 ```
 
-New service in the stack: `strathcarron-portal` at `http://localhost:5300/`. Confirm:
+New service in the stack: `strathcarron-portal` at `http://localhost:5400/`. Confirm:
 
 ```pwsh
 docker-compose ps strathcarron-portal
-curl http://localhost:5300/
+curl http://localhost:5400/
 ```
 
 The Strathcarron Council home page renders with two service cards: Driving Licence and Blue Badge.
@@ -42,7 +42,7 @@ If the returning citizen doesn't yet hold an `AssuredIdentityCredential`, the se
 
 ### Walk 1: Returning Tier 1 — happy path (SC-001, SC-002)
 
-1. Open `http://localhost:5300/services/blue-badge` in a desktop browser.
+1. Open `http://localhost:5400/services/blue-badge` in a desktop browser.
 2. Sign in as `returning-<rand>@example.test` (password = `state.json:citizens.fastPath.password`).
 3. The page renders: "To apply for a Blue Badge we need to confirm your identity. Tap the button below — your wallet will ask you which credential to use."
 4. Tap **Present from wallet**. The hybrid QR + tap-link + paste affordance appears.
@@ -57,11 +57,11 @@ If the returning citizen doesn't yet hold an `AssuredIdentityCredential`, the se
 
 ### Walk 2: No-credential citizen — error path (SC-003)
 
-1. Open `http://localhost:5300/services/blue-badge` in a fresh incognito.
+1. Open `http://localhost:5400/services/blue-badge` in a fresh incognito.
 2. Sign in as `mini-gate-<rand>@example.test` (Spec 3 Tier 2 citizen) — *no `AssuredIdentityCredential` issued yet*.
 3. Pair a wallet device (the F126 mini-gate flow takes over briefly).
 4. Tap **Present from wallet**. The PWA picker opens — empty.
-5. Council page surfaces the no-credential error state: "We need an Assured Identity credential from Strathcarron Council to continue. If you don't have one yet, apply for a driving licence first." Link points at `http://localhost:5300/services/driving-licence`.
+5. Council page surfaces the no-credential error state: "We need an Assured Identity credential from Strathcarron Council to continue. If you don't have one yet, apply for a driving licence first." Link points at `http://localhost:5400/services/driving-licence`.
 
 **Expected outcome**: No dead end. The citizen has a clear next step.
 
@@ -98,7 +98,7 @@ curl -i http://localhost/app/strathcarron/services/driving-licence
 # 404
 
 # New URL lands on the sample:
-curl -i http://localhost:5300/services/driving-licence
+curl -i http://localhost:5400/services/driving-licence
 # 200
 
 # CI grep gate catches a forbidden ProjectReference:

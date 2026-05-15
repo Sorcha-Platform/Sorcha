@@ -1070,6 +1070,8 @@ Single-use enforcement: `EnrolSessionService.MintAsync` writes a sentinel value 
 
 `OnReady` fires with the resolved platformUserId once the citizen reaches FastPath. Sub-components: `PreflightSignupSurface`, `WalletPairingSurface` (with `TierMode.MiniGate` / `TierMode.PostSignup` copy), `HybridQrAffordance` (with `HybridQrLayout.Auto` / `QrFirst` / `LinkFirst` for FR-008 same-device mobile prominence).
 
+A complete worked example of a consumer page composing `EnrolGateComponent` lives in `samples/strathcarron-portal/Pages/DrivingLicence.razor` — the Strathcarron Council sample portal that ships alongside the platform per the platform-vs-consumer boundary contract (`docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md`). F127 PR-A relocated this page out of `Sorcha.UI.Web.Client` into `samples/` as the structural prerequisite for the F127 credential-gating work.
+
 ### Cross-device pairing signal
 
 `IEnrolPairingSignal` composes `TenantHubConnection.OnDeviceEnrolled` (SignalR, primary) with a 3-second `/api/v1/me/devices` poll (fallback after 2 s of no hub connection). Manual-recovery affordance fires after 60 s of no signal (FR-016 / SC-005). On signal, the surface flips to "Phone ready ✓" and `OnReady` cascades up to the consuming council page.
