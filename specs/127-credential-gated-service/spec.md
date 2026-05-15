@@ -5,7 +5,9 @@
 **Status**: Draft
 **Input**: User description: "Spec 4 of the Strathcarron citizen arc: credential-gated second service (Blue Badge). Builds on F124/F125/F126. Locked design at docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md."
 
-**Locked design contract**: [`docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md`](../../docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md). This spec restates the requirements at the user-value / business-outcome layer; the design owns the technical shape.
+**Locked design contract**: [`docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md`](../../docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md), amended 2026-05-15 §14 to reconcile with Feature 111's existing presentation-lifecycle subsystem. This spec restates the requirements at the user-value / business-outcome layer; the design owns the technical shape.
+
+**F111 reconciliation**: [`docs/superpowers/specs/2026-05-15-f127-f111-reconciliation.md`](../../docs/superpowers/specs/2026-05-15-f127-f111-reconciliation.md). F127 adopts F111's lifecycle as the substrate, adds a Sorcha-wallet consumer, restructures the blueprint as a three-action chain (`verify-identity` → `submit-blue-badge-application` → `issue-blue-badge`), and adds one small endpoint to F111's surface (claims-fetch for council-page autofill). The reconciliation supersedes the pre-amendment requirements around new endpoints and new blueprint syntax.
 
 **Boundary contract**: [`docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md`](../../docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md). Application-specific code (the Strathcarron council pages) lives in `samples/`; shared infrastructure (the credential-gating library component, the platform's verification endpoints) lives in `src/`.
 
@@ -88,50 +90,57 @@ If a citizen holds more than one credential that satisfies the Blue Badge gate (
 
 ### Functional Requirements
 
-**Credential-gated blueprint authoring**
+**Credential-gated blueprint authoring** (F111-reconciled)
 
-- **FR-001**: Blueprint authors MUST be able to declare that a starting action requires a presentation of a named credential type issued by a named issuer, via a `prerequisites.presentationRequests` block on the action.
-- **FR-002**: The platform MUST resolve a credential-gated starting action into a presentation request that names the credential type, the issuer allowlist, and the claims required by the form.
-- **FR-003**: The blueprint runtime MUST reject a presentation that does not satisfy the declared `requiredClaims` and surface the failure to the council page in an actionable form.
+- **FR-001**: Blueprint authors MUST be able to declare that a starting action requires presentation of a named credential type issued by a named issuer, via Feature 111's existing `credentialRequirement` field on the action with `presentationSource = "sorcha-wallet"`.
+- **FR-002**: The platform MUST, on submission of a credential-gated starting action, fire Feature 111's `IPresentationLifecycleService.InitiateAsync` and surface the resulting presentation-request URI to the council page. A new optional method `IPresentationConsumer.BuildInitiationAsync` MUST be added so non-HAIP consumers (starting with `"sorcha-wallet"`) can supply their initiation artifact.
+- **FR-003**: A new `IPresentationConsumer` named `"sorcha-wallet"` MUST live in `Sorcha.Blueprint.Service`. Its `VerifyAsync` MUST invoke `Sorcha.Verifier.Engine` server-side on the signed verifiable presentation posted by the wallet and MUST return a `PresentationOutcome` with verified claims on success or a reason code on decline.
+- **FR-004**: Disclosed claims from a successful presentation MUST be fetchable in plaintext by the council page that initiated the request, via a new endpoint `GET /api/presentations/{presentationRequestId}/disclosed-claims?token={ClaimsFetchToken}`. The token MUST be issued by F111's `InitiateAsync` alongside the presentation request URI, MUST be single-use, and MUST expire when the presentation validity window expires.
+
+**Workflow shape**
+
+- **FR-005**: The Blue Badge blueprint MUST be structured as a three-action chain: `verify-identity` (starting action; credential-gated only, no form payload) → `submit-blue-badge-application` (form-only action whose predecessor is `verify-identity`; payload is the Blue Badge-specific fields) → `issue-blue-badge` (issuance action). This replaces the pre-amendment single-action shape; rationale in design doc §14.
 
 **Consumer-facing council surface**
 
-- **FR-004**: The Blue Badge council page MUST live in `samples/strathcarron-portal/`, not in `src/Apps/Sorcha.UI/`.
-- **FR-005**: The existing F126 driving-licence council page (`src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CouncilApplicationDrivingLicence.razor`) MUST be moved into the same sample as the first PR of Spec 4 (PR-A), preserving the F126 walkthrough behaviour end-to-end.
-- **FR-006**: The `samples/strathcarron-portal/` artifact MUST build to its own container image, MUST be wired into `docker-compose.yml`, and MUST NOT add a `ProjectReference` into `src/Apps/Sorcha.UI/` other than `Sorcha.UI.Components.User`.
-- **FR-007**: CI MUST enforce FR-006 via a grep gate over `samples/**/*.csproj` that fails the build on a forbidden reference.
-- **FR-008**: The council sample MUST carry plausible council scaffolding — header with council logotype, primary navigation (services / about / contact), footer with council address and accessibility links — so the demo reads as a real council site on first glance.
-- **FR-009**: The council sample MUST NOT deploy to n1 as part of Spec 4. Local docker-compose only.
+- **FR-006**: The Blue Badge council page MUST live in `samples/strathcarron-portal/`, not in `src/Apps/Sorcha.UI/`.
+- **FR-007**: The existing F126 driving-licence council page (`src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CouncilApplicationDrivingLicence.razor`) MUST be moved into the same sample as the first PR of Spec 4 (PR-A), preserving the F126 walkthrough behaviour end-to-end.
+- **FR-008**: The `samples/strathcarron-portal/` artifact MUST build to its own container image, MUST be wired into `docker-compose.yml`, and MUST NOT add a `ProjectReference` into `src/Apps/Sorcha.UI/` other than `Sorcha.UI.Components.User`.
+- **FR-009**: CI MUST enforce FR-008 via a grep gate over `samples/**/*.csproj` that fails the build on a forbidden reference.
+- **FR-010**: The council sample MUST carry plausible council scaffolding — header with council logotype, primary navigation (services / about / contact), footer with council address and accessibility links — so the demo reads as a real council site on first glance.
+- **FR-011**: The council sample MUST NOT deploy to n1 as part of Spec 4. Local docker-compose only.
 
 **Citizen experience on the council page**
 
-- **FR-010**: When a citizen arrives at a credential-gated council page already signed in with a paired wallet device and holding a matching credential, the gate MUST complete the present-from-wallet step within 45 seconds of the citizen tapping the "Prove you're you" affordance in 95% of attempts.
-- **FR-011**: After the citizen presents the credential, the council form MUST be pre-populated with the disclosed claims and only the application-specific fields MUST remain for the citizen to fill.
-- **FR-012**: The citizen MUST be able to drive the council application from either device — picking up the hybrid universal QR by scanning from a separate phone OR tapping the link on the same device.
-- **FR-013**: When the citizen submits the application, the issued credential MUST land in the same wallet that delivered the presented credential, via the existing register-native delivery path, with no first-credential takeover.
+- **FR-012**: When a citizen arrives at a credential-gated council page already signed in with a paired wallet device and holding a matching credential, the gate MUST complete the present-from-wallet step within 45 seconds of the citizen tapping the "Prove you're you" affordance in 95% of attempts.
+- **FR-013**: After the citizen presents the credential, the council form MUST be pre-populated with the disclosed claims and only the application-specific fields MUST remain for the citizen to fill.
+- **FR-014**: The citizen MUST be able to drive the council application from either device — picking up the hybrid universal QR by scanning from a separate phone OR tapping the link on the same device.
+- **FR-015**: When the citizen submits the application, the issued credential MUST land in the same wallet that delivered the presented credential, via the existing register-native delivery path, with no first-credential takeover.
 
 **Citizen experience in the wallet**
 
-- **FR-014**: When the wallet receives a presentation request and the citizen's wallet holds exactly one matching credential, the wallet MUST suppress the picker and render only the consent sheet.
-- **FR-015**: When the wallet's citizen holds more than one matching credential, the wallet MUST render a picker sorted by issuance date (newest first) and require a selection before the consent sheet renders.
-- **FR-016**: The wallet's consent sheet MUST list every claim being disclosed and require an explicit confirmation before signing. The consent surface is all-or-nothing in this spec — the citizen confirms the full claim set or declines.
-- **FR-017**: Before signing, the wallet MUST surface a confirmation dialog that names both the verifier (council) and the credential type being presented, so a citizen who scanned someone else's QR can cancel.
+- **FR-016**: When the wallet receives a presentation request and the citizen's wallet holds exactly one matching credential, the wallet MUST suppress the picker and render only the consent sheet.
+- **FR-017**: When the wallet's citizen holds more than one matching credential, the wallet MUST render a picker sorted by issuance date (newest first) and require a selection before the consent sheet renders.
+- **FR-018**: The wallet's consent sheet MUST list every claim being disclosed and require an explicit confirmation before signing. The consent surface is all-or-nothing in this spec — the citizen confirms the full claim set or declines.
+- **FR-019**: Before signing, the wallet MUST surface a confirmation dialog that names both the verifier (council) and the credential type being presented, so a citizen who scanned someone else's QR can cancel.
 
 **Failure paths**
 
-- **FR-018**: A citizen lacking a matching credential MUST see a council-page error state that names the missing credential and links back to a flow that issues it.
-- **FR-019**: A citizen presenting a revoked credential MUST see a council-page rejection that names the revocation and does not progress the application.
-- **FR-020**: An expired presentation request MUST surface a regenerate affordance on the council page, mirroring the F126 expiry pattern.
+- **FR-020**: A citizen lacking a matching credential MUST see a council-page error state that names the missing credential and links back to a flow that issues it.
+- **FR-021**: A citizen presenting a revoked credential MUST see a council-page rejection that names the revocation and does not progress the application.
+- **FR-022**: An expired presentation request MUST surface a regenerate affordance on the council page, mirroring the F126 expiry pattern.
 
 **Cross-device coordination**
 
-- **FR-021**: When the wallet posts a signed presentation, the council page MUST learn of the completion within 2 seconds in 95% of attempts via the platform's primary signalling channel, with a 3-second polling fallback and a 60-second manual-recovery affordance — the same cadence as F126's pairing signal.
+- **FR-023**: When the wallet posts a signed presentation, the council page MUST learn of the completion within 2 seconds in 95% of attempts via the platform's primary signalling channel (a new SignalR event `IBlueprintHubClient.PresentationOutcomeReady(presentationRequestId)`), with F111's existing `GET /api/presentations/{requestId}/status` poll as the 3-second cadence fallback and a 60-second manual-recovery affordance.
 
 ### Key Entities
 
-- **Credential gate**: A declared prerequisite on a blueprint starting action that names a credential type, an issuer allowlist, and the claims to be disclosed. Resolved at runtime into a presentation request the council page advertises.
-- **Presentation request**: A short-lived artifact minted from a credential gate; carries the request URI, a nonce, and an expiry. Rendered as a hybrid universal QR / tap-link / paste affordance on the council page.
-- **Presentation response**: A signed verifiable presentation produced by the wallet, posted by the wallet to the platform, validated server-side, and stashed against the nonce for the council page to fetch.
+- **Credential requirement** (F111-aligned): A declared field on a blueprint action (`credentialRequirement`) that names the presentation source, the credential type, the issuer allowlist, and the required claims. F127 uses this on the `verify-identity` starting action with `presentationSource: "sorcha-wallet"`. F111 already ships the schema.
+- **Sorcha-wallet presentation consumer**: A new `IPresentationConsumer` (named `"sorcha-wallet"`) in `Sorcha.Blueprint.Service`. Verifies a signed verifiable presentation posted by the citizen's wallet by invoking `Sorcha.Verifier.Engine` server-side and returns a `PresentationOutcome` with verified claims. Mirrors the existing `HaipPresentationConsumer` shape.
+- **Pending presentation** (F111, reused): F111's `PendingPresentation` record stored in `IPendingPresentationStore` with TTL = the blueprint's validity window. Maps `presentationRequestId` (Guid) to the originating action context.
+- **Claims-fetch token**: A new single-use, short-TTL token issued by F111's `InitiateAsync` alongside the `presentationRequestId`. The council page presents this on the new `GET /api/presentations/{requestId}/disclosed-claims` endpoint to retrieve the disclosed claims in plaintext for autofill.
+- **Disclosed claims**: The plaintext claim set returned by the claims-fetch endpoint after the presentation outcome is written. Subset of the VP claims that satisfy the `requiredClaims` declared on the credential requirement.
 - **Issued credential (Blue Badge)**: A council-issued credential delivered to the same wallet that produced the presentation; same shape and delivery path as the `AssuredIdentityCredential` from Spec 3, different blueprint and different visual rendering.
 - **Strathcarron sample portal**: The consumer-side artifact that hosts the council's citizen-facing pages. Lives in `samples/strathcarron-portal/`, builds to its own container, consumes the platform's component library via its published surface only.
 
@@ -147,11 +156,13 @@ If a citizen holds more than one credential that satisfies the Blue Badge gate (
 
 ## Dependencies
 
+- **F111** (Timebound Presentation Lifecycle, shipped): provides the substrate. `IPresentationLifecycleService` orchestrates the three-event flow (`presentation-initiated` / `presentation-outcome` / `presentation-abandoned`); `IPendingPresentationStore` holds pending state; `IPresentationConsumer` is the plug-in point that F127's new `"sorcha-wallet"` consumer extends. F127 adds a small claims-fetch endpoint and a `BuildInitiationAsync` extension method on `IPresentationConsumer`.
 - **F124** (AssuredIdentity on the PWA, tag `spec-124-complete`): provides the first credential Sarah holds.
-- **F125** (Sorcha Wallet User Agent, tag `spec-125-complete`): provides the picker surface, consent sheet, and the `Sorcha.Verifier.Engine` validator that Spec 4 reuses server-side as the first non-PWA consumer.
+- **F125** (Sorcha Wallet User Agent, tag `spec-125-complete`): provides the picker surface, consent sheet, and the `Sorcha.Verifier.Engine` validator that Spec 4 wires into `SorchaWalletPresentationConsumer` as the first non-PWA consumer.
 - **F126** (Enrol inside wizard, tag `spec-126-complete`): provides the enrol gate, the hybrid universal QR affordance, the pairing-signal pattern Spec 4's presentation-signal mirrors, and the F126 driving-licence council page that Spec 4 PR-A extracts into the sample.
 - **F092** (Consumer persona + `x-persona` autofill resolver): extended in Spec 4 to accept a presented credential as the autofill source.
-- **F079** (Trust hardening — credential revocation + status lists): provides the revocation path that FR-019 exercises.
+- **F079** (Trust hardening — credential revocation + status lists): provides the revocation path that FR-021 exercises.
+- **F118** (Notifications architecture): provides the SignalR hub + thin-signal contract that `PresentationOutcomeReady` extends.
 - **Platform-vs-consumer boundary** (`docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md`): provides the rule that locates the council pages in `samples/`.
 
 ## Success Criteria *(mandatory)*

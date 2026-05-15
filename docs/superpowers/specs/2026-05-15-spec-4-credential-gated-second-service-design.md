@@ -1,7 +1,7 @@
 # Spec 4 — Credential-gated second service (Blue Badge)
 
 **Date:** 2026-05-15
-**Status:** Design locked. Brainstorm complete — six decisions captured in §10. **Amended 2026-05-15** to honour the platform-vs-consumer boundary — see [`2026-05-15-platform-consumer-boundary-design.md`](2026-05-15-platform-consumer-boundary-design.md); changes affect §1, §5, §12, §13.
+**Status:** Design locked. Brainstorm complete — six decisions captured in §10. **Amended 2026-05-15** (a) to honour the platform-vs-consumer boundary — see [`2026-05-15-platform-consumer-boundary-design.md`](2026-05-15-platform-consumer-boundary-design.md); changes affect §1, §5, §12, §13; and (b) to reconcile with Feature 111 (Timebound Presentation Lifecycle) which had already shipped a presentation-lifecycle subsystem — see [`2026-05-15-f127-f111-reconciliation.md`](2026-05-15-f127-f111-reconciliation.md); the reconciliation is captured in §14 and supersedes the pre-amendment shape of §3, §4, §8.
 **Umbrella:** [`2026-05-13-strathcarron-citizen-arc.md`](2026-05-13-strathcarron-citizen-arc.md)
 **Spec 1 implementation tag:** `spec-124-complete`
 **Spec 2 implementation tag:** `spec-125-complete`
@@ -319,8 +319,137 @@ Locked once Q1-Q6 are brainstormed and the platform-vs-consumer boundary is lock
 3. `Sorcha.Verifier.Engine` is the validation layer — first non-PWA consumer.
 4. **Spec 4 PR-A** = structural extract. Creates `samples/strathcarron-portal/` (csproj, Dockerfile, docker-compose entry, baseline council chrome — header, nav, footer), moves `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CouncilApplicationDrivingLicence.razor` into it, proves the sample runs as a standalone container. CI grep gate against `samples/**/*.csproj` lands here. **No n1 deployment in Spec 4** — operator-owned domain / services work is separate. PR-B onward adds the Blue Badge page in the sample alongside the credential-gating platform work.
 
+## §14 — F111 reconciliation (added 2026-05-15)
+
+PR-B implementation surfaced that Feature 111 (Timebound Presentation Lifecycle, shipped) already provides the substrate Spec 4 needs. The full discovery and option analysis lives in [`2026-05-15-f127-f111-reconciliation.md`](2026-05-15-f127-f111-reconciliation.md). The operator picked **Option C**: adopt F111 as the lifecycle, add a new `IPresentationConsumer` for the Sorcha wallet, restructure the blueprint as a two-action chain, add one small endpoint to F111's surface (claims-fetch) so the council page can autofill.
+
+This section supersedes the pre-amendment shape of §3, §4, and §8.
+
+### Reconciled flow
+
+The citizen's journey on the council page is unchanged from §2. What changes is how it's implemented underneath:
+
+1. Citizen taps **Prove you're you** on the council page.
+2. Council page submits the **`verify-identity` action** to the blueprint via the normal action-submission endpoint. The action is a starting action with `credentialRequirement.presentationSource = "sorcha-wallet"`. There is no form payload — the action exists solely to gate the workflow on a presentation.
+3. The Blueprint Service's `IPresentationLifecycleService.InitiateAsync` writes `presentation-initiated` to the register, stashes a `PendingPresentation` in `IPendingPresentationStore`, and returns a presentation request URI + `presentationRequestId` + **a single-use `ClaimsFetchToken`** (the new F111 surface bit) to the council page.
+4. The council page renders the `presentation-request URI` via the existing `HybridQrAffordance` (Layout=Auto). The Sorcha wallet either scans the QR or follows the same-device tap-link.
+5. The wallet posts the signed VP to F111's existing callback endpoint: `POST /api/presentations/callbacks/sorcha-wallet/{presentationRequestId}`. The new `SorchaWalletPresentationConsumer` in Blueprint Service dispatches this, calls `Sorcha.Verifier.Engine` server-side, returns a `PresentationOutcome` with verified claims.
+6. `IPresentationLifecycleService.HandleOutcomeAsync` writes `presentation-outcome (success, claims)` to the register and publishes a new SignalR signal `PresentationOutcomeReady(presentationRequestId)` on `BlueprintHub`.
+7. The council page receives the signal (or hits the existing `GET /api/presentations/{requestId}/status` polling fallback at 3 s cadence), then calls the **new `GET /api/presentations/{requestId}/disclosed-claims?token={ClaimsFetchToken}`** to retrieve the disclosed claims in plaintext.
+8. The council page transitions to the **`submit-blue-badge-application` action** — same workflow, second action, predecessor = `verify-identity`. Form fields are autofilled from the disclosed claims; the citizen fills the Blue Badge-specific fields and submits.
+9. The blueprint's `issue-blue-badge` step mints the `BlueBadgeCredential` and delivers it to the citizen's wallet via `SorchaLocalWallet` (existing F124 path).
+
+### Reconciled blueprint shape
+
+Replaces the §3 example. Three actions instead of two:
+
+```json
+{
+  "actions": [
+    {
+      "id": "verify-identity",
+      "isStartingAction": true,
+      "actor": "citizen",
+      "credentialRequirement": {
+        "presentationSource": "sorcha-wallet",
+        "credentialType": "AssuredIdentityCredential",
+        "issuerAllowlist": ["did:sorcha:org:strathcarron-council"],
+        "requiredClaims": ["givenName", "familyName", "dateOfBirth", "homeAddress"]
+      }
+    },
+    {
+      "id": "submit-blue-badge-application",
+      "isStartingAction": false,
+      "predecessor": "verify-identity",
+      "actor": "citizen",
+      "schema": {
+        "type": "object",
+        "required": ["mobilityCondition"],
+        "properties": {
+          "mobilityCondition": { "type": "string", "title": "Reason for the Blue Badge" },
+          "previousBadgeNumber": { "type": "string", "title": "Previous Blue Badge number (if any)" }
+        }
+      },
+      "x-persona": {
+        "presentation": "verify-identity"
+      }
+    },
+    {
+      "id": "issue-blue-badge",
+      "isStartingAction": false,
+      "predecessor": "submit-blue-badge-application",
+      "actor": "licensing-officer",
+      "issuance": { "credentialType": "BlueBadgeCredential", "targetAudience": "SorchaLocalWallet" }
+    }
+  ]
+}
+```
+
+### Reconciled server surface
+
+Replaces the §4 table.
+
+| Method | Path | Owner | Status |
+|---|---|---|---|
+| `POST` | `/api/instances/{id}/actions/verify-identity` (or the equivalent action-submission route) | F111 (existing) | Used as-is; submitting the `verify-identity` action fires F111's `InitiateAsync`. |
+| `GET` | `/api/presentations/{requestId}/status` | F111 (existing) | Polling fallback for the council page. |
+| `POST` | `/api/presentations/callbacks/sorcha-wallet/{requestId}` | F111 (existing endpoint shape) | Wallet posts signed VP here; `SorchaWalletPresentationConsumer` (NEW) verifies via `Sorcha.Verifier.Engine`. |
+| `GET` | `/api/presentations/{requestId}/disclosed-claims?token={ClaimsFetchToken}` | **NEW (small F111 supplement)** | Returns disclosed claims in plaintext to the council page. Token is single-use, issued by `InitiateAsync`, TTL = remaining validity window. |
+
+### Reconciled hub event
+
+Replaces the §4 SignalR row. New typed-client method on `IBlueprintHubClient`:
+
+```csharp
+/// <summary>
+/// Fired when F111 writes presentation-outcome (success). Council pages
+/// subscribed to BlueprintHubGroups.PresentationNonce(presentationRequestId)
+/// should fetch the disclosed claims via
+/// GET /api/presentations/{id}/disclosed-claims with the ClaimsFetchToken
+/// returned at initiation.
+/// </summary>
+Task PresentationOutcomeReady(string presentationRequestId);
+```
+
+Group builder `BlueprintHubGroups.PresentationNonce(presentationRequestId)` (NEW — extends the existing F118 thin-signal convention).
+
+### Reconciled library component shape
+
+`CredentialGateComponent` consumer API is unchanged (the composition example in §5 still applies). Internal wiring rewires:
+
+- Mints by submitting the `verify-identity` action via the existing blueprint service-client (not a new `/presentation-requests` endpoint).
+- Subscribes to `IBlueprintHubClient.PresentationOutcomeReady` (not a `PresentationReceived` event); falls back to F111's existing `GET /api/presentations/{id}/status` poll.
+- On outcome ready, fetches disclosed claims via the new claims-fetch endpoint with the `ClaimsFetchToken` it received at initiation.
+- Fires `OnPresented(DisclosedClaims)` to its child content.
+
+### Reconciled `IPresentationConsumer` extension
+
+F111's `IPresentationLifecycleService` docstring notes the `InitiateAsync` path is currently HAIP-only and non-HAIP consumers need an "initiation contract extension." F127 lands that extension:
+
+- New optional method on `IPresentationConsumer`: `Task<ConsumerInitiationDescriptor> BuildInitiationAsync(...)`. Default implementation throws — HAIP keeps its custom path; `SorchaWalletPresentationConsumer` overrides to return the OID4VP request URI + nonce + tap-link.
+- `IPresentationLifecycleService.InitiateAsync` dispatches to the named consumer's `BuildInitiationAsync` to produce the wallet-facing artifact.
+
+### Reconciled F127-side ownership
+
+What's new in F127:
+- `SorchaWalletPresentationConsumer` in Blueprint Service.
+- Claims-fetch endpoint + `ClaimsFetchToken` single-use issuance.
+- `IPresentationConsumer.BuildInitiationAsync` extension.
+- `BlueprintHubGroups.PresentationNonce` + `IBlueprintHubClient.PresentationOutcomeReady`.
+- Blueprint shape: three-action chain (verify-identity → submit-blue-badge → issue-blue-badge).
+- `CredentialGateComponent` rewired to consume F111's surface.
+- `IPresentationSignal` rewired to subscribe to `PresentationOutcomeReady` + poll F111's status endpoint.
+
+What's no longer new in F127 (dropped by the reconciliation):
+- ~~New `/api/blueprint/presentation-requests` / `/api/blueprint/presentation-responses` endpoints.~~
+- ~~`prerequisites.presentationRequests` blueprint syntax.~~
+- ~~String-nonce `IAtomicDistributedCache` stash.~~
+- ~~New `PresentationRequestService` + `PresentationRequest` model.~~
+
 ## References
 
+- Reconciliation research: `docs/superpowers/specs/2026-05-15-f127-f111-reconciliation.md`
+- Feature 111 spec: `specs/111-presentation-lifecycle/spec.md`
 - Umbrella: `docs/superpowers/specs/2026-05-13-strathcarron-citizen-arc.md`
 - Spec 1 (F124) implementation: `specs/124-assured-identity-pwa/`
 - Spec 2 (F125) implementation: `specs/125-sorcha-wallet-user-agent/`

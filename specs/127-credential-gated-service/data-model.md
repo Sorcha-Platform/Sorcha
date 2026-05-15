@@ -1,77 +1,77 @@
-# Phase 1 — Data Model
+# Phase 1 — Data Model (F111-reconciled)
 
 **Feature**: F127 / credential-gated second council service (Blue Badge)
-**Date**: 2026-05-15
+**Date**: 2026-05-15 (reconciled with F111)
+**Reconciliation note**: This data model adopts Feature 111's existing entities as the substrate. F127 adds only what F111 doesn't already ship: the new `IPresentationConsumer` for the Sorcha wallet, the `ClaimsFetchToken`, the blueprint shape, and the disclosed-claims view that the council page sees.
 
-## New domain vocabulary
+## Reused from F111 (no F127 change)
 
-- **Credential gate** — a prerequisite on a blueprint starting action that demands a verifiable presentation of a named credential type, issued by a named issuer, before the action can run. Spec 4 introduces this term; subsequent specs reuse it.
+These are F111's entities, already in the codebase. Listed here for completeness so the F127 task list can reference them without re-defining them.
 
-## Entities
+- **`PendingPresentation`** (record, `Storage/Presentations/`) — Redis-backed pending-attempt state keyed by `presentationRequestId` (Guid). TTL = blueprint's validity window (default 600 s; per-blueprint overridable). Carries: `InstanceId`, `ActionId`, `RegisterId`, `BlueprintId`, `SubmitterWallet`, `ConsumerName`, `DraftPayloadJson`, `CredentialRequirementDigestHex`, `DelegationToken?`, `RecordAbandonment`, `OutcomeDetailLevel`, `ValidityWindowSeconds`, `CreatedAt`, `InitiatedTransactionId?`.
+- **`PresentationInitiationResult`** (record, `Services/Interfaces/`) — returned by `InitiateAsync`. Carries: `PresentationRequestId` (Guid), `AuthorizationRequestUri`, `RequestUri?`, `Nonce?`, `ExpiresAt`, `InitiatedTransactionId`. **F127 extends this record** with a new property: `ClaimsFetchToken` (single-use string, returned only on consumers that opt into claims-fetch).
+- **`PresentationOutcome`** (record, `Sorcha.PresentationLifecycle.Abstractions`) — returned by `IPresentationConsumer.VerifyAsync`. Carries: `Kind` (Success / Decline), `VerifiedClaims?` (filtered to required claims, minimal disclosure), `Reason?` (`PresentationDeclineReason`), `VerifierDiagnostics?`, `PresentationSubmissionHash?`.
+- **`PresentationInitiationContext`** (record, `Sorcha.PresentationLifecycle.Abstractions`) — passed to `IPresentationConsumer.VerifyAsync`. Reconstructed by the lifecycle service from the pending store. Carries the citizen and action context the consumer needs.
+- **`CredentialRequirement`** (model, `Sorcha.Blueprint.Models.Credentials`) — declared on a blueprint action. Carries: `PresentationSource` (consumer name, e.g. `"haip"` or new `"sorcha-wallet"`), `CredentialType`, `IssuerAllowlist`, `RequiredClaims`. **F127 reuses this verbatim**; no new blueprint schema.
+- **Register transactions**: `presentation-initiated`, `presentation-outcome`, `presentation-abandoned` — written by `IPresentationLifecycleService`. F127 reuses all three; no new transaction types.
 
-### CredentialGate (blueprint-side)
+## New entities F127 adds
 
-Declared on a starting action via `prerequisites.presentationRequests[]`. One blueprint can have multiple gates per starting action (e.g. "Assured Identity AND Proof of Residence"); Spec 4 demos a single-gate case.
+### `SorchaWalletPresentationConsumer`
 
-| Field | Type | Constraints | Notes |
-|---|---|---|---|
-| `id` | string (kebab-case) | required, unique within action | e.g. `"assured-identity-check"`. Used to bind disclosed claims to autofill targets via `x-persona.presentation`. |
-| `credentialType` | string | required | e.g. `"AssuredIdentityCredential"`. Matches the `type` claim on the VC. |
-| `issuerAllowlist` | string[] (DID URIs) | required, ≥1 entry | e.g. `["did:sorcha:org:strathcarron-council"]`. Wallet picker filters to credentials whose issuer DID is in this set. |
-| `requiredClaims` | string[] (JSON-pointer-style) | required, ≥1 entry | e.g. `["givenName", "familyName", "dateOfBirth", "homeAddress"]`. Server rejects presentations missing any required claim. |
+A new `IPresentationConsumer` registered in `Sorcha.Blueprint.Service`. Mirrors `HaipPresentationConsumer`.
 
-**Validation**: JSON schema (see `contracts/prerequisites-presentation-requests.schema.json`) runs at blueprint publish via the existing FluentValidation pipeline.
+| Member | Type | Notes |
+|---|---|---|
+| `ConsumerName` | `string` | `"sorcha-wallet"` |
+| `VerifyAsync` | `(context, payload, ct) → Task<PresentationOutcome>` | Deserialises `payload` (JsonElement) into a `SorchaWalletVerificationPayload` (signed VP compact-JWS), invokes `Sorcha.Verifier.Engine`, returns `PresentationOutcome.Success` with `VerifiedClaims` filtered to `context.RequiredClaims`, or `PresentationOutcome.Decline` with the appropriate reason code (`expired-credential` / `revoked` / `wrong-issuer` / `signature-invalid` / `claims-missing`). |
+| `BuildInitiationAsync` (NEW interface method) | `(context, ct) → Task<ConsumerInitiationDescriptor>` | Returns the OID4VP request URI + nonce + tap-link the citizen's wallet receives. F111 reads this when `InitiateAsync` dispatches to a non-HAIP consumer. |
 
-### PresentationRequest (runtime)
+### `ConsumerInitiationDescriptor`
 
-Short-lived. Stashed in `IAtomicDistributedCache` (Redis) with TTL.
+NEW record in `Sorcha.PresentationLifecycle.Abstractions`. The return type of the new `BuildInitiationAsync` extension method on `IPresentationConsumer`.
 
 | Field | Type | Notes |
 |---|---|---|
-| `nonce` | string (16-byte URL-safe base64) | Primary key in the cache. |
-| `requestUri` | string (URI) | OID4VP-shaped. Encoded as the QR / tap payload. |
-| `qrUrl` | string (URI) | Council page renders this as a QR. |
-| `tapUrl` | string (URI) | Same-device tap-link (opens PWA at `/wallet/present?request=…`). |
-| `gateId` | string | Back-reference to the `CredentialGate.id` that minted this request. |
-| `blueprintId` | Guid | Council page's blueprint context (re-fetched when validating). |
-| `expiresAt` | DateTimeOffset | TTL 5 minutes by default. |
+| `AuthorizationRequestUri` | `string` | OID4VP `openid4vp://?…` URI; primary artifact the wallet receives. |
+| `RequestUri` | `string?` | Optional alternative request URI shape. |
+| `Nonce` | `string?` | Optional nonce echoed in the VP. |
 
-**Lifecycle**: created on `POST /api/blueprint/presentation-requests` → stashed → exists until either consumed by `POST /api/blueprint/presentation-responses` (deleted on consume) or expires.
+### `SorchaWalletVerificationPayload`
 
-**Storage**: Redis via `IAtomicDistributedCache`. Single-use enforcement = stash on create, `GetAndRemoveAsync` on consume — same NonceStore pattern as F126's enrol-session.
-
-### PresentationResponse (runtime)
-
-Produced by the wallet, posted to the platform.
+NEW record in `Sorcha.Blueprint.Service.Services.Implementation` (or a sibling location). The wire shape `SorchaWalletPresentationConsumer.VerifyAsync` expects when deserialising the F111 callback's verifier payload.
 
 | Field | Type | Notes |
 |---|---|---|
-| `nonce` | string | Must match an outstanding `PresentationRequest`. |
-| `signedVp` | string (compact JWS) | The signed verifiable presentation. Validated server-side by `Sorcha.Verifier.Engine`. |
+| `SignedVp` | `string` | Compact-JWS verifiable presentation produced by the wallet. |
+| `WalletDid` | `string?` | Optional explicit holder DID. Validated against the VP's `holder` claim. |
 
-After server-side validation:
+### `ClaimsFetchToken`
 
-| Field (added) | Type | Notes |
-|---|---|---|
-| `disclosedClaims` | Dictionary<string, JsonElement> | Subset of VP claims that satisfy the gate's `requiredClaims`. Stashed against the nonce. |
-| `holderDid` | string (DID URI) | Wallet's DID — used as the late-bind sender if the application advances. |
-| `trustStatus` | enum (`Valid`, `Revoked`, `IssuerNotTrusted`, `SignatureInvalid`) | Result of trust-hardening check (F079). |
-
-**Storage**: validated `disclosedClaims` stashed in `IAtomicDistributedCache` keyed by nonce, TTL extended to 10 minutes (gives the council page room to fetch + render).
-
-### DisclosedClaims (view-model surfaced to the council page)
-
-Plain data transferred to the council page after `GET /api/blueprint/presentation-responses/{nonce}` succeeds:
+NEW. Single-use, short-TTL token that authenticates the council page on the new claims-fetch endpoint. Issued by `InitiateAsync` ONLY for consumers that opt into claims-fetch (the Sorcha-wallet path; HAIP keeps the existing register-only outcome flow).
 
 | Field | Type | Notes |
 |---|---|---|
-| `claims` | Dictionary<string, JsonElement> | The validated `disclosedClaims`. |
-| `subjectDisplayName` | string | Derived from `givenName + familyName` if present. |
-| `holderDid` | string | For the late-bind sender on submission. |
+| `Value` | `string` | High-entropy URL-safe random string (16-byte). |
+| `PresentationRequestId` | `Guid` | Bound to a single F111 presentation request. |
+| `ExpiresAt` | `DateTimeOffset` | Remaining validity window when minted. |
 
-### BlueBadgeCredential (new credential type)
+**Storage**: NEW interface `IClaimsFetchTokenStore` in `Sorcha.Blueprint.Service.Storage.Presentations`. Redis-backed. `SetAsync` at mint (writes the bound `presentationRequestId` against the token, with TTL); `GetAndRemoveAsync` at fetch (returns the bound `presentationRequestId` and atomically deletes the entry — NonceStore pattern, single-use enforced).
 
-Issued by Strathcarron Council, delivered into `SorchaLocalWallet`.
+### `DisclosedClaimsResponse` (view-model)
+
+NEW. Response shape for `GET /api/presentations/{requestId}/disclosed-claims?token=…`. Returns the `VerifiedClaims` from F111's `presentation-outcome.success` in plaintext to the council page for autofill.
+
+| Field | Type | Notes |
+|---|---|---|
+| `PresentationRequestId` | `Guid` | Echoed back for the council-page-side state machine. |
+| `Claims` | `IReadOnlyDictionary<string, JsonElement>` | Filtered to `requiredClaims`. |
+| `SubjectDisplayName` | `string?` | Convenience — `"givenName familyName"` when both present. |
+| `HolderDid` | `string` | The wallet's holder DID — used as the late-bind sender on the second action's submission. |
+
+### `BlueBadgeCredential` (issued credential type — unchanged from pre-amendment)
+
+Issued by Strathcarron Council, delivered into `SorchaLocalWallet`. Subject claims:
 
 | Claim | Type | Notes |
 |---|---|---|
@@ -79,62 +79,75 @@ Issued by Strathcarron Council, delivered into `SorchaLocalWallet`.
 | `familyName` | string | Copied. |
 | `dateOfBirth` | string (ISO 8601 date) | Copied. |
 | `homeAddress` | string | Copied. |
-| `mobilityCondition` | string | Citizen-entered on the Blue Badge form. |
+| `mobilityCondition` | string | Citizen-entered. |
 | `previousBadgeNumber` | string (nullable) | Citizen-entered, optional. |
 | `issuedAt` | DateTimeOffset | Set by the council's issuer wallet. |
-| `expiresAt` | DateTimeOffset | Default 3 years from `issuedAt`. |
+| `expiresAt` | DateTimeOffset | Default 3 years. |
 | `issuer` | string (DID URI) | `did:sorcha:org:strathcarron-council` |
 | `credentialSubject.id` | string (DID URI) | Citizen's holder DID. |
 
 **Storage**: lives in the Strathcarron Council credentials register (the same register F126 introduced for `AssuredIdentityCredential`). Revocation tracked via the F079 status-list mechanism.
 
-## State transitions
+## Blueprint shape (F111-reconciled)
+
+The Blue Badge blueprint is a **three-action chain**:
 
 ```
-PresentationRequest:
-    [created]   ── via POST /api/blueprint/presentation-requests ──>   [pending]
-    [pending]   ── wallet signs + posts ─────────────────────────>     [validating]
-    [pending]   ── 5 min expiry ──────────────────────────────────>    [expired]
-    [validating] ── Sorcha.Verifier.Engine ✓ ────────────────────>     [resolved]
-    [validating] ── Sorcha.Verifier.Engine ✗ ────────────────────>     [rejected]
-    [resolved]  ── council page fetches claims, blueprint advances ─>  [consumed]
+verify-identity (starting, citizen actor, credentialRequirement.presentationSource="sorcha-wallet", no form schema)
+    ↓ predecessor
+submit-blue-badge-application (citizen actor, form schema with mobilityCondition + previousBadgeNumber, x-persona.presentation="verify-identity")
+    ↓ predecessor
+issue-blue-badge (licensing-officer actor, issuance of BlueBadgeCredential to SorchaLocalWallet)
 ```
 
-After `[consumed]`, the council form has the disclosed claims and the citizen fills the Blue-Badge-specific fields. Submission proceeds via the existing register-native flow:
+Predecessor enforcement comes from the existing blueprint runtime; no new gating mechanism is required.
+
+## State transitions (F111 substrate)
 
 ```
-Application form:
-    [pending submission] ── citizen submits ──> [bp action runs] ──> [BlueBadgeCredential issued] ──> [wallet receives credential]
+Citizen taps "Prove you're you"
+    ↓ council page submits verify-identity action via Sorcha.ServiceClients.Blueprint
+F111 InitiateAsync:
+    writes presentation-initiated to register
+    stores PendingPresentation in Redis (TTL = validity window)
+    mints ClaimsFetchToken (via new IClaimsFetchTokenStore)
+    dispatches to SorchaWalletPresentationConsumer.BuildInitiationAsync
+    returns PresentationInitiationResult + ClaimsFetchToken to council page
+    ↓ council page renders HybridQrAffordance with AuthorizationRequestUri
+Wallet scans / taps → presents signed VP → POSTs to:
+    /api/presentations/callbacks/sorcha-wallet/{requestId}
+F111 HandleOutcomeAsync:
+    dispatches to SorchaWalletPresentationConsumer.VerifyAsync
+    consumer calls Sorcha.Verifier.Engine → returns PresentationOutcome
+    F111 writes presentation-outcome to register (claims encrypted per disclosure rules)
+    F111 publishes IBlueprintHubClient.PresentationOutcomeReady(requestId) to
+        BlueprintHubGroups.PresentationNonce(requestId)
+    ↓ council page learns via SignalR (or F111's existing status poll fallback)
+Council page fetches disclosed claims:
+    GET /api/presentations/{requestId}/disclosed-claims?token=ClaimsFetchToken
+    server validates token via IClaimsFetchTokenStore.GetAndRemoveAsync (single-use)
+    server reads PresentationOutcome from the register, decrypts claims per disclosure rules
+    returns DisclosedClaimsResponse in plaintext
+    ↓ council page transitions to submit-blue-badge-application action
+Citizen fills form, submits → action 2 runs with form payload joined with disclosed claims (via x-persona.presentation autofill)
+    ↓ action 2 success
+issue-blue-badge action runs:
+    mints BlueBadgeCredential
+    delivers via SorchaLocalWallet to the citizen's wallet (existing F124 path)
 ```
 
-## Relationships
-
-```
-Blueprint (existing)
-  └─ Action (existing) — isStartingAction = true
-        └─ Prerequisites
-              └─ PresentationRequests[] (NEW: CredentialGate[])
-                    ↓ resolved at runtime to
-              PresentationRequest (NEW: short-lived runtime artifact)
-                    ↑ posted against by
-              PresentationResponse (NEW: from wallet)
-                    ↓ validated to
-              DisclosedClaims (NEW: view-model)
-                    ↓ used to autofill
-              Application form submission
-                    ↓ blueprint runtime issues
-              BlueBadgeCredential (NEW: into SorchaLocalWallet)
-```
-
-## Validation rules (from spec FRs)
+## Validation rules (from spec FRs, F111-reconciled)
 
 | FR | Rule | Enforcement point |
 |---|---|---|
-| FR-001, FR-002 | A blueprint starting action MAY have a `prerequisites.presentationRequests` block. | JSON schema validation at publish. |
-| FR-003 | A `PresentationResponse` whose disclosed claims don't satisfy `requiredClaims` MUST be rejected. | `Sorcha.Verifier.Engine` + endpoint handler. |
-| FR-016 | Consent surface is all-or-nothing. | PWA-side ConsentSheet; no per-claim toggle UI. |
-| FR-017 | PWA confirms verifier + credential type before signing. | PWA-side dialog (mirrors F126 redeem-confirm). |
-| FR-018 | A citizen lacking a matching credential sees a no-dead-end error state. | `CredentialGateComponent` after wallet picker returns empty. |
-| FR-019 | A revoked credential's presentation is rejected. | `Sorcha.Verifier.Engine` (F079 status-list check). |
-| FR-020 | Expired `PresentationRequest` surfaces a regenerate affordance. | `CredentialGateComponent`. |
-| FR-021 | Council page learns of completion within 2 s in 95% of attempts. | `IPresentationSignal` + SignalR `PresentationReceived` event. |
+| FR-001 | Credential gate declared via existing `credentialRequirement` field. | F111 blueprint validation. |
+| FR-002 | Submission of `verify-identity` fires F111's `InitiateAsync`. | Existing action-submission endpoint. |
+| FR-003 | `SorchaWalletPresentationConsumer.VerifyAsync` invokes `Sorcha.Verifier.Engine`. | Blueprint Service DI. |
+| FR-004 | Disclosed claims fetchable only with valid single-use `ClaimsFetchToken`. | `IClaimsFetchTokenStore.GetAndRemoveAsync`. |
+| FR-005 | Three-action chain `verify-identity` → `submit-blue-badge` → `issue-blue-badge`. | Blueprint JSON authoring + runtime predecessor enforcement. |
+| FR-018 | All-or-nothing consent on the wallet side. | PWA-side ConsentSheet; no per-claim toggle UI. |
+| FR-019 | PWA confirms verifier + credential type before signing. | PWA-side dialog (mirrors F126 redeem-confirm). |
+| FR-020 | A citizen lacking a matching credential sees a no-dead-end error state. | `CredentialGateComponent` after wallet picker returns empty. |
+| FR-021 | A revoked credential's presentation is rejected. | `SorchaWalletPresentationConsumer` (via F079 status-list check inside `Sorcha.Verifier.Engine`). |
+| FR-022 | Expired presentation surfaces a regenerate affordance. | `CredentialGateComponent` reading F111's status endpoint returning `expired`. |
+| FR-023 | Council page learns of completion ≤ 2 s in 95% via SignalR; 3 s polling fallback; 60 s manual recovery. | New `IBlueprintHubClient.PresentationOutcomeReady` + existing F111 status-poll + `IPresentationSignal`. |

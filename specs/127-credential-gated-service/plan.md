@@ -2,17 +2,24 @@
 
 **Branch**: `127-credential-gated-service` | **Date**: 2026-05-15 | **Spec**: [`spec.md`](./spec.md)
 **Input**: Feature specification from `specs/127-credential-gated-service/spec.md`
-**Design contract**: [`docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md`](../../docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md)
+**Design contract**: [`docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md`](../../docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md) — see §14 for F111 reconciliation
 **Boundary contract**: [`docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md`](../../docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md)
+**F111 reconciliation**: [`docs/superpowers/specs/2026-05-15-f127-f111-reconciliation.md`](../../docs/superpowers/specs/2026-05-15-f127-f111-reconciliation.md)
 
 ## Summary
 
-Spec 4 of the Strathcarron citizen arc. Sarah returns to her council weeks after onboarding (Spec 3) to apply for a Blue Badge. The application form's first action is **gated on her existing `AssuredIdentityCredential`** — she presents it from her wallet, the council form is pre-populated with the disclosed claims, she fills the Blue Badge-specific fields, submits, and the `BlueBadgeCredential` lands in the same wallet.
+Spec 4 of the Strathcarron citizen arc. Sarah returns to her council weeks after onboarding (Spec 3) to apply for a Blue Badge. The application's first action is **gated on her existing `AssuredIdentityCredential`** — she presents it from her wallet, the council form is pre-populated with the disclosed claims, she fills the Blue Badge-specific fields, submits, and the `BlueBadgeCredential` lands in the same wallet.
 
 Spec 4 ships two artifacts on opposite sides of the platform-vs-consumer boundary:
 
-1. **Platform side** (`src/`): the `prerequisites.presentationRequests` blueprint contract, two new Blueprint Service endpoints, `CredentialGateComponent` in `Sorcha.UI.Components.User`, server-side wiring for `Sorcha.Verifier.Engine` as the first non-PWA consumer.
-2. **Consumer side** (`samples/strathcarron-portal/`): the Blue Badge page lives in a new sample artifact. **PR-A** is a structural extract that creates the sample, moves the F126 driving-licence page out of `Sorcha.UI.Web.Client`, sets up its csproj + Dockerfile + docker-compose entry + baseline council chrome, and lands the CI grep gate that enforces the boundary.
+1. **Platform side** (`src/`, F111-reconciled):
+   - A new `IPresentationConsumer` named `"sorcha-wallet"` in `Sorcha.Blueprint.Service`. Wraps `Sorcha.Verifier.Engine` server-side; mirrors the existing `HaipPresentationConsumer` shape.
+   - A new optional `BuildInitiationAsync` method on `IPresentationConsumer` (the extension F111's docstring flagged as "deferred to a future phase"); `SorchaWalletPresentationConsumer` overrides it to produce the OID4VP request URI for the citizen's wallet.
+   - A new endpoint `GET /api/presentations/{requestId}/disclosed-claims?token={ClaimsFetchToken}` (the small F111 supplement) so the council page can autofill from F111-encrypted-on-register claims in plaintext. The token is issued by `InitiateAsync`, single-use, TTL = remaining validity window.
+   - A new SignalR event `IBlueprintHubClient.PresentationOutcomeReady(presentationRequestId)` published from F111's `HandleOutcomeAsync` on success; new group builder `BlueprintHubGroups.PresentationNonce(presentationRequestId)`.
+   - `CredentialGateComponent` in `Sorcha.UI.Components.User` — same consumer API as the locked design; internal wiring consumes F111's existing surface (action submission → status poll / hub event → claims-fetch) instead of F127's discarded greenfield endpoints.
+   - `IPresentationSignal` in `Sorcha.UI.Components.User` — composes the new SignalR event with F111's existing status-poll endpoint as fallback.
+2. **Consumer side** (`samples/strathcarron-portal/`): the Blue Badge page lives in the sample. **PR-A shipped** (creates the sample, moves the F126 page, lands the CI grep gate). **PR-C** adds the Blue Badge blueprint (three-action chain: `verify-identity` → `submit-blue-badge-application` → `issue-blue-badge`) and the Blue Badge page in the sample.
 
 ## Technical Context
 
@@ -67,35 +74,39 @@ specs/127-credential-gated-service/
 ### Source Code (repository root)
 
 ```text
-# Platform side (in src/) — shared infrastructure
+# Platform side (in src/) — F111-reconciled, mostly extends shipped surfaces
 src/Apps/Sorcha.UI/Sorcha.UI.Components.User/
 └── Components/
     └── CredentialGate/                                 # NEW component family
-        ├── CredentialGateComponent.razor
-        └── (services consumed by CredentialGateComponent
-             live alongside EnrolGate in the existing
-             Services/User/Enrolment/ folder pattern)
+        └── CredentialGateComponent.razor               # consumes F111's surface internally
 
 src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/
 └── Presentation/                                       # NEW service family
-    ├── IPresentationSignal.cs                          # SignalR primary, 3 s polling fallback, 60 s manual recovery
+    ├── IPresentationSignal.cs                          # SignalR primary (PresentationOutcomeReady), F111 status-poll fallback, 60 s manual recovery
     └── PresentationSignal.cs                           # mirrors F126 EnrolPairingSignal shape
 
-src/Services/Sorcha.Blueprint.Service/
-├── Endpoints/
-│   └── PresentationEndpoints.cs                        # NEW — 3 endpoints (mint request, post response, get response)
-├── Models/
-│   ├── PresentationRequest.cs
-│   ├── PresentationResponse.cs
-│   └── PrerequisitePresentationRequest.cs              # blueprint deserialisation target
-├── Services/
-│   ├── IPresentationRequestService.cs
-│   └── PresentationRequestService.cs                   # mint / stash / fetch (Redis via IAtomicDistributedCache)
-└── BlueprintRuntime/
-    └── PrerequisitesResolver.cs                        # extended to surface presentationRequests
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/Shared/Hubs/
+└── BlueprintHubConnection.cs                           # EXTENDED — OnPresentationOutcomeReady event hook
+
+src/Common/Sorcha.PresentationLifecycle.Abstractions/
+└── IPresentationConsumer.cs                            # EXTENDED — new optional BuildInitiationAsync method (default throws)
+
+src/Services/Sorcha.Blueprint.Service/Services/Implementation/
+├── HaipPresentationConsumer.cs                         # EXISTING (F111)
+└── SorchaWalletPresentationConsumer.cs                 # NEW — wraps Sorcha.Verifier.Engine; overrides BuildInitiationAsync
+
+src/Services/Sorcha.Blueprint.Service/Services/Implementation/
+└── PresentationLifecycleService.cs                     # EXTENDED (small) — dispatches BuildInitiationAsync for non-HAIP consumers; publishes PresentationOutcomeReady on success; issues ClaimsFetchToken on initiate
+
+src/Services/Sorcha.Blueprint.Service/Endpoints/
+└── PresentationEndpoints.cs                            # EXTENDED — new GET /api/presentations/{id}/disclosed-claims?token=...
 
 src/Services/Sorcha.Blueprint.Service/Hubs/
-└── BlueprintHub.cs                                     # extended — PresentationReceived(nonce) typed-client event
+├── BlueprintHubGroups.cs                               # EXTENDED — PresentationNonce(presentationRequestId) builder
+└── IBlueprintHubClient.cs                              # EXTENDED — PresentationOutcomeReady(presentationRequestId) typed-client method
+
+src/Services/Sorcha.Blueprint.Service/Storage/Presentations/
+└── IClaimsFetchTokenStore.cs                           # NEW — minimal Redis-backed store: SET NX at mint, GetAndRemoveAsync at fetch (NonceStore pattern)
 
 # Consumer side (in samples/) — application-specific
 samples/                                                # NEW top-level folder
