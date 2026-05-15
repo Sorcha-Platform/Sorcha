@@ -1,0 +1,45 @@
+{
+  "title": "Strathcarron Driving Licence",
+  "description": "Minimal demo blueprint backing the Feature 126 cold-start journey. Citizens apply via the Strathcarron council page; the council issues a driving-licence credential that lands in the citizen's Sorcha Wallet via SorchaLocalWallet target audience.",
+  "instanceReference": {
+    "prefix": "DL",
+    "components": [
+      { "field": "/fullName", "transform": "FirstWord", "chars": 3 }
+    ]
+  },
+  "participants": [
+    { "id": "citizen", "displayName": "Citizen", "open": true },
+    { "id": "licensing-officer", "displayName": "Licensing Officer" }
+  ],
+  "actions": [
+    {
+      "id": "submit-application",
+      "title": "Submit driving-licence application",
+      "isStartingAction": true,
+      "actor": "citizen",
+      "schema": {
+        "type": "object",
+        "required": ["fullName", "dateOfBirth", "address"],
+        "properties": {
+          "fullName": { "type": "string", "title": "Full name" },
+          "dateOfBirth": { "type": "string", "format": "date", "title": "Date of birth" },
+          "address": { "type": "string", "title": "Home address" }
+        }
+      },
+      "next": "issue-licence"
+    },
+    {
+      "id": "issue-licence",
+      "title": "Issue driving licence",
+      "actor": "licensing-officer",
+      "credentialIssuance": {
+        "credentialType": "DrivingLicence",
+        "subject": "citizen",
+        "targetAudience": "SorchaLocalWallet"
+      }
+    }
+  ],
+  "routes": [
+    { "from": "submit-application", "to": "issue-licence" }
+  ]
+}
