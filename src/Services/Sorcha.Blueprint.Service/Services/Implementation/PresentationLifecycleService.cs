@@ -8,7 +8,9 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.SignalR;
 using Sorcha.Blueprint.Service.Configuration;
+using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Infrastructure;
 using Sorcha.Blueprint.Service.Services.Interfaces;
@@ -21,6 +23,7 @@ using Sorcha.ServiceClients.Wallet;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using CredentialRequirementModel = Sorcha.Blueprint.Models.Credentials.CredentialRequirement;
+using PresentationSourceEnum = Sorcha.Blueprint.Models.Credentials.PresentationSource;
 using BlueprintPresentationConfig = Sorcha.Blueprint.Models.BlueprintPresentationConfig;
 using OutcomeDetailLevel = Sorcha.Blueprint.Models.OutcomeDetailLevel;
 
@@ -51,6 +54,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly IPresentationSealCoordinator? _sealCoordinator;
     private readonly IHaipServiceClient? _haipClient;
     private readonly IPendingPresentationStore _pendingStore;
+    private readonly IClaimsFetchTokenStore? _claimsFetchTokenStore;
+    private readonly IHubContext<BlueprintHub, IBlueprintHubClient>? _hubContext;
     private readonly IEnumerable<IPresentationConsumer> _consumers;
     private readonly IOptions<PresentationLifecycleOptions> _options;
     private readonly PresentationLifecycleMetrics? _metrics;
@@ -72,7 +77,9 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IClock? clock = null,
         IServiceProvider? serviceProvider = null,
         IRegisterServiceClient? registerClient = null,
-        IPresentationSealCoordinator? sealCoordinator = null)
+        IPresentationSealCoordinator? sealCoordinator = null,
+        IClaimsFetchTokenStore? claimsFetchTokenStore = null,
+        IHubContext<BlueprintHub, IBlueprintHubClient>? hubContext = null)
     {
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
@@ -87,6 +94,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _serviceProvider = serviceProvider;
         _registerClient = registerClient;
         _sealCoordinator = sealCoordinator;
+        _claimsFetchTokenStore = claimsFetchTokenStore;
+        _hubContext = hubContext;
     }
 
     public async Task<PresentationInitiationResult> InitiateAsync(
@@ -107,31 +116,86 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         ArgumentException.ThrowIfNullOrWhiteSpace(submitterWallet);
         ArgumentNullException.ThrowIfNull(draftPayload);
 
-        if (_haipClient is null)
+        var config = ResolveConfig(blueprint);
+        var validityWindow = config.PresentationValidityWindowSeconds
+            ?? _options.Value.DefaultValidityWindowSeconds;
+
+        // Feature 127 — dispatch by PresentationSource. HAIP keeps the legacy
+        // hardcoded path; SorchaWallet uses the new BuildInitiationAsync
+        // extension contract and mints a single-use ClaimsFetchToken for the
+        // council-page autofill path. Default-to-HAIP for back-compat with
+        // existing blueprints that don't explicitly set PresentationSource.
+        var consumerName = credentialRequirement.PresentationSource switch
         {
-            throw new InvalidOperationException(
-                "HAIP consumer client is not registered; cannot initiate HAIP presentation.");
-        }
+            PresentationSourceEnum.SorchaWallet => SorchaWalletPresentationConsumer.ConsumerNameValue,
+            _ => "haip"
+        };
 
         using var activity = ActivitySource.StartActivity("presentation.initiated");
         activity?.SetTag("instance.id", instance.Id);
         activity?.SetTag("action.id", action.Id);
         activity?.SetTag("register.id", instance.RegisterId);
-        activity?.SetTag("consumer", "haip");
+        activity?.SetTag("consumer", consumerName);
 
-        var config = ResolveConfig(blueprint);
-        var validityWindow = config.PresentationValidityWindowSeconds
-            ?? _options.Value.DefaultValidityWindowSeconds;
+        // 1. Build the wallet-facing artifact (request URI + requestId + expiry).
+        //    HAIP delegates to its external service; non-HAIP consumers use the
+        //    F127 BuildInitiationAsync extension on IPresentationConsumer.
+        InitiationDescriptor descriptor;
+        if (consumerName == "haip")
+        {
+            if (_haipClient is null)
+            {
+                throw new InvalidOperationException(
+                    "HAIP consumer client is not registered; cannot initiate HAIP presentation.");
+            }
 
-        // 1. Create the HAIP presentation request (QR URI + requestId).
-        var requiredClaimNames = credentialRequirement.RequiredClaims?
-            .Select(c => c.ClaimName)
-            .ToList();
-        var haipResult = await _haipClient.CreatePresentationRequestAsync(
-            credentialRequirement.Type,
-            requiredClaimNames,
-            credentialRequirement.AcceptedIssuers?.ToList(),
-            cancellationToken);
+            var requiredClaimNames = credentialRequirement.RequiredClaims?
+                .Select(c => c.ClaimName)
+                .ToList();
+            var haipResult = await _haipClient.CreatePresentationRequestAsync(
+                credentialRequirement.Type,
+                requiredClaimNames,
+                credentialRequirement.AcceptedIssuers?.ToList(),
+                cancellationToken);
+
+            descriptor = new InitiationDescriptor(
+                PresentationRequestId: haipResult.RequestId,
+                AuthorizationRequestUri: haipResult.AuthorizationRequestUri,
+                RequestUri: haipResult.RequestUri,
+                Nonce: haipResult.Nonce,
+                ExpiresAt: haipResult.ExpiresAt);
+        }
+        else
+        {
+            // F127 path. Lifecycle service owns the requestId for non-HAIP
+            // consumers; the consumer's BuildInitiationAsync produces the URI
+            // shape it wants the wallet to see.
+            var requestId = Guid.NewGuid();
+            var expiresAt = DateTimeOffset.UtcNow.AddSeconds(validityWindow);
+            var consumer = _consumers.FirstOrDefault(c =>
+                string.Equals(c.ConsumerName, consumerName, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException(
+                    $"No IPresentationConsumer registered with name '{consumerName}'.");
+
+            var digestPreview = ComputeRequirementsDigest(credentialRequirement);
+            var ctx = new PresentationInitiationContext(
+                PresentationRequestId: requestId,
+                InstanceId: Guid.Parse(instance.Id),
+                ActionId: action.Id,
+                RegisterId: instance.RegisterId,
+                BlueprintId: blueprint.Id,
+                SubmitterWallet: submitterWallet,
+                RequirementsDigest: digestPreview,
+                InitiatedAt: DateTimeOffset.UtcNow);
+
+            var consumerDescriptor = await consumer.BuildInitiationAsync(ctx, cancellationToken);
+            descriptor = new InitiationDescriptor(
+                PresentationRequestId: requestId,
+                AuthorizationRequestUri: consumerDescriptor.AuthorizationRequestUri,
+                RequestUri: consumerDescriptor.RequestUri,
+                Nonce: consumerDescriptor.Nonce,
+                ExpiresAt: expiresAt);
+        }
 
         // 2. Compute requirements digest (SHA-256 of canonical requirements JSON).
         var digest = ComputeRequirementsDigest(credentialRequirement);
@@ -140,13 +204,13 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         //    reconstitute the draft action payload and blueprint config.
         var pending = new PendingPresentation
         {
-            PresentationRequestId = haipResult.RequestId,
+            PresentationRequestId = descriptor.PresentationRequestId,
             InstanceId = Guid.Parse(instance.Id),
             ActionId = action.Id,
             RegisterId = instance.RegisterId,
             BlueprintId = blueprint.Id,
             SubmitterWallet = submitterWallet,
-            ConsumerName = "haip",
+            ConsumerName = consumerName,
             DraftPayloadJson = JsonSerializer.Serialize(draftPayload),
             CredentialRequirementDigestHex = Convert.ToHexString(digest).ToLowerInvariant(),
             DelegationToken = delegationToken,
@@ -161,8 +225,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         // 4. Build the presentation-initiated transaction (no credential data).
         var built = await _transactionBuilder.BuildPresentationInitiatedAsync(
             blueprint, instance, action,
-            presentationRequestId: haipResult.RequestId,
-            consumerName: "haip",
+            presentationRequestId: descriptor.PresentationRequestId,
+            consumerName: consumerName,
             requirementsDigest: digest,
             validityWindowSeconds: validityWindow,
             submitterWallet: submitterWallet,
@@ -191,7 +255,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
                 "Validator rejected presentation-initiated transaction {TxId}: [{ErrorCode}] {ErrorMessage}",
                 built.TxId, validatorResult.ErrorCode, validatorResult.ErrorMessage);
             // Attempt transient cleanup on failure.
-            await _pendingStore.DeleteAsync(haipResult.RequestId, cancellationToken);
+            await _pendingStore.DeleteAsync(descriptor.PresentationRequestId, cancellationToken);
             throw new InvalidOperationException(
                 $"Validator rejected presentation-initiated transaction {built.TxId}: " +
                 $"[{validatorResult.ErrorCode}] {validatorResult.ErrorMessage}");
@@ -202,20 +266,63 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         // previousTransactionId and preserve chain integrity on the register.
         await _pendingStore.StoreAsync(pending with { InitiatedTransactionId = built.TxId }, cancellationToken);
 
+        // Feature 127 — mint a single-use ClaimsFetchToken for consumers that
+        // produce council-page-readable disclosed claims (Sorcha wallet today).
+        // HAIP outcomes are decoded only on the register side; HAIP callers get
+        // no token. Token TTL = validity window so it expires alongside the
+        // pending presentation if the wallet never returns.
+        string? claimsFetchToken = null;
+        if (consumerName == SorchaWalletPresentationConsumer.ConsumerNameValue &&
+            _claimsFetchTokenStore is not null)
+        {
+            claimsFetchToken = GenerateClaimsFetchToken();
+            await _claimsFetchTokenStore.StoreAsync(
+                claimsFetchToken,
+                descriptor.PresentationRequestId,
+                TimeSpan.FromSeconds(validityWindow),
+                cancellationToken);
+        }
+
         _logger.LogInformation(
-            "PresentationInitiated tx {TxId} submitted for instance {InstanceId} action {ActionId} requestId {RequestId}",
-            built.TxId, instance.Id, action.Id, haipResult.RequestId);
-        activity?.SetTag("presentation.request_id", haipResult.RequestId.ToString());
+            "PresentationInitiated tx {TxId} submitted for instance {InstanceId} action {ActionId} requestId {RequestId} consumer={Consumer}",
+            built.TxId, instance.Id, action.Id, descriptor.PresentationRequestId, consumerName);
+        activity?.SetTag("presentation.request_id", descriptor.PresentationRequestId.ToString());
         activity?.SetTag("tx.id", built.TxId);
         _metrics?.RecordInitiated(pending.ConsumerName);
 
         return new PresentationInitiationResult(
-            PresentationRequestId: haipResult.RequestId,
-            AuthorizationRequestUri: haipResult.AuthorizationRequestUri,
-            RequestUri: haipResult.RequestUri,
-            Nonce: haipResult.Nonce,
-            ExpiresAt: haipResult.ExpiresAt,
-            InitiatedTransactionId: built.TxId);
+            PresentationRequestId: descriptor.PresentationRequestId,
+            AuthorizationRequestUri: descriptor.AuthorizationRequestUri,
+            RequestUri: descriptor.RequestUri,
+            Nonce: descriptor.Nonce,
+            ExpiresAt: descriptor.ExpiresAt,
+            InitiatedTransactionId: built.TxId,
+            ClaimsFetchToken: claimsFetchToken);
+    }
+
+    /// <summary>
+    /// Internal value carried between the consumer-specific initiation branch
+    /// and the consumer-agnostic transaction-write / pending-store body.
+    /// </summary>
+    private sealed record InitiationDescriptor(
+        Guid PresentationRequestId,
+        string AuthorizationRequestUri,
+        string? RequestUri,
+        string? Nonce,
+        DateTimeOffset ExpiresAt);
+
+    /// <summary>
+    /// Feature 127 — high-entropy URL-safe token bound to a single presentation
+    /// request. Mints 24 raw bytes (192 bits) of entropy, URL-safe base64
+    /// encoded. Single-use enforcement is the store's job.
+    /// </summary>
+    private static string GenerateClaimsFetchToken()
+    {
+        var raw = System.Security.Cryptography.RandomNumberGenerator.GetBytes(24);
+        return Convert.ToBase64String(raw)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
     }
 
     public async Task<PresentationOutcomeResult> HandleOutcomeAsync(
@@ -456,6 +563,31 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             built.TxId, presentationRequestId, outcome.Kind, finalSentinel, isLateAfterAbandonment);
         activity?.SetTag("outcome.kind", outcome.Kind.ToString());
         activity?.SetTag("tx.id", built.TxId);
+
+        // Feature 127 — thin-signal hub publish so council pages subscribed to
+        // BlueprintHubGroups.PresentationNonce learn of the outcome with low
+        // latency. The signal carries the requestId only; the council page
+        // fetches lifecycle state (kind) via F111's status endpoint and, on
+        // success, disclosed claims via the F127 claims-fetch endpoint.
+        // Try/log/swallow — publishing must never fail the outcome write.
+        // TODO(seal-drain): mirror this publish from PresentationSealSubscriber
+        // when an F119-deferred outcome eventually writes; for the typical
+        // inline path (no F119 deferral), this single publish is sufficient.
+        if (_hubContext is not null)
+        {
+            try
+            {
+                await _hubContext.Clients
+                    .Group(BlueprintHubGroups.PresentationNonce(presentationRequestId))
+                    .PresentationOutcomeReady(presentationRequestId.ToString("N"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to publish PresentationOutcomeReady for requestId {RequestId}; non-fatal",
+                    presentationRequestId);
+            }
+        }
 
         _metrics?.RecordOutcome(
             consumer: consumerName,
