@@ -54,7 +54,7 @@ public static class EnrolSessionEndpoints
         return app;
     }
 
-    private static async Task<Results<Ok<MintEnrolSessionResponse>, UnauthorizedHttpResult>> MintAsync(
+    internal static async Task<Results<Ok<MintEnrolSessionResponse>, UnauthorizedHttpResult>> MintAsync(
         ClaimsPrincipal principal,
         IEnrolSessionService service,
         CancellationToken ct)
@@ -69,7 +69,7 @@ public static class EnrolSessionEndpoints
         return TypedResults.Ok(response);
     }
 
-    private static async Task<IResult> RedeemAsync(
+    internal static async Task<IResult> RedeemAsync(
         [FromBody] RedeemEnrolSessionRequest request,
         IEnrolSessionService service,
         CancellationToken ct)
