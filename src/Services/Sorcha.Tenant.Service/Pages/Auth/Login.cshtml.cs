@@ -26,6 +26,7 @@ public class LoginModel : PageModel
     private readonly ILogger<LoginModel> _logger;
     private readonly DemoEnvironmentSettings _demoSettings;
     private readonly ISocialLoginService _socialLoginService;
+    private readonly ReturnToAllowlistOptions _returnToAllowlist;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LoginModel"/> class.
@@ -38,7 +39,8 @@ public class LoginModel : PageModel
         IOrganizationRepository organizationRepository,
         ILogger<LoginModel> logger,
         IOptions<DemoEnvironmentSettings> demoSettings,
-        ISocialLoginService socialLoginService)
+        ISocialLoginService socialLoginService,
+        IOptions<ReturnToAllowlistOptions> returnToAllowlist)
     {
         _loginService = loginService;
         _totpService = totpService;
@@ -48,6 +50,7 @@ public class LoginModel : PageModel
         _logger = logger;
         _demoSettings = demoSettings.Value;
         _socialLoginService = socialLoginService;
+        _returnToAllowlist = returnToAllowlist?.Value ?? new ReturnToAllowlistOptions();
     }
 
     /// <summary>Demo-environment banner flag — when true the page shows the warning notice.</summary>
@@ -289,7 +292,7 @@ public class LoginModel : PageModel
 
     private IActionResult RedirectToApp(TokenResponse tokens)
     {
-        var returnUrl = IsValidReturnUrl(ReturnUrl) ? ReturnUrl : "";
+        var returnUrl = IsValidReturnUrl(ReturnUrl, _returnToAllowlist) ? ReturnUrl : "";
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
                        $"&refresh={Uri.EscapeDataString(tokens.RefreshToken)}";
         if (!string.IsNullOrEmpty(returnUrl))
@@ -299,9 +302,21 @@ public class LoginModel : PageModel
         return Redirect($"/app/#{fragment}");
     }
 
-    private static bool IsValidReturnUrl(string? url)
+    /// <summary>
+    /// Validates the return URL — accepts (a) internal relative paths and (b)
+    /// absolute URLs whose host matches the Feature 126 return-to allowlist
+    /// (so council pages can carry the citizen back to e.g. strathcarron.gov
+    /// after F116 signup completes).
+    /// </summary>
+    internal static bool IsValidReturnUrl(string? url, ReturnToAllowlistOptions allowlist)
     {
         if (string.IsNullOrEmpty(url)) return false;
-        return url.StartsWith('/') && !url.StartsWith("//");
+
+        // Internal relative path — the existing behaviour. Reject "//host" as
+        // a protocol-relative URL footgun.
+        if (url.StartsWith('/') && !url.StartsWith("//")) return true;
+
+        // Absolute URL — must match the allowlist. Open redirects fail closed.
+        return allowlist.IsAllowed(url);
     }
 }

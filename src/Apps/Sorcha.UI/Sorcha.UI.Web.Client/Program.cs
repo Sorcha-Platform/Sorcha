@@ -8,6 +8,7 @@ using MudBlazor.Services;
 using Sorcha.Blueprint.Schemas.Client;
 using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
+using Sorcha.UI.Core.Services.User.Enrolment;
 using Sorcha.UI.Web.Client;
 using Sorcha.UI.Web.Client.Services;
 
@@ -65,6 +66,19 @@ builder.Services.AddScoped<SchemaLibraryService>(sp =>
 
     return schemaLibrary;
 });
+
+// Feature 126 — council enrolment gate services. ITierProbeService hits the
+// API gateway directly via a typed HttpClient; IEnrolPairingSignal layers
+// SignalR (via TenantHubConnection) with a 3-s /me/devices poll as fallback.
+builder.Services.AddHttpClient<ITierProbeService, HttpTierProbeService>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+builder.Services.AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+builder.Services.AddSingleton(TimeProvider.System);
 
 var host = builder.Build();
 

@@ -43,5 +43,22 @@ public interface ITenantHubClient
     /// <param name="traceId">W3C trace-id for correlating across the bridge.</param>
     Task InboxUnreadCountUpdated(int unreadCount, DateTimeOffset occurredAt, string traceId);
 
+    /// <summary>
+    /// A new wallet device has been enrolled against the user's account.
+    /// Thin-signal: opaque IDs only; clients fetch full device detail via
+    /// <c>GET /api/v1/me/devices/{deviceId}</c>.
+    /// </summary>
+    /// <remarks>
+    /// Published from <c>PlatformUserDeviceService.RegisterAsync</c> to the
+    /// <see cref="TenantHubGroups.User"/> group of the bound platform user.
+    /// Feature 126 — the council page subscribes to this event to advance
+    /// out of the "Waiting for your phone…" state when the citizen finishes
+    /// pairing on their wallet device. Idempotent: re-firing for the same
+    /// <c>(platformUserId, deviceId)</c> pair is a no-op for the council page.
+    /// </remarks>
+    /// <param name="platformUserId">Platform user that owns the device.</param>
+    /// <param name="deviceId">Id of the newly registered <c>PlatformUserDevice</c>.</param>
+    Task DeviceEnrolled(Guid platformUserId, Guid deviceId);
+
     // Membership / Security / System announcement events follow in a later phase.
 }

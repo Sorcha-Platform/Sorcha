@@ -41,6 +41,13 @@ public sealed class TenantHubConnection : IAsyncDisposable
     /// <summary>Fires when the server emits <c>InboxUnreadCountUpdated(unreadCount, occurredAt, traceId)</c>.</summary>
     public event Func<int, DateTimeOffset, string, Task>? OnInboxUnreadCountUpdated;
 
+    /// <summary>
+    /// Fires when the server emits <c>DeviceEnrolled(platformUserId, deviceId)</c>.
+    /// Feature 126 — the council page subscribes to this to advance out of the
+    /// "Waiting for your phone…" state when the citizen finishes pairing.
+    /// </summary>
+    public event Func<Guid, Guid, Task>? OnDeviceEnrolled;
+
     /// <summary>Connection-state changes for the inline reconnect indicator.</summary>
     public event Action<ConnectionState>? OnConnectionStateChanged;
 
@@ -109,6 +116,15 @@ public sealed class TenantHubConnection : IAsyncDisposable
                 if (OnInboxUnreadCountUpdated is not null)
                 {
                     await OnInboxUnreadCountUpdated(unreadCount, occurredAt, traceId);
+                }
+            });
+
+            _hubConnection.On<Guid, Guid>("DeviceEnrolled", async (platformUserId, deviceId) =>
+            {
+                _logger.LogDebug("Device enrolled: platformUser={PlatformUserId}, device={DeviceId}", platformUserId, deviceId);
+                if (OnDeviceEnrolled is not null)
+                {
+                    await OnDeviceEnrolled(platformUserId, deviceId);
                 }
             });
 
