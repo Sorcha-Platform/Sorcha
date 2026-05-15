@@ -1,0 +1,125 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 127 / PR-C — Blue Badge application form. Renders after the
+    CredentialGateComponent surfaces disclosed claims from the citizen's
+    AssuredIdentityCredential. Identity fields are read-only chips at the
+    top; the citizen fills the two Blue Badge-specific fields and submits.
+*@
+@using System.Text.Json
+@using Sorcha.UI.Core.Models.User.Presentation
+
+<MudPaper Class="pa-4" Elevation="1">
+
+    @if (Disclosed?.Claims is not null && Disclosed.Claims.Count > 0)
+    {
+        <MudAlert Severity="Severity.Success" Class="mb-3" Icon="@MudBlazor.Icons.Material.Filled.Verified">
+            Verified ✓ — @(Disclosed.SubjectDisplayName ?? "your Assured Identity has been confirmed")
+        </MudAlert>
+
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Identity (from your Sorcha Wallet)</MudText>
+        <MudChipSet T="string" Class="mb-4" ReadOnly>
+            @foreach (var claim in Disclosed.Claims)
+            {
+                <MudChip T="string">@claim.Key: @FormatClaimValue(claim.Value)</MudChip>
+            }
+        </MudChipSet>
+    }
+
+    <MudText Typo="Typo.h6" Class="mb-2">About your Blue Badge application</MudText>
+
+    <MudTextField @bind-Value="_mobilityCondition"
+                  Label="Reason for the Blue Badge"
+                  HelperText="Tell us why you need a Blue Badge — e.g. limited mobility, vision impairment, registered carer."
+                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                  Required="true"
+                  Lines="2"
+                  Class="mb-3"
+                  data-testid="blue-badge-mobility" />
+
+    <MudTextField @bind-Value="_previousBadgeNumber"
+                  Label="Previous Blue Badge number (if any)"
+                  HelperText="Optional — leave blank if this is your first Blue Badge."
+                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                  Class="mb-4"
+                  data-testid="blue-badge-prev" />
+
+    @if (_submitted)
+    {
+        <MudAlert Severity="Severity.Success" Class="mb-3">
+            Your application is in. Watch your wallet — your Blue Badge will arrive within a few seconds.
+        </MudAlert>
+    }
+    else
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   OnClick="SubmitAsync"
+                   Disabled="@(string.IsNullOrWhiteSpace(_mobilityCondition) || _submitting)"
+                   data-testid="blue-badge-submit">
+            @if (_submitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Submitting…</span>
+            }
+            else
+            {
+                <span>Submit application</span>
+            }
+        </MudButton>
+    }
+</MudPaper>
+
+@code {
+    /// <summary>Disclosed claims surfaced by CredentialGateComponent — null pre-presentation.</summary>
+    [Parameter] public DisclosedClaimsResponse? Disclosed { get; set; }
+
+    /// <summary>Fires when the citizen submits the form. Parent owns the HTTP call.</summary>
+    [Parameter] public EventCallback<BlueBadgeSubmission> OnSubmit { get; set; }
+
+    private string _mobilityCondition = "";
+    private string _previousBadgeNumber = "";
+    private bool _submitting;
+    private bool _submitted;
+
+    private async Task SubmitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_mobilityCondition)) return;
+        _submitting = true;
+        try
+        {
+            var submission = new BlueBadgeSubmission(
+                MobilityCondition: _mobilityCondition.Trim(),
+                PreviousBadgeNumber: string.IsNullOrWhiteSpace(_previousBadgeNumber)
+                    ? null
+                    : _previousBadgeNumber.Trim());
+            if (OnSubmit.HasDelegate)
+            {
+                await OnSubmit.InvokeAsync(submission);
+            }
+            _submitted = true;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private static string FormatClaimValue(object? value) => value switch
+    {
+        null => "",
+        JsonElement je => je.ValueKind switch
+        {
+            JsonValueKind.String => je.GetString() ?? "",
+            JsonValueKind.Number => je.GetRawText(),
+            JsonValueKind.Null => "",
+            _ => je.GetRawText()
+        },
+        _ => value.ToString() ?? ""
+    };
+}
+
+@code {
+    /// <summary>What the citizen fills in beyond the disclosed identity claims.</summary>
+    public sealed record BlueBadgeSubmission(string MobilityCondition, string? PreviousBadgeNumber);
+}
