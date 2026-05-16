@@ -49,7 +49,8 @@ public sealed class EnrolSessionRedeemer : IEnrolSessionRedeemer
                     body.AccessToken,
                     body.ExpiresIn,
                     body.DisplayName ?? "",
-                    body.Email ?? "");
+                    body.Email ?? "",
+                    ParseMode(body.Mode));
             }
 
             var error = await TryReadErrorAsync(response, ct).ConfigureAwait(false);
@@ -94,7 +95,13 @@ public sealed class EnrolSessionRedeemer : IEnrolSessionRedeemer
         }
     }
 
+    private static EnrolRedeemMode ParseMode(string? wire) => wire switch
+    {
+        "Standalone" or "standalone" => EnrolRedeemMode.Standalone,
+        _ => EnrolRedeemMode.Gated,
+    };
+
     private sealed record RedeemRequest(string SessionToken);
-    private sealed record RedeemSuccessShape(string AccessToken, int ExpiresIn, string? DisplayName, string? Email);
+    private sealed record RedeemSuccessShape(string AccessToken, int ExpiresIn, string? DisplayName, string? Email, string? Mode);
     private sealed record ErrorShape(string? Code, string? Message);
 }

@@ -1182,3 +1182,56 @@ Both back the disclosed-claims endpoint; the register transaction remains the le
 - **The disclosed-claims endpoint consumes the token on pending-state too** — the council page must reuse the same token on retry. Because the page subscribes to the hub signal and fetches only on outcome ready, pending-state fetches should be rare; the token semantics keep the surface simple.
 - **F119 deferred outcomes don't publish `PresentationOutcomeReady` yet.** The typical inline path covers the common case; the deferred-write path (seal-aware ordering) needs its own publish from `PresentationSealSubscriber`. Inline TODO flagged in `PresentationLifecycleService.HandleOutcomeAsync`.
 - **`SorchaWalletPresentationConsumer.BuildInitiationAsync` emits `did:sorcha:org:UNKNOWN`** as the OID4VP `client_id` placeholder. Verifier-DID resolution from blueprint metadata lands in Spec 5 alongside the production `IIssuerKeyResolver`.
+
+
+## Cold-start onboarding (Feature 128)
+
+Four citizen routes outside the F126 council-page gate, all sharing the existing `enrol-session` primitive extended with a `mode` discriminator.
+
+### Primitive extension
+
+`POST /api/auth/enrol-session` accepts an optional `mode: gated | standalone` body field. Default `gated` — preserves F126 callers verbatim. The discriminator is persisted as a signed JWT claim (`pair_mode`) on the session token and echoed on `POST /api/auth/enrol-session/redeem`. Telemetry counters `sorcha_enrol_session_minted_total` and `sorcha_enrol_session_redeemed_total` gain a `mode` dimension.
+
+### New endpoints
+
+| Path | Auth | Purpose |
+|---|---|---|
+| `POST /api/auth/enrol-session/short-code` | bearer | Mint a 6-digit numeric short code wrapping a standalone enrol-session token. 5-min TTL, single-use, 5-attempts-per-code rate-limit. Used by the takeover sub-affordance + mobile-web install fallback. |
+| `POST /api/auth/enrol-session/redeem-short-code` | anonymous | Redeem a 6-digit code → underlying enrol-session redeem result. |
+| `GET /api/v1/me/devices/has-any` | bearer | Aggregate read returning `{ hasAnyDevice, latestEnrolledAt }`. Drives the takeover trigger + nag-banner trigger. |
+| `POST /api/auth/pairing-resumption-email` | bearer, rate-limited | Dispatches the "Email me a link" magic-link to the caller's account email. |
+| `GET /api/auth/pairing-resumption/redeem?token={id}` | anonymous | Redeems the magic-link → 302 to `/auth/login?returnUrl=/setup/add-device&email=...&reason=pairing-resumption`. Single-use. |
+
+### Hub event extension
+
+`IWalletHubClient.DeviceEnrolled(Guid deviceId)` — broadcast on `WalletHubGroups.CitizenWallet(platformUserId)` from `CitizenWalletEndpoints.EnrolDevice` after registration success. Mirrors the existing `DeviceRevoked` event. Drives F128 takeover auto-dismissal on remote pair-success.
+
+### Shared client services (Sorcha.UI.Components.User)
+
+- **`IHasPairedDeviceProbe`** (`Services/User/Devices/`) — typed HttpClient calling `GET /api/v1/me/devices/has-any`. Per-session cache, `Changed` event, optimistic `RaiseLocalPairCompleted()` flip. Registered in both `Sorcha.Wallet.Pwa` (drives `PairingTakeover`) and `Sorcha.UI.Web.Client` (drives `PairingNagBanner`).
+- **`IPwaInstallabilityProbe`** (`Services/User/Pairing/`) — JS-interop probe via `wwwroot/js/pwa-install-probe.js`. Three-verdict (CannotInstall / CanInstallProgrammatically / CanInstallManually). Determines whether `PairingHandoffSurface` renders the QR variant or the install variant.
+
+### Components (Sorcha.UI.Components.User)
+
+- **`PairingTakeover`** (`Components/Pairing/`) — full-page overlay mounted in `Sorcha.Wallet.Pwa/MainLayout.razor` outside `MudLayout`. Renders when `HasAnyDevice == false`. Primary action invokes `IEnrolmentService.EnrolAsync` against the existing PWA session; secondary disclosure accepts a 6-digit code for cross-device-to-this-device pairing. Auto-dismisses on probe-change OR `CitizenWalletHubConnection.OnDeviceEnrolled`.
+- **`PairingHandoffSurface`** (`Components/Pairing/`) — hosted at `/setup/add-device`. Switches on `IPwaInstallabilityProbe` verdict between the QR variant (desktop) and the install variant (mobile, with always-visible short code). Common Skip + "Email me a link" affordances.
+- **`PairingNagBanner`** (`Components/Pairing/`) — persistent dismissable banner mounted in `Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`. Renders when `HasAnyDevice == false`. CTA → `/setup/add-device`.
+
+### Post-login routing gate
+
+`Sorcha.Tenant.Service/Pages/Auth/Login.cshtml.cs`'s `RedirectToApp` extends to query `IPlatformUserDeviceService.HasAnyAsync` (parsing `platform_user_id` from the freshly-issued access token). When zero paired devices AND no explicit `ReturnUrl` override, the returnUrl defaults to `/setup/add-device` so the WASM client lands the citizen on `PairingHandoffSurface`. FR-020 + FR-026.
+
+### Spec / contracts refinements vs the original brainstorm
+
+1. **Discriminator is a JWT claim, not a server cache record.** Simpler, inherits single-use enforcement for free.
+2. **`returnTo` is NOT on the mint API.** Stays a URL-query concern on the redeem side (matching F126). Mode/returnTo coherence enforcement is a redeem-page concern, not a mint-API concern.
+3. **Pairing-resumption redeem is conservative.** 302s to `/auth/login` with email pre-filled instead of auto-signing-in. The auto-sign-in variant (mint fresh access+refresh tokens, 302 to `/app/`) is captured as a polish-phase TODO.
+4. **Seamless `start_url`-baked token (FR-031) deferred.** Short-code fallback covers Story 3 end-to-end without the iOS-quirk-dependent seamless path. SC-006 measurement post-launch drives whether to add the seamless path.
+
+### Files / file paths
+
+- Server: `Sorcha.Tenant.Service/Services/{EnrolSessionService,PairingShortCodeService,PairingResumptionTokenService}.cs`; `Endpoints/{EnrolSessionEndpoints,PairingShortCodeEndpoints,PairingResumptionEndpoints,PlatformUserDeviceEndpoints}.cs`; `Emails/Templates/pairing-resumption.{html,txt}`
+- Wallet Service: `Endpoints/CitizenWalletEndpoints.cs` (DeviceEnrolled broadcast); `Hubs/IWalletHubClient.cs` (DeviceEnrolled signature)
+- Wallet PWA: `Components/PairingTakeover.razor`; `Services/CitizenWalletHubConnection.cs` (OnDeviceEnrolled); `Services/Enrolment/{IPairingShortCodeRedeemer,PairingShortCodeRedeemer}.cs`
+- Sorcha.UI.Components.User: `Components/Pairing/{PairingTakeover,PairingHandoffSurface,PairingNagBanner}.razor`; `Services/User/Devices/{IHasPairedDeviceProbe,HasPairedDeviceProbe}.cs`; `Services/User/Pairing/{IPwaInstallabilityProbe,PwaInstallabilityProbe}.cs`
+- Sorcha.UI.Web.Client: `Pages/Setup/AddDevice.razor`; `Pages/Get.razor`; `wwwroot/js/pwa-install-probe.js`

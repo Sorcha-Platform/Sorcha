@@ -153,6 +153,16 @@ builder.Services.AddHttpClient<Sorcha.Tenant.Service.Services.IPersonaCryptoClie
 builder.Services.AddAtomicDistributedCache(builder.Configuration, "Tenant");
 builder.Services.AddSingleton<EnrolSessionMetrics>();
 builder.Services.AddScoped<IEnrolSessionService, EnrolSessionService>();
+
+// Feature 128: 6-digit pairing short codes wrapping standalone enrol-session
+// tokens. Used by the wallet PWA pairing-takeover sub-affordance and the
+// mobile-web install fallback path.
+builder.Services.AddScoped<IPairingShortCodeService, PairingShortCodeService>();
+
+// Feature 128 US2: "Email me a link" pairing-resumption token service.
+// 24-hour TTL, single-use via IAtomicDistributedCache (NonceStore pattern).
+builder.Services.AddScoped<IPairingResumptionTokenService, PairingResumptionTokenService>();
+
 builder.Services.Configure<ReturnToAllowlistOptions>(
     builder.Configuration.GetSection(ReturnToAllowlistOptions.SectionName));
 
@@ -246,6 +256,8 @@ app.MapRegisterSubscriptionEndpoints();
 app.MapRegisterInvitationEndpoints();
 app.MapTrustEndpoints();
 app.MapEnrolSessionEndpoints();
+app.MapPairingShortCodeEndpoints();
+app.MapPairingResumptionEndpoints();
 app.MapRazorPages();
 
 // Feature 118 — map TenantHub at /hubs/tenant (US2). Routed via API Gateway.

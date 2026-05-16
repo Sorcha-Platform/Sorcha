@@ -27,6 +27,7 @@ public class LoginModel : PageModel
     private readonly DemoEnvironmentSettings _demoSettings;
     private readonly ISocialLoginService _socialLoginService;
     private readonly ReturnToAllowlistOptions _returnToAllowlist;
+    private readonly IPlatformUserDeviceService _deviceService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LoginModel"/> class.
@@ -40,7 +41,8 @@ public class LoginModel : PageModel
         ILogger<LoginModel> logger,
         IOptions<DemoEnvironmentSettings> demoSettings,
         ISocialLoginService socialLoginService,
-        IOptions<ReturnToAllowlistOptions> returnToAllowlist)
+        IOptions<ReturnToAllowlistOptions> returnToAllowlist,
+        IPlatformUserDeviceService deviceService)
     {
         _loginService = loginService;
         _totpService = totpService;
@@ -51,6 +53,7 @@ public class LoginModel : PageModel
         _demoSettings = demoSettings.Value;
         _socialLoginService = socialLoginService;
         _returnToAllowlist = returnToAllowlist?.Value ?? new ReturnToAllowlistOptions();
+        _deviceService = deviceService;
     }
 
     /// <summary>Demo-environment banner flag — when true the page shows the warning notice.</summary>
@@ -292,7 +295,17 @@ public class LoginModel : PageModel
 
     private IActionResult RedirectToApp(TokenResponse tokens)
     {
+        // Feature 128 US2 — when the citizen has no paired device and no
+        // explicit ReturnUrl override, route them to /setup/add-device so
+        // the WASM client lands on the pairing handoff page (FR-020).
+        // Citizens who already have a paired device follow the existing
+        // ReturnUrl / "" behaviour unchanged (FR-026).
         var returnUrl = IsValidReturnUrl(ReturnUrl, _returnToAllowlist) ? ReturnUrl : "";
+        if (string.IsNullOrEmpty(returnUrl) && ShouldRouteToSetupAddDevice(tokens.AccessToken))
+        {
+            returnUrl = "/setup/add-device";
+        }
+
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
                        $"&refresh={Uri.EscapeDataString(tokens.RefreshToken)}";
         if (!string.IsNullOrEmpty(returnUrl))
@@ -300,6 +313,40 @@ public class LoginModel : PageModel
             fragment += $"&returnUrl={Uri.EscapeDataString(returnUrl!)}";
         }
         return Redirect($"/app/#{fragment}");
+    }
+
+    /// <summary>
+    /// Reads <c>platform_user_id</c> from the freshly-issued access token and
+    /// queries <see cref="IPlatformUserDeviceService.HasAnyAsync"/>. Returns
+    /// true when the citizen has zero active paired devices — the F128
+    /// auto-route trigger. Non-fatal: any failure (token parse, DB error)
+    /// is logged and falls through to the existing redirect behaviour.
+    /// </summary>
+    private bool ShouldRouteToSetupAddDevice(string accessToken)
+    {
+        try
+        {
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var jwt = handler.ReadJwtToken(accessToken);
+            var raw = jwt.Claims.FirstOrDefault(c => c.Type == "platform_user_id")?.Value;
+            if (!Guid.TryParse(raw, out var platformUserId))
+            {
+                return false;
+            }
+
+            // Block synchronously on the aggregate read; this is one cheap
+            // DB hit on the post-login path, and the call site is already
+            // synchronous so refactoring all three sites to async-everything
+            // is more invasive than warranted.
+            var (hasAny, _) = _deviceService.HasAnyAsync(platformUserId).GetAwaiter().GetResult();
+            return !hasAny;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "F128 setup-add-device routing check failed — falling through to default redirect");
+            return false;
+        }
     }
 
     /// <summary>

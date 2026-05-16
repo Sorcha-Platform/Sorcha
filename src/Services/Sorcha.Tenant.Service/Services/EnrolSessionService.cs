@@ -41,6 +41,13 @@ public sealed class EnrolSessionService : IEnrolSessionService
     /// <summary>Token scope claim value identifying these tokens.</summary>
     public const string EnrolScope = "enrol";
 
+    /// <summary>
+    /// JWT claim carrying the <see cref="EnrolSessionMode"/> discriminator
+    /// (F128). Persisted in-token so single-use enforcement is unchanged
+    /// (only the JTI is tracked server-side).
+    /// </summary>
+    public const string PairModeClaim = "pair_mode";
+
     /// <summary>Cache key prefix for the single-use JTI registry.</summary>
     public const string JtiRegistryKeyPrefix = "sorcha:enrol-session:";
 
@@ -105,7 +112,10 @@ public sealed class EnrolSessionService : IEnrolSessionService
     }
 
     /// <inheritdoc />
-    public async Task<MintEnrolSessionResponse> MintAsync(Guid platformUserId, CancellationToken ct)
+    public async Task<MintEnrolSessionResponse> MintAsync(
+        Guid platformUserId,
+        EnrolSessionMode mode,
+        CancellationToken ct)
     {
         if (platformUserId == Guid.Empty)
         {
@@ -116,11 +126,14 @@ public sealed class EnrolSessionService : IEnrolSessionService
         var now = _timeProvider.GetUtcNow();
         var expiresAt = now.Add(SessionTokenLifetime);
 
+        var modeWire = ModeToWire(mode);
+
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, platformUserId.ToString()),
             new(JwtRegisteredClaimNames.Jti, jti),
             new("scope", EnrolScope),
+            new(PairModeClaim, modeWire),
         };
 
         var descriptor = new SecurityTokenDescriptor
@@ -145,20 +158,33 @@ public sealed class EnrolSessionService : IEnrolSessionService
 
         var qrUrl = $"{_councilOrigin.TrimEnd('/')}/wallet/enrol?session={jwt}";
 
-        _metrics.RecordMint("tier3_first_qr");
+        _metrics.RecordMint("tier3_first_qr", modeWire);
         _logger.LogInformation(
-            "Minted enrol-session token (jti={Jti}, platformUserId={PlatformUserId}, exp={Exp:O})",
-            jti, platformUserId, expiresAt);
+            "Minted enrol-session token (jti={Jti}, platformUserId={PlatformUserId}, mode={Mode}, exp={Exp:O})",
+            jti, platformUserId, modeWire, expiresAt);
 
-        return new MintEnrolSessionResponse(jwt, qrUrl, expiresAt);
+        return new MintEnrolSessionResponse(jwt, qrUrl, expiresAt, mode);
     }
+
+    private static string ModeToWire(EnrolSessionMode mode) => mode switch
+    {
+        EnrolSessionMode.Gated => "gated",
+        EnrolSessionMode.Standalone => "standalone",
+        _ => "gated",
+    };
+
+    private static EnrolSessionMode ModeFromClaim(string? wire) => wire switch
+    {
+        "standalone" => EnrolSessionMode.Standalone,
+        _ => EnrolSessionMode.Gated,
+    };
 
     /// <inheritdoc />
     public async Task<RedeemResult> RedeemAsync(string sessionToken, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(sessionToken))
         {
-            _metrics.RecordRedeem("malformed");
+            _metrics.RecordRedeem("malformed", "unknown");
             return RedeemResult.Fail(RedeemEnrolSessionErrorCode.MalformedToken, "Session token is required.");
         }
 
@@ -171,12 +197,12 @@ public sealed class EnrolSessionService : IEnrolSessionService
         }
         catch (ArgumentException)
         {
-            _metrics.RecordRedeem("malformed");
+            _metrics.RecordRedeem("malformed", "unknown");
             return RedeemResult.Fail(RedeemEnrolSessionErrorCode.MalformedToken, "Token could not be parsed.");
         }
         catch (SecurityTokenException)
         {
-            _metrics.RecordRedeem("malformed");
+            _metrics.RecordRedeem("malformed", "unknown");
             return RedeemResult.Fail(RedeemEnrolSessionErrorCode.MalformedToken, "Token could not be parsed.");
         }
 
@@ -201,12 +227,12 @@ public sealed class EnrolSessionService : IEnrolSessionService
         }
         catch (SecurityTokenInvalidSignatureException)
         {
-            _metrics.RecordRedeem("signature_fail");
+            _metrics.RecordRedeem("signature_fail", "unknown");
             return RedeemResult.Fail(RedeemEnrolSessionErrorCode.InvalidSignature, "Signature did not validate.");
         }
         catch (SecurityTokenException)
         {
-            _metrics.RecordRedeem("malformed");
+            _metrics.RecordRedeem("malformed", "unknown");
             return RedeemResult.Fail(RedeemEnrolSessionErrorCode.MalformedToken, "Token failed validation.");
         }
 
@@ -214,21 +240,21 @@ public sealed class EnrolSessionService : IEnrolSessionService
         var expClaim = principal.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
         if (expClaim is null || !long.TryParse(expClaim, NumberStyles.Integer, CultureInfo.InvariantCulture, out var expEpoch))
         {
-            _metrics.RecordRedeem("malformed");
+            _metrics.RecordRedeem("malformed", "unknown");
             return RedeemResult.Fail(RedeemEnrolSessionErrorCode.MalformedToken, "Token is missing exp claim.");
         }
 
         var expiresAt = DateTimeOffset.FromUnixTimeSeconds(expEpoch);
         if (_timeProvider.GetUtcNow() >= expiresAt)
         {
-            _metrics.RecordRedeem("expired");
+            _metrics.RecordRedeem("expired", ModeToWire(ModeFromClaim(principal.FindFirst(PairModeClaim)?.Value)));
             return RedeemResult.Fail(RedeemEnrolSessionErrorCode.Expired, "Session token has expired.");
         }
 
         var scope = principal.FindFirst("scope")?.Value;
         if (!string.Equals(scope, EnrolScope, StringComparison.Ordinal))
         {
-            _metrics.RecordRedeem("scope_mismatch");
+            _metrics.RecordRedeem("scope_mismatch", ModeToWire(ModeFromClaim(principal.FindFirst(PairModeClaim)?.Value)));
             return RedeemResult.Fail(RedeemEnrolSessionErrorCode.ScopeMismatch, "Token scope does not permit enrolment.");
         }
 
@@ -236,7 +262,7 @@ public sealed class EnrolSessionService : IEnrolSessionService
         var jti = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
         if (string.IsNullOrEmpty(sub) || !Guid.TryParse(sub, out var platformUserId) || string.IsNullOrEmpty(jti))
         {
-            _metrics.RecordRedeem("malformed");
+            _metrics.RecordRedeem("malformed", "unknown");
             return RedeemResult.Fail(RedeemEnrolSessionErrorCode.MalformedToken, "Token is missing required claims.");
         }
 
@@ -246,7 +272,7 @@ public sealed class EnrolSessionService : IEnrolSessionService
         var sentinel = await _cache.GetAndRemoveAsync(cacheKey, ct).ConfigureAwait(false);
         if (sentinel is null)
         {
-            _metrics.RecordRedeem("replay");
+            _metrics.RecordRedeem("replay", ModeToWire(ModeFromClaim(principal.FindFirst(PairModeClaim)?.Value)));
             _logger.LogWarning(
                 "Enrol-session redeem replay detected (jti={Jti}, platformUserId={PlatformUserId})",
                 jti, platformUserId);
@@ -257,7 +283,7 @@ public sealed class EnrolSessionService : IEnrolSessionService
         var user = await _platformUserService.GetByIdAsync(platformUserId, ct).ConfigureAwait(false);
         if (user is null)
         {
-            _metrics.RecordRedeem("malformed");
+            _metrics.RecordRedeem("malformed", "unknown");
             _logger.LogWarning(
                 "Enrol-session redeem failed — PlatformUser not found (jti={Jti}, platformUserId={PlatformUserId})",
                 jti, platformUserId);
@@ -266,16 +292,22 @@ public sealed class EnrolSessionService : IEnrolSessionService
 
         var (accessToken, expiresInSeconds) = IssueCitizenAccessToken(user);
 
-        _metrics.RecordRedeem("success");
+        // Read mode from claim. Tokens minted before F128 lack this claim and
+        // fall through to the Gated default — preserving F126 behaviour for
+        // any in-flight token at the time of deployment.
+        var mode = ModeFromClaim(principal.FindFirst(PairModeClaim)?.Value);
+
+        _metrics.RecordRedeem("success", ModeToWire(mode));
         _logger.LogInformation(
-            "Enrol-session redeemed successfully (jti={Jti}, platformUserId={PlatformUserId})",
-            jti, platformUserId);
+            "Enrol-session redeemed successfully (jti={Jti}, platformUserId={PlatformUserId}, mode={Mode})",
+            jti, platformUserId, ModeToWire(mode));
 
         return RedeemResult.Ok(new RedeemEnrolSessionResponse(
             AccessToken: accessToken,
             ExpiresIn: expiresInSeconds,
             DisplayName: user.DisplayName ?? user.Email,
-            Email: user.Email));
+            Email: user.Email,
+            Mode: mode));
     }
 
     private (string AccessToken, int ExpiresInSeconds) IssueCitizenAccessToken(PlatformUser user)

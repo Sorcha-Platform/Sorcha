@@ -26,7 +26,7 @@ public sealed class EnrolSessionEndpointsTests
         var service = new Mock<IEnrolSessionService>(MockBehavior.Strict);
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity()); // no platform_user_id
-        var result = await EnrolSessionEndpoints.MintAsync(principal, service.Object, CancellationToken.None);
+        var result = await EnrolSessionEndpoints.MintAsync(principal, service.Object, null, CancellationToken.None);
 
         result.Result.Should().BeOfType<UnauthorizedHttpResult>();
         service.VerifyNoOtherCalls();
@@ -39,17 +39,18 @@ public sealed class EnrolSessionEndpointsTests
         var minted = new MintEnrolSessionResponse(
             "jwt-string",
             $"https://strathcarron.gov/wallet/enrol?session=jwt-string",
-            DateTimeOffset.UtcNow.AddMinutes(10));
+            DateTimeOffset.UtcNow.AddMinutes(10),
+            EnrolSessionMode.Gated);
 
         var service = new Mock<IEnrolSessionService>();
-        service.Setup(s => s.MintAsync(pu, It.IsAny<CancellationToken>())).ReturnsAsync(minted);
+        service.Setup(s => s.MintAsync(pu, EnrolSessionMode.Gated, It.IsAny<CancellationToken>())).ReturnsAsync(minted);
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim("platform_user_id", pu.ToString())
         }));
 
-        var result = await EnrolSessionEndpoints.MintAsync(principal, service.Object, CancellationToken.None);
+        var result = await EnrolSessionEndpoints.MintAsync(principal, service.Object, null, CancellationToken.None);
 
         result.Result.Should().BeOfType<Ok<MintEnrolSessionResponse>>();
         var ok = (Ok<MintEnrolSessionResponse>)result.Result;
@@ -65,7 +66,7 @@ public sealed class EnrolSessionEndpointsTests
             new Claim("platform_user_id", "not-a-guid")
         }));
 
-        var result = await EnrolSessionEndpoints.MintAsync(principal, service.Object, CancellationToken.None);
+        var result = await EnrolSessionEndpoints.MintAsync(principal, service.Object, null, CancellationToken.None);
 
         result.Result.Should().BeOfType<UnauthorizedHttpResult>();
         service.VerifyNoOtherCalls();
@@ -75,7 +76,7 @@ public sealed class EnrolSessionEndpointsTests
     public async Task RedeemAsync_Happy_Path_Returns_Ok()
     {
         var service = new Mock<IEnrolSessionService>();
-        var redeemed = new RedeemEnrolSessionResponse("access-jwt", 3600, "Sarah", "sarah@example.test");
+        var redeemed = new RedeemEnrolSessionResponse("access-jwt", 3600, "Sarah", "sarah@example.test", EnrolSessionMode.Gated);
         service.Setup(s => s.RedeemAsync("the-token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(RedeemResult.Ok(redeemed));
 

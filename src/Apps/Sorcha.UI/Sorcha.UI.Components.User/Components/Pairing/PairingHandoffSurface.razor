@@ -1,0 +1,302 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 128 US2 + US3 — desktop handoff surface.
+
+    Renders one of two variants based on IPwaInstallabilityProbe:
+
+    1. QR variant (Story 2, desktop browsers + non-installable mobile):
+       mints a standalone enrol-session token, displays the F126
+       HybridQrAffordance. Citizen scans with phone camera, the phone
+       opens the wallet PWA at /enrol?session=<token>.
+
+    2. Install variant (Story 3, mobile browsers that can install the
+       PWA): renders "Install Sorcha Wallet" button (or iOS A2HS
+       instructions) PLUS a 6-digit short code that is always visible
+       — the citizen reads the code, installs the wallet, opens the
+       takeover (sub-PR A3), expands the "Already started on another
+       device?" sub-affordance, and types the code. This is the
+       short-code fallback path per FR-032.
+
+    Skip + Email-me-a-link are common to both variants.
+
+    Deferred to D's polish: the seamless start_url-baked token path
+    where installing on Android Chrome opens the PWA already paired
+    (FR-031). The short-code fallback covers Story 3 end-to-end
+    without that optimization.
+*@
+
+@using System.Net.Http.Json
+@using Microsoft.Extensions.Logging
+@using Sorcha.UI.Core.Components.EnrolGate
+@using Sorcha.UI.Core.Services.User.Pairing
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject IPwaInstallabilityProbe InstallProbe
+@inject ILogger<PairingHandoffSurface> Logger
+
+<div class="sorcha-pair-handoff" data-testid="pairing-handoff-surface">
+    <h1 class="sorcha-pair-handoff__headline">Put your wallet on your phone</h1>
+
+    @if (_error is not null)
+    {
+        <div class="sorcha-pair-handoff__error" role="alert" data-testid="pairing-handoff-error">
+            <p>@_error</p>
+            <button type="button" @onclick="MintAsync" class="sorcha-pair-handoff__retry"
+                    data-testid="pairing-handoff-retry">
+                Try again
+            </button>
+        </div>
+    }
+    else if (_minted is null)
+    {
+        <p class="sorcha-pair-handoff__loading" data-testid="pairing-handoff-loading">
+            Preparing your pairing code…
+        </p>
+    }
+    else if (_installVerdict == PwaInstallabilityVerdict.CanInstallProgrammatically)
+    {
+        @* US3 install variant — Android Chrome / Edge with deferred prompt. *@
+        <p class="sorcha-pair-handoff__subhead">
+            Install the Sorcha Wallet on this phone. Your credentials will
+            live on this device.
+        </p>
+        <button type="button" @onclick="HandleProgrammaticInstallAsync"
+                class="sorcha-pair-handoff__install"
+                disabled="@_installBusy"
+                data-testid="pairing-handoff-install-button">
+            @if (_installBusy)
+            {
+                <span>Installing…</span>
+            }
+            else
+            {
+                <span>Install Sorcha Wallet</span>
+            }
+        </button>
+        @RenderShortCodePanel()
+    }
+    else if (_installVerdict == PwaInstallabilityVerdict.CanInstallManually)
+    {
+        @* US3 install variant — iOS Safari (no programmatic API). *@
+        <p class="sorcha-pair-handoff__subhead">
+            Install the Sorcha Wallet on this iPhone. Your credentials
+            will live on this device.
+        </p>
+        <ol class="sorcha-pair-handoff__ios-instructions"
+            data-testid="pairing-handoff-ios-instructions">
+            <li>Tap the <strong>Share</strong> icon at the bottom of Safari.</li>
+            <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+            <li>Tap <strong>Add</strong> in the top-right.</li>
+            <li>Open the wallet from your home screen, then enter the pairing code below.</li>
+        </ol>
+        @RenderShortCodePanel()
+    }
+    else
+    {
+        @* US2 QR variant — desktop, in-app browsers, other mobile cases. *@
+        <p class="sorcha-pair-handoff__subhead">
+            Your Sorcha credentials live on your phone. Scan this code
+            with your phone camera to set up your wallet.
+        </p>
+        <div class="sorcha-pair-handoff__qr-frame">
+            <HybridQrAffordance QrUrl="@_minted.QrUrl" ExpiresAt="@_minted.ExpiresAt" />
+        </div>
+    }
+
+    <div class="sorcha-pair-handoff__footer">
+        <button type="button" @onclick="HandleEmailLinkAsync"
+                class="sorcha-pair-handoff__email-link"
+                disabled="@_emailLinkBusy"
+                data-testid="pairing-handoff-email-link">
+            @if (_emailLinkBusy)
+            {
+                <span>Sending…</span>
+            }
+            else if (_emailLinkSent)
+            {
+                <span>Email sent — check your inbox</span>
+            }
+            else
+            {
+                <span>Email me a link</span>
+            }
+        </button>
+
+        <button type="button" @onclick="HandleSkipAsync"
+                class="sorcha-pair-handoff__skip"
+                data-testid="pairing-handoff-skip">
+            Skip for now
+        </button>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Where to navigate after the citizen clicks Skip. Defaults to the
+    /// web wallet root.
+    /// </summary>
+    [Parameter] public string SkipDestination { get; set; } = "/";
+
+    private MintedHandoff? _minted;
+    private string? _shortCode;
+    private string? _error;
+    private bool _emailLinkBusy;
+    private bool _emailLinkSent;
+    private bool _installBusy;
+    private PwaInstallabilityVerdict _installVerdict = PwaInstallabilityVerdict.CannotInstall;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _installVerdict = await InstallProbe.ProbeAsync();
+        await MintAsync();
+
+        // Mint the short code only when the surface will render the
+        // install variant — the QR variant doesn't need it. Short-code
+        // mint is independent of the enrol-session token mint above.
+        if (_installVerdict is PwaInstallabilityVerdict.CanInstallProgrammatically
+                              or PwaInstallabilityVerdict.CanInstallManually)
+        {
+            await MintShortCodeAsync();
+        }
+    }
+
+    private async Task MintAsync()
+    {
+        _error = null;
+        _minted = null;
+        StateHasChanged();
+
+        try
+        {
+            using var response = await Http.PostAsJsonAsync(
+                "/api/auth/enrol-session",
+                new MintRequest("standalone"));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Logger.LogWarning(
+                    "PairingHandoffSurface enrol-session mint returned {Status}",
+                    response.StatusCode);
+                _error = "Couldn't generate a pairing code. Try again.";
+                return;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<MintResponseShape>();
+            if (body is null || string.IsNullOrEmpty(body.QrUrl))
+            {
+                _error = "Couldn't generate a pairing code. Try again.";
+                return;
+            }
+
+            _minted = new MintedHandoff(body.QrUrl, body.ExpiresAt);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "PairingHandoffSurface mint failed");
+            _error = "Couldn't reach Sorcha. Check your connection and try again.";
+        }
+    }
+
+    private async Task MintShortCodeAsync()
+    {
+        try
+        {
+            var route = _installVerdict == PwaInstallabilityVerdict.CanInstallManually
+                ? "MobilewebHandoff"
+                : "MobilewebHandoff";
+            using var response = await Http.PostAsJsonAsync(
+                "/api/auth/enrol-session/short-code",
+                new ShortCodeMintRequest(route));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Logger.LogWarning("Short-code mint returned {Status}", response.StatusCode);
+                return;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<ShortCodeMintResponseShape>();
+            _shortCode = body?.Code;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Short-code mint failed; install variant will lack the fallback");
+        }
+    }
+
+    private RenderFragment RenderShortCodePanel() => __builder =>
+    {
+        <div class="sorcha-pair-handoff__short-code" data-testid="pairing-handoff-short-code-panel">
+            <p>After installing, open the wallet and enter this pairing code:</p>
+            <div class="sorcha-pair-handoff__short-code-value"
+                 data-testid="pairing-handoff-short-code-value">
+                @(_shortCode ?? "------")
+            </div>
+            <p class="sorcha-pair-handoff__short-code-hint">
+                Valid for 5 minutes. Open the wallet on this phone and tap
+                "Already started on another device?" on the setup screen.
+            </p>
+        </div>
+    };
+
+    private async Task HandleProgrammaticInstallAsync()
+    {
+        if (_installBusy) return;
+        _installBusy = true;
+        try
+        {
+            var accepted = await InstallProbe.TriggerInstallAsync();
+            if (!accepted)
+            {
+                Logger.LogInformation("Citizen dismissed install prompt");
+            }
+            // The citizen now opens the just-installed PWA from their
+            // home screen. Pairing completes via the takeover + short
+            // code path. Nothing more to do here.
+        }
+        finally
+        {
+            _installBusy = false;
+        }
+    }
+
+    private Task HandleSkipAsync()
+    {
+        Nav.NavigateTo(SkipDestination);
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleEmailLinkAsync()
+    {
+        if (_emailLinkBusy || _emailLinkSent) return;
+
+        _emailLinkBusy = true;
+        try
+        {
+            using var response = await Http.PostAsync("/api/auth/pairing-resumption-email", content: null);
+            if (response.IsSuccessStatusCode)
+            {
+                _emailLinkSent = true;
+            }
+            else
+            {
+                Logger.LogWarning("Pairing-resumption email returned {Status}", response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Pairing-resumption email failed");
+        }
+        finally
+        {
+            _emailLinkBusy = false;
+        }
+    }
+
+    private sealed record MintRequest(string Mode);
+    private sealed record MintResponseShape(string SessionToken, string QrUrl, DateTimeOffset ExpiresAt, string Mode);
+    private sealed record MintedHandoff(string QrUrl, DateTimeOffset ExpiresAt);
+    private sealed record ShortCodeMintRequest(string Route);
+    private sealed record ShortCodeMintResponseShape(string Code, DateTimeOffset ExpiresAt);
+}

@@ -42,3 +42,10 @@ public sealed record WelcomeInvitedTemplateModel(
     string RoleDisplayName,
     string DashboardUrl,
     EmailBranding Branding);
+
+/// <summary>Model for the <c>pairing-resumption</c> template (Feature 128 US2).</summary>
+public sealed record PairingResumptionTemplateModel(
+    string DisplayName,
+    string ResumptionUrl,
+    int ExpiresInHours,
+    EmailBranding Branding);

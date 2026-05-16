@@ -1,0 +1,19 @@
+{{ capture content -}}
+<h2 style="margin:0 0 16px;font-size:22px;">Set up your Sorcha wallet</h2>
+<p>Hi {{ display_name | html.escape }} — you asked us to email you a link to set up your Sorcha wallet on your phone.</p>
+<p>Open this email on the phone you want to use, then tap the button:</p>
+<p style="margin:24px 0;">
+  <a href="{{ resumption_url | html.escape }}"
+     style="background:{{ branding.primary_color }};color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:600;">
+    Set up my wallet
+  </a>
+</p>
+<p style="font-size:14px;color:#666;">
+  The link works for {{ expires_in_hours }} hours. If you didn't request this, just ignore this email — nothing will change on your account.
+</p>
+<p style="font-size:12px;color:#888;margin-top:16px;">
+  Button not working? Paste this link into your phone's browser:<br>
+  <a href="{{ resumption_url | html.escape }}" style="color:{{ branding.primary_color }};word-break:break-all;">{{ resumption_url | html.escape }}</a>
+</p>
+{{- end -}}
+{{- include 'base.html' -}}

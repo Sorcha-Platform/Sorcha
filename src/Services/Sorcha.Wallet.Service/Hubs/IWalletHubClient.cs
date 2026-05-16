@@ -129,6 +129,16 @@ public interface IWalletHubClient
     Task DeviceRevoked(Guid deviceId);
 
     /// <summary>
+    /// Citizen device was enrolled. Sent on the citizen-wallet group so any
+    /// PWA instance the citizen has open dismisses its pairing takeover
+    /// (Feature 128 FR-014) without waiting on the next natural probe refresh.
+    /// Clients fetch full device detail via
+    /// <c>GET /api/v1/me/devices/{deviceId}</c>.
+    /// </summary>
+    /// <param name="deviceId">Identifier of the newly-enrolled device.</param>
+    Task DeviceEnrolled(Guid deviceId);
+
+    /// <summary>
     /// A new credential is available for the citizen's wallet to sync.
     /// The wallet pulls the delta via
     /// <c>GET /api/v1/wallet/sync?since={cursor}</c>.
