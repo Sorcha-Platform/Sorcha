@@ -1,328 +1,392 @@
-# xUnit Test Patterns
+# xUnit Testing Patterns
 
-## Contents
-- Test Naming Convention
-- Arrange-Act-Assert Pattern
-- Theory Patterns
-- Mocking Patterns
-- Exception Testing
-- Collection Assertions
-- Anti-Patterns
+## Arrange-Act-Assert (AAA)
 
----
-
-## Test Naming Convention
-
-**Pattern:** `MethodName_Scenario_ExpectedBehavior`
+Structure every test method in three distinct phases:
 
 ```csharp
-// GOOD - Clear, descriptive names
-public async Task ValidateAsync_ValidData_ReturnsValid() { }
-public void Build_WithoutTitle_ThrowsInvalidOperationException() { }
-public async Task CreateAsync_DuplicateKey_ReturnsFailure() { }
-
-// BAD - Vague, unclear names
-public void Test1() { }
-public void ValidationTest() { }
-public void ShouldWork() { }
-```
-
----
-
-## Arrange-Act-Assert Pattern
-
-Every test in Sorcha follows strict AAA:
-
-```csharp
-[Fact]
-public async Task ProcessAsync_ValidData_ReturnsSuccess()
+public class CalculatorTests
 {
-    // Arrange
-    var blueprint = CreateSimpleBlueprint();
-    var context = new ExecutionContext
+    [Fact]
+    public void Add_TwoPositiveNumbers_ReturnsSum()
     {
-        Blueprint = blueprint,
-        Action = blueprint.Actions[0],
-        ActionData = new Dictionary<string, object>
-        {
-            ["name"] = "Alice",
-            ["age"] = 30
-        }
-    };
+        // Arrange
+        var calculator = new Calculator();
+        var a = 5;
+        var b = 3;
 
-    // Act
-    var result = await _processor.ProcessAsync(context);
+        // Act
+        var result = calculator.Add(a, b);
 
-    // Assert
-    result.Success.Should().BeTrue();
-    result.Validation.IsValid.Should().BeTrue();
-    result.ProcessedData.Should().ContainKey("name");
+        // Assert
+        Assert.Equal(8, result);
+    }
 }
 ```
 
----
+Keep the phases visually separated. Avoid mixing setup, execution, and verification in the same block.
 
-## Theory Patterns
+## Class Fixtures
 
-### InlineData for Simple Values
+Use class fixtures to share expensive setup across all tests in a class. Primary constructors inject the fixture directly:
 
 ```csharp
-[Theory]
-[InlineData("")]
-[InlineData("  ")]
-[InlineData(null)]
-public void Title_WithEmptyValue_ShouldFailValidation(string? title)
+public class DatabaseFixture : IAsyncLifetime
 {
-    var action = new Action { Id = 0, Title = title! };
-    var context = new ValidationContext(action);
-    var results = new List<ValidationResult>();
+    public IDbConnection Connection { get; private set; } = null!;
 
-    var isValid = Validator.TryValidateObject(action, context, results, true);
+    public async Task InitializeAsync()
+    {
+        Connection = new SqliteConnection("Data Source=:memory:");
+        await Connection.OpenAsync();
+        await SeedTestDataAsync();
+    }
 
-    isValid.Should().BeFalse();
-    results.Should().Contain(r => r.MemberNames.Contains("Title"));
+    public async Task DisposeAsync()
+    {
+        await Connection.DisposeAsync();
+    }
+
+    private async Task SeedTestDataAsync()
+    {
+        // seed shared test data
+    }
+}
+
+public class UserRepositoryTests(DatabaseFixture fixture) : IClassFixture<DatabaseFixture>
+{
+    [Fact]
+    public async Task GetUser_ExistingId_ReturnsUser()
+    {
+        // Arrange
+        var repository = new UserRepository(fixture.Connection);
+
+        // Act
+        var user = await repository.GetUserAsync(1);
+
+        // Assert
+        Assert.NotNull(user);
+        Assert.Equal("TestUser", user.Name);
+    }
+}
+```
+
+## Collection Fixtures
+
+Share expensive resources across multiple test classes:
+
+```csharp
+public class IntegrationTestFixture : IAsyncLifetime
+{
+    public HttpClient Client { get; private set; } = null!;
+    private WebApplicationFactory<Program> _factory = null!;
+
+    public async Task InitializeAsync()
+    {
+        _factory = new WebApplicationFactory<Program>();
+        Client = _factory.CreateClient();
+        await Task.CompletedTask;
+    }
+
+    public async Task DisposeAsync()
+    {
+        Client.Dispose();
+        await _factory.DisposeAsync();
+    }
+}
+
+[CollectionDefinition("Integration")]
+public class IntegrationTestCollection : ICollectionFixture<IntegrationTestFixture>;
+
+[Collection("Integration")]
+public class OrdersApiTests(IntegrationTestFixture fixture)
+{
+    [Fact]
+    public async Task GetOrders_ReturnsOk()
+    {
+        // Act
+        var response = await fixture.Client.GetAsync("/api/orders");
+
+        // Assert
+        response.EnsureSuccessStatusCode();
+    }
+}
+
+[Collection("Integration")]
+public class ProductsApiTests(IntegrationTestFixture fixture)
+{
+    [Fact]
+    public async Task GetProducts_ReturnsOk()
+    {
+        // Act
+        var response = await fixture.Client.GetAsync("/api/products");
+
+        // Assert
+        response.EnsureSuccessStatusCode();
+    }
+}
+```
+
+## Theory Data Patterns
+
+### InlineData for Simple Cases
+
+```csharp
+public class ValidationTests
+{
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("a", false)]
+    [InlineData("ab", false)]
+    [InlineData("abc", true)]
+    [InlineData("valid-password-123", true)]
+    public void IsValidPassword_VariousInputs_ReturnsExpected(string password, bool expected)
+    {
+        // Arrange
+        var validator = new PasswordValidator(minLength: 3);
+
+        // Act
+        var result = validator.IsValid(password);
+
+        // Assert
+        Assert.Equal(expected, result);
+    }
 }
 ```
 
 ### MemberData for Complex Objects
 
 ```csharp
-public static IEnumerable<object[]> InvalidBlueprintData =>
-    new List<object[]>
+public class OrderProcessorTests
+{
+    public static TheoryData<Order, decimal> OrderDiscountData => new()
     {
-        new object[] { new Blueprint { Title = "" }, "Title required" },
-        new object[] { new Blueprint { Actions = new() }, "Actions required" },
+        { new Order { Total = 100m, CustomerTier = CustomerTier.Standard }, 0m },
+        { new Order { Total = 100m, CustomerTier = CustomerTier.Silver }, 5m },
+        { new Order { Total = 100m, CustomerTier = CustomerTier.Gold }, 10m },
+        { new Order { Total = 500m, CustomerTier = CustomerTier.Gold }, 75m }
     };
 
-[Theory]
-[MemberData(nameof(InvalidBlueprintData))]
-public void Validate_InvalidBlueprint_ReturnsError(Blueprint blueprint, string expectedError)
-{
-    var result = _validator.Validate(blueprint);
+    [Theory]
+    [MemberData(nameof(OrderDiscountData))]
+    public void CalculateDiscount_VariousOrders_ReturnsExpectedDiscount(Order order, decimal expectedDiscount)
+    {
+        // Arrange
+        var processor = new OrderProcessor();
 
-    result.IsValid.Should().BeFalse();
-    result.Errors.Should().Contain(e => e.Contains(expectedError));
+        // Act
+        var discount = processor.CalculateDiscount(order);
+
+        // Assert
+        Assert.Equal(expectedDiscount, discount);
+    }
 }
 ```
 
----
-
-## Mocking Patterns
-
-See the **moq** skill for comprehensive mocking patterns.
-
-### Basic Mock Setup
+### ClassData for Reusable Data Sets
 
 ```csharp
-public class WalletServiceTests
+public class EdgeCaseStringData : TheoryData<string?>
 {
-    private readonly Mock<IRepository<Wallet>> _mockRepository;
-    private readonly Mock<ILogger<WalletService>> _mockLogger;
-    private readonly WalletService _sut;
-
-    public WalletServiceTests()
+    public EdgeCaseStringData()
     {
-        _mockRepository = new Mock<IRepository<Wallet>>();
-        _mockLogger = new Mock<ILogger<WalletService>>();
-        _sut = new WalletService(_mockRepository.Object, _mockLogger.Object);
+        Add(null);
+        Add("");
+        Add(" ");
+        Add("\t");
+        Add("\n");
+        Add("   \t\n   ");
+    }
+}
+
+public class StringUtilityTests
+{
+    [Theory]
+    [ClassData(typeof(EdgeCaseStringData))]
+    public void IsNullOrWhitespace_EdgeCases_ReturnsTrue(string? input)
+    {
+        // Act
+        var result = string.IsNullOrWhiteSpace(input);
+
+        // Assert
+        Assert.True(result);
+    }
+}
+```
+
+## Mocking with NSubstitute
+
+Prefer NSubstitute for readable substitute configuration:
+
+```csharp
+public class OrderServiceTests(ITestOutputHelper output)
+{
+    [Fact]
+    public async Task PlaceOrder_ValidOrder_SendsNotification()
+    {
+        // Arrange
+        var notificationService = Substitute.For<INotificationService>();
+        var orderRepository = Substitute.For<IOrderRepository>();
+        orderRepository.SaveAsync(Arg.Any<Order>()).Returns(Task.FromResult(true));
+
+        var service = new OrderService(orderRepository, notificationService);
+        var order = new Order { CustomerId = 1, Items = [new OrderItem { ProductId = 1, Quantity = 2 }] };
+
+        // Act
+        await service.PlaceOrderAsync(order);
+
+        // Assert
+        await notificationService.Received(1).SendOrderConfirmationAsync(Arg.Is<Order>(o => o.CustomerId == 1));
+        output.WriteLine("Order placed and notification sent");
     }
 
     [Fact]
-    public async Task GetAsync_ExistingWallet_ReturnsWallet()
+    public async Task PlaceOrder_RepositoryFails_ThrowsException()
     {
         // Arrange
-        var walletId = Guid.NewGuid();
-        var wallet = new Wallet { Id = walletId, Name = "Test" };
-        _mockRepository.Setup(r => r.GetByIdAsync(walletId)).ReturnsAsync(wallet);
+        var notificationService = Substitute.For<INotificationService>();
+        var orderRepository = Substitute.For<IOrderRepository>();
+        orderRepository.SaveAsync(Arg.Any<Order>()).ThrowsAsync(new DataException("Connection failed"));
 
-        // Act
-        var result = await _sut.GetAsync(walletId);
+        var service = new OrderService(orderRepository, notificationService);
+        var order = new Order { CustomerId = 1 };
 
-        // Assert
-        result.Should().Be(wallet);
-        _mockRepository.Verify(r => r.GetByIdAsync(walletId), Times.Once);
+        // Act & Assert
+        await Assert.ThrowsAsync<DataException>(() => service.PlaceOrderAsync(order));
+        await notificationService.DidNotReceive().SendOrderConfirmationAsync(Arg.Any<Order>());
     }
 }
 ```
 
-### Callback Capture Pattern
+## Mocking with Moq
+
+Use Moq when the project already depends on it:
 
 ```csharp
-[Fact]
-public async Task SetAsync_ValidEntry_StoresEncryptedData()
+public class PaymentProcessorTests
 {
-    string? capturedKey = null;
-    string? capturedValue = null;
+    [Fact]
+    public async Task ProcessPayment_ValidCard_ReturnsSuccess()
+    {
+        // Arrange
+        var gatewayMock = new Mock<IPaymentGateway>();
+        gatewayMock
+            .Setup(g => g.ChargeAsync(It.IsAny<string>(), It.Is<decimal>(d => d > 0)))
+            .ReturnsAsync(new PaymentResult { Success = true, TransactionId = "TX123" });
 
-    _mockLocalStorage
-        .Setup(x => x.SetItemAsStringAsync(It.IsAny<string>(), It.IsAny<string>()))
-        .Callback<string, string, CancellationToken>((key, value, _) =>
-        {
-            capturedKey = key;
-            capturedValue = value;
-        })
-        .Returns(ValueTask.CompletedTask);
+        var processor = new PaymentProcessor(gatewayMock.Object);
 
-    await _tokenCache.SetAsync("docker", entry);
+        // Act
+        var result = await processor.ProcessPaymentAsync("4111111111111111", 99.99m);
 
-    capturedKey.Should().Be("sorcha:tokens:docker");
-    capturedValue.Should().NotBeNullOrEmpty();
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal("TX123", result.TransactionId);
+        gatewayMock.Verify(g => g.ChargeAsync("4111111111111111", 99.99m), Times.Once);
+    }
 }
 ```
 
----
+## Output and Diagnostics
 
-## Exception Testing
-
-### Sync Exception Testing
+Use `ITestOutputHelper` for test diagnostics:
 
 ```csharp
-[Fact]
-public void Constructor_NullSchemaValidator_ThrowsArgumentNullException()
+public class DiagnosticTests(ITestOutputHelper output)
 {
-    var act = () => new ActionProcessor(null!, _jsonLogic, _disclosure, _routing);
+    [Fact]
+    public void ComplexCalculation_LargeInput_CompletesWithinTimeout()
+    {
+        // Arrange
+        var calculator = new ComplexCalculator();
+        var input = GenerateLargeInput();
+        output.WriteLine($"Testing with input size: {input.Length}");
 
-    act.Should().Throw<ArgumentNullException>()
-        .WithParameterName("schemaValidator");
+        var stopwatch = Stopwatch.StartNew();
+
+        // Act
+        var result = calculator.Process(input);
+
+        // Assert
+        stopwatch.Stop();
+        output.WriteLine($"Completed in {stopwatch.ElapsedMilliseconds}ms");
+        Assert.True(stopwatch.ElapsedMilliseconds < 5000, "Calculation took too long");
+    }
+
+    private static int[] GenerateLargeInput() => Enumerable.Range(0, 100_000).ToArray();
 }
 ```
 
-### Async Exception Testing
+## Async Test Patterns
+
+xUnit handles async tests natively:
 
 ```csharp
-[Fact]
-public async Task ExecuteAsync_NonExistentInstance_ThrowsInvalidOperationException()
+public class AsyncServiceTests
 {
-    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-        () => _service.ExecuteAsync(Guid.NewGuid()));
+    [Fact]
+    public async Task FetchData_ValidEndpoint_ReturnsData()
+    {
+        // Arrange
+        var service = new DataService();
 
-    exception.Message.Should().Contain("Instance not found");
-}
+        // Act
+        var data = await service.FetchDataAsync("/api/items");
 
-// Alternative with FluentAssertions
-[Fact]
-public async Task ProcessAsync_EncryptionFailure_ThrowsWithContext()
-{
-    _mockEncryption
-        .Setup(x => x.EncryptAsync(It.IsAny<string>()))
-        .ThrowsAsync(new InvalidOperationException("Module not loaded"));
+        // Assert
+        Assert.NotEmpty(data);
+    }
 
-    var act = async () => await _tokenCache.SetAsync("docker", entry);
+    [Fact]
+    public async Task FetchData_Timeout_ThrowsOperationCanceledException()
+    {
+        // Arrange
+        var service = new DataService();
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1));
 
-    await act.Should().ThrowAsync<InvalidOperationException>()
-        .WithMessage("*Failed to store token*");
-}
-```
-
----
-
-## Collection Assertions
-
-See the **fluent-assertions** skill for complete assertion patterns.
-
-```csharp
-// Count assertions
-blueprint.Participants.Should().HaveCount(2);
-result.Value!.Split(' ').Should().HaveCount(12);
-
-// Contains assertions
-result.ProcessedData.Should().ContainKey("name");
-blueprint.Actions.Should().Contain(p => p.Principal == "p2");
-
-// Range assertions
-items.Should().HaveCountGreaterThanOrEqualTo(2);
-validation.GetProperty("count").GetInt32().Should().BeGreaterThanOrEqualTo(3);
-```
-
----
-
-## Anti-Patterns
-
-### WARNING: Missing Arrange-Act-Assert Sections
-
-**The Problem:**
-
-```csharp
-// BAD - No structure, hard to understand
-[Fact]
-public async Task TestWallet()
-{
-    var wallet = new Wallet { Name = "Test" };
-    _mockRepo.Setup(r => r.AddAsync(wallet)).ReturnsAsync(wallet);
-    var result = await _sut.CreateAsync(wallet);
-    result.IsSuccess.Should().BeTrue();
-    _mockRepo.Verify(r => r.AddAsync(wallet));
+        // Act & Assert
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => service.FetchDataAsync("/api/slow-endpoint", cts.Token));
+    }
 }
 ```
 
-**The Fix:**
+## Trait-Based Organization
+
+Use traits sparingly for CI filtering:
 
 ```csharp
-// GOOD - Clear sections
-[Fact]
-public async Task CreateAsync_ValidWallet_ReturnsSuccessAndPersists()
+public class IntegrationTests
 {
-    // Arrange
-    var wallet = new Wallet { Name = "Test" };
-    _mockRepo.Setup(r => r.AddAsync(wallet)).ReturnsAsync(wallet);
+    [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Database", "SqlServer")]
+    public async Task CreateUser_ValidData_PersistsToDatabase()
+    {
+        // integration test implementation
+    }
+}
 
-    // Act
-    var result = await _sut.CreateAsync(wallet);
-
-    // Assert
-    result.IsSuccess.Should().BeTrue();
-    _mockRepo.Verify(r => r.AddAsync(wallet), Times.Once);
+public class UnitTests
+{
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void ValidateEmail_InvalidFormat_ReturnsFalse()
+    {
+        // unit test implementation
+    }
 }
 ```
 
-### WARNING: Testing Implementation Details
+Run filtered:
 
-**The Problem:**
-
-```csharp
-// BAD - Tests internal state, breaks on refactor
-[Fact]
-public void Process_SetsInternalFlag()
-{
-    _processor.Process(data);
-    _processor._internalProcessed.Should().BeTrue(); // Private field!
-}
+```bash
+dotnet test --filter "Category=Unit"
+dotnet test --filter "Category!=Integration"
 ```
 
-**The Fix:**
+## Sources
 
-```csharp
-// GOOD - Tests observable behavior
-[Fact]
-public void Process_ValidData_ProducesExpectedOutput()
-{
-    var result = _processor.Process(data);
-    result.Output.Should().NotBeNull();
-}
-```
-
-### WARNING: Not Isolating Tests
-
-**The Problem:**
-
-```csharp
-// BAD - Shared state between tests
-private static Wallet _sharedWallet = new();
-
-[Fact]
-public void Test1() { _sharedWallet.Name = "A"; }
-
-[Fact]
-public void Test2() { _sharedWallet.Name.Should().BeNull(); } // FAILS!
-```
-
-**The Fix:**
-
-```csharp
-// GOOD - Each test creates its own state
-[Fact]
-public void CreateAsync_ValidWallet_Succeeds()
-{
-    var wallet = new Wallet { Name = "Test" };
-    // ... test with fresh instance
-}
+- [xUnit.net v3 Getting Started](https://xunit.net/docs/getting-started/v3/getting-started)
+- [xUnit.net Shared Context](https://xunit.net/docs/shared-context)
+- [NSubstitute Documentation](https://nsubstitute.github.io/help/getting-started/)

@@ -1,540 +1,336 @@
-# Aspire 13.x Patterns Reference
+# .NET Aspire Patterns Reference
 
-## Contents
-- SDK Format (v13 Migration)
-- AppHost Configuration
-- Service Defaults
-- Resource Patterns
-- Named References (v13+)
-- Connection Properties (v13+)
-- TLS Termination (v13.1+)
-- Service Discovery
-- Environment Configuration
-- MCP Dashboard Integration (v13+)
-- Container File Artifacts (v13+)
-- Anti-Patterns
+Use this reference when the task is clearly about current Aspire application-host design, CLI-first workflows, `ServiceDefaults`, testing, or upgrade checkpoints.
 
----
+## Table of Contents
 
-## SDK Format (v13 Migration)
+- [CLI-first setup flows](#cli-first-setup-flows)
+- [AppHost shapes](#apphost-shapes)
+- [Current AppHost modeling patterns](#current-apphost-modeling-patterns)
+- [Dependency and configuration flow](#dependency-and-configuration-flow)
+- [ServiceDefaults boundaries](#servicedefaults-boundaries)
+- [Servicing patch posture](#servicing-patch-posture)
+- [Closed-box testing](#closed-box-testing)
+- [Upgrade checkpoints](#upgrade-checkpoints)
+- [Anti-patterns](#anti-patterns)
 
-### Current Sorcha Format (Legacy Dual-SDK)
+## CLI-first setup flows
+
+### Create a new starter application
+
+Use the current Aspire CLI when the user wants a fresh distributed-app baseline:
+
+```bash
+aspire new aspire-starter --name MyShop
+cd MyShop
+aspire run
+```
+
+This gives you the modern baseline:
+
+- an AppHost for orchestration
+- a ServiceDefaults project for cross-cutting infrastructure
+- sample service projects wired into the AppHost
+- the Aspire Dashboard for local observability
+
+### Enlist an existing solution
+
+When the repo already has working services and you want to add orchestration instead of recreating the solution:
+
+```bash
+aspire init
+```
+
+Use `aspire init` when you need one of these:
+
+- an AppHost added to an existing solution
+- a file-based AppHost created quickly
+- Aspire support layered onto code that already exists
+
+### Add capabilities with the CLI
+
+Use the CLI to add official integrations or starter assets instead of hand-editing packages when the command exists:
+
+```bash
+aspire add <integration-or-starter>
+```
+
+Use `aspire add` when it improves repeatability, especially for:
+
+- common first-party integrations
+- starter resources that should match current Aspire conventions
+- reducing hand-written AppHost or project-file drift
+
+## Servicing patch posture
+
+Aspire `13.2.2` is the current baseline release in the 13.2 line, not a new application model. Treat 13.2.x updates as CLI and AppHost servicing work that should preserve the existing topology and only refine the toolchain surface.
+
+When you roll a 13.2.x patch:
+
+1. Keep the Aspire CLI and `Aspire.AppHost.Sdk` on the same patch line.
+2. Update adjacent Aspire packages that move with the AppHost, especially hosting and testing packages.
+3. Run `aspire update` before hand-editing package versions unless the repo intentionally pins them.
+4. Revalidate the AppHost start path, resource graph, dashboard, and any deployment scripts after the patch lands.
+5. Re-check the current CLI commands that changed in 13.2, especially `aspire start`/`aspire stop`/`aspire ps`, `aspire describe`, `aspire docs`, `aspire agent`, and `aspire restore`.
+
+Do not re-architect the AppHost just because a servicing release shipped.
+
+## AppHost shapes
+
+Current Aspire supports two valid AppHost styles.
+
+### Project-based AppHost
+
+Use this when the repo already uses the normal solution and project structure:
 
 ```xml
-<!-- src/Apps/Sorcha.AppHost/Sorcha.AppHost.csproj — CURRENT -->
-<Project Sdk="Microsoft.NET.Sdk">
-  <Sdk Name="Aspire.AppHost.Sdk" Version="13.0.0" />
+<Project Sdk="Aspire.AppHost.Sdk/<version>">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.AppHost" Version="13.1.0" />
+    <ProjectReference Include="..\MyShop.Api\MyShop.Api.csproj" />
+    <ProjectReference Include="..\MyShop.Web\MyShop.Web.csproj" />
   </ItemGroup>
 </Project>
 ```
 
-### New v13 Single-SDK Format
+Prefer the SDK-style AppHost in current projects. Do not create new 13-era examples that manually model the older AppHost package layout as if it were the default.
 
-```xml
-<!-- Simplified single-SDK format (optional migration) -->
-<Project Sdk="Aspire.AppHost.Sdk/13.0.0">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-  </PropertyGroup>
-  <!-- Aspire.Hosting.AppHost is implicit in the SDK -->
-  <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.MongoDB" Version="13.1.0" />
-    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.1.0" />
-    <PackageReference Include="Aspire.Hosting.Redis" Version="13.1.0" />
-  </ItemGroup>
-</Project>
-```
+### File-based AppHost
 
-**Migration Notes:**
-- The `Aspire.Hosting.AppHost` package reference becomes implicit in the SDK
-- Both formats work — no forced migration required
-- The dual-SDK format is still supported and widely used
-- Migration command: `aspire update` can handle this automatically
-
-### Single-File AppHosts (v13+)
+Use this when a lightweight single-file orchestration layer is the better fit:
 
 ```csharp
-// AppHost.cs — no .csproj needed with #:sdk directives
-#:sdk Aspire.AppHost.Sdk/13.0.0
-#:package Aspire.Hosting.Redis@13.1.0
-
-var builder = DistributedApplication.CreateBuilder(args);
-var redis = builder.AddRedis("redis");
-builder.Build().Run();
-```
-
-**Note:** Single-file format is for prototyping. Sorcha uses standard project format.
-
----
-
-## AppHost Configuration
-
-### Basic Service Registration
-
-```csharp
-// src/Apps/Sorcha.AppHost/AppHost.cs
 var builder = DistributedApplication.CreateBuilder(args);
 
-// Infrastructure first
-var postgres = builder.AddPostgres("postgres").WithPgAdmin();
-var mongodb = builder.AddMongoDB("mongodb").WithMongoExpress();
-var redis = builder.AddRedis("redis").WithRedisCommander();
+var postgres = builder.AddPostgres("db")
+    .AddDatabase("appdata");
 
-// Databases from infrastructure
-var tenantDb = postgres.AddDatabase("tenant-db", "sorcha_tenant");
-var walletDb = postgres.AddDatabase("wallet-db", "sorcha_wallet");
-var registerDb = mongodb.AddDatabase("register-db", "sorcha_register");
-
-// Services with dependencies
-var tenantService = builder.AddProject<Projects.Sorcha_Tenant_Service>("tenant-service")
-    .WithReference(tenantDb)
-    .WithReference(redis);
+builder.AddProject<Projects.MyShop_Api>("api")
+    .WithReference(postgres)
+    .WaitFor(postgres);
 
 builder.Build().Run();
 ```
 
-### Shared Configuration Pattern
+File-based AppHosts are useful for experimentation, smaller repos, and incremental adoption. They do not automatically include a ServiceDefaults project, so create one when the services need it.
+
+## Current AppHost modeling patterns
+
+### Minimal multi-service topology
 
 ```csharp
-// Generate shared JWT key once, distribute to all services
-var jwtSigningKey = GetOrCreateJwtSigningKey();
+var builder = DistributedApplication.CreateBuilder(args);
 
-var tenantService = builder.AddProject<Projects.Sorcha_Tenant_Service>("tenant-service")
-    .WithEnvironment("JwtSettings__SigningKey", jwtSigningKey)
-    .WithEnvironment("JwtSettings__Issuer", "https://localhost:7110")
-    .WithEnvironment("JwtSettings__Audience__0", "https://sorcha.local");
+var postgres = builder.AddPostgres("postgres")
+    .AddDatabase("catalog")
+    .WithDataVolume();
 
-var blueprintService = builder.AddProject<Projects.Sorcha_Blueprint_Service>("blueprint-service")
-    .WithEnvironment("JwtSettings__SigningKey", jwtSigningKey)  // Same key
-    .WithEnvironment("JwtSettings__Issuer", "https://localhost:7110");
+var cache = builder.AddRedis("cache");
+
+var api = builder.AddProject<Projects.MyShop_Api>("api")
+    .WithReference(postgres)
+    .WithReference(cache)
+    .WaitFor(postgres)
+    .WaitFor(cache);
+
+builder.AddProject<Projects.MyShop_Web>("web")
+    .WithReference(api);
+
+builder.Build().Run();
 ```
 
----
+What matters:
 
-## Service Defaults
+- infrastructure resources are modeled explicitly
+- consuming services get their config through `WithReference(...)`
+- startup ordering is intentional through `WaitFor(...)`
+- the AppHost stays at topology level
 
-### Standard Service Setup
+### Persistent local resources
+
+If the slow path is repeated container bootstrap rather than code changes, keep state across local AppHost restarts:
 
 ```csharp
-// src/Common/Sorcha.ServiceDefaults/Extensions.cs
-public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
-    where TBuilder : IHostApplicationBuilder
+var postgres = builder.AddPostgres("postgres")
+    .WithDataVolume()
+    .WithLifetime(ContainerLifetime.Persistent)
+    .AddDatabase("catalog");
+```
+
+Use persistence deliberately. It is helpful for realistic local development, but it can hide initialization bugs if the team forgets the difference between a cold start and a reused container.
+
+### Publish-mode resource switching
+
+Use publish-mode branching when local development should use containers or emulators while published environments should use managed Azure resources:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var cache = builder.ExecutionContext.IsPublishMode
+    ? builder.AddAzureRedis("cache")
+    : builder.AddRedis("cache").WithDataVolume();
+
+var database = builder.ExecutionContext.IsPublishMode
+    ? builder.AddAzurePostgresFlexibleServer("db").AddDatabase("catalog")
+    : builder.AddPostgres("db").AddDatabase("catalog");
+
+builder.AddProject<Projects.MyShop_Api>("api")
+    .WithReference(cache)
+    .WithReference(database)
+    .WaitFor(cache)
+    .WaitFor(database);
+```
+
+This pattern is better than trying to maintain separate hand-written local and cloud topologies.
+
+## Dependency and configuration flow
+
+Official Aspire guidance treats integrations as two related but independent layers:
+
+- hosting integrations extend `IDistributedApplicationBuilder` and model resources in the AppHost
+- client integrations wire client libraries into DI, health checks, resiliency, and telemetry
+
+Use that split intentionally.
+
+### `WithReference` is the default wiring mechanism
+
+`WithReference(...)` is the normal way to pass endpoints, connection strings, credentials, or other configuration between resources.
+
+Use it instead of:
+
+- hardcoded URLs
+- copy-pasted connection strings
+- manually synchronized environment variables
+
+### `WaitFor` is for startup order, not configuration
+
+`WaitFor(...)` solves a different problem than `WithReference(...)`.
+
+- `WithReference(...)` injects configuration and expresses the dependency edge
+- `WaitFor(...)` delays startup until the dependency is ready or healthy
+
+Use both when the consuming service should not even begin until the dependency is available.
+
+### Named endpoints
+
+Use named endpoints when a service exposes more than one surface:
+
+```csharp
+var api = builder.AddProject<Projects.MyShop_Api>("api")
+    .WithHttpEndpoint(port: 5001, name: "public")
+    .WithHttpEndpoint(port: 5002, name: "internal");
+```
+
+Named endpoints are useful for:
+
+- separating public versus internal traffic
+- gRPC and HTTP on the same service
+- routing test-only or admin endpoints distinctly
+
+## ServiceDefaults boundaries
+
+The current ServiceDefaults template exists to centralize cross-cutting infrastructure, not shared business code.
+
+### Keep it focused
+
+Good content for `ServiceDefaults`:
+
+- OpenTelemetry logging, metrics, and tracing
+- health checks
+- service discovery
+- `HttpClient` resilience defaults
+- default endpoint mapping for health endpoints
+
+Bad content for `ServiceDefaults`:
+
+- domain models
+- repository implementations
+- DTOs
+- application-specific utilities unrelated to cross-cutting infrastructure
+
+### Typical structure
+
+```csharp
+public static class Extensions
 {
-    builder.ConfigureOpenTelemetry();
-    builder.AddDefaultHealthChecks();
-    builder.Services.AddServiceDiscovery();
-
-    builder.Services.ConfigureHttpClientDefaults(http =>
+    public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
+        where TBuilder : IHostApplicationBuilder
     {
-        http.AddStandardResilienceHandler();  // Polly resilience
-        http.AddServiceDiscovery();           // DNS-based discovery
-    });
+        builder.ConfigureOpenTelemetry();
+        builder.AddDefaultHealthChecks();
 
-    return builder;
+        builder.Services.AddServiceDiscovery();
+        builder.Services.ConfigureHttpClientDefaults(http =>
+        {
+            http.AddStandardResilienceHandler();
+            http.AddServiceDiscovery();
+        });
+
+        return builder;
+    }
 }
 ```
 
-### OpenTelemetry Configuration
+Current official guidance also keeps health endpoints and tracing filters aligned with these defaults. Do not fork this pattern casually unless the repo truly needs a custom shared-hosting baseline.
 
-```csharp
-// Tracing excludes health endpoints to reduce noise
-tracing.AddAspNetCoreInstrumentation(tracing =>
-    tracing.Filter = context =>
-        !context.Request.Path.StartsWithSegments("/health")
-        && !context.Request.Path.StartsWithSegments("/alive")
-);
+## Closed-box testing
 
-// Custom meters for specific services
-metrics.AddMeter("Sorcha.Peer.Service");
-tracing.AddSource("Sorcha.Peer.Service");
-```
+Use Aspire testing when the requirement is to exercise the distributed system as a system instead of unit-testing a single component.
 
-### Sorcha ServiceDefaults Extras
+Prefer Aspire testing for:
 
-```csharp
-// SecurityHeaders, HTTPS enforcement, rate limiting, input validation
-app.UseApiSecurityHeaders();            // OWASP headers (SEC-004)
-app.UseHttpsEnforcement();              // HSTS + redirect (SEC-001)
-app.UseRateLimiting();                  // Rate limiter middleware (SEC-002)
-app.UseInputValidation();               // Input sanitization (SEC-003)
-```
+- end-to-end flows across multiple services
+- verifying resource startup and wiring
+- validating service discovery and real HTTP or messaging paths
+- regression tests around the AppHost topology
 
-**Rate Limit Policies (defined in ServiceDefaults):**
-| Policy | Limit | Type |
-|--------|-------|------|
-| `RateLimitPolicies.Api` | 100/min per IP | Fixed window |
-| `RateLimitPolicies.Authentication` | 10/min per IP | Sliding window |
-| `RateLimitPolicies.Strict` | 5/min per IP | Token bucket |
-| `RateLimitPolicies.HeavyOperations` | 10 concurrent global | Concurrency |
-| `RateLimitPolicies.Relaxed` | 1000/min per IP | Fixed window |
+Do not reach for Aspire testing when:
 
----
+- a plain xUnit or NUnit test against one class is enough
+- the service logic can be verified entirely in-process
+- the AppHost topology is irrelevant to the assertion
 
-## Resource Patterns
+Testing is especially important for:
 
-### DO: Use Typed Resource Methods
+- ensuring `WithReference(...)` and `WaitFor(...)` match the intended runtime graph
+- catching broken resource names or renamed endpoints
+- proving a version upgrade did not silently break orchestration
 
-```csharp
-// GOOD - Type-safe resource configuration
-builder.AddRedisOutputCache("redis");       // For IOutputCacheStore
-builder.AddRedisDistributedCache("redis");  // For IDistributedCache
-builder.AddRedisClient("redis");            // For IConnectionMultiplexer
-```
+Load `testing.md` when the repo mixes AppHost lifecycle, `DistributedApplicationTestingBuilder`, `WebApplicationFactory`, SignalR, or Playwright instead of using Aspire as a pure black-box API harness.
 
-### DON'T: Hardcode Connection Strings
+## Upgrade checkpoints
 
-```csharp
-// BAD - Bypasses service discovery
-builder.Services.AddStackExchangeRedisCache(options =>
-{
-    options.Configuration = "localhost:6379";  // Hardcoded!
-});
+When modernizing older Aspire solutions, verify these points explicitly:
 
-// GOOD - Uses Aspire resource name
-builder.AddRedisDistributedCache("redis");
-```
+1. The team is using the current Aspire CLI, and the upgrade path starts there.
+2. The AppHost project uses the current SDK-style layout rather than retaining older manual AppHost package wiring by inertia.
+3. The AppHost target framework is aligned with current tooling expectations for Aspire 13-era projects.
+4. The repo has removed assumptions about the old workload-based setup when those assumptions no longer apply.
+5. ServiceDefaults remains a narrow infrastructure project instead of having accumulated random shared code over time.
 
-**Why:** Hardcoded strings break when running in Docker, Kubernetes, or different environments. Aspire injects the correct connection string automatically.
-
----
-
-## Named References (v13+)
-
-### Custom Connection String Names
-
-```csharp
-// Default: ConnectionStrings__register-db
-var registerService = builder.AddProject<Projects.Sorcha_Register_Service>("register-service")
-    .WithReference(registerDb);
-
-// Named: ConnectionStrings__primary-store
-var registerService = builder.AddProject<Projects.Sorcha_Register_Service>("register-service")
-    .WithReference(registerDb, "primary-store");
-```
-
-### Use Case: Multiple Databases of Same Type
-
-```csharp
-var readDb = postgres.AddDatabase("read-db", "sorcha_read");
-var writeDb = postgres.AddDatabase("write-db", "sorcha_write");
-
-var myService = builder.AddProject<Projects.MyService>("my-service")
-    .WithReference(readDb, "read-connection")     // ConnectionStrings__read-connection
-    .WithReference(writeDb, "write-connection");   // ConnectionStrings__write-connection
-```
-
-```csharp
-// In the service Program.cs
-builder.Services.AddDbContext<ReadDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("read-connection")));
-builder.Services.AddDbContext<WriteDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("write-connection")));
-```
-
----
-
-## Connection Properties (v13+)
-
-### Polyglot Connection Access
-
-```csharp
-// v13+ exposes individual connection properties for non-.NET consumers
-var postgres = builder.AddPostgres("postgres");
-
-// Access individual fields (useful for polyglot services)
-var host = postgres.GetConnectionProperty("HostName");
-var port = postgres.GetConnectionProperty("Port");
-var jdbc = postgres.GetConnectionProperty("JdbcConnectionString");
-```
-
-### Non-.NET Service Configuration
-
-```csharp
-// Python/JavaScript services get simple environment variables
-var pythonApp = builder.AddPythonApp("analytics", "../python-analytics")
-    .WithReference(postgres);
-// Automatically receives: DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD
-// Instead of complex connection string formats
-```
-
----
-
-## TLS Termination (v13.1+)
-
-### Container HTTPS Certificates
-
-```csharp
-// Auto-generate and trust development HTTPS certificates
-var redis = builder.AddRedis("redis")
-    .WithHttpsCertificate();
-
-var gateway = builder.AddProject<Projects.Sorcha_ApiGateway>("api-gateway")
-    .WithHttpsCertificate();
-```
-
-### Custom Certificate Configuration
-
-```csharp
-// Use a specific certificate file
-var myService = builder.AddProject<Projects.MyService>("my-service")
-    .WithHttpsCertificate(certPath: "/certs/service.pfx", certPassword: "password");
-```
-
-### Supported Resources
-Built-in TLS support for: YARP, Redis, Keycloak, Uvicorn, Vite containers.
-
----
-
-## Service Discovery
-
-### Explicit Service References
-
-```csharp
-// API Gateway references all services it routes to
-var apiGateway = builder.AddProject<Projects.Sorcha_ApiGateway>("api-gateway")
-    .WithReference(tenantService)
-    .WithReference(blueprintService)
-    .WithReference(walletService)
-    .WithReference(registerService)
-    .WithReference(peerService)
-    .WithReference(validatorService)
-    .WithReference(redis)
-    .WithExternalHttpEndpoints();
-```
-
-### External Endpoints
-
-```csharp
-// Mark services that need external access
-var registerService = builder.AddProject<Projects.Sorcha_Register_Service>("register-service")
-    .WithExternalHttpEndpoints();  // For walkthrough testing
-
-var uiWeb = builder.AddProject<Projects.Sorcha_UI_Web>("ui-web")
-    .WithExternalHttpEndpoints();  // Primary user entry point
-```
-
-### Network Identifiers (v13+)
-
-```csharp
-// Resolve endpoints contextually for host vs container networking
-var endpoint = myService.GetEndpoint("https");
-// Uses KnownNetworkIdentifiers internally to route correctly
-```
-
----
-
-## Environment Configuration
-
-### Configuration Hierarchy
-
-1. **Environment variables** (highest priority) - set via `.WithEnvironment()`
-2. **AppHost injected** - connection strings from `WithReference()`
-3. **appsettings.json** (lowest priority)
-
-### Array Configuration
-
-```csharp
-// Single audience
-.WithEnvironment("JwtSettings__Audience", "https://sorcha.local")
-
-// Multiple audiences (use index)
-.WithEnvironment("JwtSettings__Audience__0", "https://sorcha.local")
-.WithEnvironment("JwtSettings__Audience__1", "https://api.sorcha.io")
-```
-
----
-
-## MCP Dashboard Integration (v13+)
-
-### Dashboard MCP Endpoint
-
-The Aspire dashboard exposes an MCP (Model Context Protocol) endpoint that AI assistants can use to:
-- Query resource status and health
-- Access structured logs and traces
-- Inspect service configuration
-- View telemetry data
-
-### Setting Up MCP
+Use:
 
 ```bash
-# Initialize MCP configuration for AI assistants
-aspire mcp init
-
-# This creates configuration in ~/.aspire/globalsettings.json
-# AI assistants can then connect to the MCP endpoint
+aspire update
 ```
 
-### Sorcha MCP Server
+Pair the CLI upgrade with a review of:
 
-Sorcha also has its own MCP server at `src/Apps/Sorcha.McpServer/` that provides:
-- Blueprint CRUD operations
-- Register query capabilities
-- Wallet management
-- Authenticated via JWT
-
-These are complementary: Aspire MCP provides infrastructure visibility, Sorcha MCP provides domain operations.
-
----
-
-## Container File Artifacts (v13+)
-
-### Frontend-in-Backend Pattern
-
-```csharp
-// Extract build outputs from one container into another
-var frontend = builder.AddNpmApp("frontend", "../frontend")
-    .PublishWithContainerFiles("/app/dist");
-
-var backend = builder.AddProject<Projects.Backend>("backend")
-    .WithContainerFiles(frontend, "/app/wwwroot");
-```
-
-**Use Case:** Build a Vite/React frontend in a Node container and copy the static output into a .NET backend container for serving — eliminating a separate frontend container in production.
-
----
+- AppHost project structure
+- project references
+- integration package versions
+- test coverage for the distributed topology
+- local run and dashboard behavior
 
 ## Anti-Patterns
 
-### WARNING: Missing AddServiceDefaults
-
-**The Problem:**
-
-```csharp
-// BAD - Service without Aspire integration
-var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddControllers();
-var app = builder.Build();
-app.Run();
-```
-
-**Why This Breaks:**
-1. No health endpoints - Aspire can't monitor service
-2. No OpenTelemetry - invisible in dashboard
-3. No service discovery - HttpClients can't find other services
-4. No resilience handlers - failures cascade
-
-**The Fix:**
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-builder.AddServiceDefaults();  // First line after builder creation
-// ... rest of configuration
-var app = builder.Build();
-app.MapDefaultEndpoints();     // Before app.Run()
-```
-
-### WARNING: Forgetting MapDefaultEndpoints
-
-**The Problem:**
-
-```csharp
-var app = builder.Build();
-app.UseRouting();
-app.MapControllers();
-app.Run();  // No health endpoints!
-```
-
-**Why This Breaks:**
-1. Aspire dashboard shows service as unhealthy
-2. Kubernetes readiness probes fail
-3. Load balancers can't health check
-
-**The Fix:**
-
-```csharp
-var app = builder.Build();
-app.MapDefaultEndpoints();  // Add health endpoints
-app.UseRouting();
-app.MapControllers();
-app.Run();
-```
-
-### WARNING: Circular References
-
-**The Problem:**
-
-```csharp
-// BAD - Creates startup deadlock
-var serviceA = builder.AddProject<Projects.ServiceA>("a")
-    .WithReference(serviceB);
-var serviceB = builder.AddProject<Projects.ServiceB>("b")
-    .WithReference(serviceA);
-```
-
-**Why This Breaks:**
-1. Neither service can start - waiting for the other
-2. Aspire dashboard shows both as unhealthy
-3. Must manually kill and restructure
-
-**The Fix:**
-
-```csharp
-// Use async communication or shared infrastructure
-var serviceA = builder.AddProject<Projects.ServiceA>("a")
-    .WithReference(redis);  // Communicate via Redis
-var serviceB = builder.AddProject<Projects.ServiceB>("b")
-    .WithReference(redis);
-```
-
-### WARNING: Mismatched Resource Names
-
-**The Problem:**
-
-```csharp
-// In AppHost
-var redis = builder.AddRedis("redis-cache");
-
-// In service Program.cs
-builder.AddRedisDistributedCache("redis");  // Wrong name!
-```
-
-**Why This Breaks:**
-1. Connection string injection fails
-2. Runtime error: "No service for type 'IDistributedCache'"
-3. Works locally with fallback, fails in production
-
-**The Fix:**
-
-Use consistent names. The name in `AddRedis()` must match the name in consuming methods.
-
-### WARNING: Using Old AddNpmApp (v13 Breaking)
-
-**The Problem:**
-
-```csharp
-// BAD - Removed in v13
-var frontend = builder.AddNpmApp("frontend", "../frontend");
-```
-
-**The Fix:**
-
-```csharp
-// GOOD - v13 replacement
-var frontend = builder.AddJavaScriptApp("frontend", "../frontend");
-// Or for Vite specifically:
-var frontend = builder.AddViteApp("frontend", "../frontend");
-```
-
-### WARNING: DataProtection Key Permissions in Docker
-
-**Known Issue:** When running in Docker, the DataProtection key file at `/home/app/.aspnet/DataProtection-Keys/` can have permission errors due to volume sharing between containers.
-
-**Symptoms:**
-```
-System.UnauthorizedAccessException: Access to the path
-'/home/app/.aspnet/DataProtection-Keys/key-*.xml' is denied.
-```
-
-**Impact:** Non-blocking — services fall back to ephemeral keys. Auth works but tokens don't survive container restarts.
-
-**Fix Options:**
-1. Configure DataProtection to use Redis: `builder.Services.AddDataProtection().PersistKeysToStackExchangeRedis()`
-2. Set proper volume permissions in Dockerfile
-3. Use a shared volume with correct ownership
+- Treating the AppHost like an ordinary application project with business logic, service implementations, or repo-specific glue.
+- Using `WithEnvironment(...)` as the first answer when `WithReference(...)` or a normal integration already models the dependency correctly.
+- Assuming `WithExternalHttpEndpoints()` belongs on every web project. It should follow runtime needs, especially publish targets such as App Service.
+- Modeling a large topology with vague resource names like `service1` and `db2`, then expecting logs and traces to remain understandable.
+- Carrying an obsolete 8.x or 9.x setup pattern into new samples or new repos without a compatibility reason.

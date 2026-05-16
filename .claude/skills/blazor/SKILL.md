@@ -1,220 +1,245 @@
 ---
 name: blazor
-description: |
-  Builds Blazor WASM components for admin and main UI applications.
-  Use when: Creating/modifying Razor components, configuring render modes, implementing authentication, managing component state, or working with MudBlazor components.
-allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-library-id, mcp__context7__query-docs
+description: "Build and review Blazor applications across server, WebAssembly, web app, and hybrid scenarios with correct component design, state flow, rendering, and hosting choices. USE FOR: building interactive web UIs with C# instead of JavaScript; choosing between Server, WebAssembly, or Auto render modes; designing component hierarchies and state. DO NOT USE FOR: unrelated stacks; generic tasks that do not need this specific guidance. INVOKES: inspect the repository context, edit targeted files, and run relevant build, test, lint, or validation commands when changes are made."
+compatibility: "Requires Blazor project (.NET 6+, preferably .NET 8+ for unified model)."
 ---
 
-# Blazor Skill
+# Blazor
 
-Sorcha uses Blazor with hybrid rendering (Server + WebAssembly). The Admin UI (`src/Apps/Sorcha.Admin/`) runs behind YARP API Gateway. Components use MudBlazor for UI and support three render modes: static server, interactive server, and interactive WASM.
+## Trigger On
 
-## Quick Start
+- building interactive web UIs with C# instead of JavaScript
+- choosing between Server, WebAssembly, or Auto render modes
+- designing component hierarchies and state management
+- handling prerendering and hydration
+- integrating with JavaScript when necessary
 
-### Render Mode Selection
+## Documentation
+
+- [Blazor Overview](https://learn.microsoft.com/en-us/aspnet/core/blazor/?view=aspnetcore-10.0)
+- [Render Modes](https://learn.microsoft.com/en-us/aspnet/core/blazor/components/render-modes?view=aspnetcore-10.0)
+- [Performance Best Practices](https://learn.microsoft.com/en-us/aspnet/core/blazor/performance?view=aspnetcore-10.0)
+- [State Management](https://learn.microsoft.com/en-us/aspnet/core/blazor/state-management?view=aspnetcore-10.0)
+- [JS Interop](https://learn.microsoft.com/en-us/aspnet/core/blazor/javascript-interoperability/?view=aspnetcore-10.0)
+
+### References
+
+- [patterns.md](references/patterns.md) - Detailed component patterns, state management strategies, and JS interop techniques
+- [anti-patterns.md](references/anti-patterns.md) - Common Blazor mistakes and how to avoid them
+
+## Render Modes (.NET 8+)
+
+| Mode | Where It Runs | Best For |
+|------|---------------|----------|
+| `Static` | Server (no interactivity) | SEO pages, marketing content |
+| `InteractiveServer` | Server via SignalR | Real-time apps, thin clients |
+| `InteractiveWebAssembly` | Browser via WASM | Offline-capable, client-heavy |
+| `InteractiveAuto` | Server first, then WASM | Best of both worlds |
+
+### Applying Render Modes
 
 ```razor
-@* WASM - Complex interactive pages (Designer, Diagrams) *@
-@page "/designer"
-@rendermode InteractiveWebAssembly
-@attribute [Authorize]
+@* Per-component *@
+@rendermode InteractiveServer
 
-@* Server - Admin pages needing real-time SignalR *@
-@page "/admin/audit"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@attribute [Authorize(Roles = "Administrator")]
-
-@* Static - Public pages (Login) - no @rendermode directive *@
-@page "/login"
-@attribute [AllowAnonymous]
+@* Or in App.razor for global *@
+<Routes @rendermode="InteractiveAuto" />
 ```
 
-### Component with Loading State
+### InteractiveAuto Architecture
 
+```
+First Request:
+  Browser → Server (Interactive Server) → Fast response
+
+Subsequent Requests:
+  Browser → WASM (downloaded in background) → No server needed
+```
+
+## Workflow
+
+1. **Choose render mode based on requirements:**
+   - Need SEO? Start with Static or prerendering
+   - Need real-time? Use InteractiveServer
+   - Need offline? Use InteractiveWebAssembly
+   - Want both? Use InteractiveAuto
+
+2. **Design components for reusability:**
+   - Small, focused components
+   - Parameters for customization
+   - Events for communication
+
+3. **Handle state correctly:**
+   - Component state lives in component
+   - Shared state via services (DI)
+   - Persist state across prerender with `[PersistentState]`
+
+4. **Validate in both environments** (for Auto mode)
+
+## Component Patterns
+
+### Basic Component
 ```razor
-@inject HttpClient Http
-
-<MudPaper Elevation="2" Class="pa-4">
-    @if (_isLoading && !_hasLoadedOnce)
-    {
-        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
-    }
-    else if (_data != null)
-    {
-        <MudText>@_data.Title</MudText>
-    }
-    else if (_errorMessage != null)
-    {
-        <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
-    }
-</MudPaper>
+@* Counter.razor *@
+<button @onclick="IncrementCount">
+    Clicked @count times
+</button>
 
 @code {
-    private DataDto? _data;
-    private string? _errorMessage;
-    private bool _isLoading;
-    private bool _hasLoadedOnce;
+    private int count = 0;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    [Parameter]
+    public int InitialCount { get; set; } = 0;
+
+    protected override void OnInitialized()
     {
-        if (firstRender)
-            await LoadDataAsync();
+        count = InitialCount;
     }
 
-    private async Task LoadDataAsync()
+    private void IncrementCount() => count++;
+}
+```
+
+### Parameter and Event Callbacks
+```razor
+@* Parent.razor *@
+<ChildComponent Value="@value" ValueChanged="@OnValueChanged" />
+
+@* ChildComponent.razor *@
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private async Task UpdateValue(string newValue)
     {
-        _isLoading = true;
-        try
-        {
-            _data = await Http.GetFromJsonAsync<DataDto>("/api/data");
-            _hasLoadedOnce = true;
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = ex.Message;
-        }
-        finally
-        {
-            _isLoading = false;
-            StateHasChanged();
-        }
+        await ValueChanged.InvokeAsync(newValue);
     }
 }
 ```
 
-## Key Concepts
-
-| Concept | Usage | Example |
-|---------|-------|---------|
-| Render Mode | Control where component runs | `@rendermode InteractiveWebAssembly` |
-| CascadingParameter | Receive parent state | `[CascadingParameter] MudBlazor.IDialogReference? MudDialog` |
-| OnAfterRenderAsync | Initialize after DOM ready | `if (firstRender) await LoadAsync();` |
-| StateHasChanged | Trigger re-render | Call after async state updates |
-| NavigationManager | Programmatic navigation | `Navigation.NavigateTo("/", forceLoad: true)` |
-
-## Project Structure
-
-| Project | Purpose | Render Mode |
-|---------|---------|-------------|
-| `Sorcha.Admin` | Server host, auth, API proxy | Server + prerender |
-| `Sorcha.Admin.Client` | WASM components | WebAssembly |
-| `Sorcha.UI.Core` | Shared components | Both |
-| `Sorcha.UI.Web` | Main UI server | Server |
-| `Sorcha.UI.Web.Client` | Main UI WASM | WebAssembly |
-
-## Common Patterns
-
-### MudBlazor Dialog
-
+### State Persistence (.NET 8+)
 ```razor
-<MudDialog DisableSidePadding="false">
-    <DialogContent>
-        <MudTextField @bind-Value="_value" Label="Input" />
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="Cancel">Cancel</MudButton>
-        <MudButton Color="Color.Primary" OnClick="Submit">OK</MudButton>
-    </DialogActions>
-</MudDialog>
-
+@* Prevents double-fetch during prerender + hydration *@
 @code {
-    [CascadingParameter] MudBlazor.IDialogReference? MudDialog { get; set; }
-    private string _value = "";
-    
-    private void Cancel() => MudDialog?.Close();
-    private void Submit() => MudDialog?.Close(DialogResult.Ok(_value));
+    [PersistentState]
+    public List<Product> Products { get; set; } = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Only fetches once, persisted across prerender
+        Products ??= await Http.GetFromJsonAsync<List<Product>>("api/products");
+    }
 }
 ```
 
-### Opening Dialog from Parent
+## Data Access Pattern for Auto Mode
 
 ```csharp
-var dialog = await DialogService.ShowAsync<LoginDialog>("Login");
-var result = await dialog.Result;
-if (result is { Canceled: false })
+// Shared interface
+public interface IProductService
 {
-    // Handle success
+    Task<List<Product>> GetProductsAsync();
 }
+
+// Server implementation (direct DB access)
+public class ServerProductService : IProductService
+{
+    private readonly AppDbContext _db;
+    public async Task<List<Product>> GetProductsAsync()
+        => await _db.Products.ToListAsync();
+}
+
+// Client implementation (HTTP call)
+public class ClientProductService : IProductService
+{
+    private readonly HttpClient _http;
+    public async Task<List<Product>> GetProductsAsync()
+        => await _http.GetFromJsonAsync<List<Product>>("api/products");
+}
+
+// Registration
+// Server: builder.Services.AddScoped<IProductService, ServerProductService>();
+// Client: builder.Services.AddScoped<IProductService, ClientProductService>();
 ```
 
-### PWA navigation when mounted under a path prefix
+## Anti-Patterns to Avoid
 
-Blazor's `NavigationManager` treats paths with a **leading slash** as origin-relative (absolute), NOT base-href-relative. When the app is mounted under a prefix like `/wallet/` (via API Gateway `PathRemovePrefix` or similar) with `<base href="/wallet/" />` in `index.html`, this matters:
+| Anti-Pattern | Why It's Bad | Better Approach |
+|--------------|--------------|-----------------|
+| Large components | Hard to maintain, slow renders | Split into smaller components |
+| Direct DB access in WASM | No DB in browser | Use HTTP API |
+| Ignoring `ShouldRender` | Unnecessary re-renders | Override when needed |
+| Sync JS interop in Server | Blocks SignalR circuit | Use `IJSRuntime` async |
+| No error boundaries | One error crashes app | Use `<ErrorBoundary>` |
+| Forgetting prerender state | Double API calls | Use `[PersistentState]` |
 
-```razor
-@* WRONG — resolves to https://host/enrol — 404 in production *@
-<MudButton OnClick="@(() => Nav.NavigateTo("/enrol"))">Enrol</MudButton>
-<MudLink Href="/settings">Settings</MudLink>
+## Performance Best Practices
 
-@* RIGHT — resolves to https://host/wallet/enrol via base href *@
-<MudButton OnClick="@(() => Nav.NavigateTo("enrol"))">Enrol</MudButton>
-<MudLink Href="settings">Settings</MudLink>
+1. **Virtualize large lists:**
+   ```razor
+   <Virtualize Items="@products" Context="product">
+       <ProductCard Product="@product" />
+   </Virtualize>
+   ```
 
-@* RIGHT — Home button: NavigateTo("") lands at base, NOT NavigateTo("/") *@
-<MudIconButton OnClick="@(() => Nav.NavigateTo(""))" />
+2. **Use `@key` for list diffing:**
+   ```razor
+   @foreach (var item in items)
+   {
+       <ItemComponent @key="item.Id" Item="@item" />
+   }
+   ```
+
+3. **Debounce rapid events:**
+   ```csharp
+   private Timer? _debounceTimer;
+
+   private void OnInput(ChangeEventArgs e)
+   {
+       _debounceTimer?.Dispose();
+       _debounceTimer = new Timer(_ => InvokeAsync(DoSearch), null, 300, Timeout.Infinite);
+   }
+   ```
+
+4. **Lazy load assemblies (WASM):**
+   ```csharp
+   var assemblies = await LazyAssemblyLoader
+       .LoadAssembliesAsync(["MyHeavyFeature.wasm"]);
+   ```
+
+## JS Interop
+
+### Calling JavaScript from C#
+```csharp
+@inject IJSRuntime JS
+
+await JS.InvokeVoidAsync("alert", "Hello from Blazor!");
+var result = await JS.InvokeAsync<string>("prompt", "Enter name:");
 ```
 
-**Why it ships broken**: localhost-dev often serves the PWA at the origin root (no prefix), so leading-slash calls *happen to work*. The bug only manifests when the PWA is served under a prefix in production. Citizen Wallet PWA hit this on n1 — see PR #698.
-
-**Test coverage**: every nav-triggering element must have a click+URL-assertion test. The page-object-without-clicks anti-pattern (see the **playwright** skill) is how this slips through CI.
-
-### nginx caching for Blazor WASM — fingerprinted vs entry-point assets
-
-Two classes of file live under `_framework/` and they need different cache policies:
-
-| Class | Example | URL stable? | Contents change? | Cache |
-|---|---|---|---|---|
-| Fingerprinted | `Sorcha.Wallet.Pwa.b0fgy5dpkq.wasm` | No (hash in URL) | No (hash *is* the contents key) | `immutable, max-age=31536000` ✅ |
-| Entry-point | `dotnet.js`, `blazor.webassembly.js` | Yes | **Yes** — embeds the fingerprint manifest of which wasm files to load | `no-cache, no-store, must-revalidate` ✅ |
-
-A nginx regex like `location ~* ^/_framework/.*\.(dll|wasm|js)$` that marks **everything** as `immutable` is the trap — it catches the non-fingerprinted entry points. On redeploy, the wasm fingerprints rotate but browsers holding the year-cached `dotnet.js` keep referencing dead hashes. Manifests as "the wallet won't navigate after a redeploy on a returning device." See PR #699.
-
-**Correct nginx pattern** (exact-match locations win over regex):
-
-```nginx
-# Non-fingerprinted entry points — revalidate every visit.
-location = /_framework/dotnet.js {
-    add_header Cache-Control "no-cache, no-store, must-revalidate";
-    try_files $uri =404;
-}
-location = /_framework/blazor.webassembly.js {
-    add_header Cache-Control "no-cache, no-store, must-revalidate";
-    try_files $uri =404;
-}
-
-# Fingerprinted assets — safe to cache forever.
-location ~* ^/_framework/.*\.(dll|wasm|js|json|blat|dat)$ {
-    expires 1y;
-    add_header Cache-Control "public, immutable";
-    try_files $uri =404;
-}
+### Calling C# from JavaScript
+```csharp
+[JSInvokable]
+public static string GetMessage() => "Hello from C#!";
 ```
 
-**Regression guard**: HTTP probe test that asserts `dotnet.js` does *not* contain `immutable` in `Cache-Control`. See `tests/Sorcha.UI.E2E.Tests/Docker/CitizenWallet/CitizenWalletNginxCacheHeadersTests.cs`.
+```javascript
+DotNet.invokeMethodAsync('MyAssembly', 'GetMessage')
+    .then(result => console.log(result));
+```
 
-**The one-time penalty**: existing browsers that visited before the fix landed still hold the year-cached `dotnet.js`. They keep showing broken nav until their cache TTL expires OR they hard-refresh. New visitors (and incognito sessions) are unaffected.
+## Deliver
 
-## See Also
+- interactive Blazor components with appropriate render mode
+- efficient state management and data flow
+- proper handling of prerendering scenarios
+- performant list rendering with virtualization
 
-- [patterns](references/patterns.md) - Component and authentication patterns
-- [workflows](references/workflows.md) - Development and deployment workflows
+## Validate
 
-## Related Skills
-
-- See the **aspire** skill for service discovery configuration
-- See the **signalr** skill for real-time notifications
-- See the **jwt** skill for authentication token handling
-- See the **yarp** skill for API Gateway configuration
-- See the **mudblazor** skill for component library details
-
-## Documentation Resources
-
-> Fetch latest Blazor/MudBlazor documentation with Context7.
-
-**Library ID:** `/websites/mudblazor` _(MudBlazor component library documentation)_
-
-**Recommended Queries:**
-- "MudBlazor dialog service usage"
-- "MudBlazor form validation"
-- "MudBlazor data grid filtering"
+- components render correctly in chosen mode
+- state persists correctly across prerender/hydration
+- no unnecessary re-renders (check with browser tools)
+- JS interop works in both Server and WASM
+- error boundaries catch component failures
+- Auto mode works in both environments

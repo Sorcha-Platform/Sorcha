@@ -1,145 +1,124 @@
 ---
 name: xunit
-description: |
-  Writes unit tests with xUnit framework across 30 test projects.
-  Use when: writing new tests, adding test coverage, creating integration tests, setting up test fixtures, or debugging test failures.
-allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-library-id, mcp__context7__query-docs
+description: "Write, run, or repair .NET tests that use xUnit with the right package, CLI, and runner guidance. USE FOR: xUnit v2 or xUnit v3 projects; adding, running, debugging, or repairing xUnit tests; choosing between VSTest and Microsoft.Testing.Platform. DO NOT USE FOR: TUnit projects; MSTest projects. INVOKES: inspect the repository context, edit targeted files, and run relevant build, test, lint, or validation commands when changes are made."
+compatibility: "Requires a .NET solution or project with xUnit packages; respects the repo's `AGENTS.md` commands first."
 ---
 
-# xUnit Skill
+# xUnit.net
 
-xUnit 2.9.3 is the testing framework for all 30 test projects in Sorcha. Tests use **FluentAssertions** for readable assertions and **Moq** for mocking. All tests follow strict `MethodName_Scenario_ExpectedBehavior` naming.
+## Trigger On
+
+- the repo uses xUnit v2 or xUnit v3
+- you need to add, run, debug, or repair xUnit tests
+- the team is unsure whether a project is using VSTest or Microsoft.Testing.Platform
+
+## Value
+
+- produce a concrete project delta: code, docs, config, tests, CI, or review artifact
+- reduce ambiguity through explicit planning, verification, and final validation skills
+- leave reusable project context so future tasks are faster and safer
+
+## Do Not Use For
+
+- TUnit projects
+- MSTest projects
+- generic test strategy with no xUnit-specific mechanics
+
+## Inputs
+
+- the nearest `AGENTS.md`
+- the test project file and package references
+- the active runner model for the test project
 
 ## Quick Start
 
-### Unit Test Structure
+1. Read the nearest `AGENTS.md` and confirm scope and constraints.
+2. Run this skill's `Workflow` through the `Ralph Loop` until outcomes are acceptable.
+3. Return the `Required Result Format` with concrete artifacts and verification evidence.
 
-```csharp
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 Sorcha Contributors
+## Workflow
 
-public class WalletManagerTests
-{
-    private readonly Mock<IRepository<Wallet>> _mockRepository;
-    private readonly WalletManager _sut;
+1. Detect the active xUnit model before changing commands:
+   - `xunit` usually means v2
+   - `xunit.v3` means v3
+   - `xunit.runner.visualstudio` plus `Microsoft.NET.Test.Sdk` usually means VSTest compatibility is enabled
+   - `TestingPlatformDotnetTestSupport` or `UseMicrosoftTestingPlatformRunner` means Microsoft.Testing.Platform is in play
+2. Read the repo's real `test` command from `AGENTS.md`. If the repo has no explicit command yet, start with `dotnet test PROJECT_OR_SOLUTION`.
+3. Keep the runner model consistent:
+   - xUnit v2 usually runs through VSTest
+   - xUnit v3 can run as a standalone executable with `dotnet run`
+   - xUnit v3 can also integrate with Microsoft.Testing.Platform
+   - do not mix VSTest-only switches into Microsoft.Testing.Platform runs
+4. Run the narrowest useful scope first:
+   - one project
+   - one class
+   - one trait
+   - one method
+5. Prefer `[Theory]` for stable data-driven coverage and `[Fact]` for single-path invariant checks.
+6. Keep `xunit.analyzers` enabled when present. Fix analyzer findings instead of muting them casually.
 
-    public WalletManagerTests()
-    {
-        _mockRepository = new Mock<IRepository<Wallet>>();
-        _sut = new WalletManager(_mockRepository.Object);
-    }
+## Bootstrap When Missing
 
-    [Fact]
-    public async Task CreateAsync_ValidWallet_ReturnsSuccess()
-    {
-        // Arrange
-        var wallet = new Wallet { Name = "Test" };
-        _mockRepository.Setup(r => r.AddAsync(wallet)).ReturnsAsync(wallet);
+If xUnit is requested but not configured:
 
-        // Act
-        var result = await _sut.CreateAsync(wallet);
+1. Detect current framework first:
+   - `rg -n "xunit(\\.v3)?|xunit\\.runner\\.visualstudio|TestingPlatformDotnetTestSupport|UseMicrosoftTestingPlatformRunner|TUnit|MSTest" -g '*.csproj' .`
+2. If the repo currently uses `TUnit` or `MSTest`, do not auto-migrate. Return `status: not_applicable` unless migration is explicitly requested.
+3. For explicit xUnit adoption, add packages to the target test project:
+   - `dotnet add TEST_PROJECT.csproj package xunit.v3`
+   - optional VSTest bridge: `dotnet add TEST_PROJECT.csproj package xunit.runner.visualstudio`
+4. Add repo test commands and runner notes to `AGENTS.md`.
+5. Run `dotnet test TEST_PROJECT.csproj` or repo-defined xUnit command and return `status: configured` or `status: improved`.
 
-        // Assert
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().Be(wallet);
-    }
-}
-```
 
-### Theory with InlineData
+## Deliver
 
-```csharp
-[Theory]
-[InlineData(12)]
-[InlineData(15)]
-[InlineData(18)]
-[InlineData(21)]
-[InlineData(24)]
-public void GenerateMnemonic_ValidWordCount_ReturnsCorrectLength(int wordCount)
-{
-    var result = _keyManager.GenerateMnemonic(wordCount);
+- xUnit tests that match the repo's active xUnit version and runner
+- commands that work in local and CI runs
+- focused verification before broader suite execution
 
-    result.IsSuccess.Should().BeTrue();
-    result.Value!.Split(' ').Should().HaveCount(wordCount);
-}
-```
+## Validate
 
-## Key Concepts
+- the chosen CLI matches the active runner model
+- test filters or focused runs are valid for that runner
+- tests use deterministic inputs and assertions
+- xUnit-specific analyzers remain active unless the repo documents an exception
 
-| Concept | Usage | Example |
-|---------|-------|---------|
-| `[Fact]` | Single test case | `[Fact] public void Method_Test() {}` |
-| `[Theory]` | Parameterized tests | `[Theory] [InlineData(1)] public void Method(int x) {}` |
-| `IClassFixture<T>` | Per-class shared state | `class Tests : IClassFixture<DbFixture>` |
-| `ICollectionFixture<T>` | Cross-class shared state | `[Collection("Db")] class Tests` |
-| `IAsyncLifetime` | Async setup/teardown | `Task InitializeAsync()`, `Task DisposeAsync()` |
+## Ralph Loop
 
-## Common Patterns
+Use the Ralph Loop for every task, including docs, architecture, testing, and tooling work.
 
-### Exception Testing
+1. Plan first (mandatory):
+   - analyze current state
+   - define target outcome, constraints, and risks
+   - write a detailed execution plan
+   - list final validation skills to run at the end, with order and reason
+2. Execute one planned step and produce a concrete delta.
+3. Review the result and capture findings with actionable next fixes.
+4. Apply fixes in small batches and rerun the relevant checks or review steps.
+5. Update the plan after each iteration.
+6. Repeat until outcomes are acceptable or only explicit exceptions remain.
+7. If a dependency is missing, bootstrap it or return `status: not_applicable` with explicit reason and fallback path.
 
-```csharp
-[Fact]
-public void Constructor_NullRepository_ThrowsArgumentNullException()
-{
-    var act = () => new WalletManager(null!);
+### Required Result Format
 
-    act.Should().Throw<ArgumentNullException>()
-        .WithParameterName("repository");
-}
+- `status`: `complete` | `clean` | `improved` | `configured` | `not_applicable` | `blocked`
+- `plan`: concise plan and current iteration step
+- `actions_taken`: concrete changes made
+- `validation_skills`: final skills run, or skipped with reasons
+- `verification`: commands, checks, or review evidence summary
+- `remaining`: top unresolved items or `none`
 
-[Fact]
-public async Task ProcessAsync_InvalidData_ThrowsWithMessage()
-{
-    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-        () => _processor.ProcessAsync(invalidContext));
+For setup-only requests with no execution, return `status: configured` and exact next commands.
 
-    exception.Message.Should().Contain("validation failed");
-}
-```
+## Load References
 
-### Async Test Pattern
+- [references/xunit.md](references/xunit.md)
+- [references/patterns.md](references/patterns.md)
+- [references/anti-patterns.md](references/anti-patterns.md)
 
-```csharp
-[Fact]
-public async Task ExecuteAsync_ValidBlueprint_CompletesSuccessfully()
-{
-    // Arrange
-    var blueprint = CreateTestBlueprint();
+## Example Requests
 
-    // Act
-    var result = await _engine.ExecuteAsync(blueprint);
-
-    // Assert
-    result.Success.Should().BeTrue();
-    result.ProcessedData.Should().ContainKey("output");
-}
-```
-
-## See Also
-
-- [patterns](references/patterns.md) - Test patterns and anti-patterns
-- [workflows](references/workflows.md) - Test workflows and fixtures
-
-## Related Skills
-
-- See the **fluent-assertions** skill for assertion patterns
-- See the **moq** skill for mocking dependencies
-- See the **entity-framework** skill for database testing with InMemory provider
-- See the **postgresql** skill for Testcontainers integration tests
-
-## Documentation Resources
-
-> Fetch latest xUnit documentation with Context7.
-
-**How to use Context7:**
-1. Use `mcp__context7__resolve-library-id` to search for "xunit"
-2. Query with `mcp__context7__query-docs` using the resolved library ID
-
-**Library ID:** `/xunit/xunit.net` _(875 code snippets, High reputation)_
-
-**Recommended Queries:**
-- "xUnit Theory InlineData patterns"
-- "IClassFixture ICollectionFixture shared context"
-- "IAsyncLifetime async setup teardown"
-- "xUnit parallel test execution configuration"
+- "Run this xUnit suite correctly."
+- "Fix our xUnit v3 test command."
+- "Add an xUnit regression test and keep CI compatible."
