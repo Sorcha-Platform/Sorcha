@@ -53,6 +53,28 @@
     }
 
     <div class="sorcha-pair-handoff__footer">
+        @* Feature 128 sub-PR B3 — "Email me a link" resumption affordance.
+           Citizen can tap if they don't have their phone with them right
+           now; an email arrives with a magic-link that brings them back
+           to /setup/add-device on whatever device they tap on. *@
+        <button type="button" @onclick="HandleEmailLinkAsync"
+                class="sorcha-pair-handoff__email-link"
+                disabled="@_emailLinkBusy"
+                data-testid="pairing-handoff-email-link">
+            @if (_emailLinkBusy)
+            {
+                <span>Sending…</span>
+            }
+            else if (_emailLinkSent)
+            {
+                <span>Email sent — check your inbox</span>
+            }
+            else
+            {
+                <span>Email me a link</span>
+            }
+        </button>
+
         <button type="button" @onclick="HandleSkipAsync"
                 class="sorcha-pair-handoff__skip"
                 data-testid="pairing-handoff-skip">
@@ -70,6 +92,8 @@
 
     private MintedHandoff? _minted;
     private string? _error;
+    private bool _emailLinkBusy;
+    private bool _emailLinkSent;
 
     protected override async Task OnInitializedAsync()
     {
@@ -117,6 +141,37 @@
     {
         Nav.NavigateTo(SkipDestination);
         return Task.CompletedTask;
+    }
+
+    private async Task HandleEmailLinkAsync()
+    {
+        if (_emailLinkBusy || _emailLinkSent) return;
+
+        _emailLinkBusy = true;
+        try
+        {
+            using var response = await Http.PostAsync("/api/auth/pairing-resumption-email", content: null);
+            // 202 Accepted is the success path; treat all non-error status codes
+            // as "sent" since the citizen-facing copy doesn't distinguish.
+            // Rate-limit (429) and auth failures (401) flip back to the
+            // default button label so the citizen can retry.
+            if (response.IsSuccessStatusCode)
+            {
+                _emailLinkSent = true;
+            }
+            else
+            {
+                Logger.LogWarning("Pairing-resumption email returned {Status}", response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Pairing-resumption email failed");
+        }
+        finally
+        {
+            _emailLinkBusy = false;
+        }
     }
 
     private sealed record MintRequest(string Mode);

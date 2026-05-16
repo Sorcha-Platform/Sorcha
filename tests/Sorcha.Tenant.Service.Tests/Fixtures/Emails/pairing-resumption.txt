@@ -1,0 +1,12 @@
+Hi Stuart Fraser — you asked us to email you a link to set up your Sorcha
+wallet on your phone.
+
+Open this email on the phone you want to use, then tap the link:
+https://sorcha.dev/api/auth/pairing-resumption/redeem?token=FIXTURE_TOKEN
+
+The link works for 24 hours. If you didn't request this,
+just ignore this email — nothing will change on your account.
+
+— the Sorcha team
+Decentralised registers for secure data flow
+Questions? Write to help@sorcha.dev.

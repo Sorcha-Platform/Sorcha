@@ -10,6 +10,7 @@ public sealed class TransactionalEmailService : ITransactionalEmailService
 {
     private const string VerifySubject = "Confirm your email";
     private const string PasswordResetSubject = "Reset your password";
+    private const string PairingResumptionSubject = "Set up your Sorcha wallet";
 
     /// <summary>
     /// Maximum number of characters of an organisation name that may appear in an email
@@ -135,6 +136,19 @@ public sealed class TransactionalEmailService : ITransactionalEmailService
         var (html, text) = _renderer.Render("welcome-invited", model);
         var subject = $"You've joined {TruncateForSubject(context.InvitingOrganization.Name)}";
         await _sender.SendAsync(context.User.Email, subject, html, text, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task SendPairingResumptionAsync(PairingResumptionDispatch dispatch, CancellationToken ct = default)
+    {
+        var model = new PairingResumptionTemplateModel(
+            DisplayName: dispatch.DisplayName,
+            ResumptionUrl: dispatch.ResumptionUrl,
+            ExpiresInHours: dispatch.ExpiresInHours,
+            Branding: _branding.GetDefault());
+
+        var (html, text) = _renderer.Render("pairing-resumption", model);
+        await _sender.SendAsync(dispatch.ToEmail, PairingResumptionSubject, html, text, ct);
     }
 
     /// <summary>
