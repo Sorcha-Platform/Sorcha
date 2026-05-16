@@ -32,14 +32,28 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject ILogger<MyDevices> Logger
+@inject NavigationManager Nav
 
 <PageTitle>My Devices - Sorcha Platform</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-2">
-        <MudIcon Icon="@Icons.Material.Filled.Devices" Class="mr-2" />
-        My Devices
-    </MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.h4">
+            <MudIcon Icon="@Icons.Material.Filled.Devices" Class="mr-2" />
+            My Devices
+        </MudText>
+        <MudSpacer />
+        @* Feature 128 US2 (FR-025) — "Add my phone" affordance, visible
+           regardless of paired-device count so a citizen can always add
+           another device from here. Routes to the F128 handoff page. *@
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.AddToHomeScreen"
+                   OnClick="@(() => Nav.NavigateTo("/setup/add-device"))"
+                   data-testid="my-devices-add-my-phone">
+            Add my phone
+        </MudButton>
+    </MudStack>
     <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
         Wallet devices you've enrolled. Lost your phone? Revoke it here so
         verifiers reject any further presentations from that device.

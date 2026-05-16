@@ -253,6 +253,14 @@
 
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-4" Style="padding-bottom: 40px;">
+            @* Feature 128 US2 (FR-024) — nag-banner for signed-in citizens
+               with zero paired devices. Self-gates on IHasPairedDeviceProbe;
+               dismissable per-session. *@
+            <AuthorizeView>
+                <Authorized>
+                    <Sorcha.UI.Core.Components.Pairing.PairingNagBanner />
+                </Authorized>
+            </AuthorizeView>
             @Body
         </MudContainer>
     </MudMainContent>
