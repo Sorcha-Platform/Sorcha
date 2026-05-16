@@ -1,209 +1,114 @@
 ---
 name: aspire
-description: |
-  Configures .NET Aspire 13.x orchestration, service discovery, and telemetry.
-  Use when: Adding services to AppHost, configuring service defaults, setting up health checks, troubleshooting service discovery, or using Aspire CLI commands.
-allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-library-id, mcp__context7__query-docs
+description: "Build, upgrade, and operate .NET Aspire 13.3.x application hosts with current CLI, AppHost, ServiceDefaults, integrations, dashboard, testing, and Azure deployment patterns for distributed apps. USE FOR: Aspire.AppHost.Sdk, Aspire.Hosting.*, DistributedApplication.CreateBuilder, WithReference, WaitFor, AddProject, AddRedis, AddPostgres, aspire run, aspire init, aspire. DO NOT USE FOR: unrelated stacks; generic tasks that do not need this specific guidance. INVOKES: inspect the repository context, edit targeted files, and run relevant build, test, lint, or validation commands when changes are made."
+compatibility: "Best for current Aspire 13.3.x tooling on .NET 10; use version-aware upgrade guidance for older 8.x or 9.x Aspire solutions."
 ---
 
-# .NET Aspire 13.x Skill
+# .NET Aspire
 
-.NET Aspire 13.x provides orchestration for this decentralised register platform. The AppHost (`src/Apps/Sorcha.AppHost/AppHost.cs`) orchestrates 7 microservices with PostgreSQL, MongoDB, and Redis. Services use `AddServiceDefaults()` for consistent OpenTelemetry, health checks, and service discovery. JWT signing keys are generated once and shared across all services via environment variables.
+## Trigger On
 
-## Version Info
+- `Aspire.AppHost.Sdk`, `Aspire.Hosting.*`, `DistributedApplication.CreateBuilder`, `WithReference`, `WaitFor`, `AddProject`, `AddRedis`, `AddPostgres`, `aspire run`, `aspire init`, `aspire add`, or `aspire update`
+- `Aspire.Hosting.Testing`, `DistributedApplicationTestingBuilder`, or a test harness that mixes an Aspire AppHost with `WebApplicationFactory`
+- orchestrating multiple services and resources with an AppHost for local development or cloud deployment
+- setting up `ServiceDefaults`, service discovery, OpenTelemetry, health checks, or the Aspire Dashboard
+- choosing between official first-party Aspire integrations and `CommunityToolkit/Aspire`
+- upgrading older 8.x or 9.x Aspire solutions to the current CLI and AppHost SDK model
+- wiring polyglot services into an Aspire topology, especially when Go, Java, Python, or extra dev-time tools enter the picture
 
-| Component | Version | Notes |
-|-----------|---------|-------|
-| Aspire.AppHost.Sdk | 13.0.0 | SDK in `.csproj` — legacy dual-SDK format |
-| Aspire.Hosting.* | 13.1.0 | AppHost hosting packages |
-| Aspire.StackExchange.Redis | 13.1.0 | Service-level Redis integration |
-| Aspire.Hosting.Testing | 13.1.0 | Integration/E2E test infrastructure |
-| Aspire Dashboard | 9.0.0 | Docker image (separate versioning) |
+## Workflow
 
-**Sorcha Package Locations:**
-- AppHost: `src/Apps/Sorcha.AppHost/Sorcha.AppHost.csproj`
-- ServiceDefaults: `src/Common/Sorcha.ServiceDefaults/Extensions.cs`
-- Services: Blueprint, Register, Wallet, Validator (each has `Aspire.StackExchange.Redis`)
-- Tests: Gateway Integration, Wallet Integration, UI E2E (each has `Aspire.Hosting.Testing`)
+1. Classify the task first: new AppHost creation, existing-solution enlistment, integration wiring, testing and observability, deployment, or version upgrade.
+2. Prefer the current Aspire toolchain. For greenfield or modernized work, use the Aspire CLI and current AppHost SDK instead of writing new guidance around the deprecated legacy workload.
+3. Treat 13.3.x releases as servicing and feature updates for the current CLI-first app model, not a topology rewrite. Keep the Aspire CLI, `Aspire.AppHost.Sdk`, and closely coupled hosting or testing packages on the same line, then rerun the AppHost and deployment checks after `aspire update`.
+4. Keep the AppHost code-first and topology-focused. Model services, resources, dependencies, endpoints, lifetimes, and parameters there; keep business logic out.
+5. Keep `ServiceDefaults` narrow. It exists for telemetry, health checks, resilience, and service discovery, not shared domain models or general utility code.
+6. Prefer official first-party Aspire integrations when they cover the requirement. Use `CommunityToolkit/Aspire` only when the capability gap is real: unsupported language hosts, extra dev infrastructure, or extension packages the official project does not provide.
+7. Validate the whole distributed system, not one project in isolation. Local success means the AppHost starts cleanly, dependencies resolve through `WithReference`, the dashboard shows the expected resource graph, and end-to-end tests can exercise the topology.
+8. For integration tests, keep one shared AppHost fixture per test session. Use `Aspire.Hosting.Testing` to boot the distributed app, create `HttpClient` or SignalR clients from the AppHost, and layer `WebApplicationFactory` on top only when tests need direct Host DI, grains, or runtime services.
+9. When publishing, switch from local containers or emulators to managed resources deliberately and verify which services truly need external endpoints.
 
-## Quick Start
+## Architecture
 
-### Adding a Service to AppHost
-
-```csharp
-// In AppHost.cs - Add project with resource references
-var myService = builder.AddProject<Projects.Sorcha_MyService>("my-service")
-    .WithReference(redis)                                    // Service discovery
-    .WithReference(walletDb)                                // Database connection
-    .WithEnvironment("JwtSettings__SigningKey", jwtSigningKey); // Shared config
+```mermaid
+flowchart LR
+  A["Distributed-app task"] --> B{"Need code-first orchestration?"}
+  B -->|No| C["Stay in service-level skills such as ASP.NET Core, Worker, or Orleans"]
+  B -->|Yes| D["Create or update the AppHost"]
+  D --> E["Model resources and services with `WithReference` and `WaitFor`"]
+  E --> F{"Official Aspire integration exists?"}
+  F -->|Yes| G["Use first-party Aspire integration"]
+  F -->|No or gap remains| H["Evaluate `CommunityToolkit/Aspire`"]
+  G --> I["Apply `ServiceDefaults`, dashboard, and tests"]
+  H --> I
+  I --> J{"Publishing now?"}
+  J -->|No| K["Run locally with `aspire run` or the AppHost project"]
+  J -->|Yes| L["Choose `azd`, App Service, or the CLI deploy/publish pipeline"]
 ```
 
-### Named References (v13+)
+## Current Guidance
 
-```csharp
-// Control the environment variable prefix for a resource reference
-var myService = builder.AddProject<Projects.Sorcha_MyService>("my-service")
-    .WithReference(postgres.AddDatabase("mydb"), "primary-db");  // ConnectionStrings__primary-db
-```
+- AppHost shape: prefer current SDK-style AppHost projects using `Aspire.AppHost.Sdk/<version>` or a file-based AppHost when that repo intentionally uses the single-file model. Recognize both as valid current patterns.
+- CLI entry points: use `aspire new` for starter projects, `aspire init` to add Aspire support to an existing solution or create a single-file AppHost, `aspire add` to add integrations or starter pieces, `aspire run` for local orchestration, `aspire start`/`aspire stop`/`aspire ps` for detached lifecycle management, `aspire describe` for live resource inspection, `aspire doctor` for environment diagnostics, `aspire secret` for user secrets, `aspire docs` for terminal documentation lookup, `aspire agent` for AI agent integration, `aspire deploy` for the current CLI deploy pipeline, `aspire restore` for AppHost and TypeScript resource refresh, and `aspire update` for version-aware upgrades. `aspire publish` still exists for explicit artifact-generation flows and remains preview-sensitive.
+- Patch posture: Aspire `13.2.2` is the current baseline release in the 13.2 line. Treat it as a current CLI and AppHost refresh, not a new topology model; align package versions, rerun `aspire update`, then revalidate local orchestration and the chosen deployment path.
+- App model wiring: use `WithReference(...)` for dependency and configuration flow, and `WaitFor(...)` for startup ordering. Use `WithExternalHttpEndpoints()` only when the resource truly needs an externally reachable endpoint for the chosen runtime or publish target.
+- ServiceDefaults boundaries: `AddServiceDefaults()` should stay focused on OpenTelemetry, health endpoints, service discovery, `HttpClient` resilience, and related cross-cutting infrastructure.
+- Testing model: prefer Aspire closed-box testing when you need to run the distributed application as a system. Use `DistributedApplicationTestingBuilder` plus a shared fixture for AppHost lifecycle, `App.CreateHttpClient(...)` for resource-bound clients, and a `WebApplicationFactory<TEntryPoint>` wrapper only when the test must resolve DI services or in-process runtime state from the hosted app. For UI flows, initialize Playwright once in the shared fixture, create a fresh browser context per test, and capture failure artifacts.
+- Dashboard usage: treat the Aspire Dashboard as the development observability surface. It is valuable in AppHost runs and standalone OTLP scenarios, but it is not a production monitoring replacement.
+- Upgrade posture: older 8.x or 9.x solutions need explicit migration work. Current guidance favors the Aspire CLI upgrade path and the newer AppHost SDK structure on `.NET 10`.
 
-### Consuming Aspire in a Service
+## Selection Rules
 
-```csharp
-// In Program.cs - Every service starts with this
-var builder = WebApplication.CreateBuilder(args);
+- Use first-party Aspire when the package and docs exist for the resource or platform, especially for core .NET, Azure, cache, database, messaging, Microsoft Foundry, and standard local-container flows.
+- Use `CommunityToolkit/Aspire` when you need polyglot app hosts beyond official coverage, extra dev-time tools around a resource, or community-maintained integrations such as SQLite, Java, Go, PowerShell, k6, MailPit, MinIO, or Meilisearch.
+- Prefer the smallest surface that solves the problem. Do not add a broad toolkit extension pack when an existing first-party integration plus a normal library already fits.
+- Treat toolkit packages as community-supported. Verify maturity, maintenance, external container images, and security or licensing assumptions before making them part of a production baseline.
 
-builder.AddServiceDefaults();                    // OpenTelemetry, health checks, discovery
-builder.AddRedisOutputCache("redis");            // Reference by resource name
-builder.AddRedisDistributedCache("redis");
+## Official Sources
 
-var app = builder.Build();
-app.MapDefaultEndpoints();                       // /health and /alive
-```
+- [Aspire docs home](https://aspire.dev/docs/)
+- [What's new in Aspire 13.3](https://aspire.dev/whats-new/aspire-13-3/)
+- [AppHost](https://aspire.dev/get-started/app-host/)
+- [Service defaults](https://aspire.dev/fundamentals/service-defaults/)
+- [Integrations overview](https://aspire.dev/integrations/overview/)
+- [Build your first app](https://aspire.dev/get-started/first-app/)
+- [Aspire CLI reference](https://aspire.dev/reference/cli/commands/aspire/)
+- [Aspire 13.3 release](https://github.com/microsoft/aspire/releases/tag/v13.3.0)
+- [Testing overview](https://aspire.dev/testing/overview/)
+- [microsoft/aspire](https://github.com/microsoft/aspire)
+- [CommunityToolkit/Aspire](https://github.com/CommunityToolkit/Aspire)
 
-## Key Concepts
+## Anti-Patterns
 
-| Concept | Usage | Example |
-|---------|-------|---------|
-| Resource Name | Identifier for service discovery | `"redis"`, `"tenant-service"` |
-| WithReference | Injects connection string/URL | `.WithReference(postgres)` |
-| Named Reference | Custom env var prefix (v13+) | `.WithReference(db, "mydb")` |
-| WithEnvironment | Pass config to service | `.WithEnvironment("Key", value)` |
-| WithExternalHttpEndpoints | Expose outside Aspire network | `.WithExternalHttpEndpoints()` |
-| AddServiceDefaults | Shared Aspire configuration | `builder.AddServiceDefaults()` |
-| Connection Properties | Access individual fields (v13+) | `resource.GetConnectionProperty("HostName")` |
-| WithHttpsCertificate | TLS termination (v13.1+) | `.WithHttpsCertificate(cert)` |
-| ContainerRegistryResource | Registry config (v13.1+ exp.) | `builder.AddContainerRegistry(...)` |
+- hardcoding service URLs or connection strings instead of using `WithReference`
+- putting business logic, data migrations, or large configuration transforms inside the AppHost
+- turning `ServiceDefaults` into a dumping ground for shared models or helpers
+- adding external HTTP endpoints everywhere instead of only where runtime or publish needs them
+- defaulting to `CommunityToolkit/Aspire` when first-party Aspire already covers the requirement
+- assuming the dashboard or local containers automatically mean production readiness
+- treating Aspire tests as a mocking framework; they run the application as a real distributed system
 
-## What's New in Aspire 13.x
+## Deliver
 
-### v13.0 Highlights
-- **New SDK format**: Single `<Project Sdk="Aspire.AppHost.Sdk/13.0.0">` replaces dual-SDK
-- **Polyglot connections**: Resources expose `HostName`, `Port`, `JdbcConnectionString`
-- **Named references**: `WithReference(resource, "customName")` for env var prefixes
-- **MCP dashboard**: Aspire dashboard exposes MCP endpoints for AI assistants
-- **Container file artifacts**: `PublishWithContainerFiles()` for frontend-in-backend
-- **Pipeline system**: `aspire do` for coordinated build/publish/deploy
-- **aspire init**: Interactive solution initialization and discovery
-- **VS Code extension**: Native project creation, debugging, deployment
+- a version-aware Aspire architecture or upgrade direction
+- the right AppHost, ServiceDefaults, integration, and CLI workflow
+- an explicit first-party versus `CommunityToolkit/Aspire` package decision
+- an end-to-end validation path for local orchestration, testing, and deployment
 
-### v13.1 Highlights
-- **aspire mcp init**: Configure MCP for AI coding agents
-- **TLS termination**: `WithHttpsCertificate()` for YARP, Redis, Keycloak, Vite
-- **Container registry**: Experimental `ContainerRegistryResource`
-- **Dashboard Parameters tab**: Dedicated parameter inspection
-- **GenAI visualizer**: Tool definitions, evaluations, preview media
-- **Azure Managed Redis**: Replaces `AddAzureRedisEnterprise()`
-- **DevTunnels stabilized**: No longer preview
+## Validate
 
-### Breaking Changes (v9 -> v13)
-| Old API | New API | Notes |
-|---------|---------|-------|
-| `AddNpmApp()` | `AddJavaScriptApp()` | Removed in v13 |
-| `AddNodeApp()` | Refactored | Different parameter ordering |
-| `Aspire.Hosting.NodeJs` | `Aspire.Hosting.JavaScript` | Package renamed |
-| `.Model` property | `.ModelName` | OpenAI/GitHub models |
-| `.Database` property | `.DatabaseName` | Milvus/MongoDB/MySQL/Oracle |
-| Dual-SDK `.csproj` | Single SDK `.csproj` | Optional migration |
+- the AppHost starts cleanly via `aspire run` or the AppHost project
+- resources and projects are modeled with explicit `WithReference` and `WaitFor` relationships where needed
+- consuming apps resolve endpoints and connection strings without hardcoded values
+- `ServiceDefaults` contains only cross-cutting infrastructure concerns
+- dashboard, health checks, logs, and traces reflect the expected resource graph
+- Aspire-backed integration tests reuse a shared AppHost fixture instead of booting the distributed app inside each test
+- any `WebApplicationFactory` layer reuses connection strings and endpoints from the AppHost instead of duplicating local config
+- testing and deployment guidance matches the chosen runtime: local AppHost, standalone dashboard, ACA/App Service, or the CLI deploy/publish pipeline
 
-## Sorcha AppHost Architecture
+## References
 
-```
-AppHost.cs orchestrates:
-  postgres ──┬── tenant-db ───── tenant-service
-             └── wallet-db ───── wallet-service
-  mongodb ───── register-db ──── register-service
-  redis ────── (shared by all services)
-
-  tenant-service ──── (JWT issuer, auth provider)
-  blueprint-service ─── (workflow engine)
-  validator-service ──── wallet-service, register-service, peer-service, blueprint-service
-  api-gateway ──── (routes to all services, external HTTP)
-  ui-web ──── api-gateway (Blazor WASM frontend)
-```
-
-## Common Patterns
-
-### Database Resources
-
-```csharp
-// PostgreSQL with multiple databases
-var postgres = builder.AddPostgres("postgres").WithPgAdmin();
-var tenantDb = postgres.AddDatabase("tenant-db", "sorcha_tenant");
-var walletDb = postgres.AddDatabase("wallet-db", "sorcha_wallet");
-
-// MongoDB for document storage
-var mongodb = builder.AddMongoDB("mongodb").WithMongoExpress();
-var registerDb = mongodb.AddDatabase("register-db", "sorcha_register");
-
-// Redis for caching
-var redis = builder.AddRedis("redis").WithRedisCommander();
-```
-
-### Service Dependencies
-
-```csharp
-// Service references other services for discovery
-var validatorService = builder.AddProject<Projects.Sorcha_Validator_Service>("validator-service")
-    .WithReference(redis)
-    .WithReference(walletService)
-    .WithReference(registerService)
-    .WithReference(peerService)
-    .WithReference(blueprintService);
-```
-
-### Health Endpoints
-
-```csharp
-// ServiceDefaults provides these automatically
-app.MapHealthChecks("/health");           // Readiness - all checks
-app.MapHealthChecks("/alive", new HealthCheckOptions
-{
-    Predicate = r => r.Tags.Contains("live")  // Liveness - tagged checks only
-});
-```
-
-### TLS Termination (v13.1+)
-
-```csharp
-// Configure HTTPS certificates on containers
-var redis = builder.AddRedis("redis")
-    .WithHttpsCertificate(cert);
-
-// YARP with TLS
-var gateway = builder.AddProject<Projects.Sorcha_ApiGateway>("api-gateway")
-    .WithHttpsCertificate();
-```
-
-## See Also
-
-- [patterns](references/patterns.md) - AppHost patterns, SDK format, named references, TLS, MCP
-- [workflows](references/workflows.md) - CLI commands, testing, deployment, troubleshooting
-
-## Related Skills
-
-- See the **dotnet** skill for .NET 10 patterns
-- See the **minimal-apis** skill for endpoint configuration
-- See the **redis** skill for cache configuration
-- See the **postgresql** skill for database patterns
-- See the **mongodb** skill for document storage
-- See the **docker** skill for containerization
-
-## Documentation Resources
-
-> Fetch latest .NET Aspire documentation with Context7.
-
-**How to use Context7:**
-1. Use `mcp__context7__resolve-library-id` to search for "aspire"
-2. **Prefer website documentation** (IDs starting with `/websites/`) over source code repositories when available
-3. Query with `mcp__context7__query-docs` using the resolved library ID
-
-**Library ID:** `/dotnet/docs-aspire` _(High reputation, 3264 code snippets)_
-
-**Recommended Queries:**
-- "AppHost service orchestration configuration"
-- "service discovery WithReference patterns"
-- "OpenTelemetry observability setup"
-- "health checks readiness liveness"
-- "aspire 13 breaking changes migration"
-- "TLS termination WithHttpsCertificate"
-- "MCP model context protocol dashboard"
+- [patterns.md](references/patterns.md) - Current CLI-first setup flows, AppHost patterns, `ServiceDefaults`, testing, and upgrade checkpoints
+- [testing.md](references/testing.md) - Shared AppHost fixtures, `DistributedApplicationTestingBuilder`, `WebApplicationFactory` integration, Playwright bootstrapping, and diagnostics
+- [deployment.md](references/deployment.md) - ACA, App Service, publish-mode, and manifest-oriented deployment guidance
+- [community-toolkit.md](references/community-toolkit.md) - Practical guide to `CommunityToolkit/Aspire` packages, capability gaps, and selection rules

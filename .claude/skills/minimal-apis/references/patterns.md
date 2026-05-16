@@ -1,323 +1,502 @@
-# Minimal APIs Patterns Reference
+# Minimal API Patterns
 
-## Contents
-- Endpoint Organization
-- Request/Response DTOs
-- Error Handling
-- Output Caching
-- Authorization Policies
-- Anti-Patterns
+## Route Groups
 
----
+### Hierarchical Route Groups
 
-## Endpoint Organization
-
-### Extension Method Pattern
-
-Every service exposes endpoints via extension methods registered in `Program.cs`:
+Build nested groups for complex API structures:
 
 ```csharp
-// Program.cs - registration
-app.MapWalletEndpoints();
-app.MapDelegationEndpoints();
-app.MapAuthEndpoints();
+var api = app.MapGroup("/api/v1")
+    .RequireAuthorization();
+
+var products = api.MapGroup("/products")
+    .WithTags("Products");
+
+var productReviews = products.MapGroup("/{productId:int}/reviews")
+    .WithTags("Product Reviews");
+
+productReviews.MapGet("/", GetReviewsForProduct);
+productReviews.MapPost("/", AddReviewToProduct);
+productReviews.MapGet("/{reviewId:int}", GetReviewById);
 ```
 
+### Group with Parameter Validation
+
+Apply route constraints at the group level:
+
 ```csharp
-// Endpoints/WalletEndpoints.cs - definition
-public static class WalletEndpoints
-{
-    public static IEndpointRouteBuilder MapWalletEndpoints(this IEndpointRouteBuilder app)
+var products = app.MapGroup("/api/products/{productId:int:min(1)}")
+    .AddEndpointFilter(async (context, next) =>
     {
-        var group = app.MapGroup("/api/v1/wallets")
-            .WithTags("Wallets")
-            .RequireAuthorization("CanManageWallets");
+        var productId = context.GetArgument<int>(0);
+        var db = context.HttpContext.RequestServices.GetRequiredService<AppDb>();
 
-        group.MapPost("/", CreateWallet).WithName("CreateWallet")...;
-        group.MapGet("/{address}", GetWallet).WithName("GetWallet")...;
+        if (!await db.Products.AnyAsync(p => p.Id == productId))
+            return TypedResults.NotFound();
 
-        return app;
+        return await next(context);
+    });
+
+products.MapGet("/", (int productId) => ...);
+products.MapGet("/variants", (int productId) => ...);
+```
+
+### Versioned API Groups
+
+```csharp
+var v1 = app.MapGroup("/api/v1").WithGroupName("v1");
+var v2 = app.MapGroup("/api/v2").WithGroupName("v2");
+
+v1.MapGet("/products", GetProductsV1);
+v2.MapGet("/products", GetProductsV2);
+```
+
+## Endpoint Filters
+
+### Validation Filter with FluentValidation
+
+```csharp
+public class FluentValidationFilter<T> : IEndpointFilter where T : class
+{
+    public async ValueTask<object?> InvokeAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
+    {
+        var argument = context.Arguments.OfType<T>().FirstOrDefault();
+
+        if (argument is null)
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Missing request body",
+                Status = StatusCodes.Status400BadRequest
+            });
+
+        var validator = context.HttpContext.RequestServices
+            .GetService<IValidator<T>>();
+
+        if (validator is not null)
+        {
+            var result = await validator.ValidateAsync(argument);
+            if (!result.IsValid)
+            {
+                return TypedResults.ValidationProblem(
+                    result.ToDictionary(),
+                    title: "Validation failed");
+            }
+        }
+
+        return await next(context);
     }
 }
 ```
 
-### Route Naming Convention
-
-| HTTP Method | Route Pattern | Example |
-|-------------|---------------|---------|
-| GET (list) | `/` | `GET /api/v1/wallets` |
-| GET (single) | `/{id}` | `GET /api/v1/wallets/{address}` |
-| POST (create) | `/` | `POST /api/v1/wallets` |
-| PUT (replace) | `/{id}` | `PUT /api/v1/blueprints/{id}` |
-| PATCH (update) | `/{id}` | `PATCH /api/v1/wallets/{address}` |
-| DELETE | `/{id}` | `DELETE /api/v1/wallets/{address}` |
-| POST (action) | `/{id}/{action}` | `POST /api/v1/wallets/{address}/sign` |
-
----
-
-## Request/Response DTOs
-
-### DO: Use Records for Immutability
+### Logging Filter
 
 ```csharp
-// Models/CreateWalletRequest.cs
-public record CreateWalletRequest
+public class RequestLoggingFilter(ILogger<RequestLoggingFilter> logger) : IEndpointFilter
 {
-    public required string Name { get; init; }
-    public string Algorithm { get; init; } = "Ed25519";
-    public int WordCount { get; init; } = 24;
-    public string? Passphrase { get; init; }
-}
+    public async ValueTask<object?> InvokeAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
+    {
+        var sw = Stopwatch.StartNew();
+        var path = context.HttpContext.Request.Path;
+        var method = context.HttpContext.Request.Method;
 
-// Models/CreateWalletResponse.cs
-public record CreateWalletResponse
-{
-    public required WalletDto Wallet { get; init; }
-    public required string[] MnemonicWords { get; init; }
+        logger.LogInformation("Request {Method} {Path} started", method, path);
+
+        try
+        {
+            var result = await next(context);
+            sw.Stop();
+
+            logger.LogInformation(
+                "Request {Method} {Path} completed in {ElapsedMs}ms",
+                method, path, sw.ElapsedMilliseconds);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logger.LogError(ex,
+                "Request {Method} {Path} failed after {ElapsedMs}ms",
+                method, path, sw.ElapsedMilliseconds);
+            throw;
+        }
+    }
 }
 ```
 
-### DON'T: Use Mutable Classes
+### Rate Limiting Filter
 
 ```csharp
-// BAD - mutable, verbose
-public class CreateWalletRequest
+public class RateLimitingFilter(IRateLimiter limiter) : IEndpointFilter
 {
-    public string Name { get; set; }  // Mutable
-    public string Algorithm { get; set; }
+    public async ValueTask<object?> InvokeAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
+    {
+        var clientId = context.HttpContext.User.FindFirst("sub")?.Value
+            ?? context.HttpContext.Connection.RemoteIpAddress?.ToString()
+            ?? "unknown";
+
+        if (!await limiter.TryAcquireAsync(clientId))
+        {
+            return TypedResults.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
+        return await next(context);
+    }
 }
 ```
 
-**Why:** Records are immutable by default, provide value equality, and generate `ToString()`, `GetHashCode()`, and `Equals()` automatically.
+### Idempotency Filter
 
----
+```csharp
+public class IdempotencyFilter(IDistributedCache cache) : IEndpointFilter
+{
+    public async ValueTask<object?> InvokeAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
+    {
+        var idempotencyKey = context.HttpContext.Request.Headers["Idempotency-Key"].FirstOrDefault();
+
+        if (string.IsNullOrEmpty(idempotencyKey))
+            return await next(context);
+
+        var cacheKey = $"idempotency:{idempotencyKey}";
+        var cachedResponse = await cache.GetStringAsync(cacheKey);
+
+        if (cachedResponse is not null)
+            return TypedResults.Content(cachedResponse, "application/json");
+
+        var result = await next(context);
+
+        if (result is IValueHttpResult httpResult)
+        {
+            var json = JsonSerializer.Serialize(httpResult.Value);
+            await cache.SetStringAsync(cacheKey, json, new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24)
+            });
+        }
+
+        return result;
+    }
+}
+```
+
+### Filter Execution Order
+
+Filters execute in registration order (first registered runs first on request, last on response):
+
+```csharp
+app.MapPost("/products", Create)
+    .AddEndpointFilter<LoggingFilter>()       // 1st on request, 3rd on response
+    .AddEndpointFilter<AuthorizationFilter>() // 2nd on request, 2nd on response
+    .AddEndpointFilter<ValidationFilter>();   // 3rd on request, 1st on response
+```
+
+## TypedResults Patterns
+
+### Union Return Types
+
+Use `Results<T1, T2, ...>` for compile-time checked multiple response types:
+
+```csharp
+app.MapGet("/products/{id}", async Task<Results<Ok<ProductDto>, NotFound, BadRequest<ProblemDetails>>>
+    (int id, IProductService service) =>
+{
+    if (id <= 0)
+        return TypedResults.BadRequest(new ProblemDetails
+        {
+            Title = "Invalid ID",
+            Detail = "Product ID must be positive"
+        });
+
+    var product = await service.GetByIdAsync(id);
+
+    return product is not null
+        ? TypedResults.Ok(product)
+        : TypedResults.NotFound();
+});
+```
+
+### Complex Result Patterns
+
+```csharp
+// Paginated results
+app.MapGet("/products", async Task<Ok<PagedResult<ProductDto>>>
+    ([AsParameters] PaginationQuery query, IProductService service) =>
+{
+    var result = await service.GetPagedAsync(query.Page, query.PageSize);
+    return TypedResults.Ok(result);
+});
+
+public record PaginationQuery(int Page = 1, int PageSize = 20);
+
+public record PagedResult<T>(
+    IReadOnlyList<T> Items,
+    int TotalCount,
+    int Page,
+    int PageSize)
+{
+    public int TotalPages => (int)Math.Ceiling(TotalCount / (double)PageSize);
+    public bool HasNextPage => Page < TotalPages;
+    public bool HasPreviousPage => Page > 1;
+}
+```
+
+### File Results
+
+```csharp
+app.MapGet("/products/{id}/export", async Task<Results<FileStreamHttpResult, NotFound>>
+    (int id, IProductService service) =>
+{
+    var product = await service.GetByIdAsync(id);
+
+    if (product is null)
+        return TypedResults.NotFound();
+
+    var stream = await service.ExportToCsvAsync(product);
+    return TypedResults.File(stream, "text/csv", $"product-{id}.csv");
+});
+```
+
+### Accepted with Location
+
+```csharp
+app.MapPost("/products/import", async Task<Accepted<ImportJobResponse>>
+    (ImportRequest request, IImportService service) =>
+{
+    var jobId = await service.StartImportAsync(request);
+    return TypedResults.Accepted(
+        $"/jobs/{jobId}",
+        new ImportJobResponse(jobId, "Processing"));
+});
+```
+
+## Parameter Binding
+
+### [AsParameters] for Complex Queries
+
+```csharp
+public record ProductSearchQuery(
+    string? Name,
+    decimal? MinPrice,
+    decimal? MaxPrice,
+    string? Category,
+    int Page = 1,
+    int PageSize = 20,
+    string SortBy = "name",
+    bool Descending = false);
+
+app.MapGet("/products/search", async Task<Ok<PagedResult<ProductDto>>>
+    ([AsParameters] ProductSearchQuery query, IProductService service) =>
+{
+    var result = await service.SearchAsync(query);
+    return TypedResults.Ok(result);
+});
+```
+
+### Header and Query Binding
+
+```csharp
+app.MapGet("/products", async Task<Ok<List<ProductDto>>>
+    ([FromHeader(Name = "X-Tenant-Id")] string tenantId,
+     [FromQuery] string? category,
+     IProductService service) =>
+{
+    var products = await service.GetByTenantAsync(tenantId, category);
+    return TypedResults.Ok(products);
+});
+```
+
+### Custom Model Binding
+
+```csharp
+public record DateRange(DateOnly Start, DateOnly End) : IParsable<DateRange>
+{
+    public static DateRange Parse(string s, IFormatProvider? provider)
+    {
+        var parts = s.Split("..");
+        return new DateRange(DateOnly.Parse(parts[0]), DateOnly.Parse(parts[1]));
+    }
+
+    public static bool TryParse(string? s, IFormatProvider? provider, out DateRange result)
+    {
+        result = default!;
+        if (string.IsNullOrEmpty(s)) return false;
+
+        var parts = s.Split("..");
+        if (parts.Length != 2) return false;
+
+        if (!DateOnly.TryParse(parts[0], out var start)) return false;
+        if (!DateOnly.TryParse(parts[1], out var end)) return false;
+
+        result = new DateRange(start, end);
+        return true;
+    }
+}
+
+// Usage: /orders?dateRange=2024-01-01..2024-12-31
+app.MapGet("/orders", (DateRange dateRange) => ...);
+```
 
 ## Error Handling
 
-### ProblemDetails for Structured Errors
+### Global Exception Handler
 
 ```csharp
-private static async Task<IResult> CreateWallet(
-    [FromBody] CreateWalletRequest request,
-    WalletManager walletManager,
-    ILogger<Program> logger)
+app.UseExceptionHandler(errorApp =>
 {
-    try
+    errorApp.Run(async context =>
     {
-        var (wallet, mnemonic) = await walletManager.CreateWalletAsync(...);
-        return Results.Created($"/api/v1/wallets/{wallet.Address}", response);
-    }
-    catch (ArgumentException ex)
-    {
-        logger.LogWarning(ex, "Invalid wallet creation request");
-        return Results.BadRequest(new ProblemDetails
+        context.Response.ContentType = "application/problem+json";
+
+        var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+
+        var problem = exception switch
         {
-            Title = "Invalid Request",
-            Detail = ex.Message,
-            Status = StatusCodes.Status400BadRequest
-        });
-    }
-    catch (InvalidOperationException ex) when (ex.Message.Contains("already exists"))
-    {
-        return Results.Conflict(new ProblemDetails
-        {
-            Title = "Wallet Already Exists",
-            Detail = ex.Message,
-            Status = StatusCodes.Status409Conflict
-        });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to create wallet");
-        return Results.Problem(
-            title: "Wallet Creation Failed",
-            detail: "An error occurred while creating the wallet",
-            statusCode: StatusCodes.Status500InternalServerError);
-    }
-}
-```
-
-### ValidationProblem for Input Errors
-
-```csharp
-if (string.IsNullOrWhiteSpace(request.Email))
-{
-    return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-    {
-        ["email"] = ["Email is required"]
-    });
-}
-```
-
----
-
-## Output Caching
-
-### Cache Read Endpoints with Tags
-
-```csharp
-// Blueprint Service - caching patterns
-blueprintGroup.MapGet("/", GetAllBlueprints)
-    .CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
-
-// Immutable data - cache longer
-blueprintGroup.MapGet("/{id}/versions/{version}", GetPublishedVersion)
-    .CacheOutput(policy => policy.Expire(TimeSpan.FromDays(365)).Tag("published"));
-```
-
-### Invalidate Cache on Mutations
-
-```csharp
-blueprintGroup.MapPost("/", async (BlueprintModel blueprint, IBlueprintService service, IOutputCacheStore cache) =>
-{
-    var created = await service.CreateAsync(blueprint);
-    await cache.EvictByTagAsync("blueprints", default);  // Invalidate list cache
-    return Results.Created($"/api/blueprints/{created.Id}", created);
-});
-```
-
----
-
-## Authorization Policies
-
-### Define Policies in Extensions
-
-```csharp
-// Extensions/AuthenticationExtensions.cs
-public static IServiceCollection AddWalletAuthorization(this IServiceCollection services)
-{
-    services.AddAuthorization(options =>
-    {
-        options.AddPolicy("CanManageWallets", policy =>
-            policy.RequireAssertion(context =>
+            ValidationException vex => new ProblemDetails
             {
-                var hasOrgId = context.User.Claims.Any(c => c.Type == "org_id");
-                var isService = context.User.Claims.Any(c => c.Type == "token_type" && c.Value == "service");
-                return hasOrgId || isService;
-            }));
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Validation Error",
+                Detail = string.Join("; ", vex.Errors.Select(e => e.ErrorMessage))
+            },
+            NotFoundException => new ProblemDetails
+            {
+                Status = StatusCodes.Status404NotFound,
+                Title = "Not Found"
+            },
+            _ => new ProblemDetails
+            {
+                Status = StatusCodes.Status500InternalServerError,
+                Title = "An error occurred"
+            }
+        };
 
-        options.AddPolicy("RequireService", policy =>
-            policy.RequireClaim("token_type", "service"));
+        context.Response.StatusCode = problem.Status ?? 500;
+        await context.Response.WriteAsJsonAsync(problem);
     });
-    return services;
+});
+```
+
+### Result Pattern Integration
+
+```csharp
+public static class ResultExtensions
+{
+    public static IResult ToHttpResult<T>(this Result<T> result) =>
+        result.IsSuccess
+            ? TypedResults.Ok(result.Value)
+            : result.Error switch
+            {
+                NotFoundError => TypedResults.NotFound(),
+                ValidationError ve => TypedResults.ValidationProblem(ve.Errors),
+                ConflictError ce => TypedResults.Conflict(ce.Message),
+                _ => TypedResults.Problem(result.Error.Message)
+            };
+}
+
+app.MapGet("/products/{id}", async (int id, IProductService service) =>
+{
+    var result = await service.GetByIdAsync(id);
+    return result.ToHttpResult();
+});
+```
+
+## OpenAPI Enhancements
+
+### Rich Metadata
+
+```csharp
+app.MapGet("/products/{id}", GetProductById)
+    .WithName("GetProductById")
+    .WithSummary("Get a product by ID")
+    .WithDescription("Returns detailed information about a specific product including pricing and availability")
+    .Produces<ProductDto>(StatusCodes.Status200OK, "application/json")
+    .ProducesProblem(StatusCodes.Status404NotFound)
+    .ProducesValidationProblem()
+    .WithOpenApi(operation =>
+    {
+        operation.Parameters[0].Description = "The unique product identifier";
+        operation.Parameters[0].Example = new OpenApiInteger(42);
+        return operation;
+    });
+```
+
+### Request/Response Examples
+
+```csharp
+app.MapPost("/products", CreateProduct)
+    .WithOpenApi(operation =>
+    {
+        operation.RequestBody.Content["application/json"].Example = new OpenApiObject
+        {
+            ["name"] = new OpenApiString("Widget Pro"),
+            ["price"] = new OpenApiDouble(29.99),
+            ["category"] = new OpenApiString("Electronics")
+        };
+        return operation;
+    });
+```
+
+## Testing Patterns
+
+### WebApplicationFactory Setup
+
+```csharp
+public class MinimalApiTests : IClassFixture<WebApplicationFactory<Program>>
+{
+    private readonly HttpClient _client;
+
+    public MinimalApiTests(WebApplicationFactory<Program> factory)
+    {
+        _client = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.AddScoped<IProductService, MockProductService>();
+            });
+        }).CreateClient();
+    }
+
+    [Fact]
+    public async Task GetProducts_ReturnsOk()
+    {
+        var response = await _client.GetAsync("/api/products");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var products = await response.Content.ReadFromJsonAsync<List<ProductDto>>();
+        products.Should().NotBeEmpty();
+    }
 }
 ```
 
-### Apply to Groups or Endpoints
+### Testing Filters in Isolation
 
 ```csharp
-// Group-level - all endpoints require auth
-var walletGroup = app.MapGroup("/api/v1/wallets")
-    .RequireAuthorization("CanManageWallets");
-
-// Endpoint-level override
-group.MapPost("/login", Login)
-    .AllowAnonymous();
-
-// Stricter policy on specific endpoint
-group.MapPost("/token/revoke-user", RevokeUserTokens)
-    .RequireAuthorization("RequireAdministrator");
-```
-
----
-
-## Anti-Patterns
-
-### WARNING: Business Logic in Endpoints
-
-**The Problem:**
-
-```csharp
-// BAD - business logic in endpoint handler
-walletGroup.MapPost("/", async (CreateWalletRequest request, IWalletRepository repo) =>
+[Fact]
+public async Task ValidationFilter_InvalidInput_ReturnsBadRequest()
 {
-    // Validation logic
-    if (request.WordCount != 12 && request.WordCount != 24)
-        return Results.BadRequest("Invalid word count");
+    var filter = new FluentValidationFilter<CreateProductRequest>();
 
-    // Business logic
-    var mnemonic = new Mnemonic(Wordlist.English, (WordCount)request.WordCount);
-    var seed = mnemonic.DeriveSeed();
-    var masterKey = ExtKey.CreateFromSeed(seed);
+    var httpContext = new DefaultHttpContext();
+    httpContext.RequestServices = new ServiceCollection()
+        .AddScoped<IValidator<CreateProductRequest>, CreateProductValidator>()
+        .BuildServiceProvider();
 
-    // Persistence logic
-    var wallet = new Wallet { Address = masterKey.GetPublicKey().GetAddress() };
-    await repo.AddAsync(wallet);
+    var context = new EndpointFilterInvocationContext(
+        httpContext,
+        new object[] { new CreateProductRequest("", -1) });
 
-    return Results.Created(...);
-});
+    var result = await filter.InvokeAsync(context, _ =>
+        ValueTask.FromResult<object?>(TypedResults.Ok()));
+
+    result.Should().BeOfType<ValidationProblem>();
+}
 ```
-
-**Why This Breaks:**
-1. Endpoint handlers become untestable without HTTP infrastructure
-2. Business logic scattered across endpoint files
-3. Violates Single Responsibility Principle
-
-**The Fix:**
-
-```csharp
-// GOOD - delegate to service layer
-walletGroup.MapPost("/", async (CreateWalletRequest request, WalletManager walletManager) =>
-{
-    var (wallet, mnemonic) = await walletManager.CreateWalletAsync(
-        request.Name, request.Algorithm, request.WordCount);
-    return Results.Created($"/api/v1/wallets/{wallet.Address}", response);
-});
-```
-
----
-
-### WARNING: Missing OpenAPI Metadata
-
-**The Problem:**
-
-```csharp
-// BAD - no documentation
-group.MapPost("/", CreateWallet);
-```
-
-**Why This Breaks:**
-1. Scalar UI shows unhelpful auto-generated names
-2. API consumers can't understand endpoint purpose
-3. Violates project documentation policy
-
-**The Fix:**
-
-```csharp
-// GOOD - full metadata
-group.MapPost("/", CreateWallet)
-    .WithName("CreateWallet")
-    .WithSummary("Create a new wallet")
-    .WithDescription("Creates a new HD wallet with the specified algorithm")
-    .Produces<CreateWalletResponse>(StatusCodes.Status201Created)
-    .ProducesValidationProblem()
-    .Produces(StatusCodes.Status409Conflict);
-```
-
----
-
-### WARNING: Using Swagger/Swashbuckle
-
-**The Problem:**
-
-```csharp
-// BAD - wrong library
-builder.Services.AddSwaggerGen();
-app.UseSwagger();
-app.UseSwaggerUI();
-```
-
-**Why This Breaks:**
-1. Project standard is Scalar, not Swagger
-2. Inconsistent documentation across services
-3. Build will fail linting checks
-
-**The Fix:**
-
-```csharp
-// GOOD - use Scalar
-builder.Services.AddOpenApi();
-app.MapScalarApiReference(options =>
-{
-    options.WithTitle("Wallet Service").WithTheme(ScalarTheme.Purple);
-});

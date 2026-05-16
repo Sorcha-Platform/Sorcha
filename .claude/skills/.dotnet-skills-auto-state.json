@@ -1,0 +1,24 @@
+{
+  "Version": 1,
+  "ProjectRoot": "C:\\Projects\\Sorcha",
+  "Skills": [
+    "aspire",
+    "aspnet-core",
+    "blazor",
+    "configuring-opentelemetry-dotnet",
+    "coverage-analysis",
+    "coverlet",
+    "entity-framework-core",
+    "grpc",
+    "mcp",
+    "microsoft-extensions",
+    "migrate-xunit-to-xunit-v3",
+    "minimal-api-file-upload",
+    "nunit",
+    "optimizing-ef-core-queries",
+    "signalr",
+    "worker-services",
+    "xunit"
+  ],
+  "UpdatedAt": "2026-05-16T12:56:36.7422725+00:00"
+}

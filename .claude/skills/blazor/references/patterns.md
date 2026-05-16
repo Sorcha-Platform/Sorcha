@@ -1,329 +1,705 @@
-# Blazor Patterns Reference
+# Blazor Component Patterns
 
-## Contents
-- Render Mode Patterns
-- Authentication Patterns
-- State Management Patterns
-- Component Communication
-- Anti-Patterns
+## Component Design Patterns
 
----
+### Smart vs Presentational Components
 
-## Render Mode Patterns
+Separate concerns by distinguishing between components that manage data and those that display it.
 
-### Choosing the Right Render Mode
-
-| Page Type | Render Mode | Reason |
-|-----------|-------------|--------|
-| Complex interactive (Designer) | `InteractiveWebAssembly` | Full client-side state, no circuit overhead |
-| Admin with real-time | `InteractiveServer(prerender: false)` | SignalR updates, secure server access |
-| Public pages | Static (no directive) | Fast initial load, no interactivity needed |
-| Auth-required with SSR | `InteractiveServer(prerender: false)` | Avoid auth state during prerender |
-
+**Presentational Component (Dumb)**
 ```razor
-@* src/Apps/Sorcha.Admin/Pages/Designer.razor:12 *@
-@page "/designer"
-@rendermode InteractiveWebAssembly
-@attribute [Authorize]
+@* ProductCard.razor - Only displays data *@
+<div class="product-card">
+    <img src="@Product.ImageUrl" alt="@Product.Name" />
+    <h3>@Product.Name</h3>
+    <p>@Product.Price.ToString("C")</p>
+    <button @onclick="OnAddToCart">Add to Cart</button>
+</div>
 
-@* src/Apps/Sorcha.Admin/Pages/Admin/Audit.razor:2-3 *@
-@page "/admin/audit"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@attribute [Authorize(Roles = "Administrator,SystemAdmin")]
-```
-
-### WARNING: Prerendering with Authentication
-
-**The Problem:**
-
-```razor
-// BAD - Auth state unavailable during prerender
-@page "/dashboard"
-@rendermode InteractiveServer
-@attribute [Authorize]
-```
-
-**Why This Breaks:**
-1. During prerender, `AuthenticationState` is anonymous
-2. JSInterop unavailable - cannot read tokens from storage
-3. Component renders twice - once anonymous, once authenticated
-
-**The Fix:**
-
-```razor
-// GOOD - Disable prerender for auth-required pages
-@page "/dashboard"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@attribute [Authorize]
-```
-
----
-
-## Authentication Patterns
-
-### Server-Side Auth State Provider
-
-```csharp
-// src/Apps/Sorcha.Admin/Services/Authentication/CustomAuthenticationStateProvider.cs:33-94
-public override async Task<AuthenticationState> GetAuthenticationStateAsync()
-{
-    try
-    {
-        var profile = await _configService.GetActiveProfileAsync();
-        if (profile == null)
-            return CreateAnonymousState();
-
-        var token = await _authService.GetAccessTokenAsync(profile.Name);
-        if (string.IsNullOrEmpty(token))
-            return CreateAnonymousState();
-
-        var claims = ParseClaimsFromJwt(token);
-        var identity = new ClaimsIdentity(claims, "jwt");
-        return new AuthenticationState(new ClaimsPrincipal(identity));
-    }
-    catch (InvalidOperationException)
-    {
-        // JSInterop not available during prerendering
-        return CreateAnonymousState();
-    }
-}
-```
-
-### WASM Auth State (Persistent)
-
-```csharp
-// src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Services/Authentication/PersistentAuthenticationStateProvider.cs:19-49
-public PersistentAuthenticationStateProvider(PersistentComponentState persistentState)
-{
-    if (!persistentState.TryTakeFromJson<UserInfo>(nameof(UserInfo), out var userInfo))
-    {
-        _authenticationStateTask = _unauthenticatedTask;
-        return;
-    }
-
-    var claims = new List<Claim>
-    {
-        new(ClaimTypes.NameIdentifier, userInfo.UserId),
-        new(ClaimTypes.Name, userInfo.UserName),
-        new(ClaimTypes.Email, userInfo.Email)
-    };
-    
-    foreach (var role in userInfo.Roles)
-        claims.Add(new Claim(ClaimTypes.Role, role));
-
-    _authenticationStateTask = Task.FromResult(
-        new AuthenticationState(new ClaimsPrincipal(
-            new ClaimsIdentity(claims, nameof(PersistentAuthenticationStateProvider)))));
-}
-```
-
-### Login Flow Pattern
-
-```razor
-@* src/Apps/Sorcha.Admin/Components/Authentication/LoginDialog.razor:104-152 *@
 @code {
-    private async Task Login()
+    [Parameter, EditorRequired] public Product Product { get; set; } = default!;
+    [Parameter] public EventCallback OnAddToCart { get; set; }
+}
+```
+
+**Smart Component (Container)**
+```razor
+@* ProductList.razor - Manages data and state *@
+@inject IProductService ProductService
+@inject ICartService CartService
+
+<div class="product-list">
+    @foreach (var product in products)
     {
-        _isLoading = true;
-        _showError = false;
-        StateHasChanged();
+        <ProductCard Product="@product" OnAddToCart="() => AddToCart(product)" />
+    }
+</div>
+
+@code {
+    private List<Product> products = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        products = await ProductService.GetProductsAsync();
+    }
+
+    private async Task AddToCart(Product product)
+    {
+        await CartService.AddAsync(product);
+    }
+}
+```
+
+### Templated Components
+
+Allow consumers to customize rendering with render fragments.
+
+```razor
+@* DataGrid.razor *@
+@typeparam TItem
+
+<table>
+    <thead>
+        <tr>@HeaderTemplate</tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Items)
+        {
+            <tr>@RowTemplate(item)</tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    [Parameter, EditorRequired] public IEnumerable<TItem> Items { get; set; } = [];
+    [Parameter, EditorRequired] public RenderFragment HeaderTemplate { get; set; } = default!;
+    [Parameter, EditorRequired] public RenderFragment<TItem> RowTemplate { get; set; } = default!;
+}
+```
+
+**Usage:**
+```razor
+<DataGrid Items="@products">
+    <HeaderTemplate>
+        <th>Name</th>
+        <th>Price</th>
+    </HeaderTemplate>
+    <RowTemplate Context="product">
+        <td>@product.Name</td>
+        <td>@product.Price.ToString("C")</td>
+    </RowTemplate>
+</DataGrid>
+```
+
+### Generic Components
+
+Create type-safe reusable components.
+
+```razor
+@* SelectList.razor *@
+@typeparam TItem
+@typeparam TValue
+
+<select @onchange="OnSelectionChanged">
+    @foreach (var item in Items)
+    {
+        <option value="@ValueSelector(item)" selected="@(EqualityComparer<TValue>.Default.Equals(ValueSelector(item), SelectedValue))">
+            @DisplaySelector(item)
+        </option>
+    }
+</select>
+
+@code {
+    [Parameter, EditorRequired] public IEnumerable<TItem> Items { get; set; } = [];
+    [Parameter, EditorRequired] public Func<TItem, TValue> ValueSelector { get; set; } = default!;
+    [Parameter, EditorRequired] public Func<TItem, string> DisplaySelector { get; set; } = default!;
+    [Parameter] public TValue? SelectedValue { get; set; }
+    [Parameter] public EventCallback<TValue> SelectedValueChanged { get; set; }
+
+    private async Task OnSelectionChanged(ChangeEventArgs e)
+    {
+        var value = (TValue)Convert.ChangeType(e.Value, typeof(TValue))!;
+        await SelectedValueChanged.InvokeAsync(value);
+    }
+}
+```
+
+### Cascading Values Pattern
+
+Share data down the component tree without explicit parameter passing.
+
+```razor
+@* App.razor or Layout *@
+<CascadingValue Value="@theme" Name="AppTheme">
+    <CascadingValue Value="@currentUser">
+        @Body
+    </CascadingValue>
+</CascadingValue>
+
+@code {
+    private Theme theme = new() { IsDarkMode = false };
+    private User? currentUser;
+}
+```
+
+```razor
+@* Any nested component *@
+@code {
+    [CascadingParameter(Name = "AppTheme")]
+    public Theme Theme { get; set; } = default!;
+
+    [CascadingParameter]
+    public User? CurrentUser { get; set; }
+}
+```
+
+### Component Inheritance
+
+Share logic across related components.
+
+```csharp
+// BaseFormComponent.cs
+public abstract class BaseFormComponent<TModel> : ComponentBase
+{
+    [Parameter] public TModel? Model { get; set; }
+    [Parameter] public EventCallback<TModel> OnSubmit { get; set; }
+
+    protected bool IsSubmitting { get; set; }
+    protected string? ErrorMessage { get; set; }
+
+    protected async Task HandleSubmit()
+    {
+        IsSubmitting = true;
+        ErrorMessage = null;
 
         try
         {
-            var request = new LoginRequest
-            {
-                Username = _username,
-                Password = _password,
-                ClientId = "sorcha-admin"
-            };
-
-            await AuthService.LoginAsync(request, _selectedProfile);
-            await ConfigService.SetActiveProfileAsync(_selectedProfile);
-            
-            // CRITICAL: Notify auth state changed
-            AuthStateProvider.NotifyAuthenticationStateChanged();
-
-            Snackbar.Add("Login successful!", Severity.Success);
-            MudDialog?.Close(DialogResult.Ok(true));
+            await OnSubmit.InvokeAsync(Model);
         }
-        catch (UnauthorizedAccessException)
+        catch (Exception ex)
         {
-            _showError = true;
-            _errorMessage = "Invalid username or password.";
+            ErrorMessage = ex.Message;
         }
         finally
         {
-            _isLoading = false;
-            StateHasChanged();
+            IsSubmitting = false;
         }
     }
 }
 ```
 
----
+```razor
+@* ProductForm.razor *@
+@inherits BaseFormComponent<Product>
+
+<EditForm Model="@Model" OnValidSubmit="HandleSubmit">
+    <DataAnnotationsValidator />
+    @* Form fields *@
+    <button type="submit" disabled="@IsSubmitting">Save</button>
+    @if (ErrorMessage is not null)
+    {
+        <p class="error">@ErrorMessage</p>
+    }
+</EditForm>
+```
 
 ## State Management Patterns
 
-### Loading State Pattern
+### Component-Level State
+
+For isolated, component-specific state.
 
 ```razor
-@* src/Apps/Sorcha.Admin/Components/SystemStatusCard.razor:28-84 *@
-@if (isLoading && !hasLoadedOnce)
-{
-    <MudProgressCircular Indeterminate="true" Size="Size.Small" />
-    <MudText Typo="Typo.body2">Checking system status...</MudText>
+@code {
+    private int count = 0;
+    private string message = "";
+
+    private void Increment() => count++;
 }
-else if (systemStatus != null)
+```
+
+### Service-Based Shared State
+
+For state shared across multiple components using DI.
+
+```csharp
+// CartState.cs
+public class CartState
 {
-    <MudAlert Severity="@GetOverallSeverity()">
-        @GetOverallStatusText()
-    </MudAlert>
+    private readonly List<CartItem> _items = [];
+
+    public IReadOnlyList<CartItem> Items => _items.AsReadOnly();
+    public decimal Total => _items.Sum(i => i.Price * i.Quantity);
+
+    public event Action? OnChange;
+
+    public void AddItem(Product product, int quantity = 1)
+    {
+        var existing = _items.FirstOrDefault(i => i.ProductId == product.Id);
+        if (existing is not null)
+        {
+            existing.Quantity += quantity;
+        }
+        else
+        {
+            _items.Add(new CartItem(product.Id, product.Name, product.Price, quantity));
+        }
+        NotifyStateChanged();
+    }
+
+    public void RemoveItem(int productId)
+    {
+        _items.RemoveAll(i => i.ProductId == productId);
+        NotifyStateChanged();
+    }
+
+    private void NotifyStateChanged() => OnChange?.Invoke();
 }
-else if (errorMessage != null)
-{
-    <MudAlert Severity="Severity.Warning">@errorMessage</MudAlert>
-}
+```
+
+```razor
+@* CartIcon.razor *@
+@inject CartState Cart
+@implements IDisposable
+
+<span class="cart-icon">
+    Cart (@Cart.Items.Count)
+</span>
 
 @code {
-    private SystemStatusDto? systemStatus;
-    private string? errorMessage;
-    private bool isLoading;
-    private bool hasLoadedOnce;
+    protected override void OnInitialized()
+    {
+        Cart.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        Cart.OnChange -= StateHasChanged;
+    }
+}
+```
+
+### Fluxor Pattern (Redux-like)
+
+For complex applications needing predictable state management.
+
+```csharp
+// State
+public record CounterState(int Count);
+
+// Actions
+public record IncrementAction;
+public record DecrementAction;
+public record SetCountAction(int Value);
+
+// Reducer
+public static class CounterReducers
+{
+    [ReducerMethod]
+    public static CounterState OnIncrement(CounterState state, IncrementAction action)
+        => state with { Count = state.Count + 1 };
+
+    [ReducerMethod]
+    public static CounterState OnDecrement(CounterState state, DecrementAction action)
+        => state with { Count = state.Count - 1 };
+
+    [ReducerMethod]
+    public static CounterState OnSetCount(CounterState state, SetCountAction action)
+        => state with { Count = action.Value };
+}
+
+// Effects (side effects)
+public class CounterEffects
+{
+    [EffectMethod]
+    public async Task HandleSetCountAsync(SetCountAction action, IDispatcher dispatcher)
+    {
+        await Task.Delay(100); // Simulate async work
+        // Dispatch additional actions if needed
+    }
+}
+```
+
+```razor
+@inject IState<CounterState> CounterState
+@inject IDispatcher Dispatcher
+
+<p>Count: @CounterState.Value.Count</p>
+<button @onclick="Increment">+</button>
+
+@code {
+    private void Increment() => Dispatcher.Dispatch(new IncrementAction());
+}
+```
+
+### Persistent State (Prerendering)
+
+Handle state that must survive the prerender-to-interactive transition.
+
+```razor
+@inject PersistentComponentState ApplicationState
+
+@code {
+    private List<Product>? products;
+    private PersistingComponentStateSubscription persistingSubscription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        persistingSubscription = ApplicationState.RegisterOnPersisting(PersistData);
+
+        if (!ApplicationState.TryTakeFromJson<List<Product>>("products", out var restored))
+        {
+            products = await FetchProducts();
+        }
+        else
+        {
+            products = restored;
+        }
+    }
+
+    private Task PersistData()
+    {
+        ApplicationState.PersistAsJson("products", products);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        persistingSubscription.Dispose();
+    }
+}
+```
+
+### .NET 8+ Simplified Persistent State
+
+```razor
+@code {
+    [PersistentState]
+    public List<Product> Products { get; set; } = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Products.Count == 0)
+        {
+            Products = await Http.GetFromJsonAsync<List<Product>>("api/products") ?? [];
+        }
+    }
+}
+```
+
+## JavaScript Interop Patterns
+
+### Module Isolation
+
+Encapsulate JS code in ES6 modules for better organization.
+
+```javascript
+// wwwroot/js/map.js
+export function initializeMap(elementId, options) {
+    const map = new MapLibrary(document.getElementById(elementId), options);
+    return DotNet.createJSObjectReference(map);
+}
+
+export function setMarker(map, lat, lng) {
+    map.addMarker({ lat, lng });
+}
+
+export function dispose(map) {
+    map.destroy();
+}
+```
+
+```razor
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div id="map-container"></div>
+
+@code {
+    private IJSObjectReference? module;
+    private IJSObjectReference? mapInstance;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
-            await RefreshStatus();
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>(
+                "import", "./js/map.js");
+            mapInstance = await module.InvokeAsync<IJSObjectReference>(
+                "initializeMap", "map-container", new { zoom = 10 });
+        }
     }
-}
-```
 
-### WARNING: Calling StateHasChanged in Loops
-
-**The Problem:**
-
-```csharp
-// BAD - Excessive re-renders
-foreach (var item in items)
-{
-    ProcessItem(item);
-    StateHasChanged(); // Called 100 times!
-}
-```
-
-**The Fix:**
-
-```csharp
-// GOOD - Single re-render after batch
-foreach (var item in items)
-{
-    ProcessItem(item);
-}
-StateHasChanged(); // Called once
-```
-
----
-
-## Component Communication
-
-### CascadingValue for Diagram Context
-
-```razor
-@* src/Apps/Sorcha.Admin/Pages/Designer.razor:88-92 *@
-@if (Diagram != null)
-{
-    <CascadingValue Value="Diagram" IsFixed="true">
-        <DiagramCanvas></DiagramCanvas>
-    </CascadingValue>
-}
-```
-
-### Event Callbacks
-
-```csharp
-// Parent passes callback to child
-<PropertiesPanel Blueprint="CurrentBlueprint"
-                 SelectedNode="SelectedNode"
-                 OnBlueprintSaved="OnBlueprintPropertiesSaved"
-                 OnActionSaved="OnActionPropertiesSaved" />
-
-// Child invokes callback
-[Parameter] public EventCallback<Blueprint> OnBlueprintSaved { get; set; }
-
-private async Task Save()
-{
-    await OnBlueprintSaved.InvokeAsync(blueprint);
-}
-```
-
----
-
-## Anti-Patterns
-
-### WARNING: Direct Parameter Modification
-
-**The Problem:**
-
-```csharp
-// BAD - Violates one-way data flow
-[Parameter] public bool Expanded { get; set; }
-
-private void Toggle()
-{
-    Expanded = !Expanded; // Direct modification!
-}
-```
-
-**The Fix:**
-
-```csharp
-// GOOD - Use EventCallback for two-way binding
-[Parameter] public bool Expanded { get; set; }
-[Parameter] public EventCallback<bool> ExpandedChanged { get; set; }
-
-private async Task ToggleAsync()
-{
-    await ExpandedChanged.InvokeAsync(!Expanded);
-}
-```
-
-### WARNING: JSInterop During Prerendering
-
-**When You Might Be Tempted:**
-- Reading from localStorage in OnInitializedAsync
-- Calling JavaScript functions for initial state
-
-**The Fix:**
-
-```csharp
-// Use OnAfterRenderAsync for JSInterop
-protected override async Task OnAfterRenderAsync(bool firstRender)
-{
-    if (firstRender)
+    private async Task AddMarker(double lat, double lng)
     {
-        // Safe to use JSInterop here
-        var value = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "key");
+        if (module is not null && mapInstance is not null)
+        {
+            await module.InvokeVoidAsync("setMarker", mapInstance, lat, lng);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null)
+        {
+            if (mapInstance is not null)
+            {
+                await module.InvokeVoidAsync("dispose", mapInstance);
+            }
+            await module.DisposeAsync();
+        }
     }
 }
 ```
 
-### WARNING: Missing CascadingAuthenticationState
+### JS Interop Abstraction Service
 
-**The Problem:**
+Wrap JS interop in a typed service for better testability.
 
-```razor
-@* BAD - AuthorizeView won't work *@
-<Router AppAssembly="@typeof(Program).Assembly">
-    <AuthorizeRouteView ... />
-</Router>
+```csharp
+// ILocalStorage.cs
+public interface ILocalStorage
+{
+    Task<T?> GetItemAsync<T>(string key);
+    Task SetItemAsync<T>(string key, T value);
+    Task RemoveItemAsync(string key);
+}
+
+// LocalStorageService.cs
+public class LocalStorageService : ILocalStorage
+{
+    private readonly IJSRuntime _js;
+
+    public LocalStorageService(IJSRuntime js) => _js = js;
+
+    public async Task<T?> GetItemAsync<T>(string key)
+    {
+        var json = await _js.InvokeAsync<string?>("localStorage.getItem", key);
+        return json is null ? default : JsonSerializer.Deserialize<T>(json);
+    }
+
+    public async Task SetItemAsync<T>(string key, T value)
+    {
+        var json = JsonSerializer.Serialize(value);
+        await _js.InvokeVoidAsync("localStorage.setItem", key, json);
+    }
+
+    public async Task RemoveItemAsync(string key)
+    {
+        await _js.InvokeVoidAsync("localStorage.removeItem", key);
+    }
+}
 ```
 
-**The Fix:**
+### Handling JS Interop in Prerendering
 
 ```razor
-@* GOOD - Wrap in CascadingAuthenticationState *@
-<CascadingAuthenticationState>
-    <Router AppAssembly="@typeof(Program).Assembly">
-        <AuthorizeRouteView ... />
-    </Router>
-</CascadingAuthenticationState>
+@inject IJSRuntime JS
+
+@code {
+    private bool isInteractive = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            isInteractive = true;
+            StateHasChanged();
+
+            // Safe to call JS here
+            await JS.InvokeVoidAsync("console.log", "Component is interactive");
+        }
+    }
+}
+```
+
+### .NET to JS Streaming
+
+```csharp
+// Stream large data to JavaScript
+using var streamRef = new DotNetStreamReference(stream: myLargeDataStream);
+await JS.InvokeVoidAsync("receiveStream", streamRef);
+```
+
+```javascript
+async function receiveStream(streamRef) {
+    const data = await streamRef.arrayBuffer();
+    // Process data
+}
+```
+
+## Advanced Patterns
+
+### Dynamic Component Loading
+
+```razor
+<DynamicComponent Type="@componentType" Parameters="@parameters" />
+
+@code {
+    private Type? componentType;
+    private Dictionary<string, object>? parameters;
+
+    private void LoadComponent(string name)
+    {
+        componentType = name switch
+        {
+            "chart" => typeof(ChartComponent),
+            "table" => typeof(TableComponent),
+            _ => typeof(PlaceholderComponent)
+        };
+
+        parameters = new Dictionary<string, object>
+        {
+            { "Data", currentData }
+        };
+    }
+}
+```
+
+### Render Mode Boundary Pattern
+
+Isolate interactive components from static content.
+
+```razor
+@* StaticLayout.razor - No render mode *@
+<header>
+    <nav>Static navigation</nav>
+</header>
+
+<main>
+    @Body
+</main>
+
+<footer>Static footer</footer>
+```
+
+```razor
+@* InteractiveDashboard.razor *@
+@rendermode InteractiveServer
+
+<div class="dashboard">
+    <RealTimeChart />
+    <LiveNotifications />
+</div>
+```
+
+### Error Boundary Pattern
+
+```razor
+<ErrorBoundary @ref="errorBoundary">
+    <ChildContent>
+        <RiskyComponent />
+    </ChildContent>
+    <ErrorContent Context="exception">
+        <div class="error-panel">
+            <h3>Something went wrong</h3>
+            <p>@exception.Message</p>
+            <button @onclick="Recover">Try Again</button>
+        </div>
+    </ErrorContent>
+</ErrorBoundary>
+
+@code {
+    private ErrorBoundary? errorBoundary;
+
+    private void Recover()
+    {
+        errorBoundary?.Recover();
+    }
+}
+```
+
+### Section Pattern (.NET 8+)
+
+Define content slots that can be filled from nested components.
+
+```razor
+@* MainLayout.razor *@
+<header>
+    <SectionOutlet SectionName="PageHeader" />
+</header>
+
+<main>@Body</main>
+
+<aside>
+    <SectionOutlet SectionName="Sidebar" />
+</aside>
+```
+
+```razor
+@* ProductPage.razor *@
+<SectionContent SectionName="PageHeader">
+    <h1>Products</h1>
+    <SearchBar />
+</SectionContent>
+
+<SectionContent SectionName="Sidebar">
+    <CategoryFilter />
+    <PriceRangeFilter />
+</SectionContent>
+
+<ProductGrid Products="@products" />
+```
+
+### Render Optimization with ShouldRender
+
+```razor
+@code {
+    private string? previousValue;
+
+    [Parameter] public string? Value { get; set; }
+
+    protected override bool ShouldRender()
+    {
+        // Only re-render if Value actually changed
+        var shouldRender = Value != previousValue;
+        previousValue = Value;
+        return shouldRender;
+    }
+}
+```
+
+### Form Validation Pattern
+
+```razor
+<EditForm Model="@model" OnValidSubmit="HandleSubmit" FormName="ProductForm">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="form-group">
+        <label for="name">Name</label>
+        <InputText id="name" @bind-Value="model.Name" class="form-control" />
+        <ValidationMessage For="() => model.Name" />
+    </div>
+
+    <div class="form-group">
+        <label for="price">Price</label>
+        <InputNumber id="price" @bind-Value="model.Price" class="form-control" />
+        <ValidationMessage For="() => model.Price" />
+    </div>
+
+    <button type="submit" disabled="@isSubmitting">
+        @(isSubmitting ? "Saving..." : "Save")
+    </button>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private ProductModel model { get; set; } = new();
+
+    private bool isSubmitting = false;
+
+    private async Task HandleSubmit()
+    {
+        isSubmitting = true;
+        try
+        {
+            await ProductService.SaveAsync(model);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}
+```
