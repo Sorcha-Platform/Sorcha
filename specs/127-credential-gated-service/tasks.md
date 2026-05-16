@@ -154,7 +154,7 @@ This is a web/multi-service project. Repo root contains `src/`, `samples/`, `tes
 ### PR-C validation
 
 - [ ] T057 [US1] Walk the returning-Tier-1 journey end-to-end (Walk 1 from quickstart.md). Stopwatch ≤ 45 s in 95% of attempts (FR-012). Verify autofill (SC-002), 2 s signal latency (SC-004), no first-credential takeover, new credential lands in wallet within ~5 s.
-- [ ] T058 [US1] Add an HAIP smoke test as part of the PR-B regression — confirms the existing HAIP presentation path still works after the `IPresentationConsumer.BuildInitiationAsync` extension lands and after the lifecycle service's dispatch path changes. Likely covered by existing F111 test suite; verify and call out if any gaps surface.
+- [x] T058 [US1] HAIP regression smoke run on 2026-05-16 against feature-branch tip (post PR-F): `tests/Sorcha.Haip.Service.Tests` — 59/59 pass (covers `HaipPresentationConsumerTests`, `HaipPresentationVerifierTests`, endpoint tests, NonceStore, PreAuthCodeStore, PresentationRequestStore, IetfTokenStatusListChecker). `tests/Sorcha.Blueprint.Service.Tests` — 721/721 pass (covers `PresentationLifecycleServiceConsumerAgnosticTests` plus the full F111 + F127 suite). No regressions from the `IPresentationConsumer.BuildInitiationAsync` extension or the `InitiateAsync` dispatch refactor. HAIP path preserved exactly per back-compat design.
 
 **Checkpoint**: PR-B + PR-C shippable. US1 is independently demoable end-to-end.
 

@@ -3,8 +3,11 @@
 
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using MudBlazor.Services;
 using Sorcha.Sample.StrathcarronPortal;
+using Sorcha.UI.Core.Services;
 using Sorcha.UI.Core.Services.User.Enrolment;
 using Sorcha.UI.Core.Services.User.Presentation;
 
@@ -23,6 +26,24 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 builder.Services.AddHttpClient<ITierProbeService, HttpTierProbeService>(client =>
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+// TenantHubConnection backs EnrolPairingSignal's SignalR path. Sample
+// portal registers it directly (the AddTenantHubServices extension lives
+// in Sorcha.UI.Core which samples can't reference per the boundary).
+// Council pages connect anonymously — the per-user group subscription
+// is gated server-side, and the SignalR token-provider is null because
+// the council page has no user session of its own; the polling fallback
+// covers the case where the hub rejects the anonymous subscription.
+builder.Services.AddScoped<TenantHubConnection>(sp =>
+{
+    var baseUri = new Uri(builder.HostEnvironment.BaseAddress);
+    var hubBaseUrl = $"{baseUri.Scheme}://{baseUri.Authority}";
+    var logger = sp.GetRequiredService<ILogger<TenantHubConnection>>();
+    return new TenantHubConnection(
+        hubBaseUrl,
+        accessTokenProvider: () => Task.FromResult<string?>(null),
+        logger,
+        inboxApi: null);
 });
 builder.Services.AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(client =>
 {
