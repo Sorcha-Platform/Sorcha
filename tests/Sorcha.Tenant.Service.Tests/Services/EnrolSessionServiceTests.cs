@@ -54,7 +54,7 @@ public sealed class EnrolSessionServiceTests
         var now = DateTimeOffset.UtcNow;
         _time.SetUtcNow(now);
 
-        var response = await _service.MintAsync(pu, CancellationToken.None);
+        var response = await _service.MintAsync(pu, EnrolSessionMode.Gated, CancellationToken.None);
 
         response.SessionToken.Should().NotBeNullOrWhiteSpace();
         response.QrUrl.Should().Contain($"session={response.SessionToken}");
@@ -68,7 +68,7 @@ public sealed class EnrolSessionServiceTests
         var user = new PlatformUser { Id = pu, Email = "sarah@example.test", DisplayName = "Sarah Example" };
         _platformUserService.Setup(p => p.GetByIdAsync(pu, It.IsAny<CancellationToken>())).ReturnsAsync(user);
 
-        var mint = await _service.MintAsync(pu, CancellationToken.None);
+        var mint = await _service.MintAsync(pu, EnrolSessionMode.Gated, CancellationToken.None);
         var redeem = await _service.RedeemAsync(mint.SessionToken, CancellationToken.None);
 
         redeem.IsSuccess.Should().BeTrue();
@@ -85,7 +85,7 @@ public sealed class EnrolSessionServiceTests
         var user = new PlatformUser { Id = pu, Email = "s@e.test", DisplayName = "S" };
         _platformUserService.Setup(p => p.GetByIdAsync(pu, It.IsAny<CancellationToken>())).ReturnsAsync(user);
 
-        var mint = await _service.MintAsync(pu, CancellationToken.None);
+        var mint = await _service.MintAsync(pu, EnrolSessionMode.Gated, CancellationToken.None);
         var first = await _service.RedeemAsync(mint.SessionToken, CancellationToken.None);
         first.IsSuccess.Should().BeTrue();
 
@@ -99,7 +99,7 @@ public sealed class EnrolSessionServiceTests
     {
         var pu = Guid.NewGuid();
         _time.SetUtcNow(DateTimeOffset.UtcNow);
-        var mint = await _service.MintAsync(pu, CancellationToken.None);
+        var mint = await _service.MintAsync(pu, EnrolSessionMode.Gated, CancellationToken.None);
 
         _time.Advance(TimeSpan.FromMinutes(11));
 
@@ -128,7 +128,7 @@ public sealed class EnrolSessionServiceTests
     public async Task RedeemAsync_Tampered_Signature_Returns_InvalidSignature()
     {
         var pu = Guid.NewGuid();
-        var mint = await _service.MintAsync(pu, CancellationToken.None);
+        var mint = await _service.MintAsync(pu, EnrolSessionMode.Gated, CancellationToken.None);
         var tampered = mint.SessionToken.Substring(0, mint.SessionToken.Length - 4) + "AAAA";
 
         var result = await _service.RedeemAsync(tampered, CancellationToken.None);
@@ -145,7 +145,7 @@ public sealed class EnrolSessionServiceTests
         _platformUserService.Setup(p => p.GetByIdAsync(pu, It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformUser?)null);
 
-        var mint = await _service.MintAsync(pu, CancellationToken.None);
+        var mint = await _service.MintAsync(pu, EnrolSessionMode.Gated, CancellationToken.None);
         var result = await _service.RedeemAsync(mint.SessionToken, CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();

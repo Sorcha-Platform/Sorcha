@@ -31,7 +31,17 @@ public interface IEnrolSessionService
     /// Mints a fresh session token bound to <paramref name="platformUserId"/>.
     /// 10-minute lifetime, single-use, scope <c>"enrol"</c>.
     /// </summary>
-    Task<MintEnrolSessionResponse> MintAsync(Guid platformUserId, CancellationToken ct);
+    /// <param name="platformUserId">The Sorcha account to bind the token to.</param>
+    /// <param name="mode">
+    /// Discriminator that drives the redeem-page copy + post-pair destination.
+    /// Defaults to <see cref="EnrolSessionMode.Gated"/> for F126 back-compat;
+    /// F128 callers pass <see cref="EnrolSessionMode.Standalone"/>.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<MintEnrolSessionResponse> MintAsync(
+        Guid platformUserId,
+        EnrolSessionMode mode,
+        CancellationToken ct);
 
     /// <summary>
     /// Validates and consumes <paramref name="sessionToken"/>. Returns the bound
