@@ -40,6 +40,13 @@ public sealed class CitizenWalletHubConnection : IAsyncDisposable
     /// <summary>A citizen device was revoked. Carries the opaque device id.</summary>
     public event Action<Guid>? OnDeviceRevoked;
 
+    /// <summary>
+    /// A citizen device was enrolled (Feature 128). Carries the opaque
+    /// device id. Drives F128 pairing-takeover auto-dismissal when any
+    /// device for the citizen pairs successfully (local OR remote).
+    /// </summary>
+    public event Action<Guid>? OnDeviceEnrolled;
+
     /// <summary>Initialises a new instance.</summary>
     /// <param name="baseUrl">Base URL of the API gateway, e.g. <c>https://localhost</c>.</param>
     /// <param name="tokenStore">Access-token source for the citizen JWT.</param>
@@ -96,6 +103,12 @@ public sealed class CitizenWalletHubConnection : IAsyncDisposable
         {
             _logger.LogDebug("CitizenWalletHub DeviceRevoked: {DeviceId}", deviceId);
             OnDeviceRevoked?.Invoke(deviceId);
+        });
+
+        _connection.On<Guid>("DeviceEnrolled", deviceId =>
+        {
+            _logger.LogDebug("CitizenWalletHub DeviceEnrolled: {DeviceId}", deviceId);
+            OnDeviceEnrolled?.Invoke(deviceId);
         });
 
         _connection.Reconnecting += error =>

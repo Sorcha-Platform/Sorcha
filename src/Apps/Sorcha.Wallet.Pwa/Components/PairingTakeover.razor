@@ -1,0 +1,249 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 128 — US1 PairingTakeover.
+
+    Renders a full-page overlay when a signed-in citizen opens the wallet
+    PWA with zero paired devices on this hardware. Resolves the
+    operator-flagged irritant that Settings → Enrol this device was the
+    only discovery path. Pairing IS the screen — no nav, no skip, no
+    other content until the device is paired.
+
+    Two routes to a paired state:
+    1. Primary "Set up" button → runs F114's IEnrolmentService.EnrolAsync
+       against the citizen's existing PWA session (no token redeem).
+    2. Secondary disclosure → 6-digit pairing short code entry → redeems
+       a code minted elsewhere (e.g. another browser tab, the desktop
+       handoff in sub-PR B, the mobile-web install handoff in sub-PR C).
+       On success, swaps the access token, then runs F114's pair
+       ceremony with the (potentially refreshed) session.
+
+    Auto-dismissal — three sources:
+    - Primary or short-code pair-success on this device.
+    - Remote pair-success on another device (the citizen's hub group
+      receives DeviceEnrolled — Feature 128 wires this on the
+      CitizenWalletHub server-side and CitizenWalletHubConnection
+      client-side).
+    - HasPairedDeviceProbe.Changed firing for any reason (defensive).
+
+    Mounted from MainLayout outside MudContainer, sibling pattern to
+    WelcomeTakeover. Reuses welcome-takeover.css for the overlay frame
+    so visual style stays consistent with F124.
+*@
+
+@using Sorcha.UI.Core.Services.User.Devices
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Enrolment
+@inject IHasPairedDeviceProbe Probe
+@inject IEnrolmentService Enrolment
+@inject IPairingShortCodeRedeemer ShortCodeRedeemer
+@inject IAccessTokenStore TokenStore
+@inject CitizenWalletHubConnection Hub
+@inject ILogger<PairingTakeover> Logger
+@implements IDisposable
+
+@if (_isVisible)
+{
+    <div class="sorcha-welcome-overlay" role="dialog" aria-modal="true"
+         aria-labelledby="sorcha-pair-headline" data-testid="pairing-takeover">
+        <div class="sorcha-welcome-content">
+            <h2 id="sorcha-pair-headline" class="sorcha-welcome-headline">
+                Set up this device
+            </h2>
+            <p class="sorcha-welcome-subhead">
+                This phone hasn't been paired to your Sorcha account yet.
+                Pair it now so it can hold your credentials.
+            </p>
+
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="pairing-takeover-error">
+                    @_error
+                </MudAlert>
+            }
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                       FullWidth="true" Class="mt-2"
+                       OnClick="HandlePrimaryAsync"
+                       Disabled="@_busy"
+                       data-testid="pairing-takeover-primary-button">
+                @if (_busy && _busyReason == BusyReason.LocalPair)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Setting up…</span>
+                }
+                else
+                {
+                    <span>Set up this device</span>
+                }
+            </MudButton>
+
+            <MudExpansionPanel Class="mt-3" data-testid="pairing-takeover-shortcode-panel">
+                <TitleContent>
+                    <span>Already started on another device?</span>
+                </TitleContent>
+                <ChildContent>
+                    <p class="mud-typography-body2 mb-2">
+                        Enter the 6-digit pairing code shown on your other device.
+                    </p>
+                    <MudTextField @bind-Value="_shortCode"
+                                  Label="Pairing code"
+                                  Variant="Variant.Outlined"
+                                  MaxLength="6"
+                                  InputType="InputType.Number"
+                                  Disabled="@_busy"
+                                  data-testid="pairing-takeover-shortcode-input" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                               Class="mt-2"
+                               OnClick="HandleShortCodeAsync"
+                               Disabled="@(_busy || string.IsNullOrWhiteSpace(_shortCode))"
+                               data-testid="pairing-takeover-shortcode-submit">
+                        @if (_busy && _busyReason == BusyReason.ShortCode)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Redeeming…</span>
+                        }
+                        else
+                        {
+                            <span>Pair with code</span>
+                        }
+                    </MudButton>
+                </ChildContent>
+            </MudExpansionPanel>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isVisible;
+    private bool _busy;
+    private BusyReason _busyReason;
+    private string? _error;
+    private string _shortCode = string.Empty;
+
+    private enum BusyReason { None, LocalPair, ShortCode }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Probe.Changed += HandleProbeChanged;
+        Hub.OnDeviceEnrolled += HandleHubDeviceEnrolled;
+
+        await Probe.EnsureLoadedAsync();
+        UpdateVisibility();
+    }
+
+    private void HandleProbeChanged()
+    {
+        UpdateVisibility();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async void HandleHubDeviceEnrolled(Guid _)
+    {
+        try
+        {
+            // Remote pair-success on another device. Force-refresh the probe
+            // so HasAnyDevice flips to true and the takeover dismisses.
+            await Probe.RaiseLocalPairCompleted();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "PairingTakeover hub-event handler threw");
+        }
+    }
+
+    private void UpdateVisibility()
+    {
+        // Show only when the probe has resolved AND reports no paired device.
+        // While HasAnyDevice == null (initial fetch in flight) keep the
+        // takeover hidden — flashing the takeover for ~100ms during signup
+        // is a worse UX than briefly missing it.
+        _isVisible = Probe.HasAnyDevice == false;
+    }
+
+    private async Task HandlePrimaryAsync()
+    {
+        _busy = true;
+        _busyReason = BusyReason.LocalPair;
+        _error = null;
+        try
+        {
+            await Enrolment.EnrolAsync(
+                deviceLabel: "My Sorcha wallet",
+                platform: ResolvePlatform(),
+                userAgent: ResolveUserAgent());
+            await Probe.RaiseLocalPairCompleted();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "PairingTakeover local pair ceremony failed");
+            _error = "Couldn't pair this device. Check your connection and try again.";
+        }
+        finally
+        {
+            _busy = false;
+            _busyReason = BusyReason.None;
+        }
+    }
+
+    private async Task HandleShortCodeAsync()
+    {
+        var code = _shortCode?.Trim() ?? string.Empty;
+        if (code.Length != 6)
+        {
+            _error = "Enter the 6-digit code shown on your other device.";
+            return;
+        }
+
+        _busy = true;
+        _busyReason = BusyReason.ShortCode;
+        _error = null;
+
+        try
+        {
+            var result = await ShortCodeRedeemer.RedeemAsync(code);
+            if (!result.IsSuccess)
+            {
+                _error = result.ErrorMessage ?? "That pairing code didn't work.";
+                return;
+            }
+
+            // Swap in the redeemed access token so the subsequent pair
+            // ceremony runs as the citizen the code was minted for. Same
+            // citizen in the normal case (their own short code from another
+            // device); a different citizen if the code came from elsewhere —
+            // out of scope here (see Edge Cases in spec.md).
+            await TokenStore.SetAsync(new AccessTokenRecord(
+                AccessToken: result.AccessToken!,
+                ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(result.ExpiresInSeconds),
+                Email: result.Email));
+
+            await Enrolment.EnrolAsync(
+                deviceLabel: "My Sorcha wallet",
+                platform: ResolvePlatform(),
+                userAgent: ResolveUserAgent());
+            await Probe.RaiseLocalPairCompleted();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "PairingTakeover short-code path failed");
+            _error = "Couldn't complete pairing. Try again.";
+        }
+        finally
+        {
+            _busy = false;
+            _busyReason = BusyReason.None;
+        }
+    }
+
+    private static string ResolvePlatform() => "Browser";
+
+    private static string ResolveUserAgent() => "Sorcha Wallet PWA";
+
+    public void Dispose()
+    {
+        Probe.Changed -= HandleProbeChanged;
+        Hub.OnDeviceEnrolled -= HandleHubDeviceEnrolled;
+    }
+}

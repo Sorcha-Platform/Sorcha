@@ -9,11 +9,13 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.Wallet.Service.Endpoints;
+using Sorcha.Wallet.Service.Hubs;
 using Sorcha.Wallet.Service.Services.Interfaces;
 using Xunit;
 
@@ -40,6 +42,9 @@ public sealed class CitizenWalletEnrolEndpointTests
     private readonly Mock<IDeviceDelegationIssuer> _issuer = new();
     private readonly Mock<IOrgStatusSigningWalletResolver> _resolver = new();
     private readonly Mock<IPlatformUserDeviceClient> _deviceClient = new();
+    private readonly Mock<IHubContext<WalletHub>> _hub = new();
+    private readonly Mock<IHubClients> _hubClients = new();
+    private readonly Mock<IClientProxy> _hubGroup = new();
 
     public CitizenWalletEnrolEndpointTests()
     {
@@ -48,6 +53,11 @@ public sealed class CitizenWalletEnrolEndpointTests
 
         _resolver.Setup(r => r.ResolveAsync(OrgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(OrgWallet);
+
+        // Feature 128 — wire IHubContext so EnrolDevice can publish
+        // DeviceEnrolled on the citizen's WalletHub group.
+        _hub.Setup(h => h.Clients).Returns(_hubClients.Object);
+        _hubClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_hubGroup.Object);
     }
 
     private static DeviceEnrolmentRequest BuildRequest() => new()
@@ -110,6 +120,7 @@ public sealed class CitizenWalletEnrolEndpointTests
             _resolver.Object,
             _deviceClient.Object,
             _holderAddressLookup.Object,
+            _hub.Object,
             NullLogger<Program>.Instance,
             CancellationToken.None
         ]);
@@ -147,6 +158,15 @@ public sealed class CitizenWalletEnrolEndpointTests
         _issuer.Verify(i => i.IssueAsync(
             PlatformUserId, CitizenWallet, OrgId, OrgWallet,
             It.IsAny<EcP256PublicJwk>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        // Feature 128 FR-014 — DeviceEnrolled broadcast on the citizen's
+        // hub group so any open PWA instance dismisses its pairing takeover.
+        var expectedGroup = WalletHubGroups.CitizenWallet(PlatformUserId);
+        _hubClients.Verify(c => c.Group(expectedGroup), Times.Once);
+        _hubGroup.Verify(g => g.SendCoreAsync(
+            CitizenWalletEndpoints.DeviceEnrolledEvent,
+            It.Is<object?[]>(args => args.Length == 1 && (Guid)args[0]! == deviceId),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
