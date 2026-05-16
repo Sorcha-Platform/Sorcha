@@ -28,11 +28,13 @@ public static class EnrolSessionEndpoints
             .WithName("MintEnrolSession")
             .WithSummary("Mint a one-time enrolment session token for the signed-in caller.")
             .WithDescription(
-                "Returns a JWT scoped to 'enrol', a QR URL embedding the token, and the absolute "
-                + "expiry timestamp. The caller must be authenticated. Used by council pages to "
-                + "render the enrolment QR/link/paste affordance on the wallet-pairing surface.")
+                "Returns a JWT scoped to 'enrol', a QR URL embedding the token, the absolute "
+                + "expiry timestamp, and the mode discriminator. The caller must be authenticated. "
+                + "Request body is optional — omit (or send `mode: gated`) for F126 council-page "
+                + "callers; send `mode: standalone` for F128 cold-start callers.")
             .RequireAuthorization()
             .RequireRateLimiting(RateLimitPolicies.PlatformAuth)
+            .Accepts<MintEnrolSessionRequest>("application/json")
             .Produces<MintEnrolSessionResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized);
 
@@ -57,6 +59,7 @@ public static class EnrolSessionEndpoints
     internal static async Task<Results<Ok<MintEnrolSessionResponse>, UnauthorizedHttpResult>> MintAsync(
         ClaimsPrincipal principal,
         IEnrolSessionService service,
+        [FromBody] MintEnrolSessionRequest? request,
         CancellationToken ct)
     {
         var platformUserId = ResolvePlatformUserId(principal);
@@ -65,7 +68,8 @@ public static class EnrolSessionEndpoints
             return TypedResults.Unauthorized();
         }
 
-        var response = await service.MintAsync(platformUserId.Value, ct).ConfigureAwait(false);
+        var mode = request?.Mode ?? EnrolSessionMode.Gated;
+        var response = await service.MintAsync(platformUserId.Value, mode, ct).ConfigureAwait(false);
         return TypedResults.Ok(response);
     }
 
