@@ -138,6 +138,13 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Feature 128 US1 — PWA-side short-code redeemer for the PairingTakeover
+        // sub-affordance ("Already started on another device?"). Anonymous
+        // call: the 6-digit code is the credential for this single endpoint.
+        services.AddHttpClient<IPairingShortCodeRedeemer, PairingShortCodeRedeemer>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 125 / PR-B — user context (active org) + memberships client.
         // ManagedUserContext drives /api/auth/switch-org through the bearer-
         // and clock-handler chain so the new JWT is acquired with the

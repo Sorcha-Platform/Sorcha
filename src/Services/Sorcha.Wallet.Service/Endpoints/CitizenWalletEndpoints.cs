@@ -4,6 +4,7 @@
 using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.PlatformUserDevice;
@@ -268,6 +269,9 @@ public static class CitizenWalletEndpoints
         return Results.Ok(delta);
     }
 
+    /// <summary>SignalR client method name for the device-enrolled broadcast (Feature 128).</summary>
+    public const string DeviceEnrolledEvent = "DeviceEnrolled";
+
     private static async Task<IResult> EnrolDevice(
         [FromBody] DeviceEnrolmentRequest request,
         HttpContext context,
@@ -277,6 +281,7 @@ public static class CitizenWalletEndpoints
         IOrgStatusSigningWalletResolver orgWalletResolver,
         IPlatformUserDeviceClient deviceClient,
         IHolderAddressLookup holderAddressLookup,
+        Microsoft.AspNetCore.SignalR.IHubContext<Sorcha.Wallet.Service.Hubs.WalletHub> hub,
         ILogger<Program> logger,
         CancellationToken ct)
     {
@@ -339,6 +344,24 @@ public static class CitizenWalletEndpoints
             logger.LogInformation(
                 "Citizen device enrolled platformUser={PlatformUserId} deviceId={DeviceId} jti={Jti}",
                 platformUserId, registered.DeviceId, delegation.Jti);
+
+            // Feature 128 FR-014 — broadcast device-enrolled on the citizen's
+            // hub group so any PWA instance the citizen has open (e.g. an
+            // unpaired sibling tab in the takeover state) dismisses its
+            // takeover without waiting on the next natural probe refresh.
+            // Failure here is non-fatal — the registration succeeded; missing
+            // the push only widens the dismissal window.
+            try
+            {
+                var group = Sorcha.Wallet.Service.Hubs.WalletHubGroups.CitizenWallet(platformUserId.Value);
+                await hub.Clients.Group(group).SendAsync(DeviceEnrolledEvent, registered.DeviceId, ct);
+            }
+            catch (Exception hubEx)
+            {
+                logger.LogWarning(hubEx,
+                    "DeviceEnrolled hub broadcast failed for platformUser={PlatformUserId} deviceId={DeviceId} — registration succeeded",
+                    platformUserId, registered.DeviceId);
+            }
 
             return Results.Ok(new DeviceEnrolmentResponse
             {

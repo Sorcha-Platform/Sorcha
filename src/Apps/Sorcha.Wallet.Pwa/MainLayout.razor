@@ -28,6 +28,13 @@
 <MudDialogProvider />
 <MudSnackbarProvider />
 
+@* Feature 128 US1 — pairing takeover renders OUTSIDE MudLayout so its
+   full-screen overlay covers nav + content uniformly when an unpaired
+   signed-in citizen lands in the wallet. The component self-gates on
+   IHasPairedDeviceProbe and dismisses on local OR remote pair-success
+   via the CitizenWalletHub OnDeviceEnrolled event. *@
+<PairingTakeover />
+
 <MudLayout>
     <MudAppBar Elevation="1">
         <MudText Typo="Typo.h6">Sorcha Wallet</MudText>
