@@ -611,11 +611,15 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         // inline path (no F119 deferral), this single publish is sufficient.
         if (_hubContext is not null)
         {
+            var publishStart = _clock.UtcNow;
             try
             {
                 await _hubContext.Clients
                     .Group(BlueprintHubGroups.PresentationNonce(presentationRequestId))
                     .PresentationOutcomeReady(presentationRequestId.ToString("N"));
+                _metrics?.RecordOutcomeSignalLatency(
+                    kind: outcome.Kind.ToString().ToLowerInvariant(),
+                    seconds: (_clock.UtcNow - publishStart).TotalSeconds);
             }
             catch (Exception ex)
             {

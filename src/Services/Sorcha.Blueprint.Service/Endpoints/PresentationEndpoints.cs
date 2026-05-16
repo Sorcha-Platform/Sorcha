@@ -110,10 +110,12 @@ public static class PresentationEndpoints
                 IClaimsFetchTokenStore tokenStore,
                 IDisclosedClaimsStore claimsStore,
                 IPendingPresentationStore pendingStore,
+                Sorcha.Blueprint.Service.Services.Implementation.PresentationLifecycleMetrics? metrics,
                 CancellationToken ct) =>
             {
                 if (string.IsNullOrWhiteSpace(token))
                 {
+                    metrics?.RecordDisclosedClaimsFetch("token-missing");
                     return Results.BadRequest(new { error = "token-missing", message = "Query parameter 'token' is required." });
                 }
 
@@ -139,10 +141,12 @@ public static class PresentationEndpoints
                     var pendingTokenBinding = await tokenStore.GetAndRemoveAsync(token, ct);
                     if (pendingTokenBinding is null || pendingTokenBinding.Value != presentationRequestId)
                     {
+                        metrics?.RecordDisclosedClaimsFetch("token-invalid");
                         return Results.Json(
                             new { error = "token-invalid", message = "Token is invalid, expired, or does not match the presentation request." },
                             statusCode: StatusCodes.Status401Unauthorized);
                     }
+                    metrics?.RecordDisclosedClaimsFetch("pending");
                     return Results.Ok(new DisclosedClaimsResponse
                     {
                         PresentationRequestId = presentationRequestId,
@@ -152,12 +156,14 @@ public static class PresentationEndpoints
 
                 if (sentinel == "decline")
                 {
+                    metrics?.RecordDisclosedClaimsFetch("decline");
                     return Results.Json(
                         new { error = "outcome-decline", message = "The presentation was declined; no claims to disclose." },
                         statusCode: StatusCodes.Status410Gone);
                 }
                 if (sentinel == "abandoned" || sentinel == "abandoned+outcome")
                 {
+                    metrics?.RecordDisclosedClaimsFetch("abandoned");
                     return Results.Json(
                         new { error = "outcome-abandoned", message = "The presentation attempt was abandoned." },
                         statusCode: StatusCodes.Status410Gone);
@@ -168,12 +174,14 @@ public static class PresentationEndpoints
                 var tokenBinding = await tokenStore.GetAndRemoveAsync(token, ct);
                 if (tokenBinding is null)
                 {
+                    metrics?.RecordDisclosedClaimsFetch("token-invalid");
                     return Results.Json(
                         new { error = "token-invalid", message = "Token is invalid, expired, or already used." },
                         statusCode: StatusCodes.Status401Unauthorized);
                 }
                 if (tokenBinding.Value != presentationRequestId)
                 {
+                    metrics?.RecordDisclosedClaimsFetch("token-mismatch");
                     return Results.Json(
                         new { error = "token-mismatch", message = "Token does not match this presentation request." },
                         statusCode: StatusCodes.Status401Unauthorized);
@@ -186,12 +194,14 @@ public static class PresentationEndpoints
                     // stash TTL ran out or never landed. Surfacing as 410 lets
                     // the council page show the citizen a clear retry message
                     // instead of dangling on a misleading pending state.
+                    metrics?.RecordDisclosedClaimsFetch("claims-expired");
                     return Results.Json(
                         new { error = "claims-expired", message = "The claims-fetch window has elapsed; the citizen will need to present again." },
                         statusCode: StatusCodes.Status410Gone);
                 }
 
                 var subjectDisplay = BuildSubjectDisplayName(claims);
+                metrics?.RecordDisclosedClaimsFetch("success");
                 return Results.Ok(new DisclosedClaimsResponse
                 {
                     PresentationRequestId = presentationRequestId,
