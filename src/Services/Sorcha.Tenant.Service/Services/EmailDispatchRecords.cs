@@ -32,6 +32,18 @@ public sealed record ResetPasswordDispatch(
     int ExpiresInMinutes);
 
 /// <summary>
+/// Input to <see cref="ITransactionalEmailService.SendPairingResumptionAsync"/>.
+/// Feature 128 US2 — the "Email me a link" affordance from the desktop
+/// handoff page (sub-PR B3). The link reopens /setup/add-device on whatever
+/// device the citizen taps the email on.
+/// </summary>
+public sealed record PairingResumptionDispatch(
+    string ToEmail,
+    string DisplayName,
+    string ResumptionUrl,
+    int ExpiresInHours);
+
+/// <summary>
 /// Context passed by <c>WelcomeEmailDispatcher</c> when dispatching a welcome email.
 /// <see cref="InvitingOrganization"/> and <see cref="InvitedRole"/> are required when
 /// <see cref="Variant"/> is <see cref="WelcomeVariant.Invited"/>; both are null for

@@ -1,0 +1,11 @@
+{{ capture content -}}
+Hi {{ display_name }} — you asked us to email you a link to set up your Sorcha
+wallet on your phone.
+
+Open this email on the phone you want to use, then tap the link:
+{{ resumption_url }}
+
+The link works for {{ expires_in_hours }} hours. If you didn't request this,
+just ignore this email — nothing will change on your account.
+{{- end -}}
+{{- include 'base.txt' -}}

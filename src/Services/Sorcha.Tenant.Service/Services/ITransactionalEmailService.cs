@@ -33,4 +33,11 @@ public interface ITransactionalEmailService
     /// marker — the calling <c>WelcomeEmailDispatcher</c> owns that responsibility.
     /// </summary>
     Task SendWelcomeAsync(WelcomeDispatchContext context, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends the F128 "Email me a link" pairing-resumption email — gives the
+    /// citizen a magic-link they can tap on their phone to reopen the
+    /// /setup/add-device handoff in an authenticated session.
+    /// </summary>
+    Task SendPairingResumptionAsync(PairingResumptionDispatch dispatch, CancellationToken ct = default);
 }

@@ -93,6 +93,14 @@ public class EmailTemplateSnapshotTests
                 DashboardUrl: "https://sorcha.dev/dashboard",
                 Branding: AcmeBranding)
         },
+        {
+            "pairing-resumption",
+            new PairingResumptionTemplateModel(
+                DisplayName: "Stuart Fraser",
+                ResumptionUrl: "https://sorcha.dev/api/auth/pairing-resumption/redeem?token=FIXTURE_TOKEN",
+                ExpiresInHours: 24,
+                Branding: SorchaBranding)
+        },
     };
 
     /// <summary>

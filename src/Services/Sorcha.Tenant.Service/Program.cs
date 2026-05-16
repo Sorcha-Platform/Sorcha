@@ -159,6 +159,10 @@ builder.Services.AddScoped<IEnrolSessionService, EnrolSessionService>();
 // mobile-web install fallback path.
 builder.Services.AddScoped<IPairingShortCodeService, PairingShortCodeService>();
 
+// Feature 128 US2: "Email me a link" pairing-resumption token service.
+// 24-hour TTL, single-use via IAtomicDistributedCache (NonceStore pattern).
+builder.Services.AddScoped<IPairingResumptionTokenService, PairingResumptionTokenService>();
+
 builder.Services.Configure<ReturnToAllowlistOptions>(
     builder.Configuration.GetSection(ReturnToAllowlistOptions.SectionName));
 
@@ -253,6 +257,7 @@ app.MapRegisterInvitationEndpoints();
 app.MapTrustEndpoints();
 app.MapEnrolSessionEndpoints();
 app.MapPairingShortCodeEndpoints();
+app.MapPairingResumptionEndpoints();
 app.MapRazorPages();
 
 // Feature 118 — map TenantHub at /hubs/tenant (US2). Routed via API Gateway.
