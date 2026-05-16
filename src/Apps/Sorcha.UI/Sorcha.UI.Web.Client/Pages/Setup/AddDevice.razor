@@ -1,0 +1,18 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 128 US2 — desktop handoff page. Auto-routed after first
+    sign-in when the citizen has no paired devices (Login.cshtml.cs
+    sets the returnUrl to /setup/add-device when has-any-device == false).
+    Also reachable manually from the "Add my phone" menu entry (sub-PR B2).
+*@
+
+@page "/setup/add-device"
+@using Microsoft.AspNetCore.Authorization
+@using Sorcha.UI.Core.Components.Pairing
+@attribute [Authorize]
+
+<PageTitle>Set up your wallet — Sorcha</PageTitle>
+
+<PairingHandoffSurface SkipDestination="/" />

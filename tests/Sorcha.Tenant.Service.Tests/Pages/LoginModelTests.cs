@@ -28,6 +28,7 @@ public class LoginModelTests
     private readonly Mock<IIdentityRepository> _identityRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
     private readonly Mock<ISocialLoginService> _socialLoginService = new();
+    private readonly Mock<IPlatformUserDeviceService> _deviceService = new();
 
     private LoginModel CreateModel()
     {
@@ -40,7 +41,8 @@ public class LoginModelTests
             NullLogger<LoginModel>.Instance,
             Options.Create(new DemoEnvironmentSettings()),
             _socialLoginService.Object,
-            Options.Create(new ReturnToAllowlistOptions()));
+            Options.Create(new ReturnToAllowlistOptions()),
+            _deviceService.Object);
 
         var httpContext = new DefaultHttpContext();
         model.PageContext = new PageContext(new ActionContext(

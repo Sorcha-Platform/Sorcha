@@ -1,0 +1,127 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 128 US2 — desktop handoff surface.
+
+    Mints a standalone enrol-session token on init and renders the
+    F126 HybridQrAffordance with the resulting QR URL. The citizen scans
+    the QR with their phone camera; the phone opens the wallet PWA at
+    /enrol?session=<token> where the standalone copy variant lands them
+    on the wallet Home after pairing (no returnTo).
+
+    Sub-PR B1 ships the QR variant + Skip affordance only. The
+    install-flavoured variant (US3 mobile-web) lands in sub-PR C; the
+    "Email me a link" resumption affordance lands in sub-PR B3.
+*@
+
+@using System.Net.Http.Json
+@using Microsoft.Extensions.Logging
+@using Sorcha.UI.Core.Components.EnrolGate
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject ILogger<PairingHandoffSurface> Logger
+
+<div class="sorcha-pair-handoff" data-testid="pairing-handoff-surface">
+    <h1 class="sorcha-pair-handoff__headline">Put your wallet on your phone</h1>
+    <p class="sorcha-pair-handoff__subhead">
+        Your Sorcha credentials live on your phone. Scan this code with
+        your phone camera to set up your wallet.
+    </p>
+
+    @if (_error is not null)
+    {
+        <div class="sorcha-pair-handoff__error" role="alert" data-testid="pairing-handoff-error">
+            <p>@_error</p>
+            <button type="button" @onclick="MintAsync" class="sorcha-pair-handoff__retry"
+                    data-testid="pairing-handoff-retry">
+                Try again
+            </button>
+        </div>
+    }
+    else if (_minted is not null)
+    {
+        <div class="sorcha-pair-handoff__qr-frame">
+            <HybridQrAffordance QrUrl="@_minted.QrUrl" ExpiresAt="@_minted.ExpiresAt" />
+        </div>
+    }
+    else
+    {
+        <p class="sorcha-pair-handoff__loading" data-testid="pairing-handoff-loading">
+            Preparing your pairing code…
+        </p>
+    }
+
+    <div class="sorcha-pair-handoff__footer">
+        <button type="button" @onclick="HandleSkipAsync"
+                class="sorcha-pair-handoff__skip"
+                data-testid="pairing-handoff-skip">
+            Skip for now
+        </button>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Where to navigate after the citizen clicks Skip. Defaults to the
+    /// web wallet root.
+    /// </summary>
+    [Parameter] public string SkipDestination { get; set; } = "/";
+
+    private MintedHandoff? _minted;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await MintAsync();
+    }
+
+    private async Task MintAsync()
+    {
+        _error = null;
+        _minted = null;
+        StateHasChanged();
+
+        try
+        {
+            using var response = await Http.PostAsJsonAsync(
+                "/api/auth/enrol-session",
+                new MintRequest("standalone"));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Logger.LogWarning(
+                    "PairingHandoffSurface mint returned {Status}",
+                    response.StatusCode);
+                _error = "Couldn't generate a pairing code. Try again.";
+                return;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<MintResponseShape>();
+            if (body is null || string.IsNullOrEmpty(body.QrUrl))
+            {
+                _error = "Couldn't generate a pairing code. Try again.";
+                return;
+            }
+
+            _minted = new MintedHandoff(body.QrUrl, body.ExpiresAt);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "PairingHandoffSurface mint failed");
+            _error = "Couldn't reach Sorcha. Check your connection and try again.";
+        }
+    }
+
+    private Task HandleSkipAsync()
+    {
+        Nav.NavigateTo(SkipDestination);
+        return Task.CompletedTask;
+    }
+
+    private sealed record MintRequest(string Mode);
+
+    private sealed record MintResponseShape(string SessionToken, string QrUrl, DateTimeOffset ExpiresAt, string Mode);
+
+    private sealed record MintedHandoff(string QrUrl, DateTimeOffset ExpiresAt);
+}
