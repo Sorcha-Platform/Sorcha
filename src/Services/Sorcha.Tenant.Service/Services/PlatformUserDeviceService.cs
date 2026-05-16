@@ -190,6 +190,20 @@ public sealed class PlatformUserDeviceService : IPlatformUserDeviceService
     }
 
     /// <inheritdoc />
+    public async Task<(bool HasAnyDevice, DateTimeOffset? LatestEnrolledAt)> HasAnyAsync(
+        Guid platformUserId, CancellationToken ct = default)
+    {
+        var latestActive = await _db.PlatformUserDevices
+            .AsNoTracking()
+            .Where(d => d.PlatformUserId == platformUserId && d.Status == PlatformUserDeviceStatus.Active)
+            .OrderByDescending(d => d.EnrolledAt)
+            .Select(d => (DateTimeOffset?)d.EnrolledAt)
+            .FirstOrDefaultAsync(ct);
+
+        return (latestActive.HasValue, latestActive);
+    }
+
+    /// <inheritdoc />
     public async Task<PlatformUserDevice?> RevokeAsync(
         Guid deviceId, Guid platformUserId, CancellationToken ct = default)
     {
