@@ -89,6 +89,12 @@ builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Devices.IHasPairedDe
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 });
 
+// Feature 128 US3 — PWA-installability probe used by PairingHandoffSurface
+// to switch between the QR variant and the install-flavoured variant.
+// Singleton so the cached verdict survives across surface re-renders.
+builder.Services.AddSingleton<Sorcha.UI.Core.Services.User.Pairing.IPwaInstallabilityProbe,
+                              Sorcha.UI.Core.Services.User.Pairing.PwaInstallabilityProbe>();
+
 builder.Services.AddSingleton(TimeProvider.System);
 
 var host = builder.Build();
