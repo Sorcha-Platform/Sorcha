@@ -78,6 +78,17 @@ builder.Services.AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(client =
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
 });
+
+// Feature 128 — shared has-any-device probe. Drives the PairingNagBanner
+// on every MainLayout render for signed-in citizens with zero paired
+// devices (FR-024). The same probe is also registered in the PWA
+// (Sorcha.Wallet.Pwa) where it drives the takeover trigger (sub-PR A3).
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Devices.IHasPairedDeviceProbe,
+                               Sorcha.UI.Core.Services.User.Devices.HasPairedDeviceProbe>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+
 builder.Services.AddSingleton(TimeProvider.System);
 
 var host = builder.Build();
