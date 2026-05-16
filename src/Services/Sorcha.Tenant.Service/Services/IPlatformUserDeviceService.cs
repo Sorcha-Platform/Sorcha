@@ -74,6 +74,23 @@ public interface IPlatformUserDeviceService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Aggregate query for the F128 cold-start surfaces: does this user have
+    /// at least one ACTIVE (non-revoked) paired device? If yes, returns the
+    /// most recent enrolment timestamp; if no, returns
+    /// <c>(false, null)</c>.
+    /// </summary>
+    /// <remarks>
+    /// Used by the wallet PWA pairing takeover trigger (FR-010) and the
+    /// Sorcha Web nag-banner trigger (FR-024) via the shared
+    /// <c>IHasPairedDeviceProbe</c> client service. Does not expose the
+    /// per-device list — the nag-banner doesn't need that detail and a
+    /// boolean aggregate is cheaper to cache + invalidate.
+    /// </remarks>
+    Task<(bool HasAnyDevice, DateTimeOffset? LatestEnrolledAt)> HasAnyAsync(
+        Guid platformUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Revokes the device by setting <see cref="PlatformUserDevice.Status"/> to
     /// <see cref="PlatformUserDeviceStatus.Revoked"/>, recording the revocation
     /// timestamp and the platform user who triggered it. Idempotent: a
