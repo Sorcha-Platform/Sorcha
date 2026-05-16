@@ -34,6 +34,10 @@ public sealed class PresentationLifecycleMetrics
     private long _queueDepthAbandonment;
     private long _queueDepthAdvance;
 
+    // Feature 127 — credential-gate instruments.
+    private readonly Histogram<double> _outcomeSignalLatencySeconds;
+    private readonly Counter<long> _disclosedClaimsFetchTotal;
+
     public PresentationLifecycleMetrics(IMeterFactory meterFactory)
     {
         ArgumentNullException.ThrowIfNull(meterFactory);
@@ -73,6 +77,16 @@ public sealed class PresentationLifecycleMetrics
         _sealRecoveredViaSweeperTotal = _meter.CreateCounter<long>(
             name: "sorcha_presentation_seal_recovered_via_sweeper_total",
             description: "Count of queued entries drained by the recovery sweeper after a missed seal event.");
+
+        // Feature 127 instruments.
+        _outcomeSignalLatencySeconds = _meter.CreateHistogram<double>(
+            name: "sorcha_presentation_outcome_signal_latency_seconds",
+            unit: "s",
+            description: "Wall-clock duration from PresentationOutcome write to PresentationOutcomeReady hub publish (server-side; primary SC-004 verification mechanism for Feature 127).");
+
+        _disclosedClaimsFetchTotal = _meter.CreateCounter<long>(
+            name: "sorcha_presentation_disclosed_claims_fetch_total",
+            description: "Total disclosed-claims endpoint hits, tagged by outcome status (Feature 127).");
 
         _meter.CreateObservableGauge(
             name: "sorcha_presentation_seal_queue_depth",
@@ -180,5 +194,29 @@ public sealed class PresentationLifecycleMetrics
         _durationSeconds.Record(seconds,
             new KeyValuePair<string, object?>("consumer", consumer),
             new KeyValuePair<string, object?>("kind", kind));
+    }
+
+    /// <summary>
+    /// Feature 127 — record the server-side time from outcome-tx write to
+    /// PresentationOutcomeReady hub publish. Primary SC-004 verification:
+    /// "the presentation-completion signal reaches the council page within
+    /// 2 s of PWA signing in 95% of attempts".
+    /// </summary>
+    public void RecordOutcomeSignalLatency(string kind, double seconds)
+    {
+        _outcomeSignalLatencySeconds.Record(seconds,
+            new KeyValuePair<string, object?>("kind", kind));
+    }
+
+    /// <summary>
+    /// Feature 127 — record a disclosed-claims endpoint hit. <paramref name="outcome"/>
+    /// is the resolved status: <c>"success"</c>, <c>"pending"</c>, <c>"decline"</c>,
+    /// <c>"abandoned"</c>, <c>"claims-expired"</c>, <c>"token-invalid"</c>,
+    /// <c>"token-mismatch"</c>, or <c>"not-found"</c>.
+    /// </summary>
+    public void RecordDisclosedClaimsFetch(string outcome)
+    {
+        _disclosedClaimsFetchTotal.Add(1,
+            new KeyValuePair<string, object?>("outcome", outcome));
     }
 }
