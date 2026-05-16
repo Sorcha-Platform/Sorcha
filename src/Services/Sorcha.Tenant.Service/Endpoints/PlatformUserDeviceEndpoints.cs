@@ -57,7 +57,39 @@ public static class PlatformUserDeviceEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapGet("/has-any", HasAnyDevice)
+            .WithName("CheckMyPlatformUserHasAnyDevice")
+            .WithSummary("Has the authenticated citizen paired at least one active device?")
+            .WithDescription(
+                "Aggregate read used by F128 cold-start surfaces — the wallet PWA "
+                + "pairing takeover (FR-010) and the Sorcha Web nag banner (FR-024). "
+                + "Returns hasAnyDevice + the latest active-device enrolment timestamp; "
+                + "does not leak the per-device list.")
+            .Produces<HasAnyDeviceResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         return app;
+    }
+
+    private static async Task<IResult> HasAnyDevice(
+        HttpContext context,
+        IPlatformUserDeviceService deviceService,
+        IIdentityRepository identityRepository,
+        CancellationToken ct)
+    {
+        var platformUserId = await ResolvePlatformUserIdAsync(context, identityRepository, ct);
+        if (platformUserId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var (hasAny, latestEnrolledAt) = await deviceService.HasAnyAsync(platformUserId.Value, ct);
+
+        return TypedResults.Ok(new HasAnyDeviceResponse
+        {
+            HasAnyDevice = hasAny,
+            LatestEnrolledAt = latestEnrolledAt,
+        });
     }
 
     private static async Task<IResult> ListDevices(

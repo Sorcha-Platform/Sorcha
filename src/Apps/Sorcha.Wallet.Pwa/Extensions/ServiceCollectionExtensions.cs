@@ -128,6 +128,16 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Feature 128 — shared has-any-device probe. Drives the wallet PWA
+        // pairing-takeover trigger (sub-PR A3) and the Sorcha Web nag-banner
+        // trigger (sub-PR B). Registered Singleton so the cached value +
+        // Changed event reach every subscriber across the wallet.
+        services.AddHttpClient<Sorcha.UI.Core.Services.User.Devices.IHasPairedDeviceProbe,
+                               Sorcha.UI.Core.Services.User.Devices.HasPairedDeviceProbe>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 125 / PR-B — user context (active org) + memberships client.
         // ManagedUserContext drives /api/auth/switch-org through the bearer-
         // and clock-handler chain so the new JWT is acquired with the
