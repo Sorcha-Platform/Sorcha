@@ -196,6 +196,18 @@ $secrets = [ordered]@{
         adminName       = $platformName
         DefaultPassword = $platformPassword
     }
+    "strathcarron-cold-start" = @{
+        adminEmail      = $platformEmail
+        adminPassword   = $platformPassword
+        adminName       = $platformName
+        DefaultPassword = $platformPassword
+    }
+    "strathcarron-blue-badge" = @{
+        adminEmail      = $platformEmail
+        adminPassword   = $platformPassword
+        adminName       = $platformName
+        DefaultPassword = $platformPassword
+    }
     "council" = @{
         sysAdminEmail               = $platformEmail
         sysAdminPassword            = $platformPassword

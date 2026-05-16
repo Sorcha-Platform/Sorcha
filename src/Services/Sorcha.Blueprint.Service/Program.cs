@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Http;
 using Polly;
 using Polly.Extensions.Http;
@@ -228,6 +229,25 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.P
 // container; they cannot live in their originating service's process.
 builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
     Sorcha.Blueprint.Service.Services.Implementation.HaipPresentationConsumer>();
+
+// Feature 127 — Sorcha.Verifier.Engine dependencies the SorchaWalletPresentationConsumer
+// consumes. The full verifier-DID resolution stack lands in Spec 5 alongside
+// the production IIssuerKeyResolver; for now the JWK-registry resolver covers
+// the dev/demo path and the OptOut resolver is the fallback for tests that
+// don't populate the registry.
+builder.Services.AddHttpClient<Sorcha.Verifier.Engine.IStatusListCache,
+    Sorcha.Verifier.Engine.StatusListCache>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>();
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.IIssuerKeyResolver>(sp =>
+    sp.GetRequiredService<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>());
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.IVerifiablePresentationValidator>(sp =>
+    new Sorcha.Verifier.Engine.VerifiablePresentationValidator(
+        sp.GetRequiredService<Sorcha.Verifier.Engine.IStatusListCache>(),
+        sp.GetRequiredService<Sorcha.Verifier.Engine.IIssuerKeyResolver>(),
+        sp.GetRequiredService<TimeProvider>(),
+        sp.GetRequiredService<ILogger<Sorcha.Verifier.Engine.VerifiablePresentationValidator>>(),
+        requireIssuerSignature: builder.Configuration.GetValue<bool?>("IssuerSignature:Required") ?? true));
 
 // Feature 127 — Sorcha-wallet consumer. Verifies SD-JWT presentations posted
 // by the citizen's Sorcha wallet via Sorcha.Verifier.Engine. The first

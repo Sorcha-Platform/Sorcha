@@ -1246,7 +1246,13 @@ function Publish-SorchaBlueprint {
     }
 
     $templateJson = Get-Content -Path $TemplatePath -Raw | ConvertFrom-Json -Depth 30
-    $blueprint = $templateJson.template
+    # Templates may be wrapped (`{ "template": {...} }`) or flat (the
+    # blueprint object at the top level). Tolerate both.
+    if ($templateJson.PSObject.Properties.Name -contains "template" -and $null -ne $templateJson.template) {
+        $blueprint = $templateJson.template
+    } else {
+        $blueprint = $templateJson
+    }
 
     # Feature 103: identify open starting-action senders. The publish-time
     # guardrail (VAL_BP_010) rejects any blueprint where an open starting
@@ -1274,9 +1280,11 @@ function Publish-SorchaBlueprint {
         }
     }
 
-    # Generate unique ID
+    # Generate unique ID. Use Add-Member -Force so this is robust whether
+    # the template carries a placeholder `id` or omits it entirely (most
+    # templates do — the id is generated here per-publish).
     $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-    $blueprint.id = "$IdPrefix-$timestamp"
+    $blueprint | Add-Member -NotePropertyName "id" -NotePropertyValue "$IdPrefix-$timestamp" -Force
 
     # Create blueprint
     Write-WtInfo "Creating blueprint..."
