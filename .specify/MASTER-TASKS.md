@@ -3,12 +3,12 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.13
-**Last Updated:** 2026-05-13
+**Version:** 7.14
+**Last Updated:** 2026-05-16
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
-> **2026-05-13 since last update:** Features 119 (seal-aware ordering), 120 (production issuer signature verification — 18 PRs incl. cross-device kid-swap), 122 (Sorcha.UI.Components.User extraction), 123 (UI.Core audience-folder split), and 124 (UI.Core type-coupling fixes) all shipped to master. Counts below are headline figures from earlier sweeps and will drift between full re-counts — treat as approximate.
+> **2026-05-13 → 2026-05-16:** Strathcarron citizen-arc work continued. Spec 2 (Feature 125, Sorcha Wallet User Agent, tag `spec-125-complete`) and Spec 3 (Feature 126, council enrolment gate, tag `spec-126-complete`) had shipped earlier. **Feature 127** (Spec 4, credential-gated second service / Blue Badge) is progressing on feature branch `127-credential-gated-service` via four sub-PRs — PR-A (Strathcarron sample portal + CI grep gate, #719 merged), PR-B (F111 reconciliation + library credential gate + 25 new tests, #720 merged), PR-C (Blue Badge content — blueprint + page + walkthrough seed, #721 merged), PR-D (polish + docs + integration tests, in flight). The **platform-vs-consumer boundary contract** (application-specific demo code lives in `samples/`, CI grep gate enforces) landed alongside the arc in PR #718. The F127 ↔ F111 reconciliation research doc + design-doc §14 amendment capture how F127 adopts F111's Timebound Presentation Lifecycle as substrate. Counts below are headline figures from earlier sweeps and will drift between full re-counts — treat as approximate.
 
 > **Maintenance Rule:** This file MUST be updated as part of every PR. When a task is completed, mark it ✅ and update the summary counts. When new work is identified, add it to the appropriate theme. Completed tasks stay in place (marked ✅) until the next archive sweep. Do not let this file go stale — it is the single source of truth for remaining work.
 

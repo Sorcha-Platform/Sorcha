@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Http;
 using Polly;
 using Polly.Extensions.Http;
@@ -228,6 +229,45 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.P
 // container; they cannot live in their originating service's process.
 builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
     Sorcha.Blueprint.Service.Services.Implementation.HaipPresentationConsumer>();
+
+// Feature 127 — Sorcha.Verifier.Engine dependencies the SorchaWalletPresentationConsumer
+// consumes. The full verifier-DID resolution stack lands in Spec 5 alongside
+// the production IIssuerKeyResolver; for now the JWK-registry resolver covers
+// the dev/demo path and the OptOut resolver is the fallback for tests that
+// don't populate the registry.
+builder.Services.AddHttpClient<Sorcha.Verifier.Engine.IStatusListCache,
+    Sorcha.Verifier.Engine.StatusListCache>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>();
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.IIssuerKeyResolver>(sp =>
+    sp.GetRequiredService<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>());
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.IVerifiablePresentationValidator>(sp =>
+    new Sorcha.Verifier.Engine.VerifiablePresentationValidator(
+        sp.GetRequiredService<Sorcha.Verifier.Engine.IStatusListCache>(),
+        sp.GetRequiredService<Sorcha.Verifier.Engine.IIssuerKeyResolver>(),
+        sp.GetRequiredService<TimeProvider>(),
+        sp.GetRequiredService<ILogger<Sorcha.Verifier.Engine.VerifiablePresentationValidator>>(),
+        requireIssuerSignature: builder.Configuration.GetValue<bool?>("IssuerSignature:Required") ?? true));
+
+// Feature 127 — Sorcha-wallet consumer. Verifies SD-JWT presentations posted
+// by the citizen's Sorcha wallet via Sorcha.Verifier.Engine. The first
+// non-HAIP IPresentationConsumer, implementing the new BuildInitiationAsync
+// extension on the consumer contract.
+builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
+    Sorcha.Blueprint.Service.Services.Implementation.SorchaWalletPresentationConsumer>();
+
+// Feature 127 — single-use ClaimsFetchToken store. Minted by InitiateAsync
+// (for Sorcha-wallet only); consumed atomically by the disclosed-claims
+// endpoint. Backed by Redis via the existing IConnectionMultiplexer the
+// F111 stores already share.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IClaimsFetchTokenStore,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisClaimsFetchTokenStore>();
+
+// Feature 127 — short-TTL plaintext stash of disclosed claims, written
+// alongside the outcome tx for the disclosed-claims endpoint to read.
+// Avoids re-decrypting the register tx on every council-page fetch.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IDisclosedClaimsStore,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisDisclosedClaimsStore>();
 
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.AbandonmentSweeper>();
 

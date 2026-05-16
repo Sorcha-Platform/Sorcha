@@ -884,6 +884,40 @@ Service-to-service only (`AuthorizationPolicies.RequireService`). Called by a re
 }
 ```
 
+#### `GET /api/presentations/{presentationRequestId}/disclosed-claims?token={ClaimsFetchToken}`
+
+**Feature 127** — council-page-facing endpoint that returns disclosed claims in plaintext for autofill after a successful Sorcha-wallet presentation. Token-authenticated, single-use, short-TTL. The token is minted by `PresentationLifecycleService.InitiateAsync` ONLY for consumers that produce council-page-readable claims (currently `"sorcha-wallet"`) and returned alongside the `presentationRequestId`. F111's existing `presentation-outcome` register transaction remains the authoritative record; this endpoint is the operational signal for the council page to read the claims without re-decrypting the register tx.
+
+**Auth model:** the council page is unauthenticated at the broader sense — the token IS the auth scope. The token is single-use (atomic `GETDEL` via Lua against `IClaimsFetchTokenStore`), bound to a single `presentationRequestId`, expires when the presentation validity window expires.
+
+**Response (success, claims ready):** `200 OK`
+```json
+{
+  "presentationRequestId": "8f6b94de-...",
+  "status": "success",
+  "claims": {
+    "givenName": "Sarah",
+    "familyName": "Example",
+    "dateOfBirth": "1968-04-12",
+    "homeAddress": "12 Brae Road, Strathcarron, IV54 8YQ"
+  },
+  "subjectDisplayName": "Sarah Example"
+}
+```
+
+**Response (outcome pending):** `200 OK` with `{ "presentationRequestId": "...", "status": "pending" }`. The token is consumed; the council page reuses the same token on retry only if it polled before the hub `PresentationOutcomeReady` signal arrived.
+
+**Error responses:**
+- `400 token-missing` — `?token=` not provided.
+- `401 token-invalid` — Token unknown, expired, or already used.
+- `401 token-mismatch` — Token doesn't bind to the path's `presentationRequestId`.
+- `404 presentation-not-found` — No `presentation-initiated` record (expired or never minted).
+- `410 outcome-decline` — Outcome was a decline; no claims to disclose.
+- `410 outcome-abandoned` — Attempt was abandoned.
+- `410 claims-expired` — Outcome was success but the disclosed-claims stash TTL elapsed.
+
+Full contract: `specs/127-credential-gated-service/contracts/disclosed-claims-endpoint.md`.
+
 ### Endpoints
 
 #### 1. Get All Blueprints

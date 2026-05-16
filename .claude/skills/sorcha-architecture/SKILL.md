@@ -1070,6 +1070,8 @@ Single-use enforcement: `EnrolSessionService.MintAsync` writes a sentinel value 
 
 `OnReady` fires with the resolved platformUserId once the citizen reaches FastPath. Sub-components: `PreflightSignupSurface`, `WalletPairingSurface` (with `TierMode.MiniGate` / `TierMode.PostSignup` copy), `HybridQrAffordance` (with `HybridQrLayout.Auto` / `QrFirst` / `LinkFirst` for FR-008 same-device mobile prominence).
 
+A complete worked example of a consumer page composing `EnrolGateComponent` lives in `samples/strathcarron-portal/Pages/DrivingLicence.razor` — the Strathcarron Council sample portal that ships alongside the platform per the platform-vs-consumer boundary contract (`docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md`). F127 PR-A relocated this page out of `Sorcha.UI.Web.Client` into `samples/` as the structural prerequisite for the F127 credential-gating work.
+
 ### Cross-device pairing signal
 
 `IEnrolPairingSignal` composes `TenantHubConnection.OnDeviceEnrolled` (SignalR, primary) with a 3-second `/api/v1/me/devices` poll (fallback after 2 s of no hub connection). Manual-recovery affordance fires after 60 s of no signal (FR-016 / SC-005). On signal, the surface flips to "Phone ready ✓" and `OnReady` cascades up to the consuming council page.
@@ -1088,3 +1090,95 @@ Single-use enforcement: `EnrolSessionService.MintAsync` writes a sentinel value 
 - **`Sorcha.UI.Components.User` RootNamespace is `Sorcha.UI.Core`** — files live under `Components.User/...` folders but namespaces are rooted at `Sorcha.UI.Core`, so consumers `using Sorcha.UI.Core.Components.EnrolGate`.
 - **Single-use enforcement on `IAtomicDistributedCache`** uses SetAsync-at-create + GetAndRemoveAsync-at-consume (the established `Sorcha.Haip.Service.NonceStore` pattern). No native `SET NX` on the interface — this pattern is the convention.
 - **Idempotent re-register publishes `DeviceEnrolled` too.** A council page that missed the original signal (refresh, hub disconnect during first enrolment) still advances. Subscribers tolerate the repeat.
+
+## Credential gates (Feature 127)
+
+Spec 4 of the Strathcarron citizen arc. Adds **`SorchaWalletPresentationConsumer`** to F111's Timebound Presentation Lifecycle — the first non-HAIP `IPresentationConsumer`. Council pages gate a starting action on the citizen's existing Sorcha-Wallet-held credential; the disclosed claims pre-populate the form on the next action; the citizen fills the gap fields and submits. Full design: `docs/superpowers/specs/2026-05-15-spec-4-credential-gated-second-service-design.md` (§14 carries the F111 reconciliation that landed during PR-B; the pre-amendment shape of §3/§4/§8 is superseded).
+
+### Three-action chain (the F111 idiom for "verify then fill")
+
+```
+verify-identity         citizen, starting action
+                        credentialRequirements[0].presentationSource = "SorchaWallet"
+                        no form schema — exists solely to gate
+       │
+       ▼ predecessor
+submit-blue-badge       citizen
+                        form schema with only the gap fields
+                        x-persona.presentation = "verify-identity"  (autofill)
+       │
+       ▼ predecessor
+issue-blue-badge        licensing-officer
+                        credentialIssuance to SorchaLocalWallet
+```
+
+Worked example: `walkthroughs/Strathcarron/blueprints/strathcarron-blue-badge.json`.
+
+### Server surface (extends F111's existing surface)
+
+| Method | Path | Owner | Status |
+|---|---|---|---|
+| `POST` | (existing action-submission endpoint) | F111 | unchanged — submitting the `verify-identity` action fires F111's `InitiateAsync`, which dispatches to `SorchaWalletPresentationConsumer.BuildInitiationAsync` and mints a single-use `ClaimsFetchToken`. |
+| `GET` | `/api/presentations/{requestId}/status` | F111 | unchanged — used as the polling fallback. |
+| `POST` | `/api/presentations/callbacks/sorcha-wallet/{requestId}` | F111 | unchanged endpoint shape — wallet posts signed VP; F111 dispatches to `SorchaWalletPresentationConsumer.VerifyAsync`. |
+| `GET` | `/api/presentations/{requestId}/disclosed-claims?token={ClaimsFetchToken}` | **NEW (F127)** | Returns disclosed claims in plaintext to the council page for autofill. Token-authed (single-use), bound to a specific `presentationRequestId`. Statuses: 200 `success` / 200 `pending` / 401 `token-*` / 410 `outcome-decline` / 410 `outcome-abandoned` / 410 `claims-expired`. |
+
+### `IPresentationConsumer` extension (the F111 deferred contract)
+
+F127 lands F111's "non-HAIP initiation contract extension" via a default-throws default-interface-method:
+
+```csharp
+public interface IPresentationConsumer
+{
+    string ConsumerName { get; }
+    Task<PresentationOutcome> VerifyAsync(...);
+    Task<ConsumerInitiationDescriptor> BuildInitiationAsync(...)
+        => throw new NotSupportedException(...);  // HAIP keeps its hardcoded path
+}
+```
+
+HAIP impls remain unchanged. `SorchaWalletPresentationConsumer` overrides `BuildInitiationAsync` to return an OID4VP `openid4vp://` request URI carrying the council DID, presentation definition derived from `credentialRequirement`, fresh nonce, and `response_uri` resolving to the F111 callback endpoint.
+
+### Hub event
+
+`Task PresentationOutcomeReady(string presentationRequestId)` on `IBlueprintHubClient`. Published from `PresentationLifecycleService.HandleOutcomeAsync` to `BlueprintHubGroups.PresentationNonce(presentationRequestId)` on every terminal outcome write (success or decline). Thin-signal contract — opaque ID only; council page fetches lifecycle state via F111's status endpoint, and on success fetches plaintext claims via the new disclosed-claims endpoint.
+
+### Library component (council-page-side)
+
+`CredentialGateComponent` in `Sorcha.UI.Components.User` (under `Sorcha.UI.Core.Components.CredentialGate` namespace). Consumer-side API:
+
+```razor
+<EnrolGateComponent CouncilName="..." OnReady="@HandleCitizenReady">
+    <CredentialGateComponent Init="@_init"
+                             OnPresented="@HandlePresentedAsync"
+                             LinkBackUrl="/services/driving-licence"
+                             NameOfMissingCredentialType="Assured Identity">
+        <BlueBadgeForm Disclosed="@_disclosed" OnSubmit="HandleFormSubmit" />
+    </CredentialGateComponent>
+</EnrolGateComponent>
+```
+
+The page owns the action-submission HTTP call (its own auth, retry policy, error UX) and hands the gate a `CredentialGateInit` (`PresentationRequestId` + `AuthorizationRequestUri` + `ClaimsFetchToken`). The gate owns the subsequent QR + signal + claims-fetch + autofill handoff.
+
+### Cross-device coordination
+
+`IPresentationSignal` composes `PresentationHubConnection.OnPresentationOutcomeReady` (SignalR primary) with a 3-second F111 `/status` poll (fallback after 2 s of no hub connection). Manual-recovery affordance fires after 60 s of no signal. Mirror of F126's `IEnrolPairingSignal` cadence.
+
+> Named `PresentationHubConnection` rather than `BlueprintHubConnection` because `Sorcha.UI.Core.Services.BlueprintHubConnection` already exists for admin / workflow notifications and the two would collide.
+
+### Storage
+
+Two new short-TTL Redis stores in `Sorcha.Blueprint.Service.Storage.Presentations/`:
+
+- **`IClaimsFetchTokenStore`** — token → presentationRequestId binding. Single-use via Lua GETDEL.
+- **`IDisclosedClaimsStore`** — plaintext claims keyed by presentationRequestId, TTL = remaining validity window (floored at 10 s). Written by `HandleOutcomeAsync` immediately BEFORE the hub publish — guarantees race-safe-readable claims the moment the council page receives the signal.
+
+Both back the disclosed-claims endpoint; the register transaction remains the legal record, the Redis stash is the operational signal.
+
+### Non-obvious patterns worth keeping
+
+- **`PresentationSource.SorchaWallet`** enum value on `CredentialRequirement` is the blueprint-author surface. JSON-serialised as `"SorchaWallet"` (PascalCase). Maps to consumer-name `"sorcha-wallet"` in `PresentationLifecycleService.InitiateAsync`'s dispatch switch.
+- **`ClaimsFetchToken` is opt-in**: `InitiateAsync` mints + returns one ONLY for consumers that produce council-page-readable claims (currently `"sorcha-wallet"`). HAIP gets `null`.
+- **The disclosed-claims endpoint consumes the token on pending-state too** — the council page must reuse the same token on retry. Because the page subscribes to the hub signal and fetches only on outcome ready, pending-state fetches should be rare; the token semantics keep the surface simple.
+- **F119 deferred outcomes don't publish `PresentationOutcomeReady` yet.** The typical inline path covers the common case; the deferred-write path (seal-aware ordering) needs its own publish from `PresentationSealSubscriber`. Inline TODO flagged in `PresentationLifecycleService.HandleOutcomeAsync`.
+- **`SorchaWalletPresentationConsumer.BuildInitiationAsync` emits `did:sorcha:org:UNKNOWN`** as the OID4VP `client_id` placeholder. Verifier-DID resolution from blueprint metadata lands in Spec 5 alongside the production `IIssuerKeyResolver`.

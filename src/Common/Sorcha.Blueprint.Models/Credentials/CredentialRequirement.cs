@@ -68,5 +68,14 @@ public enum PresentationSource
     SorchaInternal = 0,
 
     /// <summary>External HAIP wallet — presented via OpenID4VP direct_post flow.</summary>
-    HaipExternalWallet = 1
+    HaipExternalWallet = 1,
+
+    /// <summary>
+    /// Sorcha Wallet PWA (Feature 114 +) — citizen presents from their on-device
+    /// Sorcha wallet. Server-side validation runs in
+    /// <c>SorchaWalletPresentationConsumer</c> via <c>Sorcha.Verifier.Engine</c>;
+    /// no external verifier service is involved. Introduced by Feature 127 as
+    /// the first non-HAIP consumer in the F111 timebound presentation lifecycle.
+    /// </summary>
+    SorchaWallet = 2
 }

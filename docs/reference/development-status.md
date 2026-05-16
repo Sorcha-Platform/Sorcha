@@ -102,6 +102,15 @@ For detailed implementation status, see the individual section files:
 
 ## Recent Completions
 
+### 2026-05-16
+- **127-Credential-Gated-Second-Service** (Spec 4 of the Strathcarron citizen arc) — in flight on branch `127-credential-gated-service`. Four sub-PRs:
+  - **PR-A #719** (merged): `samples/strathcarron-portal/` structural extract per the platform-vs-consumer boundary contract. F126 driving-licence page relocated out of `Sorcha.UI.Web.Client`. CI grep gate (`scripts/check-samples-references.ps1` + `.github/workflows/samples-boundary-check.yml`) enforces "no `ProjectReference` into `src/Apps/Sorcha.UI/` from samples except `Sorcha.UI.Components.User`".
+  - **PR-B #720** (merged): F111 reconciliation — F127 adopts F111's Timebound Presentation Lifecycle as substrate. New `SorchaWalletPresentationConsumer` (first non-HAIP `IPresentationConsumer`) wraps `Sorcha.Verifier.Engine` server-side. New `BuildInitiationAsync` extension on `IPresentationConsumer` (lands the F111 deferred contract). New `GET /api/presentations/{id}/disclosed-claims?token=…` endpoint with single-use `ClaimsFetchToken`. New `BlueprintHubGroups.PresentationNonce` + `IBlueprintHubClient.PresentationOutcomeReady` thin-signal event. Library: `PresentationHubConnection`, `IPresentationSignal`, `CredentialGateComponent`. 25 new tests (11 consumer unit, 8 bunit, 6 FakeTimeProvider) — all pass.
+  - **PR-C #721** (merged): Blue Badge content — three-action blueprint chain (`verify-identity` → `submit-blue-badge` → `issue-blue-badge`), `BlueBadgeForm.razor` + `BlueBadge.razor` in the sample, `setup-blue-badge-demo.ps1` walkthrough seed chaining off Spec 3 state.json.
+  - **PR-D**: doc propagation + structured-logging audit + Redis store unit tests + (deferred) integration tests + final regression.
+- **F127 ↔ F111 reconciliation** captured in `docs/superpowers/specs/2026-05-15-f127-f111-reconciliation.md` and the Spec 4 design doc §14. The pre-amendment Spec 4 shape (greenfield endpoints + new blueprint syntax + nonce stash) was discarded in favour of extending F111's shipped lifecycle.
+- **Platform-vs-consumer boundary** locked via `docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md` (PR #718). Application-specific demo code lives in `samples/`, builds to its own container, no `ProjectReference` into `src/Apps/Sorcha.UI/` beyond `Sorcha.UI.Components.User`. Driver: deployment realism.
+
 ### 2026-04-22
 - **110-Agent-Persona-Mode** (Feature 110 User Stories 1-4 shipped via PRs #371, #372, #373, #374)
   - Adds an optional "persona" loop to `Sorcha.Agent` that fires workflow-starting actions on agent launch, unblocking the TradeFinance walkthrough (which hung because action 1 had no prior transaction to populate any inbox).

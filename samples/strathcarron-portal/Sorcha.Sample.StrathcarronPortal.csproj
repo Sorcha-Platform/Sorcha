@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
+    <StaticWebAssetProjectMode>Default</StaticWebAssetProjectMode>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!--
+      Per the platform-vs-consumer boundary contract (see samples/README.md +
+      docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md):
+      THIS PROJECT MAY ONLY ProjectReference src/Apps/Sorcha.UI/ via
+      Sorcha.UI.Components.User. CI grep gate enforces.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="MudBlazor" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Allowed: the published consumer-facing component library. -->
+    <ProjectReference Include="..\..\src\Apps\Sorcha.UI\Sorcha.UI.Components.User\Sorcha.UI.Components.User.csproj" />
+    <!-- Allowed: third-party-consumable libraries (NuGet-shape contracts). -->
+    <ProjectReference Include="..\..\src\Common\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
+  </ItemGroup>
+
+</Project>
