@@ -39,3 +39,14 @@
 ## Status
 
 All items pass on first iteration. Spec is ready for `/speckit.plan` (or `/speckit.clarify` if the user wants to challenge any open assumption — though the brainstorm exhausted the load-bearing questions).
+
+## Post-implementation revalidation (2026-05-16, PR-D wave 2)
+
+Re-checked the spec against the same criteria after PR-A / PR-B / PR-C merged into the feature branch and the F111 reconciliation amendment landed (design doc §14, spec.md FR rewrites, contracts/ swap, data-model.md rewrite). All items still pass:
+
+- **Content quality** — spec retains user-value framing; FR rewrites preserved the "what the citizen sees" emphasis. No implementation-detail leakage that wasn't there before the reconciliation.
+- **Requirement completeness** — FR-001..FR-023 renumbering accommodated the new claims-fetch endpoint (FR-004) and three-action chain (FR-005). No `[NEEDS CLARIFICATION]` markers introduced.
+- **Success criteria** — SC list unchanged from the original draft. SC-004 (2 s signal latency) is implemented behind `IPresentationSignal` + `PresentationOutcomeReady`; SC-006 (no F124/F125/F126 regression) verified by 1206/1206 `Sorcha.UI.Core.Tests` + 721/721 `Sorcha.Blueprint.Service.Tests` post-PR-D wave 2.
+- **Feature readiness** — every FR has implementation in code (T028–T058 marked complete) + test coverage at the unit/bunit/FakeTimeProvider layer. Integration tests (T040-T043) deferred per the operator-gated WAF/Testcontainers boundary.
+
+No iteration needed; the F111 reconciliation strengthened the requirements rather than introducing ambiguity.
