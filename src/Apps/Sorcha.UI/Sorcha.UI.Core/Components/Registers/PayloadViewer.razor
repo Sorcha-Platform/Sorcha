@@ -5,10 +5,9 @@
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Components.Shared
+@using Sorcha.UI.Core.Components.Forms
 
 @inject IPayloadDecoderService Decoder
-@inject IJSRuntime JSRuntime
-@inject ISnackbar Snackbar
 @inject ICurrentUserWalletService CurrentUserWalletService
 @inject IBlueprintSchemaService BlueprintSchemaService
 
@@ -38,12 +37,12 @@
              PanelClass="pa-0">
         <MudTabPanel Text="Raw" data-testid="tab-raw">
             <div class="payload-code-container" data-testid="raw-content">
-                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                               Size="Size.Small"
-                               Class="copy-button"
-                               OnClick="CopyRaw"
-                               aria-label="Copy raw payload"
-                               data-testid="copy-raw" />
+                <span class="copy-button">
+                    <CopyButton Value="@_rawContent"
+                                Variant="CopyButtonVariant.IconButton"
+                                Size="Size.Small"
+                                Label="Copy raw payload" />
+                </span>
                 <pre class="payload-monospace">@_rawContent</pre>
             </div>
         </MudTabPanel>
@@ -72,12 +71,12 @@
                 }
                 else
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                                   Size="Size.Small"
-                                   Class="copy-button"
-                                   OnClick="CopyDecoded"
-                                   aria-label="Copy decoded payload"
-                                   data-testid="copy-decoded" />
+                    <span class="copy-button">
+                        <CopyButton Value="@_displayContent"
+                                    Variant="CopyButtonVariant.IconButton"
+                                    Size="Size.Small"
+                                    Label="Copy decoded payload" />
+                    </span>
                     @if (_schemaFields is not null && _isJson && _jsonElement.HasValue)
                     {
                         <div class="payload-monospace payload-wrap" data-testid="decoded-annotated">
@@ -110,12 +109,12 @@
                 }
                 else if (_isJson && _jsonElement.HasValue)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                                   Size="Size.Small"
-                                   Class="copy-button"
-                                   OnClick="CopyTree"
-                                   aria-label="Copy JSON payload"
-                                   data-testid="copy-tree" />
+                    <span class="copy-button">
+                        <CopyButton Value="@(_prettyJson ?? _decodedContent ?? string.Empty)"
+                                    Variant="CopyButtonVariant.IconButton"
+                                    Size="Size.Small"
+                                    Label="Copy JSON payload" />
+                    </span>
                     <JsonTreeView JsonElement="@_jsonElement" RootName="payload" SchemaFields="@_schemaFields" />
                 }
                 else
@@ -421,56 +420,6 @@
         }
     }
 
-    private async Task CopyRaw()
-    {
-        await CopyToClipboardAsync(_rawContent);
-    }
-
-    private async Task CopyDecoded()
-    {
-        await CopyToClipboardAsync(_displayContent);
-    }
-
-    private async Task CopyTree()
-    {
-        await CopyToClipboardAsync(_prettyJson ?? _decodedContent ?? string.Empty);
-    }
-
-    private async Task CopyToClipboardAsync(string text)
-    {
-        try
-        {
-            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", text);
-            if (success)
-            {
-                Snackbar.Add("Copied to clipboard", Severity.Success, config =>
-                {
-                    config.VisibleStateDuration = 1500;
-                    config.ShowCloseIcon = false;
-                });
-            }
-            else
-            {
-                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-            }
-        }
-        catch
-        {
-            try
-            {
-                await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
-                Snackbar.Add("Copied to clipboard", Severity.Success, config =>
-                {
-                    config.VisibleStateDuration = 1500;
-                    config.ShowCloseIcon = false;
-                });
-            }
-            catch
-            {
-                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-            }
-        }
-    }
 }
 
 <style>

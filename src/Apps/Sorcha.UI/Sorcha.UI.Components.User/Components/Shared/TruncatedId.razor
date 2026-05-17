@@ -2,8 +2,8 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using MudBlazor
+@implements IDisposable
 @inject IJSRuntime JS
-@inject ISnackbar Snackbar
 
 @if (string.IsNullOrEmpty(Value))
 {
@@ -15,7 +15,7 @@ else if (Value.Length <= MaxLength)
 }
 else
 {
-    <MudTooltip Text="@Value" Arrow="true" Placement="Placement.Top">
+    <MudTooltip Text="@_tooltipText" Arrow="true" Placement="Placement.Top">
         <MudText Typo="Typo.body2"
                  Class="@($"truncated-id {Class}")"
                  Style="@($"font-family: monospace; cursor: pointer; {Style}")"
@@ -46,6 +46,14 @@ else
         return $"{start}...{end}";
     }
 
+    // Tooltip morph is the inline feedback channel — no Snackbar / IInlineFeedback
+    // dependency since the trigger IS the tooltip target. Reverts after MorphMs.
+    private const int MorphMs = 1500;
+    private string _tooltipText => _showCopied ? "Copied ✓" : (Value ?? string.Empty);
+    private bool _showCopied;
+    private System.Timers.Timer? _resetTimer;
+    private bool _disposed;
+
     private async Task CopyToClipboard()
     {
         if (string.IsNullOrEmpty(Value)) return;
@@ -53,16 +61,36 @@ else
         try
         {
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", Value);
-            Snackbar.Add("Copied to clipboard", Severity.Success, config =>
-            {
-                config.VisibleStateDuration = 1500;
-                config.ShowTransitionDuration = 200;
-                config.HideTransitionDuration = 200;
-            });
+            ShowCopiedTooltip();
         }
         catch
         {
-            Snackbar.Add("Failed to copy", Severity.Error);
+            // Silent fail — the truncated text fallback is to manually
+            // hover the tooltip and select the full value. No Snackbar.
         }
+    }
+
+    private void ShowCopiedTooltip()
+    {
+        _showCopied = true;
+        StateHasChanged();
+        _resetTimer?.Stop();
+        _resetTimer?.Dispose();
+        _resetTimer = new System.Timers.Timer(MorphMs) { AutoReset = false };
+        _resetTimer.Elapsed += (_, _) =>
+        {
+            if (_disposed) return;
+            _showCopied = false;
+            InvokeAsync(StateHasChanged);
+        };
+        _resetTimer.Start();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _resetTimer?.Stop();
+        _resetTimer?.Dispose();
+        _resetTimer = null;
     }
 }
