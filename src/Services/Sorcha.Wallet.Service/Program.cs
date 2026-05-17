@@ -65,6 +65,11 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter,
     Sorcha.Wallet.Service.Services.Implementation.WalletInboxWriter>();
 
+// Phase 2c of the Snackbar retirement — citizen-wallet device revocation
+// drops a Category=Security inbox entry on the owning citizen.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.ICitizenDeviceInboxWriter,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenDeviceInboxWriter>();
+
 // Singleton TrustServiceClient — 5-min cert cache must survive across requests,
 // so the HttpClient is captured once. PooledConnectionLifetime caps connection
 // age at 2 min so DNS / mTLS rotation lands via connection recycling.

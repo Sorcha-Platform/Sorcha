@@ -26,6 +26,10 @@ public sealed class CitizenWalletRevokeEndpointTests
 
     private readonly Mock<IPlatformUserDeviceClient> _deviceClient = new();
     private readonly Mock<IDeviceRevocationService> _revocation = new();
+    // Phase 2c — RevokeDevice now drops a Category=Security inbox entry via
+    // ICitizenDeviceInboxWriter. The mock lets the existing assertions pass
+    // untouched (writer is fail-safe and irrelevant to status-code paths).
+    private readonly Mock<Sorcha.Wallet.Service.Services.Implementation.ICitizenDeviceInboxWriter> _inboxWriter = new();
 
     private static HttpContext BuildHttpContext(
         Guid? platformUserId = null,
@@ -55,6 +59,7 @@ public sealed class CitizenWalletRevokeEndpointTests
             context,
             _deviceClient.Object,
             _revocation.Object,
+            _inboxWriter.Object,
             NullLogger<Program>.Instance,
             CancellationToken.None
         ]);
