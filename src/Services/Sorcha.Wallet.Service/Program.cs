@@ -65,6 +65,11 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter,
     Sorcha.Wallet.Service.Services.Implementation.WalletInboxWriter>();
 
+// Phase 2 of the Snackbar retirement — wallet-lifecycle events (created,
+// recovered, deleted, address registered) also drop durable inbox entries.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter,
+    Sorcha.Wallet.Service.Services.Implementation.WalletWorkflowInboxWriter>();
+
 // Singleton TrustServiceClient — 5-min cert cache must survive across requests,
 // so the HttpClient is captured once. PooledConnectionLifetime caps connection
 // age at 2 min so DNS / mTLS rotation lands via connection recycling.
