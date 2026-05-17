@@ -87,6 +87,17 @@ foreach ($file in $candidates) {
 
     foreach ($line in (Get-Content -LiteralPath $file.FullName)) {
         $lineNum++
+
+        # Skip comment-only lines so XML docs and inline comments that mention
+        # ISnackbar (e.g. "replacement for ISnackbar") don't trigger the gate.
+        # The retirement plan explicitly documents the replacement surface;
+        # narrative references to the old API in prose aren't actual usage.
+        # Covered shapes:
+        #   C# // line comment, /// XML doc, /* block, * continuation, */ end
+        #   Razor @* block-comment line
+        $trimmedForCommentCheck = $line.TrimStart()
+        if ($trimmedForCommentCheck -match '^(//|/\*|\*|@\*)') { continue }
+
         foreach ($p in $patterns) {
             if ($line -match $p) {
                 $fileHasMatch = $true
