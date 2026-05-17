@@ -114,6 +114,7 @@
     private bool _inboxPanelOpen;
     private int _inboxUnreadCount;
     private bool _inboxHubStarted;
+    private bool _inboxInitInFlight;
 
     protected override async Task OnInitializedAsync()
     {
@@ -125,23 +126,51 @@
         await InitialiseInboxAsync();
     }
 
+    /// <summary>
+    /// IAccessTokenStore has no Changed event, so the SPA login flow (which
+    /// writes the token in place without rebuilding the layout) needs a
+    /// poll hook. OnAfterRenderAsync fires after every render; we re-attempt
+    /// the inbox wake-up if the hub hasn't started and the token now exists.
+    /// Once <see cref="_inboxHubStarted"/> flips true, the guard short-circuits
+    /// so this is cheap on subsequent renders. <see cref="_inboxInitInFlight"/>
+    /// prevents a re-entrant init when several renders queue between an
+    /// access-token write and the hub coming online.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_inboxHubStarted || _inboxInitInFlight) return;
+
+        var record = await AccessTokens.GetAsync();
+        if (record is null) return;
+
+        _inboxInitInFlight = true;
+        try
+        {
+            await InitialiseInboxAsync();
+        }
+        finally
+        {
+            _inboxInitInFlight = false;
+        }
+    }
+
     private void ToggleInboxPanel() => _inboxPanelOpen = !_inboxPanelOpen;
 
     /// <summary>
     /// Feature 118 / Phase A — bring the bell badge live. Cold-loads the
     /// unread count via REST, then subscribes to TenantHub for realtime
     /// updates. Hub failures are swallowed — the bell stays accurate on
-    /// the next REST refresh.
+    /// the next REST refresh. Idempotent: skips when already started.
     /// </summary>
     private async Task InitialiseInboxAsync()
     {
-        // Cold load — the badge surfaces from the first render even if the
-        // hub takes a moment to connect.
+        if (_inboxHubStarted) return;
+
         var record = await AccessTokens.GetAsync();
         if (record is null)
         {
-            // Anonymous PWA visit (pre-enrolment). Bell stays at zero; the
-            // hub will be started post-enrolment when a token exists.
+            // Anonymous PWA visit (pre-enrolment). Bell stays at zero. The
+            // OnAfterRenderAsync poll wakes it up once a token is written.
             return;
         }
 
@@ -163,6 +192,9 @@
         catch (Exception)
         {
             // Hub may be unavailable — auto-reconnect handles transient outages.
+            // Don't flip _inboxHubStarted so the OnAfterRenderAsync poll
+            // keeps retrying until the hub comes online.
+            TenantHub.OnInboxUnreadCountUpdated -= OnInboxUnreadCountUpdated;
         }
 
         await InvokeAsync(StateHasChanged);
