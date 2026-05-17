@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Seed allowlist for the Snackbar retirement migration.
+# Files listed here are permitted to contain `Snackbar.Add(` or `ISnackbar`
+# references. The CI gate (scripts/check-no-snackbar.ps1) fails when any new
+# file outside this list introduces those references.
+#
+# This list is a ratchet: it may only SHRINK, never grow. Each PR in the
+# Snackbar retirement effort should delete one or more lines as the
+# corresponding call sites migrate to IInlineFeedback / inbox writers /
+# CopyButton / inline MudAlert.
+#
+# When the list reaches zero entries, Phase 6 unmounts MudSnackbarProvider.
+#
+# Paths are repo-relative, forward-slashes, case-sensitive on Linux CI.
+
+src/Apps/Sorcha.Wallet.Pwa/Pages/Devices.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Index.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Shared/TruncatedId.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Shared/JwtViewerDialog.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Participants/ParticipantDetail.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletDetail.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyCredentials.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionToast.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OperationNotificationListener.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Settings.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/AccountsTab.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/AiDesignerPane.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/AiDesignerPane.razor.cs
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/DesignerToolbar.razor.cs
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Blueprints.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/InviteOrganisationDialog.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/InvitationsPanel.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/AcceptInvitationDialog.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletList.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/NewSubmissionWorkspace.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialOfferQrCard.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialClaimCard.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyProfile.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/SubscribeDialog.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/IssuedCredentials.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/OrganizationUserDetail.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/UserManagement.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/Invitations.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/UserList.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationList.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationDashboard.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrgSelectorPanel.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/CreateWallet.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Configuration/ProfileEditorDialog.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletAdmin.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Templates.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/SchemaLibrary.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/PropertiesPanel.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorRegistryPanel.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CreateOrganization.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/PlatformSettings.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/OrgSettings.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/SectorConfiguration.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/SchemaProviderHealth.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/IdpConfiguration.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/DomainRestrictions.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/AuditLog.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/EventsAdmin.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/TransactionDetailPanel.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/TransactionDetail.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/PayloadViewer.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/SchemaDetail.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/InstructionsTab.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/BlueprintJsonView.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/OrgSwitcher.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Operations.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Wallets/WalletAccessTab.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorThresholdPanel.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorConsentPanel.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationConfiguration.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ParticipantList.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletQrDialog.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Participants/Detail.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Templates/TemplateEvaluator.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/OfflineSyncIndicator.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ImportDialog.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ExportDialog.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ConditionEditor.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/CalculationEditor.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/ServiceHealthDashboard.razor
+src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/RecoverWallet.razor
