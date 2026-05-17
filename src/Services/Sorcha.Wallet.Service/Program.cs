@@ -65,6 +65,11 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter,
     Sorcha.Wallet.Service.Services.Implementation.WalletInboxWriter>();
 
+// Phase 2 of the Snackbar retirement — wallet-lifecycle events (created,
+// recovered, deleted, address registered) also drop durable inbox entries.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter,
+    Sorcha.Wallet.Service.Services.Implementation.WalletWorkflowInboxWriter>();
+
 // Phase 2c of the Snackbar retirement — citizen-wallet device revocation
 // drops a Category=Security inbox entry on the owning citizen.
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.ICitizenDeviceInboxWriter,

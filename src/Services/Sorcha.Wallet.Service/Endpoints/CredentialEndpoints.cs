@@ -294,13 +294,34 @@ public static class CredentialEndpoints
         string walletAddress,
         string credentialId,
         ICredentialStore store,
+        Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
         CancellationToken cancellationToken = default)
     {
+        // Phase 2b of the Snackbar retirement — capture the credential Type
+        // BEFORE the delete runs so the inbox entry can show the human-readable
+        // credential type. The store-side delete removes the row so a post-delete
+        // fetch would 404.
+        var snapshotForInbox = await store.GetByIdForWalletAsync(credentialId, walletAddress, cancellationToken);
+
         // Wallet-scoped delete — credential IDs are not globally unique (Feature 106).
         // DeleteAsync(credentialId, walletAddress) performs the composite-key lookup and
         // delete atomically, removing the TOCTOU window of the former pre-check + delete pair.
         var deleted = await store.DeleteAsync(credentialId, walletAddress, cancellationToken);
-        return deleted ? Results.NoContent() : Results.NotFound();
+        if (!deleted)
+        {
+            return Results.NotFound();
+        }
+
+        if (snapshotForInbox is not null)
+        {
+            await inboxWriter.WriteCredentialDeletedAsync(
+                walletAddress: walletAddress,
+                credentialId: credentialId,
+                credentialType: snapshotForInbox.Type,
+                ct: cancellationToken).ConfigureAwait(false);
+        }
+
+        return Results.NoContent();
     }
 
     private static async Task<IResult> ExportCredential(
@@ -420,6 +441,7 @@ public static class CredentialEndpoints
         [FromBody] UpdateStatusRequest request,
         ICredentialStore store,
         ILoggerFactory loggerFactory,
+        Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
         CancellationToken cancellationToken = default)
     {
         var logger = loggerFactory.CreateLogger("Sorcha.Wallet.Service.Endpoints.PatchCredentialStatus");
@@ -473,7 +495,21 @@ public static class CredentialEndpoints
         // Modern path (Feature 118): WalletHub emits CredentialStatusChanged
         // directly; the legacy wallet:credential-status Redis bridge that fed
         // EventsHub was retired in T121. No publish here.
-        _ = previousStatus; // retained for future inbox-write enrichment if needed
+        _ = previousStatus; // reserved for future inbox-write enrichment if needed
+
+        // Phase 2b of the Snackbar retirement — fire a durable inbox entry
+        // on holder decline. Accept doesn't produce a new entry because the
+        // existing "credential received" entry already covers the issuance;
+        // accept is a holder-side state change, not a new event.
+        if (targetStatus == CredentialStatus.Declined)
+        {
+            await inboxWriter.WriteCredentialDeclinedAsync(
+                walletAddress: walletAddress,
+                credentialId: credentialId,
+                credentialType: updated.Type,
+                ct: cancellationToken).ConfigureAwait(false);
+        }
+
         return Results.Ok(updated);
     }
 
