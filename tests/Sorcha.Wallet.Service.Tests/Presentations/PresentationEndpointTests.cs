@@ -13,6 +13,13 @@ namespace Sorcha.Wallet.Service.Tests.Presentations;
 public class PresentationEndpointTests
 {
     private readonly Mock<IPresentationRequestService> _serviceMock = new();
+    // Phase 2b — SubmitPresentation now takes ICredentialStore + IWalletInboxWriter
+    // so the reflection-based InvokeSubmit must pass these as well. Both default
+    // mocks let calls fall through without affecting the existing assertions
+    // (the inbox writer is fail-safe; the credential lookup returns null which
+    // short-circuits the inbox-write path).
+    private readonly Mock<Sorcha.Wallet.Service.Credentials.ICredentialStore> _credentialStoreMock = new();
+    private readonly Mock<Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter> _inboxWriterMock = new();
 
     [Fact]
     public async Task CreateRequest_ValidBody_Returns201WithRequestId()
@@ -313,7 +320,13 @@ public class PresentationEndpointTests
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         method.Should().NotBeNull("SubmitPresentation should exist");
 
-        var result = method!.Invoke(null, [requestId, body, _serviceMock.Object, CancellationToken.None]);
+        var result = method!.Invoke(null, [
+            requestId,
+            body,
+            _serviceMock.Object,
+            _credentialStoreMock.Object,
+            _inboxWriterMock.Object,
+            CancellationToken.None]);
         return await (Task<IResult>)result!;
     }
 

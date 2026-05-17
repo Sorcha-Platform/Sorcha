@@ -13,6 +13,7 @@ using Sorcha.Wallet.Pwa.Services.Verification;
 using Sorcha.UI.Components.User.Services.Capture;
 using Sorcha.UI.Components.User.Services.Signing;
 using Sorcha.UI.Components.User.Services.Verification;
+using Sorcha.UI.Core.Services;
 using Sorcha.ServiceClients.CitizenWallet;
 
 namespace Sorcha.Wallet.Pwa.Extensions;
@@ -176,6 +177,25 @@ public static class ServiceCollectionExtensions
             gatewayBaseAddress,
             sp.GetRequiredService<IAccessTokenStore>(),
             sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CitizenWalletHubConnection>>()));
+
+        // Feature 118 / Phase A — durable inbox surface. The PWA mirrors the
+        // main web app: an HTTP client for /api/me/inbox/* under the bearer-
+        // and clock-handler chain, plus a TenantHubConnection singleton for
+        // realtime InboxEntryAdded / InboxUnreadCountUpdated nudges.
+        services.AddHttpClient<IInboxApiService, InboxApiService>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        services.AddSingleton(sp => new TenantHubConnection(
+            gatewayBaseAddress,
+            accessTokenProvider: async () =>
+            {
+                var record = await sp.GetRequiredService<IAccessTokenStore>().GetAsync();
+                return record?.AccessToken;
+            },
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<TenantHubConnection>>(),
+            sp.GetService<IInboxApiService>()));
 
         return services;
     }
