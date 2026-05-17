@@ -55,6 +55,12 @@ public class CitizenWalletPage
     /// <summary>Top-bar Present icon (MainLayout AppBar).</summary>
     public ILocator TopBarPresentButton => _page.Locator("[data-testid='topbar-present-button']");
 
+    /// <summary>Top-bar Inbox bell icon (MainLayout AppBar, Feature 118 / Phase A).</summary>
+    public ILocator TopBarInboxButton => _page.Locator("[data-testid='topbar-inbox-button']");
+
+    /// <summary>Unread-count badge on the inbox bell. Absent when unread count is zero.</summary>
+    public ILocator TopBarInboxBadge => _page.Locator("[data-testid='topbar-inbox-badge']");
+
     /// <summary>Footer Home nav button.</summary>
     public ILocator FooterNavHome => _page.Locator("[data-testid='footer-nav-home']");
 

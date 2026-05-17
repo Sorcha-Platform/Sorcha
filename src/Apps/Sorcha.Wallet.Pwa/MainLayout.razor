@@ -13,6 +13,8 @@
 *@
 @using Sorcha.UI.Components.User.Components.Context
 @using Sorcha.UI.Components.User.Components.Onboarding
+@using Sorcha.UI.Core.Components.Inbox
+@using Sorcha.UI.Core.Services
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Context
 @using Sorcha.Wallet.Pwa.Services.Onboarding
@@ -22,6 +24,9 @@
 @inject IUserContext UserContext
 @inject IUserOrgMembershipsClient MembershipsClient
 @inject IWalletFlagsStore WalletFlags
+@inject IInboxApiService InboxApi
+@inject TenantHubConnection TenantHub
+@inject IAccessTokenStore AccessTokens
 
 <MudThemeProvider />
 <MudPopoverProvider />
@@ -44,6 +49,23 @@
                              Memberships="@_chipMemberships"
                              OnContextSelected="@OnContextSelectedAsync" />
         <MudSpacer />
+        @* Feature 118 / Phase A — durable inbox bell. Same surface as the
+           main web app's MainLayout.razor; backed by the same /api/me/inbox
+           REST endpoints and TenantHub realtime signals. *@
+        <MudIconButton Icon="@Icons.Material.Filled.Notifications"
+                       Color="Color.Inherit"
+                       OnClick="@ToggleInboxPanel"
+                       data-testid="topbar-inbox-button"
+                       aria-label="Inbox"
+                       Title="Inbox">
+            @if (_inboxUnreadCount > 0)
+            {
+                <MudBadge Content="@_inboxUnreadCount"
+                          Color="Color.Primary"
+                          Overlap="true"
+                          data-testid="topbar-inbox-badge" />
+            }
+        </MudIconButton>
         <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner"
                        Color="Color.Inherit"
                        OnClick="@(() => Nav.NavigateTo("present"))"
@@ -75,6 +97,12 @@
                        ShouldRun="@_tourShouldRun"
                        OnCompleted="@PersistTourDismissedAsync"
                        OnDismissedEarly="@PersistTourDismissedAsync" />
+
+    @* Feature 118 / Phase A — durable inbox drawer. Mirrors the main web
+       app's MainLayout mount. Subscribes to TenantHub.OnInboxEntryAdded
+       internally for realtime refresh; the bell badge above is driven by
+       OnInboxUnreadCountUpdated wired up below. *@
+    <InboxPanel @bind-IsOpen="_inboxPanelOpen" />
 </MudLayout>
 
 @code {
@@ -83,6 +111,10 @@
         Array.Empty<ContextChipSwitcher.ContextChipMembership>();
     private string _activeLabel = "Personal";
     private bool _tourShouldRun;
+    private bool _inboxPanelOpen;
+    private int _inboxUnreadCount;
+    private bool _inboxHubStarted;
+    private bool _inboxInitInFlight;
 
     protected override async Task OnInitializedAsync()
     {
@@ -91,6 +123,87 @@
         await ReloadMembershipsAsync();
         UpdateActiveLabel();
         await EvaluateTourEligibilityAsync();
+        await InitialiseInboxAsync();
+    }
+
+    /// <summary>
+    /// IAccessTokenStore has no Changed event, so the SPA login flow (which
+    /// writes the token in place without rebuilding the layout) needs a
+    /// poll hook. OnAfterRenderAsync fires after every render; we re-attempt
+    /// the inbox wake-up if the hub hasn't started and the token now exists.
+    /// Once <see cref="_inboxHubStarted"/> flips true, the guard short-circuits
+    /// so this is cheap on subsequent renders. <see cref="_inboxInitInFlight"/>
+    /// prevents a re-entrant init when several renders queue between an
+    /// access-token write and the hub coming online.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_inboxHubStarted || _inboxInitInFlight) return;
+
+        var record = await AccessTokens.GetAsync();
+        if (record is null) return;
+
+        _inboxInitInFlight = true;
+        try
+        {
+            await InitialiseInboxAsync();
+        }
+        finally
+        {
+            _inboxInitInFlight = false;
+        }
+    }
+
+    private void ToggleInboxPanel() => _inboxPanelOpen = !_inboxPanelOpen;
+
+    /// <summary>
+    /// Feature 118 / Phase A — bring the bell badge live. Cold-loads the
+    /// unread count via REST, then subscribes to TenantHub for realtime
+    /// updates. Hub failures are swallowed — the bell stays accurate on
+    /// the next REST refresh. Idempotent: skips when already started.
+    /// </summary>
+    private async Task InitialiseInboxAsync()
+    {
+        if (_inboxHubStarted) return;
+
+        var record = await AccessTokens.GetAsync();
+        if (record is null)
+        {
+            // Anonymous PWA visit (pre-enrolment). Bell stays at zero. The
+            // OnAfterRenderAsync poll wakes it up once a token is written.
+            return;
+        }
+
+        try
+        {
+            _inboxUnreadCount = await InboxApi.GetUnreadCountAsync();
+        }
+        catch (Exception)
+        {
+            // Non-critical UI element — silent on transport failure.
+        }
+
+        TenantHub.OnInboxUnreadCountUpdated += OnInboxUnreadCountUpdated;
+        try
+        {
+            await TenantHub.StartAsync();
+            _inboxHubStarted = true;
+        }
+        catch (Exception)
+        {
+            // Hub may be unavailable — auto-reconnect handles transient outages.
+            // Don't flip _inboxHubStarted so the OnAfterRenderAsync poll
+            // keeps retrying until the hub comes online.
+            TenantHub.OnInboxUnreadCountUpdated -= OnInboxUnreadCountUpdated;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task OnInboxUnreadCountUpdated(int unreadCount, DateTimeOffset occurredAt, string traceId)
+    {
+        _inboxUnreadCount = unreadCount;
+        return InvokeAsync(StateHasChanged);
     }
 
     private async Task EvaluateTourEligibilityAsync()
@@ -147,10 +260,14 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         UserContext.OnContextChanged -= HandleContextChanged;
-        return ValueTask.CompletedTask;
+        if (_inboxHubStarted)
+        {
+            TenantHub.OnInboxUnreadCountUpdated -= OnInboxUnreadCountUpdated;
+            await TenantHub.DisposeAsync();
+        }
     }
 }
 
