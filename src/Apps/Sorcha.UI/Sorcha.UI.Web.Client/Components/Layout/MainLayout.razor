@@ -261,6 +261,11 @@
                     <Sorcha.UI.Core.Components.Pairing.PairingNagBanner />
                 </Authorized>
             </AuthorizeView>
+            @* Phase 1 of the Snackbar retirement — inline feedback host
+               renders at the top of the content region. Stays empty (and
+               occupies no vertical space) until a page surfaces a message
+               via IInlineFeedback. *@
+            <Sorcha.UI.Core.Components.Feedback.InlineFeedbackHost />
             @Body
         </MudContainer>
     </MudMainContent>

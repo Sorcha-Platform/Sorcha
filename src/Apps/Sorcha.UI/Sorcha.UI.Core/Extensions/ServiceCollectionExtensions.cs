@@ -36,6 +36,12 @@ public static class ServiceCollectionExtensions
         // Encryption
         services.AddScoped<IEncryptionProvider, BrowserEncryptionProvider>();
 
+        // Phase 1 of the Snackbar retirement — page-scoped inline feedback for
+        // actor's-own-action results. Replacement for ISnackbar; see
+        // .snackbar-allowlist + scripts/check-no-snackbar.ps1 for the ratchet.
+        services.AddScoped<Sorcha.UI.Core.Services.Feedback.IInlineFeedback,
+                           Sorcha.UI.Core.Services.Feedback.InlineFeedback>();
+
         // Token cache
         services.AddScoped<ITokenCache, BrowserTokenCache>();
 
