@@ -150,6 +150,8 @@ public static class PresentationEndpoints
         string requestId,
         [FromBody] SubmitPresentationBody body,
         IPresentationRequestService service,
+        Sorcha.Wallet.Service.Credentials.ICredentialStore credentialStore,
+        Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(body.CredentialId))
@@ -166,6 +168,37 @@ public static class PresentationEndpoints
             var verification = !string.IsNullOrEmpty(request.VerificationResult)
                 ? JsonSerializer.Deserialize<VerificationResult>(request.VerificationResult)
                 : null;
+
+            // Phase 2b of the Snackbar retirement — drop a durable "you shared
+            // a credential with X" inbox entry. Holder wallet address comes
+            // from the presentation request's TargetWalletAddress when the
+            // verifier pre-targeted; otherwise we fall back to the credential
+            // entity's WalletAddress. The writer itself short-circuits on
+            // null walletAddress and is fail-safe on transport errors.
+            var holderWalletAddress = request.TargetWalletAddress;
+            string? credentialType = null;
+            if (string.IsNullOrWhiteSpace(holderWalletAddress))
+            {
+                var credentialSnapshot = await credentialStore.GetByIdAsync(body.CredentialId, ct).ConfigureAwait(false);
+                holderWalletAddress = credentialSnapshot?.WalletAddress;
+                credentialType = credentialSnapshot?.Type;
+            }
+            else
+            {
+                var credentialSnapshot = await credentialStore.GetByIdForWalletAsync(body.CredentialId, holderWalletAddress, ct).ConfigureAwait(false);
+                credentialType = credentialSnapshot?.Type;
+            }
+
+            if (!string.IsNullOrWhiteSpace(holderWalletAddress) && !string.IsNullOrWhiteSpace(credentialType))
+            {
+                await inboxWriter.WritePresentationSubmittedAsync(
+                    walletAddress: holderWalletAddress,
+                    credentialId: body.CredentialId,
+                    credentialType: credentialType,
+                    presentationRequestId: request.Id,
+                    verifierIdentity: request.VerifierIdentity,
+                    ct: ct).ConfigureAwait(false);
+            }
 
             return Results.Ok(new
             {
