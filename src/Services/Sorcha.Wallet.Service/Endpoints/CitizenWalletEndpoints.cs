@@ -165,6 +165,7 @@ public static class CitizenWalletEndpoints
         HttpContext context,
         IPlatformUserDeviceClient deviceClient,
         IDeviceRevocationService revocation,
+        Sorcha.Wallet.Service.Services.Implementation.ICitizenDeviceInboxWriter inboxWriter,
         ILogger<Program> logger,
         CancellationToken ct)
     {
@@ -200,6 +201,16 @@ public static class CitizenWalletEndpoints
                 "(platformUser={PlatformUserId}) after a successful GetByIdAsync — concurrent revoke?",
                 deviceId, platformUserId);
         }
+
+        // Phase 2c of the Snackbar retirement — drop a durable Category=Security
+        // inbox entry on the citizen. Fail-safe: writer catches transport errors.
+        // Idempotent on (platformUserId, deviceId) so concurrent revokes from
+        // web + PWA produce a single inbox entry.
+        await inboxWriter.WriteDeviceRevokedAsync(
+            platformUserId: platformUserId.Value,
+            deviceId: deviceId,
+            deviceLabel: device.Label,
+            ct: ct).ConfigureAwait(false);
 
         return Results.NoContent();
     }
