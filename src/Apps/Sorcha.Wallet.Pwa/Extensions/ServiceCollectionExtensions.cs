@@ -32,6 +32,12 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services, string gatewayBaseAddress)
     {
         services.AddSingleton(TimeProvider.System);
+
+        // Phase 1 of the Snackbar retirement — page-scoped inline feedback for
+        // actor's-own-action results. Replacement for ISnackbar; see
+        // .snackbar-allowlist + scripts/check-no-snackbar.ps1 for the ratchet.
+        services.AddSingleton<Sorcha.UI.Core.Services.Feedback.IInlineFeedback,
+                              Sorcha.UI.Core.Services.Feedback.InlineFeedback>();
         services.AddSingleton<IPresentationEngine, PresentationEngine>();
         services.AddSingleton<IDeviceKeyService, WebCryptoDeviceKeyService>();
         services.AddSingleton<ICredentialCache, IndexedDbCredentialCache>();

@@ -73,6 +73,10 @@
                        aria-label="Present a credential" />
     </MudAppBar>
     <MudMainContent Class="pb-16">
+        @* Phase 1 of the Snackbar retirement — inline feedback host renders
+           at the top of the content region. Stays empty (and occupies no
+           vertical space) until a page surfaces a message via IInlineFeedback. *@
+        <Sorcha.UI.Core.Components.Feedback.InlineFeedbackHost />
         @Body
     </MudMainContent>
     <MudAppBar Bottom="true" Fixed="true" Elevation="4" Color="Color.Surface" Class="d-flex justify-space-around">
