@@ -1,0 +1,95 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@implements IDisposable
+@inject IInlineFeedback Feedback
+@inject NavigationManager Navigation
+@using Microsoft.Extensions.Logging
+@using MudBlazor
+@using Sorcha.UI.Core.Services.Feedback
+
+@*
+    Phase 1 of the Snackbar retirement — the host renderer for inline feedback
+    messages. Mounted once per host application near the top of the active
+    content region in MainLayout. Subscribes to IInlineFeedback.Changed and
+    re-renders the stacked message list.
+
+    The host is host-agnostic: same component drops into the main web app's
+    MainLayout, the citizen-wallet PWA's MainLayout, and any future
+    MudDialog-internal slot. Layout-specific positioning is the consumer's
+    responsibility (wrap in a div with appropriate Class).
+*@
+
+<div class="inline-feedback-host" data-testid="inline-feedback-host">
+    @foreach (var entry in _snapshot)
+    {
+        <MudAlert Severity="@MapSeverity(entry.Severity)"
+                  ShowCloseIcon="true"
+                  CloseIconClicked="@(() => Feedback.Dismiss(entry.Id))"
+                  Dense="true"
+                  Class="mb-2"
+                  data-testid="@($"inline-feedback-{entry.Id:N}")">
+            @if (!string.IsNullOrWhiteSpace(entry.DetailHref))
+            {
+                <MudLink OnClick="@(() => OnClick(entry))"
+                         Color="Color.Inherit"
+                         Underline="Underline.Always">
+                    @entry.Message
+                </MudLink>
+            }
+            else
+            {
+                @entry.Message
+            }
+        </MudAlert>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<InlineFeedbackMessage> _snapshot = Array.Empty<InlineFeedbackMessage>();
+
+    protected override void OnInitialized()
+    {
+        Feedback.Changed += OnChanged;
+        _snapshot = Feedback.CurrentMessages;
+    }
+
+    /// <summary>
+    /// Marshal the snapshot refresh onto the renderer thread. The Changed
+    /// event fires on whichever thread mutated the message list (a Timer
+    /// callback for auto-dismiss or the caller thread for explicit Show*).
+    /// </summary>
+    private void OnChanged()
+    {
+        InvokeAsync(() =>
+        {
+            _snapshot = Feedback.CurrentMessages;
+            StateHasChanged();
+        });
+    }
+
+    private void OnClick(InlineFeedbackMessage entry)
+    {
+        // Dismiss-on-click is the established interaction for click-through
+        // feedback — once the user has acknowledged by following the link the
+        // banner has done its job.
+        Feedback.Dismiss(entry.Id);
+        if (!string.IsNullOrWhiteSpace(entry.DetailHref))
+        {
+            Navigation.NavigateTo(entry.DetailHref);
+        }
+    }
+
+    private static Severity MapSeverity(InlineFeedbackSeverity severity) => severity switch
+    {
+        InlineFeedbackSeverity.Success => Severity.Success,
+        InlineFeedbackSeverity.Warning => Severity.Warning,
+        InlineFeedbackSeverity.Error => Severity.Error,
+        _ => Severity.Info,
+    };
+
+    public void Dispose()
+    {
+        Feedback.Changed -= OnChanged;
+    }
+}
