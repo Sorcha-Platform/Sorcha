@@ -48,13 +48,16 @@ public class DashboardServiceTests : IDisposable
     public async Task GetDashboardStatsAsync_Success_ReturnsStatsWithIsLoadedTrue()
     {
         // Arrange
+        // Feature 131 / UX-005 — platform-scope shape; fields are now nullable
+        // and the platform-only metric names use the *Platform* prefix.
         var expectedStats = new DashboardStatsViewModel
         {
+            Scope = "platform",
             ActiveBlueprints = 5,
             TotalWallets = 2,
-            RecentTransactions = 10,
+            PlatformRecentTransactions = 10,
             ConnectedPeers = 3,
-            ActiveRegisters = 1,
+            PlatformActiveRegisters = 1,
             TotalOrganizations = 1
         };
 
@@ -79,9 +82,9 @@ public class DashboardServiceTests : IDisposable
         result.IsLoaded.Should().BeTrue("API call succeeded");
         result.TotalWallets.Should().Be(2, "should return correct wallet count");
         result.ActiveBlueprints.Should().Be(5);
-        result.RecentTransactions.Should().Be(10);
+        result.PlatformRecentTransactions.Should().Be(10);
         result.ConnectedPeers.Should().Be(3);
-        result.ActiveRegisters.Should().Be(1);
+        result.PlatformActiveRegisters.Should().Be(1);
         result.TotalOrganizations.Should().Be(1);
     }
 
@@ -111,7 +114,7 @@ public class DashboardServiceTests : IDisposable
 
         // Assert
         result.IsLoaded.Should().BeFalse("API returned error status code");
-        result.TotalWallets.Should().Be(0, "should have default value when load fails");
+        result.TotalWallets.Should().BeNull("nullable field stays null when the load fails (Feature 131)");
 
         // Verify warning was logged
         _loggerMock.Verify(
@@ -143,7 +146,7 @@ public class DashboardServiceTests : IDisposable
 
         // Assert
         result.IsLoaded.Should().BeFalse("exception occurred during API call");
-        result.TotalWallets.Should().Be(0, "should have default value when exception occurs");
+        result.TotalWallets.Should().BeNull("nullable field stays null when an exception occurs (Feature 131)");
 
         // Verify error was logged
         _loggerMock.Verify(
@@ -180,6 +183,6 @@ public class DashboardServiceTests : IDisposable
 
         // Assert
         result.IsLoaded.Should().BeFalse("service unavailable (503)");
-        result.TotalWallets.Should().Be(0);
+        result.TotalWallets.Should().BeNull("nullable field stays null on 503 (Feature 131)");
     }
 }

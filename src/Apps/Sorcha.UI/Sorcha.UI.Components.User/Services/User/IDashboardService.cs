@@ -11,7 +11,9 @@ namespace Sorcha.UI.Core.Services;
 public interface IDashboardService
 {
     /// <summary>
-    /// Gets aggregated dashboard statistics from the API Gateway.
+    /// Gets aggregated dashboard statistics from the API Gateway. The response is
+    /// org-scoped by default; pass <paramref name="scope"/> = "platform" to request
+    /// the platform-wide view (honoured only when the caller has the SystemAdmin role).
     /// </summary>
-    Task<DashboardStatsViewModel> GetDashboardStatsAsync(CancellationToken cancellationToken = default);
+    Task<DashboardStatsViewModel> GetDashboardStatsAsync(string? scope = null, CancellationToken cancellationToken = default);
 }

@@ -21,11 +21,14 @@ public class DashboardService : IDashboardService
         _logger = logger;
     }
 
-    public async Task<DashboardStatsViewModel> GetDashboardStatsAsync(CancellationToken cancellationToken = default)
+    public async Task<DashboardStatsViewModel> GetDashboardStatsAsync(string? scope = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            var response = await _httpClient.GetAsync("/api/dashboard", cancellationToken);
+            var url = string.Equals(scope, "platform", StringComparison.OrdinalIgnoreCase)
+                ? "/api/dashboard?scope=platform"
+                : "/api/dashboard";
+            var response = await _httpClient.GetAsync(url, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to fetch dashboard stats: {StatusCode}", response.StatusCode);

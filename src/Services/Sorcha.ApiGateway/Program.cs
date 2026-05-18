@@ -148,13 +148,56 @@ app.MapGet("/api/stats", async (HealthAggregationService healthService) =>
 // Dashboard Statistics Endpoint
 // ===========================
 
-app.MapGet("/api/dashboard", async (DashboardStatisticsService dashboardService) =>
+// Feature 131 / UX-005 — auth-gated, scope-aware dashboard endpoint.
+//
+// Default response is the caller's org-scoped four-card summary, sourced from
+// Tenant Service. SystemAdmin callers may request the legacy platform-wide
+// six-card view with ?scope=platform; other roles silently get the org shape.
+app.MapGet("/api/dashboard", async (
+    DashboardStatisticsService dashboardService,
+    HttpContext httpContext,
+    string? scope,
+    CancellationToken cancellationToken) =>
 {
-    var stats = await dashboardService.GetDashboardStatisticsAsync();
-    return Results.Ok(stats);
+    var principal = httpContext.User;
+    var isSystemAdmin = principal.IsInRole("SystemAdmin");
+    var wantsPlatform = string.Equals(scope, "platform", StringComparison.OrdinalIgnoreCase);
+
+    if (wantsPlatform && isSystemAdmin)
+    {
+        var platformStats = await dashboardService.GetDashboardStatisticsAsync(cancellationToken);
+        return Results.Ok(platformStats);
+    }
+
+    // Org scope path. Extract the caller's org id; fall back to a zeroed-org-scope
+    // shape if the claim is missing (shouldn't happen with the standard JWT shape).
+    var orgIdClaim = principal.FindFirst("org_id")?.Value;
+    if (!Guid.TryParse(orgIdClaim, out var orgId))
+    {
+        return Results.Ok(new DashboardStatistics
+        {
+            Scope = "org",
+            OrgId = null,
+            Timestamp = DateTimeOffset.UtcNow,
+            ActiveUsers = 0,
+            PendingInvitations = 0,
+            SubscribedRegisters = 0,
+            RecentTransactions = 0
+        });
+    }
+
+    // Forward the caller's bearer token so Tenant's RequireAuthenticated policy passes.
+    var authHeader = httpContext.Request.Headers.Authorization.ToString();
+    var bearer = authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+        ? authHeader["Bearer ".Length..]
+        : null;
+
+    var orgStats = await dashboardService.GetOrgSummaryAsync(orgId, bearer, cancellationToken);
+    return Results.Ok(orgStats);
 })
+.RequireAuthorization()
 .WithName("DashboardStatistics")
-.WithSummary("Get dashboard statistics from all backend services (blueprints, wallets, registers, etc.)")
+.WithSummary("Get dashboard statistics — org-scoped by default; SystemAdmin can pass ?scope=platform for the platform view.")
 .WithTags("Dashboard");
 
 // ===========================
