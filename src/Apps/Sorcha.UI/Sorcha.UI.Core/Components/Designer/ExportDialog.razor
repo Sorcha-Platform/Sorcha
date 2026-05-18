@@ -14,6 +14,11 @@
         </MudText>
     </TitleContent>
     <DialogContent>
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@_errorMessage</MudAlert>
+        }
+
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
             Export "@Blueprint.Title" as a file for backup or sharing.
         </MudText>
@@ -82,15 +87,13 @@
     [Inject]
     private IJSRuntime JS { get; set; } = null!;
 
-    [Inject]
-    private ISnackbar Snackbar { get; set; } = null!;
-
     [Parameter]
     public Blueprint Blueprint { get; set; } = new();
 
     private ExportFormat SelectedFormat { get; set; } = ExportFormat.Json;
     private string FileName { get; set; } = string.Empty;
     private bool _exporting;
+    private string? _errorMessage;
 
     protected override void OnInitialized()
     {
@@ -101,6 +104,7 @@
     private async Task Export()
     {
         _exporting = true;
+        _errorMessage = null;
         StateHasChanged();
 
         try
@@ -124,12 +128,11 @@
             // Download the file using JavaScript
             await DownloadFile(fullFileName, content, mimeType);
 
-            Snackbar.Add($"Blueprint exported to {fullFileName}", Severity.Success);
             MudDialog.Close(DialogResult.Ok(fullFileName));
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+            _errorMessage = $"Export failed: {ex.Message}";
         }
         finally
         {
