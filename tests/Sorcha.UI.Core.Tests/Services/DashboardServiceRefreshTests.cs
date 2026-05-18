@@ -143,13 +143,15 @@ public class DashboardServiceRefreshTests : IDisposable
     [Fact]
     public async Task GetDashboardStatsAsync_Success_ReturnsAllFields()
     {
+        // Feature 131 / UX-005 — platform-scope fields use the new nullable shape.
         var stats = new DashboardStatsViewModel
         {
+            Scope = "platform",
             ActiveBlueprints = 12,
             TotalWallets = 23,
-            RecentTransactions = 45,
+            PlatformRecentTransactions = 45,
             ConnectedPeers = 4,
-            ActiveRegisters = 5,
+            PlatformActiveRegisters = 5,
             TotalOrganizations = 3,
             IsLoaded = true
         };
@@ -160,9 +162,9 @@ public class DashboardServiceRefreshTests : IDisposable
         result.IsLoaded.Should().BeTrue();
         result.ActiveBlueprints.Should().Be(12);
         result.TotalWallets.Should().Be(23);
-        result.RecentTransactions.Should().Be(45);
+        result.PlatformRecentTransactions.Should().Be(45);
         result.ConnectedPeers.Should().Be(4);
-        result.ActiveRegisters.Should().Be(5);
+        result.PlatformActiveRegisters.Should().Be(5);
         result.TotalOrganizations.Should().Be(3);
     }
 
