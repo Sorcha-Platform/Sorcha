@@ -5,7 +5,6 @@
 @using Sorcha.UI.Core.Services
 
 @inject ITemplateApiService TemplateApi
-@inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 
 <MudDialog>
@@ -73,6 +72,14 @@
             {
                 <MudAlert Severity="Severity.Error" Class="mt-2">@_validationError</MudAlert>
             }
+            else if (_validationSuccess)
+            {
+                @* Feature 118 §12 dialog rule — inline validation feedback;
+                   the dialog body can't host IInlineFeedback. *@
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mt-2">
+                    Parameters are valid
+                </MudAlert>
+            }
         }
     </DialogContent>
     <DialogActions>
@@ -101,6 +108,7 @@
 
     private Dictionary<string, object> _parameters = new();
     private string? _validationError;
+    private bool _validationSuccess;
     private bool _processing;
 
     protected override void OnParametersSet()
@@ -121,6 +129,7 @@
     {
         _parameters[name] = value;
         _validationError = null;
+        _validationSuccess = false; // any edit invalidates the prior "valid" badge
     }
 
     private string GetStringValue(string name, object? defaultValue) =>
@@ -146,13 +155,14 @@
 
         _processing = true;
         _validationError = null;
+        _validationSuccess = false;
 
         try
         {
             var isValid = await TemplateApi.ValidateParametersAsync(Template.Id, _parameters);
             if (isValid)
             {
-                Snackbar.Add("Parameters are valid", Severity.Success);
+                _validationSuccess = true;
             }
             else
             {
@@ -181,7 +191,9 @@
             var result = await TemplateApi.EvaluateTemplateAsync(Template.Id, _parameters);
             if (result != null)
             {
-                Snackbar.Add("Template evaluated successfully. Opening in Designer.", Severity.Success);
+                // Feature 118 §12 dialog rule — close with the result payload;
+                // Templates.razor surfaces the "Blueprint created from …" success
+                // via IInlineFeedback after the dialog returns.
                 MudDialog?.Close(DialogResult.Ok(result));
             }
             else
