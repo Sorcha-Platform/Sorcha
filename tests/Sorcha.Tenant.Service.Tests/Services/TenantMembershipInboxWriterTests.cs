@@ -98,4 +98,47 @@ public sealed class TenantMembershipInboxWriterTests : IDisposable
         await act.Should().NotThrowAsync(
             "inbox-write failures must never block the org membership operation");
     }
+
+    // ── Task #14 — WriteOrgMembershipRoleChangedAsync ─────────────
+
+    [Fact]
+    public async Task WriteOrgMembershipRoleChangedAsync_LooksUpOrgName_AndPostsExpectedPayload()
+    {
+        _db.Organizations.Add(new Organization
+        {
+            Id = _orgId,
+            Name = "Acme Inc.",
+            Subdomain = "acme",
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+
+        InboxWriteRequest? captured = null;
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWriteRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
+                new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
+
+        await _sut.WriteOrgMembershipRoleChangedAsync(_userId, _orgId, "Consumer", "Administrator");
+
+        captured.Should().NotBeNull();
+        captured!.PlatformUserId.Should().Be(_userId);
+        captured.Category.Should().Be(InboxCategory.Membership);
+        captured.Severity.Should().Be(InboxSeverity.Info);
+        captured.Title.Should().Be("Your role in Acme Inc. changed");
+        captured.Summary.Should().Be("You changed from Consumer to Administrator.");
+        captured.IconKey.Should().Be("membership.role-changed");
+    }
+
+    [Fact]
+    public async Task WriteOrgMembershipRoleChangedAsync_InboxThrows_DoesNotPropagate()
+    {
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("inbox down"));
+
+        var act = () => _sut.WriteOrgMembershipRoleChangedAsync(_userId, _orgId, "Consumer", "Administrator");
+
+        await act.Should().NotThrowAsync(
+            "inbox-write failures must never block the role-change operation");
+    }
 }

@@ -19,6 +19,7 @@ public class OrgProvisioningService : IOrgProvisioningService
     private readonly IOrganizationService _orgService;
     private readonly IPlatformSettingsService _settingsService;
     private readonly IInvitationService _invitationService;
+    private readonly ITenantMembershipInboxWriter _membershipInbox;
     private readonly ILogger<OrgProvisioningService> _logger;
 
     /// <summary>
@@ -29,12 +30,14 @@ public class OrgProvisioningService : IOrgProvisioningService
         IOrganizationService orgService,
         IPlatformSettingsService settingsService,
         IInvitationService invitationService,
+        ITenantMembershipInboxWriter membershipInbox,
         ILogger<OrgProvisioningService> logger)
     {
         _db = db;
         _orgService = orgService;
         _settingsService = settingsService;
         _invitationService = invitationService;
+        _membershipInbox = membershipInbox;
         _logger = logger;
     }
 
@@ -204,6 +207,12 @@ public class OrgProvisioningService : IOrgProvisioningService
             _logger.LogInformation(
                 "Organisation provisioned: {OrgId} ({Subdomain}) by platform user {UserId} (total orgs: {Count})",
                 org.Id, org.Subdomain, platformUserId, platformUser.CreatedOrgsCount);
+
+            // Feature 118 — drop a "welcome to {org}" inbox entry for the founding owner.
+            // Writer is fail-safe (try/log/swallow internally) — an inbox failure here
+            // must never roll back the just-committed org.
+            await _membershipInbox.WriteOrgMembershipAddedAsync(
+                platformUserId, org.Id, UserRole.Administrator.ToString(), ct).ConfigureAwait(false);
 
             return new OrgProvisioningResult
             {
@@ -394,6 +403,15 @@ public class OrgProvisioningService : IOrgProvisioningService
                 _logger.LogInformation(
                     "Organisation provisioned by system admin: {OrgId} ({Subdomain}), admin={AdminEmail}, direct={Direct}",
                     org.Id, org.Subdomain, adminEmail, adminDirectlyAdded);
+
+                // Feature 118 — if the admin was a known platform user we attached directly,
+                // drop a "welcome to {org}" inbox entry. New invitees get their entry when
+                // they accept the invitation (handled in PlatformUserService).
+                if (adminDirectlyAdded && existingUser is not null)
+                {
+                    await _membershipInbox.WriteOrgMembershipAddedAsync(
+                        existingUser.Id, org.Id, role.ToString(), ct).ConfigureAwait(false);
+                }
 
                 return new AdminProvisionResult
                 {

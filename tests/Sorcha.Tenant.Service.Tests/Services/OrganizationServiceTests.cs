@@ -20,6 +20,7 @@ public class OrganizationServiceTests : IDisposable
     private readonly Mock<IOrganizationRepository> _orgRepoMock;
     private readonly Mock<IIdentityRepository> _identityRepoMock;
     private readonly Mock<IWalletServiceClient> _walletClientMock;
+    private readonly Mock<ITenantMembershipInboxWriter> _membershipInboxMock;
     private readonly Mock<ILogger<OrganizationService>> _loggerMock;
     private readonly Guid _testOrgId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
@@ -29,6 +30,7 @@ public class OrganizationServiceTests : IDisposable
         _orgRepoMock = new Mock<IOrganizationRepository>();
         _identityRepoMock = new Mock<IIdentityRepository>();
         _walletClientMock = new Mock<IWalletServiceClient>();
+        _membershipInboxMock = new Mock<ITenantMembershipInboxWriter>();
         _loggerMock = new Mock<ILogger<OrganizationService>>();
 
         // Seed test organization
@@ -56,6 +58,7 @@ public class OrganizationServiceTests : IDisposable
             _identityRepoMock.Object,
             _dbContext,
             _walletClientMock.Object,
+            _membershipInboxMock.Object,
             _loggerMock.Object);
     }
 
@@ -612,5 +615,76 @@ public class OrganizationServiceTests : IDisposable
             .ToList();
 
         auditEntries.Should().BeEmpty();
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // Task #14 — AddUserToOrganizationAsync fires the membership-inbox writer
+    // ══════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task AddUserToOrganizationAsync_ExistingPlatformUser_FiresMembershipInboxWriter()
+    {
+        // Arrange
+        var platformUser = SeedPlatformUser(Guid.NewGuid(), "newmember@test.com", emailVerified: true);
+
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = _testOrgId, Name = "Test Organization", Subdomain = "testorg" });
+
+        _identityRepoMock.Setup(r => r.CreateUserAsync(It.IsAny<UserIdentity>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserIdentity u, CancellationToken _) => u);
+
+        var service = CreateService();
+        var request = new Sorcha.Tenant.Service.Models.Dtos.AddUserToOrganizationRequest
+        {
+            Email = "newmember@test.com",
+            DisplayName = "New Member",
+            ExternalIdpSubject = "ext-sub-123",
+            Roles = [UserRole.Consumer]
+        };
+
+        // Act
+        await service.AddUserToOrganizationAsync(_testOrgId, request);
+
+        // Assert — inbox writer fired for the linked platform user
+        _membershipInboxMock.Verify(
+            w => w.WriteOrgMembershipAddedAsync(
+                platformUser.Id,
+                _testOrgId,
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task AddUserToOrganizationAsync_NoLinkedPlatformUser_DoesNotFireInboxWriter()
+    {
+        // Arrange — adding an identity for an email that has no PlatformUser yet
+        // (pre-registration). No membership row is created, so no inbox entry should fire.
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = _testOrgId, Name = "Test Organization", Subdomain = "testorg" });
+
+        _identityRepoMock.Setup(r => r.CreateUserAsync(It.IsAny<UserIdentity>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserIdentity u, CancellationToken _) => u);
+
+        var service = CreateService();
+        var request = new Sorcha.Tenant.Service.Models.Dtos.AddUserToOrganizationRequest
+        {
+            Email = "noone@test.com",
+            DisplayName = "Nobody",
+            ExternalIdpSubject = "ext-sub-none",
+            Roles = [UserRole.Consumer]
+        };
+
+        // Act
+        await service.AddUserToOrganizationAsync(_testOrgId, request);
+
+        // Assert
+        _membershipInboxMock.Verify(
+            w => w.WriteOrgMembershipAddedAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }

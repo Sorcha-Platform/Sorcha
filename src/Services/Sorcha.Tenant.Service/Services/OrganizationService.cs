@@ -21,6 +21,7 @@ public partial class OrganizationService : IOrganizationService
     private readonly IIdentityRepository _identityRepository;
     private readonly TenantDbContext _dbContext;
     private readonly IWalletServiceClient _walletClient;
+    private readonly ITenantMembershipInboxWriter _membershipInbox;
     private readonly ILogger<OrganizationService> _logger;
 
     // Reserved subdomains that cannot be used
@@ -38,12 +39,14 @@ public partial class OrganizationService : IOrganizationService
         IIdentityRepository identityRepository,
         TenantDbContext dbContext,
         IWalletServiceClient walletClient,
+        ITenantMembershipInboxWriter membershipInbox,
         ILogger<OrganizationService> logger)
     {
         _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
+        _membershipInbox = membershipInbox ?? throw new ArgumentNullException(nameof(membershipInbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -269,15 +272,21 @@ public partial class OrganizationService : IOrganizationService
 
             if (existingMembership == null)
             {
+                var newMembershipRole = request.Roles.Any(r => r == UserRole.Administrator)
+                    ? UserRole.Administrator.ToString() : UserRole.Consumer.ToString();
                 _dbContext.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
                 {
                     PlatformUserId = platformUser.Id,
                     OrganizationId = organizationId,
-                    Role = request.Roles.Any(r => r == UserRole.Administrator)
-                        ? UserRole.Administrator.ToString() : UserRole.Consumer.ToString(),
+                    Role = newMembershipRole,
                     JoinedAt = DateTimeOffset.UtcNow
                 });
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                // Feature 118 — drop a "welcome to {org}" inbox entry once the membership
+                // is committed. Writer is fail-safe (try/log/swallow internally).
+                await _membershipInbox.WriteOrgMembershipAddedAsync(
+                    platformUser.Id, organizationId, newMembershipRole, cancellationToken).ConfigureAwait(false);
             }
         }
 
