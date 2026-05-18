@@ -51,9 +51,20 @@ public record ActionSubmissionResponse
     public List<string>? Warnings { get; init; }
 
     /// <summary>
-    /// Credential ID if a verifiable credential was issued by this action
+    /// Credential ID if a verifiable credential was issued by this action.
     /// </summary>
+    /// <remarks>
+    /// Retained for backwards-compatible clients. New consumers should prefer
+    /// the richer <see cref="IssuedCredential"/> object when present.
+    /// </remarks>
     public string? IssuedCredentialId { get; init; }
+
+    /// <summary>
+    /// Rich summary of the credential issued by this action. Present whenever
+    /// the action has a credentialIssuanceConfig and the issuance succeeded.
+    /// Powers the post-action IssuanceSummaryPanel dialog on the UI side.
+    /// </summary>
+    public IssuedCredentialResponse? IssuedCredential { get; init; }
 
     /// <summary>
     /// Operation ID for async encryption tracking (non-null when IsAsync is true).
@@ -96,6 +107,53 @@ public record ActionSubmissionResponse
     /// writes the PresentationOutcome that advances the action on success.
     /// </summary>
     public bool AwaitingPresentation { get; init; }
+}
+
+/// <summary>
+/// Compact, human-readable summary of a credential just issued by an action
+/// execution. Populated alongside the legacy <see cref="ActionSubmissionResponse.IssuedCredentialId"/>
+/// when the action's credentialIssuanceConfig fires successfully.
+/// </summary>
+public record IssuedCredentialResponse
+{
+    /// <summary>Unique credential identifier (urn:uuid:... shape).</summary>
+    public required string CredentialId { get; init; }
+
+    /// <summary>Credential type (e.g. "AssuredIdentityCredential").</summary>
+    public required string CredentialType { get; init; }
+
+    /// <summary>Recipient DID (typically a Sorcha wallet address; falls back to whatever the engine produced).</summary>
+    public required string IssuedToDid { get; init; }
+
+    /// <summary>Best-effort display name for the recipient. Falls back to a truncated DID when no participant lookup matched.</summary>
+    public required string IssuedToName { get; init; }
+
+    /// <summary>Display name of the signing organisation (from the issuance config, or a truncated issuer DID fallback).</summary>
+    public required string SignedByOrg { get; init; }
+
+    /// <summary>Display name of the user who processed the action (caller of the submit endpoint).</summary>
+    public required string ProcessedByName { get; init; }
+
+    /// <summary>Role of the user who processed the action (first role claim, or "Member" as a generic fallback).</summary>
+    public required string ProcessedByRole { get; init; }
+
+    /// <summary>Total number of claims in the issued credential.</summary>
+    public required int TotalClaims { get; init; }
+
+    /// <summary>Number of claims marked selectively disclosable in the blueprint's credentialIssuanceConfig.</summary>
+    public required int DisclosableClaims { get; init; }
+
+    /// <summary>Human-readable usage policy (e.g. "Reusable", "Single-use", "Up to N presentations").</summary>
+    public required string UsagePolicy { get; init; }
+
+    /// <summary>Expiry timestamp, if any.</summary>
+    public DateTimeOffset? ExpiresAt { get; init; }
+
+    /// <summary>Blueprint title that drove the issuance.</summary>
+    public required string BlueprintName { get; init; }
+
+    /// <summary>Title of the specific action within the blueprint.</summary>
+    public required string ActionName { get; init; }
 }
 
 /// <summary>

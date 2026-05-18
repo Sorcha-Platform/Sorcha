@@ -1047,6 +1047,11 @@ public class ActionExecutionService : IActionExecutionService
         }
 
         // 16. Build response
+        var issuedCredentialResponse = issuedCredential is null
+            ? null
+            : await BuildIssuedCredentialResponseAsync(
+                issuedCredential, blueprint, actionDef, caller, cancellationToken);
+
         var response = new ActionSubmissionResponse
         {
             TransactionId = confirmedTxId,
@@ -1062,6 +1067,7 @@ public class ActionExecutionService : IActionExecutionService
             IsComplete = routingResult.NextActions.Count == 0,
             Warnings = validationResult.Warnings,
             IssuedCredentialId = issuedCredential?.CredentialId,
+            IssuedCredential = issuedCredentialResponse,
             CredentialOffer = haipOfferResult != null
                 ? new HaipCredentialOfferResponse
                 {
@@ -2516,6 +2522,101 @@ public class ActionExecutionService : IActionExecutionService
                 instance.Id);
         }
     }
+
+    /// <summary>
+    /// Build the post-action <see cref="IssuedCredentialResponse"/> summary. Best-effort lookups
+    /// — a participant-lookup failure degrades to a truncated DID rather than failing the response.
+    /// </summary>
+    private async Task<IssuedCredentialResponse> BuildIssuedCredentialResponseAsync(
+        Sorcha.ServiceClients.Wallet.CredentialIssuanceResult issuedCredential,
+        BlueprintModel blueprint,
+        ActionModel actionDef,
+        ClaimsPrincipal? caller,
+        CancellationToken cancellationToken)
+    {
+        var issuedToName = await ResolveRecipientNameAsync(issuedCredential.SubjectDid, cancellationToken);
+        var processedByName = caller?.FindFirst("name")?.Value
+                              ?? caller?.FindFirst(ClaimTypes.Name)?.Value
+                              ?? "Unknown";
+        var processedByRole = caller?.FindFirst("role")?.Value
+                              ?? caller?.FindFirst(ClaimTypes.Role)?.Value
+                              ?? "Member";
+
+        // Org name comes from the caller's JWT (org_name claim) — same source used by
+        // the credential mint path. Falls back to a truncated issuer DID when missing.
+        var signedByOrg = caller?.FindFirst("org_name")?.Value;
+        if (string.IsNullOrEmpty(signedByOrg))
+        {
+            signedByOrg = TruncateDid(issuedCredential.IssuerDid);
+        }
+
+        var disclosableCount = actionDef.CredentialIssuanceConfig?.Disclosable?.Count() ?? 0;
+
+        return new IssuedCredentialResponse
+        {
+            CredentialId = issuedCredential.CredentialId,
+            CredentialType = string.IsNullOrEmpty(issuedCredential.Type)
+                ? actionDef.CredentialIssuanceConfig?.CredentialType ?? "Credential"
+                : issuedCredential.Type,
+            IssuedToDid = issuedCredential.SubjectDid,
+            IssuedToName = issuedToName,
+            SignedByOrg = signedByOrg,
+            ProcessedByName = processedByName,
+            ProcessedByRole = processedByRole,
+            TotalClaims = issuedCredential.Claims.Count,
+            DisclosableClaims = disclosableCount,
+            UsagePolicy = FormatUsagePolicy(
+                actionDef.CredentialIssuanceConfig?.UsagePolicy ?? UsagePolicy.Reusable,
+                actionDef.CredentialIssuanceConfig?.MaxPresentations),
+            ExpiresAt = issuedCredential.ExpiresAt,
+            BlueprintName = string.IsNullOrEmpty(blueprint.Title) ? blueprint.Id : blueprint.Title,
+            ActionName = string.IsNullOrEmpty(actionDef.Title) ? actionDef.Id.ToString() : actionDef.Title
+        };
+    }
+
+    private async Task<string> ResolveRecipientNameAsync(string subjectDid, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(subjectDid))
+        {
+            return "Unknown recipient";
+        }
+
+        // SubjectDid is usually a wallet address (ws11q...). Try the participant lookup;
+        // fall back to a truncated DID display when no participant has linked it.
+        try
+        {
+            var participant = await _participantClient.GetByWalletAddressAsync(subjectDid, cancellationToken);
+            if (participant is not null && !string.IsNullOrEmpty(participant.DisplayName))
+            {
+                return participant.DisplayName;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Participant lookup failed for credential subject {SubjectDid} — falling back to truncated DID",
+                subjectDid);
+        }
+
+        return TruncateDid(subjectDid);
+    }
+
+    private static string TruncateDid(string did)
+    {
+        if (string.IsNullOrEmpty(did)) return "(unknown)";
+        if (did.Length <= 16) return did;
+        return $"{did[..8]}…{did[^4..]}";
+    }
+
+    private static string FormatUsagePolicy(UsagePolicy policy, int? maxPresentations) => policy switch
+    {
+        UsagePolicy.Reusable => "Reusable",
+        UsagePolicy.SingleUse => "Single-use",
+        UsagePolicy.LimitedUse => maxPresentations is > 0
+            ? $"Up to {maxPresentations} presentations"
+            : "Limited use",
+        _ => policy.ToString()
+    };
 }
 
 /// <summary>

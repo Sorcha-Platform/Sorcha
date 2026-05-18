@@ -54,6 +54,13 @@ public record ActionSubmissionResultViewModel
     public bool HasAsyncOperation => IsAsync && !string.IsNullOrEmpty(OperationId);
 
     /// <summary>
+    /// Rich summary of a credential issued by this action — drives the
+    /// IssuanceSummaryPanel dialog on MyActions.razor. Null when the action
+    /// has no credentialIssuanceConfig or the issuance failed.
+    /// </summary>
+    public IssuedCredentialInfo? IssuedCredential { get; init; }
+
+    /// <summary>
     /// HAIP credential offer URI when the action issues a credential to an external wallet.
     /// Present when TargetAudience is HaipExternalWallet.
     /// </summary>
@@ -69,6 +76,28 @@ public record ActionSubmissionResultViewModel
     /// Whether this result includes a HAIP external wallet interaction.
     /// </summary>
     public bool HasHaipInteraction => CredentialOffer is not null || PresentationRequest is not null;
+}
+
+/// <summary>
+/// Compact, human-readable summary of a credential just issued by an action
+/// execution. Mirrors <c>Sorcha.Blueprint.Service.Models.Responses.IssuedCredentialResponse</c>
+/// — drives the IssuanceSummaryPanel dialog on MyActions.razor.
+/// </summary>
+public record IssuedCredentialInfo
+{
+    public string CredentialId { get; init; } = string.Empty;
+    public string CredentialType { get; init; } = string.Empty;
+    public string IssuedToDid { get; init; } = string.Empty;
+    public string IssuedToName { get; init; } = string.Empty;
+    public string SignedByOrg { get; init; } = string.Empty;
+    public string ProcessedByName { get; init; } = string.Empty;
+    public string ProcessedByRole { get; init; } = string.Empty;
+    public int TotalClaims { get; init; }
+    public int DisclosableClaims { get; init; }
+    public string UsagePolicy { get; init; } = "Reusable";
+    public DateTimeOffset? ExpiresAt { get; init; }
+    public string BlueprintName { get; init; } = string.Empty;
+    public string ActionName { get; init; } = string.Empty;
 }
 
 /// <summary>

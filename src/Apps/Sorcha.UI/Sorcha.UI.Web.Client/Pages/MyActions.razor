@@ -525,19 +525,20 @@
                             "Credential Verification", requestParams, requestOptions);
                     }
 
-                    // TODO: When the Blueprint Service surfaces credential issuance data in the
-                    // ActionSubmissionResultViewModel (e.g. an IssuedCredential property), show
-                    // the IssuanceSummaryPanel dialog here:
-                    //
-                    // if (submitResult.IssuedCredential is not null)
-                    // {
-                    //     var summaryParams = new DialogParameters<IssuanceSummaryPanel>
-                    //     {
-                    //         { x => x.Summary, MapToIssuanceSummary(submitResult.IssuedCredential, action) }
-                    //     };
-                    //     var summaryOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
-                    //     await DialogService.ShowAsync<IssuanceSummaryPanel>("Credential Issued", summaryParams, summaryOptions);
-                    // }
+                    // Feature 062 follow-up — when the action minted a credential, show the
+                    // IssuanceSummaryPanel after any HAIP-side QR dialogs close. The server
+                    // populates submitResult.IssuedCredential from
+                    // ActionSubmissionResponse.IssuedCredential (Sorcha.Blueprint.Service).
+                    if (submitResult.IssuedCredential is not null)
+                    {
+                        var summaryParams = new DialogParameters<IssuanceSummaryPanel>
+                        {
+                            { x => x.Summary, MapToIssuanceSummary(submitResult.IssuedCredential) }
+                        };
+                        var summaryOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+                        await DialogService.ShowAsync<IssuanceSummaryPanel>(
+                            "Credential Issued", summaryParams, summaryOptions);
+                    }
                 }
                 else
                 {
@@ -639,4 +640,27 @@
 
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>
+    /// Maps the server-supplied <see cref="IssuedCredentialInfo"/> to the dialog's
+    /// <see cref="IssuanceSummaryViewModel"/>. The server populates every human-readable
+    /// field (recipient name, issuing org, processed-by) using JWT claims +
+    /// participant-lookup; the UI is a pure pass-through.
+    /// </summary>
+    private static IssuanceSummaryViewModel MapToIssuanceSummary(IssuedCredentialInfo info) =>
+        new()
+        {
+            CredentialType = info.CredentialType,
+            IssuedToDid = info.IssuedToDid,
+            IssuedToName = info.IssuedToName,
+            SignedByOrg = info.SignedByOrg,
+            ProcessedByName = info.ProcessedByName,
+            ProcessedByRole = info.ProcessedByRole,
+            TotalClaims = info.TotalClaims,
+            DisclosableClaims = info.DisclosableClaims,
+            UsagePolicy = info.UsagePolicy,
+            ExpiresAt = info.ExpiresAt,
+            BlueprintName = info.BlueprintName,
+            ActionName = info.ActionName
+        };
 }
