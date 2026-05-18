@@ -514,6 +514,29 @@ public interface IRegisterServiceClient
     Task<IReadOnlyList<string>> GetMyValidatedRegistersAsync(
         byte[] validatorPublicKey,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetch register-service statistics. Optional <paramref name="registerIds"/> scopes the counts
+    /// to the listed registers (used by Tenant Service to build org-scoped dashboard stats).
+    /// </summary>
+    /// <param name="registerIds">Optional register-id filter; null/empty returns platform-wide counts.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Register count + transaction count, scoped per the filter.</returns>
+    Task<RegisterStatsResponse> GetStatsAsync(
+        IReadOnlyList<string>? registerIds = null,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Register-service statistics payload.
+/// </summary>
+public class RegisterStatsResponse
+{
+    /// <summary>Count of registers (platform-wide or, when filtered, the listed register count).</summary>
+    public int RegisterCount { get; set; }
+
+    /// <summary>Sum of transaction counts across the in-scope registers.</summary>
+    public int TransactionCount { get; set; }
 }
 
 /// <summary>
