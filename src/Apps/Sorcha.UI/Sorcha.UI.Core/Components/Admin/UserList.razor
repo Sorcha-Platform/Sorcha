@@ -2,9 +2,10 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject IOrganizationAdminService OrganizationService
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <MudStack Spacing="4">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
@@ -202,17 +203,17 @@
             var verified = await OrganizationService.VerifyEmailAsync(Organization.Id, user.Id);
             if (verified)
             {
-                Snackbar.Add($"Email verified for '{user.DisplayName}'.", Severity.Success);
+                Feedback.ShowSuccess($"Email verified for '{user.DisplayName}'.");
                 await LoadUsersAsync();
             }
             else
             {
-                Snackbar.Add("Email is already verified.", Severity.Info);
+                Feedback.ShowInfo("Email is already verified.");
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to verify email: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to verify email: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -234,7 +235,7 @@
         {
             _users.Insert(0, newUser);
             ApplyStatusFilter();
-            Snackbar.Add($"User '{newUser.DisplayName}' added successfully.", Severity.Success);
+            Feedback.ShowSuccess($"User '{newUser.DisplayName}' added successfully.");
             StateHasChanged();
         }
     }
@@ -259,7 +260,7 @@
             var index = _users.FindIndex(u => u.Id == updatedUser.Id);
             if (index >= 0) _users[index] = updatedUser;
             ApplyStatusFilter();
-            Snackbar.Add($"User '{updatedUser.DisplayName}' updated successfully.", Severity.Success);
+            Feedback.ShowSuccess($"User '{updatedUser.DisplayName}' updated successfully.");
             StateHasChanged();
         }
     }
@@ -283,13 +284,13 @@
                     var index = _users.FindIndex(u => u.Id == user.Id);
                     if (index >= 0) _users[index] = user with { Status = "Removed" };
                     ApplyStatusFilter();
-                    Snackbar.Add($"User '{user.DisplayName}' removed.", Severity.Warning);
+                    Feedback.ShowWarning($"User '{user.DisplayName}' removed.");
                     StateHasChanged();
                 }
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Failed to remove user: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Failed to remove user: {ex.Message}", autoDismissMs: 0);
             }
         }
     }

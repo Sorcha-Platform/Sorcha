@@ -2,10 +2,11 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Models.Admin
 @inject IValidatorAdminService ValidatorService
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 @if (_isLoading && !_hasEverLoaded)
 {
@@ -207,12 +208,11 @@ else
 
         if (conflictCount > 0)
         {
-            Snackbar.Add($"Approved {succeeded} validator(s). {conflictCount} failed — maximum validator count may have been reached.",
-                Severity.Warning);
+            Feedback.ShowWarning($"Approved {succeeded} validator(s). {conflictCount} failed — maximum validator count may have been reached.");
         }
         else
         {
-            Snackbar.Add($"Successfully approved {succeeded} validator(s).", Severity.Success);
+            Feedback.ShowSuccess($"Successfully approved {succeeded} validator(s).");
         }
 
         await LoadConsentQueueAsync();
@@ -249,8 +249,15 @@ else
         }
 
         _isProcessing = false;
-        Snackbar.Add($"Rejected {succeeded} of {selected.Count} validator(s).",
-            succeeded == selected.Count ? Severity.Info : Severity.Warning);
+        var msg = $"Rejected {succeeded} of {selected.Count} validator(s).";
+        if (succeeded == selected.Count)
+        {
+            Feedback.ShowInfo(msg);
+        }
+        else
+        {
+            Feedback.ShowWarning(msg);
+        }
 
         await LoadConsentQueueAsync();
     }
@@ -263,12 +270,12 @@ else
         try
         {
             var approved = await ValidatorService.RefreshApprovedValidatorsAsync(registerId);
-            Snackbar.Add($"Refreshed from chain — {approved.Count} approved validator(s) found.", Severity.Success);
+            Feedback.ShowSuccess($"Refreshed from chain — {approved.Count} approved validator(s) found.");
             await LoadConsentQueueAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to refresh from chain: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to refresh from chain: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
