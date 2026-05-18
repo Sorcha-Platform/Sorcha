@@ -4,6 +4,7 @@
 @using MudBlazor
 @using Sorcha.UI.Core.Models.Designer
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @implements IDisposable
 
 @if (_pendingCount > 0)
@@ -57,7 +58,7 @@ else
     private IDialogService DialogService { get; set; } = null!;
 
     [Inject]
-    private ISnackbar Snackbar { get; set; } = null!;
+    private IInlineFeedback Feedback { get; set; } = null!;
 
     private int _pendingCount;
     private bool _syncing;
@@ -90,17 +91,17 @@ else
 
         if (e.SuccessCount > 0)
         {
-            Snackbar.Add($"Synced {e.SuccessCount} item(s) successfully", Severity.Success);
+            Feedback.ShowSuccess($"Synced {e.SuccessCount} item(s) successfully");
         }
 
         if (e.FailedCount > 0)
         {
-            Snackbar.Add($"{e.FailedCount} item(s) failed to sync", Severity.Warning);
+            Feedback.ShowWarning($"{e.FailedCount} item(s) failed to sync");
         }
 
         if (e.ConflictCount > 0)
         {
-            Snackbar.Add($"{e.ConflictCount} conflict(s) need resolution", Severity.Error);
+            Feedback.ShowError($"{e.ConflictCount} conflict(s) need resolution", autoDismissMs: 0);
         }
 
         InvokeAsync(StateHasChanged);
@@ -149,13 +150,13 @@ else
                     localCopy.UpdatedAt = DateTimeOffset.UtcNow;
                     await StorageService.SaveBlueprintAsync(localCopy);
                     await SyncService.RemoveFromQueueAsync(queueItem.Id);
-                    Snackbar.Add("Local version saved to server", Severity.Success);
+                    Feedback.ShowSuccess("Local version saved to server");
                     break;
 
                 case ConflictResolution.KeepServer:
                     // Discard local changes, use server version
                     await SyncService.RemoveFromQueueAsync(queueItem.Id);
-                    Snackbar.Add("Server version kept, local changes discarded", Severity.Info);
+                    Feedback.ShowInfo("Server version kept, local changes discarded");
                     break;
 
                 case ConflictResolution.KeepBoth:
@@ -168,13 +169,13 @@ else
                     duplicate.Version = 1;
                     await StorageService.SaveBlueprintAsync(duplicate);
                     await SyncService.RemoveFromQueueAsync(queueItem.Id);
-                    Snackbar.Add($"Copy created: {duplicate.Title}", Severity.Success);
+                    Feedback.ShowSuccess($"Copy created: {duplicate.Title}");
                     break;
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to resolve conflict: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to resolve conflict: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -205,7 +206,7 @@ else
                     break;
                 case "clear":
                     await SyncService.ClearQueueAsync();
-                    Snackbar.Add("Sync queue cleared", Severity.Info);
+                    Feedback.ShowInfo("Sync queue cleared");
                     break;
             }
         }
@@ -222,7 +223,7 @@ else
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Sync failed: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Sync failed: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {

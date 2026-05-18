@@ -59,7 +59,7 @@
     public Blueprint? Blueprint { get; set; }
 
     [Inject]
-    private ISnackbar? Snackbar { get; set; }
+    private Sorcha.UI.Core.Services.Feedback.IInlineFeedback Feedback { get; set; } = null!;
 
     private string jsonText = string.Empty;
     private JsonElement? jsonElement;
@@ -89,12 +89,12 @@
         try
         {
             await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", jsonText);
-            Snackbar?.Add("JSON copied to clipboard", Severity.Success);
+            Feedback.ShowSuccess("JSON copied to clipboard");
         }
         catch
         {
             // Fallback for browsers that block clipboard API (e.g., non-HTTPS)
-            Snackbar?.Add("Unable to copy to clipboard — check browser permissions", Severity.Warning);
+            Feedback.ShowWarning("Unable to copy to clipboard — check browser permissions");
         }
     }
 }
