@@ -3,18 +3,23 @@
 
 @implements IDisposable
 @inject WalletHubConnection WalletHub
-@inject ISnackbar Snackbar
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Services
-@using MudBlazor
+
+@* TODO: remove component entirely if no longer needed.
+   Phase 5e (Snackbar retirement): encryption completion + failure
+   events are now durably written to the inbox by the Phase 2 writers;
+   the bell drawer is the authoritative surface. The hub subscriptions
+   below are retained as no-op anchors in case future work needs them
+   (e.g. driving a per-route inline IInlineFeedback host). *@
 
 @code {
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
-        // Feature 118 T114 — encryption events live on WalletHub now. Subscribe
-        // to Complete + Failed; ignore Progress (the global popover surfaces
-        // in-flight progress, not toasts).
+        // Feature 118 T114 — encryption events live on WalletHub. Subscribe
+        // to keep the connection warm; handlers are intentional no-ops since
+        // the inbox writers (Phase 2) own the durable surface.
         WalletHub.OnEncryptionComplete += HandleComplete;
         WalletHub.OnEncryptionFailed += HandleFailed;
         try
@@ -27,17 +32,9 @@
         }
     }
 
-    private Task HandleComplete(EncryptionSignal _)
-    {
-        Snackbar.Add("Encryption complete", Severity.Success);
-        return Task.CompletedTask;
-    }
+    private Task HandleComplete(EncryptionSignal _) => Task.CompletedTask;
 
-    private Task HandleFailed(EncryptionSignal _)
-    {
-        Snackbar.Add("Encryption failed", Severity.Error);
-        return Task.CompletedTask;
-    }
+    private Task HandleFailed(EncryptionSignal _) => Task.CompletedTask;
 
     /// <inheritdoc />
     public void Dispose()
