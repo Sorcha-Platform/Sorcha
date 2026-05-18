@@ -15,6 +15,7 @@
 @using Sorcha.UI.Components.User.Components.Onboarding
 @using Sorcha.UI.Core.Components.Inbox
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Theme
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Context
 @using Sorcha.Wallet.Pwa.Services.Onboarding
@@ -28,7 +29,7 @@
 @inject TenantHubConnection TenantHub
 @inject IAccessTokenStore AccessTokens
 
-<MudThemeProvider />
+<MudThemeProvider Theme="SorchaMudTheme.Default" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
