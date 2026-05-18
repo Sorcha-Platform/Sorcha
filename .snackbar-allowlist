@@ -21,7 +21,6 @@ src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Settings.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/AiDesignerPane.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/AiDesignerPane.razor.cs
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/DesignerToolbar.razor.cs
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyProfile.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/UserManagement.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/Invitations.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/PlatformSettings.razor
