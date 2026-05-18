@@ -18,7 +18,6 @@
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Index.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Participants/ParticipantDetail.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletDetail.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionToast.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Settings.razor
@@ -30,7 +29,6 @@ src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Blueprints.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/InviteOrganisationDialog.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/InvitationsPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/AcceptInvitationDialog.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletList.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/NewSubmissionWorkspace.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialOfferQrCard.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialClaimCard.razor
@@ -44,9 +42,7 @@ src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/UserList.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationList.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationDashboard.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrgSelectorPanel.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/CreateWallet.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Configuration/ProfileEditorDialog.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletAdmin.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Templates.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/SchemaLibrary.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorRegistryPanel.razor
@@ -75,4 +71,3 @@ src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ExportDialog.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ConditionEditor.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/CalculationEditor.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/ServiceHealthDashboard.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/RecoverWallet.razor

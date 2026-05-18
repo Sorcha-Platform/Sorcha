@@ -5,11 +5,12 @@
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
 @using Sorcha.UI.Core.Components.Wallets
+@using Sorcha.UI.Core.Services.Feedback
 @inject IWalletApiService WalletService
 @inject IWalletPreferenceService WalletPreferenceService
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject IJSRuntime JS
 
 <PageTitle>My Wallets - Sorcha Platform</PageTitle>
@@ -97,12 +98,12 @@
         {
             await WalletPreferenceService.SetDefaultWalletAsync(wallet.Address);
             defaultWalletAddress = wallet.Address;
-            Snackbar.Add($"'{wallet.Name}' set as default wallet", Severity.Success);
+            Feedback.ShowSuccess($"'{wallet.Name}' set as default wallet");
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to set default wallet: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to set default wallet: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -129,11 +130,11 @@
         try
         {
             await JS.InvokeVoidAsync("QrCodeHelper.copyToClipboard", wallet.Address);
-            Snackbar.Add($"Address for '{wallet.Name}' copied to clipboard", Severity.Success);
+            Feedback.ShowSuccess($"Address for '{wallet.Name}' copied to clipboard");
         }
         catch
         {
-            Snackbar.Add("Failed to copy address to clipboard", Severity.Error);
+            Feedback.ShowError("Failed to copy address to clipboard");
         }
     }
 
@@ -171,16 +172,16 @@
                     defaultWalletAddress = null;
                 }
 
-                Snackbar.Add($"Wallet '{wallet.Name}' deleted successfully", Severity.Success);
+                Feedback.ShowSuccess($"Wallet '{wallet.Name}' deleted successfully");
             }
             else
             {
-                Snackbar.Add("Wallet not found", Severity.Warning);
+                Feedback.ShowWarning("Wallet not found");
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to delete wallet: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to delete wallet: {ex.Message}", autoDismissMs: 0);
         }
     }
 }
