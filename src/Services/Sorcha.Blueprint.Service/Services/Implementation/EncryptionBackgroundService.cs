@@ -408,6 +408,49 @@ public sealed class EncryptionBackgroundService : BackgroundService
             "Instance {InstanceId} advanced after encrypted action {ActionId}. Next actions: [{NextActions}]",
             workItem.InstanceId, workItem.ActionId,
             string.Join(", ", instance.CurrentActionIds));
+
+        // B-15 — notify the next-action participants and emit workflow-complete
+        // when the chain has run out. The inline ActionExecutionService path
+        // calls NotifyParticipantsAsync at step 15; the async-encrypted path
+        // skipped this, so a user awaiting an action from someone whose
+        // submission went through the encrypted pipeline never received the
+        // real-time SignalR push and saw "All Caught Up" until manual refresh.
+        // Try/catch swallow — a notification failure must NOT roll back the
+        // committed instance state.
+        try
+        {
+            var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
+            foreach (var nextAction in workItem.RoutingResult.NextActions)
+            {
+                string? walletAddress = null;
+                instance.ParticipantWallets?.TryGetValue(nextAction.ParticipantId, out walletAddress);
+
+                await notificationService.NotifyActionAvailableAsync(
+                    instance.Id,
+                    walletAddress,
+                    actionId: nextAction.ActionId.ToString(),
+                    ct: ct);
+            }
+
+            if (workItem.RoutingResult.NextActions.Count == 0)
+            {
+                var walletAddresses = instance.ParticipantWallets?.Values
+                    .Where(w => !string.IsNullOrEmpty(w))
+                    .Distinct()
+                    ?? [];
+
+                await notificationService.NotifyWorkflowCompletedAsync(
+                    instance.Id,
+                    walletAddresses!,
+                    ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "NotifyParticipantsAsync (async-encrypted path) failed for instance {InstanceId} after action {ActionId}; instance state is committed but next-participant SignalR push was missed",
+                workItem.InstanceId, workItem.ActionId);
+        }
     }
 
     private async Task StoreActivityEventAsync(
