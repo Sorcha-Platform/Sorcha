@@ -11,10 +11,11 @@
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Components.Designer
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject ITemplateApiService TemplateApi
 @inject IBlueprintApiService BlueprintApi
 @inject ISystemRegisterService RegisterService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject NavigationManager Navigation
 
 <PageTitle>Catalogue - Sorcha Platform</PageTitle>
@@ -355,18 +356,18 @@
             var saved = await BlueprintApi.SaveBlueprintAsync(_previewBlueprint);
             if (saved is not null)
             {
-                Snackbar.Add($"Blueprint created from '{_selectedTemplate.Title}'", Severity.Success);
+                Feedback.ShowSuccess($"Blueprint created from '{_selectedTemplate.Title}'");
                 _ = TemplateApi.IncrementUsageAsync(_selectedTemplate.Id);
                 Navigation.NavigateTo($"blueprints?highlight={saved.Id}");
             }
             else
             {
-                Snackbar.Add("Failed to save blueprint from template", Severity.Error);
+                Feedback.ShowError("Failed to save blueprint from template", autoDismissMs: 0);
             }
         }
         catch
         {
-            Snackbar.Add("Error saving blueprint from template", Severity.Error);
+            Feedback.ShowError("Error saving blueprint from template", autoDismissMs: 0);
         }
         finally
         {

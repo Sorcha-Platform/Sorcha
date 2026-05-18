@@ -5,6 +5,7 @@
 @using Sorcha.UI.Core.Components.Participants
 @using Sorcha.UI.Core.Models.Participants
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Services.Participants
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
@@ -35,7 +36,7 @@
     [Inject] private IParticipantApiService ParticipantService { get; set; } = default!;
     [Inject] private IOrganizationAdminService OrganizationService { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
-    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IInlineFeedback Feedback { get; set; } = default!;
     [Inject] private NavigationManager Navigation { get; set; } = default!;
 
     private ParticipantDetail? _detail;
@@ -94,7 +95,7 @@
         var org = await OrganizationService.GetOrganizationAsync(OrganizationId);
         if (org == null)
         {
-            Snackbar.Add("Could not load organization details", Severity.Error);
+            Feedback.ShowError("Could not load organization details", autoDismissMs: 0);
             return;
         }
 
@@ -113,7 +114,7 @@
 
         if (!result!.Canceled)
         {
-            Snackbar.Add("Participant published to register", Severity.Success);
+            Feedback.ShowSuccess("Participant published to register");
         }
     }
 

@@ -6,6 +6,7 @@
 @using Sorcha.UI.Core.Services.Admin
 @using Sorcha.UI.Core.Services.Authentication
 @using Sorcha.UI.Core.Services.Configuration
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Models.Authentication
 
 @inject IOrgSwitcherService OrgSwitcherService
@@ -13,7 +14,7 @@
 @inject IConfigurationService ConfigurationService
 @inject CustomAuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 @if (_organizations.Count > 1)
 {
@@ -69,7 +70,7 @@
             var tokenResponse = await OrgSwitcherService.SwitchOrgAsync(org.OrganizationId);
             if (tokenResponse is null)
             {
-                Snackbar.Add("Failed to switch organisation.", Severity.Error);
+                Feedback.ShowError("Failed to switch organisation.", autoDismissMs: 0);
                 return;
             }
 
@@ -81,14 +82,14 @@
             // Notify auth state changed
             AuthStateProvider.NotifyAuthenticationStateChanged();
 
-            Snackbar.Add($"Switched to {org.OrganizationName}", Severity.Success);
+            Feedback.ShowSuccess($"Switched to {org.OrganizationName}");
 
             // Force full page reload to refresh all data contexts
             Navigation.NavigateTo("dashboard", forceLoad: true);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error switching organisation: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Error switching organisation: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {

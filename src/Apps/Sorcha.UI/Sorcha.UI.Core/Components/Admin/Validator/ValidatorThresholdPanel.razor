@@ -3,9 +3,10 @@
 
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject IValidatorAdminService ValidatorService
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <MudStack Spacing="4" Class="pa-4">
     @if (_isLoading)
@@ -169,12 +170,12 @@
             try
             {
                 await ValidatorService.SetupThresholdAsync(request);
-                Snackbar.Add("Threshold signing configured successfully", Severity.Success);
+                Feedback.ShowSuccess("Threshold signing configured successfully");
                 await LoadAsync();
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Failed to setup threshold: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Failed to setup threshold: {ex.Message}", autoDismissMs: 0);
             }
         }
     }

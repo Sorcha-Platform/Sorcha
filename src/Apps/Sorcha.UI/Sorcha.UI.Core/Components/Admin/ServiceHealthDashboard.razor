@@ -3,10 +3,11 @@
 
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject IHealthCheckService HealthService
 @inject IOrganizationAdminService OrganizationService
 @inject IAlertService AlertService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @implements IDisposable
 
 <MudStack Spacing="4">
@@ -224,14 +225,20 @@
             {
                 if (alert.Severity >= AlertSeverity.Warning)
                 {
-                    var severity = alert.Severity switch
+                    var msg = $"{alert.Source}: {alert.Message}";
+                    switch (alert.Severity)
                     {
-                        AlertSeverity.Critical => MudBlazor.Severity.Error,
-                        AlertSeverity.Error => MudBlazor.Severity.Error,
-                        AlertSeverity.Warning => MudBlazor.Severity.Warning,
-                        _ => MudBlazor.Severity.Info
-                    };
-                    Snackbar.Add($"{alert.Source}: {alert.Message}", severity);
+                        case AlertSeverity.Critical:
+                        case AlertSeverity.Error:
+                            Feedback.ShowError(msg, autoDismissMs: 0);
+                            break;
+                        case AlertSeverity.Warning:
+                            Feedback.ShowWarning(msg);
+                            break;
+                        default:
+                            Feedback.ShowInfo(msg);
+                            break;
+                    }
                 }
             }
             StateHasChanged();
