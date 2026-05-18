@@ -2,6 +2,7 @@
 @using Sorcha.Blueprint.Models
 @using Sorcha.Blueprint.Schemas.Client
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.JSInterop
@@ -135,7 +136,7 @@
     public EventCallback<Blueprint> OnInstructionsChanged { get; set; }
 
     [Inject]
-    private ISnackbar Snackbar { get; set; } = null!;
+    private IInlineFeedback Feedback { get; set; } = null!;
 
     private string _overview = string.Empty;
     private List<string> _staleInstructions = [];
@@ -167,7 +168,7 @@
 
         await JS.InvokeVoidAsync("sorcha.downloadFile", fileName, "application/json", json);
 
-        Snackbar.Add("Instruction strings exported", MudBlazor.Severity.Success);
+        Feedback.ShowSuccess("Instruction strings exported");
     }
 
     private async Task ImportStrings(IBrowserFile? file)
@@ -185,11 +186,11 @@
             await OnInstructionsChanged.InvokeAsync(Blueprint);
             DetectStaleInstructions();
             StateHasChanged();
-            Snackbar.Add("Translations imported successfully", MudBlazor.Severity.Success);
+            Feedback.ShowSuccess("Translations imported successfully");
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Import failed: {ex.Message}", MudBlazor.Severity.Error);
+            Feedback.ShowError($"Import failed: {ex.Message}", autoDismissMs: 0);
         }
     }
 

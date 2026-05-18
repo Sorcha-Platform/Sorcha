@@ -3,6 +3,7 @@
 
 @using MudBlazor
 @using Sorcha.UI.Core.Models.Designer
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.Blueprint.Models
 
 <div class="participant-list">
@@ -79,7 +80,7 @@
     private IDialogService DialogService { get; set; } = null!;
 
     [Inject]
-    private ISnackbar Snackbar { get; set; } = null!;
+    private IInlineFeedback Feedback { get; set; } = null!;
 
     [Parameter]
     public List<Participant> Participants { get; set; } = [];
@@ -122,7 +123,7 @@
         {
             var participant = savedModel.ToParticipant();
             await OnParticipantAdded.InvokeAsync(participant);
-            Snackbar.Add($"Participant '{participant.Name}' added", Severity.Success);
+            Feedback.ShowSuccess($"Participant '{participant.Name}' added");
         }
     }
 
@@ -155,7 +156,7 @@
         {
             var updatedParticipant = savedModel.ToParticipant();
             await OnParticipantUpdated.InvokeAsync(updatedParticipant);
-            Snackbar.Add($"Participant '{updatedParticipant.Name}' updated", Severity.Success);
+            Feedback.ShowSuccess($"Participant '{updatedParticipant.Name}' updated");
         }
     }
 
@@ -170,7 +171,7 @@
         if (confirm == true)
         {
             await OnParticipantDeleted.InvokeAsync(participant);
-            Snackbar.Add($"Participant '{participant.Name}' deleted", Severity.Warning);
+            Feedback.ShowWarning($"Participant '{participant.Name}' deleted");
         }
     }
 
