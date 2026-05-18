@@ -132,7 +132,10 @@ public static class PairingResumptionEndpoints
             return Results.Redirect("/auth/login?reason=resumption-expired");
         }
 
-        var returnUrl = Uri.EscapeDataString("/setup/add-device");
+        // /app prefix required — the WASM client lives under <base href="/app/">
+        // and NavigateTo treats slash-prefixed paths as origin-absolute,
+        // bypassing the base href. See Login.cshtml.cs:RedirectToApp.
+        var returnUrl = Uri.EscapeDataString("/app/setup/add-device");
         var emailHint = Uri.EscapeDataString(user.Email);
         return Results.Redirect($"/auth/login?returnUrl={returnUrl}&email={emailHint}&reason=pairing-resumption");
     }
