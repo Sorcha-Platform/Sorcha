@@ -52,11 +52,11 @@ Sorcha uses a standardized port configuration across all development and deploym
 
 ### Samples / Demo Consumers
 
-Samples in `samples/` are application-specific demo artifacts that run alongside the Sorcha stack and consume the platform's public APIs only (per the platform-vs-consumer boundary doc). They are NOT platform services.
+Samples in `samples/` are application-specific demo artifacts that run alongside the Sorcha stack and consume the platform's public APIs only (per the platform-vs-consumer boundary doc). They are NOT platform services and are NOT included in the root `docker-compose.yml`. Each sample ships its own compose file as an opt-in overlay.
 
-| Sample | Port | Purpose |
-|--------|------|---------|
-| **Strathcarron Portal** | 5400 | F127 demo — council citizen portal (Driving Licence + Blue Badge) consuming the shared `Sorcha.UI.Components.User` library. Reachable at `http://localhost:5400/`. Override the URL via the `STRATHCARRON_PORTAL_URL` env var. |
+| Sample | Port | Purpose | Invocation |
+|--------|------|---------|------------|
+| **Strathcarron Portal** | 5400 | F127 demo — council citizen portal (Driving Licence + Blue Badge) consuming the shared `Sorcha.UI.Components.User` library. Reachable at `http://localhost:5400/`. Override the host port via `STRATHCARRON_PORTAL_PORT`. | `docker compose -f docker-compose.yml -f samples/strathcarron-portal/docker-compose.yml up -d` |
 
 ---
 

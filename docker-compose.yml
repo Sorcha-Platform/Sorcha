@@ -669,29 +669,13 @@ services:
     depends_on:
       - api-gateway
 
-  # Feature 127: Strathcarron Council sample portal (Blazor WASM + nginx)
-  # Application-specific consumer artifact — lives in samples/ per the
-  # platform-vs-consumer boundary contract. Hosts the F126 driving-licence
-  # demo page (moved out of Sorcha.UI.Web.Client in F127 PR-A) and, once
-  # F127 PR-C lands, the Blue Badge credential-gated form.
+  # Feature 127: Strathcarron Council sample portal — NOT part of the platform
+  # deliverable. Its service definition lives in
+  # samples/strathcarron-portal/docker-compose.yml as an opt-in overlay. Run
+  # with both compose files together:
+  #   docker compose -f docker-compose.yml \
+  #                  -f samples/strathcarron-portal/docker-compose.yml up -d
   # See docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md.
-  strathcarron-portal:
-    build:
-      context: .
-      dockerfile: samples/strathcarron-portal/Dockerfile
-    image: sorchadev/sample-strathcarron-portal:latest
-    container_name: sorcha-sample-strathcarron-portal
-    restart: unless-stopped
-    mem_limit: 128m
-    # Standalone consumer of the Sorcha platform — speaks to Sorcha only
-    # via the public API gateway. Reachable on the host at the chosen
-    # port (5400 by default; see docs/getting-started/PORT-CONFIGURATION.md).
-    ports:
-      - "${STRATHCARRON_PORTAL_PORT:-5400}:80"
-    networks:
-      - sorcha-network
-    depends_on:
-      - api-gateway
 
   # Feature 114: Reference verifier (Blazor Server)
   sorcha-verifier:
