@@ -34,7 +34,8 @@
                 @* Feature 118 — durable inbox bell. Single notification surface
                    after retirement of the legacy ActivityLogPanel + PendingActionInbox
                    in PRs #538 / this PR. *@
-                <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="@ToggleInboxPanel" Title="Inbox">
+                <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="@ToggleInboxPanel" Title="Inbox"
+                               Class="@(_badgeWiggle ? "inbox-bell-wiggle" : null)">
                     @if (_inboxUnreadCount > 0)
                     {
                         <MudBadge Content="@_inboxUnreadCount" Color="Color.Primary" Overlap="true" />
@@ -271,10 +272,6 @@
     <StatusFooter />
     <OperationNotificationListener />
     <CryptoProgressPopover />
-    @* Feature 118 / T117 — inbox-driven toast for Category=Action entries.
-       Subscribes to TenantHub.OnInboxEntryAdded, fetches entry detail, and
-       shows a snackbar with click-through to DetailHref. *@
-    <PendingActionToast />
 
     @* Feature 118 — durable inbox UI. *@
     <InboxPanel @bind-IsOpen="_inboxPanelOpen" />
@@ -377,11 +374,33 @@
     /// Feature 118 — TenantHub inbox unread-count handler. Authoritative source
     /// for the bell badge after retirement of the legacy ActivityLogPanel.
     /// </summary>
+    /// <remarks>
+    /// Phase 6 of the Snackbar retirement deletes PendingActionToast — the
+    /// CSS wiggle on the badge below replaces the popup as the "look, new
+    /// thing landed" cue.
+    /// </remarks>
     private Task OnInboxUnreadCountUpdated(int unreadCount, DateTimeOffset occurredAt, string traceId)
     {
+        if (unreadCount > _inboxUnreadCount)
+        {
+            _ = WiggleBadgeAsync();
+        }
         _inboxUnreadCount = unreadCount;
         InvokeAsync(StateHasChanged);
         return Task.CompletedTask;
+    }
+
+    private bool _badgeWiggle;
+
+    private async Task WiggleBadgeAsync()
+    {
+        _badgeWiggle = true;
+        await InvokeAsync(StateHasChanged);
+        // Wiggle keyframe runs for ~700ms; clear the class shortly after so
+        // the next inbox event can re-trigger it.
+        await Task.Delay(800);
+        _badgeWiggle = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     private readonly MudTheme _theme = new()

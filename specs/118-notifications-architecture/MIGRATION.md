@@ -120,6 +120,6 @@ The Phase 5 inbox is **shipped end-to-end** as of PR #543. Legacy notification d
    - Per-entry mark-read + dismiss buttons hit the public REST endpoints
    - Clicking an entry marks-read and navigates to its `DetailHref`
    - Category filter chips (PR #540) scope the listing to Action / Credential / Membership / Security / System / Workflow
-6. `PendingActionToast.razor` (PR #537) fires an in-flight snackbar for new Category=Action entries with click-through to DetailHref — alongside the badge for users who want the nudge.
+6. ~~`PendingActionToast.razor` (PR #537) fires an in-flight snackbar for new Category=Action entries with click-through to DetailHref — alongside the badge for users who want the nudge.~~ **Retired in Phase 6 of the Snackbar retirement.** The toast is gone; the inbox bell now wiggles for ~700ms whenever the unread count goes up (CSS keyframe in `MainLayout.razor.css`, gated on `prefers-reduced-motion`). The bell + drawer remains the authoritative surface, with the wiggle providing the same "look, new thing landed" cue without stealing focus.
 
 **Coexistence retired:** The legacy `PendingActionInbox`, `ActivityLogPanel`, and the EventsHub-driven badge subscriptions are gone from `MainLayout`. `EventsHub` itself is still running (encryption-progress channel, served by `OperationNotificationListener` which now self-connects) — full retirement under T121 is gauge-gated.
