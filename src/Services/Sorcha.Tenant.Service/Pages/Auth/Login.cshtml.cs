@@ -296,14 +296,18 @@ public class LoginModel : PageModel
     private IActionResult RedirectToApp(TokenResponse tokens)
     {
         // Feature 128 US2 — when the citizen has no paired device and no
-        // explicit ReturnUrl override, route them to /setup/add-device so
+        // explicit ReturnUrl override, route them to /app/setup/add-device so
         // the WASM client lands on the pairing handoff page (FR-020).
+        // The /app prefix is load-bearing: the Sorcha.UI.Web.Client is hosted
+        // under <base href="/app/"> and NavigationManager.NavigateTo treats
+        // a slash-prefixed path as origin-absolute, bypassing the base href.
+        // Without /app the gateway has no matching route and serves 404.
         // Citizens who already have a paired device follow the existing
         // ReturnUrl / "" behaviour unchanged (FR-026).
         var returnUrl = IsValidReturnUrl(ReturnUrl, _returnToAllowlist) ? ReturnUrl : "";
         if (string.IsNullOrEmpty(returnUrl) && ShouldRouteToSetupAddDevice(tokens.AccessToken))
         {
-            returnUrl = "/setup/add-device";
+            returnUrl = "/app/setup/add-device";
         }
 
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
