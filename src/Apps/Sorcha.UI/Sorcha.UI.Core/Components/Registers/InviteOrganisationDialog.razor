@@ -11,7 +11,6 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
-@inject ISnackbar Snackbar
 
 <MudDialog>
     <TitleContent>
@@ -97,6 +96,16 @@
                 <MudText Typo="Typo.caption" Color="Color.Secondary">
                     Expires @_result.ExpiresAt.ToString("yyyy-MM-dd HH:mm") UTC
                 </MudText>
+
+                @* Feature 118 §12 dialog rule — clipboard-fail surfaces as an
+                   inline MudAlert; success is implicit (the value is already in
+                   the field, the user just clicked Copy). *@
+                @if (_copyError is not null)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" data-testid="invite-copy-warning">
+                        @_copyError
+                    </MudAlert>
+                }
             }
         </MudStack>
     </DialogContent>
@@ -137,6 +146,7 @@
     private int _expiresInDays = 7;
     private string? _didError;
     private string? _submitError;
+    private string? _copyError;
     private bool _isSubmitting;
     private InvitationCreatedResponse? _result;
 
@@ -224,17 +234,20 @@
 
     // navigator.clipboard throws when the page isn't served over HTTPS or the user denies
     // the permission prompt. Silently failing leaves the admin thinking the token was
-    // copied when it wasn't — surface the failure with instructions to copy manually.
+    // copied when it wasn't — surface the failure with an inline MudAlert in
+    // DialogContent (the dialog body can't host IInlineFeedback). Success is implicit:
+    // the value is already visible in the read-only field above the Copy button.
     private async Task CopyToClipboardAsync(string value, string successMessage)
     {
+        _ = successMessage; // success path is now signalled by the field-stays-on-screen UX
         try
         {
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
-            Snackbar.Add(successMessage, Severity.Success);
+            _copyError = null;
         }
         catch
         {
-            Snackbar.Add("Clipboard unavailable — select the field above and copy manually.", Severity.Warning);
+            _copyError = "Clipboard unavailable — select the field above and copy manually.";
         }
     }
 

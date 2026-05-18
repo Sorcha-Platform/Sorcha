@@ -8,7 +8,6 @@
 @inject IRegisterInvitationServiceClient InvitationClient
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
 
 <MudDialog>
     <TitleContent>
@@ -147,11 +146,13 @@
         _isSubmitting = true;
         try
         {
+            // Feature 118 §12 dialog rule — success is conveyed by the inline
+            // MudAlert in DialogContent (rendered when _result is non-null).
+            // The parent picks up the DialogResult.Ok payload on Close.
             _result = await InvitationClient.AcceptAsync(orgId, new AcceptInvitationRequest
             {
                 InvitationToken = _token.Trim(),
             });
-            Snackbar.Add($"Joined register {_result.RegisterName ?? _result.RegisterId}", Severity.Success);
         }
         catch (InvitationApiException ex)
         {
