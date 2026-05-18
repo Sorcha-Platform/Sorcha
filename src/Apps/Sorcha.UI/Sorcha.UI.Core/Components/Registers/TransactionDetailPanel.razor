@@ -3,9 +3,11 @@
 
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Components.Shared
+@using Sorcha.UI.Core.Components.Forms
+@using Sorcha.UI.Core.Services.Feedback
 
 @inject IJSRuntime JSRuntime
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <div data-testid="transaction-detail-panel" class="transaction-detail-panel">
     @* Header row: breadcrumb left, close button right *@
@@ -16,21 +18,17 @@
         </div>
         <div class="panel-header-right">
             <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" data-testid="quick-actions-area">
-                <MudTooltip Text="Copy TX ID">
-                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                                   Size="Size.Small"
-                                   OnClick="CopyTxIdAsync"
-                                   aria-label="Copy TX ID"
-                                   data-testid="copy-txid-button" />
-                </MudTooltip>
-                <MudTooltip Text="Copy Decoded Payload">
-                    <MudIconButton Icon="@Icons.Material.Filled.Code"
-                                   Size="Size.Small"
-                                   OnClick="CopyDecodedPayloadAsync"
-                                   Disabled="@(!HasPayloads)"
-                                   aria-label="Copy Decoded Payload"
-                                   data-testid="copy-payload-button" />
-                </MudTooltip>
+                @* Feature 118 §12 — CopyButton replaces the Snackbar-toast
+                   pattern. The button itself morphs to "Copied ✓" / "Failed"
+                   for ~2s and is the feedback surface. *@
+                <CopyButton Value="@Transaction.TxId"
+                            Label="Copy TX ID"
+                            Variant="CopyButtonVariant.IconButton"
+                            Size="Size.Small" />
+                <CopyButton Value="@DecodedPayloadContent"
+                            Label="Copy Decoded Payload"
+                            Variant="CopyButtonVariant.IconButton"
+                            Size="Size.Small" />
                 <MudTooltip Text="Download Raw Payload">
                     <MudIconButton Icon="@Icons.Material.Filled.Download"
                                    Size="Size.Small"
@@ -133,57 +131,12 @@
 
     private bool HasPayloads => Transaction.Payloads.Count > 0;
 
-    private async Task CopyTxIdAsync()
-    {
-        try
-        {
-            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", Transaction.TxId);
-            if (success)
-            {
-                Snackbar.Add("TX ID copied to clipboard", Severity.Success, config =>
-                {
-                    config.VisibleStateDuration = 2000;
-                });
-            }
-            else
-            {
-                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-            }
-        }
-        catch
-        {
-            Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-        }
-    }
-
-    private async Task CopyDecodedPayloadAsync()
-    {
-        if (!HasPayloads)
-            return;
-
-        var payload = Transaction.Payloads[0];
-        var content = payload.DecodedContent ?? payload.Data ?? string.Empty;
-
-        try
-        {
-            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", content);
-            if (success)
-            {
-                Snackbar.Add("Payload copied to clipboard", Severity.Success, config =>
-                {
-                    config.VisibleStateDuration = 2000;
-                });
-            }
-            else
-            {
-                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-            }
-        }
-        catch
-        {
-            Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-        }
-    }
+    // Feature 118 §12 — CopyButton consumes this directly. Empty disables the
+    // button automatically (CopyButton.Disabled="@(string.IsNullOrEmpty(Value))").
+    private string DecodedPayloadContent =>
+        HasPayloads
+            ? Transaction.Payloads[0].DecodedContent ?? Transaction.Payloads[0].Data ?? string.Empty
+            : string.Empty;
 
     private async Task DownloadRawPayloadAsync()
     {
@@ -198,14 +151,11 @@
         try
         {
             await JSRuntime.InvokeVoidAsync("downloadFile", filename, "application/octet-stream", rawContent);
-            Snackbar.Add($"Downloaded {filename}", Severity.Success, config =>
-            {
-                config.VisibleStateDuration = 2000;
-            });
+            // Success is implicit — the browser's download bar is the feedback surface.
         }
         catch
         {
-            Snackbar.Add("Failed to download payload", Severity.Error);
+            Feedback.ShowError("Failed to download payload", autoDismissMs: 0);
         }
     }
 }
