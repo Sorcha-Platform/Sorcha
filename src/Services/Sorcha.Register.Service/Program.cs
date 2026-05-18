@@ -327,8 +327,19 @@ app.UseRateLimiting();
 // Internal discovery endpoint for service-to-service recovery (no auth)
 app.MapGet("/api/internal/registers", async (RegisterManager manager) =>
 {
+    // Status is serialised as the enum name (string) — the consumer-side
+    // InternalRegisterInfo.Status is typed string. Without the explicit
+    // ToString(), default System.Text.Json emits the underlying int and the
+    // client throws JsonException, which the catch-all returns as [],
+    // silently breaking bloom-filter fan-out for new wallet addresses.
     var allRegisters = await manager.GetAllRegistersAsync();
-    return Results.Ok(allRegisters.Select(r => new { r.Id, r.Name, r.Height, r.Status }).ToList());
+    return Results.Ok(allRegisters.Select(r => new
+    {
+        r.Id,
+        r.Name,
+        r.Height,
+        Status = r.Status.ToString()
+    }).ToList());
 })
 .WithName("InternalGetRegisters")
 .WithSummary("Internal: List all registers for service recovery")
