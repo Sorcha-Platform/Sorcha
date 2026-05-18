@@ -33,7 +33,6 @@ src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/NewSubmissionWorkspace.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialOfferQrCard.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialClaimCard.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyProfile.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/SubscribeDialog.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/IssuedCredentials.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/OrganizationUserDetail.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/UserManagement.razor
@@ -42,7 +41,6 @@ src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/UserList.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationList.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationDashboard.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrgSelectorPanel.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Configuration/ProfileEditorDialog.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Templates.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/SchemaLibrary.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorRegistryPanel.razor
@@ -66,8 +64,4 @@ src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationConfiguration.raz
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Participants/Detail.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Templates/TemplateEvaluator.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/OfflineSyncIndicator.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ImportDialog.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ExportDialog.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ConditionEditor.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/CalculationEditor.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/ServiceHealthDashboard.razor

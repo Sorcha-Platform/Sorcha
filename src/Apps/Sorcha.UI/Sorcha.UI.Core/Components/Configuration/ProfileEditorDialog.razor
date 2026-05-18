@@ -5,7 +5,6 @@
 @using Sorcha.UI.Core.Models.Configuration
 @using Sorcha.UI.Core.Services.Configuration
 @inject IConfigurationService ConfigService
-@inject ISnackbar Snackbar
 
 <MudDialog>
     <TitleContent>
@@ -266,7 +265,6 @@
             }
 
             await ConfigService.SaveProfileAsync(profile);
-            Snackbar.Add($"Profile '{profile.Name}' {(IsNew ? "created" : "updated")} successfully", Severity.Success);
             MudDialog.Close(DialogResult.Ok(profile));
         }
         catch (Exception ex)

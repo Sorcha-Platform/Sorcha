@@ -3,7 +3,6 @@
 
 @using Sorcha.UI.Core.Services
 @using Microsoft.Extensions.Logging
-@inject ISnackbar Snackbar
 @inject ILogger<SubscribeDialog> Logger
 
 <MudDialog>
@@ -14,6 +13,12 @@
         </MudStack>
     </TitleContent>
     <DialogContent>
+        @if (!string.IsNullOrEmpty(_subscribeFeedback))
+        {
+            <MudAlert Severity="@_subscribeFeedbackSeverity" Dense="true" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="@(() => _subscribeFeedback = null)">
+                @_subscribeFeedback
+            </MudAlert>
+        }
         @if (_loading)
         {
             <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
@@ -135,6 +140,8 @@
     private bool _loading = true;
     private string? _errorMessage;
     private string? _subscribingRegisterId;
+    private string? _subscribeFeedback;
+    private Severity _subscribeFeedbackSeverity = Severity.Info;
 
     protected override async Task OnInitializedAsync()
     {
@@ -173,17 +180,20 @@
             {
                 SubscribedRegisterIds.Add(registerId);
                 await OnSubscribed.InvokeAsync();
-                Snackbar.Add("Successfully subscribed to register", Severity.Success);
+                _subscribeFeedback = "Successfully subscribed to register";
+                _subscribeFeedbackSeverity = Severity.Success;
             }
             else
             {
-                Snackbar.Add("Failed to subscribe to register", Severity.Error);
+                _subscribeFeedback = "Failed to subscribe to register";
+                _subscribeFeedbackSeverity = Severity.Error;
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Subscribe to register {RegisterId} failed", registerId);
-            Snackbar.Add("Subscription failed. Please try again.", Severity.Error);
+            _subscribeFeedback = "Subscription failed. Please try again.";
+            _subscribeFeedbackSeverity = Severity.Error;
         }
         finally
         {

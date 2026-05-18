@@ -137,9 +137,6 @@
     [Inject]
     private BlueprintSerializationService SerializationService { get; set; } = null!;
 
-    [Inject]
-    private ISnackbar Snackbar { get; set; } = null!;
-
     private IBrowserFile? _selectedFile;
     private ImportValidationResult? _validationResult;
     private bool _loading;
@@ -180,7 +177,6 @@
     {
         if (_validationResult?.IsValid == true && _validationResult.Blueprint != null)
         {
-            Snackbar.Add($"Blueprint '{_validationResult.Blueprint.Title}' imported successfully", Severity.Success);
             MudDialog.Close(DialogResult.Ok(_validationResult.Blueprint));
         }
     }
