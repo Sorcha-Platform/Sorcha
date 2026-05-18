@@ -14,6 +14,15 @@ using Sorcha.UI.Web.Client.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
+// AuthorizeView role-mismatch evaluations log at Info per render — every
+// admin/designer nav block on MainLayout produces a "Authorization failed"
+// line for every non-matching role. For a Consumer that's ~100 lines per
+// page load. Silence the category; legitimate auth failures still surface
+// as HTTP 401s in the network log.
+builder.Logging.AddFilter(
+    "Microsoft.AspNetCore.Authorization.DefaultAuthorizationService",
+    LogLevel.Warning);
+
 // Register root components for standalone WASM
 builder.RootComponents.Add<Routes>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
