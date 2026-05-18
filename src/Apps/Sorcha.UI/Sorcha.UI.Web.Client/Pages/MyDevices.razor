@@ -27,10 +27,11 @@
 @using Microsoft.Extensions.Logging
 @using MudBlazor
 @using Sorcha.CitizenWallet.Abstractions.Models
+@using Sorcha.UI.Core.Services.Feedback
 
 @inject HttpClient Http
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject ILogger<MyDevices> Logger
 @inject NavigationManager Nav
 
@@ -183,30 +184,28 @@
                         RevokedAt = DateTimeOffset.UtcNow
                     };
                 }
-                Snackbar.Add("Device revoked.", Severity.Success);
+                Feedback.ShowSuccess("Device revoked.");
             }
             else if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                Snackbar.Add("Device not found.", Severity.Warning);
+                Feedback.ShowWarning("Device not found.");
                 await LoadAsync();
             }
             else if (response.StatusCode == HttpStatusCode.BadGateway)
             {
                 // Tenant row IS revoked but Wallet S2S failed. Caller should retry.
-                Snackbar.Add(
-                    "Device marked revoked, but the wallet status-list flip failed. Try again to complete revocation.",
-                    Severity.Warning);
+                Feedback.ShowWarning("Device marked revoked, but the wallet status-list flip failed. Try again to complete revocation.");
                 await LoadAsync();
             }
             else
             {
-                Snackbar.Add($"Revoke failed (HTTP {(int)response.StatusCode}).", Severity.Error);
+                Feedback.ShowError($"Revoke failed (HTTP {(int)response.StatusCode}).", autoDismissMs: 0);
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Revoke /api/v1/me/devices/{DeviceId} failed", device.DeviceId);
-            Snackbar.Add($"Revoke failed: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Revoke failed: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {

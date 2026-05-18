@@ -5,10 +5,11 @@
 
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Web.Client.Components.Settings.AuthMethods
 @inject IAuthMethodsClientService AuthMethodsClient
 @inject ILocalizationService Loc
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <MudText Typo="Typo.h6" Class="mb-1">
     @Loc.T("settings.accounts.title")
@@ -80,7 +81,7 @@ else
             _methods = await AuthMethodsClient.GetAuthMethodsAsync();
             if (_methods is null)
             {
-                Snackbar.Add(Loc.T("settings.accounts.loadFailed"), Severity.Error);
+                Feedback.ShowError(Loc.T("settings.accounts.loadFailed"), autoDismissMs: 0);
             }
         }
         finally
