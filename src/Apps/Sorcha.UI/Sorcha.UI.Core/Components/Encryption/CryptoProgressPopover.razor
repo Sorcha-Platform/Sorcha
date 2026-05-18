@@ -7,7 +7,6 @@
 @using Sorcha.UI.Core.Services
 @implements IDisposable
 @inject IEncryptionOperationTracker Tracker
-@inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 
 @if (_operation != null && _operation.PanelState != PopoverState.Dismissed)
@@ -196,15 +195,11 @@
     {
         if (_disposed) return;
 
-        var previousOp = _operation;
         _operation = Tracker.CurrentOperation;
 
-        // If dismissed and operation just completed, show toast
-        if (_operation?.PanelState == PopoverState.Dismissed && _operation.IsComplete
-            && previousOp?.IsComplete != true)
-        {
-            ShowCompletionToast(_operation);
-        }
+        // Completion feedback is rendered inside the expanded panel itself
+        // (success footer / error footer). The popover IS the surface — no
+        // toast required even when dismissed.
 
         InvokeAsync(StateHasChanged);
     }
@@ -271,39 +266,6 @@
         _ => Color.Default
     };
 
-    private void ShowCompletionToast(EncryptionOperationState op)
-    {
-        if (op.IsSuccess)
-        {
-            Snackbar.Add(
-                $"Submission secured — {op.Recipients.Count} recipients can now access their disclosed fields",
-                Severity.Success,
-                config =>
-                {
-                    config.VisibleStateDuration = 8000;
-                    config.ShowCloseIcon = true;
-                    config.Action = "View";
-                    config.OnClick = _ =>
-                    {
-                        if (!string.IsNullOrEmpty(op.TransactionHash))
-                            Navigation.NavigateTo(GetTransactionUrl());
-                        return Task.CompletedTask;
-                    };
-                });
-        }
-        else
-        {
-            Snackbar.Add(
-                $"Encryption failed — {GetErrorText()}",
-                Severity.Error,
-                config =>
-                {
-                    config.VisibleStateDuration = 10000;
-                    config.ShowCloseIcon = true;
-                });
-        }
-    }
-
     private async Task RetryAsync()
     {
         if (WorkflowService == null || OriginalRequest == null || _operation == null) return;
@@ -321,7 +283,8 @@
         }
         catch
         {
-            Snackbar.Add("Retry failed — please try again", Severity.Error);
+            // Retry failure surfaces via the operation tracker's state — the
+            // popover's error footer re-renders with the new error message.
         }
         finally
         {

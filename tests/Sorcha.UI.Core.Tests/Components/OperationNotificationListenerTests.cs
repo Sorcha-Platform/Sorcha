@@ -50,8 +50,11 @@ public class OperationNotificationListenerTests : BunitContext
     }
 
     [Fact]
-    public async Task OnEncryptionComplete_ShowsSuccessSnackbar()
+    public async Task OnEncryptionComplete_DoesNotShowSnackbar()
     {
+        // Phase 5e (Snackbar retirement): encryption completion is now a
+        // durable inbox entry (Phase 2 writers) surfaced via the bell drawer.
+        // The hub handler is a no-op; no toast must fire.
         var cut = Render<OperationNotificationListener>();
         var signal = new EncryptionSignal
         {
@@ -64,15 +67,18 @@ public class OperationNotificationListenerTests : BunitContext
         await _walletHub.RaiseEncryptionCompleteAsync(signal);
 
         _snackbarMock.Verify(s => s.Add(
-            It.Is<string>(msg => msg.Contains("Encryption complete")),
-            Severity.Success,
+            It.IsAny<string>(),
+            It.IsAny<Severity>(),
             It.IsAny<Action<SnackbarOptions>>(),
-            It.IsAny<string>()), Times.Once);
+            It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public async Task OnEncryptionFailed_ShowsErrorSnackbar()
+    public async Task OnEncryptionFailed_DoesNotShowSnackbar()
     {
+        // Phase 5e (Snackbar retirement): encryption failure is now a
+        // durable inbox entry (Phase 2 writers) surfaced via the bell drawer.
+        // The hub handler is a no-op; no toast must fire.
         var cut = Render<OperationNotificationListener>();
         var signal = new EncryptionSignal
         {
@@ -85,10 +91,10 @@ public class OperationNotificationListenerTests : BunitContext
         await _walletHub.RaiseEncryptionFailedAsync(signal);
 
         _snackbarMock.Verify(s => s.Add(
-            It.Is<string>(msg => msg.Contains("Encryption failed")),
-            Severity.Error,
+            It.IsAny<string>(),
+            It.IsAny<Severity>(),
             It.IsAny<Action<SnackbarOptions>>(),
-            It.IsAny<string>()), Times.Once);
+            It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
