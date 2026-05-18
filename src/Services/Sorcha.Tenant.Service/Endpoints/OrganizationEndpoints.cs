@@ -470,6 +470,7 @@ public static class OrganizationEndpoints
         ChangeUserRoleRequest request,
         IIdentityRepository identityRepository,
         TenantDbContext dbContext,
+        ITenantMembershipInboxWriter membershipInbox,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
@@ -517,6 +518,20 @@ public static class OrganizationEndpoints
             }
         });
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Feature 118 — drop a "your role in {org} changed" inbox entry for the affected user.
+        // Only fires when the target identity is linked to a PlatformUser (PlatformUserId != Empty).
+        // Writer is fail-safe (try/log/swallow internally) — an inbox failure must never
+        // roll back the just-committed role change.
+        if (targetUser.PlatformUserId != Guid.Empty)
+        {
+            await membershipInbox.WriteOrgMembershipRoleChangedAsync(
+                targetUser.PlatformUserId,
+                organizationId,
+                previousRole,
+                request.Role.ToString(),
+                cancellationToken).ConfigureAwait(false);
+        }
 
         return TypedResults.Ok();
     }
