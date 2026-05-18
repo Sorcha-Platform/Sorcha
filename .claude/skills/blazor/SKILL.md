@@ -172,6 +172,7 @@ public class ClientProductService : IProductService
 | Sync JS interop in Server | Blocks SignalR circuit | Use `IJSRuntime` async |
 | No error boundaries | One error crashes app | Use `<ErrorBoundary>` |
 | Forgetting prerender state | Double API calls | Use `[PersistentState]` |
+| `@inject ISnackbar` in new code | Toasts pull focus off the active surface; the action's own affordance is the right place for feedback. | Inject `IInlineFeedback` for actor's-own-action feedback (page-scoped banner), write a server-side inbox entry for workflow events that need durable history, or use the `CopyButton` primitive for clipboard affordances. |
 
 ## Performance Best Practices
 
