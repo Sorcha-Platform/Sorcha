@@ -1,64 +1,65 @@
-# Plan — Dashboard org-scoping (UX-005, Feature 131)
+# Plan — Dashboard org-scoping (UX-005, Feature 131, v2)
 
 **Spec:** `spec.md`
 **Design:** `docs/superpowers/specs/2026-05-18-ux-005-dashboard-org-scoping-design.md`
 
 ## Strategy
 
-Five layers, top-down. Land as **two PRs** to keep diffs reviewable; each PR self-contained and shippable.
+Three layers, ordered. Two PRs.
 
-- **PR-A** — Backend stats endpoints accept `?orgId=` filter (Wallet, Blueprint, Register, Tenant). Includes unit tests. Behaviour without the param is unchanged, so this PR is a pure non-breaking extension and can ship independently.
-- **PR-B** — Gateway dashboard endpoint requires auth + scope-aware routing + UI toggle + UI card hiding. Depends on PR-A's filters being live.
+- **PR-A** — Backend support:
+  1. Register Service `/api/stats` accepts `?registerIds=`.
+  2. Tenant Service grows an org-summary surface (returns 4 org-scoped fields including `recentTransactions` via Tenant→Register cross-service call).
+  Behaviour without the new param/endpoint is unchanged. Shippable independently.
+- **PR-B** — Gateway + UI:
+  1. Gateway `/api/dashboard` requires auth; resolves scope; routes org→Tenant, platform→existing fan-out.
+  2. UI scope toggle, conditional card grid, localStorage persistence.
+  Depends on PR-A live.
 
 ## Files
 
-### PR-A — backend filters
+### PR-A — backend
 
 | File | Change |
 |---|---|
-| `src/Services/Sorcha.Wallet.Service/Program.cs:315-333` | Accept `[FromQuery] Guid? orgId`. When set, call `IWalletRepository.CountAsync(tenantId: orgId.ToString())`. |
-| `src/Core/Sorcha.Wallet.Portable/Repositories/Interfaces/IWalletRepository.cs` | Overload `Task<int> CountAsync(string? tenantId = null, CancellationToken ct = default)`. |
-| `src/Core/Sorcha.Wallet.Portable/Repositories/EfCoreWalletRepository.cs` (or current impl) | Implement the overload; filter on `Tenant` column. |
-| `src/Services/Sorcha.Blueprint.Service/Program.cs:2322` (the `/api/stats` MapGet) | Accept `[FromQuery] Guid? orgId`. Filter via the publishing participant's `OrgId`. |
-| `src/Services/Sorcha.Blueprint.Service/Storage/IBlueprintStore.cs` (or whichever surface provides the count) | Add `CountByOrgAsync(Guid orgId)` if not present; reuse existing index. |
-| `src/Services/Sorcha.Register.Service/Program.cs:3105` | Accept `[FromQuery] Guid? orgId`. When set, return `{ registerCount = subscribedActive, transactionCount = sumAcrossSubscribed }`. Register Service calls Tenant Service via the existing service-to-service client for the subscription list (Register→Tenant cross-service hop). When unset, retain current platform-wide return. |
-| `src/Services/Sorcha.Tenant.Service/Endpoints/...` (org stats) | Already accepts org context via the dashboard service. Confirm `/api/organizations/stats` accepts `?orgId=` and returns `{ totalOrganizations = 1, totalUsers = orgUsers }` for that org; platform shape unchanged when omitted. |
-| `tests/Sorcha.Wallet.Service.Tests/.../StatsEndpointTests.cs` | Two cases: `?orgId=` filters; omitting returns platform total. |
-| `tests/Sorcha.Blueprint.Service.Tests/...` | Same pattern. |
-| `tests/Sorcha.Register.Service.Tests/...` | Same pattern + cross-service subscription read mock. |
-| `tests/Sorcha.Tenant.Service.Tests/...` | Confirm new shape. |
+| `src/Services/Sorcha.Register.Service/Program.cs:3105` | Accept `[FromQuery] string? registerIds`. When non-empty (comma-split, validated as ids), return `{ registerCount = listed.Count, transactionCount = sumAcrossListed }`. When null, retain platform-wide shape. |
+| `src/Services/Sorcha.Tenant.Service/Services/IDashboardService.cs` | Add `Task<OrgSummaryResponse> GetOrgSummaryAsync(Guid orgId, CancellationToken ct)`. New DTO `OrgSummaryResponse { Guid OrgId, int ActiveUsers, int PendingInvitations, int SubscribedRegisters, int RecentTransactions, DateTimeOffset Timestamp }`. |
+| `src/Services/Sorcha.Tenant.Service/Services/DashboardService.cs` | Implement `GetOrgSummaryAsync`. Reuse existing user count + pending invitation count. Add `OrganizationRegisterSubscriptions` count query (Status=Active). Call `IRegisterServiceClient` with the subscribed register ids; sum `transactionCount`. |
+| `src/Services/Sorcha.Tenant.Service/Endpoints/DashboardEndpoints.cs` | Map `GET /api/organizations/{orgId:guid}/dashboard-summary` → `GetOrgSummaryAsync`. Policy `RequireAuthenticated` (any signed-in org member). |
+| `src/Common/Sorcha.ServiceClients.Http/Register/IRegisterServiceClient.cs` + impl | Add `Task<RegisterStatsResponse> GetStatsAsync(IReadOnlyList<string>? registerIds = null, CancellationToken ct = default)`. URL builder joins ids with `,`. |
+| `tests/Sorcha.Register.Service.Tests/...` | Two tests: `?registerIds=` filters to sum; unset returns platform shape. |
+| `tests/Sorcha.Tenant.Service.Tests/Services/DashboardServiceOrgSummaryTests.cs` | Cases: user count, invitations, subscriptions, mocked Register call for transactions, error path (Register down → recentTransactions = 0). |
 
 ### PR-B — gateway + UI
 
 | File | Change |
 |---|---|
-| `src/Services/Sorcha.ApiGateway/Program.cs:151` | `.RequireAuthorization()` on `/api/dashboard`. Accept `[FromQuery] string? scope`. Read `org_id` + role claims from `HttpContext.User`. Resolve effective scope: `platform` if `scope == "platform"` AND `IsInRole("SystemAdmin")`; else `org` with `orgId` from claim. Pass through to `DashboardStatisticsService`. |
-| `src/Services/Sorcha.ApiGateway/Services/DashboardStatisticsService.cs` | `GetDashboardStatisticsAsync(Guid? orgId, CancellationToken ct)`. Each fan-out method appends `?orgId={orgId}` to its backend call when set. |
-| `src/Services/Sorcha.ApiGateway/Services/DashboardStatisticsService.cs:198-212` (`DashboardStatistics` class) | Add `Scope` (string) + `OrgId` (Guid?). Keep `ConnectedPeers` + `TotalOrganizations` nullable; omit on serialize when null (default JsonIgnoreCondition.WhenWritingNull). |
-| `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/DashboardService.cs:28` | Accept `string? scope = null` param; forward `?scope=platform` when "platform". |
-| `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Models/User/Dashboard/DashboardStatsViewModel.cs` | Add `Scope`, `OrgId`, `ConnectedPeers?`, `TotalOrganizations?` (nullable on the wire too). |
-| `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` | Add scope-toggle `MudButtonGroup` (visible only when user is `SystemAdmin`). Bind selection to `localStorage` via `IJSRuntime` keyed by `platform_user_id`. Hide ConnectedPeers + TotalOrganizations cards when `_stats.Scope == "org"`. Reload stats on toggle change. |
-| `tests/Sorcha.ApiGateway.Tests/.../DashboardEndpointTests.cs` | Cases: anon → 401; non-admin → org scope; admin no-toggle → org scope; admin `?scope=platform` → platform scope; non-admin `?scope=platform` → org scope (silent ignore). |
-| `tests/Sorcha.UI.E2E.Tests/Docker/DashboardScopeTests.cs` (Playwright) | Smoke: SystemAdmin sees toggle, can flip; non-admin doesn't see toggle. |
+| `src/Services/Sorcha.ApiGateway/Program.cs:151` | `.RequireAuthorization()`. Accept `[FromQuery] string? scope` and `HttpContext`. Resolve effective scope. Org → call Tenant `/api/organizations/{orgId}/dashboard-summary`; map result to `DashboardResponse { scope:"org", orgId, activeUsers, pendingInvitations, subscribedRegisters, recentTransactions, timestamp }`. Platform → existing fan-out, decorate with `scope:"platform", orgId:null`. |
+| `src/Services/Sorcha.ApiGateway/Services/DashboardStatisticsService.cs` | Add `Scope` + `OrgId` to `DashboardStatistics`. Add `GetOrgSummaryAsync(Guid orgId, string? bearerToken)` that calls Tenant. |
+| `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/DashboardService.cs:28` | Accept `string? scope = null`; forward `?scope=platform` when provided. |
+| `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Models/User/Dashboard/DashboardStatsViewModel.cs` | Add `Scope` (`"org"`\|`"platform"`), `OrgId` (Guid?), org-only fields (`ActiveUsers`, `PendingInvitations`, `SubscribedRegisters`, `RecentTransactions`) — all nullable so platform shape doesn't fill them. |
+| `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` | (a) Add scope-toggle `MudButtonGroup` inside `<AuthorizeView Roles="SystemAdmin">`, top-right of the stats grid. (b) Bind to `_scope`, reload stats on change, persist in `localStorage`. (c) Replace single card grid with two `@if (_stats.Scope == "org")` / `@else` branches. Org branch: 4 cards. Platform branch: existing 6 cards. |
+| `tests/Sorcha.ApiGateway.Tests/...` | Anonymous→401; non-admin→org; admin no-toggle→org; admin scope=platform→platform; non-admin scope=platform→org (silent ignore). |
+| `tests/Sorcha.UI.E2E.Tests/Docker/DashboardScopeTests.cs` (Playwright) | Smoke: SystemAdmin sees toggle, can flip; Administrator (non-system) doesn't see toggle; both render expected card counts. |
 
 ## PR ordering
 
 ```
-PR-A backend filters  ──►  PR-B gateway + UI
-   (independent ship)         (depends on PR-A live)
+PR-A backend (Register filter + Tenant summary endpoint)
+        │  shippable independently — no caller uses it yet
+        ▼
+PR-B gateway + UI
 ```
-
-PR-A is shippable in isolation — no caller uses `?orgId=` until PR-B. Risk: if PR-B is delayed, PR-A widens the API surface without exercising it. Acceptable; the contract is small.
 
 ## Effort estimate
 
-- PR-A: ~4h (4 backends × ~30 min code + ~30 min test each; one cross-service hop for Register).
-- PR-B: ~5h (gateway claim extraction + UI toggle + localStorage + Playwright smoke).
-- Total: ~9h. Tracks the design's 8–10h estimate.
+- PR-A: ~4h (Register query-param parse, Tenant new method + endpoint + cross-service call + tests).
+- PR-B: ~5h (Gateway routing + UI toggle + localStorage + Playwright smoke).
+- Total: ~9h. Tracks prior estimate.
 
 ## Verification
 
-- All four backends: unit tests pass with the `?orgId=` overload and the unscoped path.
-- Gateway: integration test pass for the four scope-resolution cases.
-- UI: Playwright smoke + manual run on n1 against `admin@sorcha.local` (SystemAdmin) and a freshly-created Administrator for org A (Acme Verification Co. exists from earlier walkthroughs).
+- All target backends' unit tests pass with new param/endpoint and the unchanged unscoped path.
+- Gateway integration tests pass for the five scope-resolution cases.
+- Playwright smoke + manual run on n1: `admin@sorcha.local` (SystemAdmin) flips toggle and sees both views; `verification-admin@assured-identity.local` (Administrator of Acme Verification Co.) sees org view only.
 - SC-001 through SC-008 from `spec.md` validated on n1.

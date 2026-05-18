@@ -1,99 +1,109 @@
-# UX-005 — Dashboard org-scoping (design)
+# UX-005 — Dashboard org-scoping (design, v2)
 
 **Date:** 2026-05-18
 **Spec:** `specs/131-dashboard-org-scoping/`
 **Roadmap line:** M4 · "Dashboard org-scoped stats"
-**Driver:** an Administrator of org A sees totals across every org on the platform (their own + everyone else's) on Home.razor's stats cards. Same data leaks via the anonymous `GET /api/dashboard` endpoint on the gateway — anyone with HTTP access to the platform reads `TotalWallets` / `TotalOrganizations` / `TotalTransactions` without authentication.
+**Driver:** an Administrator of org A sees totals across every org on the platform on Home.razor's stats cards. Same data leaks via the anonymous `GET /api/dashboard`.
+
+## v2 history note
+
+v1 of this design assumed Wallet and Blueprint Service stats could be filtered by `?orgId=`. **They can't** — neither schema carries an org id. `wallet.Wallets.Tenant` is per-installation (`system`/`default`); `Wallet.Owner` is a PlatformUserId. Blueprints carry an owner wallet address. Org-scoping wallets/blueprints would require cross-service joins through Tenant Service (org → users → wallets, org → participants → blueprints), which doubles the new HTTP surface and the implementation cost.
+
+v2 (this doc) **redefines the org-view card set** to use only data Tenant Service already has direct access to. SystemAdmin's platform view is unchanged.
 
 ## Current state
 
 | Surface | Today |
 |---|---|
-| `Sorcha.ApiGateway/Program.cs:151` `GET /api/dashboard` | Anonymous. Returns `DashboardStatistics` aggregated from each backend `/api/stats`. |
-| Each backend `/api/stats` (Wallet, Blueprint, Register, Tenant `/api/organizations/stats`) | Anonymous. Returns platform-wide counts only. |
-| `Sorcha.ApiGateway/Services/DashboardStatisticsService.cs` | No org context anywhere in the call chain. |
-| `Sorcha.UI.Components.User/Services/User/DashboardService.cs:28` | Calls `/api/dashboard`. No org context. |
-| `Sorcha.UI.Web.Client/Pages/Home.razor:45` | Stats card grid gated to `Administrator,SystemAdmin,Auditor`. All cards render whatever the gateway returned. |
+| `Sorcha.ApiGateway/Program.cs:151` `GET /api/dashboard` | Anonymous. Returns `DashboardStatistics` (6 platform-wide fields) aggregated from each backend `/api/stats`. |
+| Each backend `/api/stats` | Anonymous, platform-wide. |
+| `Sorcha.UI.Web.Client/Pages/Home.razor:45` | Stats card grid gated to `Administrator,SystemAdmin,Auditor`. All cards render the gateway's response. |
 
 ## Decisions
 
 | # | Decision | Why |
 |---|---|---|
-| **D1** | Path A — push org filter all the way through the call chain. | Backend filter is canonical; UI-only filter (Path B) wouldn't fix the gateway data-leak. |
-| **D2** | Org-scoped is the default for **every** role, including SystemAdmin. | Matches the org-switcher pattern: every other page in the UI honours `UserContext.ActiveContextOrgId`. Consistency wins. |
-| **D3** | SystemAdmin sees a `View: Org · Platform` toggle on the dashboard. Other roles never see it. | Platform-view is the SystemAdmin power-user case. Showing the toggle to org admins would imply they have a view they cannot access — bad affordance. |
-| **D4** | `ConnectedPeers` + `TotalOrganizations` only render in **platform view**. In org view they are hidden, not zeroed. | Both are infrastructure-wide signals an org admin has no agency over. Per Home.razor:174 comment, "Citizens have no agency over infrastructure health" — extend that principle to org admins. |
-| **D5** | Auth at the gateway endpoint, not at each backend `/api/stats`. | Backend stats stay anonymous-callable-with-`?orgId=`; the security boundary is the gateway. Avoids changing the s2s pattern for an internal-only metric surface. |
-| **D6** | Org id passes as `?orgId={guid}` query param on every backend `/api/stats`. Omitting the param = platform-wide (SystemAdmin platform view only). | Query param is more cache-friendly than headers and trivial to filter in EF. |
-| **D7** | `RecentTransactions` in org view = "transactions across registers the org is subscribed to". | Register-level data is org-scoped via `OrganizationRegisterSubscriptions`. Subset is correct and cheap to compute (Tenant already exposes the join). |
-| **D8** | `ActiveRegisters` in org view = `OrganizationRegisterSubscriptions` count with `Status=Active`. | Already the visible truth on the Registers page; same number on the dashboard avoids divergence. |
-| **D9** | `ActiveBlueprints` in org view = blueprints published by the org's own participants. | Blueprint publish is org-scoped via the publishing participant's org. |
-| **D10** | `TotalWallets` in org view = wallets with `Tenant = orgId`. | `wallet.Wallets.Tenant` already carries org id. |
+| **D1** | Two distinct response shapes — **org-scope** and **platform-scope** — keyed by a `scope` discriminator. | Org and platform are different mental models, not the same set of cards filtered differently. Forcing one shape muddles labels (e.g. "Total Organizations: 1" is wrong for an org admin). |
+| **D2** | Org-scoped is the default for **every** role, including SystemAdmin. | Matches the org-switcher pattern: every other page in the UI honours `UserContext.ActiveContextOrgId`. |
+| **D3** | SystemAdmin sees a `View: Org · Platform` toggle on the dashboard. Other roles never see it. | Platform view is the SystemAdmin power-user case. Showing the toggle to org admins would imply a view they cannot access. |
+| **D4** | Auth at the gateway endpoint, not at each backend `/api/stats`. | Backend stats stay anonymous-callable; security boundary is the gateway. Closes the latent data-leak (anyone hitting `/api/dashboard` reads platform totals today). |
+| **D5** | Gateway computes scope = `platform` iff `scope=="platform" && role==SystemAdmin`; else `org` with the JWT's `org_id`. | Single auth-decision site. `?scope=platform` from a non-admin is silently downgraded to org-scope. |
+| **D6** | Org-scope source: **Tenant Service** owns the aggregate. Gateway delegates the whole org-view fetch to one Tenant endpoint. | Tenant already holds users-per-org, invitations-per-org, subscriptions-per-org. Adding a transactions-across-subscribed-registers field there is one cross-service call (Tenant → Register). Cleaner than gateway orchestration of 3 backends. |
+| **D7** | Platform-scope source: existing 5-way fan-out from `DashboardStatisticsService`. Unchanged shape. | SystemAdmin behaviour preserved; existing tests still apply. |
+| **D8** | Org-view cards: **Active users in org · Pending invitations · Subscribed registers · Recent transactions across subscribed registers**. | All four already-available without schema changes. Wallets and blueprints stay platform-only. |
+| **D9** | Register Service accepts `?registerIds=a,b,c` (comma-sep) on `/api/stats`. Tenant Service uses this when building org-scope response. | One new query param on Register, no new endpoint. Sum scoped to the listed registers. |
+| **D10** | Toggle persists in `localStorage` keyed by `platform_user_id`. SystemAdmin selecting Platform stays Platform across reloads. | Matches the SystemAdmin's intent. Scoped to user so a shared device doesn't bleed selection. |
 
-## Wire shape (after the change)
+## Wire shape
 
 ```jsonc
-// org view (default)
+// org scope (default for everyone)
 GET /api/dashboard
-Authorization: Bearer <user-jwt-with-org_id>
+Authorization: Bearer <user-jwt>
 
 200 OK
 {
   "scope": "org",
   "orgId": "0ce531bf-...",
-  "activeBlueprints": 3,
-  "totalWallets": 7,
+  "activeUsers": 5,
+  "pendingInvitations": 2,
+  "subscribedRegisters": 3,
   "recentTransactions": 142,
-  "activeRegisters": 2,
-  // connectedPeers + totalOrganizations omitted
-  "timestamp": "2026-05-18T..."
+  "timestamp": "..."
 }
 
-// platform view (SystemAdmin only)
+// platform scope (SystemAdmin + ?scope=platform only)
 GET /api/dashboard?scope=platform
-Authorization: Bearer <user-jwt-with-SystemAdmin-role>
+Authorization: Bearer <systemadmin-jwt>
 
 200 OK
 {
   "scope": "platform",
   "orgId": null,
-  "activeBlueprints": 41,
+  "totalBlueprints": 41,
+  "totalBlueprintInstances": 0,
+  "activeBlueprintInstances": 0,
   "totalWallets": 89,
-  "recentTransactions": 2,108,
-  "activeRegisters": 5,
+  "totalRegisters": 5,
+  "totalTransactions": 2108,
+  "totalTenants": 5,
   "connectedPeers": 3,
-  "totalOrganizations": 5,
   "timestamp": "..."
 }
 ```
 
-`scope=platform` is honoured ONLY when the caller's JWT carries `SystemAdmin`. Other callers requesting it get an org-scoped response anyway (silent ignore — safer than 403).
+The UI knows by `scope` which card set to render; org-only fields are omitted in platform shape and vice versa.
 
 ## Backend cost
 
 | Service | Change |
 |---|---|
-| Wallet | `IWalletRepository.CountAsync(string? tenantId)` overload; endpoint forwards param. |
-| Blueprint | Existing `/api/stats` already returns `blueprintCount`/`instanceCount` — add `?orgId=` filter via the publisher-participant→org join. |
-| Register | `/api/stats` filter: when `orgId` set, the count is "registers in `subscribedRegisterIds` for this org" — Register Service has no Tenant table so this needs a cross-service call to `Tenant.Service` for the subscription list. Cleaner: move the org-scoped read to Tenant Service, which already has `OrganizationRegisterSubscriptions`. Gateway picks the source per `scope`. |
-| Tenant | `/api/organizations/stats` already accepts an org context indirectly via the `/dashboard/{orgId}` endpoint (`DashboardService.GetDashboardAsync(orgId)`). New: a single composite stats endpoint that returns subscribed-register count + transaction roll-up for the org. |
+| Tenant | Extend `DashboardService.GetDashboardAsync(orgId)` (or add a sibling method) to return: active-user count (already), pending-invitations (already), subscribed-registers count (new — count `OrganizationRegisterSubscriptions` with `Status=Active`), recent-transactions (new — call Register `/api/stats?registerIds=...` and sum). New endpoint or extended response on existing `/api/organizations/{orgId}/dashboard`. |
+| Register | Accept `?registerIds=a,b,c` on `/api/stats`. When set, `transactionCount` is the sum across the listed registers. `registerCount` becomes the listed count (defensive — Tenant already knows it, but consistent). Unset = current platform-wide shape. |
+| Wallet, Blueprint | **No change.** Wallets/blueprints not in the org view; platform view uses the existing endpoints. |
+| Gateway | `/api/dashboard`: `.RequireAuthorization()`. Extract `org_id`, `platform_user_id`, role. Resolve effective scope. Org → call Tenant `/api/organizations/{orgId}/dashboard-summary`, return as `scope=org` response. Platform → existing fan-out, return as `scope=platform`. |
 
-## Non-goals
+## UI
 
-- No new metric surfaces. Same six cards, with scope discipline.
-- No caching strategy (current `/api/dashboard` is a fan-out per request; ~5 backend calls in parallel; fine for v1).
-- No realtime updates. Snapshot on page load + a Refresh button — current behaviour.
-- No history chart. Same point-in-time numbers.
+`MudButtonGroup` toggle (`Org` / `Platform`), top-right of stats grid, wrapped in `<AuthorizeView Roles="SystemAdmin">`. Defaults to `Org`. Selection persists in `localStorage["dashboard-scope-{platform_user_id}"]`.
+
+Card grid is conditional on `_stats.Scope`:
+
+- **Org** — Active users (org icon), Pending invitations (mail icon), Subscribed registers (storage icon), Recent transactions (receipt icon). Four cards.
+- **Platform** — current six cards unchanged.
 
 ## Risk
 
 | Risk | Mitigation |
 |---|---|
-| Auditor role currently sees the same cards as Administrator; we're now scoping by org. Their view will change. | Acceptable — Auditors are org-scoped by definition. Org admins already expect this. |
 | Tests against `/api/dashboard` that don't carry a JWT will start 401-ing. | Inspect existing test fixtures; update any that exercise this surface. |
-| `?scope=platform` is JWT-claim-checked at the gateway; if claim extraction is wrong, SystemAdmin loses the platform view. | Existing `AuthorizationPolicies` already extract role claims; reuse them. |
-| Subscribed-register transaction count is a cross-service read (Register asks Tenant). Latency. | Acceptable — already five backend calls in parallel; one more isn't load-bearing. Cap timeout at 5 s (matches existing). |
+| Tenant→Register call adds latency to the org view path. | Acceptable — single call with N register ids; capped at 5s per existing fan-out timeout. Cache-friendly if a near-future iteration adds it. |
+| Auditor's view changes from platform-totals (current) to org-scoped (new). | Acceptable — Auditor scope is the org they audit. Confirm with operator in spec acceptance. |
 
-## Toggle UI
+## Non-goals
 
-`MudButtonGroup` with two buttons (Org / Platform), top-right of the stats grid, visible only when `IsInRole("SystemAdmin")`. Defaults to Org. Selection persists in `localStorage` keyed by user id so it survives reloads but doesn't bleed across users on a shared device.
+- No caching strategy (snapshot-per-request preserved).
+- No realtime SignalR fan-out.
+- No history / time-series.
+- No new metric surfaces (e.g. credential issuance counts).
+- No Wallet/Blueprint org-scoping. Deferred until either schema grows an `OrganizationId` column or we decide cross-service joins are worth the new HTTP surface.
