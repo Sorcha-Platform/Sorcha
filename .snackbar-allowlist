@@ -25,4 +25,3 @@ src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/UserManagement.razo
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/Invitations.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/PlatformSettings.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/IdpConfiguration.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/TransactionDetailPanel.razor
