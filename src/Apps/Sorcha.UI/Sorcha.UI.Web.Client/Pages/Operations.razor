@@ -11,10 +11,11 @@
 @using Sorcha.UI.Core.Services.Admin
 @using Sorcha.UI.Core.Services.Wallet
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject IOperationStatusService OperationService
 @inject IWalletApiService WalletService
 @inject IWalletPreferenceService WalletPreferenceService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject ILogger<Operations> Logger
 
 <PageTitle>Encryption Operations - Sorcha Platform</PageTitle>
@@ -147,7 +148,7 @@
             var result = await OperationService.ListOperationsAsync(_walletAddress, page, pageSize, ct);
             if (result == null)
             {
-                Snackbar.Add("Failed to load operations", Severity.Error);
+                Feedback.ShowError("Failed to load operations", autoDismissMs: 0);
                 return new TableData<OperationHistoryItem> { Items = [], TotalItems = 0 };
             }
 
@@ -156,7 +157,7 @@
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Error loading operations page {Page}", page);
-            Snackbar.Add("Failed to load operations", Severity.Error);
+            Feedback.ShowError("Failed to load operations", autoDismissMs: 0);
             return new TableData<OperationHistoryItem> { Items = [], TotalItems = 0 };
         }
     }

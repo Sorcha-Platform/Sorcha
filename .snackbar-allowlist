@@ -28,7 +28,6 @@ src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Blueprints.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/InviteOrganisationDialog.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/InvitationsPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/AcceptInvitationDialog.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/NewSubmissionWorkspace.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialOfferQrCard.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialClaimCard.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyProfile.razor
@@ -41,9 +40,7 @@ src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationList.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationDashboard.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrgSelectorPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Templates.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/SchemaLibrary.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorRegistryPanel.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CreateOrganization.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/PlatformSettings.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/OrgSettings.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/SectorConfiguration.razor
@@ -56,11 +53,9 @@ src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/TransactionDetailPanel.ra
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/SchemaDetail.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/BlueprintJsonView.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/OrgSwitcher.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Operations.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorThresholdPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorConsentPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationConfiguration.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Participants/Detail.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Templates/TemplateEvaluator.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/OfflineSyncIndicator.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/ServiceHealthDashboard.razor
