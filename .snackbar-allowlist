@@ -29,13 +29,8 @@ src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/UserManagement.razo
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/Invitations.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/UserList.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationList.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationDashboard.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorRegistryPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/PlatformSettings.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/IdpConfiguration.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/TransactionDetailPanel.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorThresholdPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorConsentPanel.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationConfiguration.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Templates/TemplateEvaluator.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/ServiceHealthDashboard.razor

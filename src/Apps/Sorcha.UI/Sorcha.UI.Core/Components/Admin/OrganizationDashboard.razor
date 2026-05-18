@@ -4,12 +4,13 @@
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Models.Participants
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Services.Participants
 
 @inject IOrganizationAdminService OrganizationService
 @inject IParticipantApiService ParticipantService
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <MudStack Spacing="4">
     @if (IsSystemAdmin)
@@ -148,7 +149,7 @@
         var detail = await ParticipantService.GetParticipantAsync(Organization.Id, participant.Id);
         if (detail == null)
         {
-            Snackbar.Add("Could not load participant details", Severity.Error);
+            Feedback.ShowError("Could not load participant details", autoDismissMs: 0);
             return;
         }
 
@@ -167,7 +168,7 @@
 
         if (!result!.Canceled)
         {
-            Snackbar.Add("Participant published to register", Severity.Success);
+            Feedback.ShowSuccess("Participant published to register");
             await LoadStatsAsync();
             StateHasChanged();
         }
