@@ -224,8 +224,8 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 | # | Task | Priority | Effort | Status | Notes |
 |---|------|----------|--------|--------|-------|
-| UX-001 | Register subscription scoping — org-based register access + UI consolidation | P1 | 24h | 📋 | #113 — New Submission shows only subscribed registers; merge Available Registers into Registers page |
-| UX-002 | Rename UserRole.Member → UserRole.Consumer across codebase | P1 | 8h | 📋 | #112 — Enum, DB migration, JWT claims, docs, permission presets |
+| UX-001 | Register subscription scoping — org-based register access + UI consolidation | P1 | 24h | ✅ | #113 (closed) — `Registers/Index.razor` + `NewSubmissions.razor` both filter via `IRegisterSubscriptionService.GetMySubscribedRegistersAsync()`; `SubscribeDialog` + `InvitationsPanel` merged in. Auto-subscribe on register creation + system-admin↔system-register bootstrap verified on n1 2026-05-18 |
+| UX-002 | Rename UserRole.Member → UserRole.Consumer across codebase | P1 | 8h | ✅ | #112 (closed) — landed in `aee79106`. Remaining `Member` symbols belong to other domains (`ParticipantRole.Member`, `StandardMember` permission flag, `RosterMember`) |
 | UX-003 | Blueprint register filter + role-based nav/page auth | P1 | 8h | ✅ | #111 — Fixed register filter, nav gating, dashboard scoping, page-level [Authorize(Roles)] |
 | UX-004 | Auditor role access review — determine read-only access scope | P2 | 4h | 📋 | Auditors currently have no nav items for Registers/Participants; decide if read-only access needed |
 | UX-005 | Dashboard org-scoped stats for multi-tenant deployments | P2 | 8h | 📋 | Currently global counts; need per-org stats for Consumer/Auditor users |
