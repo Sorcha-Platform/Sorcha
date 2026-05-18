@@ -16,7 +16,6 @@
 # Paths are repo-relative, forward-slashes, case-sensitive on Linux CI.
 
 src/Apps/Sorcha.Wallet.Pwa/Pages/Devices.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Index.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Participants/ParticipantDetail.razor
