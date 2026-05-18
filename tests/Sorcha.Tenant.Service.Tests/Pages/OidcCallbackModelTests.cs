@@ -29,6 +29,7 @@ public class OidcCallbackModelTests : IDisposable
     private readonly Mock<ITotpService> _totpService = new();
     private readonly Mock<IIdentityRepository> _identityRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
+    private readonly Mock<IPlatformUserDeviceService> _deviceService = new();
     private readonly TenantDbContext _dbContext;
 
     public OidcCallbackModelTests()
@@ -54,7 +55,8 @@ public class OidcCallbackModelTests : IDisposable
             _identityRepo.Object,
             _orgRepo.Object,
             _dbContext,
-            NullLogger<OidcCallbackModel>.Instance);
+            NullLogger<OidcCallbackModel>.Instance,
+            _deviceService.Object);
 
         var httpContext = new DefaultHttpContext();
         model.PageContext = new PageContext(new ActionContext(

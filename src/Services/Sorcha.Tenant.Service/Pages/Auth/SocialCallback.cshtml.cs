@@ -28,6 +28,7 @@ public class SocialCallbackModel : PageModel
     private readonly IWelcomeEmailDispatcher _welcomeDispatcher;
     private readonly TenantDbContext _db;
     private readonly ILogger<SocialCallbackModel> _logger;
+    private readonly IPlatformUserDeviceService _deviceService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SocialCallbackModel"/> class.
@@ -40,7 +41,8 @@ public class SocialCallbackModel : PageModel
         ITokenService tokenService,
         IWelcomeEmailDispatcher welcomeDispatcher,
         TenantDbContext db,
-        ILogger<SocialCallbackModel> logger)
+        ILogger<SocialCallbackModel> logger,
+        IPlatformUserDeviceService deviceService)
     {
         _socialLoginService = socialLoginService;
         _platformUserService = platformUserService;
@@ -50,6 +52,7 @@ public class SocialCallbackModel : PageModel
         _welcomeDispatcher = welcomeDispatcher;
         _db = db;
         _logger = logger;
+        _deviceService = deviceService;
     }
 
     /// <summary>
@@ -200,9 +203,17 @@ public class SocialCallbackModel : PageModel
         // Idempotent + non-throwing by design.
         await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
 
-        // Redirect to app with token in fragment
+        // Redirect to app with token in fragment.
+        // Feature 128 US2 — same FR-020 routing-gate contract as Login.cshtml.cs.
+        // Social flow has no user-provided ReturnUrl, so the gate is the only
+        // decision point. The /app/ prefix is load-bearing — see
+        // SetupAddDeviceRoutingGate XML doc.
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
                        $"&refresh={Uri.EscapeDataString(tokens.RefreshToken)}";
+        if (await SetupAddDeviceRoutingGate.ShouldRouteAsync(tokens.AccessToken, _deviceService, _logger, ct))
+        {
+            fragment += $"&returnUrl={Uri.EscapeDataString(SetupAddDeviceRoutingGate.SetupAddDevicePath)}";
+        }
         return Redirect($"/app/#{fragment}");
     }
 
