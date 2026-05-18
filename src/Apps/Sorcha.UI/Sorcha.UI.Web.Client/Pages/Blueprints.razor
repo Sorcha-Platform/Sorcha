@@ -12,9 +12,10 @@
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Components.Designer
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject IBlueprintApiService BlueprintApi
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject NavigationManager Navigation
 
 <PageTitle>My Blueprints - Sorcha Platform</PageTitle>
@@ -249,7 +250,7 @@
 
         if (result is { Canceled: false })
         {
-            Snackbar.Add($"Blueprint '{blueprint.Title}' published successfully", Severity.Success);
+            Feedback.ShowSuccess($"Blueprint '{blueprint.Title}' published successfully");
             await LoadBlueprintsAsync();
         }
     }
@@ -270,7 +271,7 @@
         var fullBlueprint = await BlueprintApi.GetBlueprintDetailAsync(blueprint.Id);
         if (fullBlueprint is null)
         {
-            Snackbar.Add("Could not load blueprint details", Severity.Warning);
+            Feedback.ShowWarning("Could not load blueprint details");
             return;
         }
 
@@ -297,17 +298,17 @@
                 var success = await BlueprintApi.DeleteBlueprintAsync(blueprint.Id);
                 if (success)
                 {
-                    Snackbar.Add($"Blueprint '{blueprint.Title}' deleted", Severity.Success);
+                    Feedback.ShowSuccess($"Blueprint '{blueprint.Title}' deleted");
                     await LoadBlueprintsAsync();
                 }
                 else
                 {
-                    Snackbar.Add("Failed to delete blueprint", Severity.Error);
+                    Feedback.ShowError("Failed to delete blueprint", autoDismissMs: 0);
                 }
             }
             catch
             {
-                Snackbar.Add("Error deleting blueprint", Severity.Error);
+                Feedback.ShowError("Error deleting blueprint", autoDismissMs: 0);
             }
         }
     }

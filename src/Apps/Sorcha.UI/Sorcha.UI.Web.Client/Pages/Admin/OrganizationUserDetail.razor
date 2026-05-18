@@ -8,10 +8,11 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 
 @inject IOrganizationAdminService OrganizationService
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>User Detail - Sorcha Platform</PageTitle>
 
@@ -205,12 +206,12 @@
                 _user = updated;
                 _editDisplayName = updated.DisplayName;
                 _editRole = updated.Roles.FirstOrDefault() ?? "Consumer";
-                Snackbar.Add("User updated successfully.", Severity.Success);
+                Feedback.ShowSuccess("User updated successfully.");
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to update user: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to update user: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -223,17 +224,17 @@
             var verified = await OrganizationService.VerifyEmailAsync(OrgId, UserId);
             if (verified)
             {
-                Snackbar.Add("Email verified successfully.", Severity.Success);
+                Feedback.ShowSuccess("Email verified successfully.");
                 _user = await OrganizationService.GetOrganizationUserAsync(OrgId, UserId);
             }
             else
             {
-                Snackbar.Add("Email is already verified.", Severity.Info);
+                Feedback.ShowInfo("Email is already verified.");
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to verify email: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to verify email: {ex.Message}", autoDismissMs: 0);
         }
     }
 
