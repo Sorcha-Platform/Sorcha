@@ -182,7 +182,6 @@ Sequenced as four overlapping milestones. Each milestone is independently demoab
 **Demoable outcome:** A new Consumer signs up, sees only registers they're subscribed to, with role nomenclature that matches the docs.
 
 - `UX-004` Auditor read-only access scope decision
-- `UX-005` Dashboard org-scoped stats
 - `UX-007` Public-user page hitting admin-only endpoint (latent auth-boundary bug — fix and silence)
 - `GAP-020` Multi-org `ConstructionPermit` walkthrough completion (the run path; setup already passes)
 - `SEC-004` OWASP Top 10 review + light pentest pass against the hardened build
@@ -191,6 +190,7 @@ Sequenced as four overlapping milestones. Each milestone is independently demoab
 > **Already shipped before this roadmap was finalised — kept here as audit trail:**
 > - `UX-001` Register subscription scoping (`gh#113`, closed) — `Registers/Index.razor` + `NewSubmissions.razor` both filter by `IRegisterSubscriptionService.GetMySubscribedRegistersAsync()`; `SubscribeDialog` and `InvitationsPanel` ship the merged "Available Registers" + invite surfaces. Auto-subscribe on register creation + system-admin↔system-register bootstrap verified on n1 2026-05-18.
 > - `UX-002` `UserRole.Member → UserRole.Consumer` rename (`gh#112`, closed) — landed in `aee79106`. Remaining `Member` symbols in `src/` belong to other domains (`ParticipantRole.Member`, `StandardMember` permission flag, `RosterMember`).
+> - `UX-005` Dashboard org-scoped stats — Feature 131 (PRs #761/#762/#763). `/api/dashboard` auth-gated; org view is default for all roles (4 cards: active users, pending invitations, subscribed registers, recent transactions); SystemAdmin gets `?scope=platform` toggle. n1 SCs validated 2026-05-18.
 > - `GAP-019` admin user provisioning (Feature 077) — `POST /api/platform/users` + `PUT /api/platform/users/{id}/password` ship in `PlatformManagementEndpoints.cs`. The remaining walkthrough plumbing is `GAP-020`'s problem, listed above.
 
 ### Milestone M5 (parallel track if 2 engineers) — Strathcarron Spec 5
