@@ -51,7 +51,6 @@ src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Configuration/ProfileEditorDialog.r
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletAdmin.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Templates.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/SchemaLibrary.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/PropertiesPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorRegistryPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CreateOrganization.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/PlatformSettings.razor
@@ -64,15 +63,12 @@ src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/AuditLog.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/EventsAdmin.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/TransactionDetailPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/SchemaDetail.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/InstructionsTab.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/BlueprintJsonView.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/OrgSwitcher.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Operations.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Wallets/WalletAccessTab.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorThresholdPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorConsentPanel.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OrganizationConfiguration.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/ParticipantList.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Participants/Detail.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Templates/TemplateEvaluator.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/OfflineSyncIndicator.razor
