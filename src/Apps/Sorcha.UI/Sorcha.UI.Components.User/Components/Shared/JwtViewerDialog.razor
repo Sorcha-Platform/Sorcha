@@ -3,9 +3,7 @@
 
 @using System.IdentityModel.Tokens.Jwt
 @using System.Security.Claims
-
-@inject IJSRuntime JSRuntime
-@inject ISnackbar Snackbar
+@using Sorcha.UI.Core.Components.Forms
 
 <MudDialog Style="max-width: 700px;">
     <TitleContent>
@@ -93,13 +91,11 @@
                     <div style="word-break: break-all; font-family: monospace; font-size: 0.75rem; line-height: 1.4; padding: 8px; background: var(--mud-palette-background-grey); border-radius: 4px; max-height: 180px; overflow: auto;">
                         @AccessToken
                     </div>
-                    <MudButton OnClick="CopyRawToken"
-                               Variant="Variant.Text"
-                               Size="Size.Small"
-                               StartIcon="@Icons.Material.Filled.ContentCopy"
-                               Class="mt-2">
-                        Copy Token
-                    </MudButton>
+                    <div class="mt-2">
+                        <CopyButton Value="@AccessToken"
+                                    Label="Copy Token"
+                                    Size="Size.Small" />
+                    </div>
                 </MudExpansionPanel>
             </MudExpansionPanels>
         }
@@ -229,20 +225,6 @@
         if (ts.TotalMinutes < 1) return $"{ts.Seconds}s";
         if (ts.TotalHours < 1) return $"{ts.Minutes}m {ts.Seconds}s";
         return $"{(int)ts.TotalHours}h {ts.Minutes}m";
-    }
-
-    private async Task CopyRawToken()
-    {
-        try
-        {
-            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", AccessToken);
-            Snackbar.Add(success ? "Token copied to clipboard" : "Failed to copy", success ? Severity.Success : Severity.Error,
-                config => config.VisibleStateDuration = 2000);
-        }
-        catch
-        {
-            Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-        }
     }
 
     private void Close()

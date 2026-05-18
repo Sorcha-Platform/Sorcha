@@ -1,8 +1,8 @@
 @* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
+@using Sorcha.UI.Core.Components.Forms
 @inject IJSRuntime JS
-@inject ISnackbar Snackbar
 
 <MudDialog>
     <TitleContent>
@@ -25,12 +25,10 @@
                 @WalletAddress
             </MudText>
 
-            <MudButton StartIcon="@Icons.Material.Filled.ContentCopy"
-                       Color="Color.Primary"
-                       Variant="Variant.Outlined"
-                       OnClick="CopyAddressAsync">
-                Copy Address
-            </MudButton>
+            <CopyButton Value="@WalletAddress"
+                        Label="Copy Address"
+                        Color="Color.Primary"
+                        Size="Size.Medium" />
         </MudStack>
     </DialogContent>
     <DialogActions>
@@ -62,19 +60,6 @@
             {
                 // QR library may not be loaded — fail silently
             }
-        }
-    }
-
-    private async Task CopyAddressAsync()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("QrCodeHelper.copyToClipboard", WalletAddress);
-            Snackbar.Add("Address copied to clipboard", Severity.Success);
-        }
-        catch
-        {
-            Snackbar.Add("Failed to copy address", Severity.Error);
         }
     }
 

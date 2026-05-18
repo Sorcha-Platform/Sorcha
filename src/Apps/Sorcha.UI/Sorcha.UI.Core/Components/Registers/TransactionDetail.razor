@@ -2,10 +2,7 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Sorcha.UI.Core.Models.Registers
-@using Microsoft.JSInterop
-
-@inject IJSRuntime JSRuntime
-@inject ISnackbar Snackbar
+@using Sorcha.UI.Core.Components.Forms
 
 <div data-testid="transaction-detail">
     @* Transaction ID Section *@
@@ -16,11 +13,10 @@
                 <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;" data-testid="tx-id">
                     @Transaction.TxId
                 </MudText>
-                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                               Size="Size.Small"
-                               OnClick="CopyTxId"
-                               aria-label="Copy transaction ID"
-                               data-testid="copy-tx-id" />
+                <CopyButton Value="@Transaction.TxId"
+                            Variant="CopyButtonVariant.IconButton"
+                            Size="Size.Small"
+                            Label="Copy transaction ID" />
             </MudStack>
         </MudStack>
 
@@ -102,11 +98,10 @@
                 <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;" data-testid="sender-wallet">
                     @Transaction.SenderWallet
                 </MudText>
-                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                               Size="Size.Small"
-                               OnClick="CopySenderWallet"
-                               aria-label="Copy sender wallet"
-                               data-testid="copy-sender-wallet" />
+                <CopyButton Value="@Transaction.SenderWallet"
+                            Variant="CopyButtonVariant.IconButton"
+                            Size="Size.Small"
+                            Label="Copy sender wallet" />
             </MudStack>
         </MudStack>
 
@@ -123,11 +118,10 @@
                         <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;" data-testid="recipient-wallet">
                             @recipient
                         </MudText>
-                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                                       Size="Size.Small"
-                                       OnClick="@(() => CopyRecipientWallet(recipient))"
-                                       aria-label="Copy recipient wallet"
-                                       data-testid="copy-recipient-wallet" />
+                        <CopyButton Value="@recipient"
+                                    Variant="CopyButtonVariant.IconButton"
+                                    Size="Size.Small"
+                                    Label="Copy recipient wallet" />
                     </MudStack>
                 }
             </MudStack>
@@ -141,11 +135,10 @@
             <MudText Typo="Typo.body2" Class="monospace-text signature-text" data-testid="signature">
                 @Transaction.Signature
             </MudText>
-            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                           Size="Size.Small"
-                           OnClick="CopySignature"
-                           aria-label="Copy signature"
-                           data-testid="copy-signature" />
+            <CopyButton Value="@Transaction.Signature"
+                        Variant="CopyButtonVariant.IconButton"
+                        Size="Size.Small"
+                        Label="Copy signature" />
         </MudStack>
 
         @* Action ID (if applicable) *@
@@ -203,62 +196,6 @@
         _ => Color.Default
     };
 
-    private async Task CopyTxId()
-    {
-        await CopyToClipboardAsync(Transaction.TxId);
-    }
-
-    private async Task CopySenderWallet()
-    {
-        await CopyToClipboardAsync(Transaction.SenderWallet);
-    }
-
-    private async Task CopyRecipientWallet(string recipient)
-    {
-        await CopyToClipboardAsync(recipient);
-    }
-
-    private async Task CopySignature()
-    {
-        await CopyToClipboardAsync(Transaction.Signature);
-    }
-
-    private async Task CopyToClipboardAsync(string text)
-    {
-        try
-        {
-            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", text);
-            if (success)
-            {
-                Snackbar.Add("Copied to clipboard", Severity.Success, config =>
-                {
-                    config.VisibleStateDuration = 1500;
-                    config.ShowCloseIcon = false;
-                });
-            }
-            else
-            {
-                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-            }
-        }
-        catch
-        {
-            // Fallback to navigator.clipboard for compatibility
-            try
-            {
-                await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
-                Snackbar.Add("Copied to clipboard", Severity.Success, config =>
-                {
-                    config.VisibleStateDuration = 1500;
-                    config.ShowCloseIcon = false;
-                });
-            }
-            catch
-            {
-                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-            }
-        }
-    }
 }
 
 <style>

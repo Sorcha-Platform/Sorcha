@@ -1,0 +1,151 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+@implements IDisposable
+@inject IJSRuntime JS
+
+@*
+    Phase 3 of the Snackbar retirement — copy-to-clipboard primitive that uses
+    the button-morph pattern instead of a transient Snackbar.
+
+    On click: writes Value to the clipboard via navigator.clipboard. Label
+    morphs to "Copied ✓" (or a check icon, for the IconButton variant) for
+    ~2 seconds then reverts. On failure, morphs to "Failed" / error icon
+    for the same window.
+
+    Variants:
+      - Button (default): renders a MudButton with optional Label text.
+      - IconButton: renders a MudIconButton with a content-copy icon.
+
+    Use this everywhere a "copy this value" affordance is needed instead of
+    wiring a transient toast after a clipboard call. The button itself IS
+    the feedback surface.
+*@
+
+@if (Variant == CopyButtonVariant.IconButton)
+{
+    <MudTooltip Text="@CurrentTooltip" Arrow="true" Placement="Placement.Top">
+        <MudIconButton Icon="@CurrentIcon"
+                       Color="@CurrentColor"
+                       Size="@Size"
+                       OnClick="HandleCopy"
+                       Disabled="@(string.IsNullOrEmpty(Value))"
+                       aria-label="@(_state == CopyState.Idle ? (Label ?? "Copy") : CurrentTooltip)"
+                       data-testid="copy-button" />
+    </MudTooltip>
+}
+else
+{
+    <MudButton StartIcon="@CurrentIcon"
+               Color="@CurrentColor"
+               Variant="MudBlazor.Variant.Text"
+               Size="@Size"
+               OnClick="HandleCopy"
+               Disabled="@(string.IsNullOrEmpty(Value))"
+               data-testid="copy-button">
+        @CurrentLabel
+    </MudButton>
+}
+
+@code {
+    private enum CopyState { Idle, Copied, Failed }
+
+    [Parameter, EditorRequired]
+    public string? Value { get; set; }
+
+    /// <summary>Optional label for the Button variant. Defaults to "Copy".</summary>
+    [Parameter]
+    public string? Label { get; set; }
+
+    /// <summary>Button or IconButton. Defaults to Button.</summary>
+    [Parameter]
+    public CopyButtonVariant Variant { get; set; } = CopyButtonVariant.Button;
+
+    /// <summary>MudBlazor size. Defaults to Small.</summary>
+    [Parameter]
+    public Size Size { get; set; } = Size.Small;
+
+    /// <summary>Idle-state color. Morph to Success/Error overrides this temporarily.</summary>
+    [Parameter]
+    public Color Color { get; set; } = Color.Default;
+
+    /// <summary>Morph window in milliseconds. Defaults to 2000.</summary>
+    [Parameter]
+    public int MorphMs { get; set; } = 2000;
+
+    private CopyState _state = CopyState.Idle;
+    private System.Timers.Timer? _resetTimer;
+    private bool _disposed;
+
+    private string CurrentIcon => _state switch
+    {
+        CopyState.Copied => Icons.Material.Filled.Check,
+        CopyState.Failed => Icons.Material.Filled.ErrorOutline,
+        _ => Icons.Material.Filled.ContentCopy,
+    };
+
+    private Color CurrentColor => _state switch
+    {
+        CopyState.Copied => Color.Success,
+        CopyState.Failed => Color.Error,
+        _ => Color,
+    };
+
+    private string CurrentLabel => _state switch
+    {
+        CopyState.Copied => "Copied",
+        CopyState.Failed => "Failed",
+        _ => Label ?? "Copy",
+    };
+
+    private string CurrentTooltip => _state switch
+    {
+        CopyState.Copied => "Copied to clipboard",
+        CopyState.Failed => "Copy failed — clipboard unavailable",
+        _ => Label ?? "Copy to clipboard",
+    };
+
+    private async Task HandleCopy()
+    {
+        if (string.IsNullOrEmpty(Value)) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Value);
+            EnterState(CopyState.Copied);
+        }
+        catch
+        {
+            // navigator.clipboard throws on insecure contexts or when the user
+            // denies the permission prompt. Surface the failure via the morph
+            // so the user knows to copy manually rather than silently failing.
+            EnterState(CopyState.Failed);
+        }
+    }
+
+    private void EnterState(CopyState state)
+    {
+        _state = state;
+        StateHasChanged();
+
+        _resetTimer?.Stop();
+        _resetTimer?.Dispose();
+        _resetTimer = new System.Timers.Timer(MorphMs) { AutoReset = false };
+        _resetTimer.Elapsed += (_, _) =>
+        {
+            if (_disposed) return;
+            _state = CopyState.Idle;
+            InvokeAsync(StateHasChanged);
+        };
+        _resetTimer.Start();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _resetTimer?.Stop();
+        _resetTimer?.Dispose();
+        _resetTimer = null;
+    }
+}
