@@ -19,7 +19,6 @@ src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Index.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Participants/ParticipantDetail.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionToast.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Settings.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/AccountsTab.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/AiDesignerPane.razor

@@ -1,0 +1,34 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/*
+   Phase 6 of the Snackbar retirement — replaces PendingActionToast.
+   When a new inbox entry arrives, MainLayout flips the inbox bell into
+   the `inbox-bell-wiggle` class for ~700ms. The bell wiggles in place
+   so the actor's eye is drawn to the badge count without a popup
+   stealing focus.
+
+   Tuned for ~3 oscillations at small amplitude — assertive enough to
+   notice, soft enough not to feel like an error indicator. Respects
+   `prefers-reduced-motion`.
+*/
+::deep .inbox-bell-wiggle {
+    animation: sorcha-inbox-wiggle 700ms ease-in-out;
+    transform-origin: top center;
+}
+
+@keyframes sorcha-inbox-wiggle {
+    0%, 100% { transform: rotate(0deg); }
+    15% { transform: rotate(-12deg); }
+    30% { transform: rotate(10deg); }
+    45% { transform: rotate(-8deg); }
+    60% { transform: rotate(6deg); }
+    75% { transform: rotate(-3deg); }
+    90% { transform: rotate(1deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::deep .inbox-bell-wiggle {
+        animation: none;
+    }
+}
