@@ -7,8 +7,9 @@
 @using Microsoft.AspNetCore.Authorization
 @using MudBlazor
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject ISchemaLibraryApiService SchemaLibraryApi
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>Schema Sectors - Sorcha Platform</PageTitle>
 
@@ -104,7 +105,7 @@
         }
         catch (Exception)
         {
-            Snackbar.Add("Failed to load sector configuration", Severity.Error);
+            Feedback.ShowError("Failed to load sector configuration", autoDismissMs: 0);
         }
         finally
         {
@@ -145,11 +146,11 @@
         {
             string[]? sectors = _allEnabled ? null : _enabledSectors.ToArray();
             await SchemaLibraryApi.UpdateSectorPreferencesAsync(sectors);
-            Snackbar.Add("Sector preferences saved successfully", Severity.Success);
+            Feedback.ShowSuccess("Sector preferences saved successfully");
         }
         catch (Exception)
         {
-            Snackbar.Add("Failed to save sector preferences", Severity.Error);
+            Feedback.ShowError("Failed to save sector preferences", autoDismissMs: 0);
         }
         finally
         {

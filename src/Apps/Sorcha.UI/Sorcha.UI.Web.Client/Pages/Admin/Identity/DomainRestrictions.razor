@@ -7,10 +7,11 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Services.Identity
 
 @inject IDomainRestrictionClientService DomainService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>Domain Restrictions - Sorcha Platform</PageTitle>
 
@@ -143,7 +144,7 @@
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Failed to load restrictions: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Failed to load restrictions: {ex.Message}", autoDismissMs: 0);
             }
         }
 
@@ -177,13 +178,18 @@
         {
             var domainsToSave = _restrictionsEnabled ? _domains.ToArray() : [];
             var success = await DomainService.UpdateRestrictionsAsync(_organizationId, domainsToSave);
-            Snackbar.Add(
-                success ? "Domain restrictions saved" : "Failed to save domain restrictions",
-                success ? Severity.Success : Severity.Error);
+            if (success)
+            {
+                Feedback.ShowSuccess("Domain restrictions saved");
+            }
+            else
+            {
+                Feedback.ShowError("Failed to save domain restrictions", autoDismissMs: 0);
+            }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Error: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
