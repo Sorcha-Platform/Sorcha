@@ -17,9 +17,10 @@
 @layout MainLayout
 @using Sorcha.CitizenWallet.Abstractions.Models
 @using Sorcha.ServiceClients.CitizenWallet
+@using Sorcha.UI.Core.Services.Feedback
 @inject ICitizenWalletClient WalletClient
 @inject IDialogService Dialogs
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject ILogger<Devices> Logger
 
 <PageTitle>Devices</PageTitle>
@@ -155,18 +156,18 @@
                 // Optimistic UI update — server already accepted the change.
                 var idx = _devices!.FindIndex(d => d.DeviceId == device.DeviceId);
                 _devices[idx] = device with { Label = newLabel };
-                Snackbar.Add("Device renamed.", Severity.Success);
+                Feedback.ShowSuccess("Device renamed.");
             }
             else
             {
-                Snackbar.Add("Device not found.", Severity.Warning);
+                Feedback.ShowWarning("Device not found.");
                 await LoadAsync();
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Rename device failed");
-            Snackbar.Add($"Rename failed: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Rename failed: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -192,18 +193,18 @@
             {
                 var idx = _devices!.FindIndex(d => d.DeviceId == device.DeviceId);
                 _devices[idx] = device with { Status = DeviceStatus.Revoked, RevokedAt = DateTimeOffset.UtcNow };
-                Snackbar.Add("Device revoked.", Severity.Success);
+                Feedback.ShowSuccess("Device revoked.");
             }
             else
             {
-                Snackbar.Add("Device not found.", Severity.Warning);
+                Feedback.ShowWarning("Device not found.");
                 await LoadAsync();
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Revoke device failed");
-            Snackbar.Add($"Revoke failed: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Revoke failed: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
