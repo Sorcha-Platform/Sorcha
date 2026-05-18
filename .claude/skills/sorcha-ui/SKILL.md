@@ -322,3 +322,17 @@ Test patterns (UI.Core.Tests):
 - "MudBlazor card table dialog"
 - "MudBlazor form validation"
 - "Browser storage state authentication"
+
+## Anti-Pattern: Don't Use ISnackbar
+
+The Sorcha UI has retired MudBlazor's `Snackbar.Add(...)` toast surface from every user-facing page and PWA component (PRs #740-#755). New code MUST NOT inject `ISnackbar` — a CI gate at `scripts/check-no-snackbar.ps1` enforces the ratchet via `.snackbar-allowlist`.
+
+Use one of three replacement surfaces:
+
+- **`IInlineFeedback`** for actor's-own-action feedback in the current page (success / error / info / warning). API: `Feedback.ShowSuccess(msg, detailHref?, autoDismissMs?)` / `ShowError` / `ShowInfo` / `ShowWarning`. Default 4s auto-dismiss; pass `autoDismissMs: 0` for errors that need explicit acknowledgement. Namespace `Sorcha.UI.Core.Services.Feedback`. Renders via `InlineFeedbackHost` mounted in `MainLayout`. Do NOT call from inside a dialog body — the host mounts in the layout, not in dialog surfaces.
+- **Server-side inbox writer** for workflow / lifecycle / security events that should live in the durable Feature 118 bell drawer across sessions. Existing writers: `WalletWorkflowInboxWriter`, `WalletInboxWriter`, `CitizenDeviceInboxWriter`, `TenantSecurityInboxWriter`, plus the membership writer. Always `try` / `LogError` / swallow — a writer failure must NOT roll back the underlying admin operation.
+- **`CopyButton` primitive** for clipboard affordances. `<CopyButton Value="@x" Label="Copy" />` for labelled buttons, `<CopyButton Value="@x" Variant="CopyButtonVariant.IconButton" Label="Copy hash" />` for icon-only inside lists. Morphs to "Copied ✓" for ~2s on success.
+
+**Dialog content** rule: dialog success closes with `MudDialog.Close(DialogResult.Ok(...))` so the parent renders inline feedback; dialog errors render an inline `<MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">` at the top of `DialogContent`.
+
+Full architecture and migration history: `specs/118-notifications-architecture/MIGRATION.md` and Critical Pattern #12 in `CLAUDE.md`.

@@ -299,6 +299,24 @@ Hub events follow the **thin-signal contract** — opaque IDs and timestamps onl
 
 Full architecture: `specs/118-notifications-architecture/spec.md`. Design rationale: `docs/superpowers/specs/2026-05-05-notifications-architecture-design.md`.
 
+### 12. Notification Routing (Snackbar retirement)
+
+**Do NOT inject `ISnackbar` in new user-facing code.** The Sorcha UI has retired MudBlazor's `Snackbar.Add(...)` toast surface from every user-facing page and PWA component (PRs #740-#755). The remaining `MudSnackbarProvider` mount stays only for in-flight admin / designer pages still on the allowlist.
+
+**The three surfaces, by intent:**
+
+| Surface | Use when | Where |
+|---------|----------|-------|
+| `IInlineFeedback` | Actor's own-action feedback in the current page (success / error / info / warning). Default 4s auto-dismiss; pass `autoDismissMs: 0` for errors the user must acknowledge. | `Sorcha.UI.Core.Services.Feedback.IInlineFeedback` (scoped in Web, singleton in PWA). Renders via `InlineFeedbackHost.razor` mounted at the top of the content region. |
+| Server-side inbox writer | Workflow / lifecycle / security event that should appear in the durable bell drawer across sessions. Always wrap the writer call in `try` / `LogError` / swallow — a writer failure must NOT roll back the underlying operation. | `WalletWorkflowInboxWriter`, `WalletInboxWriter`, `CitizenDeviceInboxWriter`, `TenantSecurityInboxWriter`, plus `WriteOrgMembership*` on the membership writer. Bell drawer is Feature 118 / `MainLayout.razor`. |
+| `CopyButton` primitive | "Copy this value to clipboard" affordances. Use `Variant.Button` for labelled buttons, `Variant.IconButton` for icon-only triggers inside lists / detail views. The button morphs to "Copied ✓" for ~2s on success and reverts. | `Sorcha.UI.Core.Components.Forms.CopyButton` (in `Sorcha.UI.Components.User`). |
+
+**Dialog content** is its own micro-rule: dialog success closes the dialog with `MudDialog.Close(DialogResult.Ok(...))` and the parent surfaces inline feedback; dialog errors render an inline `<MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">…</MudAlert>` inside the `DialogContent` body. Do NOT call `IInlineFeedback` from inside a dialog — `InlineFeedbackHost` mounts in the layout, not inside dialog surfaces.
+
+A CI gate at `scripts/check-no-snackbar.ps1` enforces the ratchet via `.snackbar-allowlist`. The allowlist may only shrink — any new `Snackbar.Add(` or `ISnackbar` reference outside the allowed paths fails the build.
+
+Full architecture: `specs/118-notifications-architecture/MIGRATION.md`.
+
 ---
 
 ## Key Documentation
