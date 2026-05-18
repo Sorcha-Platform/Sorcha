@@ -4,6 +4,7 @@
 @using MudBlazor
 @using Sorcha.UI.Core.Services.Authentication
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Theme
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Models.Credentials
 @using Sorcha.UI.Core.Models.Registers
@@ -17,7 +18,7 @@
 @inject IInboxApiService InboxApi
 @inject ILocalizationService Loc
 
-<MudThemeProvider Theme="_theme" IsDarkMode="@_isDarkMode" />
+<MudThemeProvider Theme="SorchaMudTheme.Default" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
@@ -402,28 +403,6 @@
         _badgeWiggle = false;
         await InvokeAsync(StateHasChanged);
     }
-
-    private readonly MudTheme _theme = new()
-    {
-        PaletteLight = new PaletteLight()
-        {
-            Primary = "#667eea",
-            Secondary = "#764ba2",
-            AppbarBackground = "#667eea",
-        },
-        PaletteDark = new PaletteDark()
-        {
-            Primary = "#667eea",
-            Secondary = "#764ba2",
-            AppbarBackground = "#1e1e1e",
-            Surface = "#1e1e1e",
-            Background = "#121212",
-            DrawerBackground = "#1e1e1e",
-            TextPrimary = "#e0e0e0",
-            TextSecondary = "#b0b0b0",
-            LinesDefault = "#333333",
-        }
-    };
 
     private void ToggleDrawer()
     {
