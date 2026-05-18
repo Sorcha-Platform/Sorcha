@@ -7,14 +7,15 @@
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Authentication
 @using Sorcha.UI.Core.Services.Configuration
+@using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.UI.Core.Components.Forms
 @inject IWalletApiService WalletService
 @inject IWalletPreferenceService WalletPreferences
 @inject IAuthenticationService AuthService
 @inject IConfigurationService ConfigService
 @inject CustomAuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
-@inject IJSRuntime JS
+@inject IInlineFeedback Feedback
 
 <PageTitle>Create Wallet - Sorcha Platform</PageTitle>
 
@@ -141,9 +142,7 @@
 
                 <MudDivider Class="my-4" />
 
-                <MudButton OnClick="CopyMnemonicAsync" Color="Color.Default" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ContentCopy" Class="mb-4">
-                    Copy All Words
-                </MudButton>
+                <CopyButton Value="@MnemonicJoined" Label="Copy All Words" />
 
                 <MudAlert Severity="Severity.Error" Class="mb-4" Icon="@Icons.Material.Filled.Error">
                     <MudText Typo="Typo.body2">
@@ -242,15 +241,15 @@
         {
             response = await WalletService.CreateWalletAsync(request);
             currentStep = WizardStep.MnemonicDisplay;
-            Snackbar.Add($"Wallet '{request.Name}' created successfully!", Severity.Success);
+            Feedback.ShowSuccess($"Wallet '{request.Name}' created successfully!");
         }
         catch (HttpRequestException ex)
         {
-            Snackbar.Add($"Failed to create wallet: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to create wallet: {ex.Message}", autoDismissMs: 0);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"An unexpected error occurred: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"An unexpected error occurred: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -258,15 +257,8 @@
         }
     }
 
-    private async Task CopyMnemonicAsync()
-    {
-        if (response?.MnemonicWords == null)
-            return;
-
-        var mnemonic = string.Join(" ", response.MnemonicWords);
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", mnemonic);
-        Snackbar.Add("Recovery phrase copied to clipboard", Severity.Info);
-    }
+    private string MnemonicJoined =>
+        response?.MnemonicWords is { Length: > 0 } words ? string.Join(" ", words) : string.Empty;
 
     private async Task NavigateToWallet()
     {

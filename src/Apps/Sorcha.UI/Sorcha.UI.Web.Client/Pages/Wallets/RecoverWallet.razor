@@ -1,9 +1,10 @@
 @page "/wallets/recover"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
+@using Sorcha.UI.Core.Services.Feedback
 @inject IWalletApiService WalletService
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>Recover Wallet - Sorcha Platform</PageTitle>
 
@@ -220,7 +221,7 @@
         try
         {
             var wallet = await WalletService.RecoverWalletAsync(request);
-            Snackbar.Add($"Wallet '{wallet.Name}' recovered successfully!", Severity.Success);
+            Feedback.ShowSuccess($"Wallet '{wallet.Name}' recovered successfully!");
 
             // Clear sensitive data
             ClearWords();
@@ -242,12 +243,12 @@
             {
                 validationError = $"Failed to recover wallet: {ex.Message}";
             }
-            Snackbar.Add(validationError, Severity.Error);
+            Feedback.ShowError(validationError, autoDismissMs: 0);
         }
         catch (Exception ex)
         {
             validationError = $"An unexpected error occurred: {ex.Message}";
-            Snackbar.Add(validationError, Severity.Error);
+            Feedback.ShowError(validationError, autoDismissMs: 0);
         }
         finally
         {
