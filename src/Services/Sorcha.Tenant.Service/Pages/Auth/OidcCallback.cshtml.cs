@@ -32,6 +32,7 @@ public class OidcCallbackModel : PageModel
     private readonly IOrganizationRepository _organizationRepository;
     private readonly TenantDbContext _dbContext;
     private readonly ILogger<OidcCallbackModel> _logger;
+    private readonly IPlatformUserDeviceService _deviceService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OidcCallbackModel"/> class.
@@ -44,7 +45,8 @@ public class OidcCallbackModel : PageModel
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         TenantDbContext dbContext,
-        ILogger<OidcCallbackModel> logger)
+        ILogger<OidcCallbackModel> logger,
+        IPlatformUserDeviceService deviceService)
     {
         _oidcExchangeService = oidcExchangeService;
         _oidcProvisioningService = oidcProvisioningService;
@@ -54,6 +56,7 @@ public class OidcCallbackModel : PageModel
         _organizationRepository = organizationRepository;
         _dbContext = dbContext;
         _logger = logger;
+        _deviceService = deviceService;
     }
 
     /// <summary>
@@ -217,7 +220,7 @@ public class OidcCallbackModel : PageModel
                 "OIDC login completed for org {OrgSubdomain}: userId={UserId}, isFirstLogin={IsFirstLogin}",
                 orgSubdomain, user.Id, isFirstLogin);
 
-            return RedirectToApp(tokenResponse);
+            return await RedirectToAppAsync(tokenResponse, ct);
         }
         catch (InvalidOperationException ex)
         {
@@ -333,13 +336,20 @@ public class OidcCallbackModel : PageModel
         _logger.LogInformation(
             "OIDC profile completion succeeded for user {UserId}", user.Id);
 
-        return RedirectToApp(tokenResponse);
+        return await RedirectToAppAsync(tokenResponse, ct);
     }
 
-    private IActionResult RedirectToApp(TokenResponse tokens)
+    private async Task<IActionResult> RedirectToAppAsync(TokenResponse tokens, CancellationToken ct)
     {
+        // Feature 128 US2 — same FR-020 routing-gate contract as Login.cshtml.cs.
+        // OIDC flow has no user-provided ReturnUrl, so the gate is the only
+        // decision point.
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
                        $"&refresh={Uri.EscapeDataString(tokens.RefreshToken)}";
+        if (await SetupAddDeviceRoutingGate.ShouldRouteAsync(tokens.AccessToken, _deviceService, _logger, ct))
+        {
+            fragment += $"&returnUrl={Uri.EscapeDataString(SetupAddDeviceRoutingGate.SetupAddDevicePath)}";
+        }
         return Redirect($"/app/#{fragment}");
     }
 }

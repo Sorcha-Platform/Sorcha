@@ -297,17 +297,16 @@ public class LoginModel : PageModel
     {
         // Feature 128 US2 — when the citizen has no paired device and no
         // explicit ReturnUrl override, route them to /app/setup/add-device so
-        // the WASM client lands on the pairing handoff page (FR-020).
-        // The /app prefix is load-bearing: the Sorcha.UI.Web.Client is hosted
-        // under <base href="/app/"> and NavigationManager.NavigateTo treats
-        // a slash-prefixed path as origin-absolute, bypassing the base href.
-        // Without /app the gateway has no matching route and serves 404.
-        // Citizens who already have a paired device follow the existing
-        // ReturnUrl / "" behaviour unchanged (FR-026).
+        // the WASM client lands on the pairing handoff page (FR-020). The
+        // routing-gate contract is shared with the OIDC and Social callbacks
+        // via SetupAddDeviceRoutingGate; the /app/ prefix rationale lives
+        // there. Citizens who already have a paired device follow the
+        // existing ReturnUrl / "" behaviour unchanged (FR-026).
         var returnUrl = IsValidReturnUrl(ReturnUrl, _returnToAllowlist) ? ReturnUrl : "";
-        if (string.IsNullOrEmpty(returnUrl) && ShouldRouteToSetupAddDevice(tokens.AccessToken))
+        if (string.IsNullOrEmpty(returnUrl)
+            && SetupAddDeviceRoutingGate.ShouldRoute(tokens.AccessToken, _deviceService, _logger))
         {
-            returnUrl = "/app/setup/add-device";
+            returnUrl = SetupAddDeviceRoutingGate.SetupAddDevicePath;
         }
 
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
@@ -317,40 +316,6 @@ public class LoginModel : PageModel
             fragment += $"&returnUrl={Uri.EscapeDataString(returnUrl!)}";
         }
         return Redirect($"/app/#{fragment}");
-    }
-
-    /// <summary>
-    /// Reads <c>platform_user_id</c> from the freshly-issued access token and
-    /// queries <see cref="IPlatformUserDeviceService.HasAnyAsync"/>. Returns
-    /// true when the citizen has zero active paired devices — the F128
-    /// auto-route trigger. Non-fatal: any failure (token parse, DB error)
-    /// is logged and falls through to the existing redirect behaviour.
-    /// </summary>
-    private bool ShouldRouteToSetupAddDevice(string accessToken)
-    {
-        try
-        {
-            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
-            var jwt = handler.ReadJwtToken(accessToken);
-            var raw = jwt.Claims.FirstOrDefault(c => c.Type == "platform_user_id")?.Value;
-            if (!Guid.TryParse(raw, out var platformUserId))
-            {
-                return false;
-            }
-
-            // Block synchronously on the aggregate read; this is one cheap
-            // DB hit on the post-login path, and the call site is already
-            // synchronous so refactoring all three sites to async-everything
-            // is more invasive than warranted.
-            var (hasAny, _) = _deviceService.HasAnyAsync(platformUserId).GetAwaiter().GetResult();
-            return !hasAny;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "F128 setup-add-device routing check failed — falling through to default redirect");
-            return false;
-        }
     }
 
     /// <summary>

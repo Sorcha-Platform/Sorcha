@@ -27,6 +27,7 @@ public class SocialCallbackModelTests : IDisposable
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
     private readonly Mock<ITokenService> _tokenService = new();
     private readonly Mock<ITransactionalEmailService> _transactionalEmail = new();
+    private readonly Mock<IPlatformUserDeviceService> _deviceService = new();
     private readonly TenantDbContext _dbContext;
 
     public SocialCallbackModelTests()
@@ -54,7 +55,8 @@ public class SocialCallbackModelTests : IDisposable
             _tokenService.Object,
             dispatcher,
             _dbContext,
-            NullLogger<SocialCallbackModel>.Instance);
+            NullLogger<SocialCallbackModel>.Instance,
+            _deviceService.Object);
 
         var httpContext = new DefaultHttpContext();
         model.PageContext = new PageContext(new ActionContext(

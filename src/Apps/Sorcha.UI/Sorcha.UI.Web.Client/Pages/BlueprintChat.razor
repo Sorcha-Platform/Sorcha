@@ -12,6 +12,6 @@
     protected override void OnInitialized()
     {
         var suffix = string.IsNullOrEmpty(ExistingBlueprintId) ? string.Empty : "/" + ExistingBlueprintId;
-        Navigation.NavigateTo($"/designer/blueprint{suffix}?tab=ai", replace: true, forceLoad: false);
+        Navigation.NavigateTo($"designer/blueprint{suffix}?tab=ai", replace: true, forceLoad: false);
     }
 }
