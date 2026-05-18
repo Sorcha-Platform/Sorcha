@@ -3103,10 +3103,34 @@ static async IAsyncEnumerable<string> ExtractAddressStrings(IAsyncEnumerable<Sor
 // ===========================
 
 app.MapGet("/api/stats", async (
-    IRegisterRepository repository) =>
+    IRegisterRepository repository,
+    string? registerIds) =>
 {
     try
     {
+        // Feature 131 / UX-005 — optional ?registerIds=a,b,c filter. When set,
+        // counts are scoped to the listed registers; this lets Tenant Service
+        // build org-scoped dashboard stats by passing the org's subscribed
+        // register ids.
+        if (!string.IsNullOrWhiteSpace(registerIds))
+        {
+            var listed = registerIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Take(50)
+                .ToArray();
+            var listedTransactionCount = 0;
+            foreach (var id in listed)
+            {
+                var transactions = await repository.GetTransactionsAsync(id);
+                listedTransactionCount += transactions.Count();
+            }
+            return Results.Ok(new
+            {
+                registerCount = listed.Length,
+                transactionCount = listedTransactionCount
+            });
+        }
+
         var registerCount = await repository.CountRegistersAsync();
 
         // Sum docket heights across all registers as a transaction count proxy
@@ -3136,7 +3160,7 @@ app.MapGet("/api/stats", async (
 })
 .WithName("GetRegisterStats")
 .WithSummary("Get register statistics (public)")
-.WithDescription("Returns aggregate counts of registers and transactions. No authentication required.")
+.WithDescription("Returns aggregate counts of registers and transactions. Optional ?registerIds=a,b,c (comma-separated, max 50) filters the counts to the listed registers. No authentication required.")
 .WithTags("Statistics")
 .AllowAnonymous();
 

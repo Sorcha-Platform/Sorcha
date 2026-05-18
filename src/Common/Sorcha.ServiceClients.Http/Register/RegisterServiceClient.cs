@@ -1781,4 +1781,40 @@ public class RegisterServiceClient : IRegisterServiceClient
     }
 
     private sealed record MyValidatedRegistersResponse(IReadOnlyList<string> RegisterIds);
+
+    /// <inheritdoc />
+    public async Task<RegisterStatsResponse> GetStatsAsync(
+        IReadOnlyList<string>? registerIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Feature 131 — anonymous endpoint (no SetAuthHeaderAsync). When
+            // registerIds is non-empty, append as a comma-separated query string;
+            // entries are URL-encoded individually to defend against odd id chars.
+            var url = "api/stats";
+            if (registerIds is { Count: > 0 })
+            {
+                var joined = string.Join(",", registerIds.Select(Uri.EscapeDataString));
+                url = $"{url}?registerIds={joined}";
+            }
+
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetStatsAsync failed: {StatusCode}", response.StatusCode);
+                return new RegisterStatsResponse();
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<RegisterStatsResponse>(
+                JsonOptions, cancellationToken);
+            return payload ?? new RegisterStatsResponse();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch register statistics");
+            return new RegisterStatsResponse();
+        }
+    }
 }
