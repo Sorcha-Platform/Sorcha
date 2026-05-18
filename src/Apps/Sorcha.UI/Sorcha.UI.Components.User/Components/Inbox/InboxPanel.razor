@@ -120,6 +120,7 @@
     private readonly List<InboxEntryDto> _entries = new();
     private bool _loading;
     private bool _disposed;
+    private bool _wasOpen;
     private string _selectedCategory = string.Empty;
 
     private static readonly string[] CategoryFilters =
@@ -136,6 +137,24 @@
     {
         TenantHub.OnInboxEntryAdded += OnInboxEntryAddedAsync;
         await LoadAsync();
+    }
+
+    // Re-fetch when the drawer opens. The OnInitializedAsync LoadAsync can race
+    // a not-yet-loaded access token on cold open (PWA reads it from IndexedDB),
+    // and entries written before TenantHub connected are never replayed via
+    // OnInboxEntryAdded — so without this, the panel shows stale-empty until
+    // the user hits the Refresh button.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && !_wasOpen)
+        {
+            _wasOpen = true;
+            await LoadAsync();
+        }
+        else if (!IsOpen && _wasOpen)
+        {
+            _wasOpen = false;
+        }
     }
 
     private async Task OnCategoryChanged(string? category)
