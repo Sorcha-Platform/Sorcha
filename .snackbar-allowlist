@@ -17,5 +17,3 @@
 
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
 src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Settings.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/AiDesignerPane.razor
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/AiDesignerPane.razor.cs

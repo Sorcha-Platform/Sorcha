@@ -10,6 +10,7 @@ using MudBlazor;
 using Sorcha.UI.Core.Models.Chat;
 using Sorcha.UI.Core.Services;
 using Sorcha.UI.Core.Services.Designer;
+using Sorcha.UI.Core.Services.Feedback;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 using ChatMessageModel = Sorcha.UI.Core.Models.Chat.ChatMessage;
 
@@ -67,7 +68,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to connect: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to connect: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -282,7 +283,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
     {
         InvokeAsync(() =>
         {
-            Snackbar.Add($"Error [{code}]: {message}", Severity.Error);
+            Feedback.ShowError($"Error [{code}]: {message}", autoDismissMs: 0);
             _isProcessing = false;
             StateHasChanged();
         });
@@ -294,7 +295,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         {
             if (remaining <= 10)
             {
-                Snackbar.Add($"Warning: Only {remaining} messages remaining in this session", Severity.Warning);
+                Feedback.ShowWarning($"Warning: Only {remaining} messages remaining in this session");
             }
             StateHasChanged();
         });
@@ -383,7 +384,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to send message: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to send message: {ex.Message}", autoDismissMs: 0);
             _isProcessing = false;
         }
     }
@@ -401,7 +402,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to cancel: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to cancel: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -425,7 +426,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         {
             if (_pendingAttachments.Count >= MaxAttachmentsPerMessage)
             {
-                Snackbar.Add($"Maximum {MaxAttachmentsPerMessage} attachments per message.", Severity.Warning);
+                Feedback.ShowWarning($"Maximum {MaxAttachmentsPerMessage} attachments per message.");
                 break;
             }
 
@@ -439,7 +440,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Could not attach {file.Name}: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Could not attach {file.Name}: {ex.Message}", autoDismissMs: 0);
             }
         }
 
@@ -451,7 +452,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         var (kind, ok) = ClassifyMediaType(file.ContentType);
         if (!ok)
         {
-            Snackbar.Add($"Unsupported file type: {file.ContentType}", Severity.Warning);
+            Feedback.ShowWarning($"Unsupported file type: {file.ContentType}");
             return null;
         }
 
@@ -459,7 +460,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         if (file.Size > maxSize)
         {
             var limit = kind == ChatAttachmentKind.Image ? "5 MB" : "32 MB";
-            Snackbar.Add($"{file.Name} is too large (max {limit}).", Severity.Warning);
+            Feedback.ShowWarning($"{file.Name} is too large (max {limit}).");
             return null;
         }
 
@@ -532,7 +533,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
                 {
                     if (_pendingAttachments.Count >= MaxAttachmentsPerMessage)
                     {
-                        Snackbar.Add($"Maximum {MaxAttachmentsPerMessage} attachments per message.", Severity.Warning);
+                        Feedback.ShowWarning($"Maximum {MaxAttachmentsPerMessage} attachments per message.");
                         break;
                     }
 
@@ -548,7 +549,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
                     var (kind, ok) = ClassifyMediaType(mediaType);
                     if (!ok)
                     {
-                        Snackbar.Add($"Unsupported file type: {mediaType}", Severity.Warning);
+                        Feedback.ShowWarning($"Unsupported file type: {mediaType}");
                         continue;
                     }
 
@@ -556,7 +557,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
                     var maxBase64 = kind == ChatAttachmentKind.Image ? 7_000_000 : 45_000_000;
                     if (data.Length > maxBase64)
                     {
-                        Snackbar.Add($"{fileName ?? "Attachment"} exceeds the size limit.", Severity.Warning);
+                        Feedback.ShowWarning($"{fileName ?? "Attachment"} exceeds the size limit.");
                         continue;
                     }
 
@@ -571,7 +572,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Failed to read dropped files: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Failed to read dropped files: {ex.Message}", autoDismissMs: 0);
             }
             StateHasChanged();
         });
