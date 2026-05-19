@@ -6,9 +6,10 @@
 @attribute [Authorize(Roles = "SystemAdmin")]
 @using Microsoft.AspNetCore.Authorization
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 
 @inject IPlatformSettingsAdminService PlatformService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>Platform Settings - Sorcha Platform</PageTitle>
 
@@ -161,16 +162,16 @@
             {
                 _publicOrgStatus = result.PublicOrgStatus;
                 _updatedAt = result.UpdatedAt.LocalDateTime.ToString("g");
-                Snackbar.Add("Public organisation setting updated", Severity.Success);
+                Feedback.ShowSuccess("Public organisation setting updated");
             }
             else
             {
-                Snackbar.Add("Failed to update public organisation setting", Severity.Error);
+                Feedback.ShowError("Failed to update public organisation setting", autoDismissMs: 0);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Error: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -182,7 +183,7 @@
     {
         if (_maxOrgsPerUser < 1 || _maxOrgsPerUser > 100)
         {
-            Snackbar.Add("Max organisations must be between 1 and 100", Severity.Warning);
+            Feedback.ShowWarning("Max organisations must be between 1 and 100");
             return;
         }
 
@@ -193,16 +194,16 @@
             if (result != null)
             {
                 _updatedAt = result.UpdatedAt.LocalDateTime.ToString("g");
-                Snackbar.Add("Organisation limit updated", Severity.Success);
+                Feedback.ShowSuccess("Organisation limit updated");
             }
             else
             {
-                Snackbar.Add("Failed to update organisation limit", Severity.Error);
+                Feedback.ShowError("Failed to update organisation limit", autoDismissMs: 0);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Error: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
