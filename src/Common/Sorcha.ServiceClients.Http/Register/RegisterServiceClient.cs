@@ -1747,7 +1747,7 @@ public class RegisterServiceClient : IRegisterServiceClient
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<string>> GetMyValidatedRegistersAsync(
+    public async Task<IReadOnlyList<string>?> GetMyValidatedRegistersAsync(
         byte[] validatorPublicKey,
         CancellationToken cancellationToken = default)
     {
@@ -1765,18 +1765,25 @@ public class RegisterServiceClient : IRegisterServiceClient
             var response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                // Return null (NOT empty) — empty means "validator is on no rosters" and would
+                // cause RegisterMonitoringBootstrap to prune every monitored register. A
+                // transient HTTP failure must NOT trigger a prune. See issue #787 for the
+                // original wedge incident.
                 _logger.LogWarning(
                     "GetMyValidatedRegistersAsync failed: {StatusCode}", response.StatusCode);
-                return Array.Empty<string>();
+                return null;
             }
 
             var payload = await response.Content.ReadFromJsonAsync<MyValidatedRegistersResponse>(JsonOptions, cancellationToken);
-            return payload?.RegisterIds ?? Array.Empty<string>();
+            // A successful response with a null/missing RegisterIds field is treated as an empty
+            // set (validator legitimately on no rosters), not a failure.
+            return (IReadOnlyList<string>)(payload?.RegisterIds ?? Array.Empty<string>());
         }
         catch (Exception ex)
         {
+            // Return null on any exception — same rationale as the HTTP-failure branch above.
             _logger.LogError(ex, "Failed to enumerate validated registers for local validator key");
-            return Array.Empty<string>();
+            return null;
         }
     }
 

@@ -511,7 +511,15 @@ public interface IRegisterServiceClient
     /// monitoring enrolment. The public key is passed via the <c>X-Validator-Public-Key</c> header
     /// by the client implementation.
     /// </summary>
-    Task<IReadOnlyList<string>> GetMyValidatedRegistersAsync(
+    /// <returns>
+    /// The list of register IDs (possibly empty if the validator is not on any roster), OR
+    /// <c>null</c> if the lookup itself failed (HTTP error, network exception, etc.).
+    /// Callers MUST distinguish: empty list = "validator is on no rosters, prune anything we
+    /// currently monitor"; null = "lookup failed, don't change anything". Conflating the two
+    /// triggers issue #787 (the validator wedges every monitored register on a single transient
+    /// failure of the lookup endpoint).
+    /// </returns>
+    Task<IReadOnlyList<string>?> GetMyValidatedRegistersAsync(
         byte[] validatorPublicKey,
         CancellationToken cancellationToken = default);
 
