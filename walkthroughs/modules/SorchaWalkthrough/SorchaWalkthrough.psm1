@@ -297,13 +297,19 @@ function Initialize-SorchaEnvironment {
     }
 
     if (-not $SkipHealthCheck) {
-        # Check Docker
-        Write-WtInfo "Checking Docker availability..."
-        $dockerInfo = docker info 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "Docker is not running. Start Docker Desktop and run: docker-compose up -d"
+        # Check Docker — only for local profiles. Remote profiles (n1) target a
+        # hosted environment where the local Docker daemon is irrelevant.
+        if ($Profile -ne 'n1') {
+            Write-WtInfo "Checking Docker availability..."
+            $dockerInfo = docker info 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "Docker is not running. Start Docker Desktop and run: docker-compose up -d"
+            }
+            Write-WtSuccess "Docker is running"
         }
-        Write-WtSuccess "Docker is running"
+        else {
+            Write-WtInfo "Profile = n1 — skipping local Docker check"
+        }
 
         # Check API Gateway health
         Write-WtInfo "Checking API Gateway health..."
