@@ -1,9 +1,17 @@
-@* Read-only linked-providers section for the Accounts tab (Feature 116 US4).
-   Add-pill / Unlink actions get wired in US1 (SocialLinkService). *@
+@* Linked-providers section for the Accounts tab (Feature 116).
+   US4 shipped the read-only render; US1 wires Add pills (kick OAuth via
+   /social/initiate?intent=link) and Unlink (step up via
+   AuthChallengeDialog, then DELETE /api/auth/social/{linkId}). *@
 
+@using MudBlazor
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject ILocalizationService Loc
+@inject IAuthMethodsClientService AuthMethodsClient
+@inject IDialogService DialogService
+@inject IInlineFeedback Feedback
+@inject NavigationManager Navigation
 
 <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
     <MudText Typo="Typo.h6" Class="mb-1">
@@ -42,7 +50,9 @@
                 </div>
                 @if (social.CanRemove)
                 {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="true" Size="Size.Small">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                               Disabled="@(_busyLinkId == social.LinkId)"
+                               OnClick="@(() => UnlinkAsync(social))">
                         @Loc.T("settings.accounts.socials.unlink")
                     </MudButton>
                 }
@@ -67,9 +77,10 @@
         {
             var isLinked = Socials?.Any(s => string.Equals(s.Provider, provider, StringComparison.OrdinalIgnoreCase)) == true;
             <MudChip T="string" Color="@(isLinked ? Color.Default : Color.Primary)"
-                     Disabled="true"
+                     Disabled="@(isLinked || _addingProvider is not null)"
                      Variant="@(isLinked ? Variant.Outlined : Variant.Filled)"
-                     Style="@(isLinked ? "text-decoration:line-through;opacity:0.5;" : "")">
+                     Style="@(isLinked ? "text-decoration:line-through;opacity:0.5;" : "")"
+                     OnClick="@(() => AddAsync(provider))">
                 @FormatProvider(provider)
             </MudChip>
         }
@@ -79,7 +90,86 @@
 @code {
     [Parameter] public IReadOnlyList<AuthMethodsSocial>? Socials { get; set; }
 
+    /// <summary>Invoked after a successful link initiation or unlink so the parent
+    /// can reload the aggregate. Optional; null = parent doesn't refresh.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private Guid? _busyLinkId;
+    private string? _addingProvider;
+
     private static readonly string[] AllProviders = new[] { "google", "github", "microsoft", "apple" };
+
+    private async Task AddAsync(string provider)
+    {
+        if (_addingProvider is not null) return;
+        _addingProvider = provider;
+        StateHasChanged();
+
+        try
+        {
+            var url = await AuthMethodsClient.InitiateSocialLinkAsync(provider);
+            if (string.IsNullOrEmpty(url))
+            {
+                Feedback.ShowError(Loc.T("settings.accounts.socials.addFailed"));
+                return;
+            }
+
+            // Full-page navigation — OAuth provider takes over.
+            Navigation.NavigateTo(url, forceLoad: true);
+        }
+        finally
+        {
+            _addingProvider = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UnlinkAsync(AuthMethodsSocial social)
+    {
+        if (_busyLinkId is not null) return;
+
+        var parameters = new DialogParameters
+        {
+            ["Scope"] = ScopedOperation.RemoveAuthMethod,
+        };
+        var dialog = await DialogService.ShowAsync<AuthChallengeDialog>(
+            Loc.T("settings.accounts.unlink.confirmTitle"), parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string token) return;
+
+        _busyLinkId = social.LinkId;
+        StateHasChanged();
+
+        try
+        {
+            var outcome = await AuthMethodsClient.UnlinkSocialAsync(social.LinkId, token);
+            switch (outcome)
+            {
+                case UnlinkSocialOutcome.Unlinked:
+                    Feedback.ShowSuccess(Loc.T("settings.accounts.socials.unlinked"));
+                    if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+                    break;
+                case UnlinkSocialOutcome.LastSignInMethodProtected:
+                    Feedback.ShowError(Loc.T("settings.accounts.lastMethodWarning"), autoDismissMs: 0);
+                    break;
+                case UnlinkSocialOutcome.Forbidden:
+                    Feedback.ShowError(Loc.T("settings.accounts.stepUpExpired"));
+                    break;
+                case UnlinkSocialOutcome.NotFound:
+                    Feedback.ShowError(Loc.T("settings.accounts.socials.notFound"));
+                    if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+                    break;
+                default:
+                    Feedback.ShowError(Loc.T("settings.accounts.socials.unlinkFailed"));
+                    break;
+            }
+        }
+        finally
+        {
+            _busyLinkId = null;
+            StateHasChanged();
+        }
+    }
 
     private static string FormatProvider(string provider) => provider switch
     {

@@ -133,6 +133,12 @@
   "settings.accounts.socials.add": "Add",
   "settings.accounts.socials.unlink": "Unlink",
   "settings.accounts.socials.noEmail": "(no email shared)",
+  "settings.accounts.socials.addFailed": "Couldn't start the link flow. Try again.",
+  "settings.accounts.socials.unlinked": "Provider unlinked.",
+  "settings.accounts.socials.unlinkFailed": "Couldn't unlink that provider. Try again.",
+  "settings.accounts.socials.notFound": "That provider is no longer linked.",
+  "settings.accounts.unlink.confirmTitle": "Confirm it's you",
+  "settings.accounts.stepUpExpired": "Step-up expired. Try again.",
 
   "settings.accounts.passkeys.title": "Passkeys",
   "settings.accounts.passkeys.description": "Sign in passwordlessly with a hardware key, Touch ID, Windows Hello, or another platform authenticator.",
