@@ -32,7 +32,8 @@
 <MudThemeProvider Theme="SorchaMudTheme.Default" />
 <MudPopoverProvider />
 <MudDialogProvider />
-<MudSnackbarProvider />
+@* Snackbar Phase 6 (closer): MudSnackbarProvider unmounted across the
+   platform. See Sorcha.UI.Web.Client MainLayout for rationale. *@
 
 @* Feature 128 US1 — pairing takeover renders OUTSIDE MudLayout so its
    full-screen overlay covers nav + content uniformly when an unpaired

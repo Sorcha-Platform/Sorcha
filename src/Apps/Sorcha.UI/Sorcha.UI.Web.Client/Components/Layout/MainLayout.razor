@@ -21,7 +21,10 @@
 <MudThemeProvider Theme="SorchaMudTheme.Default" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
-<MudSnackbarProvider />
+@* Snackbar Phase 6 (closer): MudSnackbarProvider unmounted. Every user
+   feedback path now goes through IInlineFeedback / inbox writers / CopyButton /
+   inline MudAlert. CI gate (scripts/check-no-snackbar.ps1) keeps regressions
+   out at source level. *@
 
 <CascadingAuthenticationState>
 <MudLayout>

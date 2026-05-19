@@ -123,3 +123,32 @@ The Phase 5 inbox is **shipped end-to-end** as of PR #543. Legacy notification d
 6. ~~`PendingActionToast.razor` (PR #537) fires an in-flight snackbar for new Category=Action entries with click-through to DetailHref — alongside the badge for users who want the nudge.~~ **Retired in Phase 6 of the Snackbar retirement.** The toast is gone; the inbox bell now wiggles for ~700ms whenever the unread count goes up (CSS keyframe in `MainLayout.razor.css`, gated on `prefers-reduced-motion`). The bell + drawer remains the authoritative surface, with the wiggle providing the same "look, new thing landed" cue without stealing focus.
 
 **Coexistence retired:** The legacy `PendingActionInbox`, `ActivityLogPanel`, and the EventsHub-driven badge subscriptions are gone from `MainLayout`. `EventsHub` itself is still running (encryption-progress channel, served by `OperationNotificationListener` which now self-connects) — full retirement under T121 is gauge-gated.
+
+## Snackbar retirement — closed (Phase 9o + Phase 6 closer, 2026-05-19)
+
+The Snackbar retirement effort is **complete**. Every user-facing toast across the Sorcha web app, Citizen Wallet PWA, and Reference Verifier has been migrated off MudBlazor `ISnackbar` to one of:
+
+- **`IInlineFeedback`** — actor's own-action feedback in the current page (success / error / info / warning). `InlineFeedbackHost.razor` renders at the top of the content region.
+- **Server-side inbox writers** — workflow / lifecycle / security events that should live in the durable bell drawer (Feature 118).
+- **`CopyButton` primitive** — clipboard affordances (Variant `Button` or `IconButton`), morphs to "Copied ✓" for ~2s.
+- **Inline `MudAlert`** — dialog body errors per F118 §12 dialog rule (the `IInlineFeedback` host is mounted in the layout, not inside dialog surfaces).
+
+**Phase 9 PR ledger** — moved the `.snackbar-allowlist` ratchet from 49 → 0 files:
+
+| PR | Phase | Scope |
+|---|---|---|
+| #740–#755 | Phase 8 and earlier | bulk PWA + web-page migrations |
+| #766 | 9a–9g | 34 surfaces |
+| #767 | 9h | 3 dialog surfaces (inline MudAlert) |
+| #768 | 9i | `MyProfile.razor` |
+| #769 | 9j | `TransactionDetailPanel` via `CopyButton` |
+| #780 | 9k | `Invitations` + `DesignerToolbar` |
+| #781 | 9l | 4 admin surfaces (`UserManagement`, `IdpConfiguration`, `PlatformSettings`, `ParticipantDetail`) |
+| #782 | 9m | `MyActions.razor` |
+| #783 | 9n | `AiDesignerPane` partial-class pair |
+| #784 | 9o | `Settings.razor` — allowlist drained to zero |
+| (this) | Phase 6 closer | `<MudSnackbarProvider />` unmounted from web client, PWA, and Verifier MainLayouts |
+
+**Regression guard retained.** `scripts/check-no-snackbar.ps1` and the comment-only `.snackbar-allowlist` stay in place. Any new `Snackbar.Add(` or `ISnackbar` reference in source will fail the build. The bunit fixture `OperationNotificationListenerTests` continues to mock `ISnackbar` solely to assert `Times.Never` — a deliberate regression guard for the Phase 5e migration kept until F118 retires `EventsHub` entirely.
+
+**`AddMudServices()`** still registers `ISnackbar` in DI in each host — it's a single bulk registration call we still need for the rest of the MudBlazor surface (dialogs, popovers, theme, layout). With no provider mounted, any stray `Snackbar.Add` slipping past the CI gate is a silent no-op rather than a crash. That's intentional defence in depth.
