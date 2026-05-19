@@ -18,12 +18,13 @@
 @using Sorcha.UI.Core.Services.Forms
 @using Sorcha.UI.Core.Services.Wallet
 @using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Services.Feedback
 @inject IWorkflowService WorkflowService
 @inject IBlueprintApiService BlueprintApiService
 @inject IWalletApiService WalletService
 @inject IWalletPreferenceService WalletPreferenceService
 @inject BlueprintHubConnection BlueprintHub
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject IDialogService DialogService
 @inject ILogger<MyActions> Logger
 @inject IJSRuntime JSRuntime
@@ -374,7 +375,7 @@
             catch (Exception ex)
             {
                 Logger.LogWarning(ex, "Failed to load schema for action {ActionId} on blueprint {BlueprintId}", action.ActionId, action.BlueprintId);
-                Snackbar.Add("Failed to load action form — please try again.", Severity.Error);
+                Feedback.ShowError("Failed to load action form — please try again.", autoDismissMs: 0);
                 return;
             }
         }
@@ -443,20 +444,20 @@
                     action.InstanceId, action.ActionId, "declined");
                 if (rejected)
                 {
-                    Snackbar.Add("Action declined", Severity.Info);
+                    Feedback.ShowInfo("Action declined");
                     _actions.Remove(action);
                     RebuildGroups();
                     StateHasChanged();
                 }
                 else
                 {
-                    Snackbar.Add("Failed to decline action. Please try again.", Severity.Error);
+                    Feedback.ShowError("Failed to decline action. Please try again.", autoDismissMs: 0);
                 }
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error rejecting action {ActionId}", action.ActionId);
-                Snackbar.Add("An error occurred while declining the action.", Severity.Error);
+                Feedback.ShowError("An error occurred while declining the action.", autoDismissMs: 0);
             }
             return;
         }
@@ -481,12 +482,12 @@
                     // Async encryption — show progress indicator
                     _activeEncryptionOperationId = submitResult.OperationId;
                     _activeEncryptionRequest = executeRequest;
-                    Snackbar.Add("Encryption started — tracking progress...", Severity.Info);
+                    Feedback.ShowInfo("Encryption started — tracking progress...");
                     StateHasChanged();
                 }
                 else if (submitResult != null)
                 {
-                    Snackbar.Add("Action submitted successfully", Severity.Success);
+                    Feedback.ShowSuccess("Action submitted successfully");
                     _actions.Remove(action);
                     RebuildGroups();
                     StateHasChanged();
@@ -542,13 +543,13 @@
                 }
                 else
                 {
-                    Snackbar.Add("Failed to submit action. Please try again.", Severity.Error);
+                    Feedback.ShowError("Failed to submit action. Please try again.", autoDismissMs: 0);
                 }
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error submitting action {ActionId}", action.ActionId);
-                Snackbar.Add("An error occurred while submitting the action.", Severity.Error);
+                Feedback.ShowError("An error occurred while submitting the action.", autoDismissMs: 0);
             }
         }
     }
@@ -557,7 +558,7 @@
     {
         _activeEncryptionOperationId = null;
         _activeEncryptionRequest = null;
-        Snackbar.Add("Encryption completed successfully!", Severity.Success);
+        Feedback.ShowSuccess("Encryption completed successfully!");
         await LoadActionsAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -565,7 +566,7 @@
     private Task HandleEncryptionFailed()
     {
         // Keep the progress indicator visible so user can see error and retry
-        Snackbar.Add("Encryption failed. See details above.", Severity.Error);
+        Feedback.ShowError("Encryption failed. See details above.", autoDismissMs: 0);
         return InvokeAsync(StateHasChanged);
     }
 
