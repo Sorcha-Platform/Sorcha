@@ -3,6 +3,7 @@
 
 @using Sorcha.UI.Core.Models.Participants
 @using Sorcha.UI.Core.Services.Participants
+@using Sorcha.UI.Core.Services.Feedback
 
 @if (_loading)
 {
@@ -129,7 +130,7 @@ else
 
 @code {
     [Inject] private IParticipantApiService ParticipantService { get; set; } = default!;
-    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IInlineFeedback Feedback { get; set; } = default!;
 
     [Parameter] public Guid OrganizationId { get; set; }
     [Parameter] public Guid ParticipantId { get; set; }
@@ -165,13 +166,13 @@ else
         var success = await ParticipantService.SuspendParticipantAsync(OrganizationId, ParticipantId);
         if (success)
         {
-            Snackbar.Add("Participant suspended", Severity.Success);
+            Feedback.ShowSuccess("Participant suspended");
             await LoadParticipantAsync();
             await OnParticipantChanged.InvokeAsync();
         }
         else
         {
-            Snackbar.Add("Failed to suspend participant", Severity.Error);
+            Feedback.ShowError("Failed to suspend participant", autoDismissMs: 0);
         }
     }
 
@@ -180,13 +181,13 @@ else
         var success = await ParticipantService.ReactivateParticipantAsync(OrganizationId, ParticipantId);
         if (success)
         {
-            Snackbar.Add("Participant reactivated", Severity.Success);
+            Feedback.ShowSuccess("Participant reactivated");
             await LoadParticipantAsync();
             await OnParticipantChanged.InvokeAsync();
         }
         else
         {
-            Snackbar.Add("Failed to reactivate participant", Severity.Error);
+            Feedback.ShowError("Failed to reactivate participant", autoDismissMs: 0);
         }
     }
 
@@ -195,12 +196,12 @@ else
         var success = await ParticipantService.DeactivateParticipantAsync(OrganizationId, ParticipantId);
         if (success)
         {
-            Snackbar.Add("Participant deactivated", Severity.Success);
+            Feedback.ShowSuccess("Participant deactivated");
             await OnParticipantChanged.InvokeAsync();
         }
         else
         {
-            Snackbar.Add("Failed to deactivate participant", Severity.Error);
+            Feedback.ShowError("Failed to deactivate participant", autoDismissMs: 0);
         }
     }
 
@@ -209,12 +210,12 @@ else
         var success = await ParticipantService.RevokeWalletLinkAsync(OrganizationId, ParticipantId, linkId);
         if (success)
         {
-            Snackbar.Add("Wallet link revoked", Severity.Success);
+            Feedback.ShowSuccess("Wallet link revoked");
             await LoadParticipantAsync();
         }
         else
         {
-            Snackbar.Add("Failed to revoke wallet link", Severity.Error);
+            Feedback.ShowError("Failed to revoke wallet link", autoDismissMs: 0);
         }
     }
 
