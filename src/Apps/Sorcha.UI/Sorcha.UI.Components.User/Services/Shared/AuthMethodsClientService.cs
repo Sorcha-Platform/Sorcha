@@ -97,6 +97,44 @@ public interface IAuthMethodsClientService
     /// </summary>
     Task<PasskeyMutationOutcome> RemovePasskeyAsync(
         Guid id, string? challengeToken, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Set an initial password (Feature 116 US3). <paramref name="challengeToken"/>
+    /// is required unless the user is in bootstrap mode (zero other sign-in
+    /// methods), in which case the server bypasses the challenge.
+    /// </summary>
+    Task<PasswordMutationOutcome> SetPasswordAsync(
+        string password, string? challengeToken, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Change the current password. Always requires a fresh challenge token
+    /// issued for <see cref="ScopedOperation.ChangePassword"/>.
+    /// </summary>
+    Task<PasswordMutationOutcome> ChangePasswordAsync(
+        string newPassword, string challengeToken, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clear the password. Always requires a fresh challenge token issued for
+    /// <see cref="ScopedOperation.RemovePassword"/>. Server enforces the
+    /// last-method floor.
+    /// </summary>
+    Task<PasswordMutationOutcome> RemovePasswordAsync(
+        string challengeToken, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Outcome surfaced for password set / change / remove calls.</summary>
+public enum PasswordMutationOutcome
+{
+    /// <summary>Server confirmed the mutation (204).</summary>
+    Succeeded = 0,
+    /// <summary>Server returned 400 — the password failed policy validation.</summary>
+    PolicyViolation = 1,
+    /// <summary>Server returned 409 — already set / not set / last-method floor.</summary>
+    Conflict = 2,
+    /// <summary>Server returned 401 — usually a stale or missing challenge token.</summary>
+    Forbidden = 3,
+    /// <summary>Transport failure or unexpected status.</summary>
+    Failed = 4,
 }
 
 /// <summary>Result of a successful <c>POST /api/passkey/register/options</c>.</summary>
@@ -443,4 +481,78 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
 
     private sealed record PasskeyRenameBody(
         [property: System.Text.Json.Serialization.JsonPropertyName("display_name")] string DisplayName);
+
+    /// <inheritdoc />
+    public Task<PasswordMutationOutcome> SetPasswordAsync(
+        string password, string? challengeToken, CancellationToken cancellationToken = default)
+        => PostPasswordAsync("/api/auth/password/set", password, challengeToken, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<PasswordMutationOutcome> ChangePasswordAsync(
+        string newPassword, string challengeToken, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(challengeToken);
+        return PostPasswordAsync("/api/auth/password/change", newPassword, challengeToken, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<PasswordMutationOutcome> RemovePasswordAsync(
+        string challengeToken, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(challengeToken);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/password/remove");
+            request.Headers.Add("X-Auth-Challenge", challengeToken);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            return MapPassword(response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Password remove failed");
+            return PasswordMutationOutcome.Failed;
+        }
+    }
+
+    private async Task<PasswordMutationOutcome> PostPasswordAsync(
+        string path,
+        string password,
+        string? challengeToken,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(password);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, path)
+            {
+                Content = JsonContent.Create(new PasswordBody(password)),
+            };
+            if (!string.IsNullOrEmpty(challengeToken))
+            {
+                request.Headers.Add("X-Auth-Challenge", challengeToken);
+            }
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            return MapPassword(response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Password mutation POST {Path} failed", path);
+            return PasswordMutationOutcome.Failed;
+        }
+    }
+
+    private static PasswordMutationOutcome MapPassword(System.Net.HttpStatusCode code) => code switch
+    {
+        System.Net.HttpStatusCode.NoContent => PasswordMutationOutcome.Succeeded,
+        System.Net.HttpStatusCode.OK => PasswordMutationOutcome.Succeeded,
+        System.Net.HttpStatusCode.BadRequest => PasswordMutationOutcome.PolicyViolation,
+        System.Net.HttpStatusCode.UnprocessableEntity => PasswordMutationOutcome.PolicyViolation,
+        System.Net.HttpStatusCode.Conflict => PasswordMutationOutcome.Conflict,
+        System.Net.HttpStatusCode.Unauthorized => PasswordMutationOutcome.Forbidden,
+        _ => PasswordMutationOutcome.Failed,
+    };
+
+    private sealed record PasswordBody(
+        [property: System.Text.Json.Serialization.JsonPropertyName("password")] string Password);
 }

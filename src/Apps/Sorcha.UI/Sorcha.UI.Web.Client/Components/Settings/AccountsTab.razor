@@ -58,7 +58,9 @@ else
         </div>
     </MudPaper>
 
-    <PasswordSection Password="_methods.Password" />
+    <PasswordSection Password="_methods.Password"
+                     IsBootstrap="@(!_methods.Password.IsSet && _methods.Socials.Count == 0 && !_methods.Passkeys.Any(p => string.Equals(p.Status, "Active", StringComparison.OrdinalIgnoreCase)))"
+                     OnChanged="LoadAsync" />
     <SocialLinksSection Socials="_methods.Socials" OnChanged="LoadAsync" />
     <PasskeysSection Passkeys="_methods.Passkeys" OnChanged="LoadAsync" />
 }
