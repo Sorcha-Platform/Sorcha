@@ -231,16 +231,31 @@ builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresent
     Sorcha.Blueprint.Service.Services.Implementation.HaipPresentationConsumer>();
 
 // Feature 127 — Sorcha.Verifier.Engine dependencies the SorchaWalletPresentationConsumer
-// consumes. The full verifier-DID resolution stack lands in Spec 5 alongside
-// the production IIssuerKeyResolver; for now the JWK-registry resolver covers
-// the dev/demo path and the OptOut resolver is the fallback for tests that
-// don't populate the registry.
+// consumes. Production issuer-key resolution lands here (F120 → Blueprint Service):
+// the council-page credential gate verifies citizen-presented credentials against
+// the issuer's published DID document via DidResolverBackedIssuerKeyResolver, with
+// the JWK-registry resolver as a fallback for dev/demo flows that mint per-test
+// issuer keys without publishing a DID document. Verifier-DID resolution (the
+// client_id placeholder in SorchaWalletPresentationConsumer.BuildInitiationAsync)
+// is separate and still lands in Spec 5.
 builder.Services.AddHttpClient<Sorcha.Verifier.Engine.IStatusListCache,
     Sorcha.Verifier.Engine.StatusListCache>();
 builder.Services.TryAddSingleton(TimeProvider.System);
+
+// Feature 120 — DID resolver infrastructure (cache, OTel meters, registry, did:sorcha
+// + did:web + did:key built-ins). Idempotent; safe even if a transitive dependency
+// has already registered the same components.
+Sorcha.ServiceClients.Http.Extensions.HttpServiceCollectionExtensions
+    .AddDidResolvers(builder.Services, builder.Configuration);
+
 builder.Services.AddSingleton<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>();
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.DidResolverBackedIssuerKeyResolver>();
 builder.Services.AddSingleton<Sorcha.Verifier.Engine.IIssuerKeyResolver>(sp =>
-    sp.GetRequiredService<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>());
+    new Sorcha.Verifier.Engine.CompositeIssuerKeyResolver(
+    [
+        sp.GetRequiredService<Sorcha.Verifier.Engine.DidResolverBackedIssuerKeyResolver>(),
+        sp.GetRequiredService<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>()
+    ]));
 builder.Services.AddSingleton<Sorcha.Verifier.Engine.IVerifiablePresentationValidator>(sp =>
     new Sorcha.Verifier.Engine.VerifiablePresentationValidator(
         sp.GetRequiredService<Sorcha.Verifier.Engine.IStatusListCache>(),
