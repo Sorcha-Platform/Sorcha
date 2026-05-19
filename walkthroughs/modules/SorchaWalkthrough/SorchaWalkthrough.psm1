@@ -1376,7 +1376,15 @@ function Invoke-SorchaAction {
         [hashtable]$PayloadData = @{},
         [array]$CredentialPresentations = @(),
         [switch]$Reject,
-        [string]$RejectionReason = ""
+        [string]$RejectionReason = "",
+        # Wait for the submitted tx to seal before returning. This is the
+        # actor-cadence bridge: real participants see SignalR-notified
+        # inbound transactions, scripts see immediate HTTP responses; without
+        # this gate the next action can submit during the validator's post-
+        # seal cleanup and trigger the docket-monitoring race. Default off
+        # for back-compat; new scripts should always set it.
+        [switch]$WaitForSeal,
+        [int]$WaitForSealTimeoutSeconds = 90
     )
 
     $executeHeaders = @{
@@ -1397,6 +1405,17 @@ function Invoke-SorchaAction {
             -Headers $executeHeaders
 
         Write-WtSuccess "Action $ActionId REJECTED"
+
+        if ($WaitForSeal -and $response.transactionId) {
+            $gatewayUrl = $BlueprintUrl -replace '/api$', ''
+            Wait-SorchaActorReady -Mode AfterSubmit `
+                -TxId $response.transactionId `
+                -RegisterId $RegisterId `
+                -Headers $executeHeaders `
+                -GatewayUrl $gatewayUrl `
+                -TimeoutSeconds $WaitForSealTimeoutSeconds
+        }
+
         return $response
     } else {
         $actionBody = @{
@@ -1419,6 +1438,17 @@ function Invoke-SorchaAction {
 
         $nextAction = if ($response.nextAction) { $response.nextAction } else { "complete" }
         Write-WtSuccess "Action $ActionId executed (next: $nextAction)"
+
+        if ($WaitForSeal -and $response.transactionId) {
+            $gatewayUrl = $BlueprintUrl -replace '/api$', ''
+            Wait-SorchaActorReady -Mode AfterSubmit `
+                -TxId $response.transactionId `
+                -RegisterId $RegisterId `
+                -Headers $executeHeaders `
+                -GatewayUrl $gatewayUrl `
+                -TimeoutSeconds $WaitForSealTimeoutSeconds
+        }
+
         return $response
     }
 }
@@ -1955,4 +1985,186 @@ function Clear-SorchaCitizenPendingApplication {
         -Headers $Headers `
         -RawResponse
     Write-WtInfo "Pending-application notice cleared"
+}
+
+# ============================================================================
+# Wait-SorchaActorReady — Bridge script cadence and docket-sealing cadence
+# ============================================================================
+
+function Wait-SorchaActorReady {
+    <#
+    .SYNOPSIS
+        Pauses a walkthrough script until the platform is in a state where the
+        next step can proceed safely.
+
+    .DESCRIPTION
+        Walkthroughs that submit actions back-to-back can race ahead of the
+        validator's docket-build cycle. In real-world actor flows each
+        participant waits for a SignalR notification that an inbound
+        transaction has sealed before proceeding, adding several seconds of
+        natural latency between consecutive actions. Scripts move in
+        milliseconds and exercise concurrency bugs (notably: stuck
+        transactions when a credential-issuance tx arrives during the
+        validator's post-seal cleanup window).
+
+        Four modes covering the cases where script cadence needs to gate
+        on platform state:
+
+          AfterSubmit         my outgoing tx is sealed (status = Active /
+                              Revoked / Superseded)
+          AwaitingInbox       the named action is ready for the named actor
+                              (the script equivalent of an inbox
+                              notification — polls instance.currentActionIds)
+          ParticipantSealed   a participant publish tx is sealed
+          BlueprintSealed     a blueprint publish tx is sealed
+
+        AfterSubmit / ParticipantSealed / BlueprintSealed share the polling
+        shape against /api/registers/{registerId}/transactions/{txId}/status
+        (Feature 079 lifecycle endpoint, anonymous). AwaitingInbox polls
+        /api/instances/{instanceId} for currentActionIds containment
+        (authenticated).
+
+        For agents (Sorcha.Agent), the same conceptual surface is provided
+        by their SignalR inbox listeners. Agents do not need this helper.
+
+    .PARAMETER Mode
+        Which condition to wait for.
+
+    .PARAMETER TxId
+        Transaction ID. Required for AfterSubmit / ParticipantSealed /
+        BlueprintSealed.
+
+    .PARAMETER RegisterId
+        Register where the transaction seals. Required for all sealed-* modes
+        and for AwaitingInbox.
+
+    .PARAMETER InstanceId
+        Workflow instance ID. Required for AwaitingInbox.
+
+    .PARAMETER ActionId
+        Action ID to wait for. Required for AwaitingInbox.
+
+    .PARAMETER Headers
+        Auth headers for API calls. Required for all four modes — the F079
+        lifecycle status endpoint is gated by the CanReadTransactions policy,
+        and the instance GET is also authenticated.
+
+    .PARAMETER GatewayUrl
+        Base URL of the API gateway (e.g., http://localhost or
+        https://n1.sorcha.dev).
+
+    .PARAMETER TimeoutSeconds
+        Maximum seconds to wait. Default 90. Throws on timeout.
+
+    .PARAMETER IntervalSeconds
+        Poll interval. Default 1s.
+
+    .EXAMPLE
+        $resp = Invoke-SorchaAction ...
+        Wait-SorchaActorReady -Mode AfterSubmit -TxId $resp.transactionId `
+            -RegisterId $registerId -GatewayUrl $env.GatewayUrl
+
+    .EXAMPLE
+        # Between actor switches in a script:
+        Wait-SorchaActorReady -Mode AwaitingInbox -InstanceId $inst `
+            -ActionId 6 -RegisterId $registerId -Headers $planningHeaders `
+            -GatewayUrl $env.GatewayUrl
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('AfterSubmit', 'AwaitingInbox', 'ParticipantSealed', 'BlueprintSealed')]
+        [string]$Mode,
+
+        [string]$TxId,
+        [string]$RegisterId,
+        [string]$InstanceId,
+        [int]$ActionId,
+        [hashtable]$Headers,
+
+        [Parameter(Mandatory)]
+        [string]$GatewayUrl,
+
+        [int]$TimeoutSeconds = 90,
+        [int]$IntervalSeconds = 1
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $start = Get-Date
+    $attempt = 0
+
+    $sealedModes = @('AfterSubmit', 'ParticipantSealed', 'BlueprintSealed')
+    if ($sealedModes -contains $Mode) {
+        if (-not $TxId)       { throw "Wait-SorchaActorReady[$Mode]: -TxId is required" }
+        if (-not $RegisterId) { throw "Wait-SorchaActorReady[$Mode]: -RegisterId is required" }
+        if (-not $Headers)    { throw "Wait-SorchaActorReady[$Mode]: -Headers is required (lifecycle endpoint is auth-gated by CanReadTransactions policy)" }
+
+        $url = "$GatewayUrl/api/registers/$RegisterId/transactions/$TxId/status"
+        $shortTx = if ($TxId.Length -ge 10) { $TxId.Substring(0, 10) } else { $TxId }
+
+        while ((Get-Date) -lt $deadline) {
+            $attempt++
+            try {
+                $r = Invoke-WebRequest -Uri $url -Method GET -Headers $Headers -SkipCertificateCheck -ErrorAction Stop
+                if ($r.StatusCode -eq 200) {
+                    $body = $r.Content | ConvertFrom-Json
+                    # TransactionLifecycleStatus serializes as int (Active=0,
+                    # Revoked=1, Superseded=2) on n1; accept both numeric and
+                    # string forms for resilience.
+                    $statusLabel = switch ($body.status) {
+                        0 { 'Active' }
+                        1 { 'Revoked' }
+                        2 { 'Superseded' }
+                        default { "$($body.status)" }
+                    }
+                    if ($statusLabel -in @('Active', 'Revoked', 'Superseded')) {
+                        $elapsed = ((Get-Date) - $start).TotalSeconds
+                        Write-WtInfo ("  Wait[$Mode] tx=$shortTx... -> $statusLabel in {0:N1}s ($attempt polls)" -f $elapsed)
+                        return
+                    }
+                }
+            }
+            catch {
+                # 404 expected during pre-seal window — keep polling silently.
+                $status = $null
+                if ($_.Exception.PSObject.Properties.Name -contains 'Response' -and $_.Exception.Response) {
+                    $status = $_.Exception.Response.StatusCode.value__
+                }
+                if ($status -and $status -ne 404) {
+                    Write-WtWarn "  Wait[$Mode] poll error ($status): $($_.Exception.Message)"
+                }
+            }
+            Start-Sleep -Seconds $IntervalSeconds
+        }
+        throw "Wait-SorchaActorReady[$Mode] timed out after ${TimeoutSeconds}s — tx $TxId on register $RegisterId never reached a sealed status"
+    }
+
+    if ($Mode -eq 'AwaitingInbox') {
+        if (-not $InstanceId) { throw "Wait-SorchaActorReady[AwaitingInbox]: -InstanceId is required" }
+        if (-not $PSBoundParameters.ContainsKey('ActionId')) {
+            throw "Wait-SorchaActorReady[AwaitingInbox]: -ActionId is required"
+        }
+        if (-not $Headers) { throw "Wait-SorchaActorReady[AwaitingInbox]: -Headers is required (the instance GET is authenticated)" }
+
+        $url = "$GatewayUrl/api/instances/$InstanceId"
+
+        while ((Get-Date) -lt $deadline) {
+            $attempt++
+            try {
+                $r = Invoke-WebRequest -Uri $url -Method GET -Headers $Headers -SkipCertificateCheck -ErrorAction Stop
+                if ($r.StatusCode -eq 200) {
+                    $inst = $r.Content | ConvertFrom-Json
+                    if ($inst.currentActionIds -contains $ActionId) {
+                        $elapsed = ((Get-Date) - $start).TotalSeconds
+                        Write-WtInfo ("  Wait[Inbox] action $ActionId ready on instance $InstanceId in {0:N1}s ($attempt polls)" -f $elapsed)
+                        return
+                    }
+                }
+            }
+            catch {
+                Write-WtWarn "  Wait[Inbox] poll error: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds $IntervalSeconds
+        }
+        throw "Wait-SorchaActorReady[AwaitingInbox] timed out after ${TimeoutSeconds}s — action $ActionId never became ready on instance $InstanceId"
+    }
 }

@@ -164,7 +164,8 @@ function Invoke-BlueprintScenario {
                     -ActionId $actionIdStr -BlueprintId $BlueprintId `
                     -SenderWallet $senderWallet -RegisterId $RegisterId `
                     -Token $senderToken `
-                    -Reject -RejectionReason $RejectionReason
+                    -Reject -RejectionReason $RejectionReason `
+                    -WaitForSeal
                 Write-WtWarn "    Action $actionIdStr ($sender) -> REJECTED"
             } else {
                 # For the first action with credential presentations, send directly with presentations
@@ -191,7 +192,8 @@ function Invoke-BlueprintScenario {
                         -BlueprintUrl $blueprintUrl -InstanceId $instanceId `
                         -ActionId $actionIdStr -BlueprintId $BlueprintId `
                         -SenderWallet $senderWallet -RegisterId $RegisterId `
-                        -Token $senderToken -PayloadData $payloadData
+                        -Token $senderToken -PayloadData $payloadData `
+                        -WaitForSeal
 
                     Write-WtSuccess "    Action $actionIdStr ($sender) -> OK"
                 }
@@ -262,7 +264,8 @@ function Invoke-DisputedProcurement {
                 -BlueprintUrl $blueprintUrl -InstanceId $instanceId `
                 -ActionId $actionIdStr -BlueprintId $BlueprintId `
                 -SenderWallet $senderWallet -RegisterId $RegisterId `
-                -Token $senderToken -PayloadData $payloadData
+                -Token $senderToken -PayloadData $payloadData `
+                -WaitForSeal
 
             Write-WtSuccess "    Action $actionIdStr ($sender) -> OK"
 
@@ -298,7 +301,8 @@ function Invoke-DisputedProcurement {
             -BlueprintUrl $blueprintUrl -InstanceId $instanceId `
             -ActionId "6" -BlueprintId $BlueprintId `
             -SenderWallet $senderWallet -RegisterId $RegisterId `
-            -Token $senderToken -PayloadData $payloadData
+            -Token $senderToken -PayloadData $payloadData `
+            -WaitForSeal
         Write-WtWarn "    Action 6 ($sender) -> DISPUTED"
         $actionsOk++
     } catch {
@@ -323,7 +327,8 @@ function Invoke-DisputedProcurement {
             -BlueprintUrl $blueprintUrl -InstanceId $instanceId `
             -ActionId "5" -BlueprintId $BlueprintId `
             -SenderWallet $senderWallet -RegisterId $RegisterId `
-            -Token $senderToken -PayloadData $payloadData
+            -Token $senderToken -PayloadData $payloadData `
+            -WaitForSeal
 
         Write-WtSuccess "    Action 5 ($sender) -> RESUBMITTED"
 
@@ -358,7 +363,8 @@ function Invoke-DisputedProcurement {
             -BlueprintUrl $blueprintUrl -InstanceId $instanceId `
             -ActionId "6" -BlueprintId $BlueprintId `
             -SenderWallet $senderWallet -RegisterId $RegisterId `
-            -Token $senderToken -PayloadData $payloadData
+            -Token $senderToken -PayloadData $payloadData `
+            -WaitForSeal
 
         Write-WtSuccess "    Action 6 ($sender) -> APPROVED"
 

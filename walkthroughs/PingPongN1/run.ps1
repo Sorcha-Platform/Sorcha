@@ -229,7 +229,8 @@ for ($round = 1; $round -le $Rounds; $round++) {
             -SenderWallet $state.n1.pongWallet `
             -RegisterId $register.RegisterId `
             -PayloadData @{ message = "pong #$round (n1 initiating)"; counter = $round; fromHost = "n1" } `
-            -Token $pongSession.Token
+            -Token $pongSession.Token `
+            -WaitForSeal
         $pongTx = $pongResp.transactionId
         $roundState.PongSent = $true
         Write-WtSuccess "Round ${round}: action 0 sent on n1 (tx=$pongTx)"
@@ -287,7 +288,8 @@ for ($round = 1; $round -le $Rounds; $round++) {
             -SenderWallet $state.local.pingWallet `
             -RegisterId $register.RegisterId `
             -PayloadData @{ message = "ping #$round (local replying)"; counter = $round; fromHost = "local" } `
-            -Token $pingSession.Token
+            -Token $pingSession.Token `
+            -WaitForSeal
         $pingTx = $pingResp.transactionId
         $roundState.PingSent = $true
         Write-WtSuccess "Round ${round}: action 1 sent on local (tx=$pingTx)"
