@@ -35,7 +35,18 @@ public interface ITotpClientService
     /// Disables TOTP two-factor authentication for the current user.
     /// </summary>
     /// <returns>True if TOTP was successfully disabled.</returns>
-    Task<bool> DisableTotpAsync();
+    /// <summary>
+    /// Disable TOTP 2FA for the signed-in user. The server-side endpoint
+    /// requires a fresh re-authentication challenge token (Feature 116 T068)
+    /// — callers must obtain one via <c>AuthChallengeDialog</c> with
+    /// <c>ScopedOperation.Disable2Fa</c> and pass it here.
+    /// </summary>
+    /// <param name="challengeToken">
+    /// Opaque challenge token from <c>/api/auth/challenge/verify</c>. Sent on
+    /// the request as <c>X-Auth-Challenge</c>. Optional only for transitional
+    /// reasons; production calls should always supply one.
+    /// </param>
+    Task<bool> DisableTotpAsync(string? challengeToken = null);
 
     /// <summary>
     /// Gets the current TOTP enrollment status for the user.
@@ -102,11 +113,16 @@ public class TotpClientService : ITotpClientService
         }
     }
 
-    public async Task<bool> DisableTotpAsync()
+    public async Task<bool> DisableTotpAsync(string? challengeToken = null)
     {
         try
         {
-            var response = await _httpClient.DeleteAsync("/api/totp");
+            using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/totp");
+            if (!string.IsNullOrEmpty(challengeToken))
+            {
+                request.Headers.Add("X-Auth-Challenge", challengeToken);
+            }
+            using var response = await _httpClient.SendAsync(request);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)

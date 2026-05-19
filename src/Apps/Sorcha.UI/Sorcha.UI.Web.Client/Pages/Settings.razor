@@ -842,35 +842,38 @@
 
     private async Task DisableTwoFactor()
     {
-        var confirmed = await DialogService.ShowMessageBoxAsync(
-            Loc.T("settings.twoFactor.disableTitle"),
-            Loc.T("settings.twoFactor.disableConfirm"),
-            yesText: Loc.T("settings.twoFactor.disable"),
-            cancelText: Loc.T("common.cancel"));
-
-        if (confirmed == true)
+        // Feature 116 T068 — the /api/totp DELETE endpoint now requires a fresh
+        // re-authentication challenge with Scope=Disable2Fa. AuthChallengeDialog
+        // doubles as the confirmation surface (replaces the old ShowMessageBoxAsync).
+        var parameters = new MudBlazor.DialogParameters { ["Scope"] = ScopedOperation.Disable2Fa };
+        var dialog = await DialogService.ShowAsync<Sorcha.UI.Web.Client.Components.Settings.AuthMethods.AuthChallengeDialog>(
+            Loc.T("settings.twoFactor.disableTitle"), parameters);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false, Data: string token })
         {
-            try
+            return;
+        }
+
+        try
+        {
+            var disabled = await TotpService.DisableTotpAsync(token);
+            if (disabled)
             {
-                var disabled = await TotpService.DisableTotpAsync();
-                if (disabled)
-                {
-                    _preferences.TwoFactorEnabled = false;
-                    _showTotpSetup = false;
-                    _totpSecret = string.Empty;
-                    _totpQrUri = string.Empty;
-                    _totpBackupCodes.Clear();
-                    Feedback.ShowInfo(Loc.T("settings.twoFactor.disabledSuccess"));
-                }
-                else
-                {
-                    Feedback.ShowError(Loc.T("settings.twoFactor.disableFailed"), autoDismissMs: 0);
-                }
+                _preferences.TwoFactorEnabled = false;
+                _showTotpSetup = false;
+                _totpSecret = string.Empty;
+                _totpQrUri = string.Empty;
+                _totpBackupCodes.Clear();
+                Feedback.ShowInfo(Loc.T("settings.twoFactor.disabledSuccess"));
             }
-            catch (Exception ex)
+            else
             {
-                Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
+                Feedback.ShowError(Loc.T("settings.twoFactor.disableFailed"), autoDismissMs: 0);
             }
+        }
+        catch (Exception ex)
+        {
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
