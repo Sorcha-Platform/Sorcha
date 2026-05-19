@@ -197,11 +197,13 @@ public static class Extensions
                 "connect-src 'self'; " +
                 "frame-ancestors 'none'";
 
-            // Permissions Policy - restrict browser features
+            // Permissions Policy — restrict by default. Camera allow-listed to
+            // `self` for the wallet PWA's QR scanner (Feature 114 T057); kept
+            // in sync with the UI-aware variant below.
             context.Response.Headers["Permissions-Policy"] =
                 "geolocation=(), " +
                 "microphone=(), " +
-                "camera=(), " +
+                "camera=(self), " +
                 "payment=(), " +
                 "usb=(), " +
                 "magnetometer=(), " +
@@ -306,11 +308,13 @@ public static class Extensions
                     "default-src 'none'; frame-ancestors 'none'";
             }
 
-            // Permissions Policy - restrict all browser features for APIs
+            // Permissions Policy — restrict by default. Camera is allow-listed to
+            // `self` for the wallet PWA's QR scanner (Feature 114 T057); only the
+            // /present page calls getUserMedia today.
             context.Response.Headers["Permissions-Policy"] =
                 "geolocation=(), " +
                 "microphone=(), " +
-                "camera=(), " +
+                "camera=(self), " +
                 "payment=(), " +
                 "usb=(), " +
                 "magnetometer=(), " +
