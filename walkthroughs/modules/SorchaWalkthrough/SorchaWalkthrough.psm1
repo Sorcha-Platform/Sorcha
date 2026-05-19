@@ -761,9 +761,22 @@ function Confirm-SorchaUserEmail {
 function New-SorchaWallet {
     <#
     .SYNOPSIS
-        Create a new ED25519 wallet.
+        Get-or-create an ED25519 wallet for the calling user, idempotent by name.
+
+    .DESCRIPTION
+        Lists the caller's wallets and reuses any wallet whose Name matches
+        $Name. Creates a new wallet only if no match exists. This means
+        walkthroughs can compose — running ForestryCertification then
+        TradeFinance for the same sales-mgr@highland-timber user produces
+        ONE wallet across both walkthroughs, and the DPP credential issued
+        by Forestry is visible to TradeFinance's Invoice-Finance phase.
+
+        Mnemonic is returned only when the wallet is freshly created — on
+        reuse it's null (the seed was shown to the user at creation time;
+        the system does not store it).
+
     .RETURNS
-        Hashtable with Address, Mnemonic, PublicKey (PublicKey populated if -FetchPublicKey).
+        Hashtable with Address, Mnemonic, PublicKey, Reused.
     #>
     param(
         [Parameter(Mandatory)][string]$WalletUrl,
@@ -773,6 +786,49 @@ function New-SorchaWallet {
         [int]$WordCount = 12,
         [switch]$FetchPublicKey
     )
+
+    # Look for an existing wallet with this name owned by the caller.
+    try {
+        $existing = Invoke-SorchaApi -Method GET `
+            -Uri "$WalletUrl/v1/wallets/" `
+            -Headers $Headers
+
+        $match = $null
+        if ($existing) {
+            $match = @($existing) | Where-Object { $_.name -eq $Name } | Select-Object -First 1
+        }
+
+        if ($match) {
+            Write-WtInfo "Wallet '$Name' already exists: $($match.address) — reusing"
+
+            $publicKey = $match.publicKey
+            # Older wallet records may not include publicKey on list — fall back
+            # to a probe sign so callers get a non-null value.
+            if (-not $publicKey -and $FetchPublicKey) {
+                $probeBody = @{
+                    transactionData = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("key-probe"))
+                    isPreHashed     = $false
+                }
+                $signResponse = Invoke-SorchaApi -Method POST `
+                    -Uri "$WalletUrl/v1/wallets/$($match.address)/sign" `
+                    -Body $probeBody `
+                    -Headers $Headers
+                $publicKey = $signResponse.publicKey
+            }
+
+            return @{
+                Address   = $match.address
+                Mnemonic  = $null
+                PublicKey = $publicKey
+                Reused    = $true
+            }
+        }
+    } catch {
+        # Lookup failed — fall through to create. Don't fail the whole call on
+        # a transient list error; New-SorchaWallet should always end with a
+        # usable wallet.
+        Write-WtWarn "Wallet lookup failed before create: $($_.Exception.Message) — proceeding to create"
+    }
 
     $walletBody = @{
         name      = $Name
@@ -795,6 +851,7 @@ function New-SorchaWallet {
         Address   = $address
         Mnemonic  = $mnemonic
         PublicKey = $null
+        Reused    = $false
     }
 
     # Optionally fetch public key by signing a probe message
