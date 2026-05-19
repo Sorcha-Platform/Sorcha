@@ -28,10 +28,13 @@ Write-WtBanner "AssuredIdentity — Full Run (Phases 1 + 2)"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $totalStart = Get-Date
 
-# Setup (idempotent)
+# Setup (idempotent). ErrorActionPreference=Stop already converts any
+# walkthrough-level failure into a thrown exception; don't double-check
+# $LASTEXITCODE because setup.ps1 inherits whatever the last native invocation
+# (docker info / curl probe) left in it, which is unreliable as a success
+# signal.
 Write-WtStep "Setup"
 & (Join-Path $scriptDir "setup.ps1") -Profile $Profile -SkipHealthCheck:$SkipHealthCheck -Force:$Force
-if ($LASTEXITCODE -ne 0) { throw "setup.ps1 failed (exit $LASTEXITCODE)" }
 
 # Phase 1 — Assured Identity issuance
 $phase1Start = Get-Date
@@ -39,7 +42,6 @@ $phase1Args = @()
 if ($ShowJson)         { $phase1Args += '-ShowJson' }
 if ($IncludePortrait)  { $phase1Args += '-IncludePortrait' }
 & (Join-Path $scriptDir "run-phase1-identity.ps1") @phase1Args
-if ($LASTEXITCODE -ne 0) { throw "run-phase1-identity.ps1 failed (exit $LASTEXITCODE)" }
 $phase1Elapsed = (Get-Date) - $phase1Start
 Write-WtInfo ("Phase 1 elapsed: {0:mm\:ss}" -f $phase1Elapsed)
 
