@@ -8,12 +8,13 @@
 @using Sorcha.UI.Core.Models.Chat
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Designer
+@using Sorcha.UI.Core.Services.Feedback
 @using ChatMessageModel = Sorcha.UI.Core.Models.Chat.ChatMessage
 @using BlueprintModel = Sorcha.Blueprint.Models.Blueprint
 @inject IChatHubConnection ChatHub
 @inject DesignerContext Context
 @inject IJSRuntime JS
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @implements IAsyncDisposable
 
 <div class="ai-pane" id="ai-pane-root" data-testid="ai-tab-panel">
