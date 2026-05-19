@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models;
 
@@ -39,6 +40,29 @@ public interface IAuthMethodsClientService
     /// </summary>
     Task<UnlinkSocialOutcome> UnlinkSocialAsync(
         Guid linkId, string challengeToken, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Begin a re-authentication challenge for <paramref name="scopedOperation"/>.
+    /// The server picks the proof method per its ladder (TOTP → Password →
+    /// Passkey → ReOAuth) unless <paramref name="preferredMethod"/> is supplied.
+    /// Returns null on transport failure or when no method is enrolled (400).
+    /// </summary>
+    Task<ChallengeInitiateResult?> InitiateChallengeAsync(
+        ScopedOperation scopedOperation,
+        ChallengeMethod? preferredMethod = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Submit the user's proof and exchange it for a one-shot challenge token.
+    /// On success the token is bound to <paramref name="scopedOperation"/> for
+    /// five minutes; the caller presents it via the <c>X-Auth-Challenge</c>
+    /// header on the subsequent mutation call.
+    /// </summary>
+    Task<ChallengeVerifyResult> VerifyChallengeAsync(
+        ChallengeMethod method,
+        ScopedOperation scopedOperation,
+        JsonElement proof,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of an unlink call surfaced to the UI.</summary>
@@ -147,9 +171,84 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<ChallengeInitiateResult?> InitiateChallengeAsync(
+        ScopedOperation scopedOperation,
+        ChallengeMethod? preferredMethod = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/auth/challenge/initiate",
+                new ChallengeInitiateBody(scopedOperation, preferredMethod),
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Challenge initiate returned {StatusCode} for {Operation}",
+                    response.StatusCode, scopedOperation);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<ChallengeInitiateResult>(
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to initiate challenge for {Operation}", scopedOperation);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<ChallengeVerifyResult> VerifyChallengeAsync(
+        ChallengeMethod method,
+        ScopedOperation scopedOperation,
+        JsonElement proof,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/auth/challenge/verify",
+                new ChallengeVerifyBody(method, scopedOperation, proof),
+                cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadFromJsonAsync<ChallengeVerifyBodyResponse>(
+                    cancellationToken: cancellationToken);
+                return body is null || string.IsNullOrEmpty(body.Token)
+                    ? new ChallengeVerifyResult(false, null, ChallengeVerifyError.Failed)
+                    : new ChallengeVerifyResult(true, body.Token, ChallengeVerifyError.None);
+            }
+
+            var error = response.StatusCode switch
+            {
+                System.Net.HttpStatusCode.Unauthorized => ChallengeVerifyError.ProofRejected,
+                System.Net.HttpStatusCode.Gone => ChallengeVerifyError.Expired,
+                _ => ChallengeVerifyError.Failed,
+            };
+            return new ChallengeVerifyResult(false, null, error);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Challenge verify failed for {Method}/{Operation}", method, scopedOperation);
+            return new ChallengeVerifyResult(false, null, ChallengeVerifyError.Failed);
+        }
+    }
+
     private sealed record SocialLinkInitiateResponse
     {
         public string AuthorizationUrl { get; init; } = string.Empty;
         public string State { get; init; } = string.Empty;
     }
+
+    private sealed record ChallengeInitiateBody(ScopedOperation ScopedOperation, ChallengeMethod? PreferredMethod);
+
+    private sealed record ChallengeVerifyBody(ChallengeMethod Method, ScopedOperation ScopedOperation, JsonElement Proof);
+
+    private sealed record ChallengeVerifyBodyResponse(string Token, int ExpiresIn);
 }
