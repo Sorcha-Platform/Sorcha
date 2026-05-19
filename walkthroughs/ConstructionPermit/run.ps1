@@ -151,18 +151,20 @@ foreach ($sid in $scenariosToRun) {
 
         try {
             if ($isRejectionAction) {
-                $null = Invoke-SorchaAction `
+                $response = Invoke-SorchaAction `
                     -BlueprintUrl $state.blueprintUrl -InstanceId $instanceId `
                     -ActionId $actionIdStr -BlueprintId $state.blueprintId `
                     -SenderWallet $senderWallet -RegisterId $state.registerId `
                     -Token $senderToken `
-                    -Reject -RejectionReason $scenarioData.rejectionReason
+                    -Reject -RejectionReason $scenarioData.rejectionReason `
+                    -WaitForSeal
             } else {
                 $response = Invoke-SorchaAction `
                     -BlueprintUrl $state.blueprintUrl -InstanceId $instanceId `
                     -ActionId $actionIdStr -BlueprintId $state.blueprintId `
                     -SenderWallet $senderWallet -RegisterId $state.registerId `
-                    -Token $senderToken -PayloadData $payloadData
+                    -Token $senderToken -PayloadData $payloadData `
+                    -WaitForSeal
 
                 if ($response.calculatedValues) {
                     foreach ($calc in $response.calculatedValues.PSObject.Properties) {
@@ -170,6 +172,7 @@ foreach ($sid in $scenariosToRun) {
                     }
                 }
             }
+
             $actionsOk++
             $prevActionId = $actionId
             Write-WtInfo "  ($sender via per-user token)"

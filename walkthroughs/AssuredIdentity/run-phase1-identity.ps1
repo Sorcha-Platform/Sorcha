@@ -138,7 +138,8 @@ $null = Invoke-SorchaAction `
     -SenderWallet $state.citizenWalletAddress `
     -RegisterId $state.registerId `
     -Token $citizenSession.Token `
-    -PayloadData $payloadData
+    -PayloadData $payloadData `
+    -WaitForSeal
 
 # ============================================================================
 # Step 4: Set the pending-application notice (Feature 124 US2 / FR-009)
@@ -168,7 +169,8 @@ $actionResponse = Invoke-SorchaAction `
     -PayloadData @{
         decision          = "approved"
         verificationNotes = "Identity verified against submitted persona."
-    }
+    } `
+    -WaitForSeal
 
 if ($ShowJson) { $actionResponse | ConvertTo-Json -Depth 5 | Write-Host }
 Write-WtSuccess "Action 2 approved — credential issuance triggered (target: SorchaLocalWallet)"

@@ -376,7 +376,8 @@ for ($round = 1; $round -le $Rounds; $round++) {
             -PayloadData @{
                 message    = "Round $round test file ($FileSize)"
                 attachment = $fileRef
-            }
+            } `
+            -WaitForSeal
 
         # Action execution is async — the initial response may have an empty transactionId.
         # Poll the instance until action 1 becomes current (action 0 has been sealed).
@@ -439,7 +440,8 @@ for ($round = 1; $round -le $Rounds; $round++) {
             -Token $receiverAuth.Token `
             -PayloadData @{
                 acknowledged = $true
-            }
+            } `
+            -WaitForSeal
 
         Write-WtSuccess "Receiver acknowledged"
         $stepsPassed++

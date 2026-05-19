@@ -111,7 +111,8 @@ for ($i = 1; $i -le $Rounds; $i++) {
             -SenderWallet $submitterWallet `
             -RegisterId $state.registerId `
             -Token $submitterToken `
-            -PayloadData $payload1
+            -PayloadData $payload1 `
+            -WaitForSeal
         Write-WtInfo "  Submit action ok"
     } catch {
         Write-WtFail "  Submit failed: $($_.Exception.Message)"
@@ -159,7 +160,8 @@ for ($i = 1; $i -le $Rounds; $i++) {
             -SenderWallet $reviewerWallet `
             -RegisterId $state.registerId `
             -Token $reviewerToken `
-            -PayloadData $payload2
+            -PayloadData $payload2 `
+            -WaitForSeal
         Write-WtInfo "  Acknowledge action ok"
     } catch {
         Write-WtFail "  Acknowledge failed: $($_.Exception.Message)"
