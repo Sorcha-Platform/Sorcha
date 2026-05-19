@@ -296,9 +296,17 @@ foreach ($org in $selectedOrgs) {
         if ($state.wallets.ContainsKey($walletKey) -and $state.wallets[$walletKey]) {
             Write-WtInfo "  Wallet for '$partId' already exists: $($state.wallets[$walletKey])"
         } else {
+            # Wallet name = participant displayName (no " Wallet" suffix). The
+            # name is the idempotency key for New-SorchaWallet — keeping it
+            # aligned with other walkthroughs (ForestryCertification uses
+            # "Sales Manager" too) means the same user across walkthroughs
+            # gets ONE wallet, and credentials issued by one walkthrough are
+            # visible to another (e.g. ForestryCertification's
+            # ForestProductDPPCredential reaches TradeFinance's Invoice
+            # Finance phase).
             $wallet = New-SorchaWallet `
                 -WalletUrl $env.WalletUrl `
-                -Name "$($participant.displayName) Wallet" `
+                -Name $participant.displayName `
                 -Headers $participantSession.Headers `
                 -Algorithm $participant.algorithm `
                 -FetchPublicKey

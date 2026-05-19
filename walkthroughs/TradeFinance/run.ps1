@@ -42,8 +42,12 @@ $financeRegisterId = $state.registers.'trade-finance-register'.id
 $wallets = @{}
 foreach ($prop in $state.wallets.PSObject.Properties) { $wallets[$prop.Name] = $prop.Value }
 
-# Authenticate org admins and use their tokens for all participants in that org
-# (multi-org walkthrough: admin acts on behalf of all participants via wallet delegation)
+# Authenticate per-participant — each action submission must run under the
+# participant's own user token so the participant-identity lookup in the
+# action-execution service finds a real record. The legacy shape used the
+# org-admin token for every participant, which 403s now because admins
+# aren't registered participants (ActionExecutionService.cs:2232 — "No
+# participant profile found for user ... in org ...").
 $orgAdminTokens = @{}
 $participantTokens = @{}
 
@@ -56,14 +60,22 @@ foreach ($orgProp in $state.organizations.PSObject.Properties) {
     $orgAdminTokens[$orgKey] = $adminCtx.Token
 }
 
-# Map each participant to their org's admin token
+# Login each participant user with their own credentials. state.json carries
+# email + password per role from setup.ps1.
 foreach ($role in $state.roles.PSObject.Properties) {
     $partId = $role.Name
-    $orgKey = $role.Value.orgKey
-    $participantTokens[$partId] = $orgAdminTokens[$orgKey]
+    $r = $role.Value
+    $session = Connect-SorchaUser `
+        -TenantUrl $env.TenantUrl `
+        -Email $r.email `
+        -Password $r.password `
+        -OrganizationId $r.organizationId
+    $participantTokens[$partId] = $session.Token
 }
 
-# Admin tokens per register owner (for instance creation)
+# Admin tokens per register owner (for instance creation — register-owning
+# org's admin is still the right token for creating a workflow instance on
+# their register).
 $cairngormOrgId = $state.organizations.cairngorm
 $scottradeOrgId = $state.organizations.scottrade
 $procurementAdminToken = $orgAdminTokens["cairngorm"]
