@@ -133,17 +133,18 @@
         "Workflow",
     };
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
+        // No cold-open LoadAsync — the drawer is closed at app start, so any
+        // fetch here is wasted, and on the PWA it races the bearer token read
+        // from IndexedDB and produces a noisy 401. OnParametersSetAsync below
+        // fetches when the user actually opens the drawer.
         TenantHub.OnInboxEntryAdded += OnInboxEntryAddedAsync;
-        await LoadAsync();
     }
 
-    // Re-fetch when the drawer opens. The OnInitializedAsync LoadAsync can race
-    // a not-yet-loaded access token on cold open (PWA reads it from IndexedDB),
-    // and entries written before TenantHub connected are never replayed via
-    // OnInboxEntryAdded — so without this, the panel shows stale-empty until
-    // the user hits the Refresh button.
+    // Fetch when the drawer opens. Entries written before TenantHub connected
+    // are never replayed via OnInboxEntryAdded, so without this the panel
+    // shows stale-empty until the user hits Refresh.
     protected override async Task OnParametersSetAsync()
     {
         if (IsOpen && !_wasOpen)
