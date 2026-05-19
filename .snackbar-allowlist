@@ -1,18 +1,21 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
-# Seed allowlist for the Snackbar retirement migration.
-# Files listed here are permitted to contain `Snackbar.Add(` or `ISnackbar`
-# references. The CI gate (scripts/check-no-snackbar.ps1) fails when any new
-# file outside this list introduces those references.
+# Snackbar retirement allowlist — now empty.
 #
-# This list is a ratchet: it may only SHRINK, never grow. Each PR in the
-# Snackbar retirement effort should delete one or more lines as the
-# corresponding call sites migrate to IInlineFeedback / inbox writers /
-# CopyButton / inline MudAlert.
+# Phase 9o (PR closing this work) cleared the last entry (Settings.razor).
+# Every user-facing toast has migrated to one of:
+#   - IInlineFeedback (actor's own-action feedback in the current page)
+#   - Server-side inbox writers (durable bell-drawer entries via F118)
+#   - CopyButton primitive (clipboard "Copied ✓" affordance)
+#   - Inline MudAlert (dialog body errors, per F118 §12)
 #
-# When the list reaches zero entries, Phase 6 unmounts MudSnackbarProvider.
+# Phase 6 follow-up: unmount <MudSnackbarProvider /> from the two MainLayouts.
+# That deserves its own PR (it changes runtime behaviour — any stray
+# Snackbar.Add slipping past the gate would silently no-op).
+#
+# The CI gate (scripts/check-no-snackbar.ps1) stays active. With an empty
+# allowlist, any new `Snackbar.Add(` or `ISnackbar` reference fails the
+# build — preventing regressions.
 #
 # Paths are repo-relative, forward-slashes, case-sensitive on Linux CI.
-
-src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Settings.razor

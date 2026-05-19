@@ -12,6 +12,7 @@
 @using Sorcha.UI.Core.Services.Admin
 @using Sorcha.UI.Core.Services.Configuration
 @using Sorcha.UI.Core.Components.Configuration
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Web.Client.Components.Settings
 @inject IUserPreferencesService PreferencesService
 @inject IConfigurationService ConfigService
@@ -19,7 +20,7 @@
 @inject IPushNotificationService PushService
 @inject IJSRuntime JSRuntime
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject NavigationManager Navigation
 @inject ILocalizationService Loc
 @inject IThemeService ThemeService
@@ -627,7 +628,7 @@
                 {
                     _pushPermissionDenied = true;
                     _pushEnabled = false;
-                    Snackbar.Add("Browser notifications permission denied", Severity.Warning);
+                    Feedback.ShowWarning("Browser notifications permission denied");
                     return;
                 }
                 _pushPermissionDenied = false;
@@ -640,12 +641,14 @@
                 };
                 var success = await PushService.SubscribeAsync(request);
                 _pushEnabled = success;
-                Snackbar.Add(success ? "Push notifications enabled" : "Failed to enable push notifications",
-                    success ? Severity.Success : Severity.Error);
+                if (success)
+                    Feedback.ShowSuccess("Push notifications enabled");
+                else
+                    Feedback.ShowError("Failed to enable push notifications", autoDismissMs: 0);
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Push error: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Push error: {ex.Message}", autoDismissMs: 0);
             }
         }
         else
@@ -654,12 +657,14 @@
             {
                 var success = await PushService.UnsubscribeAsync("browser-push-endpoint");
                 _pushEnabled = !success ? _pushEnabled : false;
-                Snackbar.Add(success ? "Push notifications disabled" : "Failed to disable push notifications",
-                    success ? Severity.Success : Severity.Error);
+                if (success)
+                    Feedback.ShowSuccess("Push notifications disabled");
+                else
+                    Feedback.ShowError("Failed to disable push notifications", autoDismissMs: 0);
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Push error: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Push error: {ex.Message}", autoDismissMs: 0);
             }
         }
     }
@@ -682,7 +687,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -697,7 +702,7 @@
             "Dark" => "settings.theme.dark",
             _ => "settings.theme.system"
         };
-        Snackbar.Add($"{Loc.T("settings.theme")}: {Loc.T(themeKey)}", Severity.Success);
+        Feedback.ShowSuccess($"{Loc.T("settings.theme")}: {Loc.T(themeKey)}");
     }
 
     private async Task OnTimeFormatChanged(string format)
@@ -705,7 +710,7 @@
         _preferences.TimeFormat = format;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { TimeFormat = format });
         var formatKey = format == "UTC" ? "settings.timeFormat.utc" : "settings.timeFormat.local";
-        Snackbar.Add($"{Loc.T("settings.timeFormat")}: {Loc.T(formatKey)}", Severity.Success);
+        Feedback.ShowSuccess($"{Loc.T("settings.timeFormat")}: {Loc.T(formatKey)}");
     }
 
     private async Task OnLanguageChanged(string languageCode)
@@ -713,28 +718,28 @@
         _preferences.Language = languageCode;
         await Loc.SetLanguageAsync(languageCode);
         var langName = _supportedLanguages.FirstOrDefault(l => l.Code == languageCode).Name ?? languageCode;
-        Snackbar.Add($"{Loc.T("settings.language")}: {langName}", Severity.Success);
+        Feedback.ShowSuccess($"{Loc.T("settings.language")}: {langName}");
     }
 
     private async Task OnNotificationsChanged(bool enabled)
     {
         _preferences.NotificationsEnabled = enabled;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationsEnabled = enabled });
-        Snackbar.Add(enabled ? Loc.T("settings.notifications.enabledSuccess") : Loc.T("settings.notifications.disabledSuccess"), Severity.Success);
+        Feedback.ShowSuccess(enabled ? Loc.T("settings.notifications.enabledSuccess") : Loc.T("settings.notifications.disabledSuccess"));
     }
 
     private async Task OnNotificationMethodChanged(string method)
     {
         _preferences.NotificationMethod = method;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationMethod = method });
-        Snackbar.Add(Loc.T("settings.notifications.saved"), Severity.Success);
+        Feedback.ShowSuccess(Loc.T("settings.notifications.saved"));
     }
 
     private async Task OnNotificationFrequencyChanged(string frequency)
     {
         _preferences.NotificationFrequency = frequency;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationFrequency = frequency });
-        Snackbar.Add(Loc.T("settings.notifications.saved"), Severity.Success);
+        Feedback.ShowSuccess(Loc.T("settings.notifications.saved"));
     }
 
     private async Task SavePreferencesAsync(UpdateUserPreferencesRequest request)
@@ -745,7 +750,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -763,12 +768,12 @@
             }
             else
             {
-                Snackbar.Add(Loc.T("settings.twoFactor.setupFailed"), Severity.Error);
+                Feedback.ShowError(Loc.T("settings.twoFactor.setupFailed"), autoDismissMs: 0);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -785,16 +790,16 @@
                 _preferences.TwoFactorEnabled = true;
                 _showTotpSetup = false;
                 _totpVerificationCode = string.Empty;
-                Snackbar.Add(Loc.T("settings.twoFactor.enabledSuccess"), Severity.Success);
+                Feedback.ShowSuccess(Loc.T("settings.twoFactor.enabledSuccess"));
             }
             else
             {
-                Snackbar.Add(Loc.T("settings.twoFactor.invalidCode"), Severity.Error);
+                Feedback.ShowError(Loc.T("settings.twoFactor.invalidCode"), autoDismissMs: 0);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -818,16 +823,16 @@
                     _totpSecret = string.Empty;
                     _totpQrUri = string.Empty;
                     _totpBackupCodes.Clear();
-                    Snackbar.Add(Loc.T("settings.twoFactor.disabledSuccess"), Severity.Info);
+                    Feedback.ShowInfo(Loc.T("settings.twoFactor.disabledSuccess"));
                 }
                 else
                 {
-                    Snackbar.Add(Loc.T("settings.twoFactor.disableFailed"), Severity.Error);
+                    Feedback.ShowError(Loc.T("settings.twoFactor.disableFailed"), autoDismissMs: 0);
                 }
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
             }
         }
     }
@@ -843,7 +848,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -862,11 +867,11 @@
                 ApiConfiguration.ConfigureFromProfile(profile);
             }
             await LoadProfilesAsync();
-            Snackbar.Add(Loc.T("settings.connections.activatedSuccess", profileName), Severity.Success);
+            Feedback.ShowSuccess(Loc.T("settings.connections.activatedSuccess", profileName));
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -934,16 +939,16 @@
                 if (deleted)
                 {
                     await LoadProfilesAsync();
-                    Snackbar.Add(Loc.T("settings.connections.deletedSuccess", profile.Name), Severity.Info);
+                    Feedback.ShowInfo(Loc.T("settings.connections.deletedSuccess", profile.Name));
                 }
                 else
                 {
-                    Snackbar.Add(Loc.T("settings.connections.cannotDelete"), Severity.Warning);
+                    Feedback.ShowWarning(Loc.T("settings.connections.cannotDelete"));
                 }
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
             }
         }
     }
