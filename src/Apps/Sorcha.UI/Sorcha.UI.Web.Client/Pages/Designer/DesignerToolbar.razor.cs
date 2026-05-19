@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using MudBlazor;
 using Sorcha.UI.Core.Services;
+using Sorcha.UI.Core.Services.Feedback;
 
 namespace Sorcha.UI.Web.Client.Pages.DesignerShell;
 
@@ -20,7 +21,7 @@ public partial class DesignerToolbar : ComponentBase, IDisposable
     private bool _saving;
 
     [Inject] private IBlueprintApiService BlueprintApi { get; set; } = default!;
-    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IInlineFeedback Feedback { get; set; } = default!;
     [Inject] private ILogger<DesignerToolbar> Logger { get; set; } = default!;
 
     /// <summary>Inline-edit binding for the blueprint title; marks the context dirty on change.</summary>
@@ -82,17 +83,17 @@ public partial class DesignerToolbar : ComponentBase, IDisposable
             if (result is not null)
             {
                 Context.MarkClean();
-                Snackbar.Add($"Blueprint '{Context.Blueprint.Title}' saved successfully", Severity.Success);
+                Feedback.ShowSuccess($"Blueprint '{Context.Blueprint.Title}' saved successfully");
             }
             else
             {
-                Snackbar.Add("Save failed — please try again", Severity.Warning);
+                Feedback.ShowWarning("Save failed — please try again");
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to save blueprint");
-            Snackbar.Add($"Error saving blueprint: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Error saving blueprint: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -103,7 +104,7 @@ public partial class DesignerToolbar : ComponentBase, IDisposable
     private void OnLoadClicked()
     {
         // TODO(US1 follow-up): open LoadBlueprintDialog and call Context.SetBlueprint(...).
-        Snackbar.Add("Load dialog wiring is scheduled for a follow-up PR", Severity.Info);
+        Feedback.ShowInfo("Load dialog wiring is scheduled for a follow-up PR");
     }
 
     /// <inheritdoc />
