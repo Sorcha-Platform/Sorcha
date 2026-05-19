@@ -987,6 +987,23 @@ function Publish-SorchaParticipant {
             -Headers $Headers
 
         Write-WtSuccess "Participant '$ParticipantName' published (TX: $($response.transactionId))"
+
+        # Wait for the publish tx to seal before returning. Setup scripts that
+        # immediately start run.ps1 will otherwise hit a 403 on Action 1 — the
+        # auth check looks up the participant record, gets a 404 because the
+        # publish tx hasn't sealed yet, and the auth layer wraps that as 403.
+        # Setup is single-threaded and not a hot path; the few-seconds wait
+        # for seal is harmless and prevents a real race-condition failure.
+        if ($response.transactionId) {
+            $gatewayUrl = $TenantUrl -replace '/api$', ''
+            Wait-SorchaActorReady -Mode ParticipantSealed `
+                -TxId $response.transactionId `
+                -RegisterId $RegisterId `
+                -Headers $Headers `
+                -GatewayUrl $gatewayUrl `
+                -TimeoutSeconds 90
+        }
+
         return $response
     } catch {
         $statusCode = $null
@@ -1327,10 +1344,27 @@ function Publish-SorchaBlueprint {
 
     Write-WtSuccess "Blueprint published: $blueprintId"
 
+    # Wait for the publish tx to seal before returning, when we know the
+    # register and have a transaction id on the response. Setup scripts that
+    # immediately start run.ps1 would otherwise race the validator — the
+    # action engine would look up the blueprint and find a not-yet-sealed
+    # record. Setup is single-threaded and not a hot path; a few-seconds
+    # wait per publish is harmless.
+    if ($RegisterId -and $publishResponse.transactionId) {
+        $gatewayUrl = $BlueprintUrl -replace '/api$', ''
+        Wait-SorchaActorReady -Mode BlueprintSealed `
+            -TxId $publishResponse.transactionId `
+            -RegisterId $RegisterId `
+            -Headers $Headers `
+            -GatewayUrl $gatewayUrl `
+            -TimeoutSeconds 90
+    }
+
     return @{
-        BlueprintId = $blueprintId
-        Title       = $createResponse.title
-        Warnings    = $warnings
+        BlueprintId   = $blueprintId
+        Title         = $createResponse.title
+        Warnings      = $warnings
+        TransactionId = $publishResponse.transactionId
     }
 }
 
