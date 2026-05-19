@@ -17,6 +17,7 @@
 @inject IUserPreferencesService PreferencesService
 @inject IConfigurationService ConfigService
 @inject ITotpClientService TotpService
+@inject IAuthMethodsClientService AuthMethodsClient
 @inject IPushNotificationService PushService
 @inject IJSRuntime JSRuntime
 @inject IDialogService DialogService
@@ -122,6 +123,15 @@
 
             <!-- Security Tab -->
             <MudTabPanel Text="@Loc.T("settings.security")" Icon="@Icons.Material.Filled.Security">
+
+                @* Feature 116 US3 — password lifecycle mounted above 2FA. *@
+                <Sorcha.UI.Web.Client.Components.Settings.AuthMethods.PasswordSection
+                    Password="_authMethods?.Password"
+                    IsBootstrap="@IsBootstrapAuth"
+                    OnChanged="LoadAuthMethodsAsync" />
+
+                <MudDivider Class="my-4" />
+
                 <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.twoFactor.title")</MudText>
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
                     @Loc.T("settings.twoFactor.description")
@@ -554,6 +564,16 @@
     private bool _loading = true;
     private string _buildNumber = $"{DateTime.Now:yyyyMMdd}.{DateTime.Now:HHmm}";
 
+    // Feature 116 US3 — auth-methods aggregate for the Security tab's
+    // PasswordSection. Lives alongside _preferences to keep the same
+    // tab-mounted lifecycle.
+    private AuthMethodsResponse? _authMethods;
+    private bool IsBootstrapAuth =>
+        _authMethods is not null
+        && !_authMethods.Password.IsSet
+        && _authMethods.Socials.Count == 0
+        && !_authMethods.Passkeys.Any(p => string.Equals(p.Status, "Active", StringComparison.OrdinalIgnoreCase));
+
     // Feature 092 / US4 — Notifications tab index (Appearance=0, Language=1,
     // Security=2, Notifications=3) so the /settings/notifications deep link
     // and avatar-menu shortcut both land on the right tab.
@@ -601,7 +621,11 @@
             }
         }
 
-        await Task.WhenAll(LoadPreferencesAsync(), LoadProfilesAsync(), LoadPushStatusAsync());
+        await Task.WhenAll(
+            LoadPreferencesAsync(),
+            LoadProfilesAsync(),
+            LoadPushStatusAsync(),
+            LoadAuthMethodsAsync());
     }
 
     private async Task LoadPushStatusAsync()
@@ -689,6 +713,19 @@
         {
             Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
+    }
+
+    private async Task LoadAuthMethodsAsync()
+    {
+        try
+        {
+            _authMethods = await AuthMethodsClient.GetAuthMethodsAsync();
+        }
+        catch
+        {
+            _authMethods = null;
+        }
+        StateHasChanged();
     }
 
     private async Task OnThemeChanged(string theme)
