@@ -63,6 +63,69 @@ public interface IAuthMethodsClientService
         ScopedOperation scopedOperation,
         JsonElement proof,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Begin a passkey-add ceremony (Feature 116 US2). Returns the FIDO2
+    /// creation options for the caller to pass to the browser WebAuthn API,
+    /// along with the transaction ID that ties the subsequent verify call.
+    /// Null on transport failure or server rejection.
+    /// </summary>
+    Task<PasskeyAddBegunResult?> BeginAddPasskeyAsync(
+        string displayName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finish a passkey-add ceremony — submits the authenticator's attestation
+    /// response and the matching transaction ID to the server, which verifies
+    /// and creates the credential.
+    /// </summary>
+    Task<PasskeyAddOutcome> FinishAddPasskeyAsync(
+        string transactionId,
+        JsonElement attestationResponse,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rename an Active passkey credential. No re-authentication challenge
+    /// required — the change is non-destructive.
+    /// </summary>
+    Task<PasskeyMutationOutcome> RenamePasskeyAsync(
+        Guid id, string displayName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Soft-revoke a passkey credential. <paramref name="challengeToken"/> is
+    /// required when removing an Active credential and ignored when removing
+    /// a Disabled one (server distinguishes). Pass <c>null</c> for Disabled.
+    /// </summary>
+    Task<PasskeyMutationOutcome> RemovePasskeyAsync(
+        Guid id, string? challengeToken, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Result of a successful <c>POST /api/passkey/register/options</c>.</summary>
+public sealed record PasskeyAddBegunResult(string TransactionId, JsonElement Options);
+
+/// <summary>Outcome of <c>POST /api/passkey/register/verify</c>.</summary>
+public enum PasskeyAddOutcome
+{
+    /// <summary>Server confirmed credential creation.</summary>
+    Added = 0,
+    /// <summary>Validation failed (e.g. transaction ID mismatch, attestation rejected).</summary>
+    Rejected = 1,
+    /// <summary>Transport failure or unexpected status.</summary>
+    Failed = 2,
+}
+
+/// <summary>Outcome surfaced for passkey rename / remove calls.</summary>
+public enum PasskeyMutationOutcome
+{
+    /// <summary>Server confirmed the mutation (204).</summary>
+    Succeeded = 0,
+    /// <summary>Server returned 409 — last-method floor or invalid state transition.</summary>
+    Conflict = 1,
+    /// <summary>Server returned 401 — usually a stale or missing challenge token.</summary>
+    Forbidden = 2,
+    /// <summary>Server returned 404 — credential not found or not owned by caller.</summary>
+    NotFound = 3,
+    /// <summary>Transport failure or unexpected status.</summary>
+    Failed = 4,
 }
 
 /// <summary>Outcome of an unlink call surfaced to the UI.</summary>
@@ -240,6 +303,121 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<PasskeyAddBegunResult?> BeginAddPasskeyAsync(
+        string displayName, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/passkey/register/options",
+                new PasskeyRegisterOptionsBody(displayName),
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Passkey register/options returned {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<PasskeyRegisterOptionsResponseBody>(
+                cancellationToken: cancellationToken);
+            return body is null
+                ? null
+                : new PasskeyAddBegunResult(body.TransactionId, body.Options);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to begin passkey add");
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<PasskeyAddOutcome> FinishAddPasskeyAsync(
+        string transactionId,
+        JsonElement attestationResponse,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(transactionId);
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/passkey/register/verify",
+                new PasskeyRegisterVerifyBody(transactionId, attestationResponse),
+                cancellationToken);
+
+            return response.StatusCode switch
+            {
+                System.Net.HttpStatusCode.Created => PasskeyAddOutcome.Added,
+                System.Net.HttpStatusCode.OK => PasskeyAddOutcome.Added,
+                System.Net.HttpStatusCode.BadRequest => PasskeyAddOutcome.Rejected,
+                System.Net.HttpStatusCode.UnprocessableEntity => PasskeyAddOutcome.Rejected,
+                _ => PasskeyAddOutcome.Failed,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to finish passkey add");
+            return PasskeyAddOutcome.Failed;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<PasskeyMutationOutcome> RenamePasskeyAsync(
+        Guid id, string displayName, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        try
+        {
+            using var response = await _httpClient.PutAsJsonAsync(
+                $"/api/passkey/credentials/{id:D}",
+                new PasskeyRenameBody(displayName),
+                cancellationToken);
+
+            return MapMutation(response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to rename passkey {Id}", id);
+            return PasskeyMutationOutcome.Failed;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<PasskeyMutationOutcome> RemovePasskeyAsync(
+        Guid id, string? challengeToken, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(
+                HttpMethod.Delete, $"/api/passkey/credentials/{id:D}");
+            if (!string.IsNullOrEmpty(challengeToken))
+            {
+                request.Headers.Add("X-Auth-Challenge", challengeToken);
+            }
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            return MapMutation(response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to remove passkey {Id}", id);
+            return PasskeyMutationOutcome.Failed;
+        }
+    }
+
+    private static PasskeyMutationOutcome MapMutation(System.Net.HttpStatusCode code) => code switch
+    {
+        System.Net.HttpStatusCode.NoContent => PasskeyMutationOutcome.Succeeded,
+        System.Net.HttpStatusCode.OK => PasskeyMutationOutcome.Succeeded,
+        System.Net.HttpStatusCode.Conflict => PasskeyMutationOutcome.Conflict,
+        System.Net.HttpStatusCode.Unauthorized => PasskeyMutationOutcome.Forbidden,
+        System.Net.HttpStatusCode.NotFound => PasskeyMutationOutcome.NotFound,
+        _ => PasskeyMutationOutcome.Failed,
+    };
+
     private sealed record SocialLinkInitiateResponse
     {
         public string AuthorizationUrl { get; init; } = string.Empty;
@@ -251,4 +429,18 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
     private sealed record ChallengeVerifyBody(ChallengeMethod Method, ScopedOperation ScopedOperation, JsonElement Proof);
 
     private sealed record ChallengeVerifyBodyResponse(string Token, int ExpiresIn);
+
+    private sealed record PasskeyRegisterOptionsBody(
+        [property: System.Text.Json.Serialization.JsonPropertyName("display_name")] string DisplayName);
+
+    private sealed record PasskeyRegisterOptionsResponseBody(
+        [property: System.Text.Json.Serialization.JsonPropertyName("transaction_id")] string TransactionId,
+        [property: System.Text.Json.Serialization.JsonPropertyName("options")] JsonElement Options);
+
+    private sealed record PasskeyRegisterVerifyBody(
+        [property: System.Text.Json.Serialization.JsonPropertyName("transaction_id")] string TransactionId,
+        [property: System.Text.Json.Serialization.JsonPropertyName("attestation_response")] JsonElement AttestationResponse);
+
+    private sealed record PasskeyRenameBody(
+        [property: System.Text.Json.Serialization.JsonPropertyName("display_name")] string DisplayName);
 }

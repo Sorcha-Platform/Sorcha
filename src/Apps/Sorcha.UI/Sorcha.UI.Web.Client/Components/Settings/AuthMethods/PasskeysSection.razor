@@ -1,9 +1,19 @@
-@* Read-only passkeys section for the Accounts tab (Feature 116 US4).
-   Add / Rename / Remove actions get wired in US2. *@
+@* Passkeys section for the Accounts tab (Feature 116).
+   US4 shipped the read-only render; US2 wires Add (WebAuthn registration
+   ceremony via PasskeyInteropService), Rename (inline edit, no challenge),
+   and Remove (AuthChallengeDialog gates Active credentials; Disabled
+   credentials bypass per data-model.md state-transition table). *@
 
+@using MudBlazor
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.UI.Web.Client.Services
 @inject ILocalizationService Loc
+@inject IAuthMethodsClientService AuthMethodsClient
+@inject IDialogService DialogService
+@inject IInlineFeedback Feedback
+@inject PasskeyInteropService PasskeyInterop
 
 <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
     <MudText Typo="Typo.h6" Class="mb-1">
@@ -32,7 +42,27 @@
                          Color="@(IsDisabled(passkey.Status) ? Color.Warning : Color.Default)"
                          Class="mr-3" />
                 <div class="flex-grow-1">
-                    <MudText Typo="Typo.body1">@passkey.DisplayName</MudText>
+                    @if (_renamingId == passkey.Id)
+                    {
+                        <div class="d-flex align-center" style="gap:8px;">
+                            <MudTextField T="string" @bind-Value="_renameDraft"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                                          Disabled="_savingRename" Immediate="true"
+                                          MaxLength="100" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success"
+                                           Size="Size.Small"
+                                           Disabled="@(_savingRename || string.IsNullOrWhiteSpace(_renameDraft))"
+                                           OnClick="@(() => SaveRenameAsync(passkey))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Default"
+                                           Size="Size.Small"
+                                           Disabled="_savingRename"
+                                           OnClick="CancelRename" />
+                        </div>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body1">@passkey.DisplayName</MudText>
+                    }
                     <MudText Typo="Typo.caption" Color="Color.Secondary">
                         @(passkey.DeviceType ?? Loc.T("settings.accounts.passkeys.unknownDevice"))
                         · @Loc.T("settings.accounts.passkeys.added"): @passkey.CreatedAt.ToLocalTime().ToString("d MMM yyyy")
@@ -54,39 +84,265 @@
                         </MudTooltip>
                     }
                 </div>
-                @if (passkey.CanRename)
+                @if (_renamingId != passkey.Id)
                 {
-                    <MudButton Variant="Variant.Outlined" Disabled="true" Size="Size.Small" Class="mr-2">
-                        @Loc.T("settings.accounts.passkeys.rename")
-                    </MudButton>
-                }
-                @if (passkey.CanRemove)
-                {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="true" Size="Size.Small">
-                        @Loc.T("settings.accounts.passkeys.remove")
-                    </MudButton>
-                }
-                else
-                {
-                    <MudTooltip Text="@Loc.T("settings.accounts.lastMethodWarning")">
-                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="true" Size="Size.Small">
+                    @if (passkey.CanRename)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="mr-2"
+                                   Disabled="@(_busyId is not null)"
+                                   OnClick="@(() => BeginRename(passkey))">
+                            @Loc.T("settings.accounts.passkeys.rename")
+                        </MudButton>
+                    }
+                    @if (passkey.CanRemove)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                   Disabled="@(_busyId == passkey.Id)"
+                                   OnClick="@(() => RemoveAsync(passkey))">
                             @Loc.T("settings.accounts.passkeys.remove")
                         </MudButton>
-                    </MudTooltip>
+                    }
+                    else
+                    {
+                        <MudTooltip Text="@Loc.T("settings.accounts.lastMethodWarning")">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="true" Size="Size.Small">
+                                @Loc.T("settings.accounts.passkeys.remove")
+                            </MudButton>
+                        </MudTooltip>
+                    }
                 }
             </div>
         }
     }
 
     <MudDivider Class="my-3" />
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="true" StartIcon="@Icons.Material.Filled.Add">
-        @Loc.T("settings.accounts.passkeys.add")
-    </MudButton>
+    @if (_addingName is null)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   Disabled="@(_busyId is not null || _renamingId is not null || _adding)"
+                   OnClick="BeginAdd">
+            @Loc.T("settings.accounts.passkeys.add")
+        </MudButton>
+    }
+    else
+    {
+        <div class="d-flex align-center" style="gap:8px;">
+            <MudTextField T="string" @bind-Value="_addingName"
+                          Label="@Loc.T("settings.accounts.passkeys.namePrompt")"
+                          Placeholder="@Loc.T("settings.accounts.passkeys.namePlaceholder")"
+                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                          MaxLength="100" Immediate="true" Disabled="_adding" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(_adding || string.IsNullOrWhiteSpace(_addingName))"
+                       OnClick="ConfirmAddAsync">
+                @if (_adding)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                    <span>@Loc.T("settings.accounts.passkeys.adding")</span>
+                }
+                else
+                {
+                    <span>@Loc.T("settings.accounts.passkeys.addConfirm")</span>
+                }
+            </MudButton>
+            <MudButton Variant="Variant.Text" Disabled="_adding" OnClick="CancelAdd">
+                @Loc.T("common.cancel")
+            </MudButton>
+        </div>
+    }
 </MudPaper>
 
 @code {
     [Parameter] public IReadOnlyList<AuthMethodsPasskey>? Passkeys { get; set; }
 
+    /// <summary>Invoked after a successful add / rename / remove.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private Guid? _busyId;
+    private Guid? _renamingId;
+    private string _renameDraft = string.Empty;
+    private bool _savingRename;
+
+    private string? _addingName;
+    private bool _adding;
+
     private static bool IsDisabled(string status) =>
         string.Equals(status, "Disabled", StringComparison.OrdinalIgnoreCase);
+
+    // ---- Rename --------------------------------------------------------
+
+    private void BeginRename(AuthMethodsPasskey passkey)
+    {
+        if (_busyId is not null) return;
+        _renamingId = passkey.Id;
+        _renameDraft = passkey.DisplayName;
+    }
+
+    private void CancelRename()
+    {
+        _renamingId = null;
+        _renameDraft = string.Empty;
+    }
+
+    private async Task SaveRenameAsync(AuthMethodsPasskey passkey)
+    {
+        var trimmed = _renameDraft.Trim();
+        if (string.IsNullOrEmpty(trimmed) || trimmed == passkey.DisplayName)
+        {
+            CancelRename();
+            return;
+        }
+
+        _savingRename = true;
+        StateHasChanged();
+        try
+        {
+            var outcome = await AuthMethodsClient.RenamePasskeyAsync(passkey.Id, trimmed);
+            switch (outcome)
+            {
+                case PasskeyMutationOutcome.Succeeded:
+                    Feedback.ShowSuccess(Loc.T("settings.accounts.passkeys.renamed"));
+                    CancelRename();
+                    if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+                    break;
+                case PasskeyMutationOutcome.Conflict:
+                    Feedback.ShowError(Loc.T("settings.accounts.passkeys.renameConflict"));
+                    break;
+                case PasskeyMutationOutcome.NotFound:
+                    Feedback.ShowError(Loc.T("settings.accounts.passkeys.notFound"));
+                    CancelRename();
+                    if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+                    break;
+                default:
+                    Feedback.ShowError(Loc.T("settings.accounts.passkeys.renameFailed"));
+                    break;
+            }
+        }
+        finally
+        {
+            _savingRename = false;
+            StateHasChanged();
+        }
+    }
+
+    // ---- Remove --------------------------------------------------------
+
+    private async Task RemoveAsync(AuthMethodsPasskey passkey)
+    {
+        if (_busyId is not null) return;
+
+        string? token = null;
+        if (!IsDisabled(passkey.Status))
+        {
+            // Active passkeys require step-up; Disabled bypasses per spec.
+            var parameters = new DialogParameters { ["Scope"] = ScopedOperation.RemoveAuthMethod };
+            var dialog = await DialogService.ShowAsync<AuthChallengeDialog>(
+                Loc.T("settings.accounts.unlink.confirmTitle"), parameters);
+            var result = await dialog.Result;
+            if (result is null || result.Canceled || result.Data is not string t) return;
+            token = t;
+        }
+
+        _busyId = passkey.Id;
+        StateHasChanged();
+        try
+        {
+            var outcome = await AuthMethodsClient.RemovePasskeyAsync(passkey.Id, token);
+            switch (outcome)
+            {
+                case PasskeyMutationOutcome.Succeeded:
+                    Feedback.ShowSuccess(Loc.T("settings.accounts.passkeys.removed"));
+                    if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+                    break;
+                case PasskeyMutationOutcome.Conflict:
+                    Feedback.ShowError(Loc.T("settings.accounts.lastMethodWarning"), autoDismissMs: 0);
+                    break;
+                case PasskeyMutationOutcome.Forbidden:
+                    Feedback.ShowError(Loc.T("settings.accounts.stepUpExpired"));
+                    break;
+                case PasskeyMutationOutcome.NotFound:
+                    Feedback.ShowError(Loc.T("settings.accounts.passkeys.notFound"));
+                    if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+                    break;
+                default:
+                    Feedback.ShowError(Loc.T("settings.accounts.passkeys.removeFailed"));
+                    break;
+            }
+        }
+        finally
+        {
+            _busyId = null;
+            StateHasChanged();
+        }
+    }
+
+    // ---- Add -----------------------------------------------------------
+
+    private void BeginAdd()
+    {
+        _addingName = string.Empty;
+    }
+
+    private void CancelAdd()
+    {
+        _addingName = null;
+    }
+
+    private async Task ConfirmAddAsync()
+    {
+        var name = (_addingName ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(name)) return;
+
+        _adding = true;
+        StateHasChanged();
+        try
+        {
+            if (!await PasskeyInterop.IsWebAuthnSupportedAsync())
+            {
+                Feedback.ShowError(Loc.T("settings.accounts.passkeys.unsupportedBrowser"), autoDismissMs: 0);
+                return;
+            }
+
+            var begun = await AuthMethodsClient.BeginAddPasskeyAsync(name);
+            if (begun is null)
+            {
+                Feedback.ShowError(Loc.T("settings.accounts.passkeys.addFailed"));
+                return;
+            }
+
+            System.Text.Json.JsonElement attestation;
+            try
+            {
+                attestation = await PasskeyInterop.CreateCredentialAsync(begun.Options);
+            }
+            catch
+            {
+                // User cancelled the WebAuthn prompt, or the authenticator rejected.
+                Feedback.ShowInfo(Loc.T("settings.accounts.passkeys.addCancelled"));
+                return;
+            }
+
+            var outcome = await AuthMethodsClient.FinishAddPasskeyAsync(begun.TransactionId, attestation);
+            switch (outcome)
+            {
+                case PasskeyAddOutcome.Added:
+                    Feedback.ShowSuccess(Loc.T("settings.accounts.passkeys.added.success"));
+                    _addingName = null;
+                    if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+                    break;
+                case PasskeyAddOutcome.Rejected:
+                    Feedback.ShowError(Loc.T("settings.accounts.passkeys.addRejected"));
+                    break;
+                default:
+                    Feedback.ShowError(Loc.T("settings.accounts.passkeys.addFailed"));
+                    break;
+            }
+        }
+        finally
+        {
+            _adding = false;
+            StateHasChanged();
+        }
+    }
 }
