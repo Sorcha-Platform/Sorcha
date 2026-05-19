@@ -8,9 +8,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using Sorcha.UI.Core.Services.Identity
+@using Sorcha.UI.Core.Services.Feedback
 
 @inject IInvitationClientService InvitationService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>Invitations - Sorcha Platform</PageTitle>
 
@@ -156,7 +157,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to load invitations: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to load invitations: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -174,27 +175,27 @@
                 Role = _newRole,
                 ExpiryDays = _newExpiryDays
             });
-            Snackbar.Add($"Invitation sent to {_newEmail}", Severity.Success);
+            Feedback.ShowSuccess($"Invitation sent to {_newEmail}");
             _newEmail = "";
             await LoadInvitationsAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to send invitation: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to send invitation: {ex.Message}", autoDismissMs: 0);
         }
     }
 
     private async Task RevokeAsync(Guid invitationId)
     {
         await InvitationService.RevokeInvitationAsync(_organizationId, invitationId);
-        Snackbar.Add("Invitation revoked", Severity.Warning);
+        Feedback.ShowWarning("Invitation revoked");
         await LoadInvitationsAsync();
     }
 
     private async Task ResendAsync(Guid invitationId)
     {
         await InvitationService.ResendInvitationAsync(_organizationId, invitationId);
-        Snackbar.Add("Invitation resent", Severity.Success);
+        Feedback.ShowSuccess("Invitation resent");
         await LoadInvitationsAsync();
     }
 
