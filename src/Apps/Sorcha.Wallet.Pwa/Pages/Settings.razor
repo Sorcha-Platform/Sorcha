@@ -102,6 +102,43 @@
                     Sign out
                 </MudButton>
             }
+            else if (_awaitingTwoFactor)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    @(_useBackupCode
+                        ? "Enter one of your backup codes."
+                        : "Enter the 6-digit code from your authenticator app.")
+                </MudText>
+                <MudTextField @bind-Value="_twoFactorCode"
+                              Label="@(_useBackupCode ? "Backup code" : "Authenticator code")"
+                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Class="mb-2" Immediate="true"
+                              MaxLength="@(_useBackupCode ? 12 : 6)"
+                              InputMode="@(_useBackupCode ? InputMode.text : InputMode.numeric)" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="VerifyTwoFactorAsync"
+                           Disabled="@(_signingIn || string.IsNullOrWhiteSpace(_twoFactorCode))"
+                           FullWidth="true">
+                    @(_signingIn ? "Verifying…" : "Verify")
+                </MudButton>
+                <div class="d-flex justify-space-between mt-2">
+                    <MudButton Variant="Variant.Text" Size="Size.Small"
+                               OnClick="@(() => { _useBackupCode = !_useBackupCode; _twoFactorCode = string.Empty; })"
+                               Disabled="@_signingIn">
+                        @(_useBackupCode ? "Use authenticator code" : "Use a backup code")
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="CancelTwoFactor"
+                               Disabled="@_signingIn">
+                        Cancel
+                    </MudButton>
+                </div>
+                @if (!string.IsNullOrEmpty(_signInError))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">
+                        @_signInError
+                    </MudAlert>
+                }
+            }
             else
             {
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
@@ -193,6 +230,12 @@
     private string? _signInError;
     private bool _signingIn;
 
+    // 2FA step state.
+    private bool _awaitingTwoFactor;
+    private string? _loginToken;
+    private string _twoFactorCode = string.Empty;
+    private bool _useBackupCode;
+
     protected override async Task OnInitializedAsync()
     {
         _signedInEmail = await Auth.GetSignedInEmailAsync();
@@ -215,6 +258,15 @@
                 _signedInEmail = await Auth.GetSignedInEmailAsync();
                 _password = string.Empty;
             }
+            else if (result.Status == SignInStatus.TwoFactorRequired)
+            {
+                // Hold the password-derived login token and switch to the TOTP step.
+                _loginToken = result.LoginToken;
+                _awaitingTwoFactor = true;
+                _twoFactorCode = string.Empty;
+                _useBackupCode = false;
+                _password = string.Empty;
+            }
             else
             {
                 _signInError = result.ErrorMessage ?? "Sign-in failed.";
@@ -229,6 +281,52 @@
         {
             _signingIn = false;
         }
+    }
+
+    private async Task VerifyTwoFactorAsync()
+    {
+        _signInError = null;
+        if (string.IsNullOrWhiteSpace(_loginToken))
+        {
+            // Login token lost (shouldn't happen) — restart sign-in.
+            CancelTwoFactor();
+            return;
+        }
+        _signingIn = true;
+        try
+        {
+            var result = await Auth.VerifyTwoFactorAsync(
+                _loginToken, _email, _twoFactorCode, _useBackupCode);
+            if (result.IsSuccess)
+            {
+                _signedInEmail = await Auth.GetSignedInEmailAsync();
+                CancelTwoFactor();
+            }
+            else
+            {
+                // 401 keeps us on the step with a retry message; other errors surface too.
+                _signInError = result.ErrorMessage ?? "Verification failed.";
+                _twoFactorCode = string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            _signInError = ex.Message;
+            Logger.LogError(ex, "2FA verify threw");
+        }
+        finally
+        {
+            _signingIn = false;
+        }
+    }
+
+    private void CancelTwoFactor()
+    {
+        _awaitingTwoFactor = false;
+        _loginToken = null;
+        _twoFactorCode = string.Empty;
+        _useBackupCode = false;
+        _signInError = null;
     }
 
     private async Task SignOutAsync()
