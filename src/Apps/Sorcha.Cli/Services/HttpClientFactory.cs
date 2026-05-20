@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Polly;
 using Polly.Extensions.Http;
 using Polly.Timeout;
@@ -15,6 +17,20 @@ namespace Sorcha.Cli.Services;
 public class HttpClientFactory
 {
     private readonly IConfigurationService _configService;
+
+    /// <summary>
+    /// Refit settings that read enums serialized as strings (the platform default) in addition to
+    /// numbers. Needed for responses that carry enum-typed fields reused from the shared models
+    /// packages (e.g. TransactionLifecycleStatus, ProofPosition on Merkle proofs).
+    /// </summary>
+    private static readonly RefitSettings StringEnumRefitSettings = new()
+    {
+        ContentSerializer = new SystemTextJsonContentSerializer(
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            {
+                Converters = { new JsonStringEnumConverter() }
+            })
+    };
 
     public HttpClientFactory(IConfigurationService configService)
     {
@@ -48,7 +64,7 @@ public class HttpClientFactory
         }
 
         var httpClient = CreateHttpClient(profile, profile.GetRegisterServiceUrl());
-        return RestService.For<IRegisterServiceClient>(httpClient);
+        return RestService.For<IRegisterServiceClient>(httpClient, StringEnumRefitSettings);
     }
 
     /// <summary>

@@ -25,7 +25,10 @@ sorcha
 │   ├── list               # List transactions in register
 │   ├── get                # Get transaction by ID
 │   ├── submit             # Submit new transaction
-│   └── status             # Check transaction status
+│   ├── status             # Check transaction lifecycle status (active/revoked/superseded)
+│   ├── proof              # Generate a Merkle inclusion proof (--out to save)
+│   ├── verify-proof       # Verify a saved inclusion proof (offline-capable)
+│   └── revoke             # Revoke a transaction with a recorded reason
 ├── docket                 # Docket (block) inspection
 │   ├── list               # List dockets in register
 │   ├── get                # Get docket by ID
@@ -212,3 +215,33 @@ var userId = jwtToken.Claims.FirstOrDefault(c => c.Type == "sub")?.Value
     ?? jwtToken.Claims.FirstOrDefault(c => c.Type == "userId")?.Value
     ?? throw new InvalidOperationException("Could not extract user ID from token");
 ```
+
+## Trust-Hardening Transaction Commands (Feature 133 / 079)
+
+These commands wrap the Register Service's trust-hardening surface. They reuse the shared
+`Sorcha.Register.Models` types (`MerkleInclusionProof`, `TransactionStatusResponse`,
+`RevocationReason`) rather than redefining them — the Register Refit client is built with a
+`JsonStringEnumConverter` so the platform's string-serialized enums deserialize correctly.
+
+```bash
+# Generate a Merkle inclusion proof and save it for offline verification
+sorcha tx proof --register-id <id> --tx-id <txId> --out proof.json
+
+# Verify a saved proof (the verify endpoint is anonymous / offline-capable)
+sorcha tx verify-proof --register-id <id> --file proof.json
+
+# Revoke a transaction with a reason (Superseded requires --superseded-by)
+sorcha tx revoke --register-id <id> --tx-id <txId> --reason Erroneous
+sorcha tx revoke --register-id <id> --tx-id <txId> --reason Superseded --superseded-by <newTxId>
+
+# Report lifecycle status — Active / Revoked / Superseded (NOT submission progress)
+sorcha tx status --register-id <id> --tx-id <txId>
+```
+
+**`tx status` correctness note**: this command targets `GET …/transactions/{txId}/status`, which
+returns the *lifecycle* status (`Active` / `Revoked` / `Superseded`), not submission progress.
+Earlier the command deserialized that response into the submission-ack shape and always reported
+"Unknown status"; it now uses `TransactionStatusResponse` and reports the lifecycle state plus any
+revocation/superseding transaction pointers.
+
+Valid `--reason` values: `Superseded`, `Erroneous`, `Compromised`, `Expired`, `Withdrawn`, `Regulatory`.

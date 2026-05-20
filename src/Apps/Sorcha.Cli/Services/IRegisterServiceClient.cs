@@ -88,12 +88,41 @@ public interface IRegisterServiceClient
         [Header("Authorization")] string authorization);
 
     /// <summary>
-    /// Gets the status of a transaction.
+    /// Gets the lifecycle status of a transaction (active / revoked / superseded).
     /// </summary>
     [Get("/api/registers/{registerId}/transactions/{transactionId}/status")]
-    Task<SubmitTransactionResponse> GetTransactionStatusAsync(
+    Task<TransactionStatusResponse> GetTransactionStatusAsync(
         string registerId,
         string transactionId,
+        [Header("Authorization")] string authorization);
+
+    // --- Trust Hardening (Feature 079) ---
+
+    /// <summary>
+    /// Generates a Merkle inclusion proof for a sealed transaction.
+    /// </summary>
+    [Get("/api/registers/{registerId}/transactions/{txId}/inclusion-proof")]
+    Task<MerkleInclusionProof> GetInclusionProofAsync(
+        string registerId,
+        string txId,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Verifies a standalone Merkle inclusion proof (anonymous endpoint).
+    /// </summary>
+    [Post("/api/registers/{registerId}/inclusion-proofs/verify")]
+    Task<VerifyProofResult> VerifyInclusionProofAsync(
+        string registerId,
+        [Body] VerifyMerkleInclusionProofRequest request,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Submits a revocation for an existing transaction.
+    /// </summary>
+    [Post("/api/registers/{registerId}/transactions/revoke")]
+    Task<RevokeTransactionResult> RevokeTransactionAsync(
+        string registerId,
+        [Body] RevokeTransactionRequest request,
         [Header("Authorization")] string authorization);
 
     // --- Dockets ---
@@ -279,5 +308,48 @@ public class PolicyUpdateRequest
     public int? SignatureThreshold { get; set; }
     public string? RegistrationMode { get; set; }
     public string? TransitionMode { get; set; }
+}
+
+/// <summary>
+/// Request to verify a standalone Merkle inclusion proof.
+/// Mirrors the Register Service's VerifyMerkleInclusionProofRequest.
+/// </summary>
+public class VerifyMerkleInclusionProofRequest
+{
+    public string TransactionHash { get; set; } = string.Empty;
+    public string MerkleRoot { get; set; } = string.Empty;
+    public IReadOnlyList<MerkleProofStep> ProofPath { get; set; } = new List<MerkleProofStep>();
+}
+
+/// <summary>
+/// Result of verifying a Merkle inclusion proof.
+/// </summary>
+public class VerifyProofResult
+{
+    public bool IsValid { get; set; }
+    public string ComputedRoot { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Request to revoke a transaction. The reason is sent as a string and parsed
+/// server-side against the RevocationReason enum.
+/// </summary>
+public class RevokeTransactionRequest
+{
+    public string OriginalTxId { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public string? SupersededByTxId { get; set; }
+    public Dictionary<string, string>? Metadata { get; set; }
+    public string? SignerWalletAddress { get; set; }
+}
+
+/// <summary>
+/// Accepted-revocation result returned by the revoke endpoint.
+/// </summary>
+public class RevokeTransactionResult
+{
+    public string RevocationTxId { get; set; } = string.Empty;
+    public string OriginalTxId { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
 }
 
