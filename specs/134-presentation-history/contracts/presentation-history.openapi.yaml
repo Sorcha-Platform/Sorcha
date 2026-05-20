@@ -1,0 +1,125 @@
+openapi: 3.1.0
+info:
+  title: Citizen Presentation History (F114 US5 PR3)
+  version: "1.0"
+  description: >
+    Read and delete surface for the citizen's cross-device presentation history.
+    Complements the report endpoint shipped in PR2 (POST /api/v1/wallet/presentations/log,
+    documented in specs/114-citizen-wallet-pwa/contracts/openapi-wallet-service.yaml).
+    All paths require a citizen JWT (audience sorcha:citizen-wallet) and are scoped to
+    the caller's platform_user_id. Rate-limited by the Strict policy.
+
+servers:
+  - url: /api/v1/wallet
+    description: Wallet Service citizen-wallet surface (via API Gateway)
+
+paths:
+  /presentations:
+    get:
+      operationId: listCitizenPresentations
+      summary: List the citizen's presentation history
+      description: >
+        Returns every presentation the authenticated citizen has reported, from any of
+        their devices, newest-first. Used by the PWA Activity page for cross-device history.
+        Returns an empty list (never 404) when there is no history.
+      security:
+        - citizenJwt: []
+      responses:
+        '200':
+          description: The citizen's presentation history, newest-first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationHistoryResponse'
+        '401':
+          description: Missing or invalid citizen JWT.
+
+  /presentations/{id}:
+    delete:
+      operationId: deleteCitizenPresentation
+      summary: Delete a presentation from the citizen's history
+      description: >
+        Removes the entry from the citizen's server-side history (server-authoritative
+        delete). Idempotent. A delete targeting another citizen's entry, or a non-existent
+        entry, returns 204 — indistinguishable from success, to avoid leaking existence.
+        Does not affect the verifier's own records (there is no register/ledger record for
+        these presentations).
+      security:
+        - citizenJwt: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The wallet-generated entry id (PresentationLogEntry.Id).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted (or already absent / not owned — indistinguishable).
+        '401':
+          description: Missing or invalid citizen JWT.
+
+components:
+  securitySchemes:
+    citizenJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Citizen JWT, audience sorcha:citizen-wallet, carrying platform_user_id.
+
+  schemas:
+    PresentationHistoryResponse:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          description: Presentation history entries, newest-first.
+          items:
+            $ref: '#/components/schemas/PresentationLogEntry'
+
+    PresentationLogEntry:
+      type: object
+      description: >
+        Reused wire shape from Sorcha.CitizenWallet.Abstractions (same type the PR2 report
+        endpoint accepts). Carries disclosed claim NAMES only — never values. registerId /
+        actionTxId are vestigial and always null for these citizen-owned records.
+      required: [id, credentialId, disclosedClaims, presentedAt, outcome]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Wallet-generated entry id; the unit of identity / dedupe.
+        credentialId:
+          type: string
+          format: uuid
+          description: Local cache id of the credential presented.
+        verifierDid:
+          type: string
+          nullable: true
+          maxLength: 200
+        verifierLabel:
+          type: string
+          nullable: true
+          maxLength: 200
+          description: Verifier-supplied display label (untrusted).
+        disclosedClaims:
+          type: array
+          description: Names of the disclosed claims (never values).
+          items:
+            type: string
+        presentedAt:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          enum: [Presented, DeclinedByCitizen, VerifierRejected, Acknowledged]
+        registerId:
+          type: string
+          nullable: true
+          description: Vestigial; always null for citizen-owned offline presentations.
+        actionTxId:
+          type: string
+          nullable: true
+          description: Vestigial; always null for citizen-owned offline presentations.
