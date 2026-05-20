@@ -153,4 +153,22 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         response.EnsureSuccessStatusCode();
         return response.StatusCode == System.Net.HttpStatusCode.Accepted;
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PresentationLogEntry>> ListPresentationsAsync(CancellationToken ct = default)
+    {
+        var response = await _httpClient.GetAsync("api/v1/wallet/presentations", ct);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<PresentationHistoryResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Wallet Service returned an empty body for /presentations.");
+        return result.Entries;
+    }
+
+    /// <inheritdoc />
+    public async Task DeletePresentationAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/v1/wallet/presentations/{id}", ct);
+        response.EnsureSuccessStatusCode();
+    }
 }

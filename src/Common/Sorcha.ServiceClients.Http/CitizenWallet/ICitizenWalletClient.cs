@@ -79,4 +79,19 @@ public interface ICitizenWalletClient
     /// </summary>
     Task<bool> ReportPresentationLogAsync(
         PresentationLogReportRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists the citizen's cross-device presentation history, newest-first (US5 PR3).
+    /// Calls <c>GET /api/v1/wallet/presentations</c>. Returns an empty list (never
+    /// throws on empty history) when the citizen has reported nothing.
+    /// </summary>
+    Task<IReadOnlyList<PresentationLogEntry>> ListPresentationsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a presentation from the citizen's server-side history (US5 PR3).
+    /// Calls <c>DELETE /api/v1/wallet/presentations/{id}</c>. Server-authoritative —
+    /// the entry stays gone across all the citizen's devices. Idempotent; always
+    /// succeeds (cross-user / non-existent ids are indistinguishable 204s).
+    /// </summary>
+    Task DeletePresentationAsync(Guid id, CancellationToken ct = default);
 }
