@@ -25,6 +25,7 @@
 @inject IStatusListService StatusList
 @inject HttpClient Http
 @inject IJSRuntime JS
+@inject IPresentationLog PresentationLog
 
 <PageTitle>Present a credential</PageTitle>
 
@@ -187,10 +188,38 @@
                 _responseStatus = "fail";
                 _responseMessage = $"Verifier returned {(int)resp.StatusCode} {resp.StatusCode}.";
             }
+
+            // US5 — record the presentation in the local activity log. Best-effort:
+            // a logging failure must not change the presentation outcome the user sees.
+            await TryLogPresentationAsync(approved, resp.IsSuccessStatusCode);
+
             _phase = Phase.Done;
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
+    }
+
+    private async Task TryLogPresentationAsync(IReadOnlyList<string> disclosedClaims, bool accepted)
+    {
+        if (_selected is null || _request is null) return;
+        try
+        {
+            var entry = new PresentationLogEntry(
+                Id: Guid.NewGuid(),
+                PresentedAt: DateTimeOffset.UtcNow,
+                CredentialType: _selected.Credential.Vct,
+                CredentialLabel: _selected.Credential.DisplayLabel,
+                VerifierLabel: string.IsNullOrWhiteSpace(_request.Purpose)
+                    ? _request.ClientId
+                    : _request.Purpose!,
+                DisclosedClaims: disclosedClaims,
+                Outcome: accepted ? PresentationLogOutcome.Sent : PresentationLogOutcome.Rejected);
+            await PresentationLog.AppendAsync(entry);
+        }
+        catch
+        {
+            // Activity log is a convenience surface; never let it break the flow.
+        }
     }
 
     private void Reset()
