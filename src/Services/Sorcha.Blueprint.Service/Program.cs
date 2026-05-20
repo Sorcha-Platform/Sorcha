@@ -271,6 +271,19 @@ builder.Services.AddSingleton<Sorcha.Verifier.Engine.IVerifiablePresentationVali
 builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
     Sorcha.Blueprint.Service.Services.Implementation.SorchaWalletPresentationConsumer>();
 
+// Spec 5 — verifier-DID resolution. The lifecycle service resolves the council
+// org's canonical DID (blueprint.OrganizationId → GET /orgs/{id}/did.json) so the
+// OID4VP client_id carries a real verifier identity instead of did:sorcha:org:UNKNOWN.
+// Same Tenant base-address pattern as Wallet Service's F120 registration.
+builder.Services.AddHttpClient<Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient,
+    Sorcha.ServiceClients.OrgDidDocument.OrgDidDocumentClient>(client =>
+    {
+        client.BaseAddress = new Uri(
+            builder.Configuration["ServiceClients:TenantService:Address"]
+            ?? builder.Configuration["ServiceClients:Tenant:BaseAddress"]
+            ?? "http://tenant-service:8080");
+    });
+
 // Feature 127 — single-use ClaimsFetchToken store. Minted by InitiateAsync
 // (for Sorcha-wallet only); consumed atomically by the disclosed-claims
 // endpoint. Backed by Redis via the existing IConnectionMultiplexer the

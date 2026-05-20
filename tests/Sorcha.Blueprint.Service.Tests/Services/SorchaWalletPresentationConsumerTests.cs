@@ -264,4 +264,29 @@ public sealed class SorchaWalletPresentationConsumerTests
 
         first.Nonce.Should().NotBe(second.Nonce);
     }
+
+    [Fact]
+    public async Task BuildInitiationAsync_EmitsResolvedVerifierDid_AsClientId()
+    {
+        // Spec 5 — the lifecycle service supplies the council org DID via VerifierClientId.
+        var ctx = NewContext() with { VerifierClientId = "did:sorcha:org:ws11qstrathcarron" };
+
+        var descriptor = await _sut.BuildInitiationAsync(ctx, CancellationToken.None);
+
+        descriptor.AuthorizationRequestUri.Should().Contain(
+            "client_id=" + Uri.EscapeDataString("did:sorcha:org:ws11qstrathcarron"));
+        descriptor.AuthorizationRequestUri.Should().NotContain("did:sorcha:org:UNKNOWN");
+    }
+
+    [Fact]
+    public async Task BuildInitiationAsync_FallsBackToPlaceholder_WhenVerifierDidNull()
+    {
+        // Graceful degradation — unresolved org DID never blocks the gate.
+        var ctx = NewContext() with { VerifierClientId = null };
+
+        var descriptor = await _sut.BuildInitiationAsync(ctx, CancellationToken.None);
+
+        descriptor.AuthorizationRequestUri.Should().Contain(
+            "client_id=" + Uri.EscapeDataString("did:sorcha:org:UNKNOWN"));
+    }
 }

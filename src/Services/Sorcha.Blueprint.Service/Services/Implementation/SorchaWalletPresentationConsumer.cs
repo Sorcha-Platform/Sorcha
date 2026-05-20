@@ -31,11 +31,11 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// F111 "non-HAIP initiation contract" that was deferred until this feature).
 /// The descriptor carries an OID4VP <c>openid4vp://</c> request URI that the
 /// council page renders as the hybrid universal QR / tap-link affordance.</para>
-/// <para>Until the lifecycle service's dispatch path lands (F127 task T032),
-/// the verifier-session construction inside <see cref="BuildInitiationAsync"/>
-/// is deliberately scoped to context-only data; the verifier DID, presentation
-/// request URI base, and nonce derivation are finalised in T032 when
-/// <c>InitiateAsync</c> grows the per-consumer dispatch.</para>
+/// <para>The verifier <c>client_id</c> (the council org DID) is resolved by the
+/// lifecycle service from the blueprint's owning organisation and supplied via
+/// <see cref="PresentationInitiationContext.VerifierClientId"/> (Spec 5). The
+/// OID4VP request is unsigned in this flow, so <c>client_id</c> is a display
+/// identity; signed request objects (mutual auth) are a deferred follow-up.</para>
 /// </remarks>
 public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
 {
@@ -196,20 +196,20 @@ public sealed class SorchaWalletPresentationConsumer : IPresentationConsumer
         PresentationInitiationContext context,
         CancellationToken cancellationToken)
     {
-        // The lifecycle service (T032) will resolve the verifier DID + response
-        // URI base from blueprint / org metadata before dispatching here. Until
-        // that wiring lands, return a clearly-marked placeholder so the build
-        // succeeds and a contract-test can pin the call shape; the URI is not
-        // yet stable for wallet consumption.
         ArgumentNullException.ThrowIfNull(context);
         var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-        // TODO(T032): resolve client_id (council org DID), response_uri base,
-        // and presentation_definition (derived from CredentialRequirement)
-        // when the lifecycle service grows the per-consumer dispatch.
+        // Spec 5 — the lifecycle service resolves the verifier (council org) DID from
+        // the blueprint's owning organisation and supplies it as VerifierClientId.
+        // The placeholder is the explicit graceful-degradation fallback for orgs with
+        // no published DID document (never issued a credential) — it never blocks the
+        // gate. The request is unsigned in this flow, so client_id is a display
+        // identity; Scope B (signed request objects) makes it cryptographically
+        // load-bearing and resolves it against the same DID via the F120 resolver.
+        var clientId = context.VerifierClientId ?? "did:sorcha:org:UNKNOWN";
         var uri =
-            $"openid4vp://?client_id=did:sorcha:org:UNKNOWN" +
+            $"openid4vp://?client_id={Uri.EscapeDataString(clientId)}" +
             $"&response_type=vp_token" +
             $"&nonce={Uri.EscapeDataString(nonce)}" +
             $"&request_id={Uri.EscapeDataString(context.PresentationRequestId.ToString("N"))}";

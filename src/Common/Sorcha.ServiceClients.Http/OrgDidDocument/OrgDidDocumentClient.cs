@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace Sorcha.ServiceClients.OrgDidDocument;
@@ -45,6 +47,43 @@ public sealed class OrgDidDocumentClient : IOrgDidDocumentClient
             _logger.LogWarning(ex,
                 "OrgDidDocument regenerate failed for org {OrgId} reason {Reason}; lazy rebuild will recover",
                 request.OrganizationId, request.KeyEventReason);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> ResolveCanonicalDidAsync(Guid orgId, CancellationToken ct = default)
+    {
+        try
+        {
+            using var resp = await _http.GetAsync($"/orgs/{orgId}/did.json", ct).ConfigureAwait(false);
+            if (resp.StatusCode == HttpStatusCode.NotFound)
+            {
+                // Org has no published DID document — never issued a credential.
+                return null;
+            }
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Org DID resolve returned {Status} for org {OrgId}", resp.StatusCode, orgId);
+                return null;
+            }
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            if (doc.RootElement.TryGetProperty("id", out var idEl)
+                && idEl.ValueKind == JsonValueKind.String)
+            {
+                var did = idEl.GetString();
+                return string.IsNullOrWhiteSpace(did) ? null : did;
+            }
+
+            _logger.LogWarning("Org DID document for {OrgId} had no string 'id' field", orgId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Org DID resolve failed for org {OrgId}", orgId);
+            return null;
         }
     }
 }
