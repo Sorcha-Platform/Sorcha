@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Buffers.Text;
+using System.Xml;
 
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Cryptography.Mdoc;
@@ -111,6 +112,68 @@ public sealed class MdocFormatHandler : ICredentialFormatHandler
             result.Errors.Add(decision.Message);
 
         return result;
+    }
+
+    /// <summary>
+    /// Issues an mso_mdoc credential (feature 135, US3): builds the IssuerSigned + MSO from the
+    /// issuance config's claim mappings (flat namespace = docType = <see cref="CredentialIssuanceConfig.CredentialType"/>),
+    /// signs the MSO with the issuer key, and attaches the x5chain. mso_mdoc requires an X.509 trust
+    /// anchor with a resolvable chain — the register anchor (DID-only) has no verifiable issuer key
+    /// for mdoc, and an X.509 anchor with no chain fails closed (FR-020/FR-022). Returns the encoded
+    /// <c>IssuerSigned</c> (the issued credential at rest).
+    /// </summary>
+    public Task<byte[]> IssueAsync(
+        CredentialIssuanceConfig config,
+        IReadOnlyDictionary<string, object> claims,
+        byte[] issuerSigningKey,
+        string algorithm,
+        byte[] holderDeviceKeyCose,
+        IReadOnlyList<byte[]>? x5cChain,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(claims);
+
+        if (config.Format != CredentialFormat.MsoMdoc)
+            throw new InvalidOperationException($"MdocFormatHandler issues mso_mdoc only; config requests format '{config.Format}'.");
+
+        // FR-020/022 — mdoc trust is x5chain-based. Reject unsupported anchor combinations explicitly
+        // (no silent substitution); fail closed when an X.509 anchor cannot supply a chain.
+        if (config.TrustAnchor == TrustAnchor.Register)
+            throw new InvalidOperationException(
+                "mso_mdoc issuance requires an X.509 trust anchor (x509-tenant or x509-lotl); the register anchor has no verifiable issuer key for mdoc.");
+        if (x5cChain is null || x5cChain.Count == 0)
+            throw new InvalidOperationException(
+                $"mso_mdoc issuance under the '{config.TrustAnchor}' anchor requires a certificate chain — failing closed.");
+
+        var validFrom = DateTimeOffset.UtcNow;
+        var validUntil = string.IsNullOrWhiteSpace(config.ExpiryDuration)
+            ? validFrom.AddYears(1)
+            : validFrom + ParseIsoDuration(config.ExpiryDuration!);
+
+        var issued = MdocIssuer.IssueIssuerSigned(
+            docType: config.CredentialType,
+            elements: claims,
+            issuerPrivateKey: issuerSigningKey,
+            algorithm: algorithm,
+            holderDeviceKeyCose: holderDeviceKeyCose,
+            validFrom: validFrom,
+            validUntil: validUntil,
+            x5cChain: x5cChain);
+
+        return Task.FromResult(MdocCodec.EncodeIssuerSigned(issued));
+    }
+
+    private static TimeSpan ParseIsoDuration(string isoDuration)
+    {
+        try
+        {
+            return XmlConvert.ToTimeSpan(isoDuration);
+        }
+        catch (FormatException)
+        {
+            return TimeSpan.FromDays(365);
+        }
     }
 
     /// <summary>Records a fail-closed format-gate rejection on both the trust decision and the error list.</summary>
