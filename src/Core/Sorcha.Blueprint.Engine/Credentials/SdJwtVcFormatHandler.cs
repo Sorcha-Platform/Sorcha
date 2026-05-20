@@ -98,6 +98,7 @@ public class SdJwtVcFormatHandler : ICredentialFormatHandler
         };
 
         var decision = await _trustEvaluator.EvaluateAsync(issuer, requirement.TrustPolicy, cancellationToken).ConfigureAwait(false);
+        TrustMetrics.RecordDecision(decision, CredentialFormat.SdJwtVc);
         result.Trust = decision;
         result.IssuerId = issuerId;
         result.IsValid = decision.IsTrusted;

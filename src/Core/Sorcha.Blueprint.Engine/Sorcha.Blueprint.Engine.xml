@@ -855,14 +855,20 @@
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.TrustMetrics">
             <summary>
-            OpenTelemetry meter for unified trust decisions (feature 135). Instruments record the
-            outcome, deciding source, credential format, and assurance level of each trust decision
-            — never credential subject data (FR-024). Instrument bodies are added with the evaluator
-            in User Story 1; this type fixes the meter name so dashboards/registration can bind early.
+            OpenTelemetry meter for unified trust decisions (feature 135). Records the outcome, deciding
+            source, credential format, assurance level, and (on rejection) failure reason of each trust
+            decision — never credential subject data (FR-024). Register the meter with
+            <c>AddMeter(TrustMetrics.MeterName)</c> to export the instruments.
             </summary>
         </member>
         <member name="F:Sorcha.Blueprint.Engine.Credentials.TrustMetrics.MeterName">
             <summary>The meter name used for all trust-decision instruments.</summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustMetrics.RecordDecision(Sorcha.Blueprint.Engine.Credentials.TrustDecision,Sorcha.Blueprint.Models.Credentials.CredentialFormat)">
+            <summary>
+            Records one trust decision. Tags carry only non-identifying classification data:
+            outcome, deciding source, credential format, established assurance, and failure reason.
+            </summary>
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry">
             <summary>

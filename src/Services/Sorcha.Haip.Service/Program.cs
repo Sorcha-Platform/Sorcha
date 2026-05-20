@@ -58,50 +58,37 @@ builder.Services.AddSingleton<HaipCredentialMinter>();
 
 // Feature 098: HAIP verifier services
 builder.Services.AddSingleton<PresentationRequestStore>();
-builder.Services.AddSingleton<HaipPresentationVerifier>(sp =>
-{
-    // Feature 096 US6 — deployments with reachable CRL endpoints opt in with
-    // Haip:VerifyRevocation=true. Default off so the chain walk doesn't block
-    // on dead CDP URLs in test/dev environments.
-    var revocationMode = builder.Configuration.GetValue<bool>("Haip:VerifyRevocation")
-        ? System.Security.Cryptography.X509Certificates.X509RevocationMode.Online
-        : System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
 
-    var verifier = new HaipPresentationVerifier(
-        sp.GetRequiredService<Sorcha.Cryptography.SdJwt.ISdJwtService>(),
-        sp.GetRequiredService<ILogger<HaipPresentationVerifier>>(),
-        sp.GetService<Sorcha.ServiceClients.Did.IDidResolverRegistry>(),
-        sp.GetService<IetfTokenStatusListChecker>(),
-        revocationMode);
-
-    // Feature 096 US6 — load trusted root CA certs from config. Deployments
-    // list them under `Haip:TrustedRootCertificates` as base64-DER strings.
-    // Without at least one root, x5c chain validation will reject every cert.
-    var configuredRoots = builder.Configuration
-        .GetSection("Haip:TrustedRootCertificates")
-        .Get<string[]>() ?? Array.Empty<string>();
-    var logger = sp.GetRequiredService<ILogger<HaipPresentationVerifier>>();
-    foreach (var rootBase64 in configuredRoots)
-    {
-        if (string.IsNullOrWhiteSpace(rootBase64))
-            continue;
-        try
-        {
-            var der = Convert.FromBase64String(rootBase64);
-            var cert = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(der);
-            verifier.AddTrustedRoot(cert);
-            logger.LogInformation(
-                "Loaded trusted root CA into HAIP verifier: {Subject} (NotAfter={NotAfter})",
-                cert.Subject, cert.NotAfter);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex,
-                "Failed to load a Haip:TrustedRootCertificates entry — skipping and continuing");
-        }
-    }
-    return verifier;
-});
+// Feature 135 (T032/T034) — the HAIP verifier routes its trust decision through the unified
+// ITrustEvaluator shared with the internal engine path. The x5c chain validation that used to
+// live on the verifier as a static trusted-root list is now the x509-tenant trust source over
+// ConfiguredTenantTrustAnchorProvider (still sourced from Haip:TrustedRootCertificates). Scoped
+// because the directory adapter consumes the scoped IDidResolverRegistry.
+builder.Services.AddSingleton<Sorcha.Blueprint.Engine.Credentials.ITenantTrustAnchorProvider,
+    Sorcha.Haip.Service.Services.ConfiguredTenantTrustAnchorProvider>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory,
+    Sorcha.Haip.Service.Services.DidIssuerDirectory>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.ITenantTrustAnchorProvider>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.RegisterTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.DidAllowlistTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustResolverRegistry>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry(
+        sp.GetServices<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IStatusListChecker>(sp =>
+    sp.GetRequiredService<IetfTokenStatusListChecker>());
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator,
+    Sorcha.Blueprint.Engine.Credentials.TrustEvaluator>();
+builder.Services.AddScoped<HaipPresentationVerifier>(sp => new HaipPresentationVerifier(
+    sp.GetRequiredService<Sorcha.Cryptography.SdJwt.ISdJwtService>(),
+    sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator>(),
+    sp.GetRequiredService<ILogger<HaipPresentationVerifier>>(),
+    sp.GetService<Sorcha.ServiceClients.Did.IDidResolverRegistry>()));
 builder.Services.AddSingleton<RequestObjectSigner>();
 
 // Feature 095 US4: status list fetch for the verifier. Registered as HttpClient-
