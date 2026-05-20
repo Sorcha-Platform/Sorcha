@@ -304,6 +304,19 @@
         <member name="P:Sorcha.Blueprint.Engine.Credentials.PresentedCredential.ExpectedNonce">
             <summary>Expected nonce for holder-binding / freshness.</summary>
         </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.PresentedCredential.ExpectedResponseUri">
+            <summary>
+            mso_mdoc only — the OpenID4VP <c>response_uri</c> needed to reconstruct the mdoc
+            <c>SessionTranscript</c> (with <see cref="P:Sorcha.Blueprint.Engine.Credentials.PresentedCredential.ExpectedAudience"/> as client_id and
+            <see cref="P:Sorcha.Blueprint.Engine.Credentials.PresentedCredential.ExpectedNonce"/> as the nonce). Ignored for SD-JWT VC.
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.PresentedCredential.ExpectedJwkThumbprint">
+            <summary>
+            mso_mdoc only — the optional JWK SHA-256 thumbprint that binds the response to the verifier's
+            ephemeral key in the OpenID4VP handover. Null when not used.
+            </summary>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.FormatVerifyResult">
             <summary>
             Result of verifying a presented credential through a format handler (feature 135).
@@ -633,6 +646,25 @@
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver.VouchAsync(Sorcha.Blueprint.Engine.Credentials.IssuerContext,Sorcha.Blueprint.Models.Credentials.TrustSourceRef,System.Threading.CancellationToken)">
             <summary>Asks this source whether it vouches for the issuer described by <paramref name="issuer"/>.</summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler">
+            <summary>
+            mso_mdoc credential-format handler (feature 135, US2). Owns the ISO 18013-5 format crypto via
+            <see cref="T:Sorcha.Cryptography.Mdoc.IMdocService"/> — issuer COSE_Sign1 over the MSO, value-digest integrity, and
+            OpenID4VP holder binding — then delegates the trust decision (does the issuer x5chain reach a
+            trusted anchor, and is the credential revoked) to the shared <see cref="T:Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator"/>, so
+            trust semantics are identical to the SD-JWT VC path. Format-level failures (bad signature,
+            tampered digests, bad holder binding) fail closed before trust is consulted.
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler.Format">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler.VerifyAsync(Sorcha.Blueprint.Engine.Credentials.PresentedCredential,Sorcha.Blueprint.Models.Credentials.CredentialRequirement,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler.FailFormat(Sorcha.Blueprint.Engine.Credentials.FormatVerifyResult,Sorcha.Blueprint.Engine.Credentials.TrustFailureReason,System.String,Sorcha.Cryptography.Mdoc.MdocVerificationResult)">
+            <summary>Records a fail-closed format-gate rejection on both the trust decision and the error list.</summary>
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.SdJwtVcFormatHandler">
             <summary>

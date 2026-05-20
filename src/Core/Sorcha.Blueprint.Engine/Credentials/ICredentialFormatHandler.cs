@@ -21,6 +21,19 @@ public class PresentedCredential
 
     /// <summary>Expected nonce for holder-binding / freshness.</summary>
     public string? ExpectedNonce { get; set; }
+
+    /// <summary>
+    /// mso_mdoc only — the OpenID4VP <c>response_uri</c> needed to reconstruct the mdoc
+    /// <c>SessionTranscript</c> (with <see cref="ExpectedAudience"/> as client_id and
+    /// <see cref="ExpectedNonce"/> as the nonce). Ignored for SD-JWT VC.
+    /// </summary>
+    public string? ExpectedResponseUri { get; set; }
+
+    /// <summary>
+    /// mso_mdoc only — the optional JWK SHA-256 thumbprint that binds the response to the verifier's
+    /// ephemeral key in the OpenID4VP handover. Null when not used.
+    /// </summary>
+    public byte[]? ExpectedJwkThumbprint { get; set; }
 }
 
 /// <summary>
