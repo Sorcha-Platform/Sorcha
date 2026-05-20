@@ -53,7 +53,8 @@ public class HaipCredentialMinter
         string algorithm,
         DateTimeOffset? expiresAt = null,
         CancellationToken ct = default,
-        string? kid = null)
+        string? kid = null,
+        IReadOnlyList<byte[]>? x5cChain = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issuerDid);
         ArgumentException.ThrowIfNullOrWhiteSpace(credentialType);
@@ -63,8 +64,8 @@ public class HaipCredentialMinter
         var subject = $"urn:credential:{credentialType}:{Guid.NewGuid():N}";
 
         _logger.LogInformation(
-            "Minting HAIP credential: type={Type}, issuer={Issuer}, disclosables={Count}",
-            credentialType, issuerDid, disclosablePaths?.Count() ?? 0);
+            "Minting HAIP credential: type={Type}, issuer={Issuer}, disclosables={Count}, x5c={X5c}",
+            credentialType, issuerDid, disclosablePaths?.Count() ?? 0, x5cChain is { Count: > 0 });
 
         var token = await _sdJwtService.CreateTokenAsync(
             claims,
@@ -76,7 +77,7 @@ public class HaipCredentialMinter
             holderJwk,
             expiresAt,
             ct,
-            x5cChain: null,
+            x5cChain: x5cChain,
             kid: kid);
 
         _logger.LogInformation(
@@ -102,7 +103,8 @@ public class HaipCredentialMinter
         string algorithm,
         string kid,
         DateTimeOffset? expiresAt = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IReadOnlyList<byte[]>? x5cChain = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issuerDid);
         ArgumentException.ThrowIfNullOrWhiteSpace(credentialType);
@@ -113,8 +115,8 @@ public class HaipCredentialMinter
         var subject = $"urn:credential:{credentialType}:{Guid.NewGuid():N}";
 
         _logger.LogInformation(
-            "Minting HAIP credential via sign-on-behalf: type={Type}, issuer={Issuer}, kid={Kid}, disclosables={Count}",
-            credentialType, issuerDid, kid, disclosablePaths?.Count() ?? 0);
+            "Minting HAIP credential via sign-on-behalf: type={Type}, issuer={Issuer}, kid={Kid}, disclosables={Count}, x5c={X5c}",
+            credentialType, issuerDid, kid, disclosablePaths?.Count() ?? 0, x5cChain is { Count: > 0 });
 
         var token = await _sdJwtService.CreateTokenAsync(
             claims,
@@ -126,7 +128,8 @@ public class HaipCredentialMinter
             holderJwk,
             kid,
             expiresAt,
-            ct);
+            ct,
+            x5cChain: x5cChain);
 
         _logger.LogInformation(
             "Minted HAIP credential (sign-on-behalf): {Disclosures} disclosures, token length {Length}",

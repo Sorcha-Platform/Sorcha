@@ -253,16 +253,23 @@ public static class MdocCodec
         });
     }
 
-    private static void WriteDocument(CborWriter w, Document doc)
+    /// <summary>Encodes a standalone <see cref="IssuerSigned"/> (the issued mdoc credential at rest).</summary>
+    public static byte[] EncodeIssuerSigned(IssuerSigned issuerSigned)
     {
-        w.WriteStartMap(3);
-        w.WriteTextString("docType"); w.WriteTextString(doc.DocType);
+        ArgumentNullException.ThrowIfNull(issuerSigned);
+        return MdocCbor.Encode(w => WriteIssuerSigned(w, issuerSigned));
+    }
 
-        w.WriteTextString("issuerSigned");
+    /// <summary>Decodes a standalone <see cref="IssuerSigned"/>.</summary>
+    public static IssuerSigned DecodeIssuerSigned(ReadOnlyMemory<byte> cbor)
+        => MdocCbor.Decode(cbor, ReadIssuerSigned);
+
+    private static void WriteIssuerSigned(CborWriter w, IssuerSigned issuerSigned)
+    {
         w.WriteStartMap(2);
         w.WriteTextString("nameSpaces");
-        w.WriteStartMap(doc.IssuerSigned.NameSpaces.Count);
-        foreach (var (ns, items) in doc.IssuerSigned.NameSpaces)
+        w.WriteStartMap(issuerSigned.NameSpaces.Count);
+        foreach (var (ns, items) in issuerSigned.NameSpaces)
         {
             w.WriteTextString(ns);
             w.WriteStartArray(items.Count);
@@ -272,8 +279,17 @@ public static class MdocCodec
         }
         w.WriteEndMap();
         w.WriteTextString("issuerAuth");
-        w.WriteEncodedValue(doc.IssuerSigned.IssuerAuth.Encode());
+        w.WriteEncodedValue(issuerSigned.IssuerAuth.Encode());
         w.WriteEndMap();
+    }
+
+    private static void WriteDocument(CborWriter w, Document doc)
+    {
+        w.WriteStartMap(3);
+        w.WriteTextString("docType"); w.WriteTextString(doc.DocType);
+
+        w.WriteTextString("issuerSigned");
+        WriteIssuerSigned(w, doc.IssuerSigned);
 
         w.WriteTextString("deviceSigned");
         w.WriteStartMap(2);

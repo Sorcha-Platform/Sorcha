@@ -663,6 +663,16 @@
         <member name="M:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler.VerifyAsync(Sorcha.Blueprint.Engine.Credentials.PresentedCredential,Sorcha.Blueprint.Models.Credentials.CredentialRequirement,System.Threading.CancellationToken)">
             <inheritdoc />
         </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler.IssueAsync(Sorcha.Blueprint.Models.Credentials.CredentialIssuanceConfig,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object},System.Byte[],System.String,System.Byte[],System.Collections.Generic.IReadOnlyList{System.Byte[]},System.Threading.CancellationToken)">
+            <summary>
+            Issues an mso_mdoc credential (feature 135, US3): builds the IssuerSigned + MSO from the
+            issuance config's claim mappings (flat namespace = docType = <see cref="P:Sorcha.Blueprint.Models.Credentials.CredentialIssuanceConfig.CredentialType"/>),
+            signs the MSO with the issuer key, and attaches the x5chain. mso_mdoc requires an X.509 trust
+            anchor with a resolvable chain — the register anchor (DID-only) has no verifiable issuer key
+            for mdoc, and an X.509 anchor with no chain fails closed (FR-020/FR-022). Returns the encoded
+            <c>IssuerSigned</c> (the issued credential at rest).
+            </summary>
+        </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler.FailFormat(Sorcha.Blueprint.Engine.Credentials.FormatVerifyResult,Sorcha.Blueprint.Engine.Credentials.TrustFailureReason,System.String,Sorcha.Cryptography.Mdoc.MdocVerificationResult)">
             <summary>Records a fail-closed format-gate rejection on both the trust decision and the error list.</summary>
         </member>

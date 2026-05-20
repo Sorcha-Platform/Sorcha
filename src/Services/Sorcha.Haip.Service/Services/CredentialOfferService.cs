@@ -43,7 +43,9 @@ public class CredentialOfferService
         string credentialType,
         Dictionary<string, object> claims,
         List<string>? disclosablePaths = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Sorcha.Blueprint.Models.Credentials.CredentialFormat format = Sorcha.Blueprint.Models.Credentials.CredentialFormat.SdJwtVc,
+        Sorcha.Blueprint.Models.Credentials.TrustAnchor trustAnchor = Sorcha.Blueprint.Models.Credentials.TrustAnchor.Register)
     {
         var offer = new CredentialOffer
         {
@@ -53,7 +55,9 @@ public class CredentialOfferService
             Claims = claims,
             DisclosablePaths = disclosablePaths ?? new(),
             PreAuthorizedCode = string.Empty, // Set below
-            ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_offerLifetimeSeconds)
+            ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_offerLifetimeSeconds),
+            Format = format,
+            TrustAnchor = trustAnchor
         };
 
         // Generate and store the pre-authorized code
