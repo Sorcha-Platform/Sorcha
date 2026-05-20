@@ -144,7 +144,7 @@ public class CrossBlueprintCredentialTests
             new CredentialRequirement
             {
                 Type = "LicenseCredential",
-                AcceptedIssuers = [trustedIssuer]
+                TrustPolicy = TrustPolicyExtensions.FromLegacyIssuers([trustedIssuer])
             }
         };
 
@@ -241,7 +241,7 @@ public class CrossBlueprintCredentialTests
             new CredentialRequirement
             {
                 Type = "LicenseCredential",
-                AcceptedIssuers = ["did:sorcha:issuer:gov-authority"]
+                TrustPolicy = TrustPolicyExtensions.FromLegacyIssuers(["did:sorcha:issuer:gov-authority"])
             }
         };
 

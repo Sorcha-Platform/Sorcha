@@ -101,11 +101,12 @@ public class CredentialVerifier : ICredentialVerifier
             return (false, null);
         }
 
-        // Step 2: Check issuer constraint
-        if (requirement.AcceptedIssuers?.Any() == true)
+        // Step 2: Check issuer constraint (feature 135: allowlist sourced from the trust policy)
+        var acceptedIssuers = requirement.TrustPolicy.AllowedIssuerDids();
+        if (acceptedIssuers.Count > 0)
         {
             var issuer = GetClaimString(presentation.DisclosedClaims, "iss");
-            if (issuer == null || !requirement.AcceptedIssuers.Contains(issuer))
+            if (issuer == null || !acceptedIssuers.Contains(issuer, StringComparer.Ordinal))
             {
                 return (false, null);
             }
@@ -252,11 +253,12 @@ public class CredentialVerifier : ICredentialVerifier
             if (typeValue == null || !string.Equals(typeValue, requirement.Type, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Type matched — check issuer
-            if (requirement.AcceptedIssuers?.Any() == true)
+            // Type matched — check issuer (feature 135: allowlist sourced from the trust policy)
+            var acceptedIssuers = requirement.TrustPolicy.AllowedIssuerDids();
+            if (acceptedIssuers.Count > 0)
             {
                 var issuer = GetClaimString(presentation.DisclosedClaims, "iss");
-                if (issuer == null || !requirement.AcceptedIssuers.Contains(issuer))
+                if (issuer == null || !acceptedIssuers.Contains(issuer, StringComparer.Ordinal))
                 {
                     return new CredentialValidationError
                     {

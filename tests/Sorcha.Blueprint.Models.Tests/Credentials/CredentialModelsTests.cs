@@ -17,7 +17,7 @@ public class CredentialRequirementValidatorTests
         var requirement = new CredentialRequirement
         {
             Type = "LicenseCredential",
-            AcceptedIssuers = ["did:sorcha:issuer:abc123"],
+            TrustPolicy = TrustPolicyExtensions.FromLegacyIssuers(["did:sorcha:issuer:abc123"]),
             RequiredClaims = [new ClaimConstraint { ClaimName = "licenseType", ExpectedValue = "A" }],
             RevocationCheckPolicy = RevocationCheckPolicy.FailClosed,
             Description = "Valid driving license"
@@ -49,31 +49,34 @@ public class CredentialRequirementValidatorTests
     }
 
     [Fact]
-    public void Validate_EmptyAcceptedIssuer_HasError()
+    public void Validate_DidAllowlistSourceWithNoIssuers_HasError()
     {
         var requirement = new CredentialRequirement
         {
             Type = "LicenseCredential",
-            AcceptedIssuers = [""]
+            TrustPolicy = new TrustPolicy
+            {
+                Sources = [new TrustSourceRef { Kind = TrustSourceKind.DidAllowlist, AllowedIssuers = [] }]
+            }
         };
 
         var result = _validator.TestValidate(requirement);
 
-        result.ShouldHaveValidationErrorFor("AcceptedIssuers[0]");
+        result.ShouldHaveValidationErrorFor("TrustPolicy.Sources[0].AllowedIssuers");
     }
 
     [Fact]
-    public void Validate_NullAcceptedIssuers_NoError()
+    public void Validate_NullTrustPolicy_NoError()
     {
         var requirement = new CredentialRequirement
         {
             Type = "LicenseCredential",
-            AcceptedIssuers = null
+            TrustPolicy = null
         };
 
         var result = _validator.TestValidate(requirement);
 
-        result.ShouldNotHaveValidationErrorFor(x => x.AcceptedIssuers);
+        result.ShouldNotHaveValidationErrorFor(x => x.TrustPolicy);
     }
 
     [Fact]

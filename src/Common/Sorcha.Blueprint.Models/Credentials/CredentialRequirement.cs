@@ -21,11 +21,21 @@ public class CredentialRequirement
     public string Type { get; set; } = string.Empty;
 
     /// <summary>
-    /// List of accepted issuer DIDs or wallet addresses. Empty means any issuer is accepted.
+    /// Credential format this requirement accepts (feature 135). Default
+    /// <see cref="CredentialFormat.SdJwtVc"/>. A presentation of any other format is rejected.
     /// </summary>
-    [JsonPropertyName("acceptedIssuers")]
+    [JsonPropertyName("format")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public CredentialFormat Format { get; set; } = CredentialFormat.SdJwtVc;
+
+    /// <summary>
+    /// Trust expectation for the credential's issuer (feature 135). Replaces the former
+    /// flat accepted-issuer list. When null, the verifier applies the default policy
+    /// (a single register/DID source at low assurance — FR-026).
+    /// </summary>
+    [JsonPropertyName("trustPolicy")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IEnumerable<string>? AcceptedIssuers { get; set; }
+    public TrustPolicy? TrustPolicy { get; set; }
 
     /// <summary>
     /// Claims that must be disclosed and their value constraints.

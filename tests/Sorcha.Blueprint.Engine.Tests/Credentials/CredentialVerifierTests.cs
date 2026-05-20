@@ -39,7 +39,7 @@ public class CredentialVerifierTests
             new CredentialRequirement
             {
                 Type = "LicenseCredential",
-                AcceptedIssuers = ["did:sorcha:issuer:gov"]
+                TrustPolicy = TrustPolicyExtensions.FromLegacyIssuers(["did:sorcha:issuer:gov"])
             }
         };
 
@@ -89,7 +89,7 @@ public class CredentialVerifierTests
             new CredentialRequirement
             {
                 Type = "LicenseCredential",
-                AcceptedIssuers = ["did:sorcha:issuer:gov"]
+                TrustPolicy = TrustPolicyExtensions.FromLegacyIssuers(["did:sorcha:issuer:gov"])
             }
         };
 
@@ -246,7 +246,7 @@ public class CredentialVerifierTests
             new CredentialRequirement
             {
                 Type = "LicenseCredential",
-                AcceptedIssuers = null // any issuer accepted
+                TrustPolicy = null // any issuer accepted (default register source applies)
             }
         };
 

@@ -63,9 +63,10 @@ public class CredentialMatcher
             if (!string.Equals(credential.Type, requirement.Type, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Issuer check
-            if (requirement.AcceptedIssuers?.Any() == true &&
-                !requirement.AcceptedIssuers.Contains(credential.IssuerDid))
+            // Issuer check (feature 135: issuer allowlist now lives on the trust policy)
+            var acceptedIssuers = requirement.TrustPolicy.AllowedIssuerDids();
+            if (acceptedIssuers.Count > 0 &&
+                !acceptedIssuers.Contains(credential.IssuerDid, StringComparer.Ordinal))
                 continue;
 
             // Expiry check
@@ -137,9 +138,11 @@ public class CredentialMatcher
                     continue;
 
                 // Feature 120 US5 — equivalence-aware allowlist match.
+                // Feature 135 — the allowlist is sourced from the trust policy's did-allowlist sources.
+                var allowed = requirement.TrustPolicy.AllowedIssuerDids();
                 if (!await IssuerEquivalenceMatcher.IsAcceptedAsync(
                         credential.IssuerDid,
-                        requirement.AcceptedIssuers?.ToArray(),
+                        allowed.Count > 0 ? allowed.ToArray() : null,
                         _registry, ct).ConfigureAwait(false))
                     continue;
 

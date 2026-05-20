@@ -20,14 +20,14 @@ public class CredentialRequirementBuilderTests
     }
 
     [Fact]
-    public void Build_WithIssuer_SetsAcceptedIssuers()
+    public void Build_WithIssuer_SetsDidAllowlistTrustPolicy()
     {
         var builder = new CredentialRequirementBuilder();
         builder.OfType("LicenseCredential")
             .FromIssuer("did:sorcha:issuer:gov");
         var req = builder.Build();
 
-        req.AcceptedIssuers.Should().ContainSingle("did:sorcha:issuer:gov");
+        req.TrustPolicy.AllowedIssuerDids().Should().ContainSingle().Which.Should().Be("did:sorcha:issuer:gov");
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class CredentialRequirementBuilderTests
             .FromIssuer("did:sorcha:issuer:gov2");
         var req = builder.Build();
 
-        req.AcceptedIssuers.Should().HaveCount(2);
+        req.TrustPolicy.AllowedIssuerDids().Should().HaveCount(2);
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class CredentialRequirementBuilderTests
         var req = builder.Build();
 
         req.Type.Should().Be("LicenseCredential");
-        req.AcceptedIssuers.Should().ContainSingle("did:sorcha:issuer:gov");
+        req.TrustPolicy.AllowedIssuerDids().Should().ContainSingle().Which.Should().Be("did:sorcha:issuer:gov");
         req.RequiredClaims.Should().HaveCount(2);
         req.RevocationCheckPolicy.Should().Be(RevocationCheckPolicy.FailClosed);
         req.Description.Should().Be("Class A driving license");

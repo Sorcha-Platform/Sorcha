@@ -764,10 +764,15 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 $"Action with ID {actionId} not found");
         }
 
+        // Feature 135: accepted issuers become a did-allowlist trust source; when none are
+        // supplied the requirement carries no policy and the verifier applies the default
+        // (register/DID source at low assurance — FR-026).
         var requirement = new CredentialRequirement
         {
             Type = credentialType,
-            AcceptedIssuers = acceptedIssuers,
+            TrustPolicy = acceptedIssuers.Count > 0
+                ? TrustPolicyExtensions.FromLegacyIssuers(acceptedIssuers)
+                : null,
             RequiredClaims = requiredClaims,
             RevocationCheckPolicy = revocationPolicy,
             Description = description
@@ -1215,12 +1220,14 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 {
                     foreach (var req in action.CredentialRequirements)
                     {
-                        if (req.AcceptedIssuers == null || !req.AcceptedIssuers.Any())
+                        // Feature 135: "open issuer" = no trust policy declared (verifier will
+                        // fall back to the default register source).
+                        if (req.TrustPolicy is null || req.TrustPolicy.Sources.Count == 0)
                         {
                             warnings.Add(new
                             {
                                 code = "OPEN_CREDENTIAL_ISSUER",
-                                message = $"Action '{action.Title}' requires credential '{req.Type}' but accepts any issuer. Consider specifying trusted issuers.",
+                                message = $"Action '{action.Title}' requires credential '{req.Type}' but declares no trust policy. Consider specifying trusted issuers or trust sources.",
                                 location = $"actions[{action.Id}].credentialRequirements"
                             });
                         }
