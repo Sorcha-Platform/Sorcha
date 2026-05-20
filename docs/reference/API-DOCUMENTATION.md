@@ -2268,6 +2268,41 @@ Errors map 1:1 to status: `400` (malformed_token / invalid_signature / scope_mis
 
 ---
 
+## EUDI Credential Format & Unified Trust API (Feature 135)
+
+Adds the ISO `mso_mdoc` credential format beside SD-JWT VC and a single `ITrustEvaluator` consulted by every verification path. Most of the surface is internal (the trust evaluator + format handlers); two externally-visible touch-points:
+
+### OpenID4VP `direct_post` — now accepts `mso_mdoc` (HAIP Service)
+
+No new endpoint shape — `mso_mdoc` rides the existing OpenID4VP `direct_post` callback (specs 097/098). The authorization request advertises an mdoc credential via a DCQL query (`format: "mso_mdoc"`, `meta.doctype_value`), and the `vp_token` is a JSON object keyed by the DCQL query id with base64url-encoded CBOR `DeviceResponse` values:
+
+```jsonc
+vp_token = { "pid": ["<base64url(DeviceResponse CBOR)>"] }
+```
+
+The verifier base64url+CBOR-decodes the `DeviceResponse`, verifies `issuerAuth` (COSE_Sign1 over the tag-24 MSO; issuer key from the `x5chain` label-33 header), recomputes `valueDigests`, reconstructs the OpenID4VP `SessionTranscript` and verifies `DeviceAuth` (holder binding), checks the MSO status list, then routes the trust decision through `ITrustEvaluator`. SD-JWT VC `vp_token`s (compact `~`-delimited strings) keep their existing path. The same OpenID4VCI `/credential` issuance endpoint issues SD-JWT VC or `mso_mdoc` per the offer's `format` + `trustAnchor`.
+
+### Trust-list snapshot admin (Tenant Service) — `/api/v1/trust/trustlists`
+
+Operator-facing management of external trust-anchor snapshots consulted by the `trustlist` trust source. JWT admin-scoped, `RateLimitPolicies.Strict`, Scalar-documented.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| PUT | `/api/v1/trust/trustlists/{trustListId}` | Upload/replace a snapshot — `{ source, roots: [base64 DER], freshness }` → `{ trustListId, rootCount, source, createdAt, freshness }` |
+| GET | `/api/v1/trust/trustlists/{trustListId}` | Snapshot metadata (id, root count, source, freshness); 404 when unknown |
+| GET | `/api/v1/trust/trustlists` | List loaded snapshot ids + freshness |
+
+Snapshot `id` + `freshness` are copied into `TrustEvidence` on every decision that used the list. A live LOTL feed is a future provider behind the same `ITrustListProvider` seam.
+
+### Trust models (request bodies)
+
+- **`CredentialRequirement`** carries `format` (`sd-jwt-vc` | `mso_mdoc`) + `trustPolicy` (replaced the flat `acceptedIssuers`). **`CredentialIssuanceConfig`** carries `format` + `trustAnchor` (`register` | `x509-tenant` | `x509-lotl`).
+- **`TrustPolicy`** = `{ sources: [{ kind, confersAssurance?, allowedIssuers?, trustListId? }], combinator: anyOf|allOf, minAssuranceLevel: Low|Substantial|High }`.
+
+mdoc is ES256/P-256-only at the format layer (additive — Sorcha-native + PQC signing unchanged). Full design: `specs/135-eudi-credential-format-trust/` and the `sorcha-architecture` skill.
+
+---
+
 ## Error Handling
 
 ### Standard Error Response

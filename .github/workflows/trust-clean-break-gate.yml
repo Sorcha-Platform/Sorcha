@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Feature 135 clean-break CI gate. Fails when the retired trusted-root API
+# (HaipPresentationVerifier.AddTrustedRoot / _trustedRoots) reappears in src/.
+# The unified ITrustEvaluator + trust-source model replaced it with no shims.
+#
+# See scripts/check-trust-clean-break.ps1 and the verifiable-credentials skill.
+
+name: trust-clean-break-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**/*.cs"
+      - "scripts/check-trust-clean-break.ps1"
+      - ".github/workflows/trust-clean-break-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  trust-clean-break:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Feature 135 trust clean-break gate
+        shell: pwsh
+        run: ./scripts/check-trust-clean-break.ps1

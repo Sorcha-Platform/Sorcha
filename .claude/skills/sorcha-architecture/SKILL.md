@@ -1249,3 +1249,57 @@ Four citizen routes outside the F126 council-page gate, all sharing the existing
 - Wallet PWA: `Components/PairingTakeover.razor`; `Services/CitizenWalletHubConnection.cs` (OnDeviceEnrolled); `Services/Enrolment/{IPairingShortCodeRedeemer,PairingShortCodeRedeemer}.cs`
 - Sorcha.UI.Components.User: `Components/Pairing/{PairingTakeover,PairingHandoffSurface,PairingNagBanner}.razor`; `Services/User/Devices/{IHasPairedDeviceProbe,HasPairedDeviceProbe}.cs`; `Services/User/Pairing/{IPwaInstallabilityProbe,PwaInstallabilityProbe}.cs`
 - Sorcha.UI.Web.Client: `Pages/Setup/AddDevice.razor`; `Pages/Get.razor`; `wwwroot/js/pwa-install-probe.js`
+
+---
+
+## EUDI credential format & unified trust (Feature 135)
+
+Two coupled capabilities, shipped across three merged PRs (US1 #806, US2 #807, US3 #809):
+
+1. **One trust decision for every verification path.** Both the internal Blueprint engine `CredentialVerifier` and the HAIP OpenID4VP `HaipPresentationVerifier` route the trust decision through a single `ITrustEvaluator` (in `Sorcha.Blueprint.Engine.Credentials`, WASM-friendly). The historical engine defect where `SignatureValid` was hard-coded `false` ("defer to the service layer") is gone — signatures are verified for real and trust **fails closed** by default.
+2. **A credential-format seam** adding ISO `mso_mdoc` (CBOR/COSE) beside SD-JWT VC, online/OpenID4VP only (proximity deferred), with a selectable issuer trust anchor.
+
+### The trust model
+
+- **`CredentialRequirement`** dropped the flat `AcceptedIssuers` list → gained `Format` (default `SdJwtVc`) + `TrustPolicy?`. **`CredentialIssuanceConfig`** gained `Format` + `TrustAnchor` (`register` | `x509-tenant` | `x509-lotl`, default `register`).
+- **`TrustPolicy`** = `Sources` (`TrustSourceRef[]`) + `Combinator` (`AnyOf`/`AllOf`) + `MinAssuranceLevel` (`Low`<`Substantial`<`High`). Null policy → default register@Low (`TrustPolicyExtensions.FromLegacyIssuers`). `TrustPolicyExtensions` lives in namespace `Sorcha.Blueprint.Models.Credentials` — call it fully-qualified from files that only `using`-alias the model.
+- **`ITrustSourceResolver`** (one per `TrustSourceKind`): `register` (DID/assertionMethod via `IIssuerDirectory`), `x509-tenant` (X.509 chain to a tenant root via `ITenantTrustAnchorProvider`), `did-allowlist` (direct + alsoKnownAs), `trustlist` (operator snapshot — `TrustListSourceResolver` subclasses the x509 source, requesting the anchor set by `TrustSourceRef.TrustListId`). Resolvers are engine-local; network sources inject behind seams with service-layer adapters (mirrors the `IRevocationChecker` WASM pattern). The engine ships `ITrustResolverRegistry`; `TrustEvaluator` does signature-precondition → per-source vouch + combinator → assurance (source-tier + upward-only claim override, honoured only for ≥Substantial sources) → status via `IStatusListChecker` → `TrustEvidence` + SHA-256 policy digest.
+- **`IStatusListChecker`** unifies revocation: `BitstringStatusListChecker` (W3C) and `IetfTokenStatusListChecker` (IETF, explicit interface impl — the two have distinct `StatusListBit` enums) both implement it.
+- **`TrustEvidence`** (vouching source, register height / CRL version / trust-list id+freshness, assurance, policy digest) is carried on `VerificationResult` for spec-079 receipts — re-checkable offline.
+- **`TrustMetrics`** (`Sorcha.Trust` meter, registered in ServiceDefaults): `sorcha_trust_decision_total{outcome,source,format,assurance,reason}` — no subject data (FR-024). Recorded from both verification paths.
+
+### Service-layer adapters (engine stays dependency-free)
+
+`IIssuerDirectory` + `IIssuerKeyResolver` + `ITenantTrustAnchorProvider` are engine-local seams. Each consuming service owns thin adapters: Blueprint.Service has `DidIssuerDirectory` + `DidX5cIssuerKeyResolver` (the x5c→DID→jwk port); HAIP has its own `DidIssuerDirectory` + `ConfiguredTenantTrustAnchorProvider` (roots from `Haip:TrustedRootCertificates`). `HaipPresentationVerifier` went Singleton→Scoped (it consumes the scoped `IDidResolverRegistry`).
+
+### mdoc (mso_mdoc) — ISO 18013-5 on the BCL
+
+`Sorcha.Cryptography/Mdoc` (BCL only — `System.Formats.Cbor` + `System.Security.Cryptography.Cose`, pinned 10.0.8):
+- `MdocCbor` — tag-24 (`#6.24(bstr .cbor X)`) wrap/unwrap **verbatim** (digests/signatures are over the tagged outer bytes; capture via `CborReader.ReadEncodedValue()`, splice via `CborWriter.WriteEncodedValue`). `CoseX5Chain` — x5chain on COSE label 33 (RFC 9360). Models: `IssuerSigned(Item(Bytes))`, `MobileSecurityObject`(+`MsoStatus`/`ValidityInfo`), `DeviceResponse`/`Document`/`DeviceSigned`/`DeviceAuth`. `MdocCodec` — encode/decode + the OpenID4VP 1.x hash-based `SessionTranscript` + `DeviceAuthentication` builders.
+- `MdocService.Verify` — issuer COSE_Sign1 over the MSO (key from x5chain leaf), value-digest integrity (fixed-time), holder binding over the reconstructed `DeviceAuthentication`, validity window.
+- `MdocIssuer.IssueIssuerSigned` — builds + signs an mdoc credential (ES256/P-256 only; throws otherwise).
+- **MAC-based device auth (`deviceMac`) is NOT verified** in v1 (BCL has no `COSE_Mac0`; OpenID4VP uses `deviceSignature`).
+
+### Format handlers + verifier wiring
+
+- `ICredentialFormatHandler.VerifyAsync` per format. `SdJwtVcFormatHandler` (engine) resolves the issuer key via `IIssuerKeyResolver`, verifies via `ISdJwtService` (issuer-only or KB overload), populates `IssuerContext`, calls the evaluator. `MdocFormatHandler` (engine) runs `MdocService` then routes trust through the evaluator over the issuer x5chain + MSO status; fails closed on bad signature/digests/binding before trust. `MdocFormatHandler.IssueAsync` validates the format/anchor combo (mdoc requires X.509 anchor + chain; register/no-chain fail closed) and wraps `MdocIssuer`.
+- The engine `CredentialVerifier` now dispatches by `CredentialRequirement.Format` to the format handler and only orchestrates type-match + required-claim constraints.
+- `MdocPresentationVerifier` (HAIP) maps a base64url `vp_token` through `MdocFormatHandler` onto the shared `VerificationResult`.
+
+### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/credential` (OpenID4VP `direct_post`, existing) | Accepts SD-JWT VC **or** `mso_mdoc`. mdoc `vp_token` is a JSON object `{ "<queryId>": ["<base64url(DeviceResponse)>"] }` (vs SD-JWT's compact `~`-string) — `VerifierEndpoints.HandleDirectPost` dispatches by shape to `MdocPresentationVerifier` under an x509-tenant policy. |
+| `POST` | `/credential` (OpenID4VCI issuance, existing) | Issues SD-JWT VC or `mso_mdoc` per the offer's `Format`/`TrustAnchor`. X.509 anchors attach the org cert chain (fail closed 422 if unresolved); mdoc binds the holder proof JWK → MSO device key (EC P-256) via `CredentialEndpoints.BuildEc2CoseKeyFromJwk` and uses the **local** issuer key. |
+| `PUT`/`GET` | `/api/v1/trust/trustlists/{id}`, `GET /api/v1/trust/trustlists` | Tenant Service operator trust-list snapshot admin (admin-scoped, `RateLimitPolicies.Strict`) writing to the singleton `OperatorSnapshotTrustListProvider`. Live LOTL deferred. |
+
+### Key files
+
+`src/Common/Sorcha.Cryptography/Mdoc/**` (codec, models, MdocService, MdocIssuer), `src/Core/Sorcha.Blueprint.Engine/Credentials/**` (TrustEvaluator, resolvers, format handlers, seams, TrustMetrics), `src/Common/Sorcha.ServiceClients.Http/Trust/TrustListProvider.cs`, `src/Services/Sorcha.Haip.Service/Services/{HaipPresentationVerifier,MdocPresentationVerifier,IetfTokenStatusListChecker,HaipTrustAdapters}.cs`, `src/Services/Sorcha.Blueprint.Service/Credentials/{DidIssuerDirectory,DidX5cIssuerKeyResolver}.cs`, `src/Services/Sorcha.Tenant.Service/Endpoints/TrustEndpoints.cs`. Clean-break gate: `scripts/check-trust-clean-break.ps1`. Spec: `specs/135-eudi-credential-format-trust/`.
+
+### Clean-break notes (no shims)
+
+- `CredentialRequirement.AcceptedIssuers` and `HaipPresentationVerifier._trustedRoots`/`AddTrustedRoot` are **removed** (gate-enforced). Seven unrelated presentation-request/verifier DTOs keep their own `AcceptedIssuers` — left untouched.
+- mdoc is **ES256/P-256-only at the format layer** and additive — it does not touch Sorcha-native signing or the PQC `Multicodec` fallback (SC-009). Register-anchored mdoc is rejected at issuance (mdoc's issuer key is x5chain-resolved; no DID path in `MdocService`).
+- **Deferred follow-ups**: HAIP trustlist-source *consumption* (verifier root distribution — the admin GET returns metadata not roots; x509-tenant is the working mdoc anchor), a real external EUDI PID known-answer vector (vectors are generated end-to-end in tests), and MAC-based device auth.
