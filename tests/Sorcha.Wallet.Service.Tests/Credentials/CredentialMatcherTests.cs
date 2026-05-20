@@ -81,7 +81,7 @@ public class CredentialMatcherTests
             new CredentialRequirement
             {
                 Type = "LicenseCredential",
-                AcceptedIssuers = ["did:sorcha:issuer:gov"]
+                TrustPolicy = TrustPolicyExtensions.FromLegacyIssuers(["did:sorcha:issuer:gov"])
             }
         };
 
@@ -103,7 +103,7 @@ public class CredentialMatcherTests
             new CredentialRequirement
             {
                 Type = "LicenseCredential",
-                AcceptedIssuers = ["did:sorcha:issuer:gov"]
+                TrustPolicy = TrustPolicyExtensions.FromLegacyIssuers(["did:sorcha:issuer:gov"])
             }
         };
 

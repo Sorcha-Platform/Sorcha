@@ -35,6 +35,9 @@
     <PackageVersion Include="Blazored.LocalStorage" Version="4.5.0" />
     <!-- Cryptography -->
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <!-- Cryptography - CBOR / COSE (ISO mdoc, feature 135). Cose 10.0.0 carries NU1903/GHSA-qvhc-9v3j-5rfw — pin patched 10.0.8; Cbor matched to 10.0.8 (Cose 10.0.8 requires Cbor >= 10.0.8). -->
+    <PackageVersion Include="System.Formats.Cbor" Version="10.0.8" />
+    <PackageVersion Include="System.Security.Cryptography.Cose" Version="10.0.8" />
     <!-- Testing - Blazor -->
     <PackageVersion Include="bunit" Version="2.6.2" />
     <!-- Testing - Coverage -->

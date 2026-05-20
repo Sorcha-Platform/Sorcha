@@ -18,6 +18,9 @@
     <!-- Minimal dependencies -->
     <PackageReference Include="BouncyCastle.Cryptography" />
     <PackageReference Include="HeroSD-JWT" />
+    <!-- ISO mdoc (feature 135): CBOR + COSE_Sign1 / x5chain -->
+    <PackageReference Include="System.Formats.Cbor" />
+    <PackageReference Include="System.Security.Cryptography.Cose" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Nethermind.MclBindings" />
     <PackageReference Include="Sodium.Core" />

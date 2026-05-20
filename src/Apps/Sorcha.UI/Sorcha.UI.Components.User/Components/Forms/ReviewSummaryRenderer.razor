@@ -172,7 +172,7 @@ else
             // rather than a hardcoded organisation name. CredentialName falls back to
             // a generic "Credential" rather than a specific credential type, for the
             // same reason.
-            IssuerName = requirement.AcceptedIssuers?.FirstOrDefault() ?? "Unknown Issuer",
+            IssuerName = requirement.TrustPolicy.AllowedIssuerDids().FirstOrDefault() ?? "Unknown Issuer",
             CredentialName = requirement.Type ?? "Credential",
             ColourTheme = XReviewColourTheme.IdentityNavy,
             Watermark = IdCardWatermark.Issued,

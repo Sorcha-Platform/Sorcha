@@ -5,6 +5,9 @@ using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+
+using Sorcha.Blueprint.Engine.Credentials;
+using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Cryptography.SdJwt;
 using Sorcha.Haip.Service.Models;
 using Sorcha.ServiceClients.Did;
@@ -12,51 +15,42 @@ using Sorcha.ServiceClients.Did;
 namespace Sorcha.Haip.Service.Services;
 
 /// <summary>
-/// Orchestrates the full HAIP presentation verification pipeline:
-/// 1. Extract issuer public key from x5c chain or DID resolution
-/// 2. Verify issuer signature + KB-JWT via ISdJwtService
-/// 3. Validate x5c chain against trusted roots (if x5c present)
-/// 4. Check credential status via status list (if status claim present)
-/// 5. Match disclosed claims against the presentation definition
+/// Orchestrates the HAIP presentation verification pipeline (feature 135 — unified trust):
+/// 1. Extract the issuer public key from the x5c chain or DID resolution.
+/// 2. Verify the issuer signature + KB-JWT (holder binding) via <see cref="ISdJwtService"/>.
+/// 3. Build an <see cref="IssuerContext"/> and route the trust decision — issuer trust,
+///    X.509 chain validation, and revocation/status — through the single
+///    <see cref="ITrustEvaluator"/> shared with the internal engine path.
+/// 4. Enforce required-claim presence.
+///
+/// The verifier no longer owns trusted roots or bespoke W3C/IETF status branching: the x509-tenant
+/// trust source validates the chain against the tenant anchors, and the unified
+/// <see cref="IStatusListChecker"/> reads revocation. This closes the gap where x5c chain validity
+/// was reported but never actually gated trust.
 /// </summary>
 public class HaipPresentationVerifier
 {
     private readonly ISdJwtService _sdJwtService;
+    private readonly ITrustEvaluator _trustEvaluator;
     private readonly IDidResolverRegistry? _didResolver;
-    private readonly IetfTokenStatusListChecker? _ietfStatusChecker;
-    private readonly X509RevocationMode _revocationMode;
     private readonly ILogger<HaipPresentationVerifier> _logger;
-
-    // Trusted root certificates for x5c chain validation.
-    // In production, loaded from configuration or ITrustProvider.
-    private readonly List<X509Certificate2> _trustedRoots = [];
 
     public HaipPresentationVerifier(
         ISdJwtService sdJwtService,
+        ITrustEvaluator trustEvaluator,
         ILogger<HaipPresentationVerifier> logger,
-        IDidResolverRegistry? didResolver = null,
-        IetfTokenStatusListChecker? ietfStatusChecker = null,
-        X509RevocationMode revocationMode = X509RevocationMode.NoCheck)
+        IDidResolverRegistry? didResolver = null)
     {
         _sdJwtService = sdJwtService ?? throw new ArgumentNullException(nameof(sdJwtService));
+        _trustEvaluator = trustEvaluator ?? throw new ArgumentNullException(nameof(trustEvaluator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _didResolver = didResolver;
-        _ietfStatusChecker = ietfStatusChecker;
-        _revocationMode = revocationMode;
     }
 
     /// <summary>
-    /// Exposes the effective revocation mode — used by tests and diagnostics.
-    /// </summary>
-    internal X509RevocationMode RevocationMode => _revocationMode;
-
-    /// <summary>
-    /// Adds a trusted root certificate for x5c chain validation.
-    /// </summary>
-    public void AddTrustedRoot(X509Certificate2 root) => _trustedRoots.Add(root);
-
-    /// <summary>
-    /// Verifies a vp_token submitted via direct_post.
+    /// Verifies a vp_token submitted via direct_post. <paramref name="acceptedIssuers"/> (from the
+    /// presentation request) seeds the did-allowlist trust source; the x509-tenant source is always
+    /// consulted so an x5c-rooted credential is trusted iff it chains to a tenant anchor.
     /// </summary>
     public async Task<VerificationResult> VerifyAsync(
         string vpToken,
@@ -64,6 +58,7 @@ public class HaipPresentationVerifier
         string expectedAudience,
         string? requiredCredentialType = null,
         List<string>? requiredClaims = null,
+        List<string>? acceptedIssuers = null,
         CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(vpToken);
@@ -74,7 +69,7 @@ public class HaipPresentationVerifier
 
         try
         {
-            // Step 1: Extract issuer public key — try x5c first, then DID resolution
+            // Step 1: Extract issuer key + algorithm — x5c first, then DID resolution.
             var algorithm = ExtractAlgorithm(vpToken);
             if (algorithm == null)
             {
@@ -82,48 +77,61 @@ public class HaipPresentationVerifier
                 return result;
             }
 
-            var (issuerPublicKey, x5cChainValid) = await ResolveIssuerKeyAsync(vpToken, ct);
+            var (issuerPublicKey, x5cChain, signingKeyId) = await ResolveIssuerKeyAsync(vpToken, ct);
             if (issuerPublicKey == null)
             {
                 result.Errors.Add("Cannot resolve issuer public key from x5c chain or DID document");
                 return result;
             }
 
-            result.X5cChainValid = x5cChainValid;
-
-            // Step 2: Verify SD-JWT presentation with KB-JWT validation
-            _logger.LogInformation(
-                "Verifying HAIP presentation: algorithm={Algorithm}, audience={Audience}",
-                algorithm, expectedAudience);
-
+            // Step 2: Verify the issuer signature + KB-JWT (holder binding).
             var sdJwtResult = await _sdJwtService.VerifyPresentationAsync(
-                vpToken, issuerPublicKey, algorithm,
-                expectedAudience, expectedNonce, ct);
+                vpToken, issuerPublicKey, algorithm, expectedAudience, expectedNonce, ct);
 
             if (!sdJwtResult.IsValid)
             {
                 result.Errors.AddRange(sdJwtResult.Errors);
-                _logger.LogWarning("HAIP presentation verification failed: {Errors}",
+                _logger.LogWarning("HAIP presentation signature/KB verification failed: {Errors}",
                     string.Join("; ", sdJwtResult.Errors));
                 return result;
             }
 
-            // Step 3: Populate result from verified claims
-            result.IsValid = true;
             result.HolderKeyVerified = sdJwtResult.HolderKeyVerified;
             result.Issuer = sdJwtResult.Issuer;
             result.VerifiedClaims = sdJwtResult.Claims;
 
-            // Step 4: Check credential status (IETF or W3C claim)
-            var statusResult = await CheckStatusAsync(sdJwtResult.Claims, ct);
-            result.StatusCheckResult = statusResult;
-            if (statusResult is "Revoked" or "Suspended")
+            // Step 3: Route the trust decision through the unified evaluator.
+            var statusRef = ExtractStatusReference(sdJwtResult.Claims);
+            var issuer = new IssuerContext
             {
-                result.IsValid = false;
-                result.Errors.Add($"Credential status check failed: {statusResult}");
+                IssuerId = sdJwtResult.Issuer ?? string.Empty,
+                Format = CredentialFormat.SdJwtVc,
+                SignatureVerified = true,
+                X5cChain = x5cChain,
+                SigningKeyId = signingKeyId,
+                Status = statusRef,
+                RevocationPolicy = RevocationCheckPolicy.FailClosed
+            };
+
+            var policy = BuildPolicy(acceptedIssuers);
+            var decision = await _trustEvaluator.EvaluateAsync(issuer, policy, ct);
+
+            result.TrustEvidence = decision.Evidence;
+            result.X5cChainValid = ResolveChainValidity(decision, x5cChain);
+            result.StatusCheckResult = MapStatus(decision, statusRef);
+            result.IsValid = decision.IsTrusted;
+            TrustMetrics.RecordDecision(decision, CredentialFormat.SdJwtVc);
+
+            if (!decision.IsTrusted)
+            {
+                result.Errors.Add(decision.Message ?? $"Credential not trusted: {decision.FailureReason}");
+                _logger.LogWarning(
+                    "HAIP presentation rejected by trust evaluator: issuer={Issuer} reason={Reason}",
+                    issuer.IssuerId, decision.FailureReason);
+                return result;
             }
 
-            // Step 5: Check required claims are present
+            // Step 4: Required-claim presence (verifier-level constraint, not trust).
             if (requiredClaims != null)
             {
                 foreach (var claim in requiredClaims)
@@ -139,10 +147,10 @@ public class HaipPresentationVerifier
             if (result.IsValid)
             {
                 _logger.LogInformation(
-                    "HAIP presentation verified: issuer={Issuer}, claims={ClaimCount}, " +
-                    "holderKeyVerified={HolderKey}, x5cValid={X5cValid}, status={Status}",
-                    sdJwtResult.Issuer, sdJwtResult.Claims.Count,
-                    sdJwtResult.HolderKeyVerified, x5cChainValid, statusResult ?? "not-checked");
+                    "HAIP presentation verified: issuer={Issuer}, claims={ClaimCount}, source={Source}, " +
+                    "assurance={Assurance}, holderKeyVerified={HolderKey}",
+                    sdJwtResult.Issuer, sdJwtResult.Claims.Count, decision.Evidence.VouchingSource,
+                    decision.EstablishedAssurance, sdJwtResult.HolderKeyVerified);
             }
         }
         catch (Exception ex)
@@ -155,54 +163,97 @@ public class HaipPresentationVerifier
     }
 
     /// <summary>
-    /// Resolves the issuer's public key from the JWS header.
-    /// Priority: x5c chain (if present) → DID resolution (if iss is a DID).
+    /// Synthesises the HAIP trust policy: x509-tenant (chain to a tenant anchor) combined with
+    /// either the request's did-allowlist (when accepted issuers are pinned) or the register
+    /// source. AnyOf — an x5c-rooted credential or an allow-listed/registered issuer is trusted.
     /// </summary>
-    private async Task<(byte[]? PublicKey, bool? X5cValid)> ResolveIssuerKeyAsync(
+    private static TrustPolicy BuildPolicy(List<string>? acceptedIssuers)
+    {
+        var sources = new List<TrustSourceRef>
+        {
+            new() { Kind = TrustSourceKind.X509Tenant, ConfersAssurance = AssuranceLevel.Substantial }
+        };
+
+        if (acceptedIssuers is { Count: > 0 })
+        {
+            sources.Add(new TrustSourceRef
+            {
+                Kind = TrustSourceKind.DidAllowlist,
+                AllowedIssuers = acceptedIssuers,
+                ConfersAssurance = AssuranceLevel.Substantial
+            });
+        }
+        else
+        {
+            sources.Add(new TrustSourceRef { Kind = TrustSourceKind.Register, ConfersAssurance = AssuranceLevel.Low });
+        }
+
+        return new TrustPolicy
+        {
+            Sources = sources,
+            Combinator = TrustCombinator.AnyOf,
+            MinAssuranceLevel = AssuranceLevel.Low
+        };
+    }
+
+    private static bool? ResolveChainValidity(TrustDecision decision, IReadOnlyList<byte[]>? x5cChain)
+    {
+        if (x5cChain is null || x5cChain.Count == 0)
+            return null;
+        // The x509-tenant source ran the chain build; it vouched iff the chain validated to an anchor.
+        return decision.DecidingSources.Contains(TrustSourceKind.X509Tenant);
+    }
+
+    private static string? MapStatus(TrustDecision decision, StatusReference? statusRef)
+    {
+        if (decision.FailureReason == TrustFailureReason.Revoked)
+            return "Revoked";
+        if (decision.FailureReason == TrustFailureReason.RevocationUnavailable)
+            return "Unknown";
+        if (decision.IsTrusted && statusRef is not null)
+            return "Active";
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves the issuer public key + x5c chain (DER) + signing key id from the JWS header.
+    /// Priority: x5c chain (leaf key) → DID resolution (kid-matched, assertionMethod-gated) →
+    /// embedded jwk. Chain validation itself is the x509-tenant trust source's job now.
+    /// </summary>
+    private async Task<(byte[]? PublicKey, IReadOnlyList<byte[]>? X5cChain, string? SigningKeyId)> ResolveIssuerKeyAsync(
         string vpToken, CancellationToken ct)
     {
         try
         {
             var parts = vpToken.TrimEnd('~').Split('~');
             var jwtParts = parts[0].Split('.');
-            if (jwtParts.Length < 2) return (null, null);
+            if (jwtParts.Length < 2) return (null, null, null);
 
             var headerBytes = Base64Url.DecodeFromChars(jwtParts[0]);
             var header = JsonSerializer.Deserialize<JsonElement>(headerBytes);
+            var kid = header.TryGetProperty("kid", out var kidEl) ? kidEl.GetString() : null;
 
-            // Try x5c chain first
-            if (header.TryGetProperty("x5c", out var x5cArray) &&
-                x5cArray.ValueKind == JsonValueKind.Array)
+            // x5c chain — extract the leaf public key and surface the chain for the x509-tenant source.
+            if (header.TryGetProperty("x5c", out var x5cArray) && x5cArray.ValueKind == JsonValueKind.Array)
             {
-                var certs = new List<X509Certificate2>();
+                var chain = new List<byte[]>();
                 foreach (var certB64 in x5cArray.EnumerateArray())
+                    chain.Add(Convert.FromBase64String(certB64.GetString()!));
+
+                if (chain.Count > 0)
                 {
-                    var certDer = Convert.FromBase64String(certB64.GetString()!);
-                    certs.Add(X509CertificateLoader.LoadCertificate(certDer));
-                }
-
-                if (certs.Count > 0)
-                {
-                    var leafCert = certs[0];
-                    var publicKey = leafCert.GetECDsaPublicKey()?.ExportSubjectPublicKeyInfo()
-                                   ?? leafCert.GetRSAPublicKey()?.ExportSubjectPublicKeyInfo();
-
-                    // Validate chain if trusted roots are configured
-                    bool? chainValid = null;
-                    if (_trustedRoots.Count > 0 && publicKey != null)
-                        chainValid = ValidateX5cChain(certs);
-
-                    foreach (var c in certs) c.Dispose();
-
+                    using var leaf = X509CertificateLoader.LoadCertificate(chain[0]);
+                    var publicKey = leaf.GetECDsaPublicKey()?.ExportSubjectPublicKeyInfo()
+                                    ?? leaf.GetRSAPublicKey()?.ExportSubjectPublicKeyInfo();
                     if (publicKey != null)
                     {
-                        _logger.LogInformation("Resolved issuer key from x5c chain, chainValid={Valid}", chainValid);
-                        return (publicKey, chainValid);
+                        _logger.LogInformation("Resolved issuer key from x5c chain ({Count} certs)", chain.Count);
+                        return (publicKey, chain, kid);
                     }
                 }
             }
 
-            // Fall back to DID resolution
+            // DID resolution — match kid against an assertionMethod verification method (Feature 120).
             if (_didResolver != null)
             {
                 var payloadBytes = Base64Url.DecodeFromChars(jwtParts[1]);
@@ -210,81 +261,51 @@ public class HaipPresentationVerifier
                 if (payload.TryGetProperty("iss", out var iss))
                 {
                     var issuerDid = iss.GetString();
-                    if (!string.IsNullOrWhiteSpace(issuerDid) && issuerDid.StartsWith("did:"))
+                    if (!string.IsNullOrWhiteSpace(issuerDid) && issuerDid.StartsWith("did:", StringComparison.Ordinal))
                     {
                         var didDoc = await _didResolver.ResolveAsync(issuerDid, ct);
                         if (didDoc?.VerificationMethod?.Count > 0)
                         {
-                            // Feature 120 — match the credential's JWS kid header to a VM
-                            // in the resolved doc (exact id match). Falls back to the
-                            // first VM only when the credential carries no kid (legacy
-                            // single-key documents).
-                            var kid = header.TryGetProperty("kid", out var kidEl) ? kidEl.GetString() : null;
                             VerificationMethod? matched = null;
                             if (!string.IsNullOrEmpty(kid))
-                            {
-                                matched = didDoc.VerificationMethod
-                                    .FirstOrDefault(v => string.Equals(v.Id, kid, StringComparison.Ordinal));
-                            }
+                                matched = didDoc.VerificationMethod.FirstOrDefault(v => string.Equals(v.Id, kid, StringComparison.Ordinal));
                             matched ??= didDoc.VerificationMethod.FirstOrDefault(v => v.PublicKeyJwk.HasValue);
 
                             if (matched is null || !matched.PublicKeyJwk.HasValue)
                             {
-                                _logger.LogWarning(
-                                    "DID document resolved but no VM matched kid {Kid} for {Did}",
-                                    kid, issuerDid);
-                                return (null, null);
+                                _logger.LogWarning("DID document resolved but no VM matched kid {Kid} for {Did}", kid, issuerDid);
+                                return (null, null, null);
                             }
 
-                            // Feature 120 US6 — reject if the matched VM is not in
-                            // assertionMethod (revoked / rotated keys are dropped from
-                            // assertionMethod by IssuanceKeyService while remaining in
-                            // verificationMethod for verifiable history).
                             if (didDoc.AssertionMethod is { Count: > 0 } assertion
                                 && !assertion.Any(id => string.Equals(id, matched.Id, StringComparison.Ordinal)))
                             {
                                 _logger.LogWarning(
-                                    "Issuer VM matched but is not in assertionMethod (revoked/rotated): " +
-                                    "iss={Did} kid={Kid} matched_vm={VmId}",
-                                    issuerDid, kid, matched.Id);
-                                return (null, null);
+                                    "Issuer VM matched but is not in assertionMethod (revoked/rotated): iss={Did} kid={Kid}",
+                                    issuerDid, matched.Id);
+                                return (null, null, null);
                             }
 
                             var keyBytes = ExtractPublicKeyFromJwk(matched.PublicKeyJwk.Value);
                             if (keyBytes != null)
                             {
-                                _logger.LogInformation(
-                                    "Resolved issuer key from DID: {Did} kid={Kid}",
-                                    issuerDid, kid ?? "(first-vm)");
-                                return (keyBytes, null);
+                                _logger.LogInformation("Resolved issuer key from DID: {Did} kid={Kid}", issuerDid, kid ?? "(first-vm)");
+                                return (keyBytes, null, matched.Id);
                             }
                         }
                     }
                 }
             }
-            // Fallback: try to extract issuer key from the JWS header's jwk field
-            // (self-signed test mode — issuer embeds its own public key)
+
+            // Embedded jwk header (self-signed dev/test mode).
             if (header.TryGetProperty("jwk", out var issuerJwk))
             {
                 var keyBytes = ExtractPublicKeyFromJwk(issuerJwk);
                 if (keyBytes != null)
                 {
                     _logger.LogWarning("Resolved issuer key from JWS header jwk (self-signed test mode)");
-                    return (keyBytes, null);
+                    return (keyBytes, null, kid);
                 }
-            }
-
-            // Last resort: extract the signing key from the credential's algorithm
-            // and attempt to verify with the public key embedded in the JWT itself.
-            // This is the "trust-on-first-use" pattern for development walkthroughs.
-            var alg = header.TryGetProperty("alg", out var algEl) ? algEl.GetString() : null;
-            if (alg == "ES256")
-            {
-                // For ES256 ephemeral keys, we can't resolve without x5c or DID.
-                // Log clearly so the operator knows what to fix.
-                _logger.LogWarning(
-                    "Cannot resolve issuer key: no x5c chain, no DID resolver, no jwk in header. " +
-                    "Configure x5c on credentials or register a DID resolver.");
             }
         }
         catch (Exception ex)
@@ -292,142 +313,40 @@ public class HaipPresentationVerifier
             _logger.LogWarning(ex, "Failed to resolve issuer key");
         }
 
-        return (null, null);
-    }
-
-    private bool ValidateX5cChain(List<X509Certificate2> certs)
-    {
-        if (certs.Count == 0) return false;
-
-        using var chain = new X509Chain();
-        // Feature 096 US6 completion — revocation mode defaults to NoCheck for
-        // unit-test friendliness (CDP URLs in tests point at unreachable domains)
-        // but production deployments set Haip:VerifyRevocation=true at DI wiring
-        // time so chain.Build fetches CRLs from the CDP extension embedded in
-        // org certs by the Tenant Service. ExcludeRoot skips the self-signed
-        // tenant root — it has no CRL issuer and will always read as unknown.
-        chain.ChainPolicy.RevocationMode = _revocationMode;
-        if (_revocationMode != X509RevocationMode.NoCheck)
-        {
-            chain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
-            // 30s is generous enough for a single CDP fetch but tight enough
-            // that a slow CRL endpoint doesn't block the verifier indefinitely.
-            chain.ChainPolicy.UrlRetrievalTimeout = TimeSpan.FromSeconds(30);
-        }
-        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-
-        foreach (var root in _trustedRoots)
-            chain.ChainPolicy.CustomTrustStore.Add(root);
-
-        for (int i = 1; i < certs.Count; i++)
-            chain.ChainPolicy.ExtraStore.Add(certs[i]);
-
-        var isValid = chain.Build(certs[0]);
-        if (!isValid)
-        {
-            var statuses = chain.ChainStatus.Select(s => s.StatusInformation);
-            _logger.LogWarning("x5c chain validation failed: {Statuses}", string.Join("; ", statuses));
-        }
-
-        return isValid;
+        return (null, null, null);
     }
 
     /// <summary>
-    /// Feature 095 US4 — resolves a credential's lifecycle status by reading the
-    /// <c>status.status_list</c> claim (IETF, preferred) or <c>credentialStatus</c>
-    /// claim (W3C, fallback), fetching the referenced status list endpoint, and
-    /// reading the bit at the allocated index. Returns:
-    /// <list type="bullet">
-    ///   <item><c>"Active"</c> — bit is 0 or the credential carries no status claim.</item>
-    ///   <item><c>"Revoked"</c> / <c>"Suspended"</c> — bit is 1. Purpose disambiguation
-    ///   comes from the W3C <c>statusPurpose</c> field when present; IETF lists default
-    ///   to <c>Revoked</c> (bits=1 semantic).</item>
-    ///   <item>null — no claim present, caller treats as Active per FR-010 policy.</item>
-    ///   <item><c>"Unknown"</c> — claim was present but the endpoint was unreachable
-    ///   or unverifiable. Non-fatal by design — lets the orchestrator decide whether
-    ///   to fail-open.</item>
-    /// </list>
+    /// Reads the credential's status reference (IETF <c>status.status_list</c> preferred, W3C
+    /// <c>credentialStatus</c> fallback) into a <see cref="StatusReference"/> for the evaluator.
     /// </summary>
-    private async Task<string?> CheckStatusAsync(Dictionary<string, object> claims, CancellationToken ct)
+    private static StatusReference? ExtractStatusReference(Dictionary<string, object> claims)
     {
-        // IETF claim takes precedence over W3C per spec 095 US4.
         var (ietfUri, ietfIdx) = TryExtractIetfStatusList(claims);
         if (ietfUri is not null && ietfIdx.HasValue)
-        {
-            if (_ietfStatusChecker is null)
-            {
-                _logger.LogWarning(
-                    "Credential carries IETF status claim but IetfTokenStatusListChecker is not wired — returning Unknown");
-                return "Unknown";
-            }
-
-            var bit = await _ietfStatusChecker.CheckBitAsync(ietfUri, ietfIdx.Value, ct);
-            return bit switch
-            {
-                StatusListBit.NotSet => "Active",
-                StatusListBit.Set => "Revoked",
-                _ => "Unknown",
-            };
-        }
+            return new StatusReference { Uri = ietfUri, Index = ietfIdx.Value };
 
         var (w3cUri, w3cIdx, w3cPurpose) = TryExtractW3cCredentialStatus(claims);
         if (w3cUri is not null && w3cIdx.HasValue)
-        {
-            if (_ietfStatusChecker is null)
-            {
-                _logger.LogWarning(
-                    "Credential carries W3C status claim but IetfTokenStatusListChecker is not wired — returning Unknown");
-                return "Unknown";
-            }
+            return new StatusReference { Uri = w3cUri, Index = w3cIdx.Value, Purpose = w3cPurpose };
 
-            // The W3C endpoint also serves a signed JWT envelope in this codebase's
-            // deployment — the IETF checker's fetch+decompress path accepts either.
-            // When the backing raw bitstring differs (pre-095 W3C-only deployments),
-            // this will return Unknown and the caller falls back to server-side.
-            var bit = await _ietfStatusChecker.CheckBitAsync(w3cUri, w3cIdx.Value, ct);
-            return bit switch
-            {
-                StatusListBit.NotSet => "Active",
-                StatusListBit.Set => string.Equals(w3cPurpose, "suspension", StringComparison.OrdinalIgnoreCase)
-                    ? "Suspended"
-                    : "Revoked",
-                _ => "Unknown",
-            };
-        }
-
-        // No status claim at all — treat as Active by default (pre-spec-093 credentials).
         return null;
     }
 
-    /// <summary>
-    /// Reads the IETF <c>status.status_list</c> claim into a (uri, idx) pair.
-    /// Returns (null, null) when the claim is absent or malformed.
-    /// </summary>
     private static (string? Uri, int? Idx) TryExtractIetfStatusList(Dictionary<string, object> claims)
     {
         if (!claims.TryGetValue("status", out var statusRaw) || statusRaw is null)
             return (null, null);
         if (!TryGetObjectProperty(statusRaw, "status_list", out var statusList))
             return (null, null);
-        var uri = TryReadString(statusList, "uri");
-        var idx = TryReadInt(statusList, "idx");
-        return (uri, idx);
+        return (TryReadString(statusList, "uri"), TryReadInt(statusList, "idx"));
     }
 
-    /// <summary>
-    /// Reads the W3C <c>credentialStatus</c> claim into a (uri, idx, purpose)
-    /// tuple. <c>statusListCredential</c> maps to uri; <c>statusListIndex</c>
-    /// maps to idx (may be a string or number in the wire form).
-    /// </summary>
-    private static (string? Uri, int? Idx, string? Purpose) TryExtractW3cCredentialStatus(
-        Dictionary<string, object> claims)
+    private static (string? Uri, int? Idx, string? Purpose) TryExtractW3cCredentialStatus(Dictionary<string, object> claims)
     {
         if (!claims.TryGetValue("credentialStatus", out var raw) || raw is null)
             return (null, null, null);
-        var uri = TryReadString(raw, "statusListCredential");
-        var idx = TryReadInt(raw, "statusListIndex");
-        var purpose = TryReadString(raw, "statusPurpose");
-        return (uri, idx, purpose);
+        return (TryReadString(raw, "statusListCredential"), TryReadInt(raw, "statusListIndex"), TryReadString(raw, "statusPurpose"));
     }
 
     private static bool TryGetObjectProperty(object container, string name, out object value)

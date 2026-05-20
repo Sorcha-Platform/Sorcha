@@ -93,6 +93,10 @@ public static class Extensions
 
                 // Feature 115 — Tenant Service social-login refusal counter
                 metrics.AddMeter("Sorcha.Tenant");
+
+                // Feature 135 — unified credential trust decisions (outcome / source / format /
+                // assurance / failure reason; no subject data)
+                metrics.AddMeter("Sorcha.Trust");
             })
             .WithTracing(tracing =>
             {

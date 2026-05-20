@@ -24,11 +24,31 @@ public class CredentialRequirementBuilder
     }
 
     /// <summary>
-    /// Adds an accepted issuer DID or wallet address.
+    /// Adds an accepted issuer DID or wallet address (feature 135: collected into a
+    /// did-allowlist trust source on <see cref="Build"/>).
     /// </summary>
     public CredentialRequirementBuilder FromIssuer(string issuerDid)
     {
         _issuers.Add(issuerDid);
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the trust policy directly (feature 135), overriding any issuers added via
+    /// <see cref="FromIssuer"/>.
+    /// </summary>
+    public CredentialRequirementBuilder WithTrustPolicy(TrustPolicy policy)
+    {
+        _requirement.TrustPolicy = policy;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the accepted credential format (feature 135).
+    /// </summary>
+    public CredentialRequirementBuilder OfFormat(CredentialFormat format)
+    {
+        _requirement.Format = format;
         return this;
     }
 
@@ -70,8 +90,10 @@ public class CredentialRequirementBuilder
 
     internal CredentialRequirement Build()
     {
-        if (_issuers.Count > 0)
-            _requirement.AcceptedIssuers = _issuers;
+        // Feature 135: issuers added via FromIssuer become a did-allowlist trust source,
+        // unless an explicit policy was supplied via WithTrustPolicy.
+        if (_requirement.TrustPolicy is null && _issuers.Count > 0)
+            _requirement.TrustPolicy = TrustPolicyExtensions.FromLegacyIssuers(_issuers);
 
         if (_claims.Count > 0)
             _requirement.RequiredClaims = _claims;

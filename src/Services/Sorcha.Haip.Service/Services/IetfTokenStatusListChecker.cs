@@ -7,6 +7,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
+using EngineCredentials = Sorcha.Blueprint.Engine.Credentials;
+
 namespace Sorcha.Haip.Service.Services;
 
 /// <summary>
@@ -22,7 +24,7 @@ namespace Sorcha.Haip.Service.Services;
 /// <c>x5c</c> chain will replace the embedded JWK and this checker should be
 /// extended to walk the chain. No signature = refuse to trust the bitstring.
 /// </remarks>
-public sealed class IetfTokenStatusListChecker
+public sealed class IetfTokenStatusListChecker : EngineCredentials.IStatusListChecker
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<IetfTokenStatusListChecker> _logger;
@@ -31,6 +33,28 @@ public sealed class IetfTokenStatusListChecker
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Feature 135 (T023) — unified status seam. Adapts the IETF Token Status List check to the
+    /// engine's <see cref="EngineCredentials.IStatusListChecker"/> so both verification paths read
+    /// revocation identically. Explicit implementation keeps the local <see cref="StatusListBit"/>
+    /// enum from clashing with the engine's identically-named type.
+    /// </summary>
+    async Task<EngineCredentials.StatusListBit> EngineCredentials.IStatusListChecker.CheckAsync(
+        EngineCredentials.StatusReference statusRef, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(statusRef);
+        if (string.IsNullOrWhiteSpace(statusRef.Uri))
+            return EngineCredentials.StatusListBit.Unknown;
+
+        var bit = await CheckBitAsync(statusRef.Uri, statusRef.Index, cancellationToken).ConfigureAwait(false);
+        return bit switch
+        {
+            StatusListBit.NotSet => EngineCredentials.StatusListBit.NotSet,
+            StatusListBit.Set => EngineCredentials.StatusListBit.Set,
+            _ => EngineCredentials.StatusListBit.Unknown
+        };
     }
 
     /// <summary>

@@ -90,6 +90,22 @@ public class CredentialIssuanceConfig
     [JsonPropertyName("targetAudience")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public TargetAudience TargetAudience { get; set; } = TargetAudience.SorchaInternal;
+
+    /// <summary>
+    /// Credential format to mint (feature 135). Default <see cref="CredentialFormat.SdJwtVc"/>.
+    /// </summary>
+    [JsonPropertyName("format")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public CredentialFormat Format { get; set; } = CredentialFormat.SdJwtVc;
+
+    /// <summary>
+    /// Trust anchor the issued credential is trusted under (feature 135). Default
+    /// <see cref="TrustAnchor.Register"/>. X.509 anchors attach the org certificate chain;
+    /// the register anchor relies on decentralised-identifier resolution.
+    /// </summary>
+    [JsonPropertyName("trustAnchor")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TrustAnchor TrustAnchor { get; set; } = TrustAnchor.Register;
 }
 
 /// <summary>

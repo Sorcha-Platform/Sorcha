@@ -7,6 +7,9 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sorcha.Blueprint.Engine.Credentials;
+using Sorcha.Blueprint.Engine.Credentials.Sources;
+using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Cryptography.SdJwt;
 using Sorcha.Haip.Service.Services;
 using Sorcha.Tenant.Service.Trust;
@@ -15,41 +18,48 @@ using Xunit;
 namespace Sorcha.Haip.Service.Tests.Services;
 
 /// <summary>
-/// Tests for HaipPresentationVerifier — full verification pipeline including
-/// x5c chain validation, issuer key resolution, and status checking.
+/// Feature 135 — HaipPresentationVerifier now routes its trust decision through the unified
+/// ITrustEvaluator. The verifier still owns SD-JWT signature + KB verification; the x5c chain is
+/// validated by the x509-tenant trust source against the supplied anchors, and (unlike the prior
+/// advisory-only behaviour) an untrusted chain now actually fails the decision.
 /// </summary>
 public class HaipPresentationVerifierTests
 {
     private readonly SdJwtService _sdJwtService = new();
 
-    // --- Feature 096 US6 — revocation mode configurability ---
+    // --- test seams -----------------------------------------------------------
 
-    [Fact]
-    public void Constructor_DefaultRevocationMode_IsNoCheck()
+    private sealed class FakeAnchors(TrustAnchorSet? set) : ITenantTrustAnchorProvider
     {
-        // Default preserves pre-096 behaviour — unit tests that use self-signed
-        // chains with unreachable CDP URLs must not fail on BCL CRL fetch.
-        var verifier = new HaipPresentationVerifier(
-            _sdJwtService, Mock.Of<ILogger<HaipPresentationVerifier>>());
-
-        verifier.RevocationMode.Should().Be(X509RevocationMode.NoCheck);
+        public Task<TrustAnchorSet?> GetAnchorsAsync(string? anchorId, CancellationToken ct = default) => Task.FromResult(set);
     }
 
-    [Fact]
-    public void Constructor_RevocationModeOverride_IsApplied()
+    private sealed class FakeDirectory(bool resolves) : IIssuerDirectory
     {
-        // Production deployments pass Online when Haip:VerifyRevocation=true at
-        // DI wiring time. The field-level value must round-trip from the ctor.
-        var verifier = new HaipPresentationVerifier(
-            _sdJwtService,
-            Mock.Of<ILogger<HaipPresentationVerifier>>(),
-            didResolver: null,
-            ietfStatusChecker: null,
-            revocationMode: X509RevocationMode.Online);
-
-        verifier.RevocationMode.Should().Be(X509RevocationMode.Online);
+        public Task<IssuerDirectoryEntry> LookupAsync(string issuerId, CancellationToken ct = default) =>
+            Task.FromResult(new IssuerDirectoryEntry { Resolved = resolves });
     }
 
+    /// <summary>
+    /// Builds a verifier whose evaluator trusts an x5c chain to <paramref name="trustedRootDer"/>
+    /// (when supplied) via the x509-tenant source. The register/did-allowlist sources resolve the
+    /// issuer only when <paramref name="resolveIssuer"/> is true.
+    /// </summary>
+    private HaipPresentationVerifier CreateVerifier(byte[]? trustedRootDer = null, bool resolveIssuer = false)
+    {
+        var anchors = trustedRootDer is null
+            ? null
+            : new TrustAnchorSet { Roots = [trustedRootDer], CheckRevocation = false };
+        var directory = new FakeDirectory(resolveIssuer);
+        var registry = new TrustResolverRegistry(new ITrustSourceResolver[]
+        {
+            new X509TenantTrustSourceResolver(new FakeAnchors(anchors)),
+            new RegisterTrustSourceResolver(directory),
+            new DidAllowlistTrustSourceResolver(directory)
+        });
+        var evaluator = new TrustEvaluator(registry, statusChecker: null);
+        return new HaipPresentationVerifier(_sdJwtService, evaluator, Mock.Of<ILogger<HaipPresentationVerifier>>());
+    }
 
     private static (byte[] privateKey, byte[] publicKey) GenerateP256KeyPair()
     {
@@ -72,39 +82,27 @@ public class HaipPresentationVerifierTests
         return JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(jwk));
     }
 
-    private HaipPresentationVerifier CreateVerifier() =>
-        new(_sdJwtService, Mock.Of<ILogger<HaipPresentationVerifier>>());
-
     /// <summary>
-    /// Creates an SD-JWT VC with x5c chain in the header, simulating what
-    /// a real HAIP issuer would produce. Uses X509CertificateBuilder from spec 096.
+    /// Creates an SD-JWT VC presentation with an x5c chain (org cert under a test root) and a KB-JWT,
+    /// returning the presentation plus the root cert DER for the trust anchor.
     /// </summary>
     private async Task<(string presentation, byte[] rootCertDer)> CreatePresentationWithX5cAsync(
         string audience, string nonce)
     {
-        // Generate root CA and org cert using spec 096 infrastructure
-        var (rootCertDer, rootPrivateKey, _) = X509CertificateBuilder.BuildSelfSignedRoot(
-            "ES256", "CN=Test Root CA");
+        var (rootCertDer, rootPrivateKey, _) = X509CertificateBuilder.BuildSelfSignedRoot("ES256", "CN=Test Root CA");
 
         using var issuerEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var issuerPublicKey = issuerEcdsa.ExportSubjectPublicKeyInfo();
         var issuerPrivateKey = issuerEcdsa.ExportECPrivateKey();
 
         var (orgCertDer, _) = X509CertificateBuilder.BuildOrgCert(
-            rootCertDer, rootPrivateKey, issuerPublicKey,
-            "CN=Test Org", "did:sorcha:org:ws1qtest");
+            rootCertDer, rootPrivateKey, issuerPublicKey, "CN=Test Org", "did:sorcha:org:ws1qtest");
 
-        // Create holder key
         var (holderPrivate, holderPublic) = GenerateP256KeyPair();
         var holderJwk = CreateHolderJwk(holderPublic);
 
-        // Create the SD-JWT VC with cnf binding
         var token = await _sdJwtService.CreateTokenAsync(
-            new Dictionary<string, object>
-            {
-                ["licenseType"] = "ClassA",
-                ["holder"] = "Alice"
-            },
+            new Dictionary<string, object> { ["licenseType"] = "ClassA", ["holder"] = "Alice" },
             disclosableClaims: ["licenseType", "holder"],
             issuer: "did:sorcha:org:ws1qtest",
             subject: "did:sorcha:w:holder1",
@@ -112,37 +110,27 @@ public class HaipPresentationVerifierTests
             algorithm: "ES256",
             holderJwk: holderJwk);
 
-        // Manually inject x5c into the header by rebuilding the token
-        // (ISdJwtService doesn't support x5c yet — this simulates what the
-        // credential endpoint would produce once Task 4 is wired)
+        // Inject the x5c chain into the header and re-sign (ISdJwtService x5c support is exercised
+        // separately; this mirrors what the credential endpoint produces).
         var rawParts = token.RawToken.TrimEnd('~').Split('~');
         var jwtSegments = rawParts[0].Split('.');
         var headerBytes = System.Buffers.Text.Base64Url.DecodeFromChars(jwtSegments[0]);
         var header = JsonSerializer.Deserialize<Dictionary<string, object>>(headerBytes)!;
+        header["x5c"] = new[] { Convert.ToBase64String(orgCertDer), Convert.ToBase64String(rootCertDer) };
 
-        header["x5c"] = new[] {
-            Convert.ToBase64String(orgCertDer),
-            Convert.ToBase64String(rootCertDer)
-        };
-
-        var newHeaderB64 = System.Buffers.Text.Base64Url.EncodeToString(
-            JsonSerializer.SerializeToUtf8Bytes(header));
+        var newHeaderB64 = System.Buffers.Text.Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(header));
         var signingInput = System.Text.Encoding.UTF8.GetBytes($"{newHeaderB64}.{jwtSegments[1]}");
         var signature = issuerEcdsa.SignData(signingInput, HashAlgorithmName.SHA256);
         var signatureB64 = System.Buffers.Text.Base64Url.EncodeToString(signature);
+        var newRawToken = $"{newHeaderB64}.{jwtSegments[1]}.{signatureB64}~{string.Join("~", rawParts[1..])}~";
 
-        var newJwt = $"{newHeaderB64}.{jwtSegments[1]}.{signatureB64}";
-        var newRawToken = newJwt + "~" + string.Join("~", rawParts[1..]) + "~";
-
-        // Create presentation with KB-JWT
-        int bytesRead;
         var presentation = await _sdJwtService.CreatePresentationAsync(
             newRawToken,
             claimsToDisclose: ["licenseType"],
-            kbJwtSigner: (data, _) =>
+            kbJwtSigner: (data, _token) =>
             {
                 using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-                ecdsa.ImportECPrivateKey(holderPrivate, out bytesRead);
+                ecdsa.ImportECPrivateKey(holderPrivate, out _);
                 return Task.FromResult(ecdsa.SignData(data, HashAlgorithmName.SHA256));
             },
             holderAlgorithm: "ES256",
@@ -151,6 +139,17 @@ public class HaipPresentationVerifierTests
 
         return (presentation.RawPresentation, rootCertDer);
     }
+
+    // --- constructor guards ---------------------------------------------------
+
+    [Fact]
+    public void Constructor_NullTrustEvaluator_Throws()
+    {
+        var act = () => new HaipPresentationVerifier(_sdJwtService, null!, Mock.Of<ILogger<HaipPresentationVerifier>>());
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    // --- pipeline -------------------------------------------------------------
 
     [Fact]
     public async Task Verify_EmptyVpToken_ThrowsArgumentException()
@@ -170,63 +169,50 @@ public class HaipPresentationVerifierTests
     }
 
     [Fact]
-    public async Task Verify_WithX5cChain_ResolvesIssuerKey_AndVerifies()
+    public async Task Verify_WithX5cChain_ToTrustedRoot_VerifiesAndTrusts()
     {
-        var verifier = CreateVerifier();
         var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
             "https://verifier.example.com", "test-nonce-1");
-
-        // Add the root CA as trusted
-        verifier.AddTrustedRoot(X509CertificateLoader.LoadCertificate(rootCertDer));
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer);
 
         var result = await verifier.VerifyAsync(
-            presentation,
-            expectedNonce: "test-nonce-1",
-            expectedAudience: "https://verifier.example.com");
+            presentation, expectedNonce: "test-nonce-1", expectedAudience: "https://verifier.example.com");
 
         result.IsValid.Should().BeTrue();
         result.HolderKeyVerified.Should().BeTrue();
         result.X5cChainValid.Should().BeTrue();
         result.VerifiedClaims.Should().ContainKey("licenseType");
         result.Issuer.Should().Be("did:sorcha:org:ws1qtest");
+        result.TrustEvidence.Should().NotBeNull();
+        result.TrustEvidence!.VouchingSource.Should().Be(TrustSourceKind.X509Tenant);
     }
 
     [Fact]
-    public async Task Verify_WithX5cChain_UntrustedRoot_ChainInvalid()
+    public async Task Verify_WithX5cChain_UntrustedRoot_RejectedAndChainInvalid()
     {
-        var verifier = CreateVerifier();
         var (presentation, _) = await CreatePresentationWithX5cAsync(
             "https://verifier.example.com", "test-nonce-2");
-
-        // Add a DIFFERENT root as trusted (not the one that signed the org cert)
-        var (differentRootDer, _, _) = X509CertificateBuilder.BuildSelfSignedRoot(
-            "ES256", "CN=Different Root CA");
-        verifier.AddTrustedRoot(X509CertificateLoader.LoadCertificate(differentRootDer));
+        var (differentRootDer, _, _) = X509CertificateBuilder.BuildSelfSignedRoot("ES256", "CN=Different Root CA");
+        // Anchor is a different root; the issuer does not resolve in the directory either.
+        var verifier = CreateVerifier(trustedRootDer: differentRootDer, resolveIssuer: false);
 
         var result = await verifier.VerifyAsync(
-            presentation,
-            expectedNonce: "test-nonce-2",
-            expectedAudience: "https://verifier.example.com");
+            presentation, expectedNonce: "test-nonce-2", expectedAudience: "https://verifier.example.com");
 
-        // Key resolution succeeds (from leaf cert), but chain validation fails
+        // The signature is fine (key is the leaf cert), but no trust source vouches.
+        result.IsValid.Should().BeFalse();
         result.X5cChainValid.Should().BeFalse();
-        // The SD-JWT itself still verifies because the key is correct
-        // Chain validity is reported separately from signature validity
     }
 
     [Fact]
     public async Task Verify_WithX5cChain_WrongNonce_Fails()
     {
-        var verifier = CreateVerifier();
         var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
             "https://verifier.example.com", "correct-nonce");
-
-        verifier.AddTrustedRoot(X509CertificateLoader.LoadCertificate(rootCertDer));
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer);
 
         var result = await verifier.VerifyAsync(
-            presentation,
-            expectedNonce: "wrong-nonce",
-            expectedAudience: "https://verifier.example.com");
+            presentation, expectedNonce: "wrong-nonce", expectedAudience: "https://verifier.example.com");
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Nonce mismatch"));
@@ -235,11 +221,9 @@ public class HaipPresentationVerifierTests
     [Fact]
     public async Task Verify_WithX5cChain_RequiredClaimMissing_Fails()
     {
-        var verifier = CreateVerifier();
         var (presentation, rootCertDer) = await CreatePresentationWithX5cAsync(
             "https://verifier.example.com", "test-nonce-3");
-
-        verifier.AddTrustedRoot(X509CertificateLoader.LoadCertificate(rootCertDer));
+        var verifier = CreateVerifier(trustedRootDer: rootCertDer);
 
         var result = await verifier.VerifyAsync(
             presentation,

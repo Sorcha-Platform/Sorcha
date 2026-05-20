@@ -87,4 +87,14 @@ public class VerificationResult
     /// <summary>The issuer.</summary>
     [JsonPropertyName("issuer")]
     public string? Issuer { get; set; }
+
+    /// <summary>
+    /// Feature 135 (T033) — the pinnable trust evidence produced by the unified
+    /// <see cref="Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator"/>: which source vouched,
+    /// the assurance established, and the policy digest. Carried onto spec-079 verification
+    /// receipts so a decision can be re-checked offline (FR-014/FR-015). Null until the trust
+    /// evaluator has run.
+    /// </summary>
+    [JsonPropertyName("trustEvidence")]
+    public Sorcha.Blueprint.Engine.Credentials.TrustEvidence? TrustEvidence { get; set; }
 }

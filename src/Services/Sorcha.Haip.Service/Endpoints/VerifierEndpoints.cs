@@ -212,6 +212,7 @@ public static class VerifierEndpoints
             expectedAudience: request.ClientId,
             requiredCredentialType: request.CredentialType,
             requiredClaims: request.RequiredClaims,
+            acceptedIssuers: request.AcceptedIssuers,
             ct: ct);
 
         // Store the result

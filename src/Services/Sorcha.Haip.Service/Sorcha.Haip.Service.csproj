@@ -14,6 +14,9 @@
     <ProjectReference Include="..\..\Common\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
+    <!-- Feature 135 — HAIP routes its trust decision through the unified ITrustEvaluator
+         that lives in the (WASM-friendly) Sorcha.Blueprint.Engine credentials substrate. -->
+    <ProjectReference Include="..\..\Core\Sorcha.Blueprint.Engine\Sorcha.Blueprint.Engine.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.PresentationLifecycle.Abstractions\Sorcha.PresentationLifecycle.Abstractions.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.AtomicCache\Sorcha.AtomicCache.csproj" />

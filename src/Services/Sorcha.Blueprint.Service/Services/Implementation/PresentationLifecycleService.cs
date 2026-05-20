@@ -158,10 +158,14 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             var requiredClaimNames = credentialRequirement.RequiredClaims?
                 .Select(c => c.ClaimName)
                 .ToList();
+            // Feature 135: the issuer allowlist for the HAIP presentation request is sourced
+            // from the requirement's trust policy (did-allowlist sources).
+            var allowedIssuers = Sorcha.Blueprint.Models.Credentials.TrustPolicyExtensions
+                .AllowedIssuerDids(credentialRequirement.TrustPolicy);
             var haipResult = await _haipClient.CreatePresentationRequestAsync(
                 credentialRequirement.Type,
                 requiredClaimNames,
-                credentialRequirement.AcceptedIssuers?.ToList(),
+                allowedIssuers.Count > 0 ? allowedIssuers.ToList() : null,
                 cancellationToken);
 
             descriptor = new InitiationDescriptor(
@@ -927,10 +931,15 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     /// </summary>
     private static byte[] ComputeRequirementsDigest(CredentialRequirementModel requirement)
     {
+        // Feature 135: the audited issuer allowlist is sourced from the trust policy.
+        var allowedIssuers = Sorcha.Blueprint.Models.Credentials.TrustPolicyExtensions
+            .AllowedIssuerDids(requirement.TrustPolicy);
         var canonical = new
         {
             type = requirement.Type,
-            acceptedIssuers = requirement.AcceptedIssuers?.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+            acceptedIssuers = allowedIssuers.Count > 0
+                ? allowedIssuers.OrderBy(x => x, StringComparer.Ordinal).ToArray()
+                : null,
             requiredClaims = requirement.RequiredClaims?
                 .OrderBy(c => c.ClaimName, StringComparer.Ordinal)
                 .Select(c => c.ClaimName)

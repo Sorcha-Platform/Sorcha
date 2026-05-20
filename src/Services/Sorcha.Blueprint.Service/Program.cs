@@ -145,9 +145,36 @@ builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.ISchemaValidator, 
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IJsonLogicEvaluator, Sorcha.Blueprint.Engine.Implementation.JsonLogicEvaluator>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IDisclosureProcessor, Sorcha.Blueprint.Engine.Implementation.DisclosureProcessor>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IRoutingEngine, Sorcha.Blueprint.Engine.Implementation.RoutingEngine>();
-builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ICredentialVerifier, Sorcha.Blueprint.Engine.Credentials.CredentialVerifier>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ICredentialIssuer, Sorcha.Blueprint.Engine.Credentials.CredentialIssuer>();
 builder.Services.AddHttpClient<Sorcha.Blueprint.Engine.Credentials.IRevocationChecker, Sorcha.Blueprint.Engine.Credentials.BitstringStatusListChecker>();
+
+// Feature 135 — unified credential trust. The CredentialVerifier now dispatches to a
+// per-format ICredentialFormatHandler that verifies the signature for real and routes the
+// trust decision through the single ITrustEvaluator (no SignatureValid=false shortcut).
+// Network trust sources live behind engine-local seams with service-layer adapters here,
+// keeping Sorcha.Blueprint.Engine WASM-friendly.
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory,
+    Sorcha.Blueprint.Service.Credentials.DidIssuerDirectory>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IIssuerKeyResolver,
+    Sorcha.Blueprint.Service.Credentials.DidX5cIssuerKeyResolver>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.RegisterTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.DidAllowlistTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustResolverRegistry>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry(
+        sp.GetServices<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>()));
+// BitstringStatusListChecker implements both IRevocationChecker and IStatusListChecker.
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IStatusListChecker>(sp =>
+    (Sorcha.Blueprint.Engine.Credentials.IStatusListChecker)sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IRevocationChecker>());
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator,
+    Sorcha.Blueprint.Engine.Credentials.TrustEvaluator>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ICredentialFormatHandler,
+    Sorcha.Blueprint.Engine.Credentials.SdJwtVcFormatHandler>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ICredentialVerifier,
+    Sorcha.Blueprint.Engine.Credentials.CredentialVerifier>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IActionProcessor, Sorcha.Blueprint.Engine.Implementation.ActionProcessor>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine, Sorcha.Blueprint.Engine.Implementation.ExecutionEngine>();
 

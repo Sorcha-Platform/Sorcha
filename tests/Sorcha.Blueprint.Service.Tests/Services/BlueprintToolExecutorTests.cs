@@ -976,7 +976,7 @@ public class BlueprintToolExecutorTests
         result.Success.Should().BeTrue();
         var draft = builder.BuildDraft();
         var req = draft.Actions.First(a => a.Id == 1).CredentialRequirements!.First();
-        req.AcceptedIssuers.Should().BeEquivalentTo(new[] { "dmv-authority", "gov-agency" });
+        req.TrustPolicy.AllowedIssuerDids().Should().BeEquivalentTo(new[] { "dmv-authority", "gov-agency" });
     }
 
     [Fact]
