@@ -103,7 +103,7 @@ Repo root `C:\Projects\Sorcha`. Source under `src/`, tests under `tests/` mirror
 - [X] T037 [P] [US2] `MdocService` verify tests using the PID fixture: issuer signature, valueDigests integrity, SessionTranscript/DeviceAuth binding in `tests/Sorcha.Cryptography.Tests/Mdoc/MdocServiceTests.cs`.
 - [X] T038 [P] [US2] `MdocPresentationVerifier` tests (untrusted→`UntrustedIssuer`, bad binding→`HolderBindingInvalid`, tampered→`IntegrityFailure`, revoked→`Revoked`) in `tests/Sorcha.Haip.Service.Tests/MdocPresentationVerifierTests.cs`.
 - [X] T039 [P] [US2] `TrustListSourceResolver` + `OperatorSnapshotTrustListProvider` tests (snapshot id+freshness into evidence; missing list→`SourceUnavailable`) in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/TrustListSourceTests.cs`.
-- [ ] T040 [P] [US2] Trust-list admin endpoint contract tests (PUT/GET/list) in `tests/Sorcha.Tenant.Service.Tests/TrustListAdminEndpointTests.cs`.
+- [X] T040 [P] [US2] Trust-list admin endpoint contract tests (PUT/GET/list) in `tests/Sorcha.Tenant.Service.Tests/TrustListAdminEndpointTests.cs`.
 
 ### Implementation for User Story 2
 
@@ -116,8 +116,8 @@ Repo root `C:\Projects\Sorcha`. Source under `src/`, tests under `tests/` mirror
 - [X] T047 [P] [US2] Implement `TrustListSourceResolver` (loads snapshot into `X509Chain.CustomTrustStore`; records id+freshness in evidence) in `src/Core/Sorcha.Blueprint.Engine/Credentials/Sources/TrustListSourceResolver.cs`; register in `TrustResolverRegistry`.
 - [X] T048 [US2] Implement `MdocPresentationVerifier` (OpenID4VP `vp_token` → DeviceResponse decode → `MdocFormatHandler`) in `src/Services/Sorcha.Haip.Service/Services/MdocPresentationVerifier.cs`.
 - [X] T049 [US2] Wire DCQL `format: "mso_mdoc"` request parsing + `vp_token` keyed-by-query-id handling + format dispatch into the existing OpenID4VP `direct_post` endpoint in `src/Services/Sorcha.Haip.Service/Endpoints/` (per `contracts/mdoc-presentation.openapi.md`); add `.WithSummary`/`.WithDescription`.
-- [ ] T050 [US2] Implement `TrustListSnapshotStore` + admin endpoints (`PUT/GET /api/v1/trust/trustlists/{id}`, `GET /api/v1/trust/trustlists`) in `src/Services/Sorcha.Tenant.Service/Trust/` with Scalar docs + `RateLimitPolicies.Strict` (per `contracts/trustlist-admin.openapi.md`).
-- [ ] T051 [US2] DI wiring for mdoc handler, provider, trustlist resolver, mdoc verifier in `Sorcha.Haip.Service/Program.cs` and Tenant `Program.cs`; storage-registration-log entry for the snapshot store.
+- [X] T050 [US2] Implement `TrustListSnapshotStore` + admin endpoints (`PUT/GET /api/v1/trust/trustlists/{id}`, `GET /api/v1/trust/trustlists`) in `src/Services/Sorcha.Tenant.Service/Trust/` with Scalar docs + `RateLimitPolicies.Strict` (per `contracts/trustlist-admin.openapi.md`).
+- [X] T051 [US2] DI wiring for mdoc handler, provider, trustlist resolver, mdoc verifier in `Sorcha.Haip.Service/Program.cs` and Tenant `Program.cs`; storage-registration-log entry for the snapshot store.
 
 **Checkpoint**: US1 + US2 both work — mdoc accepted from an EUDI wallet, SD-JWT VC unchanged.
 
