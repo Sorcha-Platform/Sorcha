@@ -67,7 +67,8 @@ public sealed class AuthAndBearerTests
         var handler = new StubHttpHandler((_, _) => new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(
-                """{"access_token":null,"expires_in":0,"requires_two_factor":true}""",
+                // Real server always pairs requires_two_factor with a login_token.
+                """{"requires_two_factor":true,"login_token":"lt-abc","available_methods":["totp"]}""",
                 Encoding.UTF8, "application/json"),
         });
         var auth = new AuthService(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
@@ -75,6 +76,67 @@ public sealed class AuthAndBearerTests
         var result = await auth.SignInAsync("citizen@example.com", "pw");
 
         result.Status.Should().Be(SignInStatus.TwoFactorRequired);
+        result.LoginToken.Should().Be("lt-abc");
+        (await store.GetAsync()).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AuthService_TwoFactorRequired_CarriesLoginToken()
+    {
+        var store = new InMemoryAccessTokenStore();
+        var handler = new StubHttpHandler((_, _) => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"requires_two_factor":true,"login_token":"lt-123","available_methods":["totp"]}""",
+                Encoding.UTF8, "application/json"),
+        });
+        var auth = new AuthService(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
+
+        var result = await auth.SignInAsync("citizen@example.com", "pw");
+
+        result.Status.Should().Be(SignInStatus.TwoFactorRequired);
+        result.LoginToken.Should().Be("lt-123");
+        (await store.GetAsync()).Should().BeNull("2FA-required must not persist a token yet");
+    }
+
+    [Fact]
+    public async Task VerifyTwoFactor_ValidCode_PersistsToken()
+    {
+        var store = new InMemoryAccessTokenStore();
+        HttpRequestMessage? captured = null;
+        var handler = new StubHttpHandler((req, _) =>
+        {
+            captured = req;
+            req.RequestUri!.AbsolutePath.Should().EndWith("/api/auth/verify-2fa");
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"access_token":"jwt-2fa","expires_in":3600,"requires_two_factor":false}""",
+                    Encoding.UTF8, "application/json"),
+            };
+        });
+        var auth = new AuthService(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
+
+        var result = await auth.VerifyTwoFactorAsync("lt-123", "citizen@example.com", "123456");
+
+        result.IsSuccess.Should().BeTrue();
+        var record = await store.GetAsync();
+        record!.AccessToken.Should().Be("jwt-2fa");
+        record.Email.Should().Be("citizen@example.com");
+        captured.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task VerifyTwoFactor_WrongCode_ReturnsTwoFactorRequiredWithRetry()
+    {
+        var store = new InMemoryAccessTokenStore();
+        var handler = new StubHttpHandler((_, _) => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        var auth = new AuthService(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
+
+        var result = await auth.VerifyTwoFactorAsync("lt-123", "citizen@example.com", "000000");
+
+        result.Status.Should().Be(SignInStatus.TwoFactorRequired);
+        result.LoginToken.Should().Be("lt-123", "the login token survives a wrong-code retry");
         (await store.GetAsync()).Should().BeNull();
     }
 
