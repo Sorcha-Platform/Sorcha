@@ -19,6 +19,12 @@ namespace Sorcha.PresentationLifecycle.Abstractions;
 /// requirements at the time of submission. Consumers can use this to detect
 /// blueprint drift between submission and callback.</param>
 /// <param name="InitiatedAt">When the attempt was recorded on the register.</param>
+/// <param name="VerifierClientId">Canonical DID of the verifier (the org operating
+/// the presentation request, e.g. the council page) — <c>did:sorcha:org:{walletAddress}</c>.
+/// Resolved by the lifecycle service from the blueprint's owning organisation (Spec 5).
+/// Null when the org has no published DID document or resolution fails; consumers
+/// fall back to a placeholder. Used as the OID4VP <c>client_id</c> (display identity
+/// in the current unsigned-request flow).</param>
 public sealed record PresentationInitiationContext(
     Guid PresentationRequestId,
     Guid InstanceId,
@@ -27,4 +33,5 @@ public sealed record PresentationInitiationContext(
     string BlueprintId,
     string SubmitterWallet,
     byte[] RequirementsDigest,
-    DateTimeOffset InitiatedAt);
+    DateTimeOffset InitiatedAt,
+    string? VerifierClientId = null);

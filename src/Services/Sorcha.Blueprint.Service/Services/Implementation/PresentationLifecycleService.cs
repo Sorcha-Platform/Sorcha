@@ -62,6 +62,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly PresentationLifecycleMetrics? _metrics;
     private readonly IClock _clock;
     private readonly IServiceProvider? _serviceProvider;
+    private readonly Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? _orgDidClient;
     private readonly ILogger<PresentationLifecycleService> _logger;
 
     /// <summary>Constructor — DI-friendly.</summary>
@@ -81,7 +82,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IPresentationSealCoordinator? sealCoordinator = null,
         IClaimsFetchTokenStore? claimsFetchTokenStore = null,
         IDisclosedClaimsStore? disclosedClaimsStore = null,
-        IHubContext<BlueprintHub, IBlueprintHubClient>? hubContext = null)
+        IHubContext<BlueprintHub, IBlueprintHubClient>? hubContext = null,
+        Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? orgDidClient = null)
     {
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
@@ -99,6 +101,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _claimsFetchTokenStore = claimsFetchTokenStore;
         _disclosedClaimsStore = disclosedClaimsStore;
         _hubContext = hubContext;
+        _orgDidClient = orgDidClient;
     }
 
     public async Task<PresentationInitiationResult> InitiateAsync(
@@ -181,6 +184,26 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
                     $"No IPresentationConsumer registered with name '{consumerName}'.");
 
             var digestPreview = ComputeRequirementsDigest(credentialRequirement);
+
+            // Spec 5 — resolve the verifier (council org) DID so the consumer can
+            // emit a real client_id instead of did:sorcha:org:UNKNOWN. Best-effort:
+            // a null result (no org id, unpublished DID doc, or transport failure)
+            // leaves the consumer's placeholder fallback intact and never blocks the gate.
+            string? verifierClientId = null;
+            if (_orgDidClient is not null
+                && !string.IsNullOrWhiteSpace(blueprint.OrganizationId)
+                && Guid.TryParse(blueprint.OrganizationId, out var orgGuid))
+            {
+                verifierClientId = await _orgDidClient.ResolveCanonicalDidAsync(orgGuid, cancellationToken);
+                if (verifierClientId is null)
+                {
+                    _logger.LogDebug(
+                        "Verifier DID unresolved for org {OrgId} (blueprint {BlueprintId}); " +
+                        "consumer will use placeholder client_id.",
+                        blueprint.OrganizationId, blueprint.Id);
+                }
+            }
+
             var ctx = new PresentationInitiationContext(
                 PresentationRequestId: requestId,
                 InstanceId: Guid.Parse(instance.Id),
@@ -189,7 +212,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
                 BlueprintId: blueprint.Id,
                 SubmitterWallet: submitterWallet,
                 RequirementsDigest: digestPreview,
-                InitiatedAt: DateTimeOffset.UtcNow);
+                InitiatedAt: DateTimeOffset.UtcNow,
+                VerifierClientId: verifierClientId);
 
             var consumerDescriptor = await consumer.BuildInitiationAsync(ctx, cancellationToken);
             descriptor = new InitiationDescriptor(
