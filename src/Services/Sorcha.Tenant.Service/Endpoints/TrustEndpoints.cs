@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Mvc;
+using Sorcha.ServiceClients.Trust;
 using Sorcha.ServiceDefaults;
 using Sorcha.Tenant.Service.Trust;
 
@@ -91,7 +92,95 @@ public static class TrustEndpoints
             // off the CA signing path.
             .RequireRateLimiting(RateLimitPolicies.Api)
             .AllowAnonymous();
+
+        // Feature 135 (US2) — operator trust-list snapshot management. Snapshots are consulted by
+        // the `trustlist` trust source (external EUDI anchors). Admin-scoped, strict rate limit.
+        group.MapPut("/trustlists/{trustListId}", PutTrustList)
+            .WithName("PutTrustListSnapshot")
+            .WithSummary("Upload or replace a trust-list snapshot")
+            .WithDescription(
+                "Stores an operator-curated set of trusted X.509 root certificates (base64 DER) under " +
+                "the given id. Referenced by a credential requirement's trust policy `trustlist` source; " +
+                "the snapshot id + freshness are copied into the trust evidence on every decision that " +
+                "used the list. A live LOTL feed is a future provider behind the same seam.")
+            .Produces<TrustListSummaryResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .RequireAuthorization("RequireAdministrator")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
+
+        group.MapGet("/trustlists/{trustListId}", GetTrustList)
+            .WithName("GetTrustListSnapshot")
+            .WithSummary("Get trust-list snapshot metadata")
+            .WithDescription(
+                "Returns the snapshot id, root count, source, and freshness so operators can audit " +
+                "what is loaded. Not used per-verification (the trust source caches the roots).")
+            .Produces<TrustListSummaryResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .RequireAuthorization("RequireAdministrator")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
+
+        group.MapGet("/trustlists", ListTrustLists)
+            .WithName("ListTrustListSnapshots")
+            .WithSummary("List available trust-list snapshots")
+            .WithDescription("Returns the id + freshness of every loaded trust-list snapshot.")
+            .Produces<IReadOnlyList<TrustListSummaryResponse>>(StatusCodes.Status200OK)
+            .RequireAuthorization("RequireAdministrator")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
     }
+
+    internal static IResult PutTrustList(
+        string trustListId,
+        [FromBody] UploadTrustListRequest request,
+        OperatorSnapshotTrustListProvider provider)
+    {
+        if (request.Roots is null || request.Roots.Count == 0)
+            return Results.BadRequest(new { error = "At least one root certificate is required" });
+
+        var roots = new List<byte[]>(request.Roots.Count);
+        foreach (var base64 in request.Roots)
+        {
+            try
+            {
+                roots.Add(Convert.FromBase64String(base64));
+            }
+            catch (FormatException)
+            {
+                return Results.BadRequest(new { error = "A root certificate entry is not valid Base64 DER" });
+            }
+        }
+
+        var snapshot = new TrustListSnapshot
+        {
+            Id = trustListId,
+            Roots = roots,
+            Source = request.Source ?? "operator-upload",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Freshness = request.Freshness ?? DateTimeOffset.UtcNow
+        };
+        provider.Upsert(snapshot);
+
+        return Results.Ok(ToSummary(snapshot));
+    }
+
+    internal static IResult GetTrustList(string trustListId, OperatorSnapshotTrustListProvider provider)
+    {
+        var snapshot = provider.List().FirstOrDefault(s => string.Equals(s.Id, trustListId, StringComparison.Ordinal));
+        return snapshot is null
+            ? Results.NotFound(new { error = $"No trust-list snapshot '{trustListId}'" })
+            : Results.Ok(ToSummary(snapshot));
+    }
+
+    internal static IResult ListTrustLists(OperatorSnapshotTrustListProvider provider)
+        => Results.Ok(provider.List().Select(ToSummary).ToList());
+
+    private static TrustListSummaryResponse ToSummary(TrustListSnapshot s) => new()
+    {
+        TrustListId = s.Id,
+        RootCount = s.Roots.Count,
+        Source = s.Source,
+        CreatedAt = s.CreatedAt,
+        Freshness = s.Freshness
+    };
 
     private static async Task<IResult> ProvisionTrustAnchor(
         string tenantId,
@@ -276,6 +365,29 @@ public class CertChainResponse
 {
     public required string OrgCertBase64 { get; init; }
     public required string RootCertBase64 { get; init; }
+}
+
+/// <summary>Request to upload/replace a trust-list snapshot (feature 135 US2).</summary>
+public class UploadTrustListRequest
+{
+    /// <summary>Provenance, e.g. "EU LOTL 2026-Q2 manual export".</summary>
+    public string? Source { get; init; }
+
+    /// <summary>Trusted root certificates, base64-encoded DER.</summary>
+    public required List<string> Roots { get; init; }
+
+    /// <summary>Operator-asserted as-of time copied into trust evidence; defaults to now.</summary>
+    public DateTimeOffset? Freshness { get; init; }
+}
+
+/// <summary>Trust-list snapshot metadata (feature 135 US2).</summary>
+public class TrustListSummaryResponse
+{
+    public required string TrustListId { get; init; }
+    public int RootCount { get; init; }
+    public required string Source { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset Freshness { get; init; }
 }
 
 /// <summary>Request to revoke an organisation certificate.</summary>

@@ -89,6 +89,14 @@ builder.Services.AddScoped<HaipPresentationVerifier>(sp => new HaipPresentationV
     sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator>(),
     sp.GetRequiredService<ILogger<HaipPresentationVerifier>>(),
     sp.GetService<Sorcha.ServiceClients.Did.IDidResolverRegistry>()));
+
+// Feature 135 (US2) — mso_mdoc verification. MdocFormatHandler runs the ISO 18013-5 format crypto
+// and routes the trust decision through the same scoped ITrustEvaluator (x509-tenant source over
+// the configured anchors). The direct_post endpoint dispatches mdoc vp_tokens to this verifier.
+builder.Services.AddSingleton<Sorcha.Cryptography.Mdoc.IMdocService, Sorcha.Cryptography.Mdoc.MdocService>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler>();
+builder.Services.AddScoped<MdocPresentationVerifier>();
+
 builder.Services.AddSingleton<RequestObjectSigner>();
 
 // Feature 095 US4: status list fetch for the verifier. Registered as HttpClient-

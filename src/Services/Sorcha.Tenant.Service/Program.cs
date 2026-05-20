@@ -133,6 +133,13 @@ builder.Services.AddHostedService<Sorcha.Tenant.Service.Services.EventCleanupSer
 builder.Services.AddSingleton<Sorcha.Tenant.Service.Trust.ITrustProvider,
     Sorcha.Tenant.Service.Trust.InternalCaTrustProvider>();
 
+// Feature 135 (US2) — operator trust-list snapshots managed via the /api/v1/trust/trustlists admin
+// surface. In-memory, operator-pushed (re-pushable on restart), consulted by the `trustlist` trust
+// source; a live LOTL provider is a future impl behind the same ITrustListProvider seam.
+builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.OperatorSnapshotTrustListProvider>();
+builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider>(sp =>
+    sp.GetRequiredService<Sorcha.ServiceClients.Trust.OperatorSnapshotTrustListProvider>());
+
 // Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,
     Sorcha.Tenant.Service.Services.PersonaService>();
