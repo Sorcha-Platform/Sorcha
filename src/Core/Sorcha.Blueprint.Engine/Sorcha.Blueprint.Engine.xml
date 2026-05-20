@@ -166,10 +166,20 @@
             <summary>
             Checks credential revocation/suspension status by fetching and decoding
             a W3C Bitstring Status List from the issuer's register endpoint.
+            Implements both the legacy <see cref="T:Sorcha.Blueprint.Engine.Credentials.IRevocationChecker"/> and the unified
+            <see cref="T:Sorcha.Blueprint.Engine.Credentials.IStatusListChecker"/> seam (feature 135).
             </summary>
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.BitstringStatusListChecker.CheckRevocationStatusAsync(System.String,System.String,System.Threading.CancellationToken)">
             <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.BitstringStatusListChecker.CheckAsync(Sorcha.Blueprint.Engine.Credentials.StatusReference,System.Threading.CancellationToken)">
+            <inheritdoc />
+            <remarks>
+            Feature 135 — unified status seam. Maps the W3C status word to a
+            <see cref="T:Sorcha.Blueprint.Engine.Credentials.StatusListBit"/>: "Active" → NotSet, "Revoked"/"Suspended" → Set,
+            null (unreachable/unparseable) → Unknown so the caller applies its fail-closed policy.
+            </remarks>
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.BitstringStatusListChecker.CheckBitAsync(System.String,System.Int32,System.Threading.CancellationToken)">
             <summary>
@@ -456,6 +466,23 @@
         <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerContext.SignatureVerified">
             <summary>Whether the issuer signature has already been verified by the format handler.</summary>
         </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerContext.SigningKeyId">
+            <summary>
+            The identifier of the issuer key that produced the signature (e.g. the JWS <c>kid</c> /
+            matched verification-method id). Used by the register source to gate on assertionMethod.
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerContext.Status">
+            <summary>
+            The credential's revocation/status reference, when it carries one. The evaluator resolves
+            it through <see cref="T:Sorcha.Blueprint.Engine.Credentials.IStatusListChecker"/>.
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerContext.RevocationPolicy">
+            <summary>
+            How to treat an unavailable revocation result. Defaults to fail-closed.
+            </summary>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.TrustSourceVouch">
             <summary>
             A single trust source's answer about an issuer (feature 135).
@@ -522,6 +549,30 @@
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustDecision.Reject(Sorcha.Blueprint.Engine.Credentials.TrustFailureReason,System.String)">
             <summary>Convenience factory for a fail-closed rejection.</summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.TrustEvaluator">
+            <summary>
+            The single trust authority consulted by every credential-verification path (feature 135).
+            Combines pluggable trust sources per the policy's combinator, establishes the assurance
+            level (source-tier with an upward-only claim override), checks revocation, and produces a
+            pinnable <see cref="T:Sorcha.Blueprint.Engine.Credentials.TrustEvidence"/> record. Fail-closed by default (FR-013).
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustEvaluator.EvaluateAsync(Sorcha.Blueprint.Engine.Credentials.IssuerContext,Sorcha.Blueprint.Models.Credentials.TrustPolicy,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustEvaluator.CheckStatusAsync(Sorcha.Blueprint.Engine.Credentials.IssuerContext,System.Threading.CancellationToken)">
+            <summary>
+            Resolves the credential's status reference. Returns a rejection <see cref="T:Sorcha.Blueprint.Engine.Credentials.TrustDecision"/>
+            when revoked/suspended or when the status is unresolved under a fail-closed policy; null
+            when the credential is active or carries no status reference under fail-open.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustEvaluator.ComputePolicyDigest(Sorcha.Blueprint.Models.Credentials.TrustPolicy)">
+            <summary>
+            Stable SHA-256 over the canonical policy shape so an offline re-evaluation can confirm it
+            used the same policy (FR-015).
+            </summary>
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.TrustEvidence">
             <summary>
@@ -606,6 +657,25 @@
         </member>
         <member name="F:Sorcha.Blueprint.Engine.Credentials.TrustMetrics.MeterName">
             <summary>The meter name used for all trust-decision instruments.</summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry">
+            <summary>
+            Default <see cref="T:Sorcha.Blueprint.Engine.Credentials.ITrustResolverRegistry"/> (feature 135). Holds one resolver per
+            <see cref="T:Sorcha.Blueprint.Models.Credentials.TrustSourceKind"/>; the last registration for a kind wins. Mirrors the
+            decentralised-identifier resolver registry.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry.#ctor">
+            <summary>Creates an empty registry.</summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry.#ctor(System.Collections.Generic.IEnumerable{Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver})">
+            <summary>Creates a registry pre-populated with the supplied resolvers.</summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry.Register(Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver)">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry.Resolve(Sorcha.Blueprint.Models.Credentials.TrustSourceKind)">
+            <inheritdoc />
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Implementation.ActionProcessor">
              <summary>

@@ -64,7 +64,7 @@ Repo root `C:\Projects\Sorcha`. Source under `src/`, tests under `tests/` mirror
 
 ### Tests for User Story 1 ⚠️ (write first, must fail)
 
-- [ ] T017 [P] [US1] `TrustEvaluatorTests` (anyOf/allOf, MinAssuranceLevel, fail-closed on unavailable source, evidence population) in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/TrustEvaluatorTests.cs`.
+- [X] T017 [P] [US1] `TrustEvaluatorTests` (anyOf/allOf, MinAssuranceLevel, claim override, fail-closed on unavailable source, status mapping, evidence + policy-digest, default-policy) + `TrustResolverRegistryTests` in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/TrustEvaluatorTests.cs`. **18 tests, all green (suite 478/+1 skip).**
 - [ ] T018 [P] [US1] Per-source resolver tests (`RegisterTrustSourceTests`, `X509TenantTrustSourceTests`, `DidAllowlistTrustSourceTests`) in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/`.
 - [ ] T019 [P] [US1] **Cross-path parity test**: same credential + policy through engine `CredentialVerifier` and HAIP `HaipPresentationVerifier` yields equal decision + evidence shape (SC-001) in `tests/Sorcha.Haip.Service.Tests/CrossPathParityTests.cs`.
 - [ ] T020 [P] [US1] Engine signature-verification tests proving `SignatureValid` is truthful (valid accepted, tampered rejected — SC-002) in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/CredentialVerifierSignatureTests.cs`.
@@ -72,14 +72,14 @@ Repo root `C:\Projects\Sorcha`. Source under `src/`, tests under `tests/` mirror
 
 ### Implementation for User Story 1
 
-- [ ] T022 [P] [US1] Implement `IStatusListChecker` adapter over `BitstringStatusListChecker` (W3C) in `src/Core/Sorcha.Blueprint.Engine/Credentials/BitstringStatusListChecker.cs` (implement the seam).
+- [X] T022 [P] [US1] Implement `IStatusListChecker` adapter over `BitstringStatusListChecker` (W3C) — `CheckAsync(StatusReference)` maps Active→NotSet, Revoked/Suspended→Set, null→Unknown.
 - [ ] T023 [P] [US1] Implement `IStatusListChecker` adapter over `IetfTokenStatusListChecker` (IETF) in `src/Services/Sorcha.Haip.Service/Services/IetfTokenStatusListChecker.cs`.
 - [ ] T024 [P] [US1] Implement `RegisterTrustSourceResolver` (DID resolution + assertionMethod gate + `IssuerEquivalenceMatcher`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/Sources/RegisterTrustSourceResolver.cs`.
 - [ ] T025 [P] [US1] Implement `X509TenantTrustSourceResolver` (lift `ValidateX5cChain` + CRL from HAIP into a reusable resolver over `ITrustProvider`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/Sources/X509TenantTrustSourceResolver.cs`.
 - [ ] T026 [P] [US1] Implement `DidAllowlistTrustSourceResolver` (explicit DIDs + `ResolveWithAlsoKnownAsAsync`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/Sources/DidAllowlistTrustSourceResolver.cs`.
-- [ ] T027 [US1] Implement `TrustResolverRegistry` (mirror `IDidResolverRegistry`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/TrustResolverRegistry.cs` (depends on T024-T026).
-- [ ] T028 [US1] Implement `TrustEvaluator` — signature verify → per-source vouch + combinator → status check → assurance (source-tier + upward-only claim override) → `TrustEvidence` + policy digest → fail-closed (depends on T011-T013, T022-T027).
-- [ ] T029 [US1] Implement default-policy synthesis (FR-026: legacy issuers→did-allowlist; else register@Low) in the evaluator/requirement-binding path.
+- [X] T027 [US1] Implement `TrustResolverRegistry` (mirror `IDidResolverRegistry`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/TrustResolverRegistry.cs`.
+- [X] T028 [US1] Implement `TrustEvaluator` — signature precondition → per-source vouch + combinator → assurance (source-tier + upward-only claim override, honoured only for ≥Substantial sources) → status check → `TrustEvidence` + SHA-256 policy digest → fail-closed. (Resolvers themselves are T024-T026, pending the engine-local directory/root seams.)
+- [X] T029 [US1] Default-policy synthesis (FR-026): `NormalisePolicy` in the evaluator falls back to register@Low when no policy is declared; legacy issuers→did-allowlist handled at requirement binding via `TrustPolicyExtensions.FromLegacyIssuers` (foundation).
 - [ ] T030 [US1] Implement `SdJwtVcFormatHandler` (wraps existing `SdJwtService`; calls `ITrustEvaluator`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/SdJwtVcFormatHandler.cs`.
 - [ ] T031 [US1] Rewrite engine `CredentialVerifier` to delegate to `ICredentialFormatHandler` + `ITrustEvaluator`; remove the `SignatureValid=false` shortcut and the flat issuer match (FR-008) in `src/Core/Sorcha.Blueprint.Engine/Credentials/CredentialVerifier.cs`.
 - [ ] T032 [US1] Route `HaipPresentationVerifier` through `ITrustEvaluator`; delete `_trustedRoots`/`AddTrustedRoot`; remove the bespoke W3C/IETF status branching in favor of `IStatusListChecker` in `src/Services/Sorcha.Haip.Service/Services/HaipPresentationVerifier.cs`.

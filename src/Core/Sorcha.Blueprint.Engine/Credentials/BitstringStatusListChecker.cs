@@ -9,8 +9,10 @@ namespace Sorcha.Blueprint.Engine.Credentials;
 /// <summary>
 /// Checks credential revocation/suspension status by fetching and decoding
 /// a W3C Bitstring Status List from the issuer's register endpoint.
+/// Implements both the legacy <see cref="IRevocationChecker"/> and the unified
+/// <see cref="IStatusListChecker"/> seam (feature 135).
 /// </summary>
-public class BitstringStatusListChecker : IRevocationChecker
+public class BitstringStatusListChecker : IRevocationChecker, IStatusListChecker
 {
     private readonly HttpClient _httpClient;
 
@@ -34,6 +36,27 @@ public class BitstringStatusListChecker : IRevocationChecker
         }
 
         return await CheckBitAsync(statusListUrl, index, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Feature 135 — unified status seam. Maps the W3C status word to a
+    /// <see cref="StatusListBit"/>: "Active" → NotSet, "Revoked"/"Suspended" → Set,
+    /// null (unreachable/unparseable) → Unknown so the caller applies its fail-closed policy.
+    /// </remarks>
+    public async Task<StatusListBit> CheckAsync(StatusReference statusRef, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(statusRef);
+        if (string.IsNullOrWhiteSpace(statusRef.Uri))
+            return StatusListBit.Unknown;
+
+        var status = await CheckBitAsync(statusRef.Uri, statusRef.Index, cancellationToken).ConfigureAwait(false);
+        return status switch
+        {
+            "Active" => StatusListBit.NotSet,
+            "Revoked" or "Suspended" => StatusListBit.Set,
+            _ => StatusListBit.Unknown
+        };
     }
 
     /// <summary>

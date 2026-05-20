@@ -26,6 +26,23 @@ public class IssuerContext
 
     /// <summary>Whether the issuer signature has already been verified by the format handler.</summary>
     public bool SignatureVerified { get; set; }
+
+    /// <summary>
+    /// The identifier of the issuer key that produced the signature (e.g. the JWS <c>kid</c> /
+    /// matched verification-method id). Used by the register source to gate on assertionMethod.
+    /// </summary>
+    public string? SigningKeyId { get; set; }
+
+    /// <summary>
+    /// The credential's revocation/status reference, when it carries one. The evaluator resolves
+    /// it through <see cref="IStatusListChecker"/>.
+    /// </summary>
+    public StatusReference? Status { get; set; }
+
+    /// <summary>
+    /// How to treat an unavailable revocation result. Defaults to fail-closed.
+    /// </summary>
+    public RevocationCheckPolicy RevocationPolicy { get; set; } = RevocationCheckPolicy.FailClosed;
 }
 
 /// <summary>
