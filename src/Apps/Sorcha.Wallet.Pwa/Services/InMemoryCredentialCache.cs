@@ -8,8 +8,8 @@ namespace Sorcha.Wallet.Pwa.Services;
 
 /// <summary>
 /// Demo-grade in-memory <see cref="ICredentialCache"/>. The production impl
-/// (T060) replaces this with an IndexedDB-backed store wrapped in
-/// XChaCha20-Poly1305 via the libsodium-js bridge.
+/// (<see cref="IndexedDbCredentialCache"/>) replaces this with an IndexedDB-backed
+/// store sealed with XChaCha20-Poly1305 via the xchacha-bridge (@noble/ciphers).
 /// </summary>
 public sealed class InMemoryCredentialCache : ICredentialCache
 {

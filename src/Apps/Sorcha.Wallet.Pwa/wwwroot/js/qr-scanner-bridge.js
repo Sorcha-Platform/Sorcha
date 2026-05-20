@@ -38,11 +38,15 @@
 
   function loadQrScanner() {
     if (!_qrScannerCtorPromise) {
-      _qrScannerCtorPromise = import("./vendor/qr-scanner/qr-scanner.min.js").then((m) => {
+      // Resolve against document.baseURI (<base href="/wallet/">) so the dynamic
+      // import + worker path work regardless of how the browser bases a classic
+      // script's import(). Same-origin paths satisfy CSP `script-src 'self'` /
+      // `worker-src 'self' blob:`.
+      const moduleUrl = new URL("js/vendor/qr-scanner/qr-scanner.min.js", document.baseURI).href;
+      const workerUrl = new URL("js/vendor/qr-scanner/qr-scanner-worker.min.js", document.baseURI).href;
+      _qrScannerCtorPromise = import(moduleUrl).then((m) => {
         const Ctor = m.default;
-        // Tell qr-scanner where to load its decoding worker from — same-origin path
-        // satisfies CSP `script-src 'self'` / `worker-src 'self' blob:`.
-        Ctor.WORKER_PATH = "./js/vendor/qr-scanner/qr-scanner-worker.min.js";
+        Ctor.WORKER_PATH = workerUrl;
         return Ctor;
       });
     }
