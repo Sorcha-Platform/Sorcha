@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 using Refit;
 using Sorcha.Cli.Models;
+using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.Cli.Services;
 
@@ -114,4 +115,63 @@ public interface IWalletServiceClient
         string subject,
         [Query] string requiredRight,
         [Header("Authorization")] string authorization);
+
+    // --- Organisation Key Derivation (Feature 083) ---
+    // Response DTOs are reused from Sorcha.ServiceClients.Wallet (no duplication).
+    // These methods use the CLI's user bearer token, unlike the shared
+    // WalletServiceClient which authenticates as a service principal.
+
+    /// <summary>
+    /// Provisions an organisation HD master key (one-shot; returns the mnemonic once).
+    /// </summary>
+    [Post("/api/wallets/org/{orgId}/master-key")]
+    Task<OrgMasterKeyProvisionResponse> ProvisionOrgMasterKeyAsync(
+        string orgId,
+        [Body] ProvisionOrgMasterKeyRequest request,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Derives a per-user key from an organisation's master key.
+    /// </summary>
+    [Post("/api/wallets/org/{orgId}/derive-key")]
+    Task<DerivedKeyResponse> DeriveOrgKeyAsync(
+        string orgId,
+        [Body] DeriveOrgKeyRequest request,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Rotates a derived organisation key (new key at next index; old becomes decrypt-only).
+    /// </summary>
+    [Post("/api/wallets/org/{orgId}/keys/{derivedKeyId}/rotate")]
+    Task<DerivedKeyResponse> RotateOrgKeyAsync(
+        string orgId,
+        Guid derivedKeyId,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Revokes a derived organisation key (wallet locked; DID revocation for identity keys).
+    /// </summary>
+    [Delete("/api/wallets/org/{orgId}/keys/{derivedKeyId}")]
+    Task<RevokeKeyResponse> RevokeOrgKeyAsync(
+        string orgId,
+        Guid derivedKeyId,
+        [Header("Authorization")] string authorization);
+}
+
+/// <summary>
+/// Request body for provisioning an organisation master key.
+/// </summary>
+public class ProvisionOrgMasterKeyRequest
+{
+    public string Algorithm { get; set; } = "ED25519";
+}
+
+/// <summary>
+/// Request body for deriving an organisation user key.
+/// </summary>
+public class DeriveOrgKeyRequest
+{
+    public string UserId { get; set; } = string.Empty;
+    public uint DepartmentId { get; set; }
+    public string KeyUsage { get; set; } = string.Empty;
 }

@@ -30,6 +30,509 @@ public class ValidatorCommand : Command
         Subcommands.Add(new ValidatorConsentCommand(clientFactory, authService, configService));
         Subcommands.Add(new ValidatorMetricsCommand(clientFactory, authService, configService));
         Subcommands.Add(new ValidatorThresholdCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ValidatorRegisterCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ValidatorCountCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ValidatorAuditCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ValidatorSuspendCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ValidatorReactivateCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ValidatorRevokeCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ValidatorSequenceCommand(clientFactory, authService, configService));
+    }
+}
+
+/// <summary>
+/// Shared helpers for the validator roster commands.
+/// </summary>
+internal static class ValidatorRosterHelpers
+{
+    public static async Task<(string? token, string profileName)> ResolveTokenAsync(
+        IAuthenticationService authService, IConfigurationService configService)
+    {
+        var profile = await configService.GetActiveProfileAsync();
+        var profileName = profile?.Name ?? "dev";
+        var token = await authService.GetAccessTokenAsync(profileName);
+        return (token, profileName);
+    }
+
+    public static int HandleApiException(ApiException ex, string subject)
+    {
+        switch (ex.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                ConsoleHelper.WriteError($"{subject} not found.");
+                return ExitCodes.NotFound;
+            case HttpStatusCode.Unauthorized:
+                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
+                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
+                return ExitCodes.AuthenticationError;
+            case HttpStatusCode.Forbidden:
+                ConsoleHelper.WriteError("You do not have permission to perform this validator operation.");
+                return ExitCodes.AuthorizationError;
+            case HttpStatusCode.BadRequest:
+                ConsoleHelper.WriteError("The request was rejected as invalid.");
+                if (ex.Content != null) ConsoleHelper.WriteError($"Details: {ex.Content}");
+                return ExitCodes.ValidationError;
+            default:
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null) ConsoleHelper.WriteError($"Details: {ex.Content}");
+                return ExitCodes.GeneralError;
+        }
+    }
+}
+
+/// <summary>
+/// Self-registers a validator for a register.
+/// </summary>
+public class ValidatorRegisterCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _validatorIdOption;
+    private readonly Option<string> _publicKeyOption;
+    private readonly Option<string> _grpcEndpointOption;
+
+    public ValidatorRegisterCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("register", "Self-register a validator for a register")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
+        _validatorIdOption = new Option<string>("--validator-id", "-v") { Description = "Validator ID", Required = true };
+        _publicKeyOption = new Option<string>("--public-key", "-k") { Description = "Validator docket-signing public key", Required = true };
+        _grpcEndpointOption = new Option<string>("--grpc-endpoint", "-g") { Description = "Validator gRPC endpoint URL", Required = true };
+        Options.Add(_registerIdOption);
+        Options.Add(_validatorIdOption);
+        Options.Add(_publicKeyOption);
+        Options.Add(_grpcEndpointOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var validatorId = parseResult.GetValue(_validatorIdOption)!;
+            var publicKey = parseResult.GetValue(_publicKeyOption)!;
+            var grpcEndpoint = parseResult.GetValue(_grpcEndpointOption)!;
+            try
+            {
+                var (token, profileName) = await ValidatorRosterHelpers.ResolveTokenAsync(authService, configService);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to register a validator.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
+                var request = new RegisterValidatorRequest
+                {
+                    RegisterId = registerId,
+                    ValidatorId = validatorId,
+                    PublicKey = publicKey,
+                    GrpcEndpoint = grpcEndpoint
+                };
+                var response = await client.RegisterValidatorAsync(request, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Validator '{response.ValidatorId}' {response.Status}.");
+                Console.WriteLine($"  Register ID:    {response.RegisterId}");
+                Console.WriteLine($"  Order index:    {response.OrderIndex}");
+                Console.WriteLine($"  Transaction ID: {response.TransactionId}");
+                if (!string.IsNullOrEmpty(response.Message))
+                    Console.WriteLine($"  Message:        {response.Message}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) { return ValidatorRosterHelpers.HandleApiException(ex, $"Register '{registerId}'"); }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to register validator: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Gets the active validator count for a register.
+/// </summary>
+public class ValidatorCountCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+
+    public ValidatorCountCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("count", "Get the active validator count for a register")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
+        Options.Add(_registerIdOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            try
+            {
+                var (token, profileName) = await ValidatorRosterHelpers.ResolveTokenAsync(authService, configService);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to query validator count.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
+                var response = await client.GetValidatorCountAsync(registerId, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess("Validator count:");
+                Console.WriteLine($"  Active:   {response.ActiveCount} (min {response.MinValidators}, max {response.MaxValidators})");
+                Console.WriteLine($"  Quorum:   {(response.HasQuorum ? "yes" : "no")}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) { return ValidatorRosterHelpers.HandleApiException(ex, $"Register '{registerId}'"); }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get validator count: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Gets the validator roster audit trail for a register.
+/// </summary>
+public class ValidatorAuditCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string?> _validatorIdOption;
+    private readonly Option<int?> _limitOption;
+    private readonly Option<int?> _offsetOption;
+
+    public ValidatorAuditCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("audit", "Show the validator roster audit trail for a register")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
+        _validatorIdOption = new Option<string?>("--validator-id", "-v") { Description = "Filter to a single validator" };
+        _limitOption = new Option<int?>("--limit", "-l") { Description = "Maximum entries to return" };
+        _offsetOption = new Option<int?>("--offset", "-o") { Description = "Entries to skip" };
+        Options.Add(_registerIdOption);
+        Options.Add(_validatorIdOption);
+        Options.Add(_limitOption);
+        Options.Add(_offsetOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var validatorId = parseResult.GetValue(_validatorIdOption);
+            var limit = parseResult.GetValue(_limitOption);
+            var offset = parseResult.GetValue(_offsetOption);
+            try
+            {
+                var (token, profileName) = await ValidatorRosterHelpers.ResolveTokenAsync(authService, configService);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to query the validator audit trail.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
+                var response = await client.GetValidatorAuditAsync(registerId, validatorId, limit, offset, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Validator audit trail ({response.Total} total):");
+                Console.WriteLine();
+                if (response.Entries.Count == 0)
+                {
+                    ConsoleHelper.WriteInfo("No audit entries.");
+                    return ExitCodes.Success;
+                }
+                Console.WriteLine($"{"Validator",-30} {"From",-12} {"To",-12} {"By",-20} {"When"}");
+                Console.WriteLine(new string('-', 100));
+                foreach (var e in response.Entries)
+                {
+                    Console.WriteLine($"{e.ValidatorId,-30} {e.PreviousStatus,-12} {e.NewStatus,-12} {e.PerformedBy,-20} {e.Timestamp:yyyy-MM-dd HH:mm:ss}");
+                }
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) { return ValidatorRosterHelpers.HandleApiException(ex, $"Register '{registerId}'"); }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get validator audit trail: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Suspends an active validator.
+/// </summary>
+public class ValidatorSuspendCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _validatorIdOption;
+    private readonly Option<string> _reasonOption;
+    private readonly Option<string?> _byOption;
+
+    public ValidatorSuspendCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("suspend", "Suspend an active validator")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
+        _validatorIdOption = new Option<string>("--validator-id", "-v") { Description = "Validator ID", Required = true };
+        _reasonOption = new Option<string>("--reason") { Description = "Reason for suspension", Required = true };
+        _byOption = new Option<string?>("--by") { Description = "Actor performing the suspension (default: current user)" };
+        Options.Add(_registerIdOption);
+        Options.Add(_validatorIdOption);
+        Options.Add(_reasonOption);
+        Options.Add(_byOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var validatorId = parseResult.GetValue(_validatorIdOption)!;
+            var reason = parseResult.GetValue(_reasonOption)!;
+            var by = parseResult.GetValue(_byOption);
+            try
+            {
+                var (token, profileName) = await ValidatorRosterHelpers.ResolveTokenAsync(authService, configService);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to suspend a validator.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
+                var request = new SuspendValidatorRequest { SuspendedBy = by ?? string.Empty, Reason = reason };
+                var response = await client.SuspendValidatorAsync(registerId, validatorId, request, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+                ConsoleHelper.WriteSuccess($"Validator '{response.ValidatorId}' is now {response.Status}.");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) { return ValidatorRosterHelpers.HandleApiException(ex, $"Validator '{validatorId}'"); }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to suspend validator: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Reactivates a suspended validator.
+/// </summary>
+public class ValidatorReactivateCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _validatorIdOption;
+    private readonly Option<string?> _notesOption;
+    private readonly Option<string?> _byOption;
+
+    public ValidatorReactivateCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("reactivate", "Reactivate a suspended validator")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
+        _validatorIdOption = new Option<string>("--validator-id", "-v") { Description = "Validator ID", Required = true };
+        _notesOption = new Option<string?>("--notes") { Description = "Optional notes" };
+        _byOption = new Option<string?>("--by") { Description = "Actor performing the reactivation (default: current user)" };
+        Options.Add(_registerIdOption);
+        Options.Add(_validatorIdOption);
+        Options.Add(_notesOption);
+        Options.Add(_byOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var validatorId = parseResult.GetValue(_validatorIdOption)!;
+            var notes = parseResult.GetValue(_notesOption);
+            var by = parseResult.GetValue(_byOption);
+            try
+            {
+                var (token, profileName) = await ValidatorRosterHelpers.ResolveTokenAsync(authService, configService);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to reactivate a validator.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
+                var request = new ReactivateValidatorRequest { ReactivatedBy = by ?? string.Empty, Notes = notes };
+                var response = await client.ReactivateValidatorAsync(registerId, validatorId, request, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+                ConsoleHelper.WriteSuccess($"Validator '{response.ValidatorId}' is now {response.Status}.");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) { return ValidatorRosterHelpers.HandleApiException(ex, $"Validator '{validatorId}'"); }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to reactivate validator: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Permanently revokes a validator.
+/// </summary>
+public class ValidatorRevokeCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _validatorIdOption;
+    private readonly Option<string> _reasonOption;
+    private readonly Option<string?> _byOption;
+
+    public ValidatorRevokeCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("revoke", "Permanently revoke a validator")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
+        _validatorIdOption = new Option<string>("--validator-id", "-v") { Description = "Validator ID", Required = true };
+        _reasonOption = new Option<string>("--reason") { Description = "Reason for revocation", Required = true };
+        _byOption = new Option<string?>("--by") { Description = "Actor performing the revocation (default: current user)" };
+        Options.Add(_registerIdOption);
+        Options.Add(_validatorIdOption);
+        Options.Add(_reasonOption);
+        Options.Add(_byOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var validatorId = parseResult.GetValue(_validatorIdOption)!;
+            var reason = parseResult.GetValue(_reasonOption)!;
+            var by = parseResult.GetValue(_byOption);
+            try
+            {
+                var (token, profileName) = await ValidatorRosterHelpers.ResolveTokenAsync(authService, configService);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to revoke a validator.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
+                var request = new RevokeValidatorRequest { RevokedBy = by ?? string.Empty, Reason = reason };
+                var response = await client.RevokeValidatorAsync(registerId, validatorId, request, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+                ConsoleHelper.WriteSuccess($"Validator '{response.ValidatorId}' is now {response.Status}.");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) { return ValidatorRosterHelpers.HandleApiException(ex, $"Validator '{validatorId}'"); }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to revoke validator: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Gets a wallet's sequence numbers for a register.
+/// </summary>
+public class ValidatorSequenceCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _walletOption;
+
+    public ValidatorSequenceCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("sequence", "Get a wallet's sequence numbers for a register")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
+        _walletOption = new Option<string>("--wallet", "-w") { Description = "Wallet address", Required = true };
+        Options.Add(_registerIdOption);
+        Options.Add(_walletOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var wallet = parseResult.GetValue(_walletOption)!;
+            try
+            {
+                var (token, profileName) = await ValidatorRosterHelpers.ResolveTokenAsync(authService, configService);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to query a wallet sequence.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
+                var response = await client.GetValidatorSequenceAsync(registerId, wallet, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+                ConsoleHelper.WriteSuccess("Wallet sequence:");
+                Console.WriteLine($"  Wallet:   {response.WalletAddress}");
+                Console.WriteLine($"  Last:     {response.LastSequenceNumber}");
+                Console.WriteLine($"  Next:     {response.NextSequenceNumber}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) { return ValidatorRosterHelpers.HandleApiException(ex, $"Wallet '{wallet}'"); }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get wallet sequence: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
     }
 }
 

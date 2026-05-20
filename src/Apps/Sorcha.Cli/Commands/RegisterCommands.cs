@@ -36,6 +36,255 @@ public class RegisterCommand : Command
         Subcommands.Add(new RegisterSystemCommand(clientFactory, authService, configService));
         Subcommands.Add(new RegisterExportCommand(clientFactory, authService, configService));
         Subcommands.Add(new RegisterExportTransactionsCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterRelationshipCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterSyncStateCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterSyncHealthCommand(clientFactory, authService, configService));
+    }
+}
+
+/// <summary>
+/// Shows the local node's derived relationship (role set) for a register.
+/// </summary>
+public class RegisterRelationshipCommand : Command
+{
+    private readonly Option<string> _idOption;
+
+    public RegisterRelationshipCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("relationship", "Show this node's derived role set for a register (owner/validator/subscriber)")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+        Options.Add(_idOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_idOption)!;
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to query a register relationship.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var rel = await client.GetLocalRelationshipAsync(registerId, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, rel);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess("Local register relationship:");
+                Console.WriteLine();
+                Console.WriteLine($"  Register ID:     {rel.RegisterId}");
+                Console.WriteLine($"  Roles:           {rel.Roles}");
+                Console.WriteLine($"  Owner:           {rel.IsOwner}");
+                Console.WriteLine($"  Admin:           {rel.IsAdmin}");
+                Console.WriteLine($"  Validator:       {rel.IsValidator}");
+                Console.WriteLine($"  Auditor:         {rel.IsAuditor}");
+                Console.WriteLine($"  Designer:        {rel.IsDesigner}");
+                Console.WriteLine($"  Subscriber:      {rel.IsSubscriber}");
+                Console.WriteLine($"  Control version: {rel.ControlRecordVersion}");
+                Console.WriteLine($"  Derived at:      {rel.DerivedAt:yyyy-MM-dd HH:mm:ss} UTC");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Register '{registerId}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
+                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null)
+                {
+                    ConsoleHelper.WriteError($"Details: {ex.Content}");
+                }
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get register relationship: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Shows a register's sync state and the evidence that produced it.
+/// </summary>
+public class RegisterSyncStateCommand : Command
+{
+    private readonly Option<string> _idOption;
+
+    public RegisterSyncStateCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("sync-state", "Show a register's sync state (indeterminate/syncing/caught-up/error)")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+        Options.Add(_idOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_idOption)!;
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to query register sync state.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var state = await client.GetSyncStateAsync(registerId, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, state);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess("Register sync state:");
+                Console.WriteLine();
+                Console.WriteLine($"  Register ID:        {state.RegisterId}");
+                Console.WriteLine($"  State:              {state.State}");
+                Console.WriteLine($"  Local height:       {state.LocalHeight}");
+                Console.WriteLine($"  Network high-water: {state.NetworkHeightHighWaterMark?.ToString() ?? "-"}");
+                Console.WriteLine($"  Peer observers:     {state.DistinctPeerObservers}");
+                Console.WriteLine($"  Single-peer mode:   {state.SinglePeerMode}");
+                Console.WriteLine($"  Last advert:        {state.LastAdvertAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-"}");
+                if (!string.IsNullOrEmpty(state.LastErrorMessage))
+                {
+                    Console.WriteLine($"  Last error:         {state.LastErrorMessage}");
+                }
+                if (state.ValidatorSnapshot is not null)
+                {
+                    Console.WriteLine($"  Validator sealed:   height {state.ValidatorSnapshot.LastSealedHeight}, mempool {state.ValidatorSnapshot.MempoolDepth}");
+                }
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Register '{registerId}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
+                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null)
+                {
+                    ConsoleHelper.WriteError($"Details: {ex.Content}");
+                }
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get register sync state: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Shows recovery sync health across all registers on the node.
+/// </summary>
+public class RegisterSyncHealthCommand : Command
+{
+    public RegisterSyncHealthCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("sync-health", "Show recovery sync health across all registers on this node")
+    {
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var health = await client.GetSyncHealthAsync(token is null ? string.Empty : $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, health);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Sync health: {health.Status} (checked {health.CheckedAt:yyyy-MM-dd HH:mm:ss} UTC)");
+                Console.WriteLine();
+                if (health.Registers.Count == 0)
+                {
+                    ConsoleHelper.WriteInfo("No registers on this node.");
+                    return ExitCodes.Success;
+                }
+
+                Console.WriteLine($"{"Register",-40} {"Status",-12} {"Local",8} {"Target",8} {"Progress",9} {"Stale"}");
+                Console.WriteLine(new string('-', 90));
+                foreach (var r in health.Registers)
+                {
+                    Console.WriteLine($"{r.RegisterId,-40} {r.Status,-12} {r.CurrentDocket,8} {r.TargetDocket,8} {r.ProgressPercent + "%",9} {(r.IsStale ? "yes" : "no")}");
+                }
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null)
+                {
+                    ConsoleHelper.WriteError($"Details: {ex.Content}");
+                }
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get sync health: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
     }
 }
 

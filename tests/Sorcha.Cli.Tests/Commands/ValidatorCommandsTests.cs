@@ -50,10 +50,78 @@ public class ValidatorCommandsTests
     public void ValidatorCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new ValidatorCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(7);
+        command.Subcommands.Should().HaveCount(14);
         command.Subcommands.Select(c => c.Name).Should().Contain(
-            new[] { "status", "start", "stop", "process", "consent", "metrics", "threshold" });
+            new[] { "status", "start", "stop", "process", "consent", "metrics", "threshold",
+                "register", "count", "audit", "suspend", "reactivate", "revoke", "sequence" });
     }
+
+    #region Roster Governance (Feature 086) Tests
+
+    [Fact]
+    public void ValidatorRegisterCommand_ShouldHaveRequiredOptions()
+    {
+        var command = new ValidatorRegisterCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("register");
+        command.Options.First(o => o.Name == "--register-id").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--validator-id").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--public-key").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--grpc-endpoint").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ValidatorCountCommand_ShouldHaveRequiredRegisterOption()
+    {
+        var command = new ValidatorCountCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("count");
+        command.Options.First(o => o.Name == "--register-id").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ValidatorAuditCommand_ShouldHaveOptionalFilterOptions()
+    {
+        var command = new ValidatorAuditCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("audit");
+        command.Options.First(o => o.Name == "--register-id").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--validator-id").Required.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ValidatorSuspendCommand_ShouldRequireValidatorAndReason()
+    {
+        var command = new ValidatorSuspendCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("suspend");
+        command.Options.First(o => o.Name == "--validator-id").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--reason").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ValidatorReactivateCommand_ShouldRequireValidator()
+    {
+        var command = new ValidatorReactivateCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("reactivate");
+        command.Options.First(o => o.Name == "--validator-id").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ValidatorRevokeCommand_ShouldRequireValidatorAndReason()
+    {
+        var command = new ValidatorRevokeCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("revoke");
+        command.Options.First(o => o.Name == "--validator-id").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--reason").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ValidatorSequenceCommand_ShouldRequireRegisterAndWallet()
+    {
+        var command = new ValidatorSequenceCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("sequence");
+        command.Options.First(o => o.Name == "--register-id").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--wallet").Required.Should().BeTrue();
+    }
+
+    #endregion
 
     #region ValidatorStatusCommand Tests
 

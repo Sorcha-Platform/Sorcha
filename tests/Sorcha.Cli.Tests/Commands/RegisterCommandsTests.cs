@@ -50,9 +50,40 @@ public class RegisterCommandsTests
     public void RegisterCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new RegisterCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(10);
-        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "delete", "update", "stats", "policy", "system", "export", "export-transactions" });
+        command.Subcommands.Should().HaveCount(13);
+        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "delete", "update", "stats", "policy", "system", "export", "export-transactions", "relationship", "sync-state", "sync-health" });
     }
+
+    #region Sync Diagnostics (Feature 108) Tests
+
+    [Fact]
+    public void RegisterRelationshipCommand_ShouldHaveCorrectNameAndRequiredIdOption()
+    {
+        var command = new RegisterRelationshipCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("relationship");
+        command.Description.Should().NotBeNullOrWhiteSpace();
+        command.Options.First(o => o.Name == "--id").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RegisterSyncStateCommand_ShouldHaveCorrectNameAndRequiredIdOption()
+    {
+        var command = new RegisterSyncStateCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("sync-state");
+        command.Description.Should().NotBeNullOrWhiteSpace();
+        command.Options.First(o => o.Name == "--id").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RegisterSyncHealthCommand_ShouldHaveCorrectNameAndNoRequiredOptions()
+    {
+        var command = new RegisterSyncHealthCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("sync-health");
+        command.Description.Should().NotBeNullOrWhiteSpace();
+        command.Options.Where(o => o.Required).Should().BeEmpty();
+    }
+
+    #endregion
 
     #region RegisterListCommand Tests
 

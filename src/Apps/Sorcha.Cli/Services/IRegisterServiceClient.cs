@@ -3,6 +3,7 @@
 
 using Refit;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.LocalRelationship;
 
 namespace Sorcha.Cli.Services;
 
@@ -231,6 +232,26 @@ public interface IRegisterServiceClient
     [Get("/api/system-register/blueprints")]
     Task<HttpResponseMessage> GetSystemRegisterBlueprintsAsync([Query] int? page, [Query] int? pageSize, [Header("Authorization")] string authorization);
 
+    // --- Sync Diagnostics (Feature 108) ---
+
+    /// <summary>
+    /// Gets the local node's derived relationship (role set) for a register.
+    /// </summary>
+    [Get("/api/registers/{registerId}/local-relationship")]
+    Task<RegisterLocalRelationship> GetLocalRelationshipAsync(string registerId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets a register's sync state (indeterminate / syncing / caught up / error).
+    /// </summary>
+    [Get("/api/registers/{registerId}/sync-state")]
+    Task<RegisterSyncStateView> GetSyncStateAsync(string registerId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets recovery sync health across all registers hosted by the node.
+    /// </summary>
+    [Get("/health/sync")]
+    Task<SyncHealthResponse> GetSyncHealthAsync([Header("Authorization")] string authorization);
+
 }
 
 // --- Request/Response DTOs ---
@@ -351,5 +372,30 @@ public class RevokeTransactionResult
     public string RevocationTxId { get; set; } = string.Empty;
     public string OriginalTxId { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Recovery sync health across all registers on the node (GET /health/sync).
+/// </summary>
+public class SyncHealthResponse
+{
+    public string Status { get; set; } = string.Empty;
+    public List<RegisterSyncStatus> Registers { get; set; } = new();
+    public DateTimeOffset CheckedAt { get; set; }
+}
+
+/// <summary>
+/// Per-register recovery sync status row.
+/// </summary>
+public class RegisterSyncStatus
+{
+    public string RegisterId { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public long CurrentDocket { get; set; }
+    public long TargetDocket { get; set; }
+    public int ProgressPercent { get; set; }
+    public long DocketsProcessed { get; set; }
+    public string? LastError { get; set; }
+    public bool IsStale { get; set; }
 }
 

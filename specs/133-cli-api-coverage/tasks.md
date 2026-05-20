@@ -25,7 +25,7 @@ description: "Task list for CLI API Surface Catch-Up"
 
 **Purpose**: Wiring needed before any new command is built.
 
-- [ ] T001 Add a ProjectReference to `Sorcha.ServiceClients.Http` in `src/Apps/Sorcha.Cli/Sorcha.Cli.csproj` (required so US4 can reuse the shared `IWalletServiceClient` org-key methods)
+- [X] T001 Add a ProjectReference to `Sorcha.ServiceClients.Http` in `src/Apps/Sorcha.Cli/Sorcha.Cli.csproj` (required so US4 can reuse the shared `IWalletServiceClient` org-key methods)
 - [X] T002 Establish a green baseline: build `src/Apps/Sorcha.Cli` and run `dotnet test tests/Sorcha.Cli.Tests` — record current pass count so regressions are detectable
 
 ---
@@ -36,7 +36,7 @@ description: "Task list for CLI API Surface Catch-Up"
 
 **⚠️ CRITICAL**: Complete before user-story work begins.
 
-- [ ] T003 Register the shared `Sorcha.ServiceClients.Http` `IWalletServiceClient` in CLI dependency injection so commands can resolve it via the factory, in `src/Apps/Sorcha.Cli/Services/HttpClientFactory.cs` (and `Program.cs` `ConfigureServices` if a Refit registration is needed)
+- [X] T003 Register the shared `Sorcha.ServiceClients.Http` `IWalletServiceClient` in CLI dependency injection so commands can resolve it via the factory, in `src/Apps/Sorcha.Cli/Services/HttpClientFactory.cs` (and `Program.cs` `ConfigureServices` if a Refit registration is needed). **DEVIATION**: the shared `WalletServiceClient` authenticates as a service principal (`IServiceAuthClient` client-credentials), which would put org-key commands on a different auth principal than every other CLI command. Resolved by reusing only the response *DTOs* from `Sorcha.ServiceClients.Wallet` and adding thin bearer-auth Refit methods to the CLI's own `IWalletServiceClient`. No DI registration of the shared client was needed.
 - [X] T004 Document the selective-reuse rule (research R-001) in `.claude/skills/sorcha-cli/SKILL.md`: before adding a CLI Refit method, check `Sorcha.ServiceClients.Http` for the capability; reuse if present, add a thin CLI Refit method only for operator/admin endpoints absent from the shared library
 
 **Checkpoint**: Foundation ready — user stories can proceed (in priority order, or in parallel by area).
@@ -72,14 +72,14 @@ description: "Task list for CLI API Surface Catch-Up"
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T010 [P] [US2] Add tests for `relationship`, `sync-state`, `sync-health` in `tests/Sorcha.Cli.Tests/Commands/RegisterCommandsTests.cs`
+- [X] T010 [P] [US2] Add tests for `relationship`, `sync-state`, `sync-health` in `tests/Sorcha.Cli.Tests/Commands/RegisterCommandsTests.cs`
 
 ### Implementation for User Story 2
 
-- [ ] T011 [P] [US2] Add `RegisterLocalRelationship`, `RegisterSyncStateView`, `SyncHealthResponse`, `RegisterSyncStatus` DTOs (mirror `Sorcha.Register.Models` shapes; reference the models package if it is already a CLI dependency) in `src/Apps/Sorcha.Cli/Models/RegisterPolicy.cs` or a new `src/Apps/Sorcha.Cli/Models/RegisterSync.cs`
-- [ ] T012 [US2] Add `GetLocalRelationshipAsync`, `GetSyncStateAsync`, `GetSyncHealthAsync` (route `/health/sync`) to `src/Apps/Sorcha.Cli/Services/IRegisterServiceClient.cs`
-- [ ] T013 [US2] Add `relationship`, `sync-state`, `sync-health` subcommands in `src/Apps/Sorcha.Cli/Commands/RegisterCommands.cs` (`sync-health` takes no register arg; table = one row per register)
-- [ ] T014 [US2] Add the three commands to `.claude/skills/sorcha-cli/references/commands.md`
+- [X] T011 [P] [US2] Add `RegisterLocalRelationship`, `RegisterSyncStateView`, `SyncHealthResponse`, `RegisterSyncStatus` DTOs (mirror `Sorcha.Register.Models` shapes; reference the models package if it is already a CLI dependency) in `src/Apps/Sorcha.Cli/Models/RegisterPolicy.cs` or a new `src/Apps/Sorcha.Cli/Models/RegisterSync.cs`
+- [X] T012 [US2] Add `GetLocalRelationshipAsync`, `GetSyncStateAsync`, `GetSyncHealthAsync` (route `/health/sync`) to `src/Apps/Sorcha.Cli/Services/IRegisterServiceClient.cs`
+- [X] T013 [US2] Add `relationship`, `sync-state`, `sync-health` subcommands in `src/Apps/Sorcha.Cli/Commands/RegisterCommands.cs` (`sync-health` takes no register arg; table = one row per register)
+- [X] T014 [US2] Add the three commands to `.claude/skills/sorcha-cli/references/commands.md`
 
 **Checkpoint**: US1 + US2 both work independently.
 
@@ -93,14 +93,14 @@ description: "Task list for CLI API Surface Catch-Up"
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T015 [P] [US3] Add tests for `register`, `count`, `audit`, `suspend`, `reactivate`, `revoke`, `sequence` in `tests/Sorcha.Cli.Tests/Commands/ValidatorCommandsTests.cs`
+- [X] T015 [P] [US3] Add tests for `register`, `count`, `audit`, `suspend`, `reactivate`, `revoke`, `sequence` in `tests/Sorcha.Cli.Tests/Commands/ValidatorCommandsTests.cs`
 
 ### Implementation for User Story 3
 
-- [ ] T016 [P] [US3] Add roster DTOs — `RegisterValidatorRequest`/`Response`, `ValidatorCountResponse`, `ValidatorAuditResponse`/`ValidatorAuditEntry`, `SuspendValidatorRequest`, `ReactivateValidatorRequest`, `RevokeValidatorRequest`, `ValidatorSequenceResponse` — in `src/Apps/Sorcha.Cli/Models/Validator.cs`
-- [ ] T017 [US3] Add `RegisterValidatorAsync`, `GetValidatorCountAsync`, `GetValidatorAuditAsync`, `SuspendValidatorAsync`, `ReactivateValidatorAsync`, `RevokeValidatorAsync`, `GetValidatorSequenceAsync` to `src/Apps/Sorcha.Cli/Services/IValidatorServiceClient.cs` (new `/api/validators/...` routes — distinct from existing `/api/admin/validators/...`)
-- [ ] T018 [US3] Add `register`, `count`, `audit`, `suspend`, `reactivate`, `revoke`, `sequence` subcommands in `src/Apps/Sorcha.Cli/Commands/ValidatorCommands.cs` (`suspend`/`revoke` require explicit `<validatorId>` and `--reason`)
-- [ ] T019 [US3] Add the seven commands to `.claude/skills/sorcha-cli/references/commands.md`
+- [X] T016 [P] [US3] Add roster DTOs — `RegisterValidatorRequest`/`Response`, `ValidatorCountResponse`, `ValidatorAuditResponse`/`ValidatorAuditEntry`, `SuspendValidatorRequest`, `ReactivateValidatorRequest`, `RevokeValidatorRequest`, `ValidatorSequenceResponse` — in `src/Apps/Sorcha.Cli/Models/Validator.cs`
+- [X] T017 [US3] Add `RegisterValidatorAsync`, `GetValidatorCountAsync`, `GetValidatorAuditAsync`, `SuspendValidatorAsync`, `ReactivateValidatorAsync`, `RevokeValidatorAsync`, `GetValidatorSequenceAsync` to `src/Apps/Sorcha.Cli/Services/IValidatorServiceClient.cs` (new `/api/validators/...` routes — distinct from existing `/api/admin/validators/...`)
+- [X] T018 [US3] Add `register`, `count`, `audit`, `suspend`, `reactivate`, `revoke`, `sequence` subcommands in `src/Apps/Sorcha.Cli/Commands/ValidatorCommands.cs` (`suspend`/`revoke` require explicit `<validatorId>` and `--reason`)
+- [X] T019 [US3] Add the seven commands to `.claude/skills/sorcha-cli/references/commands.md`
 
 **Checkpoint**: All three P1 stories independently functional — operator core complete.
 
@@ -114,12 +114,12 @@ description: "Task list for CLI API Surface Catch-Up"
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T020 [P] [US4] Add tests for the `org-key` subcommands (mock the injected shared `IWalletServiceClient`; assert mnemonic surfaced once and not logged) in `tests/Sorcha.Cli.Tests/Commands/WalletCommandsTests.cs`
+- [X] T020 [P] [US4] Add tests for the `org-key` subcommands (mock the injected shared `IWalletServiceClient`; assert mnemonic surfaced once and not logged) in `tests/Sorcha.Cli.Tests/Commands/WalletCommandsTests.cs`
 
 ### Implementation for User Story 4
 
-- [ ] T021 [US4] Add a `wallet org-key` subcommand group (`provision`/`derive`/`rotate`/`revoke`) in `src/Apps/Sorcha.Cli/Commands/WalletCommands.cs` that injects and calls the shared `Sorcha.ServiceClients.Http` `IWalletServiceClient` (`ProvisionOrgMasterKeyAsync`/`DeriveOrgKeyAsync`/`RotateOrgKeyAsync`/`RevokeOrgKeyAsync`) — do NOT add a CLI Refit method or DTO; `provision` prints the mnemonic once with a "not stored" warning and never writes it to the token cache or logs
-- [ ] T022 [US4] Add the four `org-key` commands to `.claude/skills/sorcha-cli/references/commands.md`
+- [X] T021 [US4] Add a `wallet org-key` subcommand group (`provision`/`derive`/`rotate`/`revoke`) in `src/Apps/Sorcha.Cli/Commands/WalletCommands.cs` that injects and calls the shared `Sorcha.ServiceClients.Http` `IWalletServiceClient` (`ProvisionOrgMasterKeyAsync`/`DeriveOrgKeyAsync`/`RotateOrgKeyAsync`/`RevokeOrgKeyAsync`) — do NOT add a CLI Refit method or DTO; `provision` prints the mnemonic once with a "not stored" warning and never writes it to the token cache or logs
+- [X] T022 [US4] Add the four `org-key` commands to `.claude/skills/sorcha-cli/references/commands.md`
 
 **Checkpoint**: Feature Phase 1 (operator/automation core) complete — shippable.
 
