@@ -137,11 +137,11 @@ Repo root `C:\Projects\Sorcha`. Source under `src/`, tests under `tests/` mirror
 
 ### Implementation for User Story 3
 
-- [ ] T055 [P] [US3] Promote/relocate the fail-soft chain resolver into a shared form usable by HAIP (mirror `IssueCredentialChainResolver.ResolveChainAsync`) and register `IOrgCertChainProvider` in `src/Services/Sorcha.Haip.Service/Program.cs`.
+- [X] T055 [P] [US3] Promote/relocate the fail-soft chain resolver into a shared form usable by HAIP (mirror `IssueCredentialChainResolver.ResolveChainAsync`) and register `IOrgCertChainProvider` in `src/Services/Sorcha.Haip.Service/Program.cs`.
 - [X] T056 [US3] Add an `x5cChain` parameter to `MintCredentialAsync` (replace hardcoded `null`) and to `MintCredentialWithExternalSignerAsync` (currently drops it); forward to `CreateTokenAsync(..., x5cChain:)` in `src/Services/Sorcha.Haip.Service/Services/HaipCredentialMinter.cs`.
 - [X] T057 [US3] Implement `MdocFormatHandler.IssueAsync` — build IssuerSigned + MSO, COSE_Sign1 over tag-24 MSO via the issuer signer, attach x5chain when anchored to X.509 in `src/Core/Sorcha.Blueprint.Engine/Credentials/MdocFormatHandler.cs` (depends on T044, T056).
-- [ ] T058 [US3] Resolve + thread the chain (by `TrustAnchor`) and dispatch by `Format` at the issuance call site `src/Services/Sorcha.Haip.Service/Endpoints/CredentialEndpoints.cs` (~lines 337-385); X.509 anchor with no chain → fail closed (FR-020/022).
-- [ ] T059 [US3] Honor `CredentialIssuanceConfig.Format`/`TrustAnchor` end-to-end (select format handler, validate combo, surface config errors) in the issuance orchestration; map mdoc claim mappings to `(namespace, element)` + `docType` (FR-004).
+- [X] T058 [US3] Resolve + thread the chain (by `TrustAnchor`) and dispatch by `Format` at the issuance call site `src/Services/Sorcha.Haip.Service/Endpoints/CredentialEndpoints.cs` (~lines 337-385); X.509 anchor with no chain → fail closed (FR-020/022).
+- [X] T059 [US3] Honor `CredentialIssuanceConfig.Format`/`TrustAnchor` end-to-end (select format handler, validate combo, surface config errors) in the issuance orchestration; map mdoc claim mappings to `(namespace, element)` + `docType` (FR-004).
 
 **Checkpoint**: All three stories independently functional; full issue→present→verify round-trip for both formats.
 

@@ -90,6 +90,20 @@ builder.Services.AddScoped<HaipPresentationVerifier>(sp => new HaipPresentationV
     sp.GetRequiredService<ILogger<HaipPresentationVerifier>>(),
     sp.GetService<Sorcha.ServiceClients.Did.IDidResolverRegistry>()));
 
+// Feature 135 (US3) — org cert chain fetch for x5c-attach on x509-anchored issuance (mirrors the
+// Wallet Service wiring). HAIP resolves the issuing org's leaf+root from the Tenant Service.
+builder.Services.AddHttpClient("trust-service", (sp, http) =>
+{
+    var address = builder.Configuration["ServiceClients:TenantService:Address"] ?? "https+http://tenant-service";
+    http.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+});
+builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.IOrgCertChainProvider>(sp =>
+{
+    var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("trust-service");
+    return new Sorcha.ServiceClients.Trust.TrustServiceClient(
+        http, sp.GetRequiredService<ILogger<Sorcha.ServiceClients.Trust.TrustServiceClient>>());
+});
+
 // Feature 135 (US2) — mso_mdoc verification. MdocFormatHandler runs the ISO 18013-5 format crypto
 // and routes the trust decision through the same scoped ITrustEvaluator (x509-tenant source over
 // the configured anchors). The direct_post endpoint dispatches mdoc vp_tokens to this verifier.

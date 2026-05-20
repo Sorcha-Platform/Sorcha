@@ -3,6 +3,8 @@
 
 using System.Text.Json.Serialization;
 
+using Sorcha.Blueprint.Models.Credentials;
+
 namespace Sorcha.Haip.Service.Models;
 
 /// <summary>
@@ -32,6 +34,10 @@ public class CredentialOffer
     public DateTimeOffset ExpiresAt { get; set; }
     /// <summary>Current status of the resource.</summary>
     public OfferStatus Status { get; set; } = OfferStatus.Pending;
+    /// <summary>Credential format to mint (feature 135 US3). Default SD-JWT VC.</summary>
+    public CredentialFormat Format { get; set; } = CredentialFormat.SdJwtVc;
+    /// <summary>Trust anchor the credential is issued under (feature 135 US3). Default register.</summary>
+    public TrustAnchor TrustAnchor { get; set; } = TrustAnchor.Register;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
