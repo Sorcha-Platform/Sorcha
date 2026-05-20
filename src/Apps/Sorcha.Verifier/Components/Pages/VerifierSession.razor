@@ -75,7 +75,10 @@
 
         // Re-derive the QR/deep-link payload by asking the builder for the cached link
         // shape — easier than persisting the link in the session record.
-        var responseBaseUri = $"{Nav.BaseUri.TrimEnd('/')}";
+        // ORIGIN ONLY — the /verify gateway mount prefix is appended by
+        // ReconstructDeepLink. Nav.BaseUri includes the /verify base-href, so using it
+        // directly would double the prefix (…/verify/verify/r/{id}/response → 404).
+        var responseBaseUri = new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
         // Reconstruct deep-link fragments from the existing session — avoids creating a new one.
         _deepLink = ReconstructDeepLink(_session, responseBaseUri);
         _qrDataUrl = Qr.RenderDataUrl(_deepLink);
@@ -87,23 +90,17 @@
 
     private async Task PollAsync(CancellationToken ct)
     {
-        var http = HttpFactory.CreateClient();
-        http.BaseAddress = new Uri(Nav.BaseUri);
+        // Read the in-memory session store directly rather than HTTP-polling our own
+        // /status endpoint. The wallet's response POST updates the same singleton store,
+        // so this sees the outcome immediately — and it avoids a server-side fetch to the
+        // public gateway URL (https://localhost), which is unreachable from inside the
+        // verifier container (localhost:443 → connection refused). Issue #808.
         while (!ct.IsCancellationRequested)
         {
-            try
+            if (Store.Get(SessionId)?.Outcome is not null)
             {
-                var status = await http.GetFromJsonAsync<SessionStatusResponse>(
-                    $"r/{SessionId}/status", ct);
-                if (status is not null && status.Status != "pending")
-                {
-                    await InvokeAsync(() => Nav.NavigateTo($"s/{SessionId}/outcome"));
-                    return;
-                }
-            }
-            catch
-            {
-                // network blip — keep polling
+                await InvokeAsync(() => Nav.NavigateTo($"s/{SessionId}/outcome"));
+                return;
             }
             try { await Task.Delay(TimeSpan.FromSeconds(2), ct); }
             catch (TaskCanceledException) { return; }
