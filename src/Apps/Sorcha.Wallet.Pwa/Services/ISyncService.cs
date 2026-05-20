@@ -7,6 +7,11 @@ using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.UI.Core.Models.Presentation;
 using Sorcha.ServiceClients.CitizenWallet;
 
+// The PWA-local PresentationLogEntry/Outcome (this namespace) and the wire-contract
+// versions (Abstractions.Models) share names; alias the wire types for the drain.
+using WireLogEntry = Sorcha.CitizenWallet.Abstractions.Models.PresentationLogEntry;
+using WireLogOutcome = Sorcha.CitizenWallet.Abstractions.Models.PresentationLogOutcome;
+
 namespace Sorcha.Wallet.Pwa.Services;
 
 /// <summary>
@@ -110,6 +115,7 @@ public sealed class SyncService : ISyncService
     private readonly ICredentialCache _cache;
     private readonly IDelegationStore _delegations;
     private readonly ISyncCursorStore _cursors;
+    private readonly IPresentationLog _presentationLog;
     private readonly ILogger<SyncService> _logger;
 
     /// <summary>Initialises a new instance.</summary>
@@ -118,17 +124,30 @@ public sealed class SyncService : ISyncService
         ICredentialCache cache,
         IDelegationStore delegations,
         ISyncCursorStore cursors,
+        IPresentationLog presentationLog,
         ILogger<SyncService> logger)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _delegations = delegations ?? throw new ArgumentNullException(nameof(delegations));
         _cursors = cursors ?? throw new ArgumentNullException(nameof(cursors));
+        _presentationLog = presentationLog ?? throw new ArgumentNullException(nameof(presentationLog));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc />
     public async Task<SyncOutcome> SyncAsync(CancellationToken ct = default)
+    {
+        var outcome = await SyncCoreAsync(ct);
+
+        // US5 — drain the local presentation log to the platform on every
+        // successful sync. Best-effort: a drain failure never fails the sync.
+        await DrainPresentationLogAsync(ct);
+
+        return outcome;
+    }
+
+    private async Task<SyncOutcome> SyncCoreAsync(CancellationToken ct)
     {
         var cursor = await _cursors.GetAsync(ct);
         var delta = await _client.SyncAsync(cursor, ct);
@@ -155,6 +174,55 @@ public sealed class SyncService : ISyncService
             delta.Credentials.Replaced.Count,
             delta.StatusListsToRefresh);
     }
+
+    /// <summary>
+    /// Reports any not-yet-synced presentation-log entries to the platform and marks
+    /// them synced on a 202. Skips entries with no credential id (written before the
+    /// PR2 schema bump) — they cannot form a valid report. Best-effort throughout.
+    /// </summary>
+    private async Task DrainPresentationLogAsync(CancellationToken ct)
+    {
+        try
+        {
+            var all = await _presentationLog.ListAsync(ct);
+            var pending = all
+                .Where(e => !e.SyncedToServer && e.CredentialId != Guid.Empty)
+                .ToList();
+            if (pending.Count == 0) return;
+
+            var request = new PresentationLogReportRequest
+            {
+                Entries = pending.Select(ToWireEntry).ToList()
+            };
+
+            var accepted = await _client.ReportPresentationLogAsync(request, ct);
+            if (!accepted) return;
+
+            foreach (var entry in pending)
+            {
+                await _presentationLog.AppendAsync(entry with { SyncedToServer = true }, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Presentation-log drain failed; will retry on next sync");
+        }
+    }
+
+    private static WireLogEntry ToWireEntry(PresentationLogEntry e) => new()
+    {
+        Id = e.Id,
+        CredentialId = e.CredentialId,
+        VerifierLabel = Truncate(e.VerifierLabel, 200),
+        DisclosedClaims = e.DisclosedClaims,
+        PresentedAt = e.PresentedAt,
+        Outcome = e.Outcome == PresentationLogOutcome.Sent
+            ? WireLogOutcome.Acknowledged
+            : WireLogOutcome.VerifierRejected
+    };
+
+    private static string Truncate(string value, int max)
+        => value.Length <= max ? value : value[..max];
 
     private async Task<SyncOutcome> FullSnapshotAsync(CancellationToken ct)
     {

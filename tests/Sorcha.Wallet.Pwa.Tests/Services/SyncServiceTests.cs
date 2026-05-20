@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -11,6 +12,11 @@ using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.Wallet.Pwa.Services;
 using Sorcha.ServiceClients.CitizenWallet;
 using Xunit;
+
+// Disambiguate the PWA-local presentation-log types from the wire-contract ones.
+using LocalLogEntry = Sorcha.Wallet.Pwa.Services.PresentationLogEntry;
+using LocalLogOutcome = Sorcha.Wallet.Pwa.Services.PresentationLogOutcome;
+using WireLogOutcome = Sorcha.CitizenWallet.Abstractions.Models.PresentationLogOutcome;
 
 namespace Sorcha.Wallet.Pwa.Tests.Services;
 
@@ -26,12 +32,13 @@ public sealed class SyncServiceTests
     private readonly InMemoryCredentialCache _cache = new();
     private readonly InMemoryDelegationStore _delegations = new();
     private readonly InMemorySyncCursorStore _cursors = new();
+    private readonly InMemoryPresentationLog _presentationLog = new();
     private readonly SyncService _sut;
 
     public SyncServiceTests()
     {
         _sut = new SyncService(_client.Object, _cache, _delegations, _cursors,
-            NullLogger<SyncService>.Instance);
+            _presentationLog, NullLogger<SyncService>.Instance);
     }
 
     [Fact]
@@ -121,6 +128,107 @@ public sealed class SyncServiceTests
         var outcome = await _sut.SyncAsync();
 
         outcome.StatusListsToRefresh.Should().ContainSingle(u => u.EndsWith("A.statuslist+jwt"));
+    }
+
+    // ---- US5 presentation-log drain -------------------------------------
+
+    private void SetupBareSync() =>
+        _client.Setup(c => c.SyncAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SyncResponse { SyncToken = "c1" });
+
+    private static LocalLogEntry LocalEntry(
+        Guid? credentialId = null,
+        bool synced = false,
+        LocalLogOutcome outcome = LocalLogOutcome.Sent,
+        string verifierLabel = "Strathcarron Council") =>
+        new(
+            Id: Guid.NewGuid(),
+            PresentedAt: DateTimeOffset.UtcNow,
+            CredentialType: "AssuredIdentityCredential/v1",
+            CredentialLabel: "Assured Identity",
+            VerifierLabel: verifierLabel,
+            DisclosedClaims: ["givenName"],
+            Outcome: outcome,
+            CredentialId: credentialId ?? Guid.NewGuid(),
+            SyncedToServer: synced);
+
+    [Fact]
+    public async Task SyncAsync_PendingPresentationLog_PostedAndMarkedSynced()
+    {
+        SetupBareSync();
+        var entry = LocalEntry();
+        await _presentationLog.AppendAsync(entry);
+        _client.Setup(c => c.ReportPresentationLogAsync(
+                It.IsAny<PresentationLogReportRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await _sut.SyncAsync();
+
+        _client.Verify(c => c.ReportPresentationLogAsync(
+            It.Is<PresentationLogReportRequest>(r => r.Entries.Count == 1 && r.Entries[0].Id == entry.Id),
+            It.IsAny<CancellationToken>()), Times.Once);
+        var stored = await _presentationLog.ListAsync();
+        stored.Should().ContainSingle();
+        stored[0].SyncedToServer.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SyncAsync_AlreadySyncedEntry_NotReposted()
+    {
+        SetupBareSync();
+        await _presentationLog.AppendAsync(LocalEntry(synced: true));
+
+        await _sut.SyncAsync();
+
+        _client.Verify(c => c.ReportPresentationLogAsync(
+            It.IsAny<PresentationLogReportRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SyncAsync_EntryWithoutCredentialId_Skipped()
+    {
+        SetupBareSync();
+        await _presentationLog.AppendAsync(LocalEntry(credentialId: Guid.Empty));
+
+        await _sut.SyncAsync();
+
+        _client.Verify(c => c.ReportPresentationLogAsync(
+            It.IsAny<PresentationLogReportRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SyncAsync_ReportThrows_LeavesEntryUnsynced()
+    {
+        SetupBareSync();
+        await _presentationLog.AppendAsync(LocalEntry());
+        _client.Setup(c => c.ReportPresentationLogAsync(
+                It.IsAny<PresentationLogReportRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("offline"));
+
+        // Drain failure must not surface from SyncAsync.
+        var outcome = await _sut.SyncAsync();
+
+        outcome.Should().NotBeNull();
+        (await _presentationLog.ListAsync())[0].SyncedToServer.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SyncAsync_MapsSentToAcknowledgedAndRejectedToVerifierRejected()
+    {
+        SetupBareSync();
+        await _presentationLog.AppendAsync(LocalEntry(outcome: LocalLogOutcome.Sent));
+        await _presentationLog.AppendAsync(LocalEntry(outcome: LocalLogOutcome.Rejected));
+        PresentationLogReportRequest? captured = null;
+        _client.Setup(c => c.ReportPresentationLogAsync(
+                It.IsAny<PresentationLogReportRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<PresentationLogReportRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync(true);
+
+        await _sut.SyncAsync();
+
+        captured.Should().NotBeNull();
+        captured!.Entries.Should().Contain(e => e.Outcome == WireLogOutcome.Acknowledged);
+        captured.Entries.Should().Contain(e => e.Outcome == WireLogOutcome.VerifierRejected);
     }
 
     private static CachedCredentialPayload NewPayload() => new()

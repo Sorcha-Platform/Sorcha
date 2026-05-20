@@ -141,4 +141,16 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         response.EnsureSuccessStatusCode();
         return true;
     }
+
+    /// <inheritdoc />
+    public async Task<bool> ReportPresentationLogAsync(
+        PresentationLogReportRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var response = await _httpClient.PostAsJsonAsync(
+            "api/v1/wallet/presentations/log", request, JsonOptions, ct);
+        response.EnsureSuccessStatusCode();
+        return response.StatusCode == System.Net.HttpStatusCode.Accepted;
+    }
 }

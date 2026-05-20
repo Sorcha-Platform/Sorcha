@@ -70,4 +70,13 @@ public interface ICitizenWalletClient
     /// </summary>
     Task<bool> RevokeDeviceAsync(
         Guid deviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reports a batch of locally-recorded presentations to the platform (US5).
+    /// Calls <c>POST /api/v1/wallet/presentations/log</c>. Returns <c>true</c> when
+    /// the server accepted the batch (202); duplicates are absorbed server-side by
+    /// per-entry id dedupe, so re-reporting is safe.
+    /// </summary>
+    Task<bool> ReportPresentationLogAsync(
+        PresentationLogReportRequest request, CancellationToken ct = default);
 }

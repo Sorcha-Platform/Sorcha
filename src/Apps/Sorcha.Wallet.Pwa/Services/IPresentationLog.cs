@@ -46,7 +46,12 @@ public interface IPresentationLog
 /// <param name="VerifierLabel">Human-readable verifier identity — the request purpose, falling back to the OID4VP client_id.</param>
 /// <param name="DisclosedClaims">Names of the claims disclosed (never values).</param>
 /// <param name="Outcome">Wallet-observed outcome of the presentation.</param>
-/// <param name="SyncedToServer">True once forwarded to the platform lifecycle record (follow-up PR). Always false in this PR.</param>
+/// <param name="CredentialId">Local cache id of the credential presented. Carried so the
+/// server-forwarding drain (US5 PR2) can populate the wire contract's correlation field.
+/// Defaults to <see cref="Guid.Empty"/> for entries written before PR2 — those are skipped
+/// by the drain since they cannot form a valid report.</param>
+/// <param name="SyncedToServer">True once forwarded to the platform lifecycle record. Set by
+/// the sync drain on a 202 from <c>POST /api/v1/wallet/presentations/log</c>.</param>
 public sealed record PresentationLogEntry(
     Guid Id,
     DateTimeOffset PresentedAt,
@@ -55,6 +60,7 @@ public sealed record PresentationLogEntry(
     string VerifierLabel,
     IReadOnlyList<string> DisclosedClaims,
     PresentationLogOutcome Outcome,
+    Guid CredentialId = default,
     bool SyncedToServer = false);
 
 /// <summary>Wallet-observed outcome of a presentation.</summary>
@@ -76,6 +82,9 @@ public sealed class InMemoryPresentationLog : IPresentationLog
     public Task AppendAsync(PresentationLogEntry entry, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
+        // Mirror IndexedDB put semantics: upsert by id so re-appending an entry
+        // (e.g. to flip SyncedToServer) replaces it rather than duplicating it.
+        _entries.RemoveAll(e => e.Id == entry.Id);
         _entries.Add(entry);
         return Task.CompletedTask;
     }
