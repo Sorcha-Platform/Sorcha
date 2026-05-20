@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
+using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Haip.Service.Models;
 using Sorcha.Haip.Service.Services;
 
@@ -182,6 +185,7 @@ public static class VerifierEndpoints
         [FromForm] string? state,
         PresentationRequestStore store,
         HaipPresentationVerifier verifier,
+        MdocPresentationVerifier mdocVerifier,
         PresentationCallbackRelay? callbackRelay,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
@@ -205,15 +209,33 @@ public static class VerifierEndpoints
         if (string.IsNullOrWhiteSpace(vp_token))
             return Results.BadRequest(new { error = "vp_token is required" });
 
-        // Run the verification pipeline
-        var result = await verifier.VerifyAsync(
-            vp_token,
-            expectedNonce: request.Nonce,
-            expectedAudience: request.ClientId,
-            requiredCredentialType: request.CredentialType,
-            requiredClaims: request.RequiredClaims,
-            acceptedIssuers: request.AcceptedIssuers,
-            ct: ct);
+        // Feature 135 — dispatch by vp_token shape: an mso_mdoc DCQL response is a JSON object
+        // ({ "<queryId>": ["<base64url(DeviceResponse)>"] }); an SD-JWT VC vp_token is a compact
+        // ~-delimited string. The mdoc path verifies via the unified ITrustEvaluator (x509-tenant /
+        // trustlist sources over the issuer x5chain).
+        VerificationResult result;
+        if (TryExtractMdocDeviceResponse(vp_token, out var mdocVpToken))
+        {
+            result = await mdocVerifier.VerifyAsync(
+                mdocVpToken,
+                clientId: request.ClientId,
+                nonce: request.Nonce,
+                responseUri: request.ResponseUri,
+                trustPolicy: BuildMdocTrustPolicy(),
+                requiredClaims: request.RequiredClaims,
+                ct: ct);
+        }
+        else
+        {
+            result = await verifier.VerifyAsync(
+                vp_token,
+                expectedNonce: request.Nonce,
+                expectedAudience: request.ClientId,
+                requiredCredentialType: request.CredentialType,
+                requiredClaims: request.RequiredClaims,
+                acceptedIssuers: request.AcceptedIssuers,
+                ct: ct);
+        }
 
         // Store the result
         await store.MarkCompletedAsync(requestId, result, ct);
@@ -270,6 +292,63 @@ public static class VerifierEndpoints
             result = request.Result
         });
     }
+
+    /// <summary>
+    /// Detects an mso_mdoc DCQL response and extracts the base64url DeviceResponse. An mdoc
+    /// <c>vp_token</c> is a JSON object keyed by DCQL query id with an array of base64url tokens
+    /// (<c>{ "pid": ["&lt;b64u&gt;"] }</c>); an SD-JWT VC vp_token is a compact <c>~</c>-delimited
+    /// string. Returns false (and the SD-JWT path runs) for anything that isn't the mdoc shape.
+    /// </summary>
+    private static bool TryExtractMdocDeviceResponse(string vpToken, out string deviceResponse)
+    {
+        deviceResponse = string.Empty;
+        var trimmed = vpToken.TrimStart();
+        if (trimmed.Length == 0 || trimmed[0] != '{')
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(vpToken);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return false;
+
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.Array && property.Value.GetArrayLength() > 0)
+                {
+                    var first = property.Value[0];
+                    if (first.ValueKind == JsonValueKind.String)
+                    {
+                        deviceResponse = first.GetString()!;
+                        return true;
+                    }
+                }
+                else if (property.Value.ValueKind == JsonValueKind.String)
+                {
+                    deviceResponse = property.Value.GetString()!;
+                    return true;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The trust policy applied to mso_mdoc presentations: chain the issuer x5chain to a tenant
+    /// X.509 anchor. Blueprint requirements that name a specific operator trust-list add a
+    /// <c>trustlist</c> source via their own <c>TrustPolicy</c>; the endpoint default is x509-tenant.
+    /// </summary>
+    private static TrustPolicy BuildMdocTrustPolicy() => new()
+    {
+        Sources = [new TrustSourceRef { Kind = TrustSourceKind.X509Tenant, ConfersAssurance = AssuranceLevel.Substantial }],
+        Combinator = TrustCombinator.AnyOf,
+        MinAssuranceLevel = AssuranceLevel.Low
+    };
 }
 
 /// <summary>Request to create a presentation request.</summary>
