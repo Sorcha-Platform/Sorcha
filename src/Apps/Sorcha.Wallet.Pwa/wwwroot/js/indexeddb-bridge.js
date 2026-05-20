@@ -13,6 +13,8 @@
 //     context       — singleton, key='active'    — active org context (per-device)
 //     verifications — keyed by id (GUID)         — verification history records
 //     personas      — keyed by contextKey string — per-context persona cache
+//   v3 additions (Feature 114 US5 — activity log):
+//     presentationLog — keyed by id (GUID)       — presentations the citizen has made
 //
 // Content-key strategy (Feature 114 T056): a 32-byte XChaCha20-Poly1305 content
 // key is generated on first run and stored as raw bytes in the `device` store.
@@ -34,7 +36,7 @@
   }
 
   const DB_NAME = "sorcha-wallet";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const CONTENT_KEY_ID = "content-key/v1";
 
   let dbPromise = null;
@@ -54,6 +56,8 @@
         if (!db.objectStoreNames.contains("context")) db.createObjectStore("context");
         if (!db.objectStoreNames.contains("verifications")) db.createObjectStore("verifications", { keyPath: "id" });
         if (!db.objectStoreNames.contains("personas")) db.createObjectStore("personas");
+        // v3 (Feature 114 US5) — citizen's own presentation activity log.
+        if (!db.objectStoreNames.contains("presentationLog")) db.createObjectStore("presentationLog", { keyPath: "id" });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);

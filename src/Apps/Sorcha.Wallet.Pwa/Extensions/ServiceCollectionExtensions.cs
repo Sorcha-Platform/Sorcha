@@ -64,6 +64,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IActiveContextStore, IndexedDbActiveContextStore>();
         services.AddSingleton<IPerContextPersonaCache, IndexedDbPerContextPersonaCache>();
         services.AddSingleton<IVerificationHistoryStore, IndexedDbVerificationHistoryStore>();
+        services.AddSingleton<IPresentationLog, IndexedDbPresentationLog>();
 
         // Feature 125 / PR-C — doorstep verification (US1). EphemeralVerifierIdentity
         // generates a fresh EC P-256 key per session via webcrypto-bridge.js;

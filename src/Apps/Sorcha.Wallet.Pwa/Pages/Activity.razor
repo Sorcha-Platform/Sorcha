@@ -2,23 +2,28 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Activity page (Feature 125, T086). Renders the TransactionHistoryFeed
-    component from the shared library — v1 sources entries from the
-    per-device IVerificationHistoryStore so doorstep verifications the
-    user has performed (PR-C) appear here scoped to the active context.
+    Activity page (Feature 125, T086; extended Feature 114 US5). Renders the
+    TransactionHistoryFeed component from the shared library, merging two
+    per-device sources chronologically:
+      - IVerificationHistoryStore — verifications the user PERFORMED (F125),
+        scoped to the active context.
+      - IPresentationLog — presentations the user MADE (F114 US5).
 
-    Future PRs feed in real issuance / presentation / submission /
-    revocation events via IUserHistoryClient against a server-side
-    history endpoint.
+    Presentation entries are tappable to delete (local-only; platform records
+    are unaffected). Future PRs feed in real issuance / submission / revocation
+    events via a server-side history endpoint.
 *@
 @page "/activity"
 @layout MainLayout
+@using MudBlazor
 @using Sorcha.UI.Components.User.Components.History
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Context
 @implements IAsyncDisposable
 @inject IVerificationHistoryStore VerificationHistory
+@inject IPresentationLog PresentationLog
 @inject IUserContext UserContext
+@inject IDialogService DialogService
 @inject NavigationManager Nav
 
 <PageTitle>Activity · Sorcha Wallet</PageTitle>
@@ -36,6 +41,8 @@
 </MudContainer>
 
 @code {
+    private const string PresentationIdPrefix = "pres:";
+
     private IReadOnlyList<TransactionHistoryFeed.HistoryFeedEntry>? _entries;
     private bool _loading = true;
 
@@ -50,20 +57,42 @@
         _loading = true;
         try
         {
-            var records = await VerificationHistory.ListByContextAsync(UserContext.ActiveContextOrgId);
-            _entries = records
-                .Select(r => new TransactionHistoryFeed.HistoryFeedEntry(
+            var verifications = await VerificationHistory.ListByContextAsync(UserContext.ActiveContextOrgId);
+            var presentations = await PresentationLog.ListAsync();
+
+            var verificationEntries = verifications.Select(r =>
+                new TransactionHistoryFeed.HistoryFeedEntry(
                     Id: r.Id.ToString("N"),
                     Kind: TransactionHistoryFeed.HistoryFeedKind.Verification,
                     Title: $"Verified {r.HolderDisplayName}",
                     Subtitle: $"{r.IssuerOrgName} · {r.CredentialType} · {r.Outcome}",
-                    At: r.VerifiedAt))
+                    At: r.VerifiedAt));
+
+            var presentationEntries = presentations.Select(p =>
+                new TransactionHistoryFeed.HistoryFeedEntry(
+                    Id: PresentationIdPrefix + p.Id.ToString("N"),
+                    Kind: TransactionHistoryFeed.HistoryFeedKind.Presentation,
+                    Title: $"Presented {p.CredentialLabel ?? p.CredentialType}",
+                    Subtitle: BuildPresentationSubtitle(p),
+                    At: p.PresentedAt));
+
+            _entries = verificationEntries
+                .Concat(presentationEntries)
+                .OrderByDescending(e => e.At)
                 .ToList();
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    private static string BuildPresentationSubtitle(PresentationLogEntry p)
+    {
+        var claimCount = p.DisclosedClaims.Count;
+        var claimText = claimCount == 1 ? "1 claim" : $"{claimCount} claims";
+        var outcomeText = p.Outcome == PresentationLogOutcome.Sent ? "Sent" : "Rejected";
+        return $"{p.VerifierLabel} · {claimText} · {outcomeText}";
     }
 
     private async Task HandleContextChangedAsync(UserContextChangedEventArgs args)
@@ -75,11 +104,26 @@
         });
     }
 
-    private Task HandleEntryAsync(string entryId)
+    private async Task HandleEntryAsync(string entryId)
     {
-        // Future: navigate to a per-entry detail drawer / page that
-        // re-renders the trust panel from VerificationRecord.TrustPanelJson.
-        return Task.CompletedTask;
+        // Only presentation entries are deletable here — they're the citizen's
+        // own local log. Verification entries (F125) tap into their own detail
+        // surface in a future PR.
+        if (!entryId.StartsWith(PresentationIdPrefix, StringComparison.Ordinal)) return;
+        if (!Guid.TryParseExact(entryId[PresentationIdPrefix.Length..], "N", out var id)) return;
+
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Remove from activity?",
+            "This only removes the entry from this device. It does not affect any "
+                + "official record of the presentation, or the credential itself.",
+            yesText: "Remove", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            await PresentationLog.DeleteAsync(id);
+            await LoadAsync();
+            StateHasChanged();
+        }
     }
 
     /// <inheritdoc />
