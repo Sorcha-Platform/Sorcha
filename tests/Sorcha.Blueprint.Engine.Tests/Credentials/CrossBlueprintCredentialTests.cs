@@ -2,143 +2,62 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
-using Moq;
-using Sorcha.Blueprint.Engine.Credentials;
-using Sorcha.Blueprint.Engine.Models;
+
 using Sorcha.Blueprint.Models.Credentials;
-using Sorcha.Cryptography.SdJwt;
+
+using Factory = Sorcha.Blueprint.Engine.Tests.Credentials.EngineSdJwtTestFactory;
 
 namespace Sorcha.Blueprint.Engine.Tests.Credentials;
 
 /// <summary>
-/// Integration tests for cross-blueprint credential composability.
-/// Verifies that credentials issued by one blueprint flow (Blueprint A)
-/// are accepted as entry gates in a different blueprint flow (Blueprint B).
+/// Feature 135 — cross-blueprint credential composability on real signed SD-JWT VCs: a credential
+/// "issued" by one flow is presented as an entry gate to another. Replaces the prior mock-issuer
+/// pipeline; the issuer signature is genuinely verified and the issuer trust runs through the
+/// unified evaluator.
 /// </summary>
 public class CrossBlueprintCredentialTests
 {
-    private readonly Mock<ISdJwtService> _sdJwtMock;
-    private readonly CredentialIssuer _issuer;
-    private readonly CredentialVerifier _verifier;
-
-    public CrossBlueprintCredentialTests()
-    {
-        _sdJwtMock = new Mock<ISdJwtService>();
-        _issuer = new CredentialIssuer(_sdJwtMock.Object);
-        _verifier = new CredentialVerifier(_sdJwtMock.Object);
-
-        SetupSdJwtService();
-    }
+    private static CredentialPresentation Present(string credentialId, string raw) =>
+        new() { CredentialId = credentialId, RawPresentation = raw };
 
     [Fact]
     public async Task IssueThenVerify_CredentialFromBlueprintA_AcceptedByBlueprintB()
     {
-        // Arrange — Blueprint A issues a LicenseCredential
-        var issuanceConfig = new CredentialIssuanceConfig
-        {
-            CredentialType = "LicenseCredential",
-            ClaimMappings =
-            [
-                new ClaimMapping { ClaimName = "holder_name", SourceField = "/applicantName" },
-                new ClaimMapping { ClaimName = "license_type", SourceField = "/licenseType" },
-                new ClaimMapping { ClaimName = "license_number", SourceField = "/licenseNumber" }
-            ],
-            RecipientParticipantId = "applicant",
-            ExpiryDuration = "P365D",
-            Disclosable = ["holder_name", "license_type", "license_number"]
-        };
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:gov-authority",
+            new Dictionary<string, object>
+            {
+                ["holder_name"] = "Alice",
+                ["license_type"] = "ClassA",
+                ["license_number"] = "LIC-2026-001"
+            });
+        var verifier = Factory.BuildVerifier(minted);
 
-        var actionData = new Dictionary<string, object>
-        {
-            ["applicantName"] = "Alice",
-            ["licenseType"] = "ClassA",
-            ["licenseNumber"] = "LIC-2026-001"
-        };
-
-        // Act — Issue credential via Blueprint A
-        var issuedCredential = await _issuer.IssueAsync(
-            issuanceConfig,
-            actionData,
-            issuerDid: "did:sorcha:issuer:gov-authority",
-            recipientDid: "did:sorcha:holder:alice",
-            signingKey: [1, 2, 3],
-            algorithm: "EdDSA");
-
-        // Transform issued credential into a presentation for Blueprint B
-        var presentation = new CredentialPresentation
-        {
-            CredentialId = issuedCredential.CredentialId,
-            DisclosedClaims = new Dictionary<string, object>(issuedCredential.Claims),
-            RawPresentation = issuedCredential.RawToken
-        };
-
-        // Arrange — Blueprint B requires a LicenseCredential
-        var blueprintBRequirements = new[]
+        var requirements = new[]
         {
             new CredentialRequirement
             {
                 Type = "LicenseCredential",
-                RequiredClaims =
-                [
-                    new ClaimConstraint { ClaimName = "license_type" }
-                ]
+                RequiredClaims = [new ClaimConstraint { ClaimName = "license_type" }]
             }
         };
 
-        // Act — Verify presentation against Blueprint B requirements
-        var verificationResult = await _verifier.VerifyAsync(
-            blueprintBRequirements,
-            [presentation]);
+        var result = await verifier.VerifyAsync(requirements, [Present("license-cred", minted.Raw)]);
 
-        // Assert — Credential from Blueprint A is accepted by Blueprint B
-        verificationResult.IsValid.Should().BeTrue();
-        verificationResult.VerifiedCredentials.Should().HaveCount(1);
-        verificationResult.VerifiedCredentials[0].CredentialId
-            .Should().Be(issuedCredential.CredentialId);
-        verificationResult.VerifiedCredentials[0].Type
-            .Should().Be("LicenseCredential");
-        verificationResult.VerifiedCredentials[0].VerifiedClaims
-            .Should().ContainKey("license_type").WhoseValue.Should().Be("ClassA");
+        result.IsValid.Should().BeTrue();
+        result.VerifiedCredentials.Should().HaveCount(1);
+        result.VerifiedCredentials[0].CredentialId.Should().Be("license-cred");
+        result.VerifiedCredentials[0].Type.Should().Be("LicenseCredential");
+        result.VerifiedCredentials[0].VerifiedClaims.Should().ContainKey("license_type").WhoseValue.Should().Be("ClassA");
     }
 
     [Fact]
     public async Task IssueThenVerify_WithIssuerConstraint_AcceptedWhenIssuerMatches()
     {
-        // Arrange — Blueprint A issues credential from trusted authority
-        var issuanceConfig = new CredentialIssuanceConfig
-        {
-            CredentialType = "LicenseCredential",
-            ClaimMappings =
-            [
-                new ClaimMapping { ClaimName = "license_type", SourceField = "/licenseType" }
-            ],
-            RecipientParticipantId = "applicant"
-        };
+        const string trustedIssuer = "did:sorcha:issuer:gov-authority";
+        var minted = Factory.MintEs256("LicenseCredential", trustedIssuer,
+            new Dictionary<string, object> { ["license_type"] = "ClassA" });
+        var verifier = Factory.BuildVerifier(minted);
 
-        var actionData = new Dictionary<string, object>
-        {
-            ["licenseType"] = "ClassA"
-        };
-
-        var trustedIssuer = "did:sorcha:issuer:gov-authority";
-
-        // Act — Issue
-        var issuedCredential = await _issuer.IssueAsync(
-            issuanceConfig, actionData, trustedIssuer,
-            "did:sorcha:holder:alice", [1, 2, 3], "EdDSA");
-
-        // Present with issuer claim
-        var presentation = new CredentialPresentation
-        {
-            CredentialId = issuedCredential.CredentialId,
-            DisclosedClaims = new Dictionary<string, object>(issuedCredential.Claims)
-            {
-                ["iss"] = trustedIssuer
-            },
-            RawPresentation = issuedCredential.RawToken
-        };
-
-        // Blueprint B requires credential from the trusted issuer
         var requirements = new[]
         {
             new CredentialRequirement
@@ -148,10 +67,8 @@ public class CrossBlueprintCredentialTests
             }
         };
 
-        // Act — Verify
-        var result = await _verifier.VerifyAsync(requirements, [presentation]);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Assert
         result.IsValid.Should().BeTrue();
         result.VerifiedCredentials.Should().HaveCount(1);
         result.VerifiedCredentials[0].IssuerDid.Should().Be(trustedIssuer);
@@ -160,82 +77,31 @@ public class CrossBlueprintCredentialTests
     [Fact]
     public async Task IssueThenVerify_WithClaimValueConstraint_AcceptedWhenValueMatches()
     {
-        // Arrange — Issue a ClassA license
-        var issuanceConfig = new CredentialIssuanceConfig
-        {
-            CredentialType = "LicenseCredential",
-            ClaimMappings =
-            [
-                new ClaimMapping { ClaimName = "license_type", SourceField = "/licenseType" }
-            ],
-            RecipientParticipantId = "applicant"
-        };
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:1",
+            new Dictionary<string, object> { ["license_type"] = "ClassA" });
+        var verifier = Factory.BuildVerifier(minted);
 
-        var issuedCredential = await _issuer.IssueAsync(
-            issuanceConfig,
-            new Dictionary<string, object> { ["licenseType"] = "ClassA" },
-            "did:issuer:1", "did:holder:1", [1, 2, 3], "EdDSA");
-
-        var presentation = new CredentialPresentation
-        {
-            CredentialId = issuedCredential.CredentialId,
-            DisclosedClaims = new Dictionary<string, object>(issuedCredential.Claims),
-            RawPresentation = issuedCredential.RawToken
-        };
-
-        // Blueprint B specifically requires ClassA
         var requirements = new[]
         {
             new CredentialRequirement
             {
                 Type = "LicenseCredential",
-                RequiredClaims =
-                [
-                    new ClaimConstraint { ClaimName = "license_type", ExpectedValue = "ClassA" }
-                ]
+                RequiredClaims = [new ClaimConstraint { ClaimName = "license_type", ExpectedValue = "ClassA" }]
             }
         };
 
-        // Act
-        var result = await _verifier.VerifyAsync(requirements, [presentation]);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Assert
         result.IsValid.Should().BeTrue();
     }
 
     [Fact]
     public async Task IssueThenVerify_MismatchedIssuer_RejectedByBlueprintB()
     {
-        // Arrange — Blueprint A issues credential from an untrusted authority
-        var issuanceConfig = new CredentialIssuanceConfig
-        {
-            CredentialType = "LicenseCredential",
-            ClaimMappings =
-            [
-                new ClaimMapping { ClaimName = "license_type", SourceField = "/licenseType" }
-            ],
-            RecipientParticipantId = "applicant"
-        };
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:unknown-body",
+            new Dictionary<string, object> { ["license_type"] = "ClassA" });
+        var verifier = Factory.BuildVerifier(minted);
 
-        var untrustedIssuer = "did:sorcha:issuer:unknown-body";
-
-        var issuedCredential = await _issuer.IssueAsync(
-            issuanceConfig,
-            new Dictionary<string, object> { ["licenseType"] = "ClassA" },
-            untrustedIssuer, "did:sorcha:holder:bob", [1, 2, 3], "EdDSA");
-
-        // Present credential with issuer claim
-        var presentation = new CredentialPresentation
-        {
-            CredentialId = issuedCredential.CredentialId,
-            DisclosedClaims = new Dictionary<string, object>(issuedCredential.Claims)
-            {
-                ["iss"] = untrustedIssuer
-            },
-            RawPresentation = issuedCredential.RawToken
-        };
-
-        // Blueprint B only trusts the government authority
         var requirements = new[]
         {
             new CredentialRequirement
@@ -245,10 +111,8 @@ public class CrossBlueprintCredentialTests
             }
         };
 
-        // Act
-        var result = await _verifier.VerifyAsync(requirements, [presentation]);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Assert — Rejected because issuer is not trusted
         result.IsValid.Should().BeFalse();
         result.Errors.Should().HaveCount(1);
         result.Errors[0].FailureReason.Should().Be(CredentialFailureReason.IssuerNotAccepted);
@@ -258,39 +122,14 @@ public class CrossBlueprintCredentialTests
     [Fact]
     public async Task IssueThenVerify_WrongCredentialType_RejectedByBlueprintB()
     {
-        // Arrange — Blueprint A issues an IdentityAttestation
-        var issuanceConfig = new CredentialIssuanceConfig
-        {
-            CredentialType = "IdentityAttestation",
-            ClaimMappings =
-            [
-                new ClaimMapping { ClaimName = "name", SourceField = "/holderName" }
-            ],
-            RecipientParticipantId = "applicant"
-        };
+        var minted = Factory.MintEs256("IdentityAttestation", "did:sorcha:issuer:1",
+            new Dictionary<string, object> { ["name"] = "Charlie" });
+        var verifier = Factory.BuildVerifier(minted);
 
-        var issuedCredential = await _issuer.IssueAsync(
-            issuanceConfig,
-            new Dictionary<string, object> { ["holderName"] = "Charlie" },
-            "did:issuer:1", "did:holder:1", [1, 2, 3], "EdDSA");
+        var requirements = new[] { new CredentialRequirement { Type = "LicenseCredential" } };
 
-        var presentation = new CredentialPresentation
-        {
-            CredentialId = issuedCredential.CredentialId,
-            DisclosedClaims = new Dictionary<string, object>(issuedCredential.Claims),
-            RawPresentation = issuedCredential.RawToken
-        };
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Blueprint B requires a LicenseCredential, NOT an IdentityAttestation
-        var requirements = new[]
-        {
-            new CredentialRequirement { Type = "LicenseCredential" }
-        };
-
-        // Act
-        var result = await _verifier.VerifyAsync(requirements, [presentation]);
-
-        // Assert — Rejected because type doesn't match
         result.IsValid.Should().BeFalse();
         result.Errors.Should().HaveCount(1);
         result.Errors[0].FailureReason.Should().Be(CredentialFailureReason.Missing);
@@ -299,65 +138,21 @@ public class CrossBlueprintCredentialTests
     [Fact]
     public async Task IssueThenVerify_MultipleCredentials_ComposedFromDifferentBlueprints()
     {
-        // Arrange — Blueprint A issues an IdentityAttestation
-        var identityConfig = new CredentialIssuanceConfig
-        {
-            CredentialType = "IdentityAttestation",
-            ClaimMappings =
-            [
-                new ClaimMapping { ClaimName = "name", SourceField = "/fullName" }
-            ],
-            RecipientParticipantId = "applicant"
-        };
+        var identity = Factory.MintEs256("IdentityAttestation", "did:sorcha:issuer:identity",
+            new Dictionary<string, object> { ["name"] = "Alice Smith" });
+        var license = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:licensing",
+            new Dictionary<string, object> { ["license_type"] = "ClassA" });
+        var verifier = Factory.BuildVerifier(identity, license);
 
-        var identityCredential = await _issuer.IssueAsync(
-            identityConfig,
-            new Dictionary<string, object> { ["fullName"] = "Alice Smith" },
-            "did:issuer:identity", "did:holder:alice", [1, 2, 3], "EdDSA");
-
-        // Blueprint B issues a LicenseCredential
-        var licenseConfig = new CredentialIssuanceConfig
-        {
-            CredentialType = "LicenseCredential",
-            ClaimMappings =
-            [
-                new ClaimMapping { ClaimName = "license_type", SourceField = "/licenseType" }
-            ],
-            RecipientParticipantId = "applicant"
-        };
-
-        var licenseCredential = await _issuer.IssueAsync(
-            licenseConfig,
-            new Dictionary<string, object> { ["licenseType"] = "ClassA" },
-            "did:issuer:licensing", "did:holder:alice", [1, 2, 3], "EdDSA");
-
-        // Blueprint C requires BOTH credentials
         var requirements = new[]
         {
             new CredentialRequirement { Type = "IdentityAttestation" },
             new CredentialRequirement { Type = "LicenseCredential" }
         };
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = identityCredential.CredentialId,
-                DisclosedClaims = new Dictionary<string, object>(identityCredential.Claims),
-                RawPresentation = identityCredential.RawToken
-            },
-            new CredentialPresentation
-            {
-                CredentialId = licenseCredential.CredentialId,
-                DisclosedClaims = new Dictionary<string, object>(licenseCredential.Claims),
-                RawPresentation = licenseCredential.RawToken
-            }
-        };
+        var result = await verifier.VerifyAsync(requirements,
+            [Present("identity-cred", identity.Raw), Present("license-cred", license.Raw)]);
 
-        // Act — Verify both credentials against Blueprint C
-        var result = await _verifier.VerifyAsync(requirements, presentations);
-
-        // Assert — Both credentials accepted
         result.IsValid.Should().BeTrue();
         result.VerifiedCredentials.Should().HaveCount(2);
         result.VerifiedCredentials.Should().Contain(v => v.Type == "IdentityAttestation");
@@ -367,58 +162,20 @@ public class CrossBlueprintCredentialTests
     [Fact]
     public async Task IssueThenVerify_PartialMultiRequirement_RejectedWhenOneMissing()
     {
-        // Arrange — Only have IdentityAttestation, missing LicenseCredential
-        var identityConfig = new CredentialIssuanceConfig
-        {
-            CredentialType = "IdentityAttestation",
-            ClaimMappings =
-            [
-                new ClaimMapping { ClaimName = "name", SourceField = "/fullName" }
-            ],
-            RecipientParticipantId = "applicant"
-        };
+        var identity = Factory.MintEs256("IdentityAttestation", "did:sorcha:issuer:1",
+            new Dictionary<string, object> { ["name"] = "Bob" });
+        var verifier = Factory.BuildVerifier(identity);
 
-        var identityCredential = await _issuer.IssueAsync(
-            identityConfig,
-            new Dictionary<string, object> { ["fullName"] = "Bob" },
-            "did:issuer:1", "did:holder:bob", [1, 2, 3], "EdDSA");
-
-        // Blueprint requires both IdentityAttestation AND LicenseCredential
         var requirements = new[]
         {
             new CredentialRequirement { Type = "IdentityAttestation" },
             new CredentialRequirement { Type = "LicenseCredential" }
         };
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = identityCredential.CredentialId,
-                DisclosedClaims = new Dictionary<string, object>(identityCredential.Claims),
-                RawPresentation = identityCredential.RawToken
-            }
-        };
+        var result = await verifier.VerifyAsync(requirements, [Present("identity-cred", identity.Raw)]);
 
-        // Act
-        var result = await _verifier.VerifyAsync(requirements, presentations);
-
-        // Assert — Rejected because LicenseCredential is missing
         result.IsValid.Should().BeFalse();
         result.Errors.Should().ContainSingle(e =>
-            e.RequirementType == "LicenseCredential" &&
-            e.FailureReason == CredentialFailureReason.Missing);
-    }
-
-    private void SetupSdJwtService()
-    {
-        _sdJwtMock
-            .Setup(s => s.CreateTokenAsync(
-                It.IsAny<Dictionary<string, object>>(),
-                It.IsAny<List<string>?>(),
-                It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<byte[]>(), It.IsAny<string>(),
-                It.IsAny<DateTimeOffset?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SdJwtToken { RawToken = "eyJ.eyJ.sig~disc1~disc2~" });
+            e.RequirementType == "LicenseCredential" && e.FailureReason == CredentialFailureReason.Missing);
     }
 }

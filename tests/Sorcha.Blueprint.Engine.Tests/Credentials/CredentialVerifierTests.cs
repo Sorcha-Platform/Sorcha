@@ -2,30 +2,30 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
-using Moq;
-using Sorcha.Blueprint.Engine.Credentials;
+
 using Sorcha.Blueprint.Models.Credentials;
-using Sorcha.Cryptography.SdJwt;
-using Xunit;
+
+using Factory = Sorcha.Blueprint.Engine.Tests.Credentials.EngineSdJwtTestFactory;
 
 namespace Sorcha.Blueprint.Engine.Tests.Credentials;
 
+/// <summary>
+/// Feature 135 — the engine <see cref="Sorcha.Blueprint.Engine.Credentials.CredentialVerifier"/>
+/// reworked onto real signed SD-JWT VCs (no mocked <c>ISdJwtService</c>, no placeholder
+/// presentations). Type-matching and required-claim constraints are exercised over the claims a
+/// genuinely-verified credential discloses; issuer trust flows through the unified evaluator.
+/// </summary>
 public class CredentialVerifierTests
 {
-    private readonly Mock<ISdJwtService> _sdJwtMock = new();
-    private readonly CredentialVerifier _verifier;
-
-    public CredentialVerifierTests()
-    {
-        _verifier = new CredentialVerifier(_sdJwtMock.Object);
-    }
+    private static CredentialPresentation Present(string credentialId, string raw) =>
+        new() { CredentialId = credentialId, RawPresentation = raw };
 
     [Fact]
     public async Task VerifyAsync_NoRequirements_ReturnsValid()
     {
-        var result = await _verifier.VerifyAsync(
-            requirements: [],
-            presentations: []);
+        var verifier = Factory.BuildVerifier();
+
+        var result = await verifier.VerifyAsync(requirements: [], presentations: []);
 
         result.IsValid.Should().BeTrue();
         result.Errors.Should().BeEmpty();
@@ -34,6 +34,10 @@ public class CredentialVerifierTests
     [Fact]
     public async Task VerifyAsync_ValidCredential_ReturnsValid()
     {
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:gov",
+            new Dictionary<string, object> { ["name"] = "Alice" });
+        var verifier = Factory.BuildVerifier(minted);
+
         var requirements = new[]
         {
             new CredentialRequirement
@@ -43,38 +47,23 @@ public class CredentialVerifierTests
             }
         };
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = "cred-1",
-                DisclosedClaims = new Dictionary<string, object>
-                {
-                    ["type"] = "LicenseCredential",
-                    ["iss"] = "did:sorcha:issuer:gov",
-                    ["name"] = "Alice"
-                },
-                RawPresentation = "jwt~disc1~"
-            }
-        };
-
-        var result = await _verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
         result.IsValid.Should().BeTrue();
         result.VerifiedCredentials.Should().HaveCount(1);
         result.VerifiedCredentials[0].CredentialId.Should().Be("cred-1");
         result.VerifiedCredentials[0].Type.Should().Be("LicenseCredential");
+        result.VerifiedCredentials[0].SignatureValid.Should().BeTrue();
+        result.VerifiedCredentials[0].IssuerDid.Should().Be("did:sorcha:issuer:gov");
     }
 
     [Fact]
     public async Task VerifyAsync_MissingCredential_ReturnsInvalid()
     {
-        var requirements = new[]
-        {
-            new CredentialRequirement { Type = "LicenseCredential" }
-        };
+        var verifier = Factory.BuildVerifier();
+        var requirements = new[] { new CredentialRequirement { Type = "LicenseCredential" } };
 
-        var result = await _verifier.VerifyAsync(requirements, presentations: []);
+        var result = await verifier.VerifyAsync(requirements, presentations: []);
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().HaveCount(1);
@@ -84,6 +73,9 @@ public class CredentialVerifierTests
     [Fact]
     public async Task VerifyAsync_IssuerMismatch_ReturnsInvalid()
     {
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:untrusted");
+        var verifier = Factory.BuildVerifier(minted);
+
         var requirements = new[]
         {
             new CredentialRequirement
@@ -93,21 +85,7 @@ public class CredentialVerifierTests
             }
         };
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = "cred-1",
-                DisclosedClaims = new Dictionary<string, object>
-                {
-                    ["type"] = "LicenseCredential",
-                    ["iss"] = "did:sorcha:issuer:untrusted"
-                },
-                RawPresentation = "jwt~disc1~"
-            }
-        };
-
-        var result = await _verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().HaveCount(1);
@@ -117,6 +95,10 @@ public class CredentialVerifierTests
     [Fact]
     public async Task VerifyAsync_ClaimMismatch_ReturnsInvalid()
     {
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:gov",
+            new Dictionary<string, object> { ["licenseType"] = "B" });
+        var verifier = Factory.BuildVerifier(minted);
+
         var requirements = new[]
         {
             new CredentialRequirement
@@ -126,21 +108,7 @@ public class CredentialVerifierTests
             }
         };
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = "cred-1",
-                DisclosedClaims = new Dictionary<string, object>
-                {
-                    ["type"] = "LicenseCredential",
-                    ["licenseType"] = "B"
-                },
-                RawPresentation = "jwt~disc1~"
-            }
-        };
-
-        var result = await _verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().HaveCount(1);
@@ -150,6 +118,9 @@ public class CredentialVerifierTests
     [Fact]
     public async Task VerifyAsync_MissingRequiredClaim_ReturnsInvalid()
     {
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:gov");
+        var verifier = Factory.BuildVerifier(minted);
+
         var requirements = new[]
         {
             new CredentialRequirement
@@ -159,21 +130,7 @@ public class CredentialVerifierTests
             }
         };
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = "cred-1",
-                DisclosedClaims = new Dictionary<string, object>
-                {
-                    ["type"] = "LicenseCredential"
-                    // licenseType not disclosed
-                },
-                RawPresentation = "jwt~disc1~"
-            }
-        };
-
-        var result = await _verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().ContainSingle(e => e.FailureReason == CredentialFailureReason.ClaimMismatch);
@@ -182,25 +139,12 @@ public class CredentialVerifierTests
     [Fact]
     public async Task VerifyAsync_TypeMismatch_ReturnsInvalid()
     {
-        var requirements = new[]
-        {
-            new CredentialRequirement { Type = "LicenseCredential" }
-        };
+        var minted = Factory.MintEs256("IdentityAttestation", "did:sorcha:issuer:gov");
+        var verifier = Factory.BuildVerifier(minted);
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = "cred-1",
-                DisclosedClaims = new Dictionary<string, object>
-                {
-                    ["type"] = "IdentityAttestation"
-                },
-                RawPresentation = "jwt~disc1~"
-            }
-        };
+        var requirements = new[] { new CredentialRequirement { Type = "LicenseCredential" } };
 
-        var result = await _verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().HaveCount(1);
@@ -210,61 +154,36 @@ public class CredentialVerifierTests
     [Fact]
     public async Task VerifyAsync_MultipleRequirements_AllMustMatch()
     {
+        var license = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:gov");
+        var identity = Factory.MintEs256("IdentityAttestation", "did:sorcha:issuer:gov");
+        var verifier = Factory.BuildVerifier(license, identity);
+
         var requirements = new[]
         {
             new CredentialRequirement { Type = "LicenseCredential" },
             new CredentialRequirement { Type = "IdentityAttestation" }
         };
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = "cred-1",
-                DisclosedClaims = new Dictionary<string, object> { ["type"] = "LicenseCredential" },
-                RawPresentation = "jwt~"
-            },
-            new CredentialPresentation
-            {
-                CredentialId = "cred-2",
-                DisclosedClaims = new Dictionary<string, object> { ["type"] = "IdentityAttestation" },
-                RawPresentation = "jwt~"
-            }
-        };
-
-        var result = await _verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements,
+            [Present("cred-1", license.Raw), Present("cred-2", identity.Raw)]);
 
         result.IsValid.Should().BeTrue();
         result.VerifiedCredentials.Should().HaveCount(2);
     }
 
     [Fact]
-    public async Task VerifyAsync_AnyIssuerAccepted_WhenNoAcceptedIssuers()
+    public async Task VerifyAsync_AnyIssuerAccepted_WhenNoTrustPolicy()
     {
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:random");
+        var verifier = Factory.BuildVerifier(minted);
+
         var requirements = new[]
         {
-            new CredentialRequirement
-            {
-                Type = "LicenseCredential",
-                TrustPolicy = null // any issuer accepted (default register source applies)
-            }
+            // null policy → default register@Low source; the directory resolves any issuer.
+            new CredentialRequirement { Type = "LicenseCredential", TrustPolicy = null }
         };
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = "cred-1",
-                DisclosedClaims = new Dictionary<string, object>
-                {
-                    ["type"] = "LicenseCredential",
-                    ["iss"] = "did:sorcha:issuer:random"
-                },
-                RawPresentation = "jwt~"
-            }
-        };
-
-        var result = await _verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
         result.IsValid.Should().BeTrue();
     }
@@ -272,6 +191,10 @@ public class CredentialVerifierTests
     [Fact]
     public async Task VerifyAsync_ClaimPresenceCheck_NoExpectedValue()
     {
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:gov",
+            new Dictionary<string, object> { ["licenseType"] = "anything" });
+        var verifier = Factory.BuildVerifier(minted);
+
         var requirements = new[]
         {
             new CredentialRequirement
@@ -281,21 +204,7 @@ public class CredentialVerifierTests
             }
         };
 
-        var presentations = new[]
-        {
-            new CredentialPresentation
-            {
-                CredentialId = "cred-1",
-                DisclosedClaims = new Dictionary<string, object>
-                {
-                    ["type"] = "LicenseCredential",
-                    ["licenseType"] = "anything"
-                },
-                RawPresentation = "jwt~"
-            }
-        };
-
-        var result = await _verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
         result.IsValid.Should().BeTrue();
     }

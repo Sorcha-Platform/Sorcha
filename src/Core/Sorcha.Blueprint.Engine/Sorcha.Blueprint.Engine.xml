@@ -271,12 +271,21 @@
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.CredentialVerifier">
             <summary>
-            Verifies credential presentations against action credential requirements.
-            Checks signature validity, expiry, issuer trust, claim constraints, and revocation status.
+            Verifies credential presentations against action credential requirements (feature 135).
+            Dispatches each requirement to the matching <see cref="T:Sorcha.Blueprint.Engine.Credentials.ICredentialFormatHandler"/>, which owns
+            the format cryptography and routes the trust decision through the shared
+            <see cref="T:Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator"/>. The verifier itself only orchestrates: it matches credential
+            type and enforces required-claim constraints over the disclosed claims the handler returns.
+            The historical <c>SignatureValid=false</c> "defer to the service layer" shortcut and the flat
+            accepted-issuer match are gone — signature, issuer trust, and revocation are now decided
+            truthfully and fail-closed inside the handler/evaluator (FR-008).
             </summary>
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.CredentialVerifier.VerifyAsync(System.Collections.Generic.IEnumerable{Sorcha.Blueprint.Models.Credentials.CredentialRequirement},System.Collections.Generic.IEnumerable{Sorcha.Blueprint.Models.Credentials.CredentialPresentation},System.Threading.CancellationToken)">
             <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.CredentialVerifier.MapFailureReason(System.Nullable{Sorcha.Blueprint.Engine.Credentials.TrustFailureReason})">
+            <summary>Maps a unified trust failure onto the verifier's coarser credential failure reason.</summary>
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.PresentedCredential">
             <summary>
