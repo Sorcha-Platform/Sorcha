@@ -700,6 +700,34 @@
         <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.RegisterTrustSourceResolver.VouchAsync(Sorcha.Blueprint.Engine.Credentials.IssuerContext,Sorcha.Blueprint.Models.Credentials.TrustSourceRef,System.Threading.CancellationToken)">
             <inheritdoc />
         </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.Sources.TrustListSourceResolver">
+            <summary>
+            Trust-list trust source (feature 135, US2). Validates a credential's x5c chain against an
+            operator-curated trust-list snapshot rather than the tenant's own CA. Reuses the X.509 chain
+            build of <see cref="T:Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver"/>; the only differences are the source kind
+            and that the anchor set is requested by the policy's <see cref="P:Sorcha.Blueprint.Models.Credentials.TrustSourceRef.TrustListId"/>.
+            The anchor provider supplied here is a service-layer adapter over <c>ITrustListProvider</c> that
+            maps a snapshot to a <see cref="T:Sorcha.Blueprint.Engine.Credentials.TrustAnchorSet"/> (recording the snapshot id + freshness in the
+            evidence). The engine stays free of the network-bound provider.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.TrustListSourceResolver.#ctor(Sorcha.Blueprint.Engine.Credentials.ITenantTrustAnchorProvider)">
+            <summary>
+            Trust-list trust source (feature 135, US2). Validates a credential's x5c chain against an
+            operator-curated trust-list snapshot rather than the tenant's own CA. Reuses the X.509 chain
+            build of <see cref="T:Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver"/>; the only differences are the source kind
+            and that the anchor set is requested by the policy's <see cref="P:Sorcha.Blueprint.Models.Credentials.TrustSourceRef.TrustListId"/>.
+            The anchor provider supplied here is a service-layer adapter over <c>ITrustListProvider</c> that
+            maps a snapshot to a <see cref="T:Sorcha.Blueprint.Engine.Credentials.TrustAnchorSet"/> (recording the snapshot id + freshness in the
+            evidence). The engine stays free of the network-bound provider.
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.Sources.TrustListSourceResolver.Kind">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.TrustListSourceResolver.AnchorId(Sorcha.Blueprint.Models.Credentials.TrustSourceRef)">
+            <summary>Requests the anchor set identified by the policy's trust-list id.</summary>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver">
             <summary>
             Tenant X.509 trust source (feature 135). Vouches when the credential's x5c chain validates
