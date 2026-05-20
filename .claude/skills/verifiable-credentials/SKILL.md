@@ -12,6 +12,8 @@ Sorcha implements W3C Verifiable Credentials 2.0 using the **SD-JWT VC profile**
 
 **In-flight context (feature 093).** There is an active spec at `specs/093-vc-security-fixes/` that is hardening VC security, including the `publicKeyMultibase` encoding bug that prompted the `Multicodec` utility. Read `specs/093-vc-security-fixes/spec.md` before touching the DID resolver or multibase encoding paths.
 
+**Unified trust + mdoc (feature 135, shipped).** Verification trust is now decided by ONE `ITrustEvaluator` (`Sorcha.Blueprint.Engine.Credentials`) consulted by BOTH the engine `CredentialVerifier` and HAIP's verifier — `CredentialRequirement.AcceptedIssuers` is gone, replaced by a `TrustPolicy` of pluggable trust sources; the old `CredentialVerifier` `SignatureValid=false` shortcut is removed (signatures verify for real, fail-closed). A second credential format — ISO `mso_mdoc` (CBOR/COSE, `Sorcha.Cryptography/Mdoc`) — sits beside SD-JWT VC behind an `ICredentialFormatHandler` seam (online/OpenID4VP only). **Read the "EUDI credential format & unified trust (Feature 135)" section of the `sorcha-architecture` skill before touching credential verification, issuance, trust policy, or mdoc.**
+
 **The .NET VC ecosystem is sparse.** Do not look for a turnkey NuGet package. Sorcha implements SD-JWT VC directly against the spec using `System.Text.Json` and `Sorcha.Cryptography`. The existing `CredentialIssuer`, `CredentialVerifier`, `BitstringStatusListChecker`, and `SdJwtService` types are the canonical implementations — extend them rather than starting over.
 
 ## Quick Start
@@ -105,10 +107,14 @@ public class CredentialIssuanceConfig
 public class CredentialRequirement
 {
     public string Type { get; set; } = string.Empty;
-    public IEnumerable<string>? AcceptedIssuers { get; set; }
+    public CredentialFormat Format { get; set; } = CredentialFormat.SdJwtVc; // feature 135 (SdJwtVc | MsoMdoc)
+    public TrustPolicy? TrustPolicy { get; set; }                            // feature 135 — replaced AcceptedIssuers
     public IEnumerable<ClaimConstraint>? RequiredClaims { get; set; }
     public RevocationCheckPolicy RevocationCheckPolicy { get; set; }
 }
+// NOTE (feature 135): the flat AcceptedIssuers list was REMOVED from CredentialRequirement.
+// Issuer trust is now a TrustPolicy decided by the unified ITrustEvaluator. See the
+// "EUDI credential format & unified trust (Feature 135)" section of the sorcha-architecture skill.
 
 // Sorcha.Blueprint.Models/Credentials/CredentialPresentation.cs
 public class CredentialPresentation
