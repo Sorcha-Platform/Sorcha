@@ -100,7 +100,7 @@ Repo root `C:\Projects\Sorcha`. Source under `src/`, tests under `tests/` mirror
 ### Tests for User Story 2 ⚠️ (write first, must fail)
 
 - [X] T036 [P] [US2] CBOR/COSE round-trip + known-answer vector tests (tag-24 wrapping, MSO digest, x5chain label 33) in `tests/Sorcha.Cryptography.Tests/Mdoc/MdocCodecTests.cs`.
-- [ ] T037 [P] [US2] `MdocService` verify tests using the PID fixture: issuer signature, valueDigests integrity, SessionTranscript/DeviceAuth binding in `tests/Sorcha.Cryptography.Tests/Mdoc/MdocServiceTests.cs`.
+- [X] T037 [P] [US2] `MdocService` verify tests using the PID fixture: issuer signature, valueDigests integrity, SessionTranscript/DeviceAuth binding in `tests/Sorcha.Cryptography.Tests/Mdoc/MdocServiceTests.cs`.
 - [ ] T038 [P] [US2] `MdocPresentationVerifier` tests (untrusted→`UntrustedIssuer`, bad binding→`HolderBindingInvalid`, tampered→`IntegrityFailure`, revoked→`Revoked`) in `tests/Sorcha.Haip.Service.Tests/MdocPresentationVerifierTests.cs`.
 - [ ] T039 [P] [US2] `TrustListSourceResolver` + `OperatorSnapshotTrustListProvider` tests (snapshot id+freshness into evidence; missing list→`SourceUnavailable`) in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/TrustListSourceTests.cs`.
 - [ ] T040 [P] [US2] Trust-list admin endpoint contract tests (PUT/GET/list) in `tests/Sorcha.Tenant.Service.Tests/TrustListAdminEndpointTests.cs`.
@@ -110,7 +110,7 @@ Repo root `C:\Projects\Sorcha`. Source under `src/`, tests under `tests/` mirror
 - [X] T041 [P] [US2] Implement CBOR tag-24 helpers + deterministic encoding in `src/Common/Sorcha.Cryptography/Mdoc/Cbor/`.
 - [X] T042 [P] [US2] Implement `CoseX5Chain` helper (label 33, unprotected, bstr/array-of-bstr) in `src/Common/Sorcha.Cryptography/Mdoc/Cose/CoseX5Chain.cs`.
 - [X] T043 [P] [US2] Implement mdoc models: `IssuerSigned`/`IssuerSignedItem`, `MobileSecurityObject` (+`MsoStatus`), `DeviceResponse`/`DeviceSigned`/`DeviceAuth`, `SessionTranscript`/`OpenID4VPHandover`(+DCAPI variant) in `src/Common/Sorcha.Cryptography/Mdoc/` (per data-model §3).
-- [ ] T044 [US2] Implement `IMdocService`/`MdocService` — decode DeviceResponse, verify `issuerAuth` COSE_Sign1, recompute `valueDigests`, reconstruct `DeviceAuthentication`/SessionTranscript, verify `DeviceAuth` (signature + MAC) in `src/Common/Sorcha.Cryptography/Mdoc/MdocService.cs` (depends on T041-T043).
+- [X] T044 [US2] Implement `IMdocService`/`MdocService` — decode DeviceResponse, verify `issuerAuth` COSE_Sign1, recompute `valueDigests`, reconstruct `DeviceAuthentication`/SessionTranscript, verify `DeviceAuth` (signature + MAC) in `src/Common/Sorcha.Cryptography/Mdoc/MdocService.cs` (depends on T041-T043).
 - [ ] T045 [US2] Implement `MdocFormatHandler.VerifyAsync` (calls `MdocService` + `ITrustEvaluator`; resolves mdoc `status.status_list` via `IStatusListChecker`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/MdocFormatHandler.cs`.
 - [ ] T046 [P] [US2] Implement `ITrustListProvider` + `OperatorSnapshotTrustListProvider` in `src/Common/Sorcha.ServiceClients.Http/Trust/`.
 - [ ] T047 [P] [US2] Implement `TrustListSourceResolver` (loads snapshot into `X509Chain.CustomTrustStore`; records id+freshness in evidence) in `src/Core/Sorcha.Blueprint.Engine/Credentials/Sources/TrustListSourceResolver.cs`; register in `TrustResolverRegistry`.
