@@ -22,17 +22,33 @@ public interface IAuthService
 
     /// <summary>
     /// Sign in with email + password. Persists the access token on success.
-    /// Returns a result describing the outcome (success, invalid credentials,
-    /// 2FA required — 2FA flow lands in a follow-up).
+    /// Returns a result describing the outcome. When the account has TOTP 2FA
+    /// enabled the result is <see cref="SignInStatus.TwoFactorRequired"/> and
+    /// carries a short-lived <see cref="SignInResult.LoginToken"/> to pass to
+    /// <see cref="VerifyTwoFactorAsync"/>.
     /// </summary>
     Task<SignInResult> SignInAsync(string email, string password, CancellationToken ct = default);
+
+    /// <summary>
+    /// Completes a two-factor login by submitting the TOTP code (or a backup
+    /// code) against the <paramref name="loginToken"/> from a prior
+    /// <see cref="SignInAsync"/> that returned <see cref="SignInStatus.TwoFactorRequired"/>.
+    /// Persists the access token on success.
+    /// </summary>
+    /// <param name="loginToken">The short-lived login token from the 2FA-required sign-in result.</param>
+    /// <param name="email">The email being signed in (stored alongside the token).</param>
+    /// <param name="code">Six-digit TOTP code, or an eight-character backup code.</param>
+    /// <param name="isBackupCode">True when <paramref name="code"/> is a backup code.</param>
+    Task<SignInResult> VerifyTwoFactorAsync(
+        string loginToken, string email, string code, bool isBackupCode = false, CancellationToken ct = default);
 
     /// <summary>Clears the persisted token.</summary>
     Task SignOutAsync(CancellationToken ct = default);
 }
 
-/// <summary>Outcome of <see cref="IAuthService.SignInAsync"/>.</summary>
-public sealed record SignInResult(SignInStatus Status, string? ErrorMessage = null)
+/// <summary>Outcome of <see cref="IAuthService.SignInAsync"/> / <see cref="IAuthService.VerifyTwoFactorAsync"/>.</summary>
+public sealed record SignInResult(
+    SignInStatus Status, string? ErrorMessage = null, string? LoginToken = null)
 {
     /// <summary>Convenience for happy-path checks.</summary>
     public bool IsSuccess => Status == SignInStatus.Success;
@@ -45,7 +61,7 @@ public enum SignInStatus
     Success = 0,
     /// <summary>Server rejected the credentials.</summary>
     InvalidCredentials = 1,
-    /// <summary>Two-factor required — handled in a follow-up wave.</summary>
+    /// <summary>TOTP 2FA required — caller must complete via <see cref="IAuthService.VerifyTwoFactorAsync"/>.</summary>
     TwoFactorRequired = 2,
     /// <summary>Network or server error.</summary>
     ServerError = 3,
@@ -101,8 +117,13 @@ public sealed class AuthService : IAuthService
 
             if (body.RequiresTwoFactor)
             {
+                if (string.IsNullOrEmpty(body.LoginToken))
+                {
+                    return new SignInResult(SignInStatus.ServerError,
+                        "Auth server signalled 2FA but returned no login token.");
+                }
                 return new SignInResult(SignInStatus.TwoFactorRequired,
-                    "Two-factor authentication is required — full 2FA flow lands in a follow-up wave.");
+                    "Enter the code from your authenticator app.", body.LoginToken);
             }
 
             if (string.IsNullOrEmpty(body.AccessToken))
@@ -110,11 +131,43 @@ public sealed class AuthService : IAuthService
                 return new SignInResult(SignInStatus.ServerError, "Auth server did not return an access token.");
             }
 
-            var record = new AccessTokenRecord(
-                body.AccessToken,
-                DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, body.ExpiresIn)),
-                email.Trim());
-            await _store.SetAsync(record, ct);
+            await PersistAsync(body.AccessToken, body.ExpiresIn, email.Trim(), ct);
+            return new SignInResult(SignInStatus.Success);
+        }
+        catch (HttpRequestException ex)
+        {
+            return new SignInResult(SignInStatus.ServerError, ex.Message);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<SignInResult> VerifyTwoFactorAsync(
+        string loginToken, string email, string code, bool isBackupCode = false, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(loginToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+
+        try
+        {
+            var response = await _http.PostAsJsonAsync(
+                "api/auth/verify-2fa",
+                new Verify2FaRequest(loginToken, code.Trim(), isBackupCode),
+                ct);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return new SignInResult(SignInStatus.TwoFactorRequired,
+                    "That code wasn't right. Try again.", loginToken);
+            }
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadFromJsonAsync<LoginResponse>(ct);
+            if (body is null || string.IsNullOrEmpty(body.AccessToken))
+            {
+                return new SignInResult(SignInStatus.ServerError, "Verification succeeded but no token was returned.");
+            }
+
+            await PersistAsync(body.AccessToken, body.ExpiresIn, email.Trim(), ct);
             return new SignInResult(SignInStatus.Success);
         }
         catch (HttpRequestException ex)
@@ -126,10 +179,25 @@ public sealed class AuthService : IAuthService
     /// <inheritdoc />
     public Task SignOutAsync(CancellationToken ct = default) => _store.ClearAsync(ct);
 
+    private async Task PersistAsync(string accessToken, int expiresIn, string email, CancellationToken ct)
+    {
+        var record = new AccessTokenRecord(
+            accessToken,
+            DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn)),
+            email);
+        await _store.SetAsync(record, ct);
+    }
+
     private sealed record LoginRequest(string Email, string Password);
+
+    private sealed record Verify2FaRequest(
+        [property: JsonPropertyName("login_token")] string LoginToken,
+        [property: JsonPropertyName("code")] string Code,
+        [property: JsonPropertyName("is_backup_code")] bool IsBackupCode);
 
     private sealed record LoginResponse(
         [property: JsonPropertyName("access_token")] string? AccessToken,
         [property: JsonPropertyName("expires_in")] int ExpiresIn,
-        [property: JsonPropertyName("requires_two_factor")] bool RequiresTwoFactor);
+        [property: JsonPropertyName("requires_two_factor")] bool RequiresTwoFactor,
+        [property: JsonPropertyName("login_token")] string? LoginToken);
 }
