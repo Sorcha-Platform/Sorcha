@@ -1316,6 +1316,43 @@ Clear the citizen's notice. Idempotent — returns `204 No Content` whether or n
 
 **Response:** `204 No Content`
 
+#### 11. Cross-Device Presentation History (Feature 114 US5)
+
+The citizen's durable, cross-device record of presentations they have made. Reported presentations (via `POST /api/v1/wallet/presentations/log`) are persisted to a per-citizen Wallet Service store so the same history appears on any device the citizen pairs. **There is no register/ledger write** — a free-standing offline presentation has no originating register; these are citizen-owned convenience records carrying disclosed claim **names only**, never values.
+
+Both endpoints require the citizen-wallet audience JWT (`sorcha:citizen-wallet`), are scoped to the caller's `PlatformUserId`, and are rate-limited by `RateLimitPolicies.Strict`. Contract: [`specs/134-presentation-history/contracts/presentation-history.openapi.yaml`](../../specs/134-presentation-history/contracts/presentation-history.openapi.yaml).
+
+##### GET /api/v1/wallet/presentations
+
+Returns every presentation the authenticated citizen has reported, from any of their devices, newest-first. Returns an empty list (never `404`) when there is no history. Backs the PWA Activity page's cross-device history.
+
+**Response:** `200 OK`
+```json
+{
+  "entries": [
+    {
+      "id": "8f2c…",
+      "credentialId": "1a9b…",
+      "verifierLabel": "Strathcarron Council",
+      "verifierDid": null,
+      "disclosedClaims": ["givenName", "familyName"],
+      "presentedAt": "2026-05-20T09:41:22Z",
+      "outcome": "Presented",
+      "registerId": null,
+      "actionTxId": null
+    }
+  ]
+}
+```
+
+`outcome` ∈ `Presented | DeclinedByCitizen | VerifierRejected | Acknowledged`. `registerId`/`actionTxId` are vestigial and always `null` for these citizen-owned records.
+
+##### DELETE /api/v1/wallet/presentations/{id}
+
+Server-authoritative delete: removes the entry from the citizen's history across all their devices. Idempotent. A delete targeting another citizen's entry, or a non-existent entry, returns `204` — indistinguishable from success, to avoid leaking existence. Does not affect the verifier's own records (there is no register/ledger record for these presentations).
+
+**Response:** `204 No Content`
+
 ---
 
 ## Register Service API

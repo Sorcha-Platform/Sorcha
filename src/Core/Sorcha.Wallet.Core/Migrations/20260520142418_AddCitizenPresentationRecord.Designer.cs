@@ -13,7 +13,7 @@ using Sorcha.Wallet.Core.Data;
 namespace Sorcha.Wallet.Core.Migrations
 {
     [DbContext(typeof(WalletDbContext))]
-    [Migration("20260520135107_AddCitizenPresentationRecord")]
+    [Migration("20260520142418_AddCitizenPresentationRecord")]
     partial class AddCitizenPresentationRecord
     {
         /// <inheritdoc />
@@ -130,10 +130,8 @@ namespace Sorcha.Wallet.Core.Migrations
 
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.CitizenPresentationRecord", b =>
                 {
-                    b.Property<Guid>("PlatformUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("EntryId")
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("CredentialId")
@@ -143,8 +141,14 @@ namespace Sorcha.Wallet.Core.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Outcome")
                         .HasColumnType("integer");
+
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("PresentedAt")
                         .HasColumnType("timestamp with time zone");
@@ -160,7 +164,11 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.HasKey("PlatformUserId", "EntryId");
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlatformUserId", "EntryId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CitizenPresentationRecords_User_Entry");
 
                     b.HasIndex("PlatformUserId", "PresentedAt")
                         .IsDescending(false, true)

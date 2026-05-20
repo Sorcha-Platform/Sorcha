@@ -308,12 +308,20 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 **Independent Test**: Make 3 presentations (some online, some offline), open the wallet's Activity view, verify all 3 appear with correct credential / claims / verifier label / timestamp. After regaining network, confirm the same 3 entries are reported back to the platform's lifecycle records on the originating registers.
 
-### Server side — Blueprint Service offline consumer
+### Server side — Blueprint Service offline consumer — ⛔ SUPERSEDED BY FEATURE 134
 
-- [ ] T132 [US5] Create `src/Services/Sorcha.Blueprint.Service/Services/Implementation/OfflinePresentationConsumer.cs` implementing `IPresentationConsumer` per `contracts/presentation-lifecycle-offline-extension.md`. Writes `PresentationInitiated` + `PresentationOutcome` transactions on the originating register, preserving offline timestamps; tags `kind` with `-late` suffix when older than `AcceptOfflinePresentationsWithinSeconds`.
-- [ ] T133 [US5] Modify `src/Common/Sorcha.Blueprint.Models/PresentationConfig.cs` to add `public int AcceptOfflinePresentationsWithinSeconds { get; set; } = 600;` (additive — existing blueprints unchanged).
-- [ ] T134 [US5] Modify `src/Services/Sorcha.Blueprint.Service/Extensions/ServiceCollectionExtensions.cs` to register `OfflinePresentationConsumer` against the existing consumer registry under name `offline-oid4vp`.
-- [ ] T135 [P] [US5] Add unit tests `tests/Sorcha.Blueprint.Service.Tests/OfflinePresentation/OfflinePresentationConsumerTests.cs` — happy-path lifecycle write, late-arrival tagging, idempotency on duplicate `presentationLogEntryId`, decline outcome path.
+> **T132–T135 are superseded by `specs/134-presentation-history/` (F114 US5 PR3).** The
+> "offline `IPresentationConsumer` writes the register" model is structurally impossible
+> against the shipped F111/F127 lifecycle: consumers MUST NOT write the register, and a
+> free-standing offline presentation has no originating register, no `presentationRequestId`,
+> and no pending state to verify against. PR3 instead gives reported presentations a durable
+> per-citizen store in the **Wallet Service** (no Blueprint Service change, no register write).
+> See `docs/superpowers/specs/2026-05-20-f114-us5-offline-presentation-reconciliation-design.md`.
+
+- [~] T132 [US5] ~~OfflinePresentationConsumer~~ **DROPPED** — consumer model superseded by feature 134 (Wallet Service `ICitizenPresentationStore`).
+- [~] T133 [US5] ~~`PresentationConfig.AcceptOfflinePresentationsWithinSeconds` + `-late` tagging~~ **DROPPED** — no lifecycle events means no late-arrival tagging.
+- [~] T134 [US5] ~~Register `offline-oid4vp` consumer~~ **DROPPED** — no consumer to register.
+- [~] T135 [US5] ~~OfflinePresentationConsumerTests~~ **DROPPED** — replaced by feature 134's store/forwarder/endpoint tests.
 
 ### Server side — Wallet Service forwarding
 
@@ -329,8 +337,8 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 ### PWA — Activity page
 
-- [ ] T142 [US5] Create `src/Apps/Sorcha.Citizen.Wallet/Pages/Activity.razor` — `/wallet/activity` route, lists local entries chronologically with credential / disclosed claims / verifier label / timestamp / sync status.
-- [ ] T143 [P] [US5] Per-row delete action with explicit messaging that platform-side records are unaffected (per FR-031 + spec User Story 5 acceptance scenario 3).
+- [x] T142 [US5] `src/Apps/Sorcha.Wallet.Pwa/Pages/Activity.razor` (project renamed per F125) — `/activity` route. **Extended by feature 134** to the cross-device surface: merges the Wallet Service's server-side presentation history with the device-local log per the design §5 rule (`display = server ∪ {local where !SyncedToServer}`), not local-only.
+- [x] T143 [US5] Per-row delete — **reframed by feature 134** to server-authoritative (FR-009): "removed from your history on all your devices; does not affect the verifier's own records." (The original "platform-side records are unaffected" wording referred to register/legal evidence, which these offline presentations don't produce.)
 
 **Checkpoint**: All 5 user stories functionally complete. Wallet is feature-complete for v1 scope.
 

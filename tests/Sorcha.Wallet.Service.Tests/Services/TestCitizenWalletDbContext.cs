@@ -72,13 +72,14 @@ internal sealed class TestCitizenWalletDbContext : WalletDbContext
             entity.Property(e => e.Status).HasConversion<string>();
         });
 
-        // Feature 114 / US5 PR3 — durable per-citizen presentation history. Composite
-        // PK (PlatformUserId, EntryId); the production jsonb column type on
-        // DisclosedClaims is Npgsql-only, so the InMemory provider maps the string[]
-        // CLR property directly without it.
+        // Feature 114 / US5 PR3 — durable per-citizen presentation history. Surrogate
+        // Id PK + unique (PlatformUserId, EntryId) natural key; the production jsonb
+        // column type on DisclosedClaims is Npgsql-only, so the InMemory provider maps
+        // the string[] CLR property directly without it.
         modelBuilder.Entity<CitizenPresentationRecord>(entity =>
         {
-            entity.HasKey(e => new { e.PlatformUserId, e.EntryId });
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.PlatformUserId, e.EntryId }).IsUnique();
             entity.HasIndex(e => new { e.PlatformUserId, e.PresentedAt }).IsDescending(false, true);
         });
     }

@@ -16,6 +16,7 @@ namespace Sorcha.Wallet.Core.Migrations
                 schema: "wallet",
                 columns: table => new
                 {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
                     PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
                     EntryId = table.Column<Guid>(type: "uuid", nullable: false),
                     CredentialId = table.Column<Guid>(type: "uuid", nullable: false),
@@ -28,8 +29,15 @@ namespace Sorcha.Wallet.Core.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_CitizenPresentationRecords", x => new { x.PlatformUserId, x.EntryId });
+                    table.PrimaryKey("PK_CitizenPresentationRecords", x => x.Id);
                 });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CitizenPresentationRecords_User_Entry",
+                schema: "wallet",
+                table: "CitizenPresentationRecords",
+                columns: new[] { "PlatformUserId", "EntryId" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_CitizenPresentationRecords_User_PresentedAt",

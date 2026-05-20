@@ -151,17 +151,19 @@ public class WalletDbContext : DbContext
         ConfigureCitizenPresentationRecord(modelBuilder);
     }
 
-    // Feature 114 US5 PR3: durable per-citizen presentation history. Composite PK
-    // (PlatformUserId, EntryId) makes the forward upsert idempotent and scopes
-    // reads/deletes to the owner; (PlatformUserId, PresentedAt desc) serves the
-    // newest-first list. DisclosedClaims is jsonb (names only — never values).
+    // Feature 114 US5 PR3: durable per-citizen presentation history. Surrogate Id PK
+    // (convention-discoverable so test DbContexts that override OnModelCreating stay
+    // keyed); the unique (PlatformUserId, EntryId) index is the natural key that makes
+    // the forward upsert idempotent and scopes reads/deletes to the owner;
+    // (PlatformUserId, PresentedAt desc) serves the newest-first list. DisclosedClaims
+    // is jsonb (names only — never values).
     private static void ConfigureCitizenPresentationRecord(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<CitizenPresentationRecord>(entity =>
         {
             entity.ToTable("CitizenPresentationRecords");
 
-            entity.HasKey(e => new { e.PlatformUserId, e.EntryId });
+            entity.HasKey(e => e.Id);
 
             entity.Property(e => e.PlatformUserId).IsRequired();
             entity.Property(e => e.EntryId).IsRequired();
@@ -176,6 +178,10 @@ public class WalletDbContext : DbContext
             entity.Property(e => e.DisclosedClaims)
                 .HasColumnType("jsonb")
                 .IsRequired();
+
+            entity.HasIndex(e => new { e.PlatformUserId, e.EntryId })
+                .IsUnique()
+                .HasDatabaseName("IX_CitizenPresentationRecords_User_Entry");
 
             entity.HasIndex(e => new { e.PlatformUserId, e.PresentedAt })
                 .IsDescending(false, true)

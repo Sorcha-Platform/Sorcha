@@ -18,22 +18,32 @@ namespace Sorcha.Wallet.Core.Domain.Entities;
 /// Written by <c>CitizenPresentationStoreForwarder</c> off the
 /// <c>POST /api/v1/wallet/presentations/log</c> request path; read by
 /// <c>GET /api/v1/wallet/presentations</c>; removed by
-/// <c>DELETE /api/v1/wallet/presentations/{id}</c>. The composite primary key
-/// <c>(PlatformUserId, EntryId)</c> makes the forward upsert idempotent and
-/// scopes every read/delete to the owning citizen.
+/// <c>DELETE /api/v1/wallet/presentations/{id}</c>.
+/// </para>
+/// <para>
+/// Identity is the natural pair <c>(PlatformUserId, EntryId)</c>, enforced by a
+/// unique index — that pair makes the forward upsert idempotent (FR-004) and
+/// scopes every read/delete to the owning citizen (FR-006). A surrogate
+/// <see cref="Id"/> primary key (convention-discoverable, mirroring
+/// <see cref="CitizenCredentialEventLog"/>) keeps the entity keyed in every
+/// context that maps it — including test DbContexts that override
+/// <c>OnModelCreating</c> without calling base.
 /// </para>
 /// </remarks>
 public class CitizenPresentationRecord
 {
+    /// <summary>Surrogate primary key.</summary>
+    public Guid Id { get; set; } = Guid.NewGuid();
+
     /// <summary>
-    /// Owning citizen account (Tenant Service's PlatformUser). Part of the
-    /// composite primary key; scopes every query.
+    /// Owning citizen account (Tenant Service's PlatformUser). Part of the unique
+    /// natural key; scopes every query.
     /// </summary>
     public Guid PlatformUserId { get; set; }
 
     /// <summary>
-    /// Wallet-generated entry id from the report. Part of the composite primary
-    /// key — the unit of identity and dedupe (FR-004).
+    /// Wallet-generated entry id from the report. Part of the unique natural key —
+    /// the unit of identity and dedupe (FR-004).
     /// </summary>
     public Guid EntryId { get; set; }
 
