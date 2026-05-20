@@ -3,10 +3,12 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.14
-**Last Updated:** 2026-05-16
+**Version:** 7.15
+**Last Updated:** 2026-05-20
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **2026-05-20 — Feature 133 (CLI API surface catch-up) Phase 1 SHIPPED** (PR #802, squash-merged to master). Closes operator/automation gaps in `src/Apps/Sorcha.Cli`, whose command surface was frozen since Features 080/099 (~features 100-128 had no CLI surface). Phase 1 = `tx proof/verify-proof/revoke` + fix of the `tx status` lifecycle-DTO bug (US1); `register relationship/sync-state/sync-health` (US2); `validator register/count/audit/suspend/reactivate/revoke/sequence` (US3); `wallet org-key provision/derive/rotate/revoke` (US4). 421/421 CLI tests pass. **Phase 2 (US5-US9 + polish) is parked in the backlog** at `specs/133-cli-api-coverage/tasks.md` (T023-T054): wallet diagnostics, system-register governance, citizen-device admin, auth/token automation, trust-anchor admin. Spec-Kit artifacts in `specs/133-cli-api-coverage/`.
 
 > **2026-05-13 → 2026-05-16:** Strathcarron citizen-arc work continued. Spec 2 (Feature 125, Sorcha Wallet User Agent, tag `spec-125-complete`) and Spec 3 (Feature 126, council enrolment gate, tag `spec-126-complete`) had shipped earlier. **Feature 127** (Spec 4, credential-gated second service / Blue Badge) is progressing on feature branch `127-credential-gated-service` via four sub-PRs — PR-A (Strathcarron sample portal + CI grep gate, #719 merged), PR-B (F111 reconciliation + library credential gate + 25 new tests, #720 merged), PR-C (Blue Badge content — blueprint + page + walkthrough seed, #721 merged), PR-D (polish + docs + integration tests, in flight). The **platform-vs-consumer boundary contract** (application-specific demo code lives in `samples/`, CI grep gate enforces) landed alongside the arc in PR #718. The F127 ↔ F111 reconciliation research doc + design-doc §14 amendment capture how F127 adopts F111's Timebound Presentation Lifecycle as substrate. Counts below are headline figures from earlier sweeps and will drift between full re-counts — treat as approximate.
 
