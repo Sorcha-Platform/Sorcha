@@ -10,6 +10,15 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-libra
 
 The Sorcha CLI (`sorcha`) is a .NET 10 global tool for managing the Sorcha decentralised register platform. It uses **System.CommandLine 2.0.2** for command parsing, **Refit** for HTTP API clients, and **Spectre.Console** for rich terminal output.
 
+## Client Strategy: Selective Reuse (Feature 133)
+
+Before adding a new Refit method to a CLI `I*ServiceClient`, **check whether `Sorcha.ServiceClients.Http` already exposes the capability**:
+
+- **Present in the shared library** → reuse it (add a ProjectReference, resolve/inject the shared client). This satisfies CLAUDE.md Critical Pattern #2 ("never create duplicate clients"). Example: organisation key derivation (`IWalletServiceClient.ProvisionOrgMasterKeyAsync` / `DeriveOrgKeyAsync` / `RotateOrgKeyAsync` / `RevokeOrgKeyAsync`) and file download (`DownloadFileAsync`).
+- **Absent** → add a thin Refit method to the CLI's own `I*ServiceClient`. The shared library is purpose-built for service-to-service calls and deliberately lacks the admin/operator read surface (validator roster governance, register sync-state/relationship). Do **not** add operator-only methods to the shared s2s library.
+
+**Reused model types carry enums.** When reusing shared response records that contain enums (e.g. `TransactionStatusResponse.Status`, `MerkleProofStep.Position`), the platform serializes enums as strings. The CLI's Refit clients must be built with a `JsonStringEnumConverter` (see `HttpClientFactory.StringEnumRefitSettings`) or deserialization will fail.
+
 ## Project Location
 
 ```

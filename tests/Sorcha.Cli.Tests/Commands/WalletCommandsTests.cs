@@ -49,9 +49,55 @@ public class WalletCommandsTests
     public void WalletCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new WalletCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(8);
-        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "recover", "delete", "sign", "access", "create-batch" });
+        command.Subcommands.Should().HaveCount(9);
+        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "recover", "delete", "sign", "access", "create-batch", "org-key" });
     }
+
+    #region Org Key Derivation (Feature 083) Tests
+
+    [Fact]
+    public void WalletOrgKeyCommand_ShouldHaveFourSubcommands()
+    {
+        var command = new WalletOrgKeyCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("org-key");
+        command.Subcommands.Should().HaveCount(4);
+        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "provision", "derive", "rotate", "revoke" });
+    }
+
+    [Fact]
+    public void WalletOrgKeyProvisionCommand_ShouldHaveOrgIdArgument()
+    {
+        var command = new WalletOrgKeyProvisionCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("provision");
+        command.Arguments.Select(a => a.Name).Should().Contain("orgId");
+    }
+
+    [Fact]
+    public void WalletOrgKeyDeriveCommand_ShouldRequireUserIdAndUsage()
+    {
+        var command = new WalletOrgKeyDeriveCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("derive");
+        command.Options.First(o => o.Name == "--user-id").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--usage").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void WalletOrgKeyRotateCommand_ShouldHaveOrgAndKeyArguments()
+    {
+        var command = new WalletOrgKeyRotateCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("rotate");
+        command.Arguments.Select(a => a.Name).Should().Contain(new[] { "orgId", "derivedKeyId" });
+    }
+
+    [Fact]
+    public void WalletOrgKeyRevokeCommand_ShouldHaveOrgAndKeyArguments()
+    {
+        var command = new WalletOrgKeyRevokeCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("revoke");
+        command.Arguments.Select(a => a.Name).Should().Contain(new[] { "orgId", "derivedKeyId" });
+    }
+
+    #endregion
 
     #region WalletListCommand Tests
 

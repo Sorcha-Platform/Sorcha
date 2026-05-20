@@ -4,6 +4,8 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Refit;
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Services;
@@ -20,14 +22,27 @@ public class TransactionCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("tx", "Manage transactions in registers\n\nExamples:\n  sorcha tx list --register-id <id>\n  sorcha tx get --register-id <id> --id <tx-id>\n  sorcha tx submit --register-id <id> --wallet <addr> --data '{\"key\":\"value\"}'")
+        : base("tx", "Manage transactions in registers\n\nExamples:\n  sorcha tx list --register-id <id>\n  sorcha tx get --register-id <id> --id <tx-id>\n  sorcha tx submit --register-id <id> --wallet <addr> --data '{\"key\":\"value\"}'\n  sorcha tx proof --register-id <id> --tx-id <tx-id> --out proof.json\n  sorcha tx revoke --register-id <id> --tx-id <tx-id> --reason Erroneous")
 
     {
         Subcommands.Add(new TxListCommand(clientFactory, authService, configService));
         Subcommands.Add(new TxGetCommand(clientFactory, authService, configService));
         Subcommands.Add(new TxSubmitCommand(clientFactory, authService, configService));
         Subcommands.Add(new TxStatusCommand(clientFactory, authService, configService));
+        Subcommands.Add(new TxProofCommand(clientFactory, authService, configService));
+        Subcommands.Add(new TxVerifyProofCommand(clientFactory, authService, configService));
+        Subcommands.Add(new TxRevokeCommand(clientFactory, authService, configService));
     }
+
+    /// <summary>
+    /// JSON options for reading/writing Merkle proof artifacts so they round-trip with
+    /// the platform's camelCase + string-enum wire format.
+    /// </summary>
+    internal static readonly JsonSerializerOptions ProofJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
 }
 
 /// <summary>
@@ -550,31 +565,40 @@ public class TxStatusCommand : Command
                 }
 
                 // Display results
-                ConsoleHelper.WriteSuccess("Transaction status:");
+                ConsoleHelper.WriteSuccess("Transaction lifecycle status:");
                 Console.WriteLine();
                 Console.WriteLine($"  Transaction ID:  {response.TransactionId}");
                 Console.WriteLine($"  Status:          {response.Status}");
 
-                if (!string.IsNullOrEmpty(response.Error))
+                if (!string.IsNullOrEmpty(response.RevocationTxId))
                 {
-                    Console.WriteLine($"  Error:           {response.Error}");
+                    Console.WriteLine($"  Revocation TX:   {response.RevocationTxId}");
+                }
+                if (!string.IsNullOrEmpty(response.SupersededByTxId))
+                {
+                    Console.WriteLine($"  Superseded by:   {response.SupersededByTxId}");
+                }
+                if (response.RevokedAt.HasValue)
+                {
+                    Console.WriteLine($"  Revoked at:      {response.RevokedAt.Value:yyyy-MM-dd HH:mm:ss} UTC");
+                }
+                if (response.Reason.HasValue)
+                {
+                    Console.WriteLine($"  Reason:          {response.Reason.Value}");
                 }
 
                 // Provide status explanation
                 Console.WriteLine();
-                switch (response.Status.ToLowerInvariant())
+                switch (response.Status)
                 {
-                    case "pending":
-                        ConsoleHelper.WriteInfo("The transaction is waiting to be processed.");
+                    case TransactionLifecycleStatus.Active:
+                        ConsoleHelper.WriteSuccess("The transaction is valid and current.");
                         break;
-                    case "confirmed":
-                        ConsoleHelper.WriteSuccess("The transaction has been confirmed and added to the register.");
+                    case TransactionLifecycleStatus.Revoked:
+                        ConsoleHelper.WriteWarning("The transaction has been explicitly revoked.");
                         break;
-                    case "failed":
-                        ConsoleHelper.WriteError("The transaction failed validation or processing.");
-                        break;
-                    case "rejected":
-                        ConsoleHelper.WriteError("The transaction was rejected by the register.");
+                    case TransactionLifecycleStatus.Superseded:
+                        ConsoleHelper.WriteWarning("The transaction has been replaced by a newer transaction.");
                         break;
                     default:
                         ConsoleHelper.WriteWarning($"Unknown status: {response.Status}");
@@ -611,6 +635,417 @@ public class TxStatusCommand : Command
             catch (Exception ex)
             {
                 ConsoleHelper.WriteError($"Failed to get transaction status: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Generates a Merkle inclusion proof for a sealed transaction.
+/// </summary>
+public class TxProofCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _txIdOption;
+    private readonly Option<string?> _outOption;
+
+    public TxProofCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("proof", "Generate a Merkle inclusion proof for a sealed transaction")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        _txIdOption = new Option<string>("--tx-id", "-t")
+        {
+            Description = "Transaction ID",
+            Required = true
+        };
+
+        _outOption = new Option<string?>("--out", "-o")
+        {
+            Description = "Write the proof JSON to this file (for offline verification)"
+        };
+
+        Options.Add(_registerIdOption);
+        Options.Add(_txIdOption);
+        Options.Add(_outOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var txId = parseResult.GetValue(_txIdOption)!;
+            var outFile = parseResult.GetValue(_outOption);
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to generate an inclusion proof.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var proof = await client.GetInclusionProofAsync(registerId, txId, $"Bearer {token}");
+
+                if (!string.IsNullOrEmpty(outFile))
+                {
+                    var json = JsonSerializer.Serialize(proof, TransactionCommand.ProofJsonOptions);
+                    await File.WriteAllTextAsync(outFile, json, ct);
+                    ConsoleHelper.WriteSuccess($"Inclusion proof written to '{outFile}'.");
+                    ConsoleHelper.WriteInfo($"Verify it with: sorcha tx verify-proof --register-id {registerId} --file {outFile}");
+                    return ExitCodes.Success;
+                }
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, proof);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess("Merkle inclusion proof:");
+                Console.WriteLine();
+                Console.WriteLine($"  Transaction Hash: {proof.TransactionHash}");
+                Console.WriteLine($"  Docket Number:    {proof.DocketNumber}");
+                Console.WriteLine($"  Merkle Root:      {proof.MerkleRoot}");
+                Console.WriteLine($"  Leaf Index:       {proof.LeafIndex} of {proof.TreeSize}");
+                Console.WriteLine($"  Proof Path:       {proof.ProofPath.Count} step(s)");
+                foreach (var step in proof.ProofPath)
+                {
+                    Console.WriteLine($"    [{step.Position}] {step.Hash}");
+                }
+                Console.WriteLine();
+                ConsoleHelper.WriteInfo("Use --out <file> to save the proof for offline verification.");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Transaction '{txId}' not found in register '{registerId}', or it is not yet sealed.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
+                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("You do not have permission to read this transaction.");
+                return ExitCodes.AuthorizationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null)
+                {
+                    ConsoleHelper.WriteError($"Details: {ex.Content}");
+                }
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to generate inclusion proof: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Verifies a Merkle inclusion proof (offline-capable).
+/// </summary>
+public class TxVerifyProofCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _fileOption;
+
+    public TxVerifyProofCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("verify-proof", "Verify a previously generated Merkle inclusion proof")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        _fileOption = new Option<string>("--file", "-f")
+        {
+            Description = "Path to the proof JSON produced by 'sorcha tx proof --out'",
+            Required = true
+        };
+
+        Options.Add(_registerIdOption);
+        Options.Add(_fileOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var file = parseResult.GetValue(_fileOption)!;
+
+            MerkleInclusionProof? proof;
+            try
+            {
+                if (!File.Exists(file))
+                {
+                    ConsoleHelper.WriteError($"Proof file '{file}' not found.");
+                    return ExitCodes.ValidationError;
+                }
+
+                var json = await File.ReadAllTextAsync(file, ct);
+                proof = JsonSerializer.Deserialize<MerkleInclusionProof>(json, TransactionCommand.ProofJsonOptions);
+                if (proof == null)
+                {
+                    ConsoleHelper.WriteError($"Proof file '{file}' did not contain a valid inclusion proof.");
+                    return ExitCodes.ValidationError;
+                }
+            }
+            catch (JsonException ex)
+            {
+                ConsoleHelper.WriteError($"Proof file '{file}' is not valid JSON: {ex.Message}");
+                return ExitCodes.ValidationError;
+            }
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                // Verification is an anonymous endpoint, but send a token if we have one.
+                var token = await authService.GetAccessTokenAsync(profileName);
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var request = new VerifyMerkleInclusionProofRequest
+                {
+                    TransactionHash = proof.TransactionHash,
+                    MerkleRoot = proof.MerkleRoot,
+                    ProofPath = proof.ProofPath
+                };
+
+                var result = await client.VerifyInclusionProofAsync(
+                    registerId, request, token is null ? string.Empty : $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, result);
+                    return result.IsValid ? ExitCodes.Success : ExitCodes.GeneralError;
+                }
+
+                Console.WriteLine();
+                if (result.IsValid)
+                {
+                    ConsoleHelper.WriteSuccess("Proof is VALID — the transaction is included in the docket.");
+                    Console.WriteLine($"  Computed root: {result.ComputedRoot}");
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteError("Proof is INVALID — the computed root does not match.");
+                Console.WriteLine($"  Expected root: {proof.MerkleRoot}");
+                Console.WriteLine($"  Computed root: {result.ComputedRoot}");
+                return ExitCodes.GeneralError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                ConsoleHelper.WriteError("The proof was rejected as malformed.");
+                if (ex.Content != null)
+                {
+                    ConsoleHelper.WriteError($"Details: {ex.Content}");
+                }
+                return ExitCodes.ValidationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null)
+                {
+                    ConsoleHelper.WriteError($"Details: {ex.Content}");
+                }
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to verify proof: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Revokes a transaction with a recorded reason.
+/// </summary>
+public class TxRevokeCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _txIdOption;
+    private readonly Option<string> _reasonOption;
+    private readonly Option<string?> _supersededByOption;
+    private readonly Option<string?> _signerOption;
+
+    public TxRevokeCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("revoke", "Revoke a transaction with a recorded reason")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        _txIdOption = new Option<string>("--tx-id", "-t")
+        {
+            Description = "ID of the transaction to revoke",
+            Required = true
+        };
+
+        _reasonOption = new Option<string>("--reason")
+        {
+            Description = "Revocation reason: Superseded, Erroneous, Compromised, Expired, Withdrawn, Regulatory",
+            Required = true
+        };
+
+        _supersededByOption = new Option<string?>("--superseded-by")
+        {
+            Description = "ID of the replacement transaction (required when --reason is Superseded)"
+        };
+
+        _signerOption = new Option<string?>("--signer")
+        {
+            Description = "Signer wallet address for authority traceability"
+        };
+
+        Options.Add(_registerIdOption);
+        Options.Add(_txIdOption);
+        Options.Add(_reasonOption);
+        Options.Add(_supersededByOption);
+        Options.Add(_signerOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var txId = parseResult.GetValue(_txIdOption)!;
+            var reason = parseResult.GetValue(_reasonOption)!;
+            var supersededBy = parseResult.GetValue(_supersededByOption);
+            var signer = parseResult.GetValue(_signerOption);
+
+            // Validate the reason against the known revocation reasons for a friendly error.
+            if (!Enum.TryParse<RevocationReason>(reason, ignoreCase: true, out var parsedReason))
+            {
+                ConsoleHelper.WriteError($"Invalid revocation reason '{reason}'.");
+                ConsoleHelper.WriteInfo($"Valid reasons: {string.Join(", ", Enum.GetNames<RevocationReason>())}");
+                return ExitCodes.ValidationError;
+            }
+
+            if (parsedReason == RevocationReason.Superseded && string.IsNullOrWhiteSpace(supersededBy))
+            {
+                ConsoleHelper.WriteError("--superseded-by is required when --reason is 'Superseded'.");
+                return ExitCodes.ValidationError;
+            }
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to revoke a transaction.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var request = new RevokeTransactionRequest
+                {
+                    OriginalTxId = txId,
+                    Reason = parsedReason.ToString(),
+                    SupersededByTxId = supersededBy,
+                    SignerWalletAddress = signer
+                };
+
+                var result = await client.RevokeTransactionAsync(registerId, request, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, result);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess("Revocation submitted.");
+                Console.WriteLine();
+                Console.WriteLine($"  Revocation TX:   {result.RevocationTxId}");
+                Console.WriteLine($"  Original TX:     {result.OriginalTxId}");
+                Console.WriteLine($"  Status:          {result.Status}");
+                Console.WriteLine();
+                ConsoleHelper.WriteInfo($"Confirm with: sorcha tx status --register-id {registerId} --tx-id {txId}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                ConsoleHelper.WriteError("The revocation was rejected as invalid.");
+                if (ex.Content != null)
+                {
+                    ConsoleHelper.WriteError($"Details: {ex.Content}");
+                }
+                return ExitCodes.ValidationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Transaction '{txId}' not found in register '{registerId}'.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+            {
+                ConsoleHelper.WriteError("The transaction is already revoked.");
+                if (ex.Content != null)
+                {
+                    ConsoleHelper.WriteError($"Details: {ex.Content}");
+                }
+                return ExitCodes.GeneralError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
+                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("You do not have permission to revoke transactions in this register.");
+                return ExitCodes.AuthorizationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null)
+                {
+                    ConsoleHelper.WriteError($"Details: {ex.Content}");
+                }
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to revoke transaction: {ex.Message}");
                 return ExitCodes.GeneralError;
             }
         });

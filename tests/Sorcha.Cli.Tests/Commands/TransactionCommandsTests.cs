@@ -47,11 +47,12 @@ public class TransactionCommandsTests
     }
 
     [Fact]
-    public void TransactionCommand_ShouldHaveFourSubcommands()
+    public void TransactionCommand_ShouldHaveAllSubcommands()
     {
         var command = new TransactionCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(4);
-        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "submit", "status" });
+        command.Subcommands.Should().HaveCount(7);
+        command.Subcommands.Select(c => c.Name).Should().Contain(
+            new[] { "list", "get", "submit", "status", "proof", "verify-proof", "revoke" });
     }
 
     #region TxListCommand Tests
@@ -215,6 +216,85 @@ public class TransactionCommandsTests
         var txIdOption = command.Options.FirstOrDefault(o => o.Name == "--tx-id");
         txIdOption.Should().NotBeNull();
         txIdOption!.Required.Should().BeTrue();
+    }
+
+    #endregion
+
+    #region TxProofCommand Tests
+
+    [Fact]
+    public void TxProofCommand_ShouldHaveCorrectNameAndDescription()
+    {
+        var command = new TxProofCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("proof");
+        command.Description.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void TxProofCommand_ShouldHaveRequiredRegisterAndTxOptions()
+    {
+        var command = new TxProofCommand(_clientFactory, AuthService, ConfigService);
+        command.Options.First(o => o.Name == "--register-id").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--tx-id").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TxProofCommand_ShouldHaveOptionalOutOption()
+    {
+        var command = new TxProofCommand(_clientFactory, AuthService, ConfigService);
+        var outOption = command.Options.FirstOrDefault(o => o.Name == "--out");
+        outOption.Should().NotBeNull();
+        outOption!.Required.Should().BeFalse();
+    }
+
+    #endregion
+
+    #region TxVerifyProofCommand Tests
+
+    [Fact]
+    public void TxVerifyProofCommand_ShouldHaveCorrectNameAndDescription()
+    {
+        var command = new TxVerifyProofCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("verify-proof");
+        command.Description.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void TxVerifyProofCommand_ShouldHaveRequiredFileOption()
+    {
+        var command = new TxVerifyProofCommand(_clientFactory, AuthService, ConfigService);
+        var fileOption = command.Options.FirstOrDefault(o => o.Name == "--file");
+        fileOption.Should().NotBeNull();
+        fileOption!.Required.Should().BeTrue();
+    }
+
+    #endregion
+
+    #region TxRevokeCommand Tests
+
+    [Fact]
+    public void TxRevokeCommand_ShouldHaveCorrectNameAndDescription()
+    {
+        var command = new TxRevokeCommand(_clientFactory, AuthService, ConfigService);
+        command.Name.Should().Be("revoke");
+        command.Description.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void TxRevokeCommand_ShouldHaveRequiredTxIdAndReasonOptions()
+    {
+        var command = new TxRevokeCommand(_clientFactory, AuthService, ConfigService);
+        command.Options.First(o => o.Name == "--tx-id").Required.Should().BeTrue();
+        command.Options.First(o => o.Name == "--reason").Required.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TxRevokeCommand_ShouldHaveOptionalSupersededByOption()
+    {
+        var command = new TxRevokeCommand(_clientFactory, AuthService, ConfigService);
+        var option = command.Options.FirstOrDefault(o => o.Name == "--superseded-by");
+        option.Should().NotBeNull();
+        option!.Required.Should().BeFalse();
     }
 
     #endregion
