@@ -363,6 +363,37 @@
             <param name="cancellationToken">Cancellation token.</param>
             <returns>Validation result indicating success or specific failures per requirement.</returns>
         </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.IssuerDirectoryEntry">
+            <summary>
+            What the issuer directory knows about a resolved issuer (feature 135). Engine-local
+            projection of a decentralised-identifier document — just enough for the register and
+            did-allowlist trust sources to make a decision without the Engine taking a dependency
+            on the resolver registry.
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerDirectoryEntry.Resolved">
+            <summary>Whether the issuer identifier resolved to a directory entry at all.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerDirectoryEntry.AssertionMethodKeyIds">
+            <summary>The verification-method ids currently authorised for assertion (assertionMethod).</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerDirectoryEntry.AlsoKnownAs">
+            <summary>Equivalent issuer identifiers (alsoKnownAs), if any.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.IssuerDirectoryEntry.RegisterHeight">
+            <summary>Register height at which the entry was read, when known (for evidence).</summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory">
+            <summary>
+            Engine-local seam for resolving issuer directory entries (feature 135). Service-layer
+            adapters implement this over <c>IDidResolverRegistry</c>; the Engine ships an in-memory
+            variant so verification (and offline-pinned re-evaluation) runs without network access —
+            mirroring the <see cref="T:Sorcha.Blueprint.Engine.Credentials.IRevocationChecker"/> pattern.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory.LookupAsync(System.String,System.Threading.CancellationToken)">
+            <summary>Looks up directory information for an issuer; returns an unresolved entry when unknown.</summary>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.IRevocationChecker">
             <summary>
             Checks revocation status for a credential.
@@ -416,6 +447,41 @@
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.IStatusListChecker.CheckAsync(Sorcha.Blueprint.Engine.Credentials.StatusReference,System.Threading.CancellationToken)">
             <summary>Reads the status bit for the referenced credential entry.</summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.TrustAnchorSet">
+            <summary>
+            A set of trusted X.509 root certificates and the CRL state consulted at validation time
+            (feature 135). Used by the x509-tenant and trustlist trust sources.
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.TrustAnchorSet.Roots">
+            <summary>Trusted root certificates, DER-encoded.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.TrustAnchorSet.CrlVersion">
+            <summary>The CRL version / thisUpdate consulted, when known (for evidence).</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.TrustAnchorSet.AnchorSetId">
+            <summary>An identifier for the anchor set consulted (e.g. trust-list snapshot id).</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.TrustAnchorSet.Freshness">
+            <summary>Freshness timestamp of the anchor set, when known (for evidence).</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.TrustAnchorSet.CheckRevocation">
+            <summary>Whether revocation (CRL) should be checked during chain build.</summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.ITenantTrustAnchorProvider">
+            <summary>
+            Engine-local seam supplying trusted X.509 roots for chain validation (feature 135).
+            Service-layer adapters implement this over the tenant CA (<c>ITrustProvider</c>) for the
+            x509-tenant source and over the trust-list provider for the trustlist source. Returning
+            null means "no anchors available" — the x509 source then fails closed.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.ITenantTrustAnchorProvider.GetAnchorsAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            Returns the trusted roots for the given anchor identifier (null/empty = tenant default),
+            or null when none are available.
+            </summary>
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator">
             <summary>
@@ -516,6 +582,71 @@
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver.VouchAsync(Sorcha.Blueprint.Engine.Credentials.IssuerContext,Sorcha.Blueprint.Models.Credentials.TrustSourceRef,System.Threading.CancellationToken)">
             <summary>Asks this source whether it vouches for the issuer described by <paramref name="issuer"/>.</summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.Sources.DidAllowlistTrustSourceResolver">
+            <summary>
+            Explicit DID-allowlist trust source (feature 135). Vouches when the issuer is listed in the
+            source's <see cref="P:Sorcha.Blueprint.Models.Credentials.TrustSourceRef.AllowedIssuers"/> directly, or is alsoKnownAs-equivalent
+            to a listed identifier. The equivalence lookup goes through <see cref="T:Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory"/>
+            (replacing the wallet-only <c>IssuerEquivalenceMatcher</c> in the unified path).
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.DidAllowlistTrustSourceResolver.#ctor(Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory)">
+            <summary>
+            Explicit DID-allowlist trust source (feature 135). Vouches when the issuer is listed in the
+            source's <see cref="P:Sorcha.Blueprint.Models.Credentials.TrustSourceRef.AllowedIssuers"/> directly, or is alsoKnownAs-equivalent
+            to a listed identifier. The equivalence lookup goes through <see cref="T:Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory"/>
+            (replacing the wallet-only <c>IssuerEquivalenceMatcher</c> in the unified path).
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.Sources.DidAllowlistTrustSourceResolver.Kind">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.DidAllowlistTrustSourceResolver.VouchAsync(Sorcha.Blueprint.Engine.Credentials.IssuerContext,Sorcha.Blueprint.Models.Credentials.TrustSourceRef,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.Sources.RegisterTrustSourceResolver">
+            <summary>
+            Register / decentralised-identifier trust source (feature 135). Vouches for an issuer when
+            its identifier resolves in the directory and the signing key is currently authorised in
+            assertionMethod (rotated/revoked keys are dropped from assertionMethod — Feature 120).
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.RegisterTrustSourceResolver.#ctor(Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory)">
+            <summary>
+            Register / decentralised-identifier trust source (feature 135). Vouches for an issuer when
+            its identifier resolves in the directory and the signing key is currently authorised in
+            assertionMethod (rotated/revoked keys are dropped from assertionMethod — Feature 120).
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.Sources.RegisterTrustSourceResolver.Kind">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.RegisterTrustSourceResolver.VouchAsync(Sorcha.Blueprint.Engine.Credentials.IssuerContext,Sorcha.Blueprint.Models.Credentials.TrustSourceRef,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver">
+            <summary>
+            Tenant X.509 trust source (feature 135). Vouches when the credential's x5c chain validates
+            to a trusted tenant root (with CRL when enabled). Lifts the chain-build logic that used to
+            live ad hoc in the HAIP verifier into a reusable, evaluator-driven source.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver.#ctor(Sorcha.Blueprint.Engine.Credentials.ITenantTrustAnchorProvider)">
+            <summary>
+            Tenant X.509 trust source (feature 135). Vouches when the credential's x5c chain validates
+            to a trusted tenant root (with CRL when enabled). Lifts the chain-build logic that used to
+            live ad hoc in the HAIP verifier into a reusable, evaluator-driven source.
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver.Kind">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver.AnchorId(Sorcha.Blueprint.Models.Credentials.TrustSourceRef)">
+            <summary>The anchor identifier to request; null = the tenant default. Overridden by the trustlist source.</summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver.VouchAsync(Sorcha.Blueprint.Engine.Credentials.IssuerContext,Sorcha.Blueprint.Models.Credentials.TrustSourceRef,System.Threading.CancellationToken)">
+            <inheritdoc />
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.TrustDecision">
             <summary>

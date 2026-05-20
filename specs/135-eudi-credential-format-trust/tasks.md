@@ -65,7 +65,7 @@ Repo root `C:\Projects\Sorcha`. Source under `src/`, tests under `tests/` mirror
 ### Tests for User Story 1 ⚠️ (write first, must fail)
 
 - [X] T017 [P] [US1] `TrustEvaluatorTests` (anyOf/allOf, MinAssuranceLevel, claim override, fail-closed on unavailable source, status mapping, evidence + policy-digest, default-policy) + `TrustResolverRegistryTests` in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/TrustEvaluatorTests.cs`. **18 tests, all green (suite 478/+1 skip).**
-- [ ] T018 [P] [US1] Per-source resolver tests (`RegisterTrustSourceTests`, `X509TenantTrustSourceTests`, `DidAllowlistTrustSourceTests`) in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/`.
+- [X] T018 [P] [US1] Per-source resolver tests (`TrustSourceResolverTests` — register/allowlist via fake `IIssuerDirectory`, x509 via real self-signed certs). 12 tests; Engine suite 490/+1 skip.
 - [ ] T019 [P] [US1] **Cross-path parity test**: same credential + policy through engine `CredentialVerifier` and HAIP `HaipPresentationVerifier` yields equal decision + evidence shape (SC-001) in `tests/Sorcha.Haip.Service.Tests/CrossPathParityTests.cs`.
 - [ ] T020 [P] [US1] Engine signature-verification tests proving `SignatureValid` is truthful (valid accepted, tampered rejected — SC-002) in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/CredentialVerifierSignatureTests.cs`.
 - [ ] T021 [P] [US1] Default-policy synthesis test (no policy → register@Low; legacy issuers → did-allowlist) + offline pinned re-evaluation test (SC-005) in `tests/Sorcha.Blueprint.Engine.Tests/Credentials/TrustPolicyDefaultsTests.cs`.
@@ -74,9 +74,9 @@ Repo root `C:\Projects\Sorcha`. Source under `src/`, tests under `tests/` mirror
 
 - [X] T022 [P] [US1] Implement `IStatusListChecker` adapter over `BitstringStatusListChecker` (W3C) — `CheckAsync(StatusReference)` maps Active→NotSet, Revoked/Suspended→Set, null→Unknown.
 - [ ] T023 [P] [US1] Implement `IStatusListChecker` adapter over `IetfTokenStatusListChecker` (IETF) in `src/Services/Sorcha.Haip.Service/Services/IetfTokenStatusListChecker.cs`.
-- [ ] T024 [P] [US1] Implement `RegisterTrustSourceResolver` (DID resolution + assertionMethod gate + `IssuerEquivalenceMatcher`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/Sources/RegisterTrustSourceResolver.cs`.
-- [ ] T025 [P] [US1] Implement `X509TenantTrustSourceResolver` (lift `ValidateX5cChain` + CRL from HAIP into a reusable resolver over `ITrustProvider`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/Sources/X509TenantTrustSourceResolver.cs`.
-- [ ] T026 [P] [US1] Implement `DidAllowlistTrustSourceResolver` (explicit DIDs + `ResolveWithAlsoKnownAsAsync`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/Sources/DidAllowlistTrustSourceResolver.cs`.
+- [X] T024 [P] [US1] Implement `RegisterTrustSourceResolver` (resolve via engine-local `IIssuerDirectory` + assertionMethod gate) in `.../Sources/RegisterTrustSourceResolver.cs`. **NOTE: depends on new engine-local seams `IIssuerDirectory` + `ITenantTrustAnchorProvider` (added) — service adapters over `IDidResolverRegistry`/`ITrustProvider` are wired in T034.**
+- [X] T025 [P] [US1] Implement `X509TenantTrustSourceResolver` (X509Chain CustomRootTrust + optional CRL over engine-local `ITenantTrustAnchorProvider`; `AnchorId`/`Kind` virtual so the US2 trustlist source can subclass) in `.../Sources/X509TenantTrustSourceResolver.cs`.
+- [X] T026 [P] [US1] Implement `DidAllowlistTrustSourceResolver` (direct match + alsoKnownAs equivalence via `IIssuerDirectory`) in `.../Sources/DidAllowlistTrustSourceResolver.cs`.
 - [X] T027 [US1] Implement `TrustResolverRegistry` (mirror `IDidResolverRegistry`) in `src/Core/Sorcha.Blueprint.Engine/Credentials/TrustResolverRegistry.cs`.
 - [X] T028 [US1] Implement `TrustEvaluator` — signature precondition → per-source vouch + combinator → assurance (source-tier + upward-only claim override, honoured only for ≥Substantial sources) → status check → `TrustEvidence` + SHA-256 policy digest → fail-closed. (Resolvers themselves are T024-T026, pending the engine-local directory/root seams.)
 - [X] T029 [US1] Default-policy synthesis (FR-026): `NormalisePolicy` in the evaluator falls back to register@Low when no policy is declared; legacy issuers→did-allowlist handled at requirement binding via `TrustPolicyExtensions.FromLegacyIssuers` (foundation).
