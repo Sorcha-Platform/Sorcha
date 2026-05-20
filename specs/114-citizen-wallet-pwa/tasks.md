@@ -317,15 +317,15 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 ### Server side — Wallet Service forwarding
 
-- [ ] T136 [US5] Create `src/Services/Sorcha.Wallet.Service/Services/Interfaces/ICitizenPresentationLogReporter.cs` and `Services/Implementation/CitizenPresentationLogReporter.cs` — receives reports from the wallet, forwards each entry to Blueprint Service via the existing service-to-service auth, performs Redis SET-NX dedupe under `sorcha:wallet:presentation-log-dedupe:{logEntryId}` with 24h TTL.
-- [ ] T137 [US5] Modify `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` to add `POST /api/v1/wallet/presentations/log` accepting `PresentationLogReportRequest`, returning 202 Accepted; dispatches to `ICitizenPresentationLogReporter` async via `IServiceScopeFactory`.
-- [ ] T138 [P] [US5] Add WebApplicationFactory integration tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/PresentationLogEndpointTests.cs` — accepts batch, dedupes duplicates, malformed entries return 400.
+- [x] T136 [US5] Create `src/Services/Sorcha.Wallet.Service/Services/Interfaces/ICitizenPresentationLogReporter.cs` and `Services/Implementation/CitizenPresentationLogReporter.cs` — receives reports from the wallet, performs Redis SET-NX dedupe under `sorcha:wallet:presentation-log-dedupe:{logEntryId}` with 24h TTL, then forwards each new entry via the `IPresentationLogForwarder` seam. PR2 forwarder (`LoggingPresentationLogForwarder`) is a logging no-op; the real Blueprint service-to-service write lands in PR3 once the offline `IPresentationConsumer` shape is reconciled against F127.
+- [x] T137 [US5] Modify `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` to add `POST /api/v1/wallet/presentations/log` accepting `PresentationLogReportRequest`, returning 202 Accepted; dispatches to `ICitizenPresentationLogReporter` async via `IServiceScopeFactory`.
+- [x] T138 [P] [US5] Add tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/PresentationLogEndpointTests.cs` (reflection-based static-handler invocation per the established citizen-endpoint pattern — accepts batch → 202, validation failure → 400, missing claim → 401) plus `CitizenPresentationLogReporterTests.cs` (SET-NX dedupe: new → forward, duplicate → skip, mixed batch, key/TTL, Redis-down degrade-open).
 
 ### PWA — presentation log writer + sync queue
 
 - [ ] T139 [US5] Create `src/Apps/Sorcha.Citizen.Wallet/Services/IPresentationLog.cs` and `Services/Implementation/PresentationLog.cs` — appends entries to IndexedDB `credentials`-store-adjacent `presentationLog` table (data-model §B5 syncQueue + a separate `presentationLog` for human-visible entries; clarify in implementation), exposes `IReadOnlyList<PresentationLogEntry> GetRecent(int count)`, `Task DeleteAsync(Guid id)`.
 - [ ] T140 [US5] Modify `Present.razor` (T100) to call `IPresentationLog.AppendAsync(...)` after every successful presentation, and to enqueue a sync-queue entry for later upload.
-- [ ] T141 [US5] Modify `ISyncService` (T107) to drain the `presentationLog` sync queue on every successful sync — POST batch to `/api/v1/wallet/presentations/log`, mark entries as `syncedToServer=true` on 202.
+- [x] T141 [US5] Modify `ISyncService` (T107) to drain the `presentationLog` sync queue on every successful sync — POST batch to `/api/v1/wallet/presentations/log`, mark entries as `syncedToServer=true` on 202. (Project renamed `Sorcha.Citizen.Wallet` → `Sorcha.Wallet.Pwa` per F125.) Added `CredentialId` to the PWA-local `PresentationLogEntry` (populated in `Present.razor`) so the drain can map to the wire contract; entries without a credential id (pre-PR2) are skipped. `InMemoryPresentationLog.AppendAsync` now upserts by id to mirror IndexedDB `put`.
 
 ### PWA — Activity page
 

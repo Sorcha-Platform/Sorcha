@@ -196,6 +196,15 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDelegation
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceRevocationService,
     Sorcha.Wallet.Service.Services.Implementation.DeviceRevocationService>();
 
+// Feature 114 (US5 PR2): citizen presentation-log reporting. The reporter dedupes
+// each reported entry (Redis SET-NX, 24h) and forwards new ones via the forwarder
+// seam. PR2 forwarder is a logging no-op; the real Blueprint lifecycle write lands
+// in PR3 once the offline IPresentationConsumer shape is reconciled against F127.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenPresentationLogReporter,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenPresentationLogReporter>();
+builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.IPresentationLogForwarder,
+    Sorcha.Wallet.Service.Services.Implementation.LoggingPresentationLogForwarder>();
+
 // Feature 114: FluentValidation for citizen wallet request DTOs
 builder.Services.AddValidatorsFromAssemblyContaining<
     Sorcha.CitizenWallet.Abstractions.Validators.DeviceEnrolmentRequestValidator>();

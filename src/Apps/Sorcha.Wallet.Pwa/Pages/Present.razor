@@ -213,7 +213,8 @@
                     ? _request.ClientId
                     : _request.Purpose!,
                 DisclosedClaims: disclosedClaims,
-                Outcome: accepted ? PresentationLogOutcome.Sent : PresentationLogOutcome.Rejected);
+                Outcome: accepted ? PresentationLogOutcome.Sent : PresentationLogOutcome.Rejected,
+                CredentialId: _selected.Credential.Id);
             await PresentationLog.AppendAsync(entry);
         }
         catch

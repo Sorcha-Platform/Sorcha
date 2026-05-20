@@ -5,6 +5,7 @@ using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.PlatformUserDevice;
@@ -111,7 +112,66 @@ public static class CitizenWalletEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapPost("/presentations/log", ReportPresentationLog)
+            .WithName("ReportCitizenPresentationLog")
+            .WithSummary("Report presentations the wallet has made (US5)")
+            .WithDescription(
+                "Accepts a batch of presentation-log entries the wallet recorded locally " +
+                "and reports them to the platform so the Feature 111 lifecycle record can " +
+                "be written. Returns 202 Accepted immediately; dedupe (per entry id, 24h) " +
+                "and forwarding happen off the request path. Wallets may re-report the same " +
+                "entry safely — duplicates are absorbed by the entry-id dedupe.")
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
         return app;
+    }
+
+    private static async Task<IResult> ReportPresentationLog(
+        [FromBody] PresentationLogReportRequest request,
+        HttpContext context,
+        IValidator<PresentationLogReportRequest> validator,
+        IServiceScopeFactory scopeFactory,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        var validation = await validator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+        {
+            return Results.ValidationProblem(validation.ToDictionary());
+        }
+
+        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        if (platformUserId is null) return Results.Unauthorized();
+
+        var uid = platformUserId.Value;
+        var entries = request.Entries;
+
+        // Dispatch dedupe + forward off the request path so the wallet gets a fast
+        // 202 and is not blocked on downstream forwarding. Own DI scope (the
+        // reporter is scoped); CancellationToken.None so a client disconnect does
+        // not abort the forward mid-batch.
+        _ = Task.Run(async () =>
+        {
+            using var scope = scopeFactory.CreateScope();
+            var reporter = scope.ServiceProvider.GetRequiredService<ICitizenPresentationLogReporter>();
+            try
+            {
+                var accepted = await reporter.ReportAsync(uid, entries, CancellationToken.None);
+                logger.LogInformation(
+                    "Presentation-log report processed platformUser={PlatformUserId} reported={Reported} accepted={Accepted}",
+                    uid, entries.Count, accepted);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "Presentation-log report failed platformUser={PlatformUserId} reported={Reported}",
+                    uid, entries.Count);
+            }
+        });
+
+        return Results.Accepted();
     }
 
     private static async Task<IResult> ListDevices(

@@ -464,11 +464,13 @@ paths:
 
   /wallet/presentations/log:
     post:
-      summary: Report offline presentations the wallet made while disconnected
+      summary: Report presentations the wallet made
       description: |
-        Idempotent on `entries[].id`. Forwarded to the Blueprint Service which writes
-        Feature 111 lifecycle events (PresentationInitiated + PresentationOutcome) on
-        the originating register, preserving the offline timestamps.
+        Idempotent on `entries[].id` (Wallet Service dedupes via Redis SET-NX, 24h).
+        Newly-accepted entries are forwarded to the platform for Feature 111 lifecycle
+        recording. The exact lifecycle shape is being reconciled against Feature 127
+        (consumers no longer write the register directly); in US5 PR2 the forward is a
+        logging stub and the Blueprint write lands in PR3.
       requestBody:
         required: true
         content:
