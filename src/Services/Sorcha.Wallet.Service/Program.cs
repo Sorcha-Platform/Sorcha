@@ -10,6 +10,7 @@ using Sorcha.Wallet.Service.Hubs;
 using Sorcha.Wallet.Service.Services;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceDefaults.Hubs;
+using Sorcha.ServiceDefaults.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -196,14 +197,50 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDelegation
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceRevocationService,
     Sorcha.Wallet.Service.Services.Implementation.DeviceRevocationService>();
 
-// Feature 114 (US5 PR2): citizen presentation-log reporting. The reporter dedupes
+// Feature 114 (US5): citizen presentation-log reporting. The reporter dedupes
 // each reported entry (Redis SET-NX, 24h) and forwards new ones via the forwarder
-// seam. PR2 forwarder is a logging no-op; the real Blueprint lifecycle write lands
-// in PR3 once the offline IPresentationConsumer shape is reconciled against F127.
+// seam (PR2). PR3 forwards into the durable per-citizen presentation store so the
+// citizen's history follows them across devices — no Blueprint Service, no register
+// write (a free-standing offline presentation has no originating register).
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenPresentationLogReporter,
     Sorcha.Wallet.Service.Services.Implementation.CitizenPresentationLogReporter>();
-builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.IPresentationLogForwarder,
-    Sorcha.Wallet.Service.Services.Implementation.LoggingPresentationLogForwarder>();
+// Scoped (was Singleton in PR2): the forwarder now consumes the scoped store /
+// WalletDbContext. The reporter is resolved inside a fresh DI scope on the report
+// path, so a scoped forwarder + scoped store stay within that scope.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IPresentationLogForwarder,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenPresentationStoreForwarder>();
+
+// Feature 114 (US5 PR3): durable per-citizen presentation history store. Registered
+// via IStorageRegistrationLog (RegisterPersistent with Postgres, RegisterInMemory
+// fallback) but deliberately NOT on the F113 fail-fast audited list — convenience
+// data, so an in-memory backend warns rather than gating startup.
+{
+    var presentationStoreLog = builder.Services.GetStorageRegistrationLog();
+    var presentationStoreInterface =
+        typeof(Sorcha.Wallet.Service.Services.Interfaces.ICitizenPresentationStore).FullName!;
+    var hasWalletPostgres =
+        !string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:Wallet:Postgres"])
+        || !string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:Sorcha:Postgres"]);
+
+    if (hasWalletPostgres)
+    {
+        builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenPresentationStore,
+            Sorcha.Wallet.Service.Services.Implementation.EfCoreCitizenPresentationStore>();
+        presentationStoreLog.RegisterPersistent(
+            presentationStoreInterface,
+            typeof(Sorcha.Wallet.Service.Services.Implementation.EfCoreCitizenPresentationStore).FullName!,
+            "postgres");
+    }
+    else
+    {
+        builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizenPresentationStore,
+            Sorcha.Wallet.Service.Services.Implementation.InMemoryCitizenPresentationStore>();
+        presentationStoreLog.RegisterInMemory(
+            presentationStoreInterface,
+            typeof(Sorcha.Wallet.Service.Services.Implementation.InMemoryCitizenPresentationStore).FullName!,
+            "no Postgres connection string in ConnectionStrings:Wallet:Postgres or ConnectionStrings:Sorcha:Postgres");
+    }
+}
 
 // Feature 114: FluentValidation for citizen wallet request DTOs
 builder.Services.AddValidatorsFromAssemblyContaining<
