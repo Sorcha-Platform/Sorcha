@@ -275,15 +275,20 @@ builder.Services.TryAddSingleton(TimeProvider.System);
 Sorcha.ServiceClients.Http.Extensions.HttpServiceCollectionExtensions
     .AddDidResolvers(builder.Services, builder.Configuration);
 
+// DidResolverBackedIssuerKeyResolver consumes the scoped IDidResolverRegistry, so it (and the
+// composite resolver + validator that depend on it) MUST be scoped — registering them as singletons
+// is a captive dependency that production DI validation (ValidateOnBuild) rejects at startup. Mirrors
+// the reference verifier's wiring (Sorcha.Verifier/Extensions/ServiceCollectionExtensions.cs, fixed in
+// #810). JwkRegistryIssuerKeyResolver holds no scoped dependency, so it stays a singleton.
 builder.Services.AddSingleton<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>();
-builder.Services.AddSingleton<Sorcha.Verifier.Engine.DidResolverBackedIssuerKeyResolver>();
-builder.Services.AddSingleton<Sorcha.Verifier.Engine.IIssuerKeyResolver>(sp =>
+builder.Services.AddScoped<Sorcha.Verifier.Engine.DidResolverBackedIssuerKeyResolver>();
+builder.Services.AddScoped<Sorcha.Verifier.Engine.IIssuerKeyResolver>(sp =>
     new Sorcha.Verifier.Engine.CompositeIssuerKeyResolver(
     [
         sp.GetRequiredService<Sorcha.Verifier.Engine.DidResolverBackedIssuerKeyResolver>(),
         sp.GetRequiredService<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>()
     ]));
-builder.Services.AddSingleton<Sorcha.Verifier.Engine.IVerifiablePresentationValidator>(sp =>
+builder.Services.AddScoped<Sorcha.Verifier.Engine.IVerifiablePresentationValidator>(sp =>
     new Sorcha.Verifier.Engine.VerifiablePresentationValidator(
         sp.GetRequiredService<Sorcha.Verifier.Engine.IStatusListCache>(),
         sp.GetRequiredService<Sorcha.Verifier.Engine.IIssuerKeyResolver>(),
@@ -295,7 +300,10 @@ builder.Services.AddSingleton<Sorcha.Verifier.Engine.IVerifiablePresentationVali
 // by the citizen's Sorcha wallet via Sorcha.Verifier.Engine. The first
 // non-HAIP IPresentationConsumer, implementing the new BuildInitiationAsync
 // extension on the consumer contract.
-builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
+// Scoped — it consumes the scoped IVerifiablePresentationValidator. The Scoped
+// PresentationLifecycleService resolves the IPresentationConsumer collection, so a scoped
+// consumer is valid alongside the singleton HaipPresentationConsumer above.
+builder.Services.AddScoped<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
     Sorcha.Blueprint.Service.Services.Implementation.SorchaWalletPresentationConsumer>();
 
 // Spec 5 — verifier-DID resolution. The lifecycle service resolves the council
