@@ -68,7 +68,25 @@ public sealed class DidResolverBackedIssuerKeyResolver : IIssuerKeyResolver, IDi
         activity?.SetTag("verifier.issuer.iss", issuer);
         activity?.SetTag("verifier.issuer.kid", kid ?? "(null)");
 
-        var doc = await _registry.ResolveWithAlsoKnownAsAsync(issuer, ct).ConfigureAwait(false);
+        DidDocument? doc;
+        try
+        {
+            doc = await _registry.ResolveWithAlsoKnownAsAsync(issuer, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A resolution failure (network error, unreachable resolver, unresolvable
+            // demo issuer such as did:sorcha:org:demo) is a "cannot resolve" — classify
+            // it as did-unresolved and return null so a fallback resolver (e.g. the
+            // in-memory JWK registry used by demo-mint) gets its turn, rather than
+            // crashing the whole composite chain with a 500.
+            RecordOutcome(activity, "did-unresolved", "na");
+            _logger.LogWarning(ex,
+                "Issuer DID resolution threw; treating as unresolved so a fallback resolver can try: " +
+                "iss={Issuer} kid={Kid}", issuer, kid);
+            return null;
+        }
+
         if (doc is null)
         {
             RecordOutcome(activity, "did-unresolved", "na");

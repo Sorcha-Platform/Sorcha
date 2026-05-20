@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.Metrics;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -171,6 +172,36 @@ public sealed class DidResolverBackedIssuerKeyResolverTests
         var result = await CreateResolver(registry.Object).ResolveAsync(Issuer, kid: null);
 
         result.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_RegistryThrows_ReturnsNull_SoCompositeCanFallThrough()
+    {
+        // Issue #808 — a resolution failure (e.g. unreachable DID resolver / unresolvable
+        // demo issuer) must be treated as "unresolved" (null), NOT propagated as an
+        // exception. Otherwise CompositeIssuerKeyResolver crashes (500) instead of
+        // falling through to the in-memory JWK registry where demo-mint keys live.
+        var registry = new Mock<IDidResolverRegistry>();
+        registry.Setup(r => r.ResolveWithAlsoKnownAsAsync(Issuer, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused (localhost:443)"));
+
+        var result = await CreateResolver(registry.Object).ResolveAsync(Issuer, Kid);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_RegistryCancelled_PropagatesCancellation()
+    {
+        // A genuine cancellation must still surface — only non-cancellation failures
+        // are swallowed into a null return.
+        var registry = new Mock<IDidResolverRegistry>();
+        registry.Setup(r => r.ResolveWithAlsoKnownAsAsync(Issuer, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
+
+        var act = async () => await CreateResolver(registry.Object).ResolveAsync(Issuer, Kid);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Fact]

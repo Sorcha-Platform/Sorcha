@@ -47,9 +47,11 @@
 
 @code {
     private string _purpose = "Confirm identity";
-    private string _vct = "https://sorcha.dev/vc/test/v1";
-    private string _required = "givenName";
-    private string _optional = "familyName";
+    // Defaults match the "Load demo credential" mint (DemoMintEndpoint.DemoVct) so the
+    // out-of-the-box demo presents successfully without hand-editing these fields.
+    private string _vct = "https://sorcha.dev/vc/demo-id-card/v1";
+    private string _required = "givenName,familyName";
+    private string _optional = "dateOfBirth";
     private bool _starting;
     private string? _error;
 
@@ -84,13 +86,17 @@
 
     private string ResolveBaseUri()
     {
-        // Behind the gateway the verifier sees /verify/* as its mount prefix; build the
-        // response URI relative to whatever host scanned the QR.
+        // Return the ORIGIN ONLY (scheme://host). The request builder appends the
+        // /verify gateway mount prefix itself, so this must not include it.
+        // In interactive Blazor Server, HttpContext is null during the button-click
+        // handler — the fallback must derive the origin from Nav.BaseUri's authority,
+        // NOT Nav.BaseUri directly (which carries the /verify base-href and would
+        // double the prefix → …/verify/verify/r/{id}/response → 404).
         var ctx = HttpAccessor?.HttpContext;
         if (ctx is not null)
         {
             return $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}";
         }
-        return Nav.BaseUri.TrimEnd('/');
+        return new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
     }
 }

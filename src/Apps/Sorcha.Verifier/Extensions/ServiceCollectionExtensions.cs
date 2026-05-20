@@ -32,28 +32,53 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IVerifierSessionStore, InMemoryVerifierSessionStore>();
         services.AddSingleton<IPresentationRequestBuilder, PresentationRequestBuilder>();
 
-        // Feature 120 — DID resolver infrastructure (cache, OTel meter, registry resolvers).
-        services.AddDidResolvers(configuration);
-
-        // Feature 120 US1 — production issuer key resolver. Composite tries DID-backed first
-        // then falls back to the JWK registry (empty in production; demo-mint populates it
-        // in dev). DID-resolver path enforces the FR-003 failure-mode classification; the
-        // registry tier exists only to keep dev/demo flows working without loosening
-        // production behaviour.
+        // Feature 120 US1 — issuer key resolution. The JWK registry tier always exists
+        // (demo-mint populates it; empty in production). The DID-backed tier verifies
+        // real did:sorcha:org credentials but its dependency graph
+        // (IDidResolverRegistry → SorchaDidResolver → IWalletServiceClient → ServiceAuthClient)
+        // needs an authenticated service principal. A standalone reference/demo verifier
+        // has no principal, so wiring the DID-backed tier unconditionally crashed the
+        // response callback at DI activation (issue #808): first "SorchaDidResolver has no
+        // constructable ctor" (IWalletServiceClient unregistered), then once the client
+        // graph was added, "ServiceAuth:ClientId not configured" from ServiceAuthClient.
+        //
+        // So the DID-backed tier is wired ONLY when a service principal is configured.
+        // Without one, issuer signatures verify via the JWK registry alone — which is all
+        // the demo (did:sorcha:org:demo, a non-resolvable fake) ever needed.
+        //
+        // SCOPED, not Singleton: the DID resolver registry + SorchaDidResolver +
+        // IWalletServiceClient are scoped, so a singleton resolver would be a captive
+        // dependency. The JWK registry stays a singleton — demo-mint writes to it and every
+        // request's composite reads the same instance.
         services.AddSingleton<JwkRegistryIssuerKeyResolver>();
-        services.AddSingleton<DidResolverBackedIssuerKeyResolver>();
-        services.AddSingleton<IIssuerKeyResolver>(sp => new CompositeIssuerKeyResolver(
-        [
-            sp.GetRequiredService<DidResolverBackedIssuerKeyResolver>(),
-            sp.GetRequiredService<JwkRegistryIssuerKeyResolver>()
-        ]));
+
+        var hasServicePrincipal = configuration is not null
+            && !string.IsNullOrWhiteSpace(configuration["ServiceAuth:ClientId"]);
+
+        if (hasServicePrincipal)
+        {
+            services.AddHttpServiceClients(configuration!);
+            services.AddScoped<DidResolverBackedIssuerKeyResolver>();
+            services.AddScoped<IIssuerKeyResolver>(sp => new CompositeIssuerKeyResolver(
+            [
+                sp.GetRequiredService<DidResolverBackedIssuerKeyResolver>(),
+                sp.GetRequiredService<JwkRegistryIssuerKeyResolver>()
+            ]));
+        }
+        else
+        {
+            services.AddScoped<IIssuerKeyResolver>(sp => new CompositeIssuerKeyResolver(
+            [
+                sp.GetRequiredService<JwkRegistryIssuerKeyResolver>()
+            ]));
+        }
 
         // Feature 120 T022 — production default is REQUIRED (FR-019 / D5).
         var requireIssuerSignature = configuration?
             .GetValue<bool?>("IssuerSignature:Required")
             ?? configuration?.GetValue<bool?>("Verifier:RequireIssuerSignature")
             ?? true;
-        services.AddSingleton<IVerifiablePresentationValidator>(sp =>
+        services.AddScoped<IVerifiablePresentationValidator>(sp =>
             new VerifiablePresentationValidator(
                 sp.GetRequiredService<IStatusListCache>(),
                 sp.GetRequiredService<IIssuerKeyResolver>(),
