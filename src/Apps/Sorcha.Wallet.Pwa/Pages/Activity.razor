@@ -3,15 +3,24 @@
     Copyright (c) 2026 Sorcha Contributors
 
     Activity page (Feature 125, T086; extended Feature 114 US5). Renders the
-    TransactionHistoryFeed component from the shared library, merging two
-    per-device sources chronologically:
+    TransactionHistoryFeed component from the shared library, merging three
+    sources chronologically:
       - IVerificationHistoryStore — verifications the user PERFORMED (F125),
         scoped to the active context.
-      - IPresentationLog — presentations the user MADE (F114 US5).
+      - ICitizenWalletClient.ListPresentationsAsync — the citizen's cross-device
+        presentation history from the Wallet Service (F114 US5 PR3).
+      - IPresentationLog — presentations MADE on THIS device but not yet synced
+        to the server (instant feedback before the next sync).
 
-    Presentation entries are tappable to delete (local-only; platform records
-    are unaffected). Future PRs feed in real issuance / submission / revocation
-    events via a server-side history endpoint.
+    Merge rule (design §5):
+      display = (server history) ∪ { local entries where !SyncedToServer }
+    Synced local entries are display-suppressed in favour of the server list, so
+    a server-authoritative delete removes an entry from every device's display and
+    a lingering synced local copy never resurrects it.
+
+    Presentation entries are tappable to delete (server-authoritative: removed
+    from history on all the citizen's devices; the verifier's own records are
+    unaffected).
 *@
 @page "/activity"
 @layout MainLayout
@@ -19,9 +28,12 @@
 @using Sorcha.UI.Components.User.Components.History
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Context
+@using Sorcha.ServiceClients.CitizenWallet
+@using Wire = Sorcha.CitizenWallet.Abstractions.Models
 @implements IAsyncDisposable
 @inject IVerificationHistoryStore VerificationHistory
 @inject IPresentationLog PresentationLog
+@inject ICitizenWalletClient WalletClient
 @inject IUserContext UserContext
 @inject IDialogService DialogService
 @inject NavigationManager Nav
@@ -58,7 +70,7 @@
         try
         {
             var verifications = await VerificationHistory.ListByContextAsync(UserContext.ActiveContextOrgId);
-            var presentations = await PresentationLog.ListAsync();
+            var presentationEntries = await BuildPresentationEntriesAsync();
 
             var verificationEntries = verifications.Select(r =>
                 new TransactionHistoryFeed.HistoryFeedEntry(
@@ -67,14 +79,6 @@
                     Title: $"Verified {r.HolderDisplayName}",
                     Subtitle: $"{r.IssuerOrgName} · {r.CredentialType} · {r.Outcome}",
                     At: r.VerifiedAt));
-
-            var presentationEntries = presentations.Select(p =>
-                new TransactionHistoryFeed.HistoryFeedEntry(
-                    Id: PresentationIdPrefix + p.Id.ToString("N"),
-                    Kind: TransactionHistoryFeed.HistoryFeedKind.Presentation,
-                    Title: $"Presented {p.CredentialLabel ?? p.CredentialType}",
-                    Subtitle: BuildPresentationSubtitle(p),
-                    At: p.PresentedAt));
 
             _entries = verificationEntries
                 .Concat(presentationEntries)
@@ -87,12 +91,33 @@
         }
     }
 
-    private static string BuildPresentationSubtitle(PresentationLogEntry p)
+    /// <summary>
+    /// Fetches server history + the device-local log and applies the design §5 merge
+    /// rule via <see cref="PresentationActivityMerge"/>, mapping the result to feed
+    /// rows. Falls back to the local log alone on a transient server error so the
+    /// page still renders this device's history.
+    /// </summary>
+    private async Task<IEnumerable<TransactionHistoryFeed.HistoryFeedEntry>> BuildPresentationEntriesAsync()
     {
-        var claimCount = p.DisclosedClaims.Count;
-        var claimText = claimCount == 1 ? "1 claim" : $"{claimCount} claims";
-        var outcomeText = p.Outcome == PresentationLogOutcome.Sent ? "Sent" : "Rejected";
-        return $"{p.VerifierLabel} · {claimText} · {outcomeText}";
+        IReadOnlyList<Wire.PresentationLogEntry> serverEntries;
+        try
+        {
+            serverEntries = await WalletClient.ListPresentationsAsync();
+        }
+        catch
+        {
+            serverEntries = Array.Empty<Wire.PresentationLogEntry>();
+        }
+
+        var localEntries = await PresentationLog.ListAsync();
+        var merged = PresentationActivityMerge.Build(serverEntries, localEntries);
+
+        return merged.Select(m => new TransactionHistoryFeed.HistoryFeedEntry(
+            Id: PresentationIdPrefix + m.Id.ToString("N"),
+            Kind: TransactionHistoryFeed.HistoryFeedKind.Presentation,
+            Title: m.Title,
+            Subtitle: m.Subtitle,
+            At: m.PresentedAt));
     }
 
     private async Task HandleContextChangedAsync(UserContextChangedEventArgs args)
@@ -106,21 +131,20 @@
 
     private async Task HandleEntryAsync(string entryId)
     {
-        // Only presentation entries are deletable here — they're the citizen's
-        // own local log. Verification entries (F125) tap into their own detail
-        // surface in a future PR.
+        // Only presentation entries are deletable here — they're the citizen's own
+        // history. Verification entries (F125) tap into their own detail surface in
+        // a future PR.
         if (!entryId.StartsWith(PresentationIdPrefix, StringComparison.Ordinal)) return;
         if (!Guid.TryParseExact(entryId[PresentationIdPrefix.Length..], "N", out var id)) return;
 
         var confirmed = await DialogService.ShowMessageBoxAsync(
-            "Remove from activity?",
-            "This only removes the entry from this device. It does not affect any "
-                + "official record of the presentation, or the credential itself.",
+            PresentationActivityActions.RemoveConfirmTitle,
+            PresentationActivityActions.RemoveConfirmBody,
             yesText: "Remove", cancelText: "Cancel");
 
         if (confirmed == true)
         {
-            await PresentationLog.DeleteAsync(id);
+            await PresentationActivityActions.DeleteEverywhereAsync(WalletClient, PresentationLog, id);
             await LoadAsync();
             StateHasChanged();
         }

@@ -117,15 +117,65 @@ public static class CitizenWalletEndpoints
             .WithSummary("Report presentations the wallet has made (US5)")
             .WithDescription(
                 "Accepts a batch of presentation-log entries the wallet recorded locally " +
-                "and reports them to the platform so the Feature 111 lifecycle record can " +
-                "be written. Returns 202 Accepted immediately; dedupe (per entry id, 24h) " +
+                "and reports them to the platform so the citizen's cross-device history is " +
+                "filled. Returns 202 Accepted immediately; dedupe (per entry id, 24h) " +
                 "and forwarding happen off the request path. Wallets may re-report the same " +
                 "entry safely — duplicates are absorbed by the entry-id dedupe.")
             .Produces(StatusCodes.Status202Accepted)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapGet("/presentations", ListPresentations)
+            .WithName("ListCitizenPresentations")
+            .WithSummary("List the citizen's presentation history (US5)")
+            .WithDescription(
+                "Returns every presentation the authenticated citizen has reported, from " +
+                "any of their devices, newest-first. Backs the PWA Activity page's " +
+                "cross-device history. Returns an empty list (never 404) when there is no " +
+                "history. Carries disclosed claim names only — never values.")
+            .Produces<PresentationHistoryResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapDelete("/presentations/{id:guid}", DeletePresentation)
+            .WithName("DeleteCitizenPresentation")
+            .WithSummary("Delete a presentation from the citizen's history (US5)")
+            .WithDescription(
+                "Server-authoritative delete: removes the entry from the citizen's history " +
+                "across all their devices. Idempotent. A delete targeting another citizen's " +
+                "entry, or a non-existent entry, returns 204 — indistinguishable from success, " +
+                "to avoid leaking existence. Does not affect the verifier's own records " +
+                "(there is no register/ledger record for these presentations).")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         return app;
+    }
+
+    private static async Task<IResult> ListPresentations(
+        HttpContext context,
+        ICitizenPresentationStore store,
+        CancellationToken ct)
+    {
+        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        if (platformUserId is null) return Results.Unauthorized();
+
+        var entries = await store.ListAsync(platformUserId.Value, ct);
+        return Results.Ok(new PresentationHistoryResponse { Entries = entries });
+    }
+
+    private static async Task<IResult> DeletePresentation(
+        Guid id,
+        HttpContext context,
+        ICitizenPresentationStore store,
+        CancellationToken ct)
+    {
+        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        if (platformUserId is null) return Results.Unauthorized();
+
+        // Idempotent + cross-user-indistinguishable: always 204 regardless of whether
+        // a row was removed. DeleteAsync is already scoped to the caller's platform user.
+        await store.DeleteAsync(platformUserId.Value, id, ct);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> ReportPresentationLog(
