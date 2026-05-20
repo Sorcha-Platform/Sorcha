@@ -14,11 +14,12 @@
 //     verifications — keyed by id (GUID)         — verification history records
 //     personas      — keyed by contextKey string — per-context persona cache
 //
-// Content-key strategy (deviation from data-model §B1, documented in the wallet README):
-// v1 uses a non-extractable AES-GCM-256 CryptoKey generated on first run and stored
-// directly in IndexedDB (browsers structured-clone CryptoKey natively). XChaCha20-Poly1305
-// via libsodium-js is the production target and lands when the libsodium bridge is added;
-// the wire-format on disk is incompatible between the two so the schema will rev to v2.
+// Content-key strategy (Feature 114 T056): a 32-byte XChaCha20-Poly1305 content
+// key is generated on first run and stored as raw bytes in the `device` store.
+// Each credential is sealed with IETF XChaCha20-Poly1305 (24-byte nonce, 16-byte
+// tag) via xchacha-bridge.js (@noble/ciphers). Raw key bytes are required because
+// the AEAD operates on byte arrays — unlike the earlier non-extractable WebCrypto
+// AES-GCM CryptoKey, which couldn't expose its material.
 //
 // All exports attach to globalThis.SorchaIndexedDb.
 
@@ -130,12 +131,9 @@
     if (contentKeyPromise) return contentKeyPromise;
     contentKeyPromise = (async () => {
       const existing = await get("device", CONTENT_KEY_ID);
-      if (existing && existing.key) return existing.key;
-      const key = await crypto.subtle.generateKey(
-        { name: "AES-GCM", length: 256 },
-        false /* non-extractable — CryptoKey persists via structured clone */,
-        ["encrypt", "decrypt"]
-      );
+      // Stored as a raw 32-byte key (Uint8Array survives structured-clone).
+      if (existing && existing.key instanceof Uint8Array) return existing.key;
+      const key = globalThis.SorchaXChaCha.keygen();
       await put("device", { key }, CONTENT_KEY_ID);
       return key;
     })();
@@ -160,22 +158,16 @@
 
   async function encryptString(plaintext) {
     const key = await getOrCreateContentKey();
-    const nonce = crypto.getRandomValues(new Uint8Array(12));
-    const ciphertext = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: nonce },
-      key,
-      new TextEncoder().encode(plaintext)
-    );
+    const nonce = globalThis.SorchaXChaCha.nonce();
+    const ciphertext = await globalThis.SorchaXChaCha.encrypt(
+      key, nonce, new TextEncoder().encode(plaintext));
     return { nonce: bytesToB64Url(nonce), ciphertext: bytesToB64Url(ciphertext) };
   }
 
   async function decryptString(nonceB64, ciphertextB64) {
     const key = await getOrCreateContentKey();
-    const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: b64UrlToBytes(nonceB64) },
-      key,
-      b64UrlToBytes(ciphertextB64)
-    );
+    const plain = await globalThis.SorchaXChaCha.decrypt(
+      key, b64UrlToBytes(nonceB64), b64UrlToBytes(ciphertextB64));
     return new TextDecoder().decode(plain);
   }
 

@@ -10,10 +10,10 @@ namespace Sorcha.Wallet.Pwa.Services;
 /// <summary>
 /// Production <see cref="ICredentialCache"/> backed by IndexedDB store
 /// <c>credentials</c> via <c>indexeddb-bridge.js</c>. Each credential is
-/// serialised to JSON and encrypted under the wallet's content key
-/// (AES-GCM-256 in v1; XChaCha20-Poly1305 once the libsodium bridge lands).
-/// The content key is a non-extractable WebCrypto <c>CryptoKey</c> persisted
-/// in the IndexedDB <c>device</c> store via structured-clone.
+/// serialised to JSON and sealed with IETF XChaCha20-Poly1305 (24-byte nonce,
+/// 16-byte tag) via the xchacha-bridge (@noble/ciphers). The content key is a
+/// 32-byte value generated on first run and persisted as raw bytes in the
+/// IndexedDB <c>device</c> store via structured-clone.
 /// </summary>
 public sealed class IndexedDbCredentialCache : ICredentialCache
 {
