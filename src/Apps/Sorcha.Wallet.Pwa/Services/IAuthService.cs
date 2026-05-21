@@ -42,7 +42,12 @@ public interface IAuthService
     Task<SignInResult> VerifyTwoFactorAsync(
         string loginToken, string email, string code, bool isBackupCode = false, CancellationToken ct = default);
 
-    /// <summary>Clears the persisted token.</summary>
+    /// <summary>
+    /// Signs the citizen out: clears the persisted token AND wipes every
+    /// per-device wallet store (credentials, personas, delegation, history,
+    /// sync cursor, active-context, welcome/tour flags) so no trace of the
+    /// signed-out citizen survives for the next user on this device.
+    /// </summary>
     Task SignOutAsync(CancellationToken ct = default);
 }
 
@@ -77,12 +82,14 @@ public sealed class AuthService : IAuthService
 {
     private readonly HttpClient _http;
     private readonly IAccessTokenStore _store;
+    private readonly ILocalDataPurge _purge;
 
     /// <summary>Initialises a new instance.</summary>
-    public AuthService(HttpClient http, IAccessTokenStore store)
+    public AuthService(HttpClient http, IAccessTokenStore store, ILocalDataPurge purge)
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _purge = purge ?? throw new ArgumentNullException(nameof(purge));
     }
 
     /// <inheritdoc />
@@ -177,7 +184,13 @@ public sealed class AuthService : IAuthService
     }
 
     /// <inheritdoc />
-    public Task SignOutAsync(CancellationToken ct = default) => _store.ClearAsync(ct);
+    public async Task SignOutAsync(CancellationToken ct = default)
+    {
+        // Clear the token first so the UI flips to signed-out immediately even
+        // if the wider purge throws; then wipe every per-device store.
+        await _store.ClearAsync(ct);
+        await _purge.PurgeAsync(ct);
+    }
 
     private async Task PersistAsync(string accessToken, int expiresIn, string email, CancellationToken ct)
     {

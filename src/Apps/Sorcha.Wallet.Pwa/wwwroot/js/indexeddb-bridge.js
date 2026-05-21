@@ -127,6 +127,25 @@
     });
   }
 
+  // Sign-out wipe: clears EVERY object store in one transaction by enumerating
+  // db.objectStoreNames, so a store added in a future spec is wiped without any
+  // per-store maintenance. Also resets the cached content key so the next
+  // session derives a fresh one. The caller (sign-out) force-reloads the app
+  // afterwards, which discards in-memory singleton state too.
+  async function wipe() {
+    const db = await openDb();
+    const names = Array.from(db.objectStoreNames);
+    contentKeyPromise = null;
+    if (names.length === 0) return;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(names, "readwrite");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+      for (const n of names) tx.objectStore(n).clear();
+    });
+  }
+
   // --- content-key + symmetric encryption -----------------------------------
 
   let contentKeyPromise = null;
@@ -225,7 +244,7 @@
 
   globalThis.SorchaIndexedDb = {
     // raw store ops
-    put, get, del, getAll, clear,
+    put, get, del, getAll, clear, wipe,
     // credentials (encrypted)
     putCredential, getCredential, listCredentials, deleteCredential,
   };
