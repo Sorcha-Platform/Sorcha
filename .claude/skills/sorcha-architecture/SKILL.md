@@ -585,7 +585,7 @@ End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). W
 
 ### Endpoints
 
-#### Wallet Service — public (citizen JWT, audience `sorcha:citizen-wallet`)
+#### Wallet Service — public (citizen JWT, consumer-tier audience `{installation}:consumer` — gated by `RequireConsumerAudience`, spec 136)
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -1322,5 +1322,6 @@ Platform-security rework of how Sorcha issues + validates JWT access tokens. **F
 - **Validation = authenticate-broad / authorize-narrow**: bearer accepts `SorchaAudiences.All`; tier enforced per-endpoint by `RequireConsumerAudience` / `RequirePlatformAudience` / `RequireService`. The real user↔service boundary was already `token_type`; this promotes it (and the consumer↔platform split) into `aud`.
 - **Issuer hardening**: no shared default; `SorchaIssuer.Resolve` → explicit, else `urn:sorcha:{installation}`, else `urn:sorcha:dev-local` (non-prod), else fail-closed at startup (Production/Staging). `SorchaIssuer.AllowsDevLocalFallback(env)` gates the dev-local fallback. Mint (`TokenService`/`EnrolSessionService` via Tenant `JwtConfiguration`) and validate (`AddJwtAuthentication`) resolve through the **same** helpers or tokens self-reject.
 - **Per-tier claim sets**: consumer omits `org_id`/roles (inert on platform surfaces); platform = full user shape; service = `client_id`/`service_name`/`scope[]`. Refresh carries `tier`.
-- **Status**: Foundational engine + runtime flip landed on branch `136-jwt-audience-tiers` (TokenService→platform, ServiceAuth→service, EnrolSession→consumer/enrol-session, `ValidAudiences=All`, issuer hardening). **Still in-progress (US1/US4/US5)**: tier *selection* at login (consumer-vs-platform from `returnTo`), per-endpoint tier *classification*, `RequireService` `:service`-audience extension, `IdentityMetrics` wiring. Until US1, endpoints are not yet tier-gated.
+- **Tier follows the person, not the UI host**: a citizen is `:consumer` on both `/app` (web) and `/wallet` (PWA); an admin is `:platform` in org context. Login derives the tier from `returnTo` (`/wallet`⇒consumer, `/app`⇒platform) as a *preference* that **downgrades to entitlement** (citizen on `/app`→consumer); an explicit `tier=platform` over-request by a non-entitled user is **refused (403, FR-008)**. `switch-org` re-mints at the new context's tier (FR-016). Endpoint classification: consumer surfaces (`/api/v1/wallet/*`)→`RequireConsumerAudience`; admin/org→`RequirePlatformAudience` composed on the role policy; `/api/internal/*`→extended `RequireService`; genuinely cross-tier `/me/*` stay plain `.RequireAuthorization()`.
+- **Status: ALL FIVE user stories DONE** (branch `136-jwt-audience-tiers`). US1 classification, US2 service-isolation (`RequireService` asserts `:service`), US3 issuer hardening + per-deploy `InstallationName`, US4 consumer-tier login, US5 tier-follows-person + over-request gate, `IdentityMetrics` wired. McpServer validation realigned to the installation issuer. Remaining: docs/regression polish + an edge case (2FA-on-`/wallet` tier carry).
 - **No migration** (pre-release): coordinated config rollout; existing tokens expire. Dependency contract for downstream Spec B (PWA auth/signup parity).
