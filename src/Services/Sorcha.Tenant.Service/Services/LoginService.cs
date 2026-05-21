@@ -3,6 +3,7 @@
 
 using Microsoft.EntityFrameworkCore;
 
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -54,7 +55,7 @@ public class LoginService : ILoginService
     }
 
     /// <inheritdoc />
-    public async Task<LoginResult> LoginAsync(string email, string password, CancellationToken ct = default)
+    public async Task<LoginResult> LoginAsync(string email, string password, Tier requestedTier = Tier.Platform, CancellationToken ct = default)
     {
         // Rate limiting check
         if (await _revocationService.IsRateLimitedAsync(email, ct))
@@ -120,7 +121,7 @@ public class LoginService : ILoginService
             // Single org — auto-select (no picker needed)
             if (activeOrgs.Count == 1)
             {
-                return await IssueTokensForOrgAsync(platformUser, activeOrgs[0], memberships, ct);
+                return await IssueTokensForOrgAsync(platformUser, activeOrgs[0], memberships, requestedTier, ct);
             }
 
             // Multiple orgs — return org list for user to pick
@@ -156,7 +157,7 @@ public class LoginService : ILoginService
     }
 
     /// <inheritdoc />
-    public async Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, CancellationToken ct = default)
+    public async Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, Tier requestedTier = Tier.Platform, CancellationToken ct = default)
     {
         // Validate the platform login token
         var userIdentityId = await _totpService.ValidateLoginTokenAsync(platformLoginToken, ct);
@@ -196,7 +197,7 @@ public class LoginService : ILoginService
             return new LoginResult(false, Error: "Organization is not available.");
         }
 
-        return await IssueTokensForOrgAsync(platformUser, organization, memberships, ct);
+        return await IssueTokensForOrgAsync(platformUser, organization, memberships, requestedTier, ct);
     }
 
     /// <summary>
@@ -206,6 +207,7 @@ public class LoginService : ILoginService
         PlatformUser platformUser,
         Organization organization,
         IReadOnlyList<PlatformUserOrgMembership> memberships,
+        Tier requestedTier,
         CancellationToken ct)
     {
         // Get UserIdentity in the target org
@@ -244,10 +246,10 @@ public class LoginService : ILoginService
         user.LastLoginAt = DateTimeOffset.UtcNow;
         await _identityRepository.UpdateUserAsync(user, ct);
 
-        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, cancellationToken: ct);
+        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, requestedTier, ct);
 
-        _logger.LogInformation("User logged in successfully - {Email} (OrgId: {OrgId})",
-            user.Email, organization.Id);
+        _logger.LogInformation("User logged in successfully - {Email} (OrgId: {OrgId}, tier: {Tier})",
+            user.Email, organization.Id, requestedTier);
 
         // Fire-and-forget welcome email if this is the user's first login and they
         // haven't been welcomed yet. Idempotent + non-throwing by design.
@@ -257,7 +259,7 @@ public class LoginService : ILoginService
     }
 
     /// <inheritdoc />
-    public async Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, CancellationToken ct = default)
+    public async Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, Tier requestedTier = Tier.Platform, CancellationToken ct = default)
     {
         // Rate limiting check
         if (await _revocationService.IsRateLimitedAsync(email, ct))
@@ -344,10 +346,10 @@ public class LoginService : ILoginService
             user.LastLoginAt = DateTimeOffset.UtcNow;
             await _identityRepository.UpdateUserAsync(user, ct);
 
-            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, cancellationToken: ct);
+            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, requestedTier, ct);
 
-            _logger.LogInformation("Subdomain login succeeded - {Email} in org {Subdomain} (UserId: {UserId})",
-                email, orgSubdomain, user.Id);
+            _logger.LogInformation("Subdomain login succeeded - {Email} in org {Subdomain} (UserId: {UserId}, tier: {Tier})",
+                email, orgSubdomain, user.Id, requestedTier);
 
             // Welcome email — once per user across all login paths.
             await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);

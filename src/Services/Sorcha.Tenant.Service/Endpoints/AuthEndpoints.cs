@@ -289,6 +289,7 @@ public static class AuthEndpoints
     private static async Task<IResult> Login(
         LoginRequest request,
         ILoginService loginService,
+        Microsoft.Extensions.Options.IOptions<Models.ReturnToAllowlistOptions> returnToAllowlist,
         CancellationToken cancellationToken)
     {
         // Validate input
@@ -308,9 +309,15 @@ public static class AuthEndpoints
             });
         }
 
+        // Spec 136: derive the requested trust tier — explicit hint wins, else returnTo
+        // (/wallet ⇒ consumer), else Platform (the /app SPA is the default platform host).
+        var requestedTier = RequestedTierResolver.ParseTierHint(request.Tier)
+            ?? RequestedTierResolver.ClassifyReturnTo(request.ReturnTo, returnToAllowlist.Value)
+            ?? Sorcha.ServiceDefaults.Auth.Tier.Platform;
+
         var result = !string.IsNullOrWhiteSpace(request.OrganizationSubdomain)
-            ? await loginService.LoginAsync(request.Email, request.Password, request.OrganizationSubdomain, cancellationToken)
-            : await loginService.LoginAsync(request.Email, request.Password, cancellationToken);
+            ? await loginService.LoginAsync(request.Email, request.Password, request.OrganizationSubdomain, requestedTier, cancellationToken)
+            : await loginService.LoginAsync(request.Email, request.Password, requestedTier, cancellationToken);
 
         if (!result.Success)
         {
@@ -378,7 +385,7 @@ public static class AuthEndpoints
         }
 
         var result = await loginService.CompleteOrgSelectionAsync(
-            request.PlatformLoginToken, request.OrganizationId, cancellationToken);
+            request.PlatformLoginToken, request.OrganizationId, ct: cancellationToken);
 
         if (!result.Success)
         {

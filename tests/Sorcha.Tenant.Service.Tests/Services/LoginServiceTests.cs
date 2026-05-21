@@ -216,6 +216,37 @@ public class LoginServiceTests : IDisposable
         _identityRepo.Verify(r => r.UpdateUserAsync(It.Is<UserIdentity>(u => u.LastLoginAt != null), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Theory]
+    [InlineData(Tier.Consumer)]
+    [InlineData(Tier.Platform)]
+    public async Task LoginAsync_PropagatesRequestedTierToTokenService(Tier requestedTier)
+    {
+        // Spec 136: the requested tier flows through LoginService to token issuance unchanged.
+        var (platformUser, org, identity) = SeedFullUser();
+        SetupNoRateLimit();
+        SetupNo2Fa();
+        SetupPasswordSuccess();
+        SetupPlatformUserLookup(platformUser);
+        SetupOrgMemberships(platformUser.Id, new PlatformUserOrgMembership
+        {
+            PlatformUserId = platformUser.Id,
+            OrganizationId = org.Id,
+            Role = "Consumer",
+            JoinedAt = DateTimeOffset.UtcNow
+        });
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenResponse { AccessToken = "a", RefreshToken = "r" });
+
+        var service = CreateService();
+
+        await service.LoginAsync("user@test.com", "correct-password", requestedTier);
+
+        _tokenService.Verify(t => t.GenerateUserTokenAsync(
+            It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), requestedTier, It.IsAny<CancellationToken>()),
+            Times.Once, "the tier requested at the entry point must be the tier minted");
+    }
+
     [Fact]
     public async Task LoginAsync_VerifiedUserFirstSuccessfulLogin_FiresWelcomeDispatcher()
     {

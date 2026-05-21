@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Models.Dtos;
 
 namespace Sorcha.Tenant.Service.Services;
@@ -69,9 +70,10 @@ public interface ILoginService
     /// </summary>
     /// <param name="email">User email address.</param>
     /// <param name="password">User password.</param>
+    /// <param name="requestedTier">The trust tier to mint (spec 136). Default Platform; pass Consumer for a consumer destination.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Login result with tokens or 2FA challenge.</returns>
-    Task<LoginResult> LoginAsync(string email, string password, CancellationToken ct = default);
+    Task<LoginResult> LoginAsync(string email, string password, Tier requestedTier = Tier.Platform, CancellationToken ct = default);
 
     /// <summary>
     /// Attempts to authenticate a user with email and password, targeting a specific organization by subdomain.
@@ -81,9 +83,10 @@ public interface ILoginService
     /// <param name="email">User email address.</param>
     /// <param name="password">User password.</param>
     /// <param name="orgSubdomain">Target organization subdomain.</param>
+    /// <param name="requestedTier">The trust tier to mint (spec 136). Default Platform.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Login result with tokens scoped to the target org, or 2FA challenge.</returns>
-    Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, CancellationToken ct = default);
+    Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, Tier requestedTier = Tier.Platform, CancellationToken ct = default);
 
     /// <summary>
     /// Completes login after org selection. Uses the platform login token issued during
@@ -91,7 +94,8 @@ public interface ILoginService
     /// </summary>
     /// <param name="platformLoginToken">Short-lived token from the org-selection login response.</param>
     /// <param name="organizationId">The chosen organisation ID.</param>
+    /// <param name="requestedTier">The trust tier to mint (spec 136). Default Platform — org selection is a platform action.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Login result with tokens scoped to the chosen org, or 2FA challenge.</returns>
-    Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, CancellationToken ct = default);
+    Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, Tier requestedTier = Tier.Platform, CancellationToken ct = default);
 }

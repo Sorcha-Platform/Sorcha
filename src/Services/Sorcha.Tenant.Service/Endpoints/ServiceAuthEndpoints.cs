@@ -223,7 +223,7 @@ public static class ServiceAuthEndpoints
 
         try
         {
-            var result = await loginService.LoginAsync(username, password, cancellationToken);
+            var result = await loginService.LoginAsync(username, password, ct: cancellationToken);
 
             if (!result.Success || result.Tokens is null)
             {
