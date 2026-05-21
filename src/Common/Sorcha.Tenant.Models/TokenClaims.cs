@@ -23,9 +23,9 @@ public class TokenClaims
     public required string Subject { get; init; }
 
     /// <summary>
-    /// Issuer (Tenant Service URL for the deployment that issued this token).
-    /// Standard JWT "iss" claim.
-    /// Example: "https://tenant.sorcha.io" or "https://auth.big-corporate.com"
+    /// Issuer (the installation that issued this token). Standard JWT "iss" claim.
+    /// Spec 136: an opaque, non-domain identifier derived from the installation name —
+    /// e.g. "urn:sorcha:sorcha", "urn:sorcha:n1.sorcha.dev" — or an explicitly configured issuer.
     /// </summary>
     public required string Issuer { get; init; }
 

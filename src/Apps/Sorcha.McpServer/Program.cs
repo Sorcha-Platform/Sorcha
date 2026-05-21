@@ -10,6 +10,7 @@ using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceDefaults;
+using Sorcha.ServiceDefaults.Auth;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -25,6 +26,10 @@ builder.Configuration
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+    // Unprefixed env vars so the platform-wide JwtSettings__InstallationName / __SigningKey
+    // (set by docker-compose) are visible — the MCP server must validate against the same
+    // installation identity + signing key as token issuance (spec 136).
+    .AddEnvironmentVariables()
     .AddEnvironmentVariables("SORCHA_");
 
 // Parse command-line arguments for JWT token
@@ -37,6 +42,23 @@ if (string.IsNullOrEmpty(jwtToken))
 
 // Register configuration options
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
+// Spec 136: validate Tenant-issued tokens against the installation's single source of truth —
+// no shared issuer default. Issuer + tier audiences derive from JwtSettings:InstallationName
+// (the same value token issuance uses); a configured Jwt:Issuer still wins. The signing key
+// falls back to the platform's shared key when the MCP-specific one is unset.
+builder.Services.PostConfigure<JwtOptions>(o =>
+{
+    var installationName = builder.Configuration["JwtSettings:InstallationName"]
+        ?? builder.Configuration["Jwt:InstallationName"];
+    var explicitIssuer = string.IsNullOrWhiteSpace(o.Issuer) ? null : o.Issuer;
+    o.Issuer = SorchaIssuer.Resolve(
+        explicitIssuer, installationName, SorchaIssuer.AllowsDevLocalFallback(builder.Environment));
+    o.Audiences = new SorchaAudiences(installationName).All.ToArray();
+    if (string.IsNullOrEmpty(o.SigningKey))
+    {
+        o.SigningKey = builder.Configuration["JwtSettings:SigningKey"];
+    }
+});
 builder.Services.Configure<RateLimitSettings>(builder.Configuration.GetSection(RateLimitSettings.SectionName));
 
 // Register JWT validation handler

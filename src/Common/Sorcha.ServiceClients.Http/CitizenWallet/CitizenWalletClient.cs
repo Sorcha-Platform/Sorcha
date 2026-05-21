@@ -17,8 +17,8 @@ namespace Sorcha.ServiceClients.CitizenWallet;
 /// </summary>
 /// <remarks>
 /// This client does NOT inject a service principal token — citizen-wallet
-/// endpoints require a citizen JWT (audience <c>sorcha:citizen-wallet</c>) that
-/// the PWA acquires through the existing Sorcha auth flow. Caller is responsible
+/// endpoints require a citizen JWT (the consumer-tier audience <c>{installation}:consumer</c>,
+/// spec 136) that the PWA acquires through the existing Sorcha auth flow. Caller is responsible
 /// for setting <see cref="HttpClient.DefaultRequestHeaders"/>.Authorization or
 /// using a <see cref="DelegatingHandler"/> that does so.
 /// </remarks>
