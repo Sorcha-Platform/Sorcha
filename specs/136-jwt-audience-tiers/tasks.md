@@ -176,7 +176,9 @@ Multi-service .NET platform. Shared primitives in `src/Common/Sorcha.ServiceDefa
 - [ ] T054 Run `specs/136-jwt-audience-tiers/quickstart.md` validation end to end (configure, mint, verify all six boundary checks).
 - [ ] T055 [P] Add OTel dashboard/alert note for `sorcha_token_minted_total` + `sorcha_tier_request_rejected_total` in `docs/`.
 - [ ] T056 Full regression: `dotnet build` (no warnings) + `dotnet test` across affected projects; confirm >85% coverage on new code (`SorchaAudiences`, `TierResolver`, `RequestedTierResolver`, issuer resolution, policies).
-- [ ] T057 Confirm no remaining hard-coded audience strings or shared issuer defaults anywhere (grep gate); confirm `JwtAudiences.CitizenWallet` is gone.
+- [X] T056 Full regression (commit `ee452311` era): ServiceDefaults 183, Tenant 1183, Auth.Integration 39, Wallet 828, Blueprint 723, Register 295, Validator 957, Peer 679, ServiceClients 215, McpServer 550, CitizenWallet.Abstractions 20 — 0 failures. Solution builds clean.
+- [X] T057 Grep gate clean: `JwtAudiences.CitizenWallet` gone; no hard-coded tier-audience literals in src (outside `SorchaAudiences.cs`); no JWT shared-issuer default — found + fixed the last one (McpServer `JwtOptions` defaulted to the dead `https://tenant.sorcha.io`/`https://api.sorcha.io`; now derives issuer + audiences from `InstallationName`, commit `ae558ca9`). Remaining `tenant.sorcha.io`/`api.sorcha.io` hits are service-endpoint URLs (CLI/profile), not JWT issuer/audience.
+- [X] T052/T053 Docs: CLAUDE.md Critical Pattern #13 (tiered JWT audiences); `sorcha-architecture` skill F136 status→done + endpoint-ref fix; `jwt` skill + `sorcha-ui` skill (host mounts) updated earlier. T055 OTel metric names documented in CLAUDE.md #13 + jwt skill (no separate dashboard doc).
 
 ---
 
