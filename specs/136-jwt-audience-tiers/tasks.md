@@ -45,7 +45,7 @@ Multi-service .NET platform. Shared primitives in `src/Common/Sorcha.ServiceDefa
 - [X] T010 [P] Unit tests for `TierResolver` (default consumer; platform only with platform role; over-request rejected; dual-role entitlement; machine tiers refused) in `tests/Sorcha.Tenant.Service.Tests/Services/TierResolverTests.cs` — 9 tests, green.
 - [~] T011 `TokenService` made tier-aware: `GenerateToken` takes an explicit audience; `GenerateUserTokenAsync` mints `{install}:platform`, `GenerateServiceTokenAsync` (T025) mints `{install}:service`, refresh tokens carry a `tier` claim. `JwtConfiguration` gained `InstallationName`; mint resolves issuer + audiences via the same `SorchaIssuer`/`SorchaAudiences` as validation. **DEFERRED to US4**: consumer-tier selection at login (today direct login → platform) and `sorcha_token_minted_total` emission (IdentityMetrics not yet DI-wired).
 - [ ] T012 [P] Unit tests for `TokenService` per-tier claim sets — DEFERRED. (Per-tier behaviour is currently covered indirectly by the green Tenant + Auth integration suites; dedicated unit tests land with US4 when consumer selection is wired.)
-- [ ] T013 Remove the dead `JwtAudiences.CitizenWallet` constant and update references in `src/Common/Sorcha.CitizenWallet.Abstractions/Constants/JwtAudiences.cs` (and any usages) to `SorchaAudiences`.
+- [X] T013 Removed the dead `JwtAudiences.CitizenWallet` constant — deleted `src/Common/Sorcha.CitizenWallet.Abstractions/Constants/JwtAudiences.cs`, updated the `CitizenWalletEndpoints` doc comment to reference `RequireConsumerAudience`, and dropped the constant's unit test. No remaining code references (docs deferred to T052/T035). Commit `2d248ba0`.
 - [ ] T014 Add a reusable fallback "default to platform tier" authorization convention (an endpoint with no explicit tier policy resolves to `RequirePlatformAudience`) in `src/Common/Sorcha.ServiceDefaults/AuthorizationPolicyExtensions.cs` (e.g. set as the `FallbackPolicy` or a documented convention applied per host).
 
 **Checkpoint**: Engine ready — audiences, policies, resolver, tier-aware issuance, metrics all in place and unit-tested.
@@ -106,8 +106,8 @@ Multi-service .NET platform. Shared primitives in `src/Common/Sorcha.ServiceDefa
 
 ### Tests for User Story 3 (write first, must fail)
 
-- [ ] T029 [P] [US3] Unit test: issuer resolution — explicit wins; else `urn:sorcha:{InstallationName}`; missing-both throws in Production and yields `urn:sorcha:dev-local` in Development, in `tests/Sorcha.ServiceDefaults.Tests/Auth/IssuerResolutionTests.cs`.
-- [ ] T030 [P] [US3] Integration test: a token signed with installation A's key/issuer is rejected under installation B's settings, in `tests/Sorcha.ServiceDefaults.Tests/Auth/CrossInstallationRejectionTests.cs`.
+- [X] T029 [P] [US3] Unit test: issuer resolution — explicit wins; else `urn:sorcha:{InstallationName}`; missing-both throws in Production/Staging and yields `urn:sorcha:dev-local` otherwise; `AllowsDevLocalFallback` env matrix. `tests/Sorcha.ServiceDefaults.Tests/Auth/IssuerResolutionTests.cs`. Commit `2d248ba0`.
+- [X] T030 [P] [US3] Unit test: a token minted under installation A's issuer + audience namespace is rejected under installation B's validation params (signing key held constant to isolate the issuer/audience axis). `tests/Sorcha.ServiceDefaults.Tests/Auth/CrossInstallationRejectionTests.cs`. Commit `2d248ba0`.
 
 ### Implementation for User Story 3
 
@@ -136,7 +136,7 @@ Multi-service .NET platform. Shared primitives in `src/Common/Sorcha.ServiceDefa
 
 ### Implementation for User Story 4
 
-- [ ] T040 [US4] Extend `RequestedTierResolver` (T017) to be the shared derivation for all paths (returnTo → tier, optional explicit override, default Consumer) and unit-test it in `tests/Sorcha.Tenant.Service.Tests/Services/RequestedTierResolverTests.cs`.
+- [X] T040 [US4] `RequestedTierResolver` shared derivation (explicit hint → returnTo path/host → default Consumer) implemented in `src/Services/Sorcha.Tenant.Service/Services/RequestedTierResolver.cs` + unit-tested in `tests/Sorcha.Tenant.Service.Tests/Services/RequestedTierResolverTests.cs`. Commit `0735a2a1`. **NOT yet wired into login/callbacks** — the wiring (T017/T041-T044) lands with the issuance flip; reuses `ReturnToAllowlistOptions` for trusted-host classification.
 - [ ] T041 [P] [US4] Wire verify-2fa and refresh to apply the resolver / preserve tier in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`.
 - [ ] T042 [P] [US4] Wire signup-completion to mint via the resolver in `src/Services/Sorcha.Tenant.Service/Pages/Auth/Signup.cshtml.cs`.
 - [ ] T043 [P] [US4] Wire `SocialCallback` to derive tier from `returnTo` and pass to issuance in `src/Services/Sorcha.Tenant.Service/Pages/Auth/SocialCallback.cshtml.cs`.
