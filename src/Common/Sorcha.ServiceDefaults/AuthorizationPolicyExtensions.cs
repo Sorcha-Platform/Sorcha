@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Claims;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceDefaults.Auth;
 
 // Placed in Microsoft.Extensions.Hosting so callers get these extension methods automatically
 // without needing an additional using directive — a standard pattern for service-defaults libraries.
@@ -19,6 +21,12 @@ public static class AuthorizationPolicies
 
     /// <summary>Service-to-service token required.</summary>
     public const string RequireService = "RequireService";
+
+    /// <summary>Consumer-tier audience required (citizen / wallet holder surfaces). Spec 136.</summary>
+    public const string RequireConsumerAudience = "RequireConsumerAudience";
+
+    /// <summary>Platform-tier audience required (admin / designer / org-management surfaces). Spec 136.</summary>
+    public const string RequirePlatformAudience = "RequirePlatformAudience";
 
     /// <summary>Token must carry a non-empty org_id claim.</summary>
     public const string RequireOrganizationMember = "RequireOrganizationMember";
@@ -157,5 +165,41 @@ public static class AuthorizationPolicyExtensions
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers the tier-audience policies (spec 136): <see cref="AuthorizationPolicies.RequireConsumerAudience"/>
+    /// and <see cref="AuthorizationPolicies.RequirePlatformAudience"/>, bound to this installation's audiences.
+    /// Additive — does NOT modify <see cref="AuthorizationPolicies.RequireService"/> (that is extended to assert
+    /// the <c>:service</c> audience as part of the coordinated runtime change once issuance stamps it).
+    /// Apply the resulting policies per endpoint to enforce tier isolation.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="audiences">The installation's tier audiences (single source of truth).</param>
+    public static IServiceCollection AddSorchaTierAudiencePolicies(
+        this IServiceCollection services, SorchaAudiences audiences)
+    {
+        ArgumentNullException.ThrowIfNull(audiences);
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy(AuthorizationPolicies.RequireConsumerAudience, policy =>
+                policy.RequireAssertion(ctx => HasTierAudience(ctx.User, audiences, Tier.Consumer)));
+
+            options.AddPolicy(AuthorizationPolicies.RequirePlatformAudience, policy =>
+                policy.RequireAssertion(ctx => HasTierAudience(ctx.User, audiences, Tier.Platform)));
+        });
+        return services;
+    }
+
+    /// <summary>
+    /// True if the principal carries an <c>aud</c> claim equal to this installation's audience for
+    /// <paramref name="tier"/>. A token may carry multiple <c>aud</c> claims; any match suffices.
+    /// </summary>
+    public static bool HasTierAudience(ClaimsPrincipal user, SorchaAudiences audiences, Tier tier)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(audiences);
+        var expected = audiences.For(tier);
+        return user.FindAll("aud").Any(c => c.Value == expected);
     }
 }
