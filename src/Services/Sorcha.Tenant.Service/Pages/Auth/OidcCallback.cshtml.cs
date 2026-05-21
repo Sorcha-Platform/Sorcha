@@ -214,7 +214,7 @@ public class OidcCallbackModel : PageModel
                 return Page();
             }
 
-            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, org, user.PlatformUserId, ct);
+            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, org, user.PlatformUserId, cancellationToken: ct);
 
             _logger.LogInformation(
                 "OIDC login completed for org {OrgSubdomain}: userId={UserId}, isFirstLogin={IsFirstLogin}",
@@ -331,7 +331,7 @@ public class OidcCallbackModel : PageModel
         });
         await _dbContext.SaveChangesAsync(ct);
 
-        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, org, user.PlatformUserId, ct);
+        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, org, user.PlatformUserId, cancellationToken: ct);
 
         _logger.LogInformation(
             "OIDC profile completion succeeded for user {UserId}", user.Id);

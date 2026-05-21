@@ -244,7 +244,7 @@ public class LoginService : ILoginService
         user.LastLoginAt = DateTimeOffset.UtcNow;
         await _identityRepository.UpdateUserAsync(user, ct);
 
-        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, ct);
+        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, cancellationToken: ct);
 
         _logger.LogInformation("User logged in successfully - {Email} (OrgId: {OrgId})",
             user.Email, organization.Id);
@@ -344,7 +344,7 @@ public class LoginService : ILoginService
             user.LastLoginAt = DateTimeOffset.UtcNow;
             await _identityRepository.UpdateUserAsync(user, ct);
 
-            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, ct);
+            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, cancellationToken: ct);
 
             _logger.LogInformation("Subdomain login succeeded - {Email} in org {Subdomain} (UserId: {UserId})",
                 email, orgSubdomain, user.Id);

@@ -466,7 +466,7 @@ public static class AuthEndpoints
         await identityRepository.UpdateUserAsync(user, cancellationToken);
 
         // Generate tokens
-        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken);
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken: cancellationToken);
 
         logger.LogInformation("User completed 2FA login - UserId: {UserId}, OrgId: {OrgId}",
             user.Id, organization.Id);
@@ -782,7 +782,7 @@ public static class AuthEndpoints
             await identityRepository.UpdateUserAsync(user, cancellationToken);
 
             // Generate tokens
-            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken);
+            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken: cancellationToken);
 
             logger.LogInformation("User completed passkey 2FA login - UserId: {UserId}, OrgId: {OrgId}, CredentialId: {CredentialId}",
                 user.Id, organization.Id, assertionResult.Credential.Id);
@@ -930,7 +930,7 @@ public static class AuthEndpoints
 
         // Issue new JWT scoped to target org
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, targetOrg, platformUserId, cancellationToken);
+            userIdentity, targetOrg, platformUserId, cancellationToken: cancellationToken);
 
         logger.LogInformation(
             "User {PlatformUserId} switched to org {OrgId} ({Subdomain})",

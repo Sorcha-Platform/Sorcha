@@ -193,7 +193,7 @@ public class SocialCallbackModel : PageModel
             return Page();
         }
 
-        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, ct);
+        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, cancellationToken: ct);
 
         _logger.LogInformation("Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",
             platformUser.Id, provider, isNew);

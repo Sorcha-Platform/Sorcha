@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -195,7 +196,7 @@ public class LoginServiceTests : IDisposable
             JoinedAt = DateTimeOffset.UtcNow
         });
         _tokenService.Setup(t => t.GenerateUserTokenAsync(
-                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedTokens);
 
         var service = CreateService();
@@ -240,7 +241,7 @@ public class LoginServiceTests : IDisposable
         });
         _tokenService
             .Setup(t => t.GenerateUserTokenAsync(
-                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TokenResponse { AccessToken = "a", RefreshToken = "r" });
 
         var service = CreateService();
@@ -282,7 +283,7 @@ public class LoginServiceTests : IDisposable
         });
         _tokenService
             .Setup(t => t.GenerateUserTokenAsync(
-                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TokenResponse { AccessToken = "a", RefreshToken = "r" });
 
         var service = CreateService();
@@ -483,7 +484,7 @@ public class LoginServiceTests : IDisposable
         result.Tokens.Should().BeNull();
 
         _tokenService.Verify(t => t.GenerateUserTokenAsync(
-            It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -660,7 +661,7 @@ public class LoginServiceTests : IDisposable
             .ReturnsAsync(new PasswordAuthResult(true));
         _platformUserService.Setup(p => p.GetOrgMembershipsAsync(platformUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { membership });
-        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, platformUserId, It.IsAny<CancellationToken>()))
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, platformUserId, It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TokenResponse { AccessToken = "org-token", RefreshToken = "org-refresh" });
 
         var service = CreateService();
@@ -737,7 +738,7 @@ public class LoginServiceTests : IDisposable
         _orgRepo.Setup(r => r.GetByIdAsync(org.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
         _tokenService.Setup(t => t.GenerateUserTokenAsync(
-                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedTokens);
 
         var service = CreateService();
