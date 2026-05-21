@@ -332,7 +332,7 @@ public static class TotpEndpoints
             return null;
         }
 
-        return await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken);
+        return await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken: cancellationToken);
     }
 }
 

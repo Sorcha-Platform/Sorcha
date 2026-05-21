@@ -241,7 +241,7 @@ public static class PublicPasskeyEndpoints
 
             // Issue JWT
             var tokenResponse = await tokenService.GenerateUserTokenAsync(
-                userIdentity, publicOrg, platformUser.Id, ct);
+                userIdentity, publicOrg, platformUser.Id, cancellationToken: ct);
 
             logger.LogInformation(
                 "Public passkey registration completed for PlatformUser {PlatformUserId}",
@@ -381,7 +381,7 @@ public static class PublicPasskeyEndpoints
 
             // Issue JWT
             var tokenResponse = await tokenService.GenerateUserTokenAsync(
-                userIdentity, publicOrg, platformUser.Id, ct);
+                userIdentity, publicOrg, platformUser.Id, cancellationToken: ct);
 
             logger.LogInformation(
                 "Public passkey sign-in completed for PlatformUser {PlatformUserId}",

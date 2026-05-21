@@ -19,7 +19,7 @@ public static class OrgSettingsEndpoints
     {
         var group = app.MapGroup("/api/organizations/{orgId:guid}/settings")
             .WithTags("Organization Settings")
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         group.MapGet("/", GetSettings)
             .WithName("GetOrgSettings")

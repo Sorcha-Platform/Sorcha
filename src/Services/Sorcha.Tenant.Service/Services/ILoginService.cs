@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Models.Dtos;
 
 namespace Sorcha.Tenant.Service.Services;
@@ -17,7 +18,9 @@ public enum LoginErrorCode
     /// <summary>Too many failed attempts — rate limited.</summary>
     RateLimited,
     /// <summary>Account is locked (temporary or permanent).</summary>
-    AccountLocked
+    AccountLocked,
+    /// <summary>An explicit tier was requested that the holder is not entitled to (spec 136, FR-008).</summary>
+    TierNotEntitled
 }
 
 /// <summary>
@@ -69,9 +72,11 @@ public interface ILoginService
     /// </summary>
     /// <param name="email">User email address.</param>
     /// <param name="password">User password.</param>
+    /// <param name="preferredTier">The preferred trust tier (spec 136), downgraded to entitlement unless <paramref name="tierExplicit"/>.</param>
+    /// <param name="tierExplicit">True when the tier was an explicit caller request — an un-entitled explicit request is refused (FR-008).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Login result with tokens or 2FA challenge.</returns>
-    Task<LoginResult> LoginAsync(string email, string password, CancellationToken ct = default);
+    Task<LoginResult> LoginAsync(string email, string password, Tier preferredTier = Tier.Platform, bool tierExplicit = false, CancellationToken ct = default);
 
     /// <summary>
     /// Attempts to authenticate a user with email and password, targeting a specific organization by subdomain.
@@ -81,9 +86,11 @@ public interface ILoginService
     /// <param name="email">User email address.</param>
     /// <param name="password">User password.</param>
     /// <param name="orgSubdomain">Target organization subdomain.</param>
+    /// <param name="preferredTier">The preferred trust tier (spec 136), downgraded to entitlement unless <paramref name="tierExplicit"/>.</param>
+    /// <param name="tierExplicit">True when the tier was an explicit caller request (FR-008 over-request refusal).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Login result with tokens scoped to the target org, or 2FA challenge.</returns>
-    Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, CancellationToken ct = default);
+    Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, Tier preferredTier = Tier.Platform, bool tierExplicit = false, CancellationToken ct = default);
 
     /// <summary>
     /// Completes login after org selection. Uses the platform login token issued during
@@ -91,7 +98,9 @@ public interface ILoginService
     /// </summary>
     /// <param name="platformLoginToken">Short-lived token from the org-selection login response.</param>
     /// <param name="organizationId">The chosen organisation ID.</param>
+    /// <param name="preferredTier">The preferred trust tier (spec 136), downgraded to entitlement unless <paramref name="tierExplicit"/>.</param>
+    /// <param name="tierExplicit">True when the tier was an explicit caller request (FR-008 over-request refusal).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Login result with tokens scoped to the chosen org, or 2FA challenge.</returns>
-    Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, CancellationToken ct = default);
+    Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, Tier preferredTier = Tier.Platform, bool tierExplicit = false, CancellationToken ct = default);
 }

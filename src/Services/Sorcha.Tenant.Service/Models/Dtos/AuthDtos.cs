@@ -25,6 +25,19 @@ public record LoginRequest
     /// If not provided, will look up by email domain or use default organization.
     /// </summary>
     public string? OrganizationSubdomain { get; init; }
+
+    /// <summary>
+    /// Optional explicit trust-tier hint (spec 136): <c>consumer</c> or <c>platform</c>.
+    /// Any other value is ignored. When absent, the tier is derived from <see cref="ReturnTo"/>.
+    /// </summary>
+    public string? Tier { get; init; }
+
+    /// <summary>
+    /// Optional post-authentication destination used to derive the trust tier (spec 136):
+    /// a <c>/wallet</c> path or an allow-listed consumer host ⇒ consumer; otherwise platform
+    /// (the <c>/app</c> SPA is the default platform host).
+    /// </summary>
+    public string? ReturnTo { get; init; }
 }
 
 /// <summary>

@@ -317,6 +317,24 @@ A CI gate at `scripts/check-no-snackbar.ps1` enforces the ratchet via `.snackbar
 
 Full architecture: `specs/118-notifications-architecture/MIGRATION.md`.
 
+### 13. Tiered JWT audiences + issuer hardening (Feature 136)
+
+The JWT `aud` claim is the **trust-tier boundary**. Every token carries an installation-namespaced, tier-scoped audience — `{installation}:consumer | platform | service | enrol-session` — from the single source of truth `SorchaAudiences` (`Sorcha.ServiceDefaults.Auth`). **Never hand-build an audience string** — use `new SorchaAudiences(installationName).For(Tier.X)` / `.All`. `InstallationName` (default `sorcha`, set per deploy via `JwtSettings:InstallationName`) drives both the audience namespace and the issuer.
+
+**Authenticate-broad / authorize-narrow.** Bearer validation accepts any of the installation's four tier audiences (`ValidAudiences = SorchaAudiences.All`), rejecting cross-installation tokens. The tier is enforced **per endpoint** by policies registered in `AddSorchaAuthorizationPolicies` (every service calls it):
+
+```csharp
+group.MapGroup("/api/v1/wallet").RequireAuthorization("RequireConsumerAudience");   // citizen surface
+adminGroup.RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");   // tier gate AND role gate
+internalGroup.RequireAuthorization("RequireService");   // token_type==service AND aud==:service
+```
+
+- **`RequireConsumerAudience`** — consumer/wallet surfaces. **`RequirePlatformAudience`** — admin/org/designer; **compose it on top of the role policy** (it doesn't replace `RequireAdministrator`). **`RequireService`** — `/api/internal/*` (now also asserts the `:service` audience). Genuinely cross-tier endpoints (e.g. `/me/inbox`) stay plain `.RequireAuthorization()` — there is no "any-human" tier, so don't force-classify them.
+- **The tier follows the person, not the UI host.** A citizen is `:consumer` on both `/app` (web) and `/wallet` (PWA); an admin is `:platform` in org context. Login derives the tier from `returnTo` (`/wallet`⇒consumer, `/app`⇒platform) as a *preference* that **downgrades to entitlement** (a citizen on `/app` → consumer); an explicit `tier=platform` request by a non-entitled user is **refused (403)**. Consumer tokens omit `org_id`/roles (inert on platform surfaces).
+- **Issuer**: no shared default — `SorchaIssuer.Resolve` gives `urn:sorcha:{installation}`, fail-closed in Production/Staging if unconfigured. Mint and validate MUST resolve issuer + audiences through the same `SorchaIssuer`/`SorchaAudiences` or tokens self-reject.
+
+Full reference: the **`jwt` skill** ("Tiered audiences + issuer hardening"). Metrics: `sorcha_token_minted_total{tier}` + `sorcha_tier_request_rejected_total{requested,reason}` on the `Sorcha.Identity` meter.
+
 ---
 
 ## Key Documentation

@@ -226,6 +226,19 @@ PageTest (Playwright NUnit)
 | Docker tests | `tests/Sorcha.UI.E2E.Tests/Docker/` |
 | MudBlazor helpers | `tests/Sorcha.UI.E2E.Tests/PageObjects/Shared/MudBlazorHelpers.cs` |
 
+## Host mounts & route prefixes
+
+Two Blazor hosts, two mount prefixes behind the API Gateway. There is **no `/admin` route** — the entire platform/admin/designer experience IS the `/app` SPA.
+
+| Mount | Host | Audience | Tier (spec 136) |
+|-------|------|----------|-----------------|
+| `/app/…` | `Sorcha.UI.Web` + `Sorcha.UI.Web.Client` (WASM SPA) | platform admin / org operator / designer **and** some citizen web surfaces (F125/F126, e.g. `/app/strathcarron/…`) | **Platform** |
+| `/wallet/…` | `Sorcha.Wallet.Pwa` (PWA) | citizen / wallet holder | **Consumer** |
+
+Practical consequences:
+- A new Razor page `@page "/foo"` in `Sorcha.UI.Web.Client` is reachable at `…/app/foo` (NOT `…/foo`); a PWA page is at `…/wallet/foo`. On n1 that's `https://n1.sorcha.dev/app/…` and `…/wallet/…`.
+- **Tier classification (F136)**: `RequestedTierResolver.ClassifyReturnTo` maps `/wallet`→Consumer, `/app`→Platform. Web login fails safe to Platform (`ClassifyReturnTo(returnTo, allowlist) ?? Tier.Platform`) because `/app` is the platform host; the consumer token comes from a `/wallet` returnTo or the enrol-redeem path. See the **jwt** skill → "Tiered audiences".
+
 ## Citizen Wallet PWA — path-prefix gotchas
 
 The Citizen Wallet PWA (`Sorcha.Wallet.Pwa`) mounts at **`/wallet/`** behind the API Gateway via `PathRemovePrefix`. Two rules apply only here, not to the main `Sorcha.UI.Web` app:

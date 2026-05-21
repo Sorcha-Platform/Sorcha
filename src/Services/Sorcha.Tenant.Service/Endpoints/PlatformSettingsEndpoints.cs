@@ -24,7 +24,7 @@ public static class PlatformSettingsEndpoints
     {
         var group = app.MapGroup("/api/platform/settings")
             .WithTags("Platform Settings")
-            .RequireAuthorization("RequireSystemAdmin");
+            .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience");
 
         group.MapGet("/", GetPlatformSettings)
             .WithName("GetPlatformSettings")

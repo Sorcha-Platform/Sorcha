@@ -53,7 +53,9 @@ builder.Services.AddTenantServices(builder.Configuration);
 builder.AddJwtAuthentication();
 
 // Configure JwtConfiguration for token issuance (used by TokenService)
-builder.Services.ConfigureJwtForTokenIssuance(builder.Configuration);
+builder.Services.ConfigureJwtForTokenIssuance(
+    builder.Configuration,
+    Sorcha.ServiceDefaults.Auth.SorchaIssuer.AllowsDevLocalFallback(builder.Environment));
 
 // Add authorization policies
 builder.Services.AddTenantAuthorization();

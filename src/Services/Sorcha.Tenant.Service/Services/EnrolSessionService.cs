@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Sorcha.AtomicCache;
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Extensions;
 using Sorcha.Tenant.Service.Models;
 
@@ -63,6 +64,7 @@ public sealed class EnrolSessionService : IEnrolSessionService
     private readonly JwtSecurityTokenHandler _handler = new() { MapInboundClaims = false };
     private readonly SymmetricSecurityKey _signingKey;
     private readonly SigningCredentials _signingCreds;
+    private readonly SorchaAudiences _audiences;
 
     /// <summary>Configuration key for the QR-URL council origin template.</summary>
     public const string CouncilOriginConfigKey = "EnrolSession:CouncilOrigin";
@@ -87,6 +89,7 @@ public sealed class EnrolSessionService : IEnrolSessionService
         ArgumentNullException.ThrowIfNull(logger);
 
         _jwtConfig = jwtOptions.Value;
+        _audiences = new SorchaAudiences(_jwtConfig.InstallationName);
         _cache = cache;
         _platformUserService = platformUserService;
         _metrics = metrics;
@@ -143,9 +146,9 @@ public sealed class EnrolSessionService : IEnrolSessionService
             NotBefore = now.UtcDateTime,
             Expires = expiresAt.UtcDateTime,
             Issuer = _jwtConfig.Issuer,
-            // Distinct audience so the standard auth pipeline never accepts these
-            // as a normal access token even by accident.
-            Audience = "sorcha:enrol-session",
+            // Distinct tier audience so the standard auth pipeline never accepts these
+            // as a normal access token even by accident (spec 136).
+            Audience = _audiences.For(Tier.EnrolSession),
             SigningCredentials = _signingCreds,
         };
 
@@ -214,7 +217,7 @@ public sealed class EnrolSessionService : IEnrolSessionService
             ValidateIssuer = true,
             ValidIssuer = _jwtConfig.Issuer,
             ValidateAudience = true,
-            ValidAudience = "sorcha:enrol-session",
+            ValidAudience = _audiences.For(Tier.EnrolSession),
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = _signingKey,
             ValidateLifetime = false,
@@ -333,7 +336,8 @@ public sealed class EnrolSessionService : IEnrolSessionService
             NotBefore = now.UtcDateTime,
             Expires = expires.UtcDateTime,
             Issuer = _jwtConfig.Issuer,
-            Audience = _jwtConfig.Audiences.FirstOrDefault() ?? "sorcha:citizen-wallet",
+            // The redeemed citizen access token is a consumer-tier token (spec 136).
+            Audience = _audiences.For(Tier.Consumer),
             SigningCredentials = _signingCreds,
         };
 

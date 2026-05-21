@@ -141,7 +141,7 @@ public static class AuthEndpoints
             .WithName("RevokeUserTokens")
             .WithSummary("Revoke all tokens for a user")
             .WithDescription("Revokes all access and refresh tokens for a specific user. Administrator only.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<SuccessResponse>()
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
@@ -152,7 +152,7 @@ public static class AuthEndpoints
             .WithName("RevokeOrganizationTokens")
             .WithSummary("Revoke all tokens for an organization")
             .WithDescription("Revokes all access and refresh tokens for all users in an organization. Administrator only.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<SuccessResponse>()
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
@@ -289,6 +289,7 @@ public static class AuthEndpoints
     private static async Task<IResult> Login(
         LoginRequest request,
         ILoginService loginService,
+        Microsoft.Extensions.Options.IOptions<Models.ReturnToAllowlistOptions> returnToAllowlist,
         CancellationToken cancellationToken)
     {
         // Validate input
@@ -308,9 +309,19 @@ public static class AuthEndpoints
             });
         }
 
+        // Spec 136: derive the preferred trust tier — explicit hint wins, else returnTo
+        // (/wallet ⇒ consumer), else Platform (the /app SPA host). An explicit hint is a hard
+        // request (refused if un-entitled, FR-008); a returnTo-derived preference downgrades to
+        // entitlement (a citizen on /app → consumer). The tier follows the person.
+        var explicitTier = RequestedTierResolver.ParseTierHint(request.Tier);
+        var preferredTier = explicitTier
+            ?? RequestedTierResolver.ClassifyReturnTo(request.ReturnTo, returnToAllowlist.Value)
+            ?? Sorcha.ServiceDefaults.Auth.Tier.Platform;
+        var tierExplicit = explicitTier is not null;
+
         var result = !string.IsNullOrWhiteSpace(request.OrganizationSubdomain)
-            ? await loginService.LoginAsync(request.Email, request.Password, request.OrganizationSubdomain, cancellationToken)
-            : await loginService.LoginAsync(request.Email, request.Password, cancellationToken);
+            ? await loginService.LoginAsync(request.Email, request.Password, request.OrganizationSubdomain, preferredTier, tierExplicit, cancellationToken)
+            : await loginService.LoginAsync(request.Email, request.Password, preferredTier, tierExplicit, cancellationToken);
 
         if (!result.Success)
         {
@@ -319,6 +330,13 @@ public static class AuthEndpoints
             {
                 return TypedResults.Problem(result.Error,
                     statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
+            // Explicit over-request of a tier the holder is not entitled to (spec 136, FR-008).
+            if (result.ErrorCode == LoginErrorCode.TierNotEntitled)
+            {
+                return TypedResults.Problem(result.Error,
+                    statusCode: StatusCodes.Status403Forbidden);
             }
 
             return TypedResults.Unauthorized();
@@ -378,7 +396,7 @@ public static class AuthEndpoints
         }
 
         var result = await loginService.CompleteOrgSelectionAsync(
-            request.PlatformLoginToken, request.OrganizationId, cancellationToken);
+            request.PlatformLoginToken, request.OrganizationId, ct: cancellationToken);
 
         if (!result.Success)
         {
@@ -466,7 +484,7 @@ public static class AuthEndpoints
         await identityRepository.UpdateUserAsync(user, cancellationToken);
 
         // Generate tokens
-        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken);
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken: cancellationToken);
 
         logger.LogInformation("User completed 2FA login - UserId: {UserId}, OrgId: {OrgId}",
             user.Id, organization.Id);
@@ -782,7 +800,7 @@ public static class AuthEndpoints
             await identityRepository.UpdateUserAsync(user, cancellationToken);
 
             // Generate tokens
-            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken);
+            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken: cancellationToken);
 
             logger.LogInformation("User completed passkey 2FA login - UserId: {UserId}, OrgId: {OrgId}, CredentialId: {CredentialId}",
                 user.Id, organization.Id, assertionResult.Credential.Id);
@@ -928,13 +946,20 @@ public static class AuthEndpoints
                 statusCode: StatusCodes.Status403Forbidden);
         }
 
+        // Spec 136 (FR-016): re-mint at the tier appropriate to the NEW context — Platform if the
+        // user holds a platform role in the target org, otherwise Consumer (the tier follows the
+        // person in that context). Switching context is destination-derived, never an explicit
+        // over-request, so it downgrades rather than refuses.
+        var contextTier = TierResolver.ResolvePreference(
+            Sorcha.ServiceDefaults.Auth.Tier.Platform, isExplicit: false, userIdentity.Roles).Tier;
+
         // Issue new JWT scoped to target org
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, targetOrg, platformUserId, cancellationToken);
+            userIdentity, targetOrg, platformUserId, contextTier, cancellationToken);
 
         logger.LogInformation(
-            "User {PlatformUserId} switched to org {OrgId} ({Subdomain})",
-            platformUserId, targetOrg.Id, targetOrg.Subdomain);
+            "User {PlatformUserId} switched to org {OrgId} ({Subdomain}) at tier {Tier}",
+            platformUserId, targetOrg.Id, targetOrg.Subdomain, contextTier);
 
         return TypedResults.Ok(tokenResponse);
     }

@@ -30,7 +30,7 @@ public static class OrgKeyEndpoints
                 "Generates a new BIP39 mnemonic and provisions an HD master key for the organisation. " +
                 "The mnemonic is returned once and must be securely backed up by the administrator. " +
                 "Returns 409 Conflict if the organisation already has a master key.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<OrgMasterKeyProvisionResult>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status409Conflict)
             .ProducesValidationProblem();
@@ -43,7 +43,7 @@ public static class OrgKeyEndpoints
                 "Derives a child key for a specific user, department, and usage purpose using " +
                 "BIP32 hierarchical deterministic derivation. Idempotent: returns existing key " +
                 "if the same derivation path has already been derived.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<DerivedKeyResult>(StatusCodes.Status201Created)
             .Produces<DerivedKeyResult>(StatusCodes.Status200OK)
             .ProducesValidationProblem();
@@ -55,7 +55,7 @@ public static class OrgKeyEndpoints
             .WithDescription(
                 "Derives a new key at the next index in the hierarchy and marks the existing key as Rotated. " +
                 "The rotated key can still be used for decryption but not for signing.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<DerivedKeyResult>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status403Forbidden)
@@ -68,7 +68,7 @@ public static class OrgKeyEndpoints
             .WithDescription(
                 "Permanently revokes a derived key and locks the associated wallet. " +
                 "If the key was used for Identity purposes, a DID revocation event is triggered.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status403Forbidden)

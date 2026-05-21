@@ -56,7 +56,7 @@ public static class RegisterSubscriptionEndpoints
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         orgGroup.MapDelete("/{registerId}", Unsubscribe)
             .WithName("UnsubscribeFromRegister")
@@ -68,7 +68,7 @@ public static class RegisterSubscriptionEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         // User-scoped endpoint for listing subscribed registers via JWT claims
         app.MapGet("/api/me/subscribed-registers", GetMySubscribedRegisters)

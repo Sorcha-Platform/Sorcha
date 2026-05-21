@@ -184,6 +184,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IParticipantService, ParticipantService>();
         services.AddScoped<IWalletVerificationService, WalletVerificationService>();
         services.AddScoped<IParticipantPublishingService, ParticipantPublishingService>();
+        // Spec 136: tiered-audience identity metrics (Sorcha.Identity meter). Singleton so the
+        // instruments are created once; consumed by TokenService to record tokens minted per tier.
+        services.AddSingleton<Sorcha.ServiceDefaults.Auth.IdentityMetrics>();
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IServiceAuthService, ServiceAuthService>();
         services.AddScoped<ITotpService, TotpService>();

@@ -358,7 +358,7 @@ public static class SocialLoginEndpoints
 
         // Issue JWT
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, publicOrg, platformUser.Id, ct);
+            userIdentity, publicOrg, platformUser.Id, cancellationToken: ct);
 
         logger.LogInformation(
             "Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",

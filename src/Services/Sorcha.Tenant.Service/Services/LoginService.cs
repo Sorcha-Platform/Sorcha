@@ -3,6 +3,7 @@
 
 using Microsoft.EntityFrameworkCore;
 
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -25,6 +26,7 @@ public class LoginService : ILoginService
     private readonly IPlatformUserService _platformUserService;
     private readonly IWelcomeEmailDispatcher _welcomeDispatcher;
     private readonly ILogger<LoginService> _logger;
+    private readonly IdentityMetrics? _metrics;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LoginService"/> class.
@@ -39,8 +41,10 @@ public class LoginService : ILoginService
         ITokenRevocationService revocationService,
         IPlatformUserService platformUserService,
         IWelcomeEmailDispatcher welcomeDispatcher,
-        ILogger<LoginService> logger)
+        ILogger<LoginService> logger,
+        IdentityMetrics? metrics = null)
     {
+        _metrics = metrics;
         _dbContext = dbContext;
         _identityRepository = identityRepository;
         _organizationRepository = organizationRepository;
@@ -54,7 +58,7 @@ public class LoginService : ILoginService
     }
 
     /// <inheritdoc />
-    public async Task<LoginResult> LoginAsync(string email, string password, CancellationToken ct = default)
+    public async Task<LoginResult> LoginAsync(string email, string password, Tier preferredTier = Tier.Platform, bool tierExplicit = false, CancellationToken ct = default)
     {
         // Rate limiting check
         if (await _revocationService.IsRateLimitedAsync(email, ct))
@@ -120,7 +124,7 @@ public class LoginService : ILoginService
             // Single org — auto-select (no picker needed)
             if (activeOrgs.Count == 1)
             {
-                return await IssueTokensForOrgAsync(platformUser, activeOrgs[0], memberships, ct);
+                return await IssueTokensForOrgAsync(platformUser, activeOrgs[0], memberships, preferredTier, tierExplicit, ct);
             }
 
             // Multiple orgs — return org list for user to pick
@@ -156,7 +160,7 @@ public class LoginService : ILoginService
     }
 
     /// <inheritdoc />
-    public async Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, CancellationToken ct = default)
+    public async Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, Tier preferredTier = Tier.Platform, bool tierExplicit = false, CancellationToken ct = default)
     {
         // Validate the platform login token
         var userIdentityId = await _totpService.ValidateLoginTokenAsync(platformLoginToken, ct);
@@ -196,7 +200,7 @@ public class LoginService : ILoginService
             return new LoginResult(false, Error: "Organization is not available.");
         }
 
-        return await IssueTokensForOrgAsync(platformUser, organization, memberships, ct);
+        return await IssueTokensForOrgAsync(platformUser, organization, memberships, preferredTier, tierExplicit, ct);
     }
 
     /// <summary>
@@ -206,6 +210,8 @@ public class LoginService : ILoginService
         PlatformUser platformUser,
         Organization organization,
         IReadOnlyList<PlatformUserOrgMembership> memberships,
+        Tier preferredTier,
+        bool tierExplicit,
         CancellationToken ct)
     {
         // Get UserIdentity in the target org
@@ -220,6 +226,22 @@ public class LoginService : ILoginService
                 organization.Id, platformUser.Id);
             return new LoginResult(false, Error: "No active identity found in this organization.");
         }
+
+        // Spec 136: resolve the preferred tier against entitlement (the tier follows the person).
+        // A destination-derived preference downgrades to the entitled tier (a citizen on /app → Consumer);
+        // an explicit over-request is refused (FR-008). Resolve before the 2FA branch so an explicit
+        // over-request fails fast.
+        var tierResolution = TierResolver.ResolvePreference(preferredTier, tierExplicit, user.Roles);
+        if (!tierResolution.Allowed)
+        {
+            _metrics?.TierRequestRejected(tierResolution.Tier, "not_entitled");
+            _logger.LogWarning("Login refused for {Email} in org {OrgId}: requested tier {Tier} not entitled",
+                user.Email, organization.Id, tierResolution.Tier);
+            return new LoginResult(false,
+                Error: "The requested access tier is not available for this account.",
+                ErrorCode: LoginErrorCode.TierNotEntitled);
+        }
+        var mintTier = tierResolution.Tier;
 
         // Check if user has TOTP 2FA or passkeys enabled
         var totpStatus = await _totpService.GetStatusAsync(user.Id, ct);
@@ -244,10 +266,10 @@ public class LoginService : ILoginService
         user.LastLoginAt = DateTimeOffset.UtcNow;
         await _identityRepository.UpdateUserAsync(user, ct);
 
-        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, ct);
+        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, mintTier, ct);
 
-        _logger.LogInformation("User logged in successfully - {Email} (OrgId: {OrgId})",
-            user.Email, organization.Id);
+        _logger.LogInformation("User logged in successfully - {Email} (OrgId: {OrgId}, tier: {Tier})",
+            user.Email, organization.Id, mintTier);
 
         // Fire-and-forget welcome email if this is the user's first login and they
         // haven't been welcomed yet. Idempotent + non-throwing by design.
@@ -257,7 +279,7 @@ public class LoginService : ILoginService
     }
 
     /// <inheritdoc />
-    public async Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, CancellationToken ct = default)
+    public async Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, Tier preferredTier = Tier.Platform, bool tierExplicit = false, CancellationToken ct = default)
     {
         // Rate limiting check
         if (await _revocationService.IsRateLimitedAsync(email, ct))
@@ -340,14 +362,26 @@ public class LoginService : ILoginService
                     LoginToken: loginToken, AvailableMethods: methods);
             }
 
+            // Spec 136: resolve preferred tier against entitlement (downgrade derived / refuse explicit over-request).
+            var tierResolution = TierResolver.ResolvePreference(preferredTier, tierExplicit, user.Roles);
+            if (!tierResolution.Allowed)
+            {
+                _metrics?.TierRequestRejected(tierResolution.Tier, "not_entitled");
+                _logger.LogWarning("Subdomain login refused for {Email} in {Subdomain}: requested tier {Tier} not entitled",
+                    email, orgSubdomain, tierResolution.Tier);
+                return new LoginResult(false,
+                    Error: "The requested access tier is not available for this account.",
+                    ErrorCode: LoginErrorCode.TierNotEntitled);
+            }
+
             // Issue JWT scoped to target org
             user.LastLoginAt = DateTimeOffset.UtcNow;
             await _identityRepository.UpdateUserAsync(user, ct);
 
-            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, ct);
+            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, tierResolution.Tier, ct);
 
-            _logger.LogInformation("Subdomain login succeeded - {Email} in org {Subdomain} (UserId: {UserId})",
-                email, orgSubdomain, user.Id);
+            _logger.LogInformation("Subdomain login succeeded - {Email} in org {Subdomain} (UserId: {UserId}, tier: {Tier})",
+                email, orgSubdomain, user.Id, tierResolution.Tier);
 
             // Welcome email — once per user across all login paths.
             await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
