@@ -38,18 +38,18 @@ public class JwtSettings
     public string? InstallationName { get; set; }
 
     /// <summary>
-    /// JWT token issuer (iss claim).
-    /// If not explicitly set, derived from InstallationName as "http://{InstallationName}".
-    /// The tenant service is the authority that issues tokens with this issuer.
+    /// JWT token issuer (iss claim). Resolved via <see cref="Sorcha.ServiceDefaults.Auth.SorchaIssuer"/>:
+    /// explicit value, else <c>urn:sorcha:{InstallationName}</c>, else fail-closed (Development uses
+    /// <c>urn:sorcha:dev-local</c>). No shared default — see spec 136 (issuer hardening).
     /// </summary>
-    public string Issuer { get; set; } = "https://tenant.sorcha.io";
+    public string Issuer { get; set; } = string.Empty;
 
     /// <summary>
-    /// Valid audiences for tokens (aud claim).
-    /// If not explicitly set, derived from InstallationName as ["http://{InstallationName}"].
-    /// All services in an installation should accept tokens with this audience.
+    /// Valid audiences for tokens (aud claim) — the installation's four tier audiences
+    /// (<c>{installation}:consumer|platform|service|enrol-session</c>), derived from
+    /// <see cref="Sorcha.ServiceDefaults.Auth.SorchaAudiences"/>. Not hand-configured. Spec 136.
     /// </summary>
-    public string[] Audience { get; set; } = ["https://api.sorcha.io"];
+    public string[] Audience { get; set; } = [];
 
     /// <summary>
     /// Signing key for JWT tokens.
@@ -133,24 +133,18 @@ public static class JwtAuthenticationExtensions
         var issuerFromConfig = configuration["JwtSettings:Issuer"];
         var audienceFromConfig = configuration["JwtSettings:Audience:0"];
 
-        // Create JWT settings with installation name-based defaults if applicable
+        // Create JWT settings, then resolve issuer + tier audiences from the single source of
+        // truth (spec 136). Audiences are ALWAYS the installation's four tier audiences; the
+        // issuer is explicit, else urn:sorcha:{installation}, else fail-closed (dev-local in
+        // Development). audienceFromConfig is intentionally ignored — audiences are derived.
         var jwtSettings = configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
+        _ = audienceFromConfig; // no longer a configurable raw value; tier audiences are derived
 
-        // Override with installation name-based values if:
-        // 1. Installation name is provided
-        // 2. No explicit issuer or audience configuration exists
-        if (!string.IsNullOrWhiteSpace(installationName))
-        {
-            if (string.IsNullOrWhiteSpace(issuerFromConfig))
-            {
-                jwtSettings.Issuer = $"http://{installationName}";
-            }
-
-            if (string.IsNullOrWhiteSpace(audienceFromConfig))
-            {
-                jwtSettings.Audience = [$"http://{installationName}"];
-            }
-        }
+        var sorchaAudiences = new Sorcha.ServiceDefaults.Auth.SorchaAudiences(installationName);
+        jwtSettings.Audience = sorchaAudiences.All.ToArray();
+        jwtSettings.Issuer = Sorcha.ServiceDefaults.Auth.SorchaIssuer.Resolve(
+            issuerFromConfig, installationName,
+            Sorcha.ServiceDefaults.Auth.SorchaIssuer.AllowsDevLocalFallback(environment));
 
         // Get or generate signing key
         var signingKey = GetOrGenerateSigningKey(configuration, environment.IsDevelopment());

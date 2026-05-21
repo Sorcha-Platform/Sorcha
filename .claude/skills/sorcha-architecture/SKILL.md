@@ -1311,3 +1311,16 @@ Two coupled capabilities, shipped across three merged PRs (US1 #806, US2 #807, U
 - `CredentialRequirement.AcceptedIssuers` and `HaipPresentationVerifier._trustedRoots`/`AddTrustedRoot` are **removed** (gate-enforced). Seven unrelated presentation-request/verifier DTOs keep their own `AcceptedIssuers` — left untouched.
 - mdoc is **ES256/P-256-only at the format layer** and additive — it does not touch Sorcha-native signing or the PQC `Multicodec` fallback (SC-009). Register-anchored mdoc is rejected at issuance (mdoc's issuer key is x5chain-resolved; no DID path in `MdocService`).
 - **Deferred follow-ups**: HAIP trustlist-source *consumption* (verifier root distribution — the admin GET returns metadata not roots; x509-tenant is the working mdoc anchor), a real external EUDI PID known-answer vector (vectors are generated end-to-end in tests), and MAC-based device auth.
+
+---
+
+## Tiered-audience JWT identity model (Feature 136)
+
+Platform-security rework of how Sorcha issues + validates JWT access tokens. **Full reference is the `jwt` skill** ("Tiered audiences + issuer hardening"); this is the catalogue pointer. Spec/plan/tasks: `specs/136-jwt-audience-tiers/`; design: `docs/superpowers/specs/2026-05-21-tiered-audience-identity-model-design.md`.
+
+- **Four installation-namespaced tier audiences** — `{installation}:consumer | platform | service | enrol-session`, derived from the single source of truth `SorchaAudiences` (`Sorcha.ServiceDefaults.Auth`). `InstallationName` (default `sorcha`) drives both the audience namespace and the issuer. **Supersedes the old per-feature audience strings** — notably the F114 citizen JWT `sorcha:citizen-wallet` is now `{installation}:consumer` (a citizen access token is consumer-tier).
+- **Validation = authenticate-broad / authorize-narrow**: bearer accepts `SorchaAudiences.All`; tier enforced per-endpoint by `RequireConsumerAudience` / `RequirePlatformAudience` / `RequireService`. The real user↔service boundary was already `token_type`; this promotes it (and the consumer↔platform split) into `aud`.
+- **Issuer hardening**: no shared default; `SorchaIssuer.Resolve` → explicit, else `urn:sorcha:{installation}`, else `urn:sorcha:dev-local` (non-prod), else fail-closed at startup (Production/Staging). `SorchaIssuer.AllowsDevLocalFallback(env)` gates the dev-local fallback. Mint (`TokenService`/`EnrolSessionService` via Tenant `JwtConfiguration`) and validate (`AddJwtAuthentication`) resolve through the **same** helpers or tokens self-reject.
+- **Per-tier claim sets**: consumer omits `org_id`/roles (inert on platform surfaces); platform = full user shape; service = `client_id`/`service_name`/`scope[]`. Refresh carries `tier`.
+- **Status**: Foundational engine + runtime flip landed on branch `136-jwt-audience-tiers` (TokenService→platform, ServiceAuth→service, EnrolSession→consumer/enrol-session, `ValidAudiences=All`, issuer hardening). **Still in-progress (US1/US4/US5)**: tier *selection* at login (consumer-vs-platform from `returnTo`), per-endpoint tier *classification*, `RequireService` `:service`-audience extension, `IdentityMetrics` wiring. Until US1, endpoints are not yet tier-gated.
+- **No migration** (pre-release): coordinated config rollout; existing tokens expire. Dependency contract for downstream Spec B (PWA auth/signup parity).

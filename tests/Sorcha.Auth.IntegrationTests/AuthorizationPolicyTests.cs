@@ -28,7 +28,7 @@ public class AuthorizationPolicyTests : IAsyncLifetime
 {
     private const string TestSigningKey = "test-signing-key-for-integration-tests-minimum-32-characters-long-enough";
     private const string TestIssuer = "https://test.sorcha.io";
-    private const string TestAudience = "https://test-api.sorcha.io";
+    private const string TestAudience = "sorcha:platform"; // spec 136: human user tokens carry the platform-tier audience
 
     private WebApplication _app = null!;
     private HttpClient _client = null!;

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceDefaults.Auth;
 
 namespace Sorcha.Tenant.Service.Extensions;
 
@@ -13,14 +14,19 @@ namespace Sorcha.Tenant.Service.Extensions;
 public class JwtConfiguration
 {
     /// <summary>
-    /// JWT token issuer (iss claim).
+    /// Installation name driving the issuer + tier-audience namespace (spec 136). Default "sorcha".
     /// </summary>
-    public string Issuer { get; set; } = "https://tenant.sorcha.io";
+    public string? InstallationName { get; set; }
 
     /// <summary>
-    /// Valid audiences for tokens (aud claim).
+    /// JWT token issuer (iss claim). Resolved via SorchaIssuer — no shared default (spec 136).
     /// </summary>
-    public string[] Audiences { get; set; } = ["https://api.sorcha.io"];
+    public string Issuer { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The installation's four tier audiences, derived from SorchaAudiences (spec 136).
+    /// </summary>
+    public string[] Audiences { get; set; } = [];
 
     /// <summary>
     /// Signing key for development (production uses Azure Key Vault).
@@ -80,27 +86,20 @@ public static class AuthenticationExtensions
     /// </summary>
     public static IServiceCollection ConfigureJwtForTokenIssuance(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        bool allowDevLocalIssuerFallback)
     {
         services.Configure<JwtConfiguration>(options =>
         {
             var section = configuration.GetSection("JwtSettings");
             var installationName = configuration["JwtSettings:InstallationName"];
-
-            // Derive issuer from installation name if not explicitly set
             var issuerFromConfig = configuration["JwtSettings:Issuer"];
-            if (!string.IsNullOrWhiteSpace(issuerFromConfig))
-            {
-                options.Issuer = issuerFromConfig;
-            }
-            else if (!string.IsNullOrWhiteSpace(installationName))
-            {
-                options.Issuer = $"http://{installationName}";
-            }
-            else
-            {
-                options.Issuer = "https://tenant.sorcha.io";
-            }
+
+            // Spec 136: issuer + tier audiences derive from the SAME single source of truth the
+            // ServiceDefaults validation side uses, so the minted and validated values always agree.
+            options.InstallationName = installationName;
+            options.Issuer = SorchaIssuer.Resolve(issuerFromConfig, installationName, allowDevLocalIssuerFallback);
+            options.Audiences = new SorchaAudiences(installationName).All.ToArray();
 
             options.SigningKey = configuration["JwtSettings:SigningKey"];
             options.AccessTokenLifetimeMinutes = section.GetValue("AccessTokenLifetimeMinutes", 60);
@@ -111,39 +110,6 @@ public static class AuthenticationExtensions
             options.ValidateAudience = section.GetValue("ValidateAudience", true);
             options.ValidateIssuerSigningKey = section.GetValue("ValidateIssuerSigningKey", true);
             options.ValidateLifetime = section.GetValue("ValidateLifetime", true);
-
-            // Handle audiences - can be:
-            // - Array: JwtSettings:Audience:0, JwtSettings:Audience:1
-            // - Single value: JwtSettings:Audience
-            // - Environment variable array: JwtSettings__Audience__0
-            // - Derived from InstallationName if not set
-            var audienceSection = configuration.GetSection("JwtSettings:Audience");
-            var audienceChildren = audienceSection.GetChildren().ToList();
-
-            if (audienceChildren.Count > 0)
-            {
-                // Array of audiences
-                options.Audiences = audienceChildren.Select(c => c.Value!).Where(v => !string.IsNullOrEmpty(v)).ToArray();
-            }
-            else
-            {
-                // Single audience value
-                var singleAudience = configuration["JwtSettings:Audience"];
-                if (!string.IsNullOrEmpty(singleAudience))
-                {
-                    options.Audiences = [singleAudience];
-                }
-                else if (!string.IsNullOrWhiteSpace(installationName))
-                {
-                    // Derive from installation name
-                    options.Audiences = [$"http://{installationName}"];
-                }
-                else
-                {
-                    // Fallback to default
-                    options.Audiences = ["https://api.sorcha.io"];
-                }
-            }
         });
 
         return services;

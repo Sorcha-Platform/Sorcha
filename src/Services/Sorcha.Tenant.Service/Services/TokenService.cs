@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Extensions;
 using Sorcha.Tenant.Service.Models;
@@ -29,6 +30,7 @@ public class TokenService : ITokenService
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly SigningCredentials? _signingCredentials;
     private readonly TokenValidationParameters _validationParameters;
+    private readonly SorchaAudiences _audiences;
 
     public TokenService(
         IOptions<JwtConfiguration> options,
@@ -39,6 +41,7 @@ public class TokenService : ITokenService
         ILogger<TokenService> logger)
     {
         _config = options?.Value ?? new JwtConfiguration();
+        _audiences = new SorchaAudiences(_config.InstallationName);
         _revocationService = revocationService ?? throw new ArgumentNullException(nameof(revocationService));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
@@ -110,7 +113,7 @@ public class TokenService : ITokenService
         var accessTokenExpiry = DateTimeOffset.UtcNow.AddMinutes(_config.AccessTokenLifetimeMinutes);
         var refreshTokenExpiry = DateTimeOffset.UtcNow.AddHours(_config.RefreshTokenLifetimeHours);
 
-        var accessToken = GenerateToken(claims, accessTokenExpiry);
+        var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(Tier.Platform));
         var refreshToken = GenerateRefreshToken(refreshTokenJti, user.Id.ToString(), organization.Id.ToString(), refreshTokenExpiry, platformUserId.ToString());
 
         // Track tokens for potential bulk revocation
@@ -169,7 +172,7 @@ public class TokenService : ITokenService
 
         var accessTokenExpiry = DateTimeOffset.UtcNow.AddHours(_config.ServiceTokenLifetimeHours);
 
-        var accessToken = GenerateToken(claims, accessTokenExpiry);
+        var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(Tier.Service));
 
         _logger.LogInformation(
             "Generated service token for {ServiceName} (client: {ClientId})",
@@ -304,7 +307,7 @@ public class TokenService : ITokenService
                 await AddWalletAddressClaimAsync(claims, userGuid, orgIdForWallet.Value, cancellationToken);
             }
 
-            var accessToken = GenerateToken(claims, accessTokenExpiry);
+            var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(Tier.Platform));
 
             // Track new access token
             await _revocationService.TrackTokenAsync(
@@ -450,7 +453,7 @@ public class TokenService : ITokenService
         _logger.LogInformation("Revoked all tokens for organization {OrgId}", organizationId);
     }
 
-    private string GenerateToken(IEnumerable<Claim> claims, DateTimeOffset expiry)
+    private string GenerateToken(IEnumerable<Claim> claims, DateTimeOffset expiry, string audience)
     {
         if (_signingCredentials == null)
         {
@@ -463,7 +466,7 @@ public class TokenService : ITokenService
             Expires = expiry.UtcDateTime,
             IssuedAt = DateTime.UtcNow,
             Issuer = _config.Issuer,
-            Audience = _config.Audiences.FirstOrDefault(),
+            Audience = audience,
             SigningCredentials = _signingCredentials
         };
 
@@ -495,7 +498,12 @@ public class TokenService : ITokenService
             claims.Add(new Claim("platform_user_id", platformUserId));
         }
 
-        return GenerateToken(claims, expiry);
+        // Refresh tokens carry their tier so a refresh re-mints the same tier (spec 136).
+        // Today refresh tokens pair platform-context user tokens; tier selection on refresh
+        // (consumer vs platform) lands with US4.
+        claims.Add(new Claim("tier", "platform"));
+
+        return GenerateToken(claims, expiry, _audiences.For(Tier.Platform));
     }
 
     /// <summary>
