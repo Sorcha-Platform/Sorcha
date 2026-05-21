@@ -186,15 +186,36 @@
   async function getCredential(id) {
     const row = await get("credentials", id);
     if (!row) return null;
-    return await decryptString(row.nonce, row.ciphertext);
+    try {
+      return await decryptString(row.nonce, row.ciphertext);
+    } catch (e) {
+      // Undecryptable — e.g. written by a superseded cache cipher (the pre-#797
+      // AES-GCM scheme stored a 12-byte nonce the XChaCha path rejects) or
+      // corrupt. Evict it and report a miss; the cache is a mirror of
+      // server-authoritative state and re-seeds via /credentials or /sync.
+      console.warn("[Sorcha] evicting undecryptable cached credential", id, e);
+      await del("credentials", id);
+      return null;
+    }
   }
 
   async function listCredentials() {
     const rows = await getAll("credentials");
     const out = [];
+    const evict = [];
     for (const row of rows) {
-      out.push(await decryptString(row.nonce, row.ciphertext));
+      try {
+        out.push(await decryptString(row.nonce, row.ciphertext));
+      } catch (e) {
+        // A single undecryptable row must not abort the whole listing — that
+        // crashed every sync for devices carrying a legacy-scheme credential
+        // (Sync error: "Uint8Array expected of length 24, got length=12").
+        // Skip it, evict it, and let the server re-seed under the current scheme.
+        console.warn("[Sorcha] evicting undecryptable cached credential", row && row.id, e);
+        if (row && row.id !== undefined) evict.push(row.id);
+      }
     }
+    for (const id of evict) await del("credentials", id);
     return out;
   }
 
