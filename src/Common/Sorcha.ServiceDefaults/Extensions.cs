@@ -97,6 +97,9 @@ public static class Extensions
                 // Feature 135 — unified credential trust decisions (outcome / source / format /
                 // assurance / failure reason; no subject data)
                 metrics.AddMeter("Sorcha.Trust");
+
+                // Feature 136 — tiered-audience identity (tokens minted by tier; tier requests refused)
+                metrics.AddMeter(Sorcha.ServiceDefaults.Auth.IdentityMetrics.MeterName);
             })
             .WithTracing(tracing =>
             {

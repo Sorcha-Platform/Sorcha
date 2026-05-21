@@ -31,6 +31,7 @@ public class TokenService : ITokenService
     private readonly SigningCredentials? _signingCredentials;
     private readonly TokenValidationParameters _validationParameters;
     private readonly SorchaAudiences _audiences;
+    private readonly IdentityMetrics? _metrics;
 
     public TokenService(
         IOptions<JwtConfiguration> options,
@@ -38,10 +39,12 @@ public class TokenService : ITokenService
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         IParticipantRepository participantRepository,
-        ILogger<TokenService> logger)
+        ILogger<TokenService> logger,
+        IdentityMetrics? metrics = null)
     {
         _config = options?.Value ?? new JwtConfiguration();
         _audiences = new SorchaAudiences(_config.InstallationName);
+        _metrics = metrics;
         _revocationService = revocationService ?? throw new ArgumentNullException(nameof(revocationService));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
@@ -127,6 +130,7 @@ public class TokenService : ITokenService
         var refreshTokenExpiry = DateTimeOffset.UtcNow.AddHours(_config.RefreshTokenLifetimeHours);
 
         var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(tier));
+        _metrics?.TokenMinted(tier);
         // Consumer refresh re-mints consumer; platform refresh keeps org context. The refresh token
         // carries the tier so RefreshTokenAsync re-mints the same tier (FR-012).
         var refreshToken = GenerateRefreshToken(
@@ -191,6 +195,7 @@ public class TokenService : ITokenService
         var accessTokenExpiry = DateTimeOffset.UtcNow.AddHours(_config.ServiceTokenLifetimeHours);
 
         var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(Tier.Service));
+        _metrics?.TokenMinted(Tier.Service);
 
         _logger.LogInformation(
             "Generated service token for {ServiceName} (client: {ClientId})",
@@ -328,6 +333,7 @@ public class TokenService : ITokenService
             }
 
             var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(tier));
+            _metrics?.TokenMinted(tier);
 
             // Track new access token
             await _revocationService.TrackTokenAsync(
