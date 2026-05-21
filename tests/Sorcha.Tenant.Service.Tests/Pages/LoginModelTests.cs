@@ -97,7 +97,7 @@ public class LoginModelTests
     {
         // Arrange
         var tokens = CreateTokens();
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(true, Tokens: tokens));
 
         var model = CreateModel();
@@ -119,7 +119,7 @@ public class LoginModelTests
     public async Task OnPostAsync_InvalidCredentials_ShowsError()
     {
         // Arrange
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "wrong", It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "wrong", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(false, Error: "Invalid email or password."));
 
         var model = CreateModel();
@@ -138,7 +138,7 @@ public class LoginModelTests
     public async Task OnPostAsync_TwoFactorRequired_ShowsTwoFactorForm()
     {
         // Arrange
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(
                 true,
                 TwoFactorRequired: true,
@@ -240,7 +240,7 @@ public class LoginModelTests
     {
         // Arrange
         var tokens = CreateTokens();
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(true, Tokens: tokens));
 
         var model = CreateModel();
@@ -264,7 +264,7 @@ public class LoginModelTests
     {
         // Arrange
         var tokens = CreateTokens();
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(true, Tokens: tokens));
 
         var model = CreateModel();
@@ -290,7 +290,7 @@ public class LoginModelTests
         var tokens = CreateTokens();
 
         _loginService.Setup(s => s.CompleteOrgSelectionAsync(
-                "platform-token", orgBId, It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+                "platform-token", orgBId, It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(true, Tokens: tokens));
 
         var model = CreateModel();
@@ -314,7 +314,7 @@ public class LoginModelTests
         var orgBId = Guid.NewGuid();
 
         _loginService.Setup(s => s.CompleteOrgSelectionAsync(
-                "platform-token", orgBId, It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+                "platform-token", orgBId, It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(
                 true,
                 TwoFactorRequired: true,

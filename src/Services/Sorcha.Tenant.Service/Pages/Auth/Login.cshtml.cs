@@ -174,7 +174,7 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        var result = await _loginService.LoginAsync(Email, Password, ResolveRequestedTier(), ct);
+        var result = await _loginService.LoginAsync(Email, Password, ResolveRequestedTier(), ct: ct);
 
         if (!result.Success && !result.TwoFactorRequired && !result.OrgSelectionRequired)
         {
@@ -287,7 +287,10 @@ public class LoginModel : PageModel
             targetUser = user;
         }
 
-        var tokens = await _tokenService.GenerateUserTokenAsync(targetUser, organization, targetUser.PlatformUserId, ResolveRequestedTier(), ct);
+        // Spec 136: 2FA completion mints the destination-derived tier, downgraded to entitlement
+        // (never an explicit request here, so a non-entitled preference simply falls to Consumer).
+        var mintTier = TierResolver.ResolvePreference(ResolveRequestedTier(), isExplicit: false, targetUser.Roles).Tier;
+        var tokens = await _tokenService.GenerateUserTokenAsync(targetUser, organization, targetUser.PlatformUserId, mintTier, ct);
         targetUser.LastLoginAt = DateTimeOffset.UtcNow;
         await _identityRepository.UpdateUserAsync(targetUser, ct);
 

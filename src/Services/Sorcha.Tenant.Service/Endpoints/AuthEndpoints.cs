@@ -309,15 +309,19 @@ public static class AuthEndpoints
             });
         }
 
-        // Spec 136: derive the requested trust tier — explicit hint wins, else returnTo
-        // (/wallet ⇒ consumer), else Platform (the /app SPA is the default platform host).
-        var requestedTier = RequestedTierResolver.ParseTierHint(request.Tier)
+        // Spec 136: derive the preferred trust tier — explicit hint wins, else returnTo
+        // (/wallet ⇒ consumer), else Platform (the /app SPA host). An explicit hint is a hard
+        // request (refused if un-entitled, FR-008); a returnTo-derived preference downgrades to
+        // entitlement (a citizen on /app → consumer). The tier follows the person.
+        var explicitTier = RequestedTierResolver.ParseTierHint(request.Tier);
+        var preferredTier = explicitTier
             ?? RequestedTierResolver.ClassifyReturnTo(request.ReturnTo, returnToAllowlist.Value)
             ?? Sorcha.ServiceDefaults.Auth.Tier.Platform;
+        var tierExplicit = explicitTier is not null;
 
         var result = !string.IsNullOrWhiteSpace(request.OrganizationSubdomain)
-            ? await loginService.LoginAsync(request.Email, request.Password, request.OrganizationSubdomain, requestedTier, cancellationToken)
-            : await loginService.LoginAsync(request.Email, request.Password, requestedTier, cancellationToken);
+            ? await loginService.LoginAsync(request.Email, request.Password, request.OrganizationSubdomain, preferredTier, tierExplicit, cancellationToken)
+            : await loginService.LoginAsync(request.Email, request.Password, preferredTier, tierExplicit, cancellationToken);
 
         if (!result.Success)
         {
@@ -326,6 +330,13 @@ public static class AuthEndpoints
             {
                 return TypedResults.Problem(result.Error,
                     statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
+            // Explicit over-request of a tier the holder is not entitled to (spec 136, FR-008).
+            if (result.ErrorCode == LoginErrorCode.TierNotEntitled)
+            {
+                return TypedResults.Problem(result.Error,
+                    statusCode: StatusCodes.Status403Forbidden);
             }
 
             return TypedResults.Unauthorized();
@@ -935,13 +946,20 @@ public static class AuthEndpoints
                 statusCode: StatusCodes.Status403Forbidden);
         }
 
+        // Spec 136 (FR-016): re-mint at the tier appropriate to the NEW context — Platform if the
+        // user holds a platform role in the target org, otherwise Consumer (the tier follows the
+        // person in that context). Switching context is destination-derived, never an explicit
+        // over-request, so it downgrades rather than refuses.
+        var contextTier = TierResolver.ResolvePreference(
+            Sorcha.ServiceDefaults.Auth.Tier.Platform, isExplicit: false, userIdentity.Roles).Tier;
+
         // Issue new JWT scoped to target org
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, targetOrg, platformUserId, cancellationToken: cancellationToken);
+            userIdentity, targetOrg, platformUserId, contextTier, cancellationToken);
 
         logger.LogInformation(
-            "User {PlatformUserId} switched to org {OrgId} ({Subdomain})",
-            platformUserId, targetOrg.Id, targetOrg.Subdomain);
+            "User {PlatformUserId} switched to org {OrgId} ({Subdomain}) at tier {Tier}",
+            platformUserId, targetOrg.Id, targetOrg.Subdomain, contextTier);
 
         return TypedResults.Ok(tokenResponse);
     }

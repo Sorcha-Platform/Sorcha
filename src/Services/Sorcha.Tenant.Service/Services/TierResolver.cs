@@ -63,4 +63,39 @@ public static class TierResolver
             ? new TierResolution(true, minted, TierRejectionReason.None)
             : new TierResolution(false, minted, TierRejectionReason.NotEntitled);
     }
+
+    /// <summary>
+    /// Resolves a tier <em>preference</em> against entitlement (spec 136, the decision of 2026-05-21):
+    /// the tier follows the person, not the UI host. A citizen / non-admin is consumer-tier wherever
+    /// they sign in; an admin reaches platform in org context.
+    /// <list type="bullet">
+    ///   <item>If the preference is entitled → mint it.</item>
+    ///   <item>If NOT entitled and the request was <paramref name="isExplicit"/> (a deliberate
+    ///   <c>tier=platform</c> request) → <b>refuse</b> (FR-008 over-request, 403).</item>
+    ///   <item>If NOT entitled and the preference was merely derived from the destination (e.g. a
+    ///   citizen landing on the <c>/app</c> SPA) → <b>downgrade</b> to the highest entitled tier
+    ///   (Consumer), so the citizen keeps working rather than being locked out.</item>
+    /// </list>
+    /// </summary>
+    /// <param name="preferred">The preferred tier (from an explicit hint or the destination).</param>
+    /// <param name="isExplicit">True when <paramref name="preferred"/> came from an explicit caller request.</param>
+    /// <param name="rolesInActiveContext">The holder's roles in the active org context.</param>
+    public static TierResolution ResolvePreference(Tier preferred, bool isExplicit, IEnumerable<UserRole>? rolesInActiveContext)
+    {
+        var entitled = EntitledTiers(rolesInActiveContext);
+        if (entitled.Contains(preferred))
+        {
+            return new TierResolution(true, preferred, TierRejectionReason.None);
+        }
+
+        if (isExplicit)
+        {
+            // A deliberate over-request is refused, never silently downgraded (FR-008).
+            return new TierResolution(false, preferred, TierRejectionReason.NotEntitled);
+        }
+
+        // Destination-derived preference the holder is not entitled to → downgrade to the
+        // lowest-privilege human tier (Consumer is entitled to every authenticated human).
+        return new TierResolution(true, Tier.Consumer, TierRejectionReason.None);
+    }
 }

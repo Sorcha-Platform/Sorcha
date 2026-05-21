@@ -88,4 +88,47 @@ public sealed class TierResolverTests
     {
         TierResolver.EntitledTiers(null).Should().ContainSingle().Which.Should().Be(Tier.Consumer);
     }
+
+    // --- ResolvePreference: tier follows the person (downgrade derived / refuse explicit) ---
+
+    [Fact]
+    public void ResolvePreference_PlatformPreference_ConsumerOnly_NotExplicit_DowngradesToConsumer()
+    {
+        var result = TierResolver.ResolvePreference(Tier.Platform, isExplicit: false, [UserRole.Consumer]);
+
+        result.Allowed.Should().BeTrue("a destination-derived preference downgrades rather than locks out");
+        result.Tier.Should().Be(Tier.Consumer);
+    }
+
+    [Fact]
+    public void ResolvePreference_PlatformPreference_ConsumerOnly_Explicit_Refused()
+    {
+        var result = TierResolver.ResolvePreference(Tier.Platform, isExplicit: true, [UserRole.Consumer]);
+
+        result.Allowed.Should().BeFalse("an explicit over-request is refused, not downgraded (FR-008)");
+        result.Reason.Should().Be(TierRejectionReason.NotEntitled);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ResolvePreference_PlatformPreference_AdminUser_MintsPlatform(bool isExplicit)
+    {
+        var result = TierResolver.ResolvePreference(Tier.Platform, isExplicit, [UserRole.Administrator]);
+
+        result.Allowed.Should().BeTrue();
+        result.Tier.Should().Be(Tier.Platform);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ResolvePreference_ConsumerPreference_AlwaysConsumer(bool isExplicit)
+    {
+        // Everyone is entitled to Consumer, so a consumer preference is always granted as-is.
+        var result = TierResolver.ResolvePreference(Tier.Consumer, isExplicit, rolesInActiveContext: null);
+
+        result.Allowed.Should().BeTrue();
+        result.Tier.Should().Be(Tier.Consumer);
+    }
 }
