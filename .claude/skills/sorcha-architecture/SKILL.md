@@ -799,6 +799,10 @@ Detailed authoring guidance lives in `.claude/skills/blueprint-builder/SKILL.md`
 
 The seam shipped in PR #434; the DID-resolver-backed production impl shipped in **Feature 120** (`DidResolverBackedIssuerKeyResolver`, resolving `did:sorcha:org:...` via the F120 DID resolver registry → published verification methods). Both the reference verifier (`Sorcha.Verifier`) and Blueprint Service (PR #795, for `SorchaWalletPresentationConsumer`) now register a `CompositeIssuerKeyResolver` that tries the DID-backed resolver first and falls back to `JwkRegistryIssuerKeyResolver`. `RequireIssuerSignature` defaults to `true` (F120 FR-019). The demo flow still uses the JWK registry — `DemoMintEndpoint` registers each freshly-generated issuer JWK on every mint so demo presentations pass full signature verification without a published DID document.
 
+### Sign-out data purge (PWA)
+
+`IAuthService.SignOutAsync` clears the access token **and** wipes every per-device IndexedDB store via `ILocalDataPurge` → `SorchaIndexedDb.wipe()` (a single transaction that enumerates `db.objectStoreNames` and clears each — future-proof against new stores). Sign-out previously cleared only the access token, leaving the next citizen on a shared device with the prior user's `credentials`, `personas`, `delegation`, `verifications`, `presentationLog`, `context`, and the `flags` record (`WelcomedAt`/`TourDismissedAt`) — a cross-user leak that also suppressed the welcome takeover + guided tour for the new user. `Pages/Settings.razor` sign-out then `forceLoad`-navigates home (`NavigateTo("", forceLoad: true)`) so singleton in-memory state (hub connection, `IHasPairedDeviceProbe` cache, `ManagedUserContext`) re-initialises clean. **Do NOT add a new per-device store and wire its own per-store clear into sign-out** — `wipe()` already covers it; the per-store approach is what caused the original bug. Regression guard: `CitizenWalletSignOutWipeTests` (E2E) + `AuthAndBearerTests.AuthService_SignOut_PurgesAllLocalData` (unit).
+
 ---
 
 ## AssuredIdentity on the PWA (Feature 124) — pending-application notice + first-credential takeover
