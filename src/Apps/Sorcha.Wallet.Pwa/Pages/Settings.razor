@@ -331,8 +331,13 @@
 
     private async Task SignOutAsync()
     {
+        // Clears the token + wipes every per-device IndexedDB store.
         await Auth.SignOutAsync();
         _signedInEmail = null;
+        // Force-reload to home (base-relative — the PWA is mounted under /wallet/)
+        // so singleton state held in memory — the hub connection, the paired-device
+        // probe cache, the active-context — is re-initialised clean for the next user.
+        Nav.NavigateTo("", forceLoad: true);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

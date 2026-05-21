@@ -35,7 +35,7 @@ public sealed class AuthAndBearerTests
             };
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") };
-        var auth = new AuthService(http, store);
+        var auth = NewAuth(http, store);
 
         var result = await auth.SignInAsync("citizen@example.com", "secret-pw");
 
@@ -52,7 +52,7 @@ public sealed class AuthAndBearerTests
     {
         var store = new InMemoryAccessTokenStore();
         var handler = new StubHttpHandler((_, _) => new HttpResponseMessage(HttpStatusCode.Unauthorized));
-        var auth = new AuthService(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
+        var auth = NewAuth(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
 
         var result = await auth.SignInAsync("citizen@example.com", "wrong");
 
@@ -71,7 +71,7 @@ public sealed class AuthAndBearerTests
                 """{"requires_two_factor":true,"login_token":"lt-abc","available_methods":["totp"]}""",
                 Encoding.UTF8, "application/json"),
         });
-        var auth = new AuthService(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
+        var auth = NewAuth(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
 
         var result = await auth.SignInAsync("citizen@example.com", "pw");
 
@@ -90,7 +90,7 @@ public sealed class AuthAndBearerTests
                 """{"requires_two_factor":true,"login_token":"lt-123","available_methods":["totp"]}""",
                 Encoding.UTF8, "application/json"),
         });
-        var auth = new AuthService(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
+        var auth = NewAuth(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
 
         var result = await auth.SignInAsync("citizen@example.com", "pw");
 
@@ -115,7 +115,7 @@ public sealed class AuthAndBearerTests
                     Encoding.UTF8, "application/json"),
             };
         });
-        var auth = new AuthService(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
+        var auth = NewAuth(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
 
         var result = await auth.VerifyTwoFactorAsync("lt-123", "citizen@example.com", "123456");
 
@@ -131,7 +131,7 @@ public sealed class AuthAndBearerTests
     {
         var store = new InMemoryAccessTokenStore();
         var handler = new StubHttpHandler((_, _) => new HttpResponseMessage(HttpStatusCode.Unauthorized));
-        var auth = new AuthService(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
+        var auth = NewAuth(new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") }, store);
 
         var result = await auth.VerifyTwoFactorAsync("lt-123", "citizen@example.com", "000000");
 
@@ -145,12 +145,29 @@ public sealed class AuthAndBearerTests
     {
         var store = new InMemoryAccessTokenStore();
         await store.SetAsync(new AccessTokenRecord("jwt", DateTimeOffset.UtcNow.AddHours(1), "x@example.com"));
-        var auth = new AuthService(new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage())),
-            store);
+        var auth = NewAuth(new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage())), store);
 
         await auth.SignOutAsync();
 
         (await auth.IsSignedInAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AuthService_SignOut_PurgesAllLocalData()
+    {
+        // Regression: sign-out used to clear ONLY the access token, leaving
+        // credentials, personas, delegation, history and the welcome/tour
+        // flags in IndexedDB for the next citizen who signs in on the same
+        // device. Sign-out MUST wipe every per-device store.
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("jwt", DateTimeOffset.UtcNow.AddHours(1), "x@example.com"));
+        var purge = new SpyLocalDataPurge();
+        var auth = NewAuth(
+            new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage())), store, purge);
+
+        await auth.SignOutAsync();
+
+        purge.PurgeCount.Should().Be(1, "sign-out must wipe all per-device wallet data, not just the token");
     }
 
     [Fact]
@@ -189,6 +206,22 @@ public sealed class AuthAndBearerTests
         await http.GetAsync("api/v1/wallet/sync");
 
         observedAuth.Should().BeNull("requests must go out unauthenticated when no token is stored");
+    }
+
+    // Constructs an AuthService with a throwaway purge for the tests that
+    // don't assert on the sign-out cascade; AuthService_SignOut_PurgesAllLocalData
+    // passes its own spy to inspect the call.
+    private static AuthService NewAuth(HttpClient http, IAccessTokenStore store, ILocalDataPurge? purge = null)
+        => new(http, store, purge ?? new SpyLocalDataPurge());
+
+    private sealed class SpyLocalDataPurge : ILocalDataPurge
+    {
+        public int PurgeCount { get; private set; }
+        public Task PurgeAsync(CancellationToken ct = default)
+        {
+            PurgeCount++;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubHttpHandler : HttpMessageHandler

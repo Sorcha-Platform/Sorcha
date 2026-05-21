@@ -106,6 +106,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IServerClockObserver, ServerClockObserver>();
         services.AddTransient<ServerClockHandler>();
 
+        // Sign-out cascade: wipes every per-device IndexedDB store so a
+        // signed-out citizen leaves no credentials, personas, history, or
+        // welcome/tour flags behind for the next user on the device.
+        services.AddSingleton<ILocalDataPurge, IndexedDbLocalDataPurge>();
+
         // Auth surface: a separate HttpClient that does NOT inject the bearer
         // token (so sign-in requests don't carry stale tokens). Still observes
         // the server clock — sign-in is a great moment to capture initial drift.
