@@ -2876,7 +2876,7 @@ receiptsGroup.MapPost("/receipts/verify", (
 // ===========================
 
 var adminGroup = app.MapGroup("/api/admin/registers/{registerId}")
-    .RequireAuthorization("RequireAdministrator")
+    .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
     .WithTags("Admin");
 
 // <summary>

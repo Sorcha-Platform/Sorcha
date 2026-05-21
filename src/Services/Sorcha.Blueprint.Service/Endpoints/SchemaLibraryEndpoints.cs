@@ -31,7 +31,7 @@ public static class SchemaLibraryEndpoints
 
         var providerGroup = app.MapGroup("/api/v1/schemas/providers")
             .WithTags("Provider Health")
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         var derivedGroup = app.MapGroup("/api/v1/schemas/derived")
             .WithTags("Derived Schemas")
@@ -92,7 +92,7 @@ public static class SchemaLibraryEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         // === Provider Health endpoints ===
 

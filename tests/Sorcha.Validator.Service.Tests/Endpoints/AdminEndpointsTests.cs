@@ -563,7 +563,7 @@ internal sealed class TestAdminAuthHandler(
 {
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, "test-admin"),
             new Claim(ClaimTypes.Name, "test-admin"),
@@ -571,6 +571,16 @@ internal sealed class TestAdminAuthHandler(
             new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser),
             new Claim(TokenClaimConstants.OrgId, "test-org")
         };
+
+        // Spec 136: inject the installation tier audiences (from the host's SorchaAudiences) so
+        // platform-tier admin endpoints (RequireAdministrator + RequirePlatformAudience) accept this principal.
+        var audiences = Context.RequestServices.GetService<Sorcha.ServiceDefaults.Auth.SorchaAudiences>()
+            ?? new Sorcha.ServiceDefaults.Auth.SorchaAudiences(installationName: null);
+        foreach (var aud in audiences.All)
+        {
+            claims.Add(new Claim("aud", aud));
+        }
+
         var identity = new ClaimsIdentity(claims, "Test");
         var principal = new ClaimsPrincipal(identity);
         var ticket = new AuthenticationTicket(principal, "Test");
