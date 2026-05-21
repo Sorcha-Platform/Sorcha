@@ -75,7 +75,7 @@ public sealed class TokenServiceTierTests
     private static JwtSecurityToken Decode(string jwt) => new JwtSecurityTokenHandler().ReadJwtToken(jwt);
 
     [Fact]
-    public async Task GenerateUserToken_Consumer_OmitsOrgAndRoles_CarriesHolderId()
+    public async Task GenerateUserToken_Consumer_CarriesOrgContext_OmitsRoles()
     {
         var svc = CreateService();
         var (user, org) = Subjects();
@@ -88,9 +88,14 @@ public sealed class TokenServiceTierTests
         token.Claims.Should().Contain(c => c.Type == "token_type" && c.Value == "user");
         token.Claims.Should().Contain(c => c.Type == JwtRegisteredClaimNames.Email && c.Value == user.Email);
 
-        token.Claims.Should().NotContain(c => c.Type == "org_id", "a consumer token must be inert on platform surfaces (FR-013)");
-        token.Claims.Should().NotContain(c => c.Type == "org_name");
-        token.Claims.Should().NotContain(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role);
+        // Spec 136 refinement: a consumer carries org context (their home/public org) so org-scoped
+        // consumer operations work — but NOT roles/wallet (the platform-privilege markers). The tier
+        // boundary is the audience + the absence of roles, not the absence of org_id.
+        token.Claims.Should().Contain(c => c.Type == "org_id" && c.Value == org.Id.ToString());
+        token.Claims.Should().Contain(c => c.Type == "org_name" && c.Value == org.Name);
+        token.Claims.Should().NotContain(c => c.Type == System.Security.Claims.ClaimTypes.Role || c.Type == "role",
+            "roles are platform-only — a consumer token must remain inert against admin surfaces");
+        token.Claims.Should().NotContain(c => c.Type == "wallet_address");
     }
 
     [Fact]

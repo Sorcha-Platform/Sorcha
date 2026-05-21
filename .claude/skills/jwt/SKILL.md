@@ -16,8 +16,8 @@ Sorcha uses **JWT Bearer authentication** with the **Tenant Service** as the tok
 
 | Tier | Audience | Who | Claim set |
 |------|----------|-----|-----------|
-| `Consumer` | `{install}:consumer` | citizen / wallet holder (web + PWA) | `sub`, `email`, `platform_user_id` — **omits `org_id`/roles** (inert on platform surfaces) |
-| `Platform` | `{install}:platform` | admin / designer / auditor / org operator | full user shape: + `org_id`, `roles[]`, `wallet_address?` |
+| `Consumer` | `{install}:consumer` | citizen / wallet holder (web + PWA) | `sub`, `email`, `platform_user_id`, `org_id`/`org_name` (home/public org) — **omits `roles`/`wallet_address`**. Inert on platform surfaces by audience + no-roles, not by absence of org context. |
+| `Platform` | `{install}:platform` | admin / designer / auditor / org operator | full user shape: + `org_id`, `org_name`, `roles[]`, `wallet_address?` |
 | `Service` | `{install}:service` | service-to-service / internal | `client_id`, `service_name`, `scope[]`, `delegated_*?` |
 | `EnrolSession` | `{install}:enrol-session` | one-time device pairing | `scope:"enrol"`, single-use JTI |
 
