@@ -149,31 +149,42 @@ $null = Register-SorchaParticipant `
 Write-WtInfo "Verification analyst participant registered"
 
 # ============================================================================
-# Step 5b: Citizen — Login, Wallet, Participant
+# Step 5b: Citizen — Login, Wallet, Participant (best-effort, late-bound)
 # ============================================================================
-Write-WtStep "Step 5b: Citizen — Login, Wallet, Participant"
+# Spec 136: a public-org citizen now receives a CONSUMER-tier token (no org_id),
+# so the org-style wallet API (CanManageWallets requires org_id) correctly refuses
+# it (403). The citizen is an OPEN, late-bound participant (NOT in the wallet map at
+# publish, Step 8), so a pre-provisioned scripted-citizen wallet is not needed to
+# stand the service up — a real citizen provisions their wallet via the PWA enrol
+# flow. This block is therefore best-effort: warn and continue on failure.
+Write-WtStep "Step 5b: Citizen — Login, Wallet, Participant (best-effort)"
 
-$citizenSession = Connect-SorchaUser `
-    -TenantUrl $sorchaEnv.TenantUrl `
-    -Email $citizenEmail `
-    -Password $citizenPassword `
-    -OrganizationId $publicOrgId
+$citizenWallet = $null
+try {
+    $citizenSession = Connect-SorchaUser `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -Email $citizenEmail `
+        -Password $citizenPassword `
+        -OrganizationId $publicOrgId
 
-$citizenWallet = New-SorchaWallet `
-    -WalletUrl $sorchaEnv.WalletUrl `
-    -Name "Citizen Application Wallet" `
-    -Headers $citizenSession.Headers `
-    -FetchPublicKey
-Write-WtSuccess "Citizen wallet: $($citizenWallet.Address)"
+    $citizenWallet = New-SorchaWallet `
+        -WalletUrl $sorchaEnv.WalletUrl `
+        -Name "Citizen Application Wallet" `
+        -Headers $citizenSession.Headers `
+        -FetchPublicKey
+    Write-WtSuccess "Citizen wallet: $($citizenWallet.Address)"
 
-$null = Register-SorchaParticipant `
-    -TenantUrl $sorchaEnv.TenantUrl `
-    -WalletUrl $sorchaEnv.WalletUrl `
-    -OrganizationId $publicOrgId `
-    -WalletAddress $citizenWallet.Address `
-    -DisplayName "Alex MacLeod" `
-    -Headers $citizenSession.Headers
-Write-WtInfo "Citizen participant registered in public org"
+    $null = Register-SorchaParticipant `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -WalletUrl $sorchaEnv.WalletUrl `
+        -OrganizationId $publicOrgId `
+        -WalletAddress $citizenWallet.Address `
+        -DisplayName "Alex MacLeod" `
+        -Headers $citizenSession.Headers
+    Write-WtInfo "Citizen participant registered in public org"
+} catch {
+    Write-WtWarn "Scripted-citizen wallet provisioning skipped (spec 136: consumer token has no org_id; citizen is late-bound and provisions via the PWA enrol flow): $($_.Exception.Message)"
+}
 
 # ============================================================================
 # Step 6: Provision Trust Anchor + Enrol as HAIP Issuer

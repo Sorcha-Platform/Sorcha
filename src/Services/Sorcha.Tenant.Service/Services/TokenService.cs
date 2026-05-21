@@ -110,14 +110,18 @@ public class TokenService : ITokenService
             new("platform_user_id", platformUserId.ToString())
         };
 
-        // Platform-tier tokens carry organisation context, roles, and wallet binding (FR-014).
-        // Consumer-tier tokens deliberately OMIT org_id/org_name/roles/wallet_address so they are
-        // inert against platform surfaces (FR-013) — the holder identifier (platform_user_id) is enough.
+        // Both human tiers carry organisation context (org_id/org_name) — a citizen's home is the
+        // public org, and they need that context for their own org-scoped operations (provisioning
+        // their wallet, submitting an application as a public-org participant). The tier boundary is
+        // the AUDIENCE (a :consumer token is refused at platform surfaces) plus the absence of ROLES
+        // (no admin capability) — NOT the absence of org_id (spec 136 refinement of FR-013).
+        claims.Add(new Claim(TokenClaimConstants.OrgId, organization.Id.ToString()));
+        claims.Add(new Claim("org_name", organization.Name));
+
+        // Roles + wallet binding are platform-only: they are the platform-privilege markers, so a
+        // consumer token carries neither and stays inert against admin/platform surfaces (FR-014).
         if (tier == Tier.Platform)
         {
-            claims.Add(new Claim(TokenClaimConstants.OrgId, organization.Id.ToString()));
-            claims.Add(new Claim("org_name", organization.Name));
-
             foreach (var role in user.Roles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
@@ -131,11 +135,11 @@ public class TokenService : ITokenService
 
         var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(tier));
         _metrics?.TokenMinted(tier);
-        // Consumer refresh re-mints consumer; platform refresh keeps org context. The refresh token
-        // carries the tier so RefreshTokenAsync re-mints the same tier (FR-012).
+        // The refresh token carries the tier (re-minted same tier, FR-012) and the org context for
+        // both human tiers (a consumer's home org is needed to re-mint its org-scoped consumer token).
         var refreshToken = GenerateRefreshToken(
             refreshTokenJti, user.Id.ToString(),
-            tier == Tier.Platform ? organization.Id.ToString() : null,
+            organization.Id.ToString(),
             refreshTokenExpiry, platformUserId.ToString(), tier);
 
         // Track tokens for potential bulk revocation
@@ -306,20 +310,20 @@ public class TokenService : ITokenService
                 claims.Add(new Claim("platform_user_id", platformUserId));
             }
 
-            // Platform-tier refresh re-mints org context + roles + wallet binding; consumer-tier
-            // refresh stays inert (no org_id/roles/wallet) — FR-013/FR-014.
+            // Org context (org_id/org_name) is re-minted for both human tiers (a consumer's home org).
+            if (organization is not null)
+            {
+                claims.Add(new Claim(TokenClaimConstants.OrgId, organization.Id.ToString()));
+                claims.Add(new Claim("org_name", organization.Name));
+            }
+            else if (!string.IsNullOrEmpty(orgId))
+            {
+                claims.Add(new Claim(TokenClaimConstants.OrgId, orgId));
+            }
+
+            // Roles + wallet binding are platform-only (the platform-privilege markers, FR-014).
             if (tier == Tier.Platform)
             {
-                if (organization is not null)
-                {
-                    claims.Add(new Claim(TokenClaimConstants.OrgId, organization.Id.ToString()));
-                    claims.Add(new Claim("org_name", organization.Name));
-                }
-                else if (!string.IsNullOrEmpty(orgId))
-                {
-                    claims.Add(new Claim(TokenClaimConstants.OrgId, orgId));
-                }
-
                 foreach (var role in user.Roles)
                 {
                     claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
