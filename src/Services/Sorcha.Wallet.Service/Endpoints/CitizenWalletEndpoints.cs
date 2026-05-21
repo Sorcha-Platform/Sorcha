@@ -15,9 +15,10 @@ using Sorcha.Wallet.Service.Services.Interfaces;
 namespace Sorcha.Wallet.Service.Endpoints;
 
 /// <summary>
-/// Citizen wallet PWA endpoints (Feature 114). Mounted under <c>/api/v1/wallet/*</c>
-/// and require the JWT to carry the <see cref="Sorcha.CitizenWallet.Abstractions.Constants.JwtAudiences.CitizenWallet"/>
-/// audience — enforced via JWT bearer pipeline configuration.
+/// Citizen wallet PWA endpoints (Feature 114). Mounted under <c>/api/v1/wallet/*</c>.
+/// These are consumer-tier surfaces (spec 136): they require the JWT to carry the installation's
+/// consumer audience (<c>{installation}:consumer</c>), enforced by the
+/// <see cref="Microsoft.Extensions.Hosting.AuthorizationPolicies.RequireConsumerAudience"/> policy.
 /// </summary>
 public static class CitizenWalletEndpoints
 {
