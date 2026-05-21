@@ -16,8 +16,9 @@ namespace Sorcha.Tenant.Service.Services;
 /// <list type="number">
 ///   <item>Explicit <c>tier</c> hint (<c>consumer</c> | <c>platform</c>); any other value is ignored.</item>
 ///   <item><c>returnTo</c> destination — a path under the wallet mount (<c>/wallet/…</c>) or an
-///   allow-listed consumer host ⇒ <see cref="Tier.Consumer"/>; an admin / platform / designer
-///   surface ⇒ <see cref="Tier.Platform"/>.</item>
+///   allow-listed consumer host ⇒ <see cref="Tier.Consumer"/>; the platform SPA mount
+///   (<c>/app/…</c>) ⇒ <see cref="Tier.Platform"/>. (There is no separate <c>/admin</c> route — the
+///   whole platform/admin experience is the <c>/app</c> Blazor SPA; the consumer wallet is <c>/wallet</c>.)</item>
 ///   <item>Default ⇒ <see cref="Tier.Consumer"/> (lowest privilege, FR-009).</item>
 /// </list>
 /// </para>
@@ -63,7 +64,14 @@ public static class RequestedTierResolver
         _ => null,
     };
 
-    private static Tier? ClassifyReturnTo(string? returnTo, ReturnToAllowlistOptions? allowlist)
+    /// <summary>
+    /// Classifies a <c>returnTo</c> destination to a tier, or null when it is not classifiable.
+    /// <c>/wallet</c> or an allow-listed consumer host ⇒ <see cref="Tier.Consumer"/>; the <c>/app</c>
+    /// SPA ⇒ <see cref="Tier.Platform"/>. Unlike <see cref="Resolve"/> this does NOT apply the
+    /// Consumer default — callers that must fail safe to Platform (e.g. the web SPA login, where the
+    /// default destination is the platform <c>/app</c> experience) use <c>ClassifyReturnTo(...) ?? Tier.Platform</c>.
+    /// </summary>
+    public static Tier? ClassifyReturnTo(string? returnTo, ReturnToAllowlistOptions? allowlist = null)
     {
         if (string.IsNullOrWhiteSpace(returnTo))
         {
@@ -87,14 +95,14 @@ public static class RequestedTierResolver
 
     private static Tier? ClassifyPath(string path)
     {
+        // The consumer wallet PWA is mounted at /wallet; the platform/admin experience is the
+        // /app Blazor SPA (there is no separate /admin route). Anything else is unclassified.
         if (StartsWithSegment(path, "/wallet"))
         {
             return Tier.Consumer;
         }
 
-        if (StartsWithSegment(path, "/admin")
-            || StartsWithSegment(path, "/platform")
-            || StartsWithSegment(path, "/designer"))
+        if (StartsWithSegment(path, "/app"))
         {
             return Tier.Platform;
         }

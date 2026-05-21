@@ -31,7 +31,7 @@ public sealed class RequestedTierResolverTests
     public void Resolve_ExplicitHint_Wins(string hint, Tier expected)
     {
         // Even with a conflicting returnTo, the explicit hint takes precedence.
-        RequestedTierResolver.Resolve(hint, returnTo: "/admin/orgs").Should().Be(expected);
+        RequestedTierResolver.Resolve(hint, returnTo: "/app/orgs").Should().Be(expected);
     }
 
     [Theory]
@@ -67,11 +67,13 @@ public sealed class RequestedTierResolverTests
     }
 
     [Theory]
-    [InlineData("/admin/orgs")]
-    [InlineData("/platform/settings")]
-    [InlineData("/designer/blueprint")]
-    public void Resolve_AdminPlatformDesignerPath_IsPlatform(string returnTo)
+    [InlineData("/app")]
+    [InlineData("/app/")]
+    [InlineData("/app/orgs")]
+    [InlineData("/app/designer/blueprint")]
+    public void Resolve_AppSpaPath_IsPlatform(string returnTo)
     {
+        // The whole platform/admin experience is the /app Blazor SPA — no separate /admin route.
         RequestedTierResolver.Resolve(explicitTierHint: null, returnTo).Should().Be(Tier.Platform);
     }
 
@@ -96,8 +98,8 @@ public sealed class RequestedTierResolverTests
     [Fact]
     public void Resolve_AbsoluteUrl_NonAllowlistedHost_ClassifiesByPath()
     {
-        // Host not allow-listed → fall back to path classification (admin ⇒ platform).
-        RequestedTierResolver.Resolve(null, "https://evil.example/admin/orgs", Allowlist)
+        // Host not allow-listed → fall back to path classification (/app ⇒ platform).
+        RequestedTierResolver.Resolve(null, "https://evil.example/app/orgs", Allowlist)
             .Should().Be(Tier.Platform);
     }
 
