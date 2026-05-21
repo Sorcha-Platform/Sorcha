@@ -20,7 +20,9 @@ public static class DashboardEndpoints
     {
         var group = app.MapGroup("/api/organizations/{organizationId:guid}/dashboard")
             .WithTags("Dashboard")
-            .RequireAuthorization("RequireAdministrator");
+            // Spec 136: platform-tier admin surface — tier gate (RequirePlatformAudience) composes
+            // ON TOP OF the role gate, so a consumer token is refused even if it carried an admin role.
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         group.MapGet("/", GetDashboard)
             .WithName("GetDashboard")

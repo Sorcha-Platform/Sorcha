@@ -29,7 +29,9 @@ public static class CitizenWalletEndpoints
     {
         var group = app.MapGroup("/api/v1/wallet")
             .WithTags("Citizen Wallet")
-            .RequireAuthorization()
+            // Spec 136: consumer-tier surface — only an installation consumer token ({install}:consumer)
+            // is accepted; a platform or service token is refused at the audience layer (SC-002).
+            .RequireAuthorization("RequireConsumerAudience")
             .RequireRateLimiting(RateLimitPolicies.Strict);
 
         group.MapPost("/devices/enrol", EnrolDevice)

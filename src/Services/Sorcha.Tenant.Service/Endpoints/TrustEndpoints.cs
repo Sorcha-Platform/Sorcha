@@ -29,7 +29,7 @@ public static class TrustEndpoints
                 "Creates a self-signed X.509 root CA certificate for the tenant. " +
                 "Idempotent — returns the existing root if already provisioned.")
             .Produces<TrustAnchorResponse>(StatusCodes.Status200OK)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         // Trust anchor — public (verifiers need to fetch the root cert)
         group.MapGet("/tenants/{tenantId}/trust-anchor", GetTrustAnchor)
@@ -51,7 +51,7 @@ public static class TrustEndpoints
                 "signed by the tenant's root CA. Binds the org's DID to the certificate via SAN URI.")
             .Produces<OrgCertEnrolmentResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         // Org cert chain — public
         group.MapGet("/tenants/{tenantId}/orgs/{orgWalletAddress}/cert-chain", GetOrgCertChain)
@@ -74,7 +74,7 @@ public static class TrustEndpoints
             .Produces<OrgCertEnrolmentResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         // CRL — public, cacheable (Feature 096 US4, Category 5 gap closure)
         group.MapGet("/tenants/{tenantId}/crl", GetTenantCrl)
@@ -105,7 +105,7 @@ public static class TrustEndpoints
                 "used the list. A live LOTL feed is a future provider behind the same seam.")
             .Produces<TrustListSummaryResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .RequireRateLimiting(RateLimitPolicies.Strict);
 
         group.MapGet("/trustlists/{trustListId}", GetTrustList)
@@ -116,7 +116,7 @@ public static class TrustEndpoints
                 "what is loaded. Not used per-verification (the trust source caches the roots).")
             .Produces<TrustListSummaryResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .RequireRateLimiting(RateLimitPolicies.Strict);
 
         group.MapGet("/trustlists", ListTrustLists)
@@ -124,7 +124,7 @@ public static class TrustEndpoints
             .WithSummary("List available trust-list snapshots")
             .WithDescription("Returns the id + freshness of every loaded trust-list snapshot.")
             .Produces<IReadOnlyList<TrustListSummaryResponse>>(StatusCodes.Status200OK)
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .RequireRateLimiting(RateLimitPolicies.Strict);
     }
 

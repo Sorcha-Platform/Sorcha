@@ -29,14 +29,14 @@ public static class PlatformManagementEndpoints
                 "If a PlatformUser with the same email already exists, it is reused and linked to the " +
                 "target organisation. Supports optional password, role selection, and email verification skip. " +
                 "Requires SystemAdmin role.")
-            .RequireAuthorization("RequireSystemAdmin");
+            .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience");
 
         group.MapPut("/{id:guid}/password", ResetPassword)
             .WithName("AdminResetPassword")
             .WithSummary("Reset a platform user's password")
             .WithDescription("Updates the password hash for a platform user. New password must comply with " +
                 "NIST password policy (min 12 characters, breach list check). Requires SystemAdmin role.")
-            .RequireAuthorization("RequireSystemAdmin");
+            .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience");
 
         return app;
     }

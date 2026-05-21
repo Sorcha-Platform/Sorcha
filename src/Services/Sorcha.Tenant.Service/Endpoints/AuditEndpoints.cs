@@ -25,7 +25,7 @@ public static class AuditEndpoints
             .WithName("GetAuditEvents")
             .WithSummary("Query audit log events")
             .WithDescription("Returns paginated audit events with optional filtering by date range, event type, and user. Max page size is 200.")
-            .RequireAuthorization("RequireAuditor")
+            .RequireAuthorization("RequireAuditor", "RequirePlatformAudience")
             .Produces<AuditLogResponse>()
             .Produces(404);
 
@@ -33,7 +33,7 @@ public static class AuditEndpoints
             .WithName("GetAuditRetention")
             .WithSummary("Get audit retention configuration")
             .WithDescription("Returns the current audit log retention period in months for this organization.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<AuditRetentionResponse>()
             .Produces(404);
 
@@ -41,7 +41,7 @@ public static class AuditEndpoints
             .WithName("UpdateAuditRetention")
             .WithSummary("Update audit retention period")
             .WithDescription("Sets the audit log retention period (1-120 months). Events older than this period are automatically purged daily.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<AuditRetentionResponse>()
             .Produces(404)
             .ProducesValidationProblem();

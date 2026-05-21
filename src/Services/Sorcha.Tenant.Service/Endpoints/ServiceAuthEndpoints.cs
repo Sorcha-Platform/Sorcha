@@ -45,7 +45,7 @@ public static class ServiceAuthEndpoints
         // Service principal management (admin only)
         var adminGroup = app.MapGroup("/api/service-principals")
             .WithTags("Service Principals")
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         adminGroup.MapPost("/", RegisterServicePrincipal)
             .WithName("RegisterServicePrincipal")
