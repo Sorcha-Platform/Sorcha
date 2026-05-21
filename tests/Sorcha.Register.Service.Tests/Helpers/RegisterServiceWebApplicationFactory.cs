@@ -173,7 +173,7 @@ internal class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptio
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, "test-user"),
             new Claim(ClaimTypes.Name, "Test User"),
@@ -181,6 +181,16 @@ internal class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptio
             new Claim("org_id", "test-org-001"),
             new Claim("token_type", "service")
         };
+
+        // Spec 136: inject the installation tier audiences so the extended RequireService (and any
+        // tier-gated endpoint) accepts this test principal. Resolved from the host's SorchaAudiences.
+        var audiences = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetService<Sorcha.ServiceDefaults.Auth.SorchaAudiences>(Context.RequestServices)
+            ?? new Sorcha.ServiceDefaults.Auth.SorchaAudiences(installationName: null);
+        foreach (var aud in audiences.All)
+        {
+            claims.Add(new Claim("aud", aud));
+        }
 
         var identity = new ClaimsIdentity(claims, "TestScheme");
         var principal = new ClaimsPrincipal(identity);

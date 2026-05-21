@@ -109,6 +109,16 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
             claims.Add(new Claim(ClaimTypes.Role, "Consumer"));
         }
 
+        // Spec 136: inject the installation tier audiences (from the host's SorchaAudiences) so
+        // tier-gated endpoints — including the extended RequireService — accept this mock principal.
+        var audiences = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetService<Sorcha.ServiceDefaults.Auth.SorchaAudiences>(Context.RequestServices)
+            ?? new Sorcha.ServiceDefaults.Auth.SorchaAudiences(installationName: null);
+        foreach (var aud in audiences.All)
+        {
+            claims.Add(new Claim("aud", aud));
+        }
+
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);
         return new AuthenticationTicket(principal, SchemeName);

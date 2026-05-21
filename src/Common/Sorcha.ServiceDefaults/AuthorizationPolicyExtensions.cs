@@ -2,7 +2,10 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceDefaults.Auth;
 
@@ -98,15 +101,35 @@ public static class AuthorizationPolicyExtensions
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddSorchaAuthorizationPolicies(this IServiceCollection services)
     {
+        // Spec 136: the tier-audience policies need the installation's audience set at request time.
+        // Resolve it from the configured InstallationName (default "sorcha" when absent / no config),
+        // so issuance and validation share the single source of truth. Registered idempotently —
+        // every service calls this once via its *Authorization extension.
+        services.TryAddSingleton(sp =>
+            new SorchaAudiences(sp.GetService<IConfiguration>()?["JwtSettings:InstallationName"]));
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IAuthorizationHandler, TierAudienceAuthorizationHandler>());
+
         services.AddAuthorization(options =>
         {
             // 1. RequireAuthenticated — any authenticated user
             options.AddPolicy(AuthorizationPolicies.RequireAuthenticated, policy =>
                 policy.RequireAuthenticatedUser());
 
-            // 2. RequireService — service-to-service token
+            // 2. RequireService — service-to-service token. Spec 136: in addition to the
+            //    token_type marker, the token MUST carry this installation's :service audience,
+            //    so a human token (or another installation's service token) is refused at the
+            //    audience layer, not merely by a claim check.
             options.AddPolicy(AuthorizationPolicies.RequireService, policy =>
-                policy.RequireClaim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+                policy.RequireClaim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService)
+                      .AddRequirements(new TierAudienceRequirement(Tier.Service)));
+
+            // 2b. Consumer / platform tier-audience policies (spec 136). Applied per endpoint to
+            //     enforce consumer ⊥ platform isolation; the unclassified-endpoint default is platform.
+            options.AddPolicy(AuthorizationPolicies.RequireConsumerAudience, policy =>
+                policy.RequireAuthenticatedUser().AddRequirements(new TierAudienceRequirement(Tier.Consumer)));
+            options.AddPolicy(AuthorizationPolicies.RequirePlatformAudience, policy =>
+                policy.RequireAuthenticatedUser().AddRequirements(new TierAudienceRequirement(Tier.Platform)));
 
             // 3. RequireOrganizationMember — token must carry a non-empty org_id
             options.AddPolicy(AuthorizationPolicies.RequireOrganizationMember, policy =>
@@ -134,7 +157,8 @@ public static class AuthorizationPolicyExtensions
             //    Register and Validator services can tighten it later (e.g. require a
             //    "dockets:write" scope) without affecting the general RequireService gate.
             options.AddPolicy(AuthorizationPolicies.CanWriteDockets, policy =>
-                policy.RequireClaim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+                policy.RequireClaim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService)
+                      .AddRequirements(new TierAudienceRequirement(Tier.Service)));
 
             // 7. RequirePlatformAuditor — system admin org member with Auditor+ role
             options.AddPolicy(AuthorizationPolicies.RequirePlatformAuditor, policy =>
@@ -161,33 +185,10 @@ public static class AuthorizationPolicyExtensions
             //    carved out so Register.Service can later require a narrower "observations:write"
             //    scope without broadening RequireService.
             options.AddPolicy(AuthorizationPolicies.CanReportRegisterObservation, policy =>
-                policy.RequireClaim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+                policy.RequireClaim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService)
+                      .AddRequirements(new TierAudienceRequirement(Tier.Service)));
         });
 
-        return services;
-    }
-
-    /// <summary>
-    /// Registers the tier-audience policies (spec 136): <see cref="AuthorizationPolicies.RequireConsumerAudience"/>
-    /// and <see cref="AuthorizationPolicies.RequirePlatformAudience"/>, bound to this installation's audiences.
-    /// Additive — does NOT modify <see cref="AuthorizationPolicies.RequireService"/> (that is extended to assert
-    /// the <c>:service</c> audience as part of the coordinated runtime change once issuance stamps it).
-    /// Apply the resulting policies per endpoint to enforce tier isolation.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="audiences">The installation's tier audiences (single source of truth).</param>
-    public static IServiceCollection AddSorchaTierAudiencePolicies(
-        this IServiceCollection services, SorchaAudiences audiences)
-    {
-        ArgumentNullException.ThrowIfNull(audiences);
-        services.AddAuthorization(options =>
-        {
-            options.AddPolicy(AuthorizationPolicies.RequireConsumerAudience, policy =>
-                policy.RequireAssertion(ctx => HasTierAudience(ctx.User, audiences, Tier.Consumer)));
-
-            options.AddPolicy(AuthorizationPolicies.RequirePlatformAudience, policy =>
-                policy.RequireAssertion(ctx => HasTierAudience(ctx.User, audiences, Tier.Platform)));
-        });
         return services;
     }
 

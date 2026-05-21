@@ -458,7 +458,7 @@ internal class TestAuthenticationHandler : AuthenticationHandler<AuthenticationS
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, "00000000-0000-0000-0000-000000000123"),
             new Claim(ClaimTypes.Name, "Test User"),
@@ -468,6 +468,15 @@ internal class TestAuthenticationHandler : AuthenticationHandler<AuthenticationS
             new Claim("can_publish_blueprint", "true"),
             new Claim("token_type", "service")
         };
+
+        // Spec 136: inject all four installation tier audiences (resolved from the host's configured
+        // SorchaAudiences) so tier-gated endpoints — including the extended RequireService — accept this test principal.
+        var audiences = Context.RequestServices.GetService<Sorcha.ServiceDefaults.Auth.SorchaAudiences>()
+            ?? new Sorcha.ServiceDefaults.Auth.SorchaAudiences(installationName: null);
+        foreach (var aud in audiences.All)
+        {
+            claims.Add(new Claim("aud", aud));
+        }
 
         var identity = new ClaimsIdentity(claims, "TestScheme");
         var principal = new ClaimsPrincipal(identity);
