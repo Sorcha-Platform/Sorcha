@@ -26,7 +26,7 @@ Multi-service .NET platform. Shared primitives in `src/Common/Sorcha.ServiceDefa
 
 **Purpose**: Test scaffolding the rest of the work relies on.
 
-- [ ] T001 [P] Ensure `tests/Sorcha.ServiceDefaults.Tests` project exists (create with xUnit + FluentAssertions + a ProjectReference to `Sorcha.ServiceDefaults` if absent) for the audience/policy/issuer unit tests.
+- [X] T001 [P] Ensure `tests/Sorcha.ServiceDefaults.Tests` project exists (create with xUnit + FluentAssertions + a ProjectReference to `Sorcha.ServiceDefaults` if absent) for the audience/policy/issuer unit tests. — already present.
 - [ ] T002 [P] Add a shared test token-builder helper `tests/Sorcha.Testing/TieredTokenFactory.cs` that mints an HMAC JWT for a given `(installationName, Tier, claims)` so every test project can construct tier-scoped tokens deterministically.
 
 ---
@@ -35,8 +35,8 @@ Multi-service .NET platform. Shared primitives in `src/Common/Sorcha.ServiceDefa
 
 **Purpose**: The shared issuance/validation engine. **No user story can be implemented until this phase is complete.**
 
-- [ ] T003 Create `Tier` enum + `SorchaAudiences` (single source of truth: `For(Tier)`, `All`, prefix from `InstallationName` default `sorcha`) in `src/Common/Sorcha.ServiceDefaults/Auth/SorchaAudiences.cs`.
-- [ ] T004 [P] Unit tests for `SorchaAudiences` (default `sorcha`, override, all four suffixes, `All` set) in `tests/Sorcha.ServiceDefaults.Tests/Auth/SorchaAudiencesTests.cs`.
+- [X] T003 Create `Tier` enum + `SorchaAudiences` (single source of truth: `For(Tier)`, `All`, `TierFor`, prefix from `InstallationName` default `sorcha`, normalised trim+lowercase) in `src/Common/Sorcha.ServiceDefaults/Auth/SorchaAudiences.cs`.
+- [X] T004 [P] Unit tests for `SorchaAudiences` (default `sorcha`, override, normalisation, all four suffixes, `All` set, `TierFor` round-trip) in `tests/Sorcha.ServiceDefaults.Tests/Auth/SorchaAudiencesTests.cs` — 8 tests, green.
 - [ ] T005 Wire bearer validation to `ValidAudiences = SorchaAudiences.All` and make `InstallationName` (default `sorcha`) drive the audience namespace in `src/Common/Sorcha.ServiceDefaults/JwtAuthenticationExtensions.cs` (do NOT touch issuer resolution here — that is US3/T029).
 - [ ] T006 Add authorization policy definitions `RequireConsumerAudience` and `RequirePlatformAudience`, and extend `RequireService` to also assert `aud == SorchaAudiences.For(Service)` (keep the existing `token_type==service` check), in `src/Common/Sorcha.ServiceDefaults/AuthorizationPolicyExtensions.cs`.
 - [ ] T007 [P] Unit tests for the three policies (allow/deny by `aud`; `RequireService` requires both `aud` and `token_type`) in `tests/Sorcha.ServiceDefaults.Tests/Auth/TierPolicyTests.cs`.
