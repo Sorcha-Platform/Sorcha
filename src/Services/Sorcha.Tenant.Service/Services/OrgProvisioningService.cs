@@ -21,6 +21,7 @@ public class OrgProvisioningService : IOrgProvisioningService
     private readonly IInvitationService _invitationService;
     private readonly ITenantMembershipInboxWriter _membershipInbox;
     private readonly ILogger<OrgProvisioningService> _logger;
+    private readonly bool _allowAdminVerifiedUserCreation;
 
     /// <summary>
     /// Creates a new instance of <see cref="OrgProvisioningService"/>.
@@ -31,7 +32,8 @@ public class OrgProvisioningService : IOrgProvisioningService
         IPlatformSettingsService settingsService,
         IInvitationService invitationService,
         ITenantMembershipInboxWriter membershipInbox,
-        ILogger<OrgProvisioningService> logger)
+        ILogger<OrgProvisioningService> logger,
+        Microsoft.Extensions.Configuration.IConfiguration configuration)
     {
         _db = db;
         _orgService = orgService;
@@ -39,6 +41,11 @@ public class OrgProvisioningService : IOrgProvisioningService
         _invitationService = invitationService;
         _membershipInbox = membershipInbox;
         _logger = logger;
+        // Deployment-level gate (off by default, incl. production): when false an
+        // adminEmailVerified=true provisioning request is refused. Set per environment
+        // (e.g. dev / n1) — see Platform:AllowAdminVerifiedUserCreation. Spec 136 follow-up.
+        _allowAdminVerifiedUserCreation =
+            configuration?.GetValue("Platform:AllowAdminVerifiedUserCreation", false) ?? false;
     }
 
     /// <inheritdoc />
@@ -237,7 +244,8 @@ public class OrgProvisioningService : IOrgProvisioningService
     /// <inheritdoc />
     public async Task<AdminProvisionResult> AdminProvisionAsync(
         Guid adminPlatformUserId, string name, string subdomain,
-        string? description, string adminEmail, UserRole role, CancellationToken ct)
+        string? description, string adminEmail, UserRole role, CancellationToken ct,
+        string? adminPassword = null, string? adminDisplayName = null, bool adminEmailVerified = false)
     {
         // Reject SystemAdmin role assignment (only valid in system admin org bootstrap)
         if (role == UserRole.SystemAdmin)
@@ -290,6 +298,18 @@ public class OrgProvisioningService : IOrgProvisioningService
                 Success = false,
                 Error = "A valid admin email address is required.",
                 ErrorCode = "InvalidAdminEmail"
+            };
+        }
+
+        // 2b. Verified-bypass gate (spec 136 follow-up): minting a pre-verified user is only
+        //     permitted when the installation explicitly enables it (off by default in prod).
+        if (adminEmailVerified && !_allowAdminVerifiedUserCreation)
+        {
+            return new AdminProvisionResult
+            {
+                Success = false,
+                Error = "Creating pre-verified users is not enabled on this installation (Platform:AllowAdminVerifiedUserCreation).",
+                ErrorCode = "verified_creation_disabled"
             };
         }
 
@@ -353,6 +373,56 @@ public class OrgProvisioningService : IOrgProvisioningService
                         "Admin org creation: existing user {UserId} directly added as admin to org {OrgId}",
                         existingUser.Id, org.Id);
                 }
+                else if (!string.IsNullOrEmpty(adminPassword))
+                {
+                    // New email + password → provision a NEW org-scoped password user directly
+                    // (PlatformUser + UserIdentity + membership in THIS org only — never a public
+                    // account), instead of a pending invitation. The bootstrap pattern, for any org.
+                    var roles = BuildRoleSet(role);
+                    var displayName = string.IsNullOrWhiteSpace(adminDisplayName)
+                        ? adminEmail.Split('@')[0]
+                        : adminDisplayName;
+
+                    var newPlatformUser = new PlatformUser
+                    {
+                        Email = adminEmail,
+                        DisplayName = displayName,
+                        PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
+                        EmailVerified = adminEmailVerified,
+                        EmailVerifiedAt = adminEmailVerified ? DateTimeOffset.UtcNow : null,
+                        Status = PlatformUserStatus.Active,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+                    _db.PlatformUsers.Add(newPlatformUser);
+
+                    var adminIdentity = new UserIdentity
+                    {
+                        OrganizationId = org.Id,
+                        PlatformUserId = newPlatformUser.Id,
+                        Email = adminEmail,
+                        DisplayName = displayName,
+                        Roles = roles,
+                        Status = IdentityStatus.Active,
+                        ProvisionedVia = ProvisioningMethod.AdminCreated,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+                    _db.UserIdentities.Add(adminIdentity);
+                    org.CreatorIdentityId = adminIdentity.Id;
+
+                    _db.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
+                    {
+                        PlatformUserId = newPlatformUser.Id,
+                        OrganizationId = org.Id,
+                        Role = role.ToString(),
+                        JoinedAt = DateTimeOffset.UtcNow
+                    });
+
+                    adminDirectlyAdded = true;
+
+                    _logger.LogInformation(
+                        "Admin org creation: provisioned NEW org-scoped user {Email} as admin of org {OrgId} (verified={Verified})",
+                        adminEmail, org.Id, adminEmailVerified);
+                }
 
                 // 5. Audit log
                 _db.AuditLogEntries.Add(new AuditLogEntry
@@ -368,6 +438,8 @@ public class OrgProvisioningService : IOrgProvisioningService
                         ["adminEmail"] = adminEmail,
                         ["assignedRole"] = role.ToString(),
                         ["adminDirectlyAdded"] = adminDirectlyAdded,
+                        ["adminProvisionedWithPassword"] = !string.IsNullOrEmpty(adminPassword),
+                        ["adminEmailVerified"] = adminEmailVerified,
                         ["createdBySystemAdmin"] = true
                     }
                 });
