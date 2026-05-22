@@ -146,38 +146,19 @@ foreach ($org in $selectedOrgs) {
     } else {
         $adminEmail = "admin@$subdomain.sorcha.dev"
 
-        # Register the admin user on the public org first so PlatformUser exists
-        try {
-            $null = Register-SorchaPublicUser `
-                -TenantUrl $env.TenantUrl `
-                -Email $adminEmail `
-                -Password (Get-AdminPassword -OrgSubdomain $subdomain) `
-                -DisplayName "$($org.name) Admin"
-        } catch {
-            # User may already exist from a previous run — continue
-            Write-WtInfo "  Admin user $adminEmail may already exist — continuing"
-        }
-
-        # Verify the admin's email via platform API so New-SorchaOrganization
-        # can add them directly without triggering an SMTP invite email.
-        # Nodes without SMTP (e.g. n1) fail hard otherwise.
-        try {
-            $null = Invoke-SorchaApi -Method POST `
-                -Uri "$($env.TenantUrl)/platform/users/verify-email" `
-                -Body @{ email = $adminEmail } `
-                -Headers $seedAdmin.Headers
-            Write-WtInfo "  Verified email for $adminEmail"
-        } catch {
-            Write-WtWarn "  Could not verify $adminEmail — org creation may fall back to SMTP invite"
-        }
-
-        # Create the private org via platform admin API
+        # Spec 136: provision the org admin directly as an org-scoped, verified password user
+        # in one call — single-org (no public account → no multi-org clash → the OAuth2 password
+        # grant works), and no SMTP invite. The verified bypass requires the installation to enable
+        # Platform:AllowAdminVerifiedUserCreation (dev + n1 do; production does not).
         try {
             $newOrg = New-SorchaOrganization `
                 -TenantUrl $env.TenantUrl `
                 -Name $org.name `
                 -Subdomain $subdomain `
                 -AdminEmail $adminEmail `
+                -AdminPassword (Get-AdminPassword -OrgSubdomain $subdomain) `
+                -AdminDisplayName "$($org.name) Admin" `
+                -AdminEmailVerified `
                 -Headers $seedAdmin.Headers `
                 -Description "TradeFinance walkthrough - $($org.role)"
 

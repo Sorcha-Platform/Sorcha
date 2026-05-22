@@ -147,6 +147,29 @@ Publish-SorchaBlueprint -TemplatePath "./my-template.json" -WalletMap $walletMap
 $state | ConvertTo-Json -Depth 10 | Set-Content "state.json"
 ```
 
+#### REQUIRED: provision org operators as org-scoped users — never public (no multi-org)
+
+**Org admins / operators (analysts, officers, issuers) MUST be created single-org.** Do NOT register them as public users. A public user (`Register-SorchaPublicUser`) who is then added to an org via `New-SorchaOrganization -AdminEmail <that email>` becomes **multi-org**, which forces org-selection on login and makes the **OAuth2 password grant return 401** (the grant has no org-selection step) — the #1 cause of walkthrough auth flakiness.
+
+Use the **sysadmin → org → org-scoped operator** hierarchy. `New-SorchaOrganization` with a *fresh* email + password provisions the operator directly in that org only (no public account, no invitation, no email loop):
+
+```powershell
+$admin = Connect-SorchaAdmin -TenantUrl $env.TenantUrl -Secrets $secrets   # bootstrap SystemAdmin
+
+# Org + its operator in one call. Operator exists ONLY in this org → single-org → OAuth grant works.
+$org = New-SorchaOrganization -TenantUrl $env.TenantUrl -Headers $admin.Headers `
+    -Name "Acme Verification Co." -Subdomain "acme-verif" `
+    -AdminEmail "ops@acme-verif.test" -AdminPassword $secrets.DefaultPassword `
+    -AdminDisplayName "Acme Ops" -AdminEmailVerified
+
+# Log in AS that operator (single-org → direct token, no org-selection):
+$ops = Connect-SorchaUser -TenantUrl $env.TenantUrl -Email "ops@acme-verif.test" -Password $secrets.DefaultPassword
+```
+
+- `-AdminEmailVerified` requires the installation to enable `Platform:AllowAdminVerifiedUserCreation` (dev + n1 set it; **production does not**). Without it, omit the switch and verify via the admin email-verify endpoint.
+- **ANTI-PATTERN (do not do this):** `Register-SorchaPublicUser ops@… ; New-SorchaOrganization -AdminEmail ops@…` → multi-org operator → 401 on the password grant.
+- **Citizens / public submitters are the deliberate exception** — they ARE public users (`Register-SorchaPublicUser`): a citizen belongs to the public org and is late-bound into the workflow. Only *org operators* use the org-scoped path.
+
 #### Foot-gun: do NOT include open participants in `$walletMap`
 
 If the blueprint has a participant that is the sender of an `isStartingAction: true` action (a citizen, applicant, public submitter, etc.), that participant is **late-bound** at runtime — its `walletAddress` MUST be null in the published blueprint, and your `$walletMap` MUST NOT contain an entry for it.
