@@ -17,4 +17,17 @@
     <ProjectReference Include="..\..\Common\Sorcha.ServiceDefaults\Sorcha.ServiceDefaults.csproj" />
   </ItemGroup>
 
+  <!--
+    AI-discoverability (spec 117 follow-up): embed the canonical root llms.txt + docs/llms-full.txt
+    so the gateway serves them at /llms.txt and /llms-full.txt with bytes identical to source.
+    The Dockerfile COPYs these two files into the build context before `dotnet build`.
+    Resource names: Sorcha.ApiGateway.Discoverability.Content.llms.txt / .llms-full.txt
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(MSBuildProjectDirectory)\..\..\..\llms.txt"
+                      Link="Discoverability\Content\llms.txt" />
+    <EmbeddedResource Include="$(MSBuildProjectDirectory)\..\..\..\docs\llms-full.txt"
+                      Link="Discoverability\Content\llms-full.txt" />
+  </ItemGroup>
+
 </Project>

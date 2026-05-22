@@ -12,6 +12,8 @@
 # Documentation
 *.md
 docs/
+# Exception: the gateway embeds this to serve /llms-full.txt (spec 117 AI discoverability)
+!docs/llms-full.txt
 .specify/
 CONTRIBUTING.md
 LICENSE
