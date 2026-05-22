@@ -84,10 +84,26 @@ builder.Services.AddSingleton<Sorcha.ApiGateway.Discoverability.ToolCataloguePro
 // Add CORS for frontend - production restriction handled at infrastructure level
 builder.AddSorchaCors();
 
+// Honour X-Forwarded-Proto / -For from the edge proxy (Caddy terminates TLS on n1 and forwards
+// HTTP, so without this Request.Scheme is "http" — making generated absolute URLs in robots.txt,
+// sitemap.xml and the OpenAPI/MCP manifests use http://). The gateway is only reachable via the
+// trusted edge proxy in every deployment, so the immediate hop's headers are trusted.
+builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor |
+        Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
 app.MapDefaultEndpoints();
+
+// Must run before any middleware that reads Request.Scheme (HTTPS enforcement, URL generation).
+app.UseForwardedHeaders();
 
 // Add Serilog HTTP request logging (OPS-001)
 app.UseSerilogLogging();
