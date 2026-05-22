@@ -225,41 +225,23 @@ foreach ($org in $selectedOrgs) {
         $password = Get-ParticipantPassword -OrgSubdomain $subdomain -ParticipantId $partId
 
         if (-not ($state.roles.ContainsKey($roleKey) -and $state.roles[$roleKey].email)) {
-            # Register platform user first (may already exist from previous run)
-            # Retry on 429 (rate limit) with 2s backoff
-            $registered = $false
-            for ($attempt = 1; $attempt -le 3; $attempt++) {
-                try {
-                    $null = Register-SorchaPublicUser `
-                        -TenantUrl $env.TenantUrl `
-                        -Email $email `
-                        -Password $password `
-                        -DisplayName $participant.displayName
-                    $registered = $true
-                    break
-                } catch {
-                    $statusCode = $null
-                    try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
-                    if ($statusCode -eq 429 -and $attempt -lt 3) {
-                        Write-WtWarn "  Rate limited — retrying in 2s (attempt $attempt/3)"
-                        Start-Sleep -Seconds 2
-                    } else {
-                        Write-WtInfo "  User $email may already exist — continuing"
-                        break
-                    }
-                }
+            # Spec 136: provision the participant org-scoped + verified in one call (single-org —
+            # no public account, no multi-org clash). Org operators are never public users.
+            try {
+                $provisioned = New-SorchaOrgUser `
+                    -TenantUrl $env.TenantUrl `
+                    -OrganizationId $ctx.OrganizationId `
+                    -Email $email `
+                    -Password $password `
+                    -DisplayName $participant.displayName `
+                    -Headers $ctx.Headers `
+                    -Roles @("Consumer") `
+                    -EmailVerified
+                $userId = $provisioned.UserId
+                Write-WtInfo "  User provisioned (org-scoped): $($participant.displayName) ($email)"
+            } catch {
+                Write-WtInfo "  User $email may already exist — continuing"
             }
-
-            # Add user to the org
-            $userId = Get-OrCreateUser `
-                -TenantUrl $env.TenantUrl `
-                -OrganizationId $ctx.OrganizationId `
-                -Email $email `
-                -DisplayName $participant.displayName `
-                -Headers $ctx.Headers `
-                -Roles @("Consumer")
-
-            Write-WtInfo "  User created: $($participant.displayName) ($email)"
         } else {
             Write-WtInfo "  User '$($participant.displayName)' already in state"
         }
