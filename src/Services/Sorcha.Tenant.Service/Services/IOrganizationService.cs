@@ -89,6 +89,20 @@ public interface IOrganizationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Provisions a NEW org-scoped password user directly into an organisation (single-org — no
+    /// public account, no invitation). The verified-email bypass is gated by
+    /// <c>Platform:AllowAdminVerifiedUserCreation</c>. Spec 136 follow-up.
+    /// </summary>
+    /// <param name="organizationId">Target organisation.</param>
+    /// <param name="request">Provision request (email, display name, password, roles, emailVerified).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The created user response.</returns>
+    Task<UserResponse> ProvisionOrgUserAsync(
+        Guid organizationId,
+        ProvisionOrgUserRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets users in an organization with optional filtering by verification and invitation status.
     /// </summary>
     /// <param name="organizationId">Organization ID.</param>
