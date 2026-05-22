@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.ServiceClients.Wallet;
@@ -51,15 +52,21 @@ public class OrganizationServiceTests : IDisposable
         _dbContext.Dispose();
     }
 
-    private OrganizationService CreateService()
+    private OrganizationService CreateService(bool allowAdminVerifiedUserCreation = false)
     {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Platform:AllowAdminVerifiedUserCreation"] = allowAdminVerifiedUserCreation ? "true" : "false"
+            }).Build();
         return new OrganizationService(
             _orgRepoMock.Object,
             _identityRepoMock.Object,
             _dbContext,
             _walletClientMock.Object,
             _membershipInboxMock.Object,
-            _loggerMock.Object);
+            _loggerMock.Object,
+            config);
     }
 
     // ── Helper methods ─────────────────────────────────────────
@@ -686,5 +693,71 @@ public class OrganizationServiceTests : IDisposable
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // ProvisionOrgUserAsync — org-scoped password user (spec 136 follow-up)
+    // ══════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task ProvisionOrgUserAsync_NewEmail_FlagOn_Verified_CreatesSingleOrgUser()
+    {
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = _testOrgId, Name = "Acme", Subdomain = "acme" });
+        _identityRepoMock.Setup(r => r.CreateUserAsync(It.IsAny<UserIdentity>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserIdentity u, CancellationToken _) => u);
+
+        var service = CreateService(allowAdminVerifiedUserCreation: true);
+        var request = new Sorcha.Tenant.Service.Models.Dtos.ProvisionOrgUserRequest
+        {
+            Email = "analyst@acme.test", DisplayName = "Acme Analyst",
+            Password = "Dev_Pass_2025!", Roles = [UserRole.Auditor], EmailVerified = true
+        };
+
+        await service.ProvisionOrgUserAsync(_testOrgId, request);
+
+        var pu = _dbContext.PlatformUsers.Single(u => u.Email == "analyst@acme.test");
+        pu.EmailVerified.Should().BeTrue();
+        pu.PasswordHash.Should().NotBeNullOrEmpty();
+        var memberships = _dbContext.PlatformUserOrgMemberships.Where(m => m.PlatformUserId == pu.Id).ToList();
+        memberships.Should().ContainSingle().Which.OrganizationId.Should().Be(_testOrgId);
+    }
+
+    [Fact]
+    public async Task ProvisionOrgUserAsync_VerifiedRequested_FlagOff_Throws_NoUserCreated()
+    {
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = _testOrgId, Name = "Acme", Subdomain = "acme" });
+
+        var service = CreateService(allowAdminVerifiedUserCreation: false);
+        var request = new Sorcha.Tenant.Service.Models.Dtos.ProvisionOrgUserRequest
+        {
+            Email = "blocked@acme.test", DisplayName = "Blocked",
+            Password = "Dev_Pass_2025!", EmailVerified = true
+        };
+
+        var act = () => service.ProvisionOrgUserAsync(_testOrgId, request);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        _dbContext.PlatformUsers.Any(u => u.Email == "blocked@acme.test").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ProvisionOrgUserAsync_ExistingPlatformUserEmail_Throws()
+    {
+        SeedPlatformUser(Guid.NewGuid(), "dupe@acme.test", emailVerified: true);
+        _orgRepoMock.Setup(r => r.GetByIdAsync(_testOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = _testOrgId, Name = "Acme", Subdomain = "acme" });
+
+        var service = CreateService(allowAdminVerifiedUserCreation: true);
+        var request = new Sorcha.Tenant.Service.Models.Dtos.ProvisionOrgUserRequest
+        {
+            Email = "dupe@acme.test", DisplayName = "Dupe", Password = "Dev_Pass_2025!"
+        };
+
+        var act = () => service.ProvisionOrgUserAsync(_testOrgId, request);
+
+        await act.Should().ThrowAsync<InvalidOperationException>(
+            "provision creates a NEW org-scoped user; an existing platform user must use AddUserToOrganization");
     }
 }

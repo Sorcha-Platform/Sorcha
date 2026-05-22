@@ -140,6 +140,17 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden);
 
+        group.MapPost("/{organizationId:guid}/users/provision", ProvisionOrgUser)
+            .WithName("ProvisionOrgUser")
+            .WithSummary("Provision an org-scoped password user")
+            .WithDescription("Creates a NEW single-org password user (no public account, no invitation) in the organization. The emailVerified bypass is gated by Platform:AllowAdminVerifiedUserCreation. Requires administrator role.")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            .Produces<UserResponse>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
         group.MapGet("/{organizationId:guid}/users", GetOrganizationUsers)
             .WithName("GetOrganizationUsers")
             .WithSummary("List organization users")
@@ -682,6 +693,39 @@ public static class OrganizationEndpoints
         try
         {
             var response = await organizationService.AddUserToOrganizationAsync(
+                organizationId, request, cancellationToken);
+            return TypedResults.Created(
+                $"/api/organizations/{organizationId}/users/{response.Id}", response);
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("not found"))
+        {
+            return TypedResults.NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [ex.ParamName ?? "request"] = [ex.Message]
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["email"] = [ex.Message]
+            });
+        }
+    }
+
+    private static async Task<Results<Created<UserResponse>, NotFound, ValidationProblem>> ProvisionOrgUser(
+        Guid organizationId,
+        ProvisionOrgUserRequest request,
+        IOrganizationService organizationService,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await organizationService.ProvisionOrgUserAsync(
                 organizationId, request, cancellationToken);
             return TypedResults.Created(
                 $"/api/organizations/{organizationId}/users/{response.Id}", response);
