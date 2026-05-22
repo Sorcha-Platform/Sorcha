@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.sorcha-platform/sorcha",
+  "description": "Verifiable-credential & distributed-register platform exposed as MCP tools for AI workflow automation.",
+  "status": "active",
+  "version": "0.1.0",
+  "websiteUrl": "https://docs.sorcha.io",
+  "repository": {
+    "url": "https://github.com/Sorcha-Platform/Sorcha",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "registryBaseUrl": "https://docker.io",
+      "identifier": "sorchadev/mcp-server",
+      "version": "latest",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SORCHA_JWT_TOKEN",
+          "description": "Sorcha JWT bearer token scoping the MCP tools to the caller's role and organisation. Obtain via scripts/get-jwt-token.sh or the Tenant Service auth flow.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "SORCHA_GATEWAY_URL",
+          "description": "Base URL of the Sorcha API gateway the MCP server targets (e.g. https://n1.sorcha.dev).",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

@@ -592,6 +592,11 @@ app.MapWellKnownOpenApiEndpoints();
 app.MapMcpManifestEndpoint();
 app.MapMcpToolCatalogueEndpoint();
 
+// Spec 117 follow-up — root-level AI-discoverability surface: /llms.txt, /llms-full.txt
+// (canonical embedded files), /robots.txt + /sitemap.xml (per-host generated). These were
+// previously 404 at the domain root, where AI crawlers and the llms.txt convention probe.
+app.MapRootDiscoverabilityEndpoints();
+
 // Aggregated OpenAPI from all services
 app.MapGet("/openapi/aggregated.json", async (OpenApiAggregationService openApiService) =>
 {
