@@ -1662,7 +1662,14 @@ function New-SorchaOrganization {
         [Parameter(Mandatory)][string]$Subdomain,
         [Parameter(Mandatory)][string]$AdminEmail,
         [Parameter(Mandatory)][hashtable]$Headers,
-        [string]$Description = ""
+        [string]$Description = "",
+        # When set (with a NEW AdminEmail), the admin is provisioned directly as an org-scoped
+        # password user (single-org — no public account, no invitation). Spec 136 follow-up.
+        [string]$AdminPassword,
+        [string]$AdminDisplayName,
+        # Mark the provisioned admin verified (bypasses the email loop). Requires the installation
+        # to enable Platform:AllowAdminVerifiedUserCreation (dev/n1 do; production does not).
+        [switch]$AdminEmailVerified
     )
 
     $body = @{
@@ -1670,6 +1677,11 @@ function New-SorchaOrganization {
         subdomain   = $Subdomain
         adminEmail  = $AdminEmail
         description = $Description
+    }
+    if ($AdminPassword) {
+        $body.adminPassword = $AdminPassword
+        $body.adminEmailVerified = [bool]$AdminEmailVerified
+        if ($AdminDisplayName) { $body.adminDisplayName = $AdminDisplayName }
     }
 
     try {

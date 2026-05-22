@@ -436,6 +436,10 @@ services:
       ASPNETCORE_URLS: http://+:8080
       # Tenant service is the JWT authority - it issues tokens using the installation name
       JwtSettings__SigningKeySource: Configuration
+      # Dev/demo: allow a SystemAdmin to provision pre-verified org-scoped users (bypasses the
+      # email-verification loop). OFF by default in code; enabled here for local dev + walkthroughs.
+      # MUST stay false/unset in production. See OrgProvisioningService (spec 136 follow-up).
+      Platform__AllowAdminVerifiedUserCreation: "true"
       # Service-to-service auth for Wallet Service calls during wallet link verification
       ServiceAuth__ClientId: tenant-service
       ServiceAuth__ClientSecret: tenant-service-secret

@@ -61,6 +61,10 @@ services:
       # so visitors know the environment may be reset without notice. Plain
       # informational notice; no consent gate, no friction.
       DemoEnvironment__Enabled: "true"
+      # Demo node: allow SystemAdmin-provisioned pre-verified org-scoped users so walkthrough
+      # setup scripts create single-org operators (no public-user / multi-org clash). Off in
+      # real production; explicit here for the demo. Spec 136 follow-up.
+      Platform__AllowAdminVerifiedUserCreation: "true"
       # Public organisation is enabled at first DB seed so a freshly-reset n1
       # supports social signup without an admin manually flipping the toggle.
       # After first seed the value persists in tenant.platform_settings; this
