@@ -661,6 +661,51 @@ function Get-OrCreateUser {
 }
 
 # ============================================================================
+# New-SorchaOrgUser — provision an org-scoped password user (spec 136)
+# ============================================================================
+
+function New-SorchaOrgUser {
+    <#
+    .SYNOPSIS
+        Provision a NEW org-scoped password user directly into an org via
+        POST /organizations/{orgId}/users/provision — single-org (no public account, no
+        invitation, no email loop). Use for org OPERATORS (analysts, officers, issuers) so they
+        are single-org and avoid the multi-org OAuth-grant 401. Citizens use Register-SorchaPublicUser.
+    .NOTES
+        -EmailVerified requires the installation to enable Platform:AllowAdminVerifiedUserCreation
+        (dev + n1 enable it; production does not).
+    .RETURNS
+        Hashtable with UserId, Email.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$DisplayName,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [string[]]$Roles = @("Consumer"),
+        [switch]$EmailVerified
+    )
+
+    $body = @{
+        email         = $Email
+        displayName   = $DisplayName
+        password      = $Password
+        roles         = $Roles
+        emailVerified = [bool]$EmailVerified
+    }
+
+    $response = Invoke-SorchaApi -Method POST `
+        -Uri "$TenantUrl/organizations/$OrganizationId/users/provision" `
+        -Body $body `
+        -Headers $Headers
+
+    Write-WtSuccess "Org-scoped user provisioned: $DisplayName (ID: $($response.id))"
+    return @{ UserId = $response.id; Email = $Email }
+}
+
+# ============================================================================
 # Register-SorchaPublicUser — Self-register a user on the public org
 # ============================================================================
 

@@ -93,9 +93,11 @@ foreach ($name in $suite.Keys) {
     }
 
     # --- setup.ps1 (if present) ---
+    # NOTE: do NOT name this $args — that is a PowerShell automatic variable and the
+    # assignment won't propagate to Invoke-Step (the bug that skipped -Force on re-runs).
     if (Test-Path $setup) {
-        $args = Get-Args (Get-Content $setup -Raw) $profile
-        $r = Invoke-Step $setup $args (Join-Path $logDir "$name.setup.log") (Join-Path $logDir "$name.setup.err.log") $TimeoutSeconds
+        $stepArgs = Get-Args (Get-Content $setup -Raw) $profile
+        $r = Invoke-Step $setup $stepArgs (Join-Path $logDir "$name.setup.log") (Join-Path $logDir "$name.setup.err.log") $TimeoutSeconds
         $durStr = "{0:mm\:ss}" -f $r.Dur
         if ($r.TimedOut) {
             $results += [pscustomobject]@{ Name=$name; Stage='setup'; Status='TIMEOUT'; Duration=$durStr; Exit='-'; Note="setup exceeded ${TimeoutSeconds}s" }
@@ -109,8 +111,8 @@ foreach ($name in $suite.Keys) {
     }
 
     # --- run.ps1 ---
-    $args = Get-Args (Get-Content $run -Raw) $profile
-    $r = Invoke-Step $run $args (Join-Path $logDir "$name.run.log") (Join-Path $logDir "$name.run.err.log") $TimeoutSeconds
+    $stepArgs = Get-Args (Get-Content $run -Raw) $profile
+    $r = Invoke-Step $run $stepArgs (Join-Path $logDir "$name.run.log") (Join-Path $logDir "$name.run.err.log") $TimeoutSeconds
     $durStr = "{0:mm\:ss}" -f $r.Dur
     if ($r.TimedOut) {
         $results += [pscustomobject]@{ Name=$name; Stage='run'; Status='TIMEOUT'; Duration=$durStr; Exit='-'; Note="run exceeded ${TimeoutSeconds}s" }
