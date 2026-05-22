@@ -5,9 +5,11 @@ using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Sorcha.ApiGateway.Discoverability.Models;
+using Sorcha.ServiceDefaults.Auth;
 
 namespace Sorcha.ApiGateway.Discoverability;
 
@@ -37,9 +39,25 @@ internal static class McpManifestEndpoint
     {
         var options = context.RequestServices.GetRequiredService<IOptions<McpManifestOptions>>().Value;
         var catalogue = context.RequestServices.GetRequiredService<ToolCatalogueProvider>();
+        var configuration = context.RequestServices.GetRequiredService<IConfiguration>();
 
         var counts = catalogue.GetCategoryCounts();
         var version = ResolveAssemblyInformationalVersion();
+
+        // Spec 136: advertise the REAL token requirements for this installation, not a placeholder.
+        // If Discoverability:AuthIssuer/AuthAudience are set they win (explicit override); otherwise
+        // derive from JwtSettings:InstallationName via the same SorchaIssuer/SorchaAudiences the
+        // platform mints + validates with, so an agent reads accurate values per deployment.
+        var installation = configuration["JwtSettings:InstallationName"];
+        var issuer = !string.IsNullOrWhiteSpace(options.AuthIssuer)
+            ? options.AuthIssuer
+            : SorchaIssuer.Resolve(explicitIssuer: null, installationName: installation, allowDevLocalFallback: true);
+        // The MCP server accepts any of the installation's tier audiences; advertise the platform
+        // audience as the primary surface (admin + designer automation). A consumer-tier token also
+        // works for participant tools.
+        var audience = !string.IsNullOrWhiteSpace(options.AuthAudience)
+            ? options.AuthAudience
+            : new SorchaAudiences(string.IsNullOrWhiteSpace(installation) ? "sorcha" : installation).For(Tier.Platform);
 
         var manifest = new McpManifest(
             Schema: ManifestSchemaUrl,
@@ -49,8 +67,8 @@ internal static class McpManifestEndpoint
             Transports: BuildTransports(options),
             Authentication: new McpAuthentication(
                 Type: "jwt-bearer",
-                Issuer: options.AuthIssuer,
-                Audience: options.AuthAudience,
+                Issuer: issuer,
+                Audience: audience,
                 AcquisitionUrl: options.AuthAcquisitionUrl),
             ToolCategories: new Dictionary<string, McpToolCategory>
             {
