@@ -159,6 +159,26 @@ public record AdminCreateOrganizationRequest
     /// Defaults to Administrator. SystemAdmin is not allowed.
     /// </summary>
     public UserRole Role { get; init; } = UserRole.Administrator;
+
+    /// <summary>
+    /// Optional. When set AND <see cref="AdminEmail"/> is NOT an existing PlatformUser, the admin
+    /// is created directly as an org-scoped password user (PlatformUser + UserIdentity + membership
+    /// in this org only — never a public-org account), instead of a pending invitation. Lets a
+    /// SystemAdmin provision a ready, single-org operator in one call (the bootstrap pattern, for
+    /// any org). Ignored when the email already exists (that user is added directly as before).
+    /// </summary>
+    public string? AdminPassword { get; init; }
+
+    /// <summary>Optional display name for a directly-provisioned admin. Defaults to the email local-part.</summary>
+    public string? AdminDisplayName { get; init; }
+
+    /// <summary>
+    /// When true (with <see cref="AdminPassword"/>), the provisioned admin's email is marked verified,
+    /// bypassing the verification loop. GATED: only honoured when the installation enables
+    /// <c>Platform:AllowAdminVerifiedUserCreation</c> (off by default in production) — otherwise the
+    /// request is rejected. Always role-gated (SystemAdmin) and audit-logged.
+    /// </summary>
+    public bool AdminEmailVerified { get; init; }
 }
 
 /// <summary>

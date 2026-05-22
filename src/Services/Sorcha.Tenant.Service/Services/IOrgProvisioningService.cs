@@ -84,9 +84,13 @@ public interface IOrgProvisioningService
     /// <param name="adminEmail">Email of the user to invite.</param>
     /// <param name="role">Role to assign (Administrator, Designer, Auditor, Member). SystemAdmin is rejected.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="adminPassword">Optional. When set and the email is new, provision the admin directly as an org-scoped password user (no public account) instead of an invitation.</param>
+    /// <param name="adminDisplayName">Optional display name for a directly-provisioned admin (defaults to email local-part).</param>
+    /// <param name="adminEmailVerified">Mark the provisioned admin verified (bypasses the verification loop). Gated by <c>Platform:AllowAdminVerifiedUserCreation</c>; rejected when disabled.</param>
     Task<AdminProvisionResult> AdminProvisionAsync(
         Guid adminPlatformUserId, string name, string subdomain,
-        string? description, string adminEmail, UserRole role, CancellationToken ct);
+        string? description, string adminEmail, UserRole role, CancellationToken ct,
+        string? adminPassword = null, string? adminDisplayName = null, bool adminEmailVerified = false);
 }
 
 /// <summary>

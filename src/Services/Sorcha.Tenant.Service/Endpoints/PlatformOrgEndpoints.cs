@@ -77,7 +77,10 @@ public static class PlatformOrgEndpoints
             request.Description,
             request.AdminEmail,
             request.Role,
-            cancellationToken);
+            cancellationToken,
+            adminPassword: request.AdminPassword,
+            adminDisplayName: request.AdminDisplayName,
+            adminEmailVerified: request.AdminEmailVerified);
 
         if (!result.Success)
         {

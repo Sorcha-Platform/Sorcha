@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Tenant.Service.Data;
@@ -33,14 +34,18 @@ public sealed class OrgProvisioningServiceTests : IDisposable
         _settings.Setup(s => s.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformSettings { MaxOrgsPerUser = 10 });
 
-        _sut = new OrgProvisioningService(
-            _db,
-            _orgService.Object,
-            _settings.Object,
-            _invitations.Object,
-            _membershipInbox.Object,
-            NullLogger<OrgProvisioningService>.Instance);
+        _sut = CreateSut(allowVerified: false);
     }
+
+    private static IConfiguration Config(bool allowVerified) =>
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Platform:AllowAdminVerifiedUserCreation"] = allowVerified ? "true" : "false"
+        }).Build();
+
+    private OrgProvisioningService CreateSut(bool allowVerified = false) =>
+        new(_db, _orgService.Object, _settings.Object, _invitations.Object,
+            _membershipInbox.Object, NullLogger<OrgProvisioningService>.Instance, Config(allowVerified));
 
     public void Dispose() => _db.Dispose();
 
@@ -80,5 +85,64 @@ public sealed class OrgProvisioningServiceTests : IDisposable
                 UserRole.Administrator.ToString(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    // --- AdminProvisionAsync: direct org-scoped password user (spec 136 follow-up) ---
+
+    [Fact]
+    public async Task AdminProvision_NewEmailWithPassword_FlagOn_CreatesVerifiedSingleOrgUser()
+    {
+        var sut = CreateSut(allowVerified: true);
+        var sysAdminId = Guid.NewGuid();
+
+        var result = await sut.AdminProvisionAsync(
+            sysAdminId, "Acme Verification", "acme-verif", null,
+            "ops@acme-verif.test", UserRole.Administrator, CancellationToken.None,
+            adminPassword: "Dev_Pass_2025!", adminDisplayName: "Acme Ops", adminEmailVerified: true);
+
+        result.Success.Should().BeTrue();
+        result.AdminDirectlyAdded.Should().BeTrue();
+        result.InvitationId.Should().BeNull("a directly-provisioned admin needs no invitation");
+
+        var pu = _db.PlatformUsers.Single(u => u.Email == "ops@acme-verif.test");
+        pu.EmailVerified.Should().BeTrue();
+        pu.PasswordHash.Should().NotBeNullOrEmpty();
+        pu.Status.Should().Be(PlatformUserStatus.Active);
+
+        // Org-scoped: a membership in the new org and nowhere else (never the public org).
+        var memberships = _db.PlatformUserOrgMemberships.Where(m => m.PlatformUserId == pu.Id).ToList();
+        memberships.Should().ContainSingle()
+            .Which.OrganizationId.Should().Be(result.OrganizationId!.Value);
+        _db.UserIdentities.Should().Contain(i => i.PlatformUserId == pu.Id && i.OrganizationId == result.OrganizationId!.Value);
+    }
+
+    [Fact]
+    public async Task AdminProvision_VerifiedRequested_FlagOff_Rejected_NoUserCreated()
+    {
+        var sut = CreateSut(allowVerified: false);
+
+        var result = await sut.AdminProvisionAsync(
+            Guid.NewGuid(), "Acme", "acme-off", null,
+            "ops@acme-off.test", UserRole.Administrator, CancellationToken.None,
+            adminPassword: "Dev_Pass_2025!", adminEmailVerified: true);
+
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be("verified_creation_disabled");
+        _db.PlatformUsers.Any(u => u.Email == "ops@acme-off.test").Should().BeFalse("the request must be refused before any write");
+    }
+
+    [Fact]
+    public async Task AdminProvision_NewEmailWithPassword_NotVerified_FlagIrrelevant_CreatesUnverifiedUser()
+    {
+        var sut = CreateSut(allowVerified: false);
+
+        var result = await sut.AdminProvisionAsync(
+            Guid.NewGuid(), "Acme Licensing", "acme-lic", null,
+            "ops@acme-lic.test", UserRole.Administrator, CancellationToken.None,
+            adminPassword: "Dev_Pass_2025!", adminEmailVerified: false);
+
+        result.Success.Should().BeTrue("creating an unverified password user does not need the flag");
+        result.AdminDirectlyAdded.Should().BeTrue();
+        _db.PlatformUsers.Single(u => u.Email == "ops@acme-lic.test").EmailVerified.Should().BeFalse();
     }
 }
