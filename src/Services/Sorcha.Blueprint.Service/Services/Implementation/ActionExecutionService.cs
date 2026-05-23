@@ -908,6 +908,17 @@ public class ActionExecutionService : IActionExecutionService
             transaction.Metadata["credentialRecipient"] = issuedCredential.SubjectDid;
         }
 
+        // 10c. Feature 137 (C5): carry the resolved next action so that when this tx seals on
+        //      the owning node, a cross-node InstanceMirrorReconstructor can seed the mirror's
+        //      CurrentActionIds (DocketBuildTriggerService projects it onto TransactionMetaData).
+        //      Singular (first routed next action) — exact for linear flows; fan-out carries the
+        //      primary branch only.
+        var nextActionId = routingResult.NextActions.FirstOrDefault()?.ActionId;
+        if (nextActionId.HasValue)
+        {
+            transaction.Metadata["nextActionId"] = nextActionId.Value.ToString();
+        }
+
         // 11. Sign transaction using "{TxId}:{PayloadHash}" contract (matches Validator verification)
         var signResult = await _walletClient.SignTransactionAsync(
             request.SenderWallet,
@@ -1202,7 +1213,7 @@ public class ActionExecutionService : IActionExecutionService
             instance.CurrentActionIds = [actionDef.RejectionConfig.TargetActionId];
         }
         instance.LastTransactionId = transaction.TxId;
-        instance = await _instanceStore.UpdateAsync(instance, cancellationToken);
+        instance = await PersistInstanceAsync(instance, cancellationToken);
 
         // 10. Notify target participant via thin signal
         var targetParticipantId = actionDef.RejectionConfig.TargetParticipantId ?? targetAction.Sender;
@@ -1623,7 +1634,7 @@ public class ActionExecutionService : IActionExecutionService
 
             try
             {
-                return await _instanceStore.UpdateAsync(instance, cancellationToken);
+                return await PersistInstanceAsync(instance, cancellationToken);
             }
             catch (ConcurrencyException) when (attempt < MaxConcurrencyRetries)
             {
@@ -1635,6 +1646,20 @@ public class ActionExecutionService : IActionExecutionService
         throw new InvalidOperationException(
             $"Failed to update instance {instance.Id} after {MaxConcurrencyRetries} retries due to concurrent modifications");
     }
+
+    /// <summary>
+    /// Feature 137 (C5): persists instance state changes, choosing the mirror-safe writer when the
+    /// instance is a read-only mirror. On the register-owning node a cross-node workflow surfaces as
+    /// a mirror row (the node never ran CreateInstance), yet the owner MUST advance it when its own
+    /// participant acts (e.g. the verification-analyst approves). <see cref="IInstanceStore.UpdateAsync"/>
+    /// rejects mirror rows by design (Feature 106), so the advance is routed through
+    /// <see cref="IInstanceStore.UpdateMirrorAsync"/>. The register stays the source of truth — the
+    /// InstanceMirrorReconstructor re-derives the mirror when the resulting transaction seals.
+    /// </summary>
+    private Task<Instance> PersistInstanceAsync(Instance instance, CancellationToken cancellationToken)
+        => instance.IsReadOnlyMirror
+            ? _instanceStore.UpdateMirrorAsync(instance, cancellationToken)
+            : _instanceStore.UpdateAsync(instance, cancellationToken);
 
     private static void ApplyInstanceStateChanges(
         Instance instance,

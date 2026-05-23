@@ -179,6 +179,15 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 workItem.PreviousTransactionId,
                 ct);
 
+            // Feature 137 (C5): carry the resolved next action so a cross-node mirror can seed
+            // CurrentActionIds when this tx seals. Mirrors the synchronous path in
+            // ActionExecutionService; DocketBuildTriggerService projects it onto TransactionMetaData.
+            var nextActionId = workItem.RoutingResult.NextActions.FirstOrDefault()?.ActionId;
+            if (nextActionId.HasValue)
+            {
+                transaction.Metadata["nextActionId"] = nextActionId.Value.ToString();
+            }
+
             // Step 4: Signing and Submitting
             await UpdateOperationStepAsync(operationId, EncryptionOpStatus.Submitting,
                 StepSubmitting, "Signing and submitting", 80);
