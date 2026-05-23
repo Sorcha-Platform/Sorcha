@@ -218,6 +218,18 @@
 
 ---
 
+## MCP Server Capability Review (2026-05-23)
+
+> **Context:** During cross-node federation work (PRs #828 system-register genesis sync, #829 create-on-sync for regular registers) the operator had to drive register subscription/sync via direct service-to-service peer-service calls (`POST /api/registers/{id}/subscribe`, `RequireService`). The MCP server's admin slice (35-tool catalogue) is **observational** — `sorcha_peer_status`, `sorcha_register_stats`, `sorcha_register_query`, `sorcha_validator_status` — plus tenant/user/token management. It has **no register-control / sync / replication / bootstrap tools**, so an AI agent can *observe* federation state but not *drive* it. Register control was expected to be useful here; review whether infra/register-control operations should be first-class MCP tools.
+
+| ID | Task | Priority | Effort | Status | Notes |
+|----|------|----------|--------|--------|-------|
+| MCP-101 | Audit MCP tool catalogue for register-control / infra gaps | P2 | 4h | 📋 | Review the 35-tool catalogue (Admin/Designer/Participant) against operator+agent needs surfaced by the federation work. Decide which infra actions (register subscribe/unsubscribe, sync-state, local-relationship, validator enrol/suspend) belong as MCP tools vs staying service-to-service only. |
+| MCP-102 | Add register-control admin tools (if MCP-101 approves) | P2 | 8h | 📋 | e.g. `sorcha_register_subscribe` / `sorcha_register_unsubscribe` / `sorcha_register_sync_status` wrapping peer-service `/api/registers/{id}/subscribe`+`/subscriptions` and register-service `/sync-state`+`/local-relationship`. Admin-role gated; the underlying `RequireService` s2s call handled server-side so the agent never holds a service secret. |
+| MCP-103 | Decide policy on node-lifecycle tools (bootstrap / validator-key import / reset) | P3 | 4h | 📋 | High-blast-radius; likely keep OUT of MCP (operator-only) but document the decision so it's deliberate, not an omission. |
+
+---
+
 ## Summary
 
 **Total Deferred Tasks:** 69 (11 now completed/implemented)
