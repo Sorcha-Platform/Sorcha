@@ -1578,8 +1578,15 @@ public class ValidationEngine : IValidationEngine
                 ValidationErrorCategory.Timing, "CreatedAt"));
         }
 
-        // Check for expired transactions
-        if (transaction.CreatedAt < now.Subtract(_config.MaxTransactionAge))
+        // Check for expired transactions.
+        // The pre-signed genesis transaction is exempt: it is a ceremony artifact
+        // with a fixed timestamp, embedded and ingested whenever a node bootstraps
+        // (often days/years after the ceremony). Applying the live-transaction
+        // freshness window to it would reject the trust anchor, leaving the genesis
+        // docket sealed empty so federated SyncOnly nodes can never obtain or verify
+        // the system register. Live control/governance transactions stay subject to it.
+        if (transaction.CreatedAt < now.Subtract(_config.MaxTransactionAge)
+            && !TransactionTypeClassifier.IsGenesisTransaction(transaction))
         {
             errors.Add(CreateError("VAL_TIME_002",
                 $"Transaction is too old (max age: {_config.MaxTransactionAge})",

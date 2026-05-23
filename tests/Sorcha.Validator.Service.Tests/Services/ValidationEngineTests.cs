@@ -534,6 +534,26 @@ public class ValidationEngineTests
     }
 
     [Fact]
+    public async Task ValidateTransactionAsync_OldGenesisTransaction_IsExemptFromTooOldCheck()
+    {
+        // Arrange - a pre-signed genesis transaction far older than MaxTransactionAge.
+        // The genesis trust anchor is a ceremony artifact with a fixed timestamp; it is
+        // ingested whenever a node bootstraps (often long after the ceremony). Rejecting
+        // it as "too old" seals the genesis docket empty and prevents federated SyncOnly
+        // nodes from ever obtaining/verifying the system register.
+        var tx = CreateValidTransaction(
+            blueprintId: Sorcha.Register.Models.Constants.GenesisConstants.BlueprintId,
+            createdAt: DateTimeOffset.UtcNow.AddDays(-30));
+        SetupSuccessfulValidation(tx);
+
+        // Act
+        var result = await _engine.ValidateTransactionAsync(tx);
+
+        // Assert - the genesis transaction must NOT be rejected for being too old
+        result.Errors.Should().NotContain(e => e.Code == "VAL_TIME_002");
+    }
+
+    [Fact]
     public async Task ValidateTransactionAsync_WithNullTransaction_ThrowsArgumentNullException()
     {
         var act = async () => await _engine.ValidateTransactionAsync(null!);

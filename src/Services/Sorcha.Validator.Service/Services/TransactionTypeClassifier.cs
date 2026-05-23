@@ -29,6 +29,27 @@ internal static class TransactionTypeClassifier
         return false;
     }
 
+    /// <summary>
+    /// True only for the pre-signed genesis transaction (the network trust anchor),
+    /// NOT live control/governance transactions. The genesis transaction is signed
+    /// once during the offline ceremony with a fixed timestamp and embedded for the
+    /// life of the network — it is ingested whenever a node bootstraps, which may be
+    /// arbitrarily long after the ceremony. It must therefore be exempt from the
+    /// transaction-freshness window (VAL_TIME_002); live control transactions are
+    /// created at submission time and stay subject to it.
+    /// </summary>
+    public static bool IsGenesisTransaction(Transaction transaction)
+    {
+        if (string.Equals(transaction.BlueprintId, GenesisConstants.BlueprintId, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (transaction.Metadata.TryGetValue("Type", out var typeStr) &&
+            string.Equals(typeStr, "Genesis", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
+
     public static bool IsParticipantTransaction(Transaction transaction)
     {
         return transaction.Metadata.TryGetValue("Type", out var typeStr) &&

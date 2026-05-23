@@ -374,6 +374,19 @@ public class RedisVerifiedTransactionQueue : IVerifiedTransactionQueue
         return (-(double)priority * PriorityScale) + enqueuedAt.ToUnixTimeMilliseconds();
     }
 
+    // CRITICAL: relaxed encoding so non-ASCII characters in a transaction payload
+    // (e.g. an em-dash in the genesis control record) and '+' in DateTimeOffset/base64
+    // are stored literally, not as \uXXXX. The docket builder seals the payload via
+    // Transaction.Payload.GetRawText() and the genesis trust anchor is verified by
+    // hashing those exact bytes — an escaping difference at this serialization boundary
+    // changes the payload hash and breaks genesis signature verification on peer sync.
+    // Mirrors TransactionPoolPoller's unverified-pool serializer (the verified queue was
+    // the missed sibling).
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     private static string SerializePayload(VerifiedTransaction tx)
     {
         var doc = new
@@ -383,14 +396,14 @@ public class RedisVerifiedTransactionQueue : IVerifiedTransactionQueue
             tx.Priority,
             ExpiresAt = tx.ExpiresAt,
         };
-        return JsonSerializer.Serialize(doc);
+        return JsonSerializer.Serialize(doc, PayloadJsonOptions);
     }
 
     private static VerifiedTransaction? DeserializePayload(string json)
     {
         try
         {
-            var doc = JsonSerializer.Deserialize<JsonElement>(json);
+            var doc = JsonSerializer.Deserialize<JsonElement>(json, PayloadJsonOptions);
             if (!doc.TryGetProperty("Transaction", out var txElem)) return null;
             var transaction = txElem.Deserialize<Transaction>();
             if (transaction is null) return null;
