@@ -1399,7 +1399,13 @@ docketsGroup.MapPost("/", async (
     string registerId,
     WriteDocketRequest request) =>
 {
-    // Validate register exists (auto-create for genesis docket 0 on system register)
+    // Validate register exists. A genesis docket (DocketNumber 0) for a register not
+    // yet known locally is the create-on-sync path: a peer is replicating a register's
+    // genesis to this node. By the time the docket reaches here the peer's
+    // DocketFinalizationService has already verified chain integrity, docket hash, and
+    // proposer signature (and the trust anchor, for the system register), so creating
+    // the register from the verified genesis is safe. The node only pulls genesis
+    // dockets for registers it has explicitly subscribed to.
     var register = await repository.GetRegisterAsync(registerId);
     if (register == null)
     {
@@ -1414,6 +1420,27 @@ docketsGroup.MapPost("/", async (
                 registerId: registerId,
                 description: "Sorcha platform system register — root of trust for blueprints and governance.",
                 purpose: Sorcha.Register.Models.Enums.RegisterPurpose.System);
+        }
+        else if (request.DocketNumber == 0)
+        {
+            // Regular register replicated from a peer: derive name/description from the
+            // genesis control record where available, else fall back to a synthetic name
+            // so the register row exists and subsequent dockets can be written.
+            var controlRecord = Sorcha.Register.Service.Services.GenesisControlRecordExtractor.TryExtract(request.Transactions);
+            var replicaName = controlRecord?.Name is { Length: > 0 } controlName
+                ? controlName
+                : $"replica-{registerId[..Math.Min(8, registerId.Length)]}";
+            logger.LogInformation(
+                "Auto-creating replicated register {RegisterId} ({Name}) from synced genesis docket",
+                registerId, replicaName);
+            register = await registerManager.CreateRegisterAsync(
+                replicaName,
+                advertise: true,
+                isFullReplica: true,
+                registerId: registerId,
+                description: controlRecord?.Description,
+                purpose: Sorcha.Register.Models.Enums.RegisterPurpose.General,
+                initialControlRecord: controlRecord);
         }
         else
         {
