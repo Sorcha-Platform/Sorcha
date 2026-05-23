@@ -25,7 +25,13 @@ public class MemPoolManager : IMemPoolManager
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        // Relaxed encoding so non-ASCII payload bytes round-trip literally through Redis
+        // rather than as \uXXXX. The validator seals payloads via Payload.GetRawText() and
+        // verifies the genesis trust anchor by hashing those exact bytes — an escaping
+        // difference at any serialization boundary breaks payload-hash verification.
+        // Matches TransactionPoolPoller / RedisVerifiedTransactionQueue.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public MemPoolManager(
