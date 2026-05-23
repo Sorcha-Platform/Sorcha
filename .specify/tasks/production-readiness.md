@@ -243,4 +243,27 @@ The solution must provide an interactive setup process that:
 
 ---
 
+## Launch & Discoverability (P2 — v1 go-live)
+
+| ID | Task | Priority | Effort | Status | Assignee |
+|----|------|----------|--------|--------|----------|
+| DISC-001 | **Publish MCP server to registries** | P2 | 6h | 📋 Parked (v1 go-live) | - |
+| DISC-002 | schema.org / JSON-LD on the docs site (`SoftwareApplication` + `FAQPage`) | P2 | 4h | 📋 Not Started | - |
+
+### DISC-001 — Publish MCP server to registries (parked for v1 go-live)
+
+The serving foundation is **done + live on n1**: `/llms.txt`, `/robots.txt`, `/sitemap.xml`, served
+OpenAPI + `/.well-known/mcp.json` (with correct F136 issuer/audience), GitHub topics. What remains is
+**publishing** the 36-tool MCP server so other AI agents discover + install it — the highest-leverage
+promotion step. Deferred to the v1 go-live list (not pre-release-blocking).
+
+- `server.json` (repo root) is **drafted**; runbook at `docs/mcp-registry-publishing.md`.
+- Steps: verify the `io.github.sorcha-platform` namespace (GitHub OIDC), pin a real `version`, add a
+  release-triggered `mcp-publisher publish` workflow gated on `docker-publish`, then submit to
+  Smithery / Glama / PulseMCP / mcp.so and the `awesome-*` lists (mcp-servers, self-sovereign-identity,
+  verifiable-credentials).
+- Pre-req met: `sorchadev/mcp-server:latest` is published to Docker Hub.
+
+---
+
 **Back to:** [MASTER-TASKS.md](../MASTER-TASKS.md)
