@@ -230,6 +230,17 @@
 
 ---
 
+## Cross-Node Credential Delivery — Feature 137 (2026-05-24)
+
+> **Context:** Stage-5 cross-node round-trip (citizen on a SyncOnly replica → register owner seals → analyst approves → credential delivered back). The write + analyst-approval paths now work live on n1 after three fixes merged in **PR #837** (Blueprint Service own Redis consumer group; `nextActionId` propagation through `ToTransactionSubmission`; blueprint-aware participant-id keying in `InstanceMirrorReconstructor`). One blocker remains before the credential is issued/delivered cross-node.
+
+| ID | Task | Priority | Effort | Status | Notes |
+|----|------|----------|--------|--------|-------|
+| F137-X1 | Owner-side state reconstruction must decrypt the disclosure-group payload format | P2 | 8h | 📋 | **GitHub #838.** `StateReconstructionService.DecryptTransactionPayloadAsync` uses a legacy `WalletAccess` + whole-`Data` path; the stored payload is disclosure-group format (`encryptedPayloads[]` + per-group `Challenges`) → recovers 0 actions cross-node → `mergedData` empty → issuance fails `VAL_RUNTIME_CRED_004` (and would have empty credential claims too — the claims come from the same decrypted action-1 payload). Fix: reuse the canonical recipient decryptor `InboundCredentialDetector.TryDecryptGroupForWalletAsync` (walk encryptedPayloads → unwrap the acting wallet's challenge → symmetric-decrypt). Analyst is disclosed `/*` on action 1 and `ReconstructAsync` already holds the analyst delegation token. General fix: repairs cross-node prior-action reconstruction for ANY multi-action flow. Matches FR-013. Do NOT carry the keys in public tx metadata (dead end — claims still missing). |
+| F137-X2 | Verify direction 2 (local-owned register, n1 citizen) end-to-end | P2 | 2h | 📋 | Gated on F137-X1. Same delivery path; once X1 lands, run the reverse direction to confirm symmetry. |
+
+---
+
 ## Summary
 
 **Total Deferred Tasks:** 69 (11 now completed/implemented)
