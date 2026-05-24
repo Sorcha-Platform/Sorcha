@@ -238,12 +238,35 @@
 |----|------|----------|--------|--------|-------|
 | F137-X1 | Owner-side state reconstruction must decrypt the disclosure-group payload format | P2 | 8h | 📋 | **GitHub #838.** `StateReconstructionService.DecryptTransactionPayloadAsync` uses a legacy `WalletAccess` + whole-`Data` path; the stored payload is disclosure-group format (`encryptedPayloads[]` + per-group `Challenges`) → recovers 0 actions cross-node → `mergedData` empty → issuance fails `VAL_RUNTIME_CRED_004` (and would have empty credential claims too — the claims come from the same decrypted action-1 payload). Fix: reuse the canonical recipient decryptor `InboundCredentialDetector.TryDecryptGroupForWalletAsync` (walk encryptedPayloads → unwrap the acting wallet's challenge → symmetric-decrypt). Analyst is disclosed `/*` on action 1 and `ReconstructAsync` already holds the analyst delegation token. General fix: repairs cross-node prior-action reconstruction for ANY multi-action flow. Matches FR-013. Do NOT carry the keys in public tx metadata (dead end — claims still missing). |
 | F137-X2 | Verify direction 2 (local-owned register, n1 citizen) end-to-end | P2 | 2h | 📋 | Gated on F137-X1. Same delivery path; once X1 lands, run the reverse direction to confirm symmetry. |
+## Permissionless Validation — Open-Membership Consensus (Backlog)
+
+> **Context:** Red-team threat-model (2026-05-24) of a hardened v1, framed around "anyone can run a node." The analysis split into two features. The **federation hardening** feature (`specs/138-*`) makes the *permissioned-federation* model safe: validation is gated by an on-chain roster you control, peer participation is open but signed/authenticated, and the trust anchors that are currently soft (revocation list signature, peer advertisement provenance, blueprint-recovery provenance) get fixed. This backlog item is the **second** feature — making validation safe when admission to the validator set is *itself* open to anyone, with no roster gatekeeper.
+>
+> **Why it's separate, not just "more of 138":** Federation hardening assumes a *known, bounded* validator set whose misbehaviour can be punished by ejection from a roster you administer. Permissionless validation removes that assumption — admission is free, so identity is cheap (Sybil), and ejection is meaningless (re-register for nothing). Safety must then come from *economic* cost (bonded stake, slashing of real collateral) and Sybil-resistant consensus, which is a fundamentally different and larger design than roster governance.
+>
+> **Decision (2026-05-24):** Do federation first (`138`); backlog permissionless. The federation feature deliberately builds the primitives this depends on — an **on-chain roster as the sole vote-authority anchor** and **automatic, deterministic equivocation detection** — so that "swap roster-admission for stake-admission, swap roster-ejection for collateral-slashing" becomes the shape of this feature rather than a rewrite. Related existing items: `ADV-2` (Advanced consensus), `TRUST-6` (Consensus Finality Guarantees).
+
+| ID | Area | Priority | Impact | Status | Description |
+|----|------|----------|--------|--------|-------------|
+| PERM-1 | Sybil-resistant validator admission | P3 | High | 🔬 Research | Replace federation's roster-allowlist admission with a permissionless mechanism that makes validator identity *costly*: bonded stake / collateral deposit, proof-of-authority-at-scale, or equivalent. Admission record sealed on-chain (extends 138's on-chain roster). The cost-to-create-an-identity is the whole Sybil defence. |
+| PERM-2 | Bonded collateral + economic slashing | P3 | High | 🔬 Research | Federation punishes detected equivocation/withholding by roster ejection (138). Permissionless needs *financial* consequence: bonded collateral that is slashed automatically on a sealed proof-of-misbehaviour. Requires a stake/escrow primitive and an on-chain slashing transaction type. Depends on 138's deterministic equivocation detection. |
+| PERM-3 | Majority-collusion resistance under free admission | P3 | High | 🔬 Research | When admission is free, an attacker can cheaply approach quorum. Model the honest-majority assumption explicitly, choose a BFT threshold (≥2/3) with finality depth (ties to `TRUST-6`), and analyse the cost of a 1/3 / 1/2 / 2/3 attack given the PERM-1 admission cost. Output: a stated, quantified security margin rather than "assume most validators are honest." |
+| PERM-4 | Eclipse resistance without trusted seeds | P3 | Medium | 🔬 Research | Federation leans on operator-controlled seed nodes as the eclipse anchor (acceptable when you run them). Permissionless can't trust seeds. Needs diverse/authenticated peer selection (signed node identities from 138 + DHT-style or stake-weighted neighbour selection) so a victim node can't be surrounded by attacker-controlled peers cheaply. |
+| PERM-5 | Validator key liveness & rotation under open membership | P3 | Medium | 🔬 Research | Open validators join/leave continuously. Needs on-chain key rotation, graceful exit (unbonding period before collateral release), and liveness proofs so a withholding validator's stake can be slashed after a sealed timeout proof. Ties to `WALLET-R4` (key rotation) and `TRUST-9` (timestamp authority for the timeout proof). |
+
+### Priority Rationale
+
+| Tier | IDs | Rationale |
+|------|-----|-----------|
+| **Tier 1 — Sybil + economic core** | PERM-1, PERM-2 | The two primitives that make open admission safe at all: costly identity and slashable collateral. Everything else assumes these exist. |
+| **Tier 2 — Consensus safety margin** | PERM-3, PERM-4 | Quantified attack-cost analysis and eclipse resistance once admission is open. Depends on the Tier 1 cost mechanisms. |
+| **Tier 3 — Operational lifecycle** | PERM-5 | Join/leave/rotate/unbond lifecycle under continuous open membership. Important for a live permissionless network, not for the initial design. |
 
 ---
 
 ## Summary
 
-**Total Deferred Tasks:** 69 (11 now completed/implemented)
+**Total Deferred Tasks:** 74 (11 now completed/implemented)
 **Total Deferred Effort:** 588+ hours (~15 weeks, excluding research items)
 
 These tasks represent features that enhance the platform but are not critical for the Minimum Viable Deliverable (MVD). They can be prioritized for post-MVD development based on user feedback and business requirements.
