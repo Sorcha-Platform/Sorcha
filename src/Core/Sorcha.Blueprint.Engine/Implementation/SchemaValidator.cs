@@ -49,8 +49,16 @@ public class SchemaValidator : ISchemaValidator
             // Convert data dictionary to JsonNode
             var dataJson = ConvertToJsonNode(data);
 
+            // Strip x-* custom keywords (x-pages, x-sections, x-file, x-review, x-persona,
+            // x-holder-key, …) before parsing. These are UI-renderer extensions consumed by
+            // Sorcha.Blueprint.Models.SchemaLayoutParser and friends, not JSON Schema vocabulary;
+            // Json.Schema is strict about unknown keywords and throws "Unknown keywords (x-…) are
+            // disallowed for this dialect". Mirrors ValidationEngine.StripCustomExtensionKeywords
+            // on the validator side so both validation paths tolerate the same blueprint schemas.
+            var strippedSchema = StripExtensionKeywords(schema);
+
             // Parse the JSON Schema (cached — avoids re-parsing same schema)
-            var jsonSchema = _schemaCache.GetOrAdd(schema, text => JsonSchema.FromText(text));
+            var jsonSchema = _schemaCache.GetOrAdd(strippedSchema, text => JsonSchema.FromText(text));
 
             // Convert JsonNode to JsonElement for evaluation
             var jsonString = dataJson.ToJsonString();
@@ -91,6 +99,47 @@ public class SchemaValidator : ISchemaValidator
                     }
                 )
             );
+        }
+    }
+
+    /// <summary>
+    /// Returns a copy of <paramref name="schema"/> with every property whose name starts with
+    /// <c>x-</c> recursively removed. The original node is not mutated (it is typically a shared
+    /// <c>Action.Form.Schema</c>). Mirrors <c>ValidationEngine.StripCustomExtensionKeywords</c>.
+    /// </summary>
+    private static JsonNode StripExtensionKeywords(JsonNode schema)
+    {
+        // Deep-clone via round-trip so the caller's schema node is never mutated.
+        var clone = JsonNode.Parse(schema.ToJsonString());
+        StripInPlace(clone);
+        return clone ?? new JsonObject();
+    }
+
+    private static void StripInPlace(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                var toRemove = obj
+                    .Where(kvp => kvp.Key.StartsWith("x-", StringComparison.Ordinal))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                foreach (var key in toRemove)
+                {
+                    obj.Remove(key);
+                }
+                foreach (var kvp in obj)
+                {
+                    StripInPlace(kvp.Value);
+                }
+                break;
+
+            case JsonArray arr:
+                foreach (var item in arr)
+                {
+                    StripInPlace(item);
+                }
+                break;
         }
     }
 

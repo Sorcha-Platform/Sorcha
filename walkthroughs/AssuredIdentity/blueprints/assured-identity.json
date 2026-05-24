@@ -64,7 +64,8 @@
                 "title": "Contact",
                 "description": "We'll only use your email for correspondence about this application.",
                 "x-sections": [
-                  { "title": "Email", "fields": ["email"] }
+                  { "title": "Email", "fields": ["email"] },
+                  { "title": "Secure delivery", "fields": ["holderKeys"] }
                 ]
               },
               {
@@ -105,6 +106,13 @@
                   "capture": "user",
                   "embedAs": "image-token-jpeg-240x320"
                 }
+              },
+              "holderKeys": {
+                "type": "object",
+                "title": "Identity keys",
+                "description": "Your wallet's public delivery keys. Captured automatically and read-only — the credential is bound to your holder key and encrypted to your wallet so only you can use it. Feature 137 (cross-node submission).",
+                "format": "sorcha-holder-key",
+                "x-holder-key": { "required": true }
               }
             },
             "required": ["name", "dob", "email", "address"]
@@ -160,6 +168,7 @@
           "credentialType": "AssuredIdentityCredential",
           "targetAudience": "SorchaLocalWallet",
           "recipientParticipantId": "citizen",
+          "holderKeySourceField": "/holderKeys/holderJwk",
           "claimMappings": [
             { "claimName": "givenName",   "sourceField": "/name/givenName" },
             { "claimName": "middleName",  "sourceField": "/name/middleName" },

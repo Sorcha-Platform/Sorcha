@@ -2,23 +2,22 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Application-instance host page (Feature 125, T055). Renders a specific
-    blueprint instance's form via SorchaFormRenderer, drives persona
-    autofill from IPerContextPersonaCache (Feature 092 + Feature 125 PR-A),
-    and signs the submission through IUserSigner via
-    IApplicationSubmissionService.
-
-    v1 ships the page shell + submission plumbing. SorchaFormRenderer
-    integration with a live blueprint instance lands in a follow-up
-    alongside the application catalogue endpoint.
+    Application-instance host page (Feature 125 shell, Feature 137 wiring).
+    Loads a blueprint instance's current action, renders it via
+    SorchaFormRenderer (so the Feature 137 sorcha-holder-key field auto-captures
+    the citizen's delivery keys), and submits the completed form to the Blueprint
+    Service /execute endpoint via IApplicationActionClient. On success it posts a
+    Feature 124 pending-application notice so Home shows the in-progress state
+    while the owner node validates, seals, and (on analyst approval) delivers the
+    credential back to this wallet.
 *@
 @page "/applications/{InstanceId:guid}"
 @layout MainLayout
+@using Sorcha.UI.Core.Components.Forms
+@using Sorcha.UI.Core.Models.Forms
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Applications
-@using Sorcha.Wallet.Pwa.Services.Context
-@inject IApplicationSubmissionService Submissions
-@inject IUserContext UserContext
+@inject IApplicationActionClient ActionClient
 @inject IPendingApplicationClient PendingApplications
 @inject NavigationManager Nav
 @inject ILogger<ApplicationInstance> Logger
@@ -26,78 +25,96 @@
 <PageTitle>Application · Sorcha Wallet</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
-    <MudText Typo="Typo.h5" Class="mb-3">Application</MudText>
-    <MudPaper Class="pa-4" Elevation="1" data-testid="application-instance-placeholder">
-        <MudStack Spacing="2">
-            <MudText Typo="Typo.body1">
-                Form host for blueprint instance <strong>@InstanceId</strong>.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mud-text-secondary">
-                SorchaFormRenderer integration with the application catalogue
-                lands in a follow-up. Submit signs the wallet-side payload
-                via IUserSigner and posts a pending-application notice so
-                Home shows the in-progress state.
-            </MudText>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       OnClick="@SubmitDemoAsync" Disabled="@_busy"
-                       data-testid="application-instance-submit">
-                @(_busy ? "Submitting…" : "Submit (demo)")
-            </MudButton>
+    @switch (_state)
+    {
+        case State.Loading:
+            <MudPaper Class="pa-6 d-flex flex-column align-center gap-3" Elevation="1"
+                      data-testid="application-instance-loading">
+                <MudProgressCircular Indeterminate="true" />
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Loading your application…</MudText>
+            </MudPaper>
+            break;
+
+        case State.Ready when _ctx is not null:
+            <MudText Typo="Typo.h5" Class="mb-3">@_ctx.Title</MudText>
+            <div data-testid="application-instance-form">
+                <SorchaFormRenderer Action="_ctx.Action"
+                                    ParticipantAddress="_ctx.SenderWallet"
+                                    SigningWalletAddress="_ctx.SenderWallet"
+                                    IsSenderAction="true"
+                                    OnSubmit="HandleSubmitAsync" />
+            </div>
             @if (!string.IsNullOrEmpty(_status))
             {
-                <MudAlert Severity="@_severity" Class="mt-2"
-                          data-testid="application-instance-status">@_status</MudAlert>
+                <MudAlert Severity="@_severity" Class="mt-3" data-testid="application-instance-status">@_status</MudAlert>
             }
-        </MudStack>
-    </MudPaper>
+            break;
+
+        case State.Submitted:
+            <MudPaper Class="pa-6 d-flex flex-column align-center gap-3" Elevation="1"
+                      data-testid="application-instance-submitted">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
+                <MudText Typo="Typo.h6">Application submitted</MudText>
+                <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
+                    You'll see the in-progress state on Home. Watch your wallet — your credential will
+                    arrive here once it's approved.
+                </MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GoHome">
+                    Back to wallet
+                </MudButton>
+            </MudPaper>
+            break;
+
+        default:
+            <MudAlert Severity="Severity.Error" data-testid="application-instance-error">
+                We couldn't load this application. It may not be ready yet — try again shortly.
+            </MudAlert>
+            break;
+    }
 </MudContainer>
 
 @code {
     /// <summary>The blueprint instance the form binds to.</summary>
     [Parameter] public Guid InstanceId { get; set; }
 
-    private bool _busy;
+    private enum State { Loading, Ready, Submitted, Error }
+
+    private State _state = State.Loading;
+    private ApplicationFormContext? _ctx;
     private string? _status;
     private Severity _severity = Severity.Info;
+    private bool _busy;
 
-    private async Task SubmitDemoAsync()
+    protected override async Task OnInitializedAsync()
     {
+        _ctx = await ActionClient.LoadFormAsync(InstanceId);
+        _state = _ctx is null ? State.Error : State.Ready;
+    }
+
+    private async Task HandleSubmitAsync(FormSubmission submission)
+    {
+        if (_ctx is null || _busy) return;
         _busy = true;
         _status = null;
         try
         {
-            // Demo payload — real flow uses the canonicalised form data from
-            // SorchaFormRenderer keyed by the action's schemaRef.
-            var payload = System.Text.Encoding.UTF8.GetBytes($"{{\"instanceId\":\"{InstanceId:N}\"}}");
-            var result = await Submissions.SubmitAsync(
-                new ApplicationSubmissionRequest(
-                    BlueprintId: Guid.Empty,
-                    ApplicationLabel: "Application",
-                    ActionId: 1,
-                    Payload: payload));
-
+            var result = await ActionClient.SubmitAsync(_ctx, submission.Data);
             switch (result.Status)
             {
                 case ApplicationSubmissionStatus.Success:
-                    _severity = Severity.Success;
-                    _status = "Submitted. You'll see the in-progress state on Home shortly.";
-                    // Wire F124's pending-application notice so Home picks up the in-progress state.
                     try
                     {
-                        await PendingApplications.SetAsync("Application in review");
+                        await PendingApplications.SetAsync(_ctx.Title);
                     }
                     catch (Exception ex)
                     {
                         Logger.LogWarning(ex, "Failed to set pending-application notice after submit.");
                     }
+                    _state = State.Submitted;
                     break;
                 case ApplicationSubmissionStatus.ValidationFailed:
                     _severity = Severity.Warning;
                     _status = result.ErrorDetail ?? "Please check the form and try again.";
-                    break;
-                case ApplicationSubmissionStatus.SigningFailed:
-                    _severity = Severity.Error;
-                    _status = result.ErrorDetail ?? "Couldn't sign on this device. Try again.";
                     break;
                 default:
                     _severity = Severity.Error;
@@ -110,4 +127,6 @@
             _busy = false;
         }
     }
+
+    private void GoHome() => Nav.NavigateTo("");
 }

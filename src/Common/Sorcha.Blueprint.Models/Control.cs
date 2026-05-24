@@ -191,5 +191,18 @@ public enum ControlTypes
     /// is configured. Feature 103 US3.
     /// </summary>
     [DataAnnotations.Display(Name = "Postcode Lookup")]
-    PostcodeLookup
+    PostcodeLookup,
+
+    /// <summary>
+    /// Read-only holder-key capture. Dispatched when an object field carries
+    /// <c>format: "sorcha-holder-key"</c>. The renderer fetches the signed-in
+    /// citizen's public delivery keys from the Wallet Service
+    /// (<c>GET /api/v1/wallet/holder-keys</c>) and writes the sibling pointers
+    /// <c>/{field}/holderJwk</c>, <c>/{field}/encryptionPublicKey</c>, and
+    /// <c>/{field}/algorithm</c> into the form payload so a cross-node credential
+    /// can be bound and delivered to the citizen. Public material only — the user
+    /// cannot edit it. Feature 137 (cross-node submission, C3).
+    /// </summary>
+    [DataAnnotations.Display(Name = "Holder Key")]
+    HolderKey
 }

@@ -274,3 +274,15 @@ split).
 | D5 | Trust-on-submission (no PoP) for v1 | F103 late-binding collapses submitter and recipient into one wallet, removing the attacker |
 | D6 | Approach B (targeted root-cause) over A (point-fixes) or C (register-native rewrite) | Fixes causes (blueprint resolution, recovery, replica semantics) without a speculative rewrite |
 | D7 | Code written here; cross-node round-trip verified on a separate machine, via a committed scripted procedure | The genesis key + n1 access + sync-split live on a different machine |
+
+---
+
+## C3 implementation reconciliation (Stage 5, 2026-05-24)
+
+Two research findings (`specs/137-cross-node-submission/research.md` § "Design corrections") expanded C3 beyond the original sketch; both are now implemented:
+
+1. **`cnf` binding was a pre-existing hole.** Credentials were issued *unbound*. C3 adds `IssueCredentialRequest.HolderJwk` → `SdJwtService.CreateTokenAsync(holderJwk:)`, threaded through `IWalletServiceClient.IssueCredentialAsync` and `CredentialIssuanceConfig.HolderKeySourceField`. Recipient-key precedence (published participant record → carried `holderKeys` field → fail-closed) is enforced in `ActionExecutionService` **before minting** (SC-004: zero credentials when neither resolves; error codes `VAL_RUNTIME_CRED_004`/`005`). The carried `encryptionPublicKey` is injected into the existing `ExternalRecipientKeys` path only when the register lookup misses ("published wins").
+
+2. **Client autofill is a server round-trip; the PWA submit surface was a stub.** C3 adds `GET /api/v1/wallet/holder-keys` (consumer-tier) backed by `IHolderKeyService.GetDeliveryKeysAsync`, a `ControlTypes.HolderKey` field + `HolderKeyRenderer` (autofills the three sibling pointers), and wires `SorchaFormRenderer` into `Sorcha.Wallet.Pwa/Pages/ApplicationInstance.razor` (submit → `FormPayloadBuilder.BuildNested` → `/execute`, server-signed). A defensive `x-*` strip was added to the engine `SchemaValidator` so `x-holder-key` is tolerated on both validation paths.
+
+No change to the agreed trust model, precedence, or v1 scope. The cross-node round-trip is unit + single-node-integration covered (SC-005 Tier-1); the live n1↔local run remains Tier-2 on the genesis-key machine.

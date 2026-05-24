@@ -366,6 +366,18 @@ public static class ServiceCollectionExtensions
             return new Sorcha.UI.Core.Services.AddressLookup.AddressLookupHttpClient(httpClient, logger);
         });
 
+        // Holder-Key Client (Feature 137) — required by HolderKeyRenderer. Auth-wrapped so the
+        // citizen's consumer-tier JWT reaches the Wallet Service holder-keys endpoint (which is
+        // gated by RequireConsumerAudience); a bare HttpClient would 401 at the gateway.
+        services.AddScoped<Sorcha.UI.Core.Services.HolderKeys.IHolderKeyClient>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<Sorcha.UI.Core.Services.HolderKeys.HolderKeyHttpClient>>();
+            return new Sorcha.UI.Core.Services.HolderKeys.HolderKeyHttpClient(httpClient, logger);
+        });
+
         // Persona autofill resolver — pure function, singleton.
         services.AddSingleton<Sorcha.UI.Core.Services.Forms.PersonaAutofillResolver>();
 

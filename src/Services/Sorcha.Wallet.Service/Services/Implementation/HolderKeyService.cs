@@ -130,6 +130,48 @@ public sealed class HolderKeyService : IHolderKeyService
         return thumbprint;
     }
 
+    /// <inheritdoc />
+    public async Task<CitizenHolderDeliveryKeys> GetDeliveryKeysAsync(string walletAddress, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(walletAddress);
+
+        var holderJwk = await GetHolderPublicJwkAsync(walletAddress, ct);
+
+        var wallet = await _repository.GetByAddressAsync(walletAddress, false, false, false, ct)
+            ?? throw new KeyNotFoundException($"Wallet {walletAddress} not found");
+
+        if (string.IsNullOrEmpty(wallet.PublicKey))
+        {
+            throw new KeyNotFoundException($"Wallet {walletAddress} has no public key for AEAD delivery");
+        }
+
+        var algorithm = NormaliseDeliveryAlgorithm(wallet.Algorithm);
+
+        _logger.LogInformation(
+            "Resolved citizen delivery keys for wallet {Address} (delivery algorithm: {Algorithm})",
+            walletAddress, algorithm);
+
+        return new CitizenHolderDeliveryKeys(holderJwk, wallet.PublicKey, algorithm, walletAddress);
+    }
+
+    /// <summary>
+    /// Maps a wallet's stored algorithm to the cross-node delivery algorithm vocabulary
+    /// (<c>ED25519</c> | <c>NISTP256</c>) consumed by <c>ExternalKeyInfo.Algorithm</c>. The
+    /// AEAD pipeline derives X25519 from the Ed25519 key, so the raw wallet public key is carried.
+    /// </summary>
+    private static string NormaliseDeliveryAlgorithm(string walletAlgorithm)
+    {
+        var alg = walletAlgorithm.ToUpperInvariant();
+        return alg switch
+        {
+            "ED25519" or "EDDSA" => "ED25519",
+            "NISTP256" or "P-256" or "P256" or "ES256" or "ECDSA-P256" or "SECP256R1" => "NISTP256",
+            _ => throw new NotSupportedException(
+                $"Wallet algorithm '{walletAlgorithm}' is not a supported cross-node delivery key type " +
+                "(only ED25519 and NISTP256 wallets can receive a SorchaLocalWallet credential cross-node).")
+        };
+    }
+
     private async Task<(byte[] PrivateKey, byte[] PublicKey, string Algorithm)> DeriveHolderKeyAsync(
         string walletAddress, CancellationToken ct)
     {

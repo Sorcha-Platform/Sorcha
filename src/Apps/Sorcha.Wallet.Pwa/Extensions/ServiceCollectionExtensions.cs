@@ -141,6 +141,23 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Feature 137 — holder-keys client for HolderKeyRenderer (cross-node submission).
+        // Same auth chain so the consumer-tier JWT reaches GET /api/v1/wallet/holder-keys.
+        services.AddHttpClient<Sorcha.UI.Core.Services.HolderKeys.IHolderKeyClient,
+                               Sorcha.UI.Core.Services.HolderKeys.HolderKeyHttpClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        // Feature 137 — application action client (cross-node submission). Loads the instance's
+        // current action for SorchaFormRenderer and POSTs the completed form to the Blueprint
+        // Service /execute endpoint (server-signed via the bearer token). Same auth chain.
+        services.AddHttpClient<Sorcha.Wallet.Pwa.Services.Applications.IApplicationActionClient,
+                               Sorcha.Wallet.Pwa.Services.Applications.HttpApplicationActionClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 128 — shared has-any-device probe. Drives the wallet PWA
         // pairing-takeover trigger (sub-PR A3) and the Sorcha Web nag-banner
         // trigger (sub-PR B). Registered Singleton so the cached value +

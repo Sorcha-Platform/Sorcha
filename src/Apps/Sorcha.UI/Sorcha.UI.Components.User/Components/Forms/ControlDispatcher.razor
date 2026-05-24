@@ -66,6 +66,10 @@
             <PostcodeLookupRenderer Control="Control" IsDisabled="_isDisabled" />
             break;
 
+        case ControlTypes.HolderKey:
+            <HolderKeyRenderer Control="Control" IsDisabled="_isDisabled" />
+            break;
+
         default:
             <UnsupportedControlRenderer Control="Control" />
             break;

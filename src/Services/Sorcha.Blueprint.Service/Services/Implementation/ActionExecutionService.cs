@@ -581,6 +581,10 @@ public class ActionExecutionService : IActionExecutionService
         //     Contract: specs/106-register-native-credentials/contracts/credential-issuance-config.md
         CredentialIssuanceResult? localWalletCredential = null;
         string? localWalletRecipient = null;
+        // Feature 137 / C3 — carried encryption key injected into the encryption pipeline at
+        // step 9d when the recipient is an open-participant citizen with no published participant
+        // record (cross-node late binding). Null on the pre-137 (published/derivation) path.
+        ExternalKeyInfo? crossNodeDeliveryKey = null;
         // Reuse the caller's org context computed earlier (used by both the HAIP path
         // and SorchaLocalWallet path).
         var issuerOrgName = callerIssuerOrgName;
@@ -600,10 +604,65 @@ public class ActionExecutionService : IActionExecutionService
                     $"Ensure the recipient has submitted a prior action or is pre-bound in the published blueprint.");
             }
 
+            // Feature 137 / C3 — when the blueprint opts in via HolderKeySourceField, resolve the
+            // recipient's delivery keys with FR-012 precedence BEFORE minting so a credential that
+            // cannot be bound + delivered is never issued (SC-004 fail-closed). Blueprints that leave
+            // HolderKeySourceField null keep the pre-137 behaviour (no cnf binding; recipient key
+            // resolved from the register or derived from the Ed25519 signing key at step 9d).
+            JsonElement? holderJwk = null;
+            var holderKeySourceField = actionDef.CredentialIssuanceConfig.HolderKeySourceField;
+            if (!string.IsNullOrWhiteSpace(holderKeySourceField))
+            {
+                var carried = ResolveCarriedHolderKeys(mergedData, holderKeySourceField);
+                holderJwk = carried.HolderJwk;
+
+                // Delivery (encryption) key precedence: (1) published participant record wins;
+                // (2) carried key fallback; (3) fail closed. ResolvePublicKeyAsync returns null on
+                // not-found and throws on revoked (410) — a revoked recipient is a hard stop, which
+                // is the correct fail-closed outcome (no delivery to a revoked participant).
+                var publishedKey = await _registerClient.ResolvePublicKeyAsync(
+                    instance.RegisterId, localWalletRecipient, cancellationToken: cancellationToken);
+                if (publishedKey is not null)
+                {
+                    _logger.LogInformation(
+                        "[137] Recipient {Recipient} resolved from a published participant record on register {RegisterId} — published delivery key wins.",
+                        localWalletRecipient, instance.RegisterId);
+                }
+                else if (!string.IsNullOrEmpty(carried.EncryptionPublicKey)
+                         && !string.IsNullOrEmpty(carried.Algorithm))
+                {
+                    crossNodeDeliveryKey = new ExternalKeyInfo
+                    {
+                        PublicKey = carried.EncryptionPublicKey!,
+                        Algorithm = carried.Algorithm!
+                    };
+                    _logger.LogInformation(
+                        "[137] Recipient {Recipient} has no published participant record on register {RegisterId} — using the carried delivery key ({Algorithm}).",
+                        localWalletRecipient, instance.RegisterId, carried.Algorithm);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"[VAL_RUNTIME_CRED_004] SorchaLocalWallet issuance for action {actionDef.Id} could not resolve a delivery key for recipient " +
+                        $"'{localWalletRecipient}': no published participant record on register {instance.RegisterId} and no carried encryption key in the submission. " +
+                        $"Failing closed without issuing a credential (FR-012 / SC-004).");
+                }
+
+                // FR-014 — the credential MUST be bound to the recipient's holder key. A configured
+                // HolderKeySourceField that resolves no holder JWK is a fail-closed condition.
+                if (holderJwk is null)
+                {
+                    throw new InvalidOperationException(
+                        $"[VAL_RUNTIME_CRED_005] SorchaLocalWallet issuance for action {actionDef.Id} is configured with HolderKeySourceField " +
+                        $"'{holderKeySourceField}' but no holder JWK resolved from the submission. Failing closed — the credential cannot be " +
+                        $"bound to the recipient's holder key (FR-014).");
+                }
+            }
+
             try
             {
                 localWalletCredential = await IssueCredentialFromActionAsync(
-                    actionDef, mergedData, request.SenderWallet, instance, issuerOrgName, issuerTenantId, cancellationToken);
+                    actionDef, mergedData, request.SenderWallet, instance, issuerOrgName, issuerTenantId, holderJwk, cancellationToken);
             }
             catch (Exception ex) when (ex is not InvalidOperationException)
             {
@@ -708,9 +767,23 @@ public class ActionExecutionService : IActionExecutionService
         DisclosureGroup[]? disclosureGroups = null;
         if (!registerDevMode && _encryptionPipeline != null && disclosedPayloads.Count > 0)
         {
-            // US4: Automatic register resolution with external key override
+            // US4: Automatic register resolution with external key override.
+            // Feature 137 / C3 — merge any carried cross-node delivery key for the SorchaLocalWallet
+            // recipient into the external-key set so the pipeline can wrap the credential disclosure
+            // to an open participant who has no published participant record. Honours "published wins"
+            // because crossNodeDeliveryKey is only populated (at step 8c) when the register lookup
+            // missed, and TryAdd never overrides an explicitly-supplied external key.
+            var effectiveExternalKeys = request.ExternalRecipientKeys;
+            if (crossNodeDeliveryKey is not null && !string.IsNullOrEmpty(localWalletRecipient))
+            {
+                effectiveExternalKeys = effectiveExternalKeys is null
+                    ? new Dictionary<string, ExternalKeyInfo>(StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, ExternalKeyInfo>(effectiveExternalKeys, StringComparer.OrdinalIgnoreCase);
+                effectiveExternalKeys.TryAdd(localWalletRecipient, crossNodeDeliveryKey);
+            }
+
             var (recipients, resolveError) = await ResolveRecipientKeysAsync(
-                disclosedPayloads.Keys, request.ExternalRecipientKeys, instance.RegisterId, cancellationToken);
+                disclosedPayloads.Keys, effectiveExternalKeys, instance.RegisterId, cancellationToken);
             if (resolveError != null)
             {
                 throw new InvalidOperationException(resolveError);
@@ -1972,6 +2045,7 @@ public class ActionExecutionService : IActionExecutionService
         Instance instance,
         string? issuerOrgName,
         string? issuerTenantId,
+        JsonElement? holderJwk,
         CancellationToken cancellationToken)
     {
         var config = actionDef.CredentialIssuanceConfig!;
@@ -2082,6 +2156,7 @@ public class ActionExecutionService : IActionExecutionService
                 skipRecipientStore: config.TargetAudience is TargetAudience.SorchaLocalWallet or TargetAudience.SorchaInternal,
                 issuerOrgName: issuerOrgName,
                 tenantId: issuerTenantId,
+                holderJwk: holderJwk,
                 cancellationToken: cancellationToken);
 
             return result;
@@ -2095,6 +2170,57 @@ public class ActionExecutionService : IActionExecutionService
             return null;
         }
     }
+
+    /// <summary>
+    /// Feature 137 / C3 — resolves the recipient's carried delivery keys from reconstructed
+    /// instance state. <paramref name="holderJwkPointer"/> (e.g. <c>/holderKeys/holderJwk</c>)
+    /// locates the holder JWK for the SD-JWT <c>cnf</c> binding; the sibling
+    /// <c>encryptionPublicKey</c> + <c>algorithm</c> are read from the same parent object and feed
+    /// the on-register AEAD envelope wrap. All values are public material written by a
+    /// <c>sorcha-holder-key</c> form field on the starting action. Any segment that does not
+    /// resolve is returned as null.
+    /// </summary>
+    internal static (JsonElement? HolderJwk, string? EncryptionPublicKey, string? Algorithm) ResolveCarriedHolderKeys(
+        Dictionary<string, object> mergedData,
+        string holderJwkPointer)
+    {
+        JsonElement? holderJwk = null;
+        if (TryResolveJsonPointer(mergedData!, holderJwkPointer, out var jwkValue) && jwkValue is not null)
+        {
+            // Re-serialise to a JsonElement regardless of whether the reconstructed value is a
+            // JsonElement (register-sourced) or a Dictionary (instance-stored fallback).
+            holderJwk = JsonSerializer.SerializeToElement(jwkValue);
+        }
+
+        var lastSlash = holderJwkPointer.LastIndexOf('/');
+        var parentPointer = lastSlash > 0 ? holderJwkPointer[..lastSlash] : string.Empty;
+
+        var encryptionPublicKey = TryResolveJsonPointer(mergedData!, $"{parentPointer}/encryptionPublicKey", out var encValue)
+            ? CoercePointerValueToString(encValue)
+            : null;
+        var algorithm = TryResolveJsonPointer(mergedData!, $"{parentPointer}/algorithm", out var algValue)
+            ? CoercePointerValueToString(algValue)
+            : null;
+
+        return (
+            holderJwk,
+            string.IsNullOrWhiteSpace(encryptionPublicKey) ? null : encryptionPublicKey,
+            string.IsNullOrWhiteSpace(algorithm) ? null : algorithm);
+    }
+
+    /// <summary>
+    /// Coerces a JSON-Pointer-resolved value to its string form. Handles raw strings,
+    /// <see cref="JsonElement"/> string nodes, and null/undefined nodes (returned as null).
+    /// </summary>
+    private static string? CoercePointerValueToString(object? value) => value switch
+    {
+        null => null,
+        string s => s,
+        JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+        JsonElement je when je.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined => null,
+        JsonElement je => je.ToString(),
+        _ => value.ToString()
+    };
 
     private async Task RecordCredentialOnRegisterAsync(
         CredentialIssuanceResult credential,
