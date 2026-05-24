@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Sorcha.Blueprint.Service.Models;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.Register.Core.Events;
 using Sorcha.ServiceClients.Events;
@@ -131,6 +132,9 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
         var walletClient = scope.ServiceProvider.GetRequiredService<IWalletServiceClient>();
         var instanceStore = scope.ServiceProvider.GetRequiredService<IInstanceStore>();
+        // Feature 137 — resolve the blueprint so the mirror's ParticipantWallets can be
+        // keyed by participant id (e.g. "citizen") rather than self-keyed by wallet address.
+        var actionResolver = scope.ServiceProvider.GetRequiredService<IActionResolverService>();
 
         foreach (var txId in evt.TransactionIds)
         {
@@ -139,7 +143,7 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
 
             try
             {
-                await InspectTransactionAsync(evt.RegisterId, txId, registerClient, walletClient, instanceStore, ct);
+                await InspectTransactionAsync(evt.RegisterId, txId, registerClient, walletClient, instanceStore, actionResolver, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -160,6 +164,7 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         IRegisterServiceClient registerClient,
         IWalletServiceClient walletClient,
         IInstanceStore instanceStore,
+        IActionResolverService actionResolver,
         CancellationToken ct)
     {
         var tx = await registerClient.GetTransactionAsync(registerId, txId, ct);
@@ -237,23 +242,49 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
             return;
         }
 
-        // Build (or refresh) the mirror row. The ParticipantWallets map is keyed by
-        // participant id, but from the tx alone we don't know the mapping — seed
-        // with the wallet addresses keyed by themselves so GetPendingActionsByWalletAsync
-        // can still match them. A richer blueprint-aware reconstruction can be
-        // bolted on later without changing the persistence shape.
+        // Feature 137 (option (b) from the former TODO) — resolve the blueprint on this
+        // node and map participant ids → wallets so the mirror's ParticipantWallets is
+        // STRUCTURALLY VALID, not just self-keyed by wallet address. Credential issuance
+        // on the owner node resolves the recipient by participant id
+        // (CredentialIssuanceConfig.RecipientParticipantId, e.g. "citizen"); a self-keyed
+        // mirror fails VAL_RUNTIME_CRED_001 even though the recipient wallet is known.
         //
-        // ⚠️ TODO(feature-106-follow-up): self-keying breaks role-based routing on
-        // the mirror. Any action dispatch that resolves by participant id instead
-        // of wallet address will fail to find the participant. Two options:
-        //   (a) thread participant ids through TransactionMetaData at write time
-        //       and read them here for a structurally valid mirror, or
-        //   (b) fetch the blueprint on this node and walk its participants to
-        //       reverse-map wallet → participant id when the blueprint has
-        //       pre-bound wallets.
-        // Acceptable for MVP because MyCredentials PENDING tab and the
-        // GetPendingActionsByWalletAsync query both match on wallet address
-        // directly. Tracked as a known gap in specs/106-register-native-credentials.
+        // The sender of THIS action binds its participant (action 1 sender = "citizen").
+        // The next action's sender binds the (single) recipient when known (next action
+        // sender = "verification-analyst"). Mappings accumulate across dockets, so by the
+        // time the analyst approves action 2 the mirror already carries "citizen" from
+        // action 1. Best-effort: on any resolution failure we fall back to self-keying.
+        var participantBindings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var bp = await actionResolver.GetBlueprintAsync(blueprintId, ct);
+            if (bp is not null)
+            {
+                if (tx.MetaData?.ActionId is uint senderActionId && !string.IsNullOrEmpty(tx.SenderWallet))
+                {
+                    var senderAction = actionResolver.GetActionDefinition(bp, senderActionId.ToString());
+                    if (senderAction is not null && !string.IsNullOrEmpty(senderAction.Sender))
+                        participantBindings[senderAction.Sender] = tx.SenderWallet;
+                }
+
+                if (tx.MetaData?.NextActionId is uint nextActionId)
+                {
+                    var nextActionDef = actionResolver.GetActionDefinition(bp, nextActionId.ToString());
+                    // The recipient (next actor) is every candidate that is not the sender.
+                    var recipientWallet = candidateWallets.FirstOrDefault(
+                        w => !string.Equals(w, tx.SenderWallet, StringComparison.OrdinalIgnoreCase));
+                    if (nextActionDef is not null && !string.IsNullOrEmpty(nextActionDef.Sender) && recipientWallet is not null)
+                        participantBindings[nextActionDef.Sender] = recipientWallet;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex,
+                "InstanceMirrorReconstructor: blueprint-aware participant resolution failed for {BlueprintId}; falling back to self-keying",
+                blueprintId);
+        }
+
         var nextAction = tx.MetaData?.NextActionId;
         var mirror = new Instance
         {
@@ -273,8 +304,15 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
             IsReadOnlyMirror = true,
         };
 
-        // Merge newly-discovered local wallets into the participant map keyed by
-        // the wallet address (self-keyed) so the pending-actions query matches.
+        // Merge blueprint-resolved participant→wallet bindings (keyed by participant id).
+        // These are the authoritative entries credential issuance + role routing rely on.
+        foreach (var binding in participantBindings)
+        {
+            mirror.ParticipantWallets[binding.Key] = binding.Value;
+        }
+
+        // Fallback: self-key any local wallet we could not map to a participant id so the
+        // wallet-address-matching GetPendingActionsByWalletAsync query still resolves it.
         foreach (var wallet in localWallets)
         {
             if (!mirror.ParticipantWallets.ContainsValue(wallet))
