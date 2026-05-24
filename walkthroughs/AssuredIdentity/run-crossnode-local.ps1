@@ -4,6 +4,14 @@
 # register OWNED BY n1 (replicated to this SyncOnly node). The submission fans
 # out to n1 for sealing. Run AFTER local is up as a SyncOnly replica, subscribed
 # to the n1 register, with the F137 blueprint recovered.
+#
+# NOTE: each citizen wallet has a per-register sequence space tracked by the
+# OWNER (n1). Re-running with the same citizen reuses a burned sequence number
+# and n1 rejects it (VAL_REPLAY_002). Pass -CitizenEmail with a fresh value to
+# get a fresh wallet / sequence space.
+param(
+    [string]$CitizenEmail = "citizen.crossnode@local.node"
+)
 
 $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot "../modules/SorchaWalkthrough/SorchaWalkthrough.psm1") -Force
@@ -16,7 +24,7 @@ $publicOrgId = "00000000-0000-0000-0000-000000000002"
 $sysOrgId    = "00000000-0000-0000-0000-000000000001"
 $registerId  = "deccbf4dc9ad4edebe5d6a3651da80b9"
 $blueprintId = "assured-identity-20260524151245"
-$citizenEmail = "citizen.crossnode@local.node"
+$citizenEmail = $CitizenEmail
 $pw          = "Dev_Pass_2025!"
 
 Write-Host "== Step 1: sysadmin login (local) =="
