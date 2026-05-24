@@ -8,8 +8,10 @@ using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using System.Text.Json;
 using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Events.Models;
+using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
@@ -98,6 +100,8 @@ public sealed class EncryptionBackgroundService : BackgroundService
         var transactionBuilder = scope.ServiceProvider.GetRequiredService<ITransactionBuilderService>();
         var walletClient = scope.ServiceProvider.GetRequiredService<IWalletServiceClient>();
         var validatorClient = scope.ServiceProvider.GetRequiredService<IValidatorServiceClient>();
+        // Feature 108 — optional peer fan-out (subscriber nodes forward to the register owner).
+        var peerClient = scope.ServiceProvider.GetService<IPeerServiceClient>();
 
         try
         {
@@ -207,12 +211,31 @@ public sealed class EncryptionBackgroundService : BackgroundService
             var nextSeqNum = await validatorClient.GetNextSequenceNumberAsync(
                 workItem.RegisterId, workItem.SenderWallet, ct);
             var submission = transaction.ToTransactionSubmission(signResult, nextSeqNum);
-            var validatorResult = await validatorClient.SubmitTransactionAsync(submission, ct);
 
-            if (!validatorResult.Success)
+            // Feature 108 / Feature 137 — submit to BOTH the local validator (seals iff this node is
+            // on the roster) AND the peer-service fan-out (forwards to source peers for subscribed
+            // registers). This async/encrypted path previously skipped the fan-out, so a replica-
+            // origin encrypted submission never reached the register owner and never sealed.
+            var validatorTask = validatorClient.SubmitTransactionAsync(submission, ct);
+            var distributeTask = peerClient is null
+                ? Task.FromResult(new DistributeTransactionResult(0, 0, LocallyOwned: true))
+                : DistributeEncryptedSubmissionAsync(peerClient, workItem.RegisterId, submission, ct);
+            await Task.WhenAll(validatorTask, distributeTask);
+            var validatorResult = validatorTask.Result;
+            var distributeResult = distributeTask.Result;
+
+            _logger.LogInformation(
+                "Encrypted submission {TxId} for register {RegisterId}: validator success={ValidatorSuccess}, fan-out targets={Targets} accepted={Accepted} locallyOwned={Local}",
+                transaction.TxId, workItem.RegisterId, validatorResult.Success,
+                distributeResult.TargetPeerCount, distributeResult.AcceptedCount, distributeResult.LocallyOwned);
+
+            // Fail only when the local validator rejected AND no peer accepted the fan-out AND the
+            // register is not locally owned — a subscriber's local validator never seals (off-roster),
+            // so a peer-accepted submission is the success signal there.
+            if (!validatorResult.Success && distributeResult.AcceptedCount == 0 && !distributeResult.LocallyOwned)
             {
                 await HandleFailureAsync(operationId, workItem.SenderWallet,
-                    $"Validator rejected transaction: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage}",
+                    $"Validator rejected transaction: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage} — and no peer accepted the fan-out",
                     null, StepSubmitting,
                     notificationService, scope.ServiceProvider, workItem, ct);
                 return;
@@ -287,6 +310,35 @@ public sealed class EncryptionBackgroundService : BackgroundService
             op.StepName = stepName;
             op.PercentComplete = percent;
             await _operationStore.UpdateAsync(op);
+        }
+    }
+
+    /// <summary>
+    /// Feature 108 — fans an encrypted, signed submission out to the register's source peers so a
+    /// replica-origin submission reaches the owner for sealing. Mirrors
+    /// <c>ActionExecutionService.DistributeSubmissionAsync</c>: best-effort, never throws; a fan-out
+    /// failure degrades to validator-only (logged) rather than failing the operation.
+    /// </summary>
+    private async Task<DistributeTransactionResult> DistributeEncryptedSubmissionAsync(
+        IPeerServiceClient peerClient,
+        string registerId,
+        Sorcha.ServiceClients.Validator.TransactionSubmission submission,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var json = JsonSerializer.SerializeToUtf8Bytes(
+                submission,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            return await peerClient.DistributeTransactionAsync(registerId, json, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Feature 108 — peer fan-out errored for encrypted submission on register {RegisterId} " +
+                "(tx {TxId}); falling back to validator-only. Subscriber nodes depend on this path to reach the owner.",
+                registerId, submission.TransactionId);
+            return new DistributeTransactionResult(0, 0, LocallyOwned: false);
         }
     }
 

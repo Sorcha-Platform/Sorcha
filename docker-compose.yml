@@ -518,6 +518,11 @@ services:
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
+      # Feature 108: the peer-service is the cross-node fan-out RECEIVER — when it accepts a
+      # forwarded submission for a register this node owns, it submits it to the local validator
+      # for sealing. Without this address the forward is rejected ("Validator Service address not
+      # configured") and the cross-node write hop never seals on the owner.
+      ServiceClients__ValidatorService__Address: http://validator-service:8080
       # Node identity and network configuration
       PeerService__NodeId: "${PEER_NODE_ID:-local-peer.sorcha.dev}"
       PeerService__PublicAddress: "${PEER_PUBLIC_ADDRESS:-}"
