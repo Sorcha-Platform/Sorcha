@@ -57,6 +57,19 @@ public static class CitizenWalletEndpoints
             .Produces<CredentialListResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapGet("/holder-keys", GetHolderKeys)
+            .WithName("GetCitizenHolderKeys")
+            .WithSummary("Get the citizen's holder + encryption public keys")
+            .WithDescription(
+                "Feature 137 (cross-node submission). Resolves the caller's slot-108 holder public " +
+                "JWK (for the SD-JWT cnf binding) and wallet encryption public key (for the on-register " +
+                "AEAD envelope) from the citizen JWT. Used by the HolderKeyRenderer to auto-fill the " +
+                "cross-node submission key field. Public material only — never a private key. " +
+                "404 when no wallet resolves for the caller (indistinguishable from non-existence).")
+            .Produces<HolderKeysResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
+
         group.MapPost("/devices/renew-delegation", RenewDelegation)
             .WithName("RenewCitizenDeviceDelegation")
             .WithSummary("Renew the device delegation credential")
@@ -370,6 +383,41 @@ public static class CitizenWalletEndpoints
         return Results.Ok(snapshot);
     }
 
+    private static async Task<IResult> GetHolderKeys(
+        HttpContext context,
+        IHolderKeyService holderKeys,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        var (platformUserId, citizenWallet, _) = ResolveCitizenContext(context.User);
+        if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
+
+        try
+        {
+            var keys = await holderKeys.GetDeliveryKeysAsync(citizenWallet, ct);
+            return Results.Ok(new HolderKeysResponse
+            {
+                HolderJwk = keys.HolderJwk,
+                EncryptionPublicKey = keys.EncryptionPublicKey,
+                Algorithm = keys.Algorithm,
+                WalletAddress = keys.WalletAddress
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            // No wallet / public key resolvable for the caller — 404, indistinguishable
+            // from non-existence (matches the rest of the citizen surface).
+            return Results.NotFound();
+        }
+        catch (NotSupportedException ex)
+        {
+            logger.LogWarning(ex,
+                "Holder-keys request for wallet {Wallet} rejected — unsupported delivery algorithm.",
+                citizenWallet);
+            return Results.NotFound();
+        }
+    }
+
     private static async Task<IResult> SyncCredentials(
         HttpContext context,
         [FromQuery] string? since,
@@ -538,4 +586,24 @@ public static class CitizenWalletEndpoints
         var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonical));
         return System.Buffers.Text.Base64Url.EncodeToString(hash);
     }
+}
+
+/// <summary>
+/// Feature 137 — response of <c>GET /api/v1/wallet/holder-keys</c>. The citizen's public delivery
+/// keys for a cross-node credential round-trip. Public material only — never a private key.
+/// Contract: <c>specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml</c>.
+/// </summary>
+public sealed class HolderKeysResponse
+{
+    /// <summary>Slot-108 holder public JWK for the SD-JWT <c>cnf</c> binding.</summary>
+    public required System.Text.Json.JsonElement HolderJwk { get; init; }
+
+    /// <summary>Base64 wallet public key used to wrap the on-register AEAD envelope.</summary>
+    public required string EncryptionPublicKey { get; init; }
+
+    /// <summary>Delivery algorithm: <c>ED25519</c> or <c>NISTP256</c>.</summary>
+    public required string Algorithm { get; init; }
+
+    /// <summary>The citizen's resolved wallet address.</summary>
+    public required string WalletAddress { get; init; }
 }

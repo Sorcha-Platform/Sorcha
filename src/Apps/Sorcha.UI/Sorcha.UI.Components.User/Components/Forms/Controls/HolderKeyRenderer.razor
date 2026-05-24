@@ -1,0 +1,127 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Microsoft.Extensions.Logging
+@using Sorcha.Blueprint.Models
+@using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Services.HolderKeys
+
+@inject IHolderKeyClient HolderKeys
+@inject ILogger<HolderKeyRenderer> Logger
+
+@*
+    Feature 137 (cross-node submission, C3)
+
+    Dispatched by FormSchemaService when an object property carries
+    format: "sorcha-holder-key". The field captures the signed-in citizen's
+    PUBLIC delivery keys so a credential issued on the owner node can be bound
+    (SD-JWT cnf) and encrypted (on-register AEAD envelope) to the citizen, then
+    delivered to their local wallet — without any private key ever leaving the
+    Wallet Service.
+
+    On init the renderer fetches GET /api/v1/wallet/holder-keys and writes the
+    three sibling pointers via FormContext.SetValue (sibling fan-out, like
+    PostcodeLookupRenderer):
+        {Scope}/holderJwk             — slot-108 holder public JWK
+        {Scope}/encryptionPublicKey   — base64 wallet public key
+        {Scope}/algorithm             — ED25519 | NISTP256
+
+    The user cannot edit the key material — the control is display-only. If the
+    fetch fails the renderer shows a retry affordance rather than silently
+    submitting an unbindable application.
+*@
+
+<div class="holder-key-field" data-testid="holder-key-field">
+    @switch (_state)
+    {
+        case State.Loading:
+            <MudAlert Severity="Severity.Normal" Dense="true" Variant="Variant.Outlined" Class="my-1">
+                <div class="d-flex align-center gap-2">
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    <span>Securing your identity keys…</span>
+                </div>
+            </MudAlert>
+            break;
+
+        case State.Captured:
+            <MudAlert Severity="Severity.Success" Dense="true" Variant="Variant.Outlined"
+                      Icon="@Icons.Material.Filled.Key" Class="my-1" data-testid="holder-key-captured">
+                Identity keys captured — your credential will be delivered securely to this wallet.
+            </MudAlert>
+            break;
+
+        case State.Error:
+            <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Outlined" Class="my-1"
+                      data-testid="holder-key-error">
+                <div class="d-flex align-center justify-space-between gap-2">
+                    <span>We couldn't reach your wallet to secure your identity keys.</span>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Refresh"
+                               OnClick="LoadAsync"
+                               data-testid="holder-key-retry">
+                        Retry
+                    </MudButton>
+                </div>
+            </MudAlert>
+            break;
+    }
+</div>
+
+@code {
+    [CascadingParameter] public FormContext? FormContext { get; set; }
+    [Parameter, EditorRequired] public Control Control { get; set; } = new();
+    [Parameter] public bool IsDisabled { get; set; }
+
+    private enum State { Loading, Captured, Error }
+
+    private State _state = State.Loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // If the keys are already present (re-render, review/read-only view, or a
+        // resumed draft) skip the fetch — the captured values stay authoritative.
+        if (FormContext is not null
+            && FormContext.GetValue<object>($"{Control.Scope}/encryptionPublicKey") is not null)
+        {
+            _state = State.Captured;
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (FormContext is null)
+        {
+            _state = State.Error;
+            return;
+        }
+
+        _state = State.Loading;
+        StateHasChanged();
+
+        try
+        {
+            var keys = await HolderKeys.GetHolderKeysAsync();
+            if (keys is null || string.IsNullOrEmpty(keys.EncryptionPublicKey) || string.IsNullOrEmpty(keys.Algorithm))
+            {
+                _state = State.Error;
+                return;
+            }
+
+            // Sibling fan-out — write the three nested pointers the issuer reads at
+            // credential-issuance time (ActionExecutionService.ResolveCarriedHolderKeys).
+            FormContext.SetValue($"{Control.Scope}/holderJwk", keys.HolderJwk);
+            FormContext.SetValue($"{Control.Scope}/encryptionPublicKey", keys.EncryptionPublicKey);
+            FormContext.SetValue($"{Control.Scope}/algorithm", keys.Algorithm);
+
+            _state = State.Captured;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Holder-key autofill failed for scope {Scope}", Control.Scope);
+            _state = State.Error;
+        }
+    }
+}

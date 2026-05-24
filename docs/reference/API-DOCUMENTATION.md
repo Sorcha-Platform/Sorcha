@@ -1316,6 +1316,25 @@ Clear the citizen's notice. Idempotent — returns `204 No Content` whether or n
 
 **Response:** `204 No Content`
 
+#### 10b. Holder Keys — cross-node delivery keys (Feature 137)
+
+Returns the signed-in citizen's **public** delivery keys so a blueprint `sorcha-holder-key` form field can auto-fill the cross-node submission. Consumer-tier (`RequireConsumerAudience`). Public material only — never a private key. Contract: [`specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml`](../../specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml).
+
+##### GET /api/v1/wallet/holder-keys
+
+Resolves the caller's slot-108 holder public JWK (for the SD-JWT `cnf` binding) and wallet encryption public key (for the on-register AEAD envelope) from the citizen JWT.
+
+**Response:** `200 OK`
+```json
+{
+  "holderJwk": { "kty": "EC", "crv": "P-256", "x": "…", "y": "…" },
+  "encryptionPublicKey": "<base64 wallet public key>",
+  "algorithm": "ED25519",
+  "walletAddress": "ws1q…"
+}
+```
+`401` — missing/invalid citizen token. `404` — no wallet resolvable for the caller (indistinguishable from non-existence).
+
 #### 11. Cross-Device Presentation History (Feature 114 US5)
 
 The citizen's durable, cross-device record of presentations they have made. Reported presentations (via `POST /api/v1/wallet/presentations/log`) are persisted to a per-citizen Wallet Service store so the same history appears on any device the citizen pairs. **There is no register/ledger write** — a free-standing offline presentation has no originating register; these are citizen-owned convenience records carrying disclosed claim **names only**, never values.

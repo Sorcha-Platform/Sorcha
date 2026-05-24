@@ -334,6 +334,23 @@ public class FormSchemaService : IFormSchemaService
         var title = schema.TryGetProperty("title", out var titleEl) ? titleEl.GetString() : HumanizeName(propertyName);
         var scope = parentScope + "/" + propertyName;
 
+        // Feature 137 (cross-node submission, C3): an object field carrying
+        // `format: "sorcha-holder-key"` is captured read-only by HolderKeyRenderer, which
+        // fetches the citizen's public delivery keys and writes the sibling pointers
+        // (/holderJwk, /encryptionPublicKey, /algorithm). Checked before the object-recursion
+        // branch so a holder-key field is never recursed into as a primitive group.
+        if (schema.TryGetProperty("format", out var holderKeyFormatEl)
+            && holderKeyFormatEl.GetString() == "sorcha-holder-key")
+        {
+            return new Control
+            {
+                ControlType = ControlTypes.HolderKey,
+                Title = title ?? propertyName,
+                Scope = scope,
+                Rule = TryParseXRule(schema)
+            };
+        }
+
         // Object-typed properties recurse into their children. Feature 103
         // ships four core primitives as schema objects (PersonName,
         // DateOfBirth, EmailAddress, PostalAddress) — the form renderer

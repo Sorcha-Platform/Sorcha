@@ -1312,6 +1312,13 @@
             Validate data against a JSON Schema.
             </summary>
         </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.SchemaValidator.StripExtensionKeywords(System.Text.Json.Nodes.JsonNode)">
+            <summary>
+            Returns a copy of <paramref name="schema"/> with every property whose name starts with
+            <c>x-</c> recursively removed. The original node is not mutated (it is typically a shared
+            <c>Action.Form.Schema</c>). Mirrors <c>ValidationEngine.StripCustomExtensionKeywords</c>.
+            </summary>
+        </member>
         <member name="M:Sorcha.Blueprint.Engine.Implementation.SchemaValidator.ConvertToJsonNode(System.Collections.Generic.Dictionary{System.String,System.Object})">
             <summary>
             Converts a dictionary to JsonNode for validation.

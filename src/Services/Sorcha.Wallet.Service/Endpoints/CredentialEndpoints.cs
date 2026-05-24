@@ -681,17 +681,33 @@ public static class CredentialEndpoints
             logger,
             cancellationToken);
 
-        var token = await sdJwtService.CreateTokenAsync(
-            claims,
-            request.DisclosableClaims,
-            issuer: signingIssuer,
-            subject: request.RecipientWallet,
-            signingKey: privateKey,
-            algorithm: signingAlgorithm,
-            expiresAt: expiresAt,
-            cancellationToken: cancellationToken,
-            x5cChain: x5cChain,
-            kid: signingKid);
+        // Feature 137 — when the caller supplies the recipient's holder JWK, bind the
+        // credential to it via the SD-JWT cnf claim (key confirmation). Absent → unbound
+        // credential (pre-137 behaviour). cnf is always non-disclosable.
+        var token = request.HolderJwk.HasValue
+            ? await sdJwtService.CreateTokenAsync(
+                claims,
+                request.DisclosableClaims,
+                issuer: signingIssuer,
+                subject: request.RecipientWallet,
+                signingKey: privateKey,
+                algorithm: signingAlgorithm,
+                holderJwk: request.HolderJwk.Value,
+                expiresAt: expiresAt,
+                cancellationToken: cancellationToken,
+                x5cChain: x5cChain,
+                kid: signingKid)
+            : await sdJwtService.CreateTokenAsync(
+                claims,
+                request.DisclosableClaims,
+                issuer: signingIssuer,
+                subject: request.RecipientWallet,
+                signingKey: privateKey,
+                algorithm: signingAlgorithm,
+                expiresAt: expiresAt,
+                cancellationToken: cancellationToken,
+                x5cChain: x5cChain,
+                kid: signingKid);
 
         // 5. Generate credential ID
         var credentialId = $"urn:uuid:{Guid.NewGuid()}";
@@ -874,6 +890,15 @@ public class IssueCredentialRequest
     /// existing Sorcha-internal default).
     /// </summary>
     public string? TenantId { get; init; }
+
+    /// <summary>
+    /// Feature 137 — recipient holder's public JWK (slot 108) for the SD-JWT
+    /// <c>cnf</c> (key confirmation) binding. When supplied, the issued credential
+    /// is cryptographically bound to the holder key so only the holder can present
+    /// it. Null leaves the credential unbound (the pre-137 behaviour). Public
+    /// material only — never a private key.
+    /// </summary>
+    public JsonElement? HolderJwk { get; init; }
 }
 
 /// <summary>

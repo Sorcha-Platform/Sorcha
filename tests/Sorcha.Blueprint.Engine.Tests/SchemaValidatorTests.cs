@@ -49,6 +49,50 @@ public class SchemaValidatorTests
     }
 
     [Fact]
+    public async Task ValidateAsync_SorchaHolderKeyField_ValidatesAsPass()
+    {
+        // Feature 137 (T019 lock-in): the action-data validator must tolerate an object field
+        // declared with format "sorcha-holder-key" and an x-holder-key extension — unknown formats
+        // pass under RequireFormatValidation and x- keywords are ignored as annotations, exactly
+        // like the existing x-file / file-reference fields on the same blueprint.
+        var schema = JsonNode.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "name": { "type": "string" },
+                "holderKeys": {
+                    "type": "object",
+                    "format": "sorcha-holder-key",
+                    "x-holder-key": { "required": true }
+                }
+            },
+            "required": ["name", "holderKeys"]
+        }
+        """);
+
+        var data = new Dictionary<string, object>
+        {
+            ["name"] = "Alice",
+            ["holderKeys"] = new Dictionary<string, object>
+            {
+                ["holderJwk"] = new Dictionary<string, object>
+                {
+                    ["kty"] = "EC", ["crv"] = "P-256", ["x"] = "AAA", ["y"] = "BBB"
+                },
+                ["encryptionPublicKey"] = "QkFTRTY0",
+                ["algorithm"] = "ED25519"
+            }
+        };
+
+        var result = await _validator.ValidateAsync(data, schema!);
+
+        result.IsValid.Should().BeTrue(
+            "holder-key fields must validate as pass; errors: {0}",
+            string.Join(" | ", result.Errors.Select(e => $"{e.InstanceLocation}:{e.Message}")));
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ValidateAsync_MissingRequiredField_ReturnsInvalid()
     {
         // Arrange

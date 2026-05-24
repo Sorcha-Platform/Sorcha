@@ -1325,3 +1325,35 @@ Platform-security rework of how Sorcha issues + validates JWT access tokens. **F
 - **Tier follows the person, not the UI host**: a citizen is `:consumer` on both `/app` (web) and `/wallet` (PWA); an admin is `:platform` in org context. Login derives the tier from `returnTo` (`/wallet`⇒consumer, `/app`⇒platform) as a *preference* that **downgrades to entitlement** (citizen on `/app`→consumer); an explicit `tier=platform` over-request by a non-entitled user is **refused (403, FR-008)**. `switch-org` re-mints at the new context's tier (FR-016). Endpoint classification: consumer surfaces (`/api/v1/wallet/*`)→`RequireConsumerAudience`; admin/org→`RequirePlatformAudience` composed on the role policy; `/api/internal/*`→extended `RequireService`; genuinely cross-tier `/me/*` stay plain `.RequireAuthorization()`.
 - **Status: ALL FIVE user stories DONE** (branch `136-jwt-audience-tiers`). US1 classification, US2 service-isolation (`RequireService` asserts `:service`), US3 issuer hardening + per-deploy `InstallationName`, US4 consumer-tier login, US5 tier-follows-person + over-request gate, `IdentityMetrics` wired. McpServer validation realigned to the installation issuer. Remaining: docs/regression polish + an edge case (2FA-on-`/wallet` tier carry).
 - **No migration** (pre-release): coordinated config rollout; existing tokens expire. Dependency contract for downstream Spec B (PWA auth/signup parity).
+
+---
+
+## Cross-node submission round-trip (Feature 137 — Stage 5)
+
+Closes the citizen→credential loop across a federated node split: a citizen on a local SyncOnly replica submits an application against a register owned by another node (n1); the owner validates/seals it, an analyst approves, and the resulting credential is **bound to the citizen's holder key and encrypted to the citizen's wallet**, then delivered back to the citizen's local wallet. Four of five components (C5 mirror submission, C1 published-store-aware instance creation, C4 fan-out config, C2 event-driven recovery) landed earlier; **C3 (credential delivery) is this surface.**
+
+### `cnf` binding + recipient-key precedence (server)
+
+- **`cnf` binding is no longer skipped.** `IssueCredentialRequest.HolderJwk` (`Wallet.Service/Endpoints/CredentialEndpoints.cs`) flows into `SdJwtService.CreateTokenAsync(holderJwk:)` so the SD-JWT carries `cnf`. Threaded through `IWalletServiceClient.IssueCredentialAsync(holderJwk:)`. Absent → unbound credential (pre-137 behaviour).
+- **`CredentialIssuanceConfig.HolderKeySourceField`** (JSON Pointer, default `/holderKeys/holderJwk`) opts a blueprint into bound cross-node delivery. Null → pre-137 behaviour (no `cnf`, register/derivation-only recipient key).
+- **FR-012 precedence in `ActionExecutionService` (step 8c, before minting → SC-004 fail-closed):** (1) published participant record (`IRegisterServiceClient.ResolvePublicKeyAsync`) wins; (2) carried `encryptionPublicKey` (from the submitted `holderKeys` field, resolved by `ResolveCarriedHolderKeys`) injected into a local `effectiveExternalKeys` passed to `ResolveRecipientKeysAsync` at step 9d **only when the register lookup misses**; (3) neither → throw `[VAL_RUNTIME_CRED_004]` (no credential issued). A configured `HolderKeySourceField` with no resolvable holder JWK → `[VAL_RUNTIME_CRED_005]` (FR-014). The carried `encryptionPublicKey` is the citizen wallet's **primary public key** (ED25519/NISTP256); the AEAD pipeline derives X25519 from it, so it is byte-identical to the register-resolved recipient key.
+
+### `GET /api/v1/wallet/holder-keys` (Wallet Service, consumer-tier)
+
+`RequireConsumerAudience`. Returns the citizen's public delivery keys for the `sorcha-holder-key` form field: `{ holderJwk (slot 108), encryptionPublicKey (base64 wallet public key), algorithm (ED25519|NISTP256), walletAddress }`. Backed by `IHolderKeyService.GetDeliveryKeysAsync` (combines slot-108 JWK + `Wallet.PublicKey`). 404 when no wallet resolves (indistinguishable). Contract: `specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml`. Public material only — never a private key.
+
+### `sorcha-holder-key` form field (client)
+
+`ControlTypes.HolderKey` (`Sorcha.Blueprint.Models/Control.cs`) — dispatched by `FormSchemaService.InferControlFromSchema` when an object field carries `format: "sorcha-holder-key"` (checked before the object-recursion branch). Rendered read-only by `HolderKeyRenderer.razor` (`Sorcha.UI.Components.User`), which calls `IHolderKeyClient.GetHolderKeysAsync` and writes `{Scope}/holderJwk`, `{Scope}/encryptionPublicKey`, `{Scope}/algorithm` via `FormContext.SetValue` (sibling fan-out, like `PostcodeLookupRenderer`). `IHolderKeyClient` is registered auth-wrapped in both the web SPA (`Sorcha.UI.Core` `ServiceCollectionExtensions`) and the PWA (`Sorcha.Wallet.Pwa` DI). Contract: `specs/137-cross-node-submission/contracts/sorcha-holder-key-field.md`.
+
+### Validation note (`x-*` strip on both paths)
+
+`SchemaValidator` (`Sorcha.Blueprint.Engine`) now strips `x-*` extension keywords before evaluation (mirroring the Validator Service's `ValidationEngine.StripCustomExtensionKeywords`), so `x-holder-key` (and any other `x-*` UI hint) is tolerated on the blueprint-service action-data path as well as the validator path. Unknown `format` values (`sorcha-holder-key`) validate as pass.
+
+### PWA submission
+
+`Sorcha.Wallet.Pwa/Pages/ApplicationInstance.razor` renders `SorchaFormRenderer` for the instance's current action (loaded via `IApplicationActionClient.LoadFormAsync` → `GET /api/instances/{id}` + blueprint) and submits via `FormPayloadBuilder.BuildNested` → `POST /api/instances/{id}/actions/{actionId}/execute` (server-signed via the bearer token; the citizen wallet is server-custodied). The F125 `StubApplicationSubmissionService` / `IUserSigner` seam is retained for its tests.
+
+### Worked example
+
+`walkthroughs/AssuredIdentity/blueprints/assured-identity.json` — action 1 carries a `holderKeys` (`format: sorcha-holder-key`) field; action 2's `credentialIssuanceConfig.holderKeySourceField` points at `/holderKeys/holderJwk`. `run-phase1-identity.ps1` fetches `/api/v1/wallet/holder-keys` and supplies `holderKeys` in the action-1 payload. The live n1↔local cross-node run is **Tier-2** (the genesis-key machine); the C3 server is unit + single-node-integration covered (SC-005 Tier-1). Spec: `specs/137-cross-node-submission/`. Design: `docs/superpowers/specs/2026-05-23-cross-node-submission-design.md`.

@@ -130,6 +130,22 @@ if ($IncludePortrait) {
     }
 }
 
+# Feature 137 (cross-node submission, C3): carry the citizen's public delivery
+# keys in the starting-action payload. The blueprint's holderKeys field
+# (format: sorcha-holder-key) is auto-filled by HolderKeyRenderer in the UI; the
+# scripted path fetches the same keys from the Wallet Service so the issuer can
+# bind the credential (SD-JWT cnf) and encrypt it to the citizen even when the
+# owner node holds no published participant record for them (Stage-5 round-trip).
+$holderKeys = Invoke-SorchaApi -Method GET `
+    -Uri "$($state.walletUrl)/v1/wallet/holder-keys" `
+    -Headers $citizenSession.Headers
+$payloadData.holderKeys = @{
+    holderJwk           = $holderKeys.holderJwk
+    encryptionPublicKey = $holderKeys.encryptionPublicKey
+    algorithm           = $holderKeys.algorithm
+}
+Write-WtInfo "Holder keys captured ($($holderKeys.algorithm)) — credential will be bound + delivered to wallet $($holderKeys.walletAddress)"
+
 $null = Invoke-SorchaAction `
     -BlueprintUrl $state.blueprintUrl `
     -InstanceId $instanceId `

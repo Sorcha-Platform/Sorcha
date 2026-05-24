@@ -182,6 +182,69 @@ public sealed class HolderKeyServiceTests
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
+    // ---- Feature 137: GetDeliveryKeysAsync ----
+
+    [Fact]
+    public async Task GetDeliveryKeysAsync_ReturnsHolderJwk_WalletPublicKey_AndMappedAlgorithm()
+    {
+        SetupHappyPath(out _);
+
+        var keys = await _service.GetDeliveryKeysAsync("ws1qcitizen1");
+
+        keys.WalletAddress.Should().Be("ws1qcitizen1");
+        keys.EncryptionPublicKey.Should().Be(Convert.ToBase64String(new byte[32]),
+            because: "the AEAD envelope wraps to the wallet's own primary public key");
+        keys.Algorithm.Should().Be("NISTP256", because: "an ES256 wallet maps to the NISTP256 delivery vocabulary");
+        keys.HolderJwk.GetProperty("kty").GetString().Should().Be("EC");
+    }
+
+    [Fact]
+    public async Task GetDeliveryKeysAsync_Ed25519Wallet_MapsAlgorithmToEd25519()
+    {
+        var wallet = CreateTestWallet(algorithm: "ED25519");
+        var masterKey = new byte[64];
+        _repoMock.Setup(r => r.GetByAddressAsync("ws1qcitizen1", false, false, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(wallet);
+        _keyMgmtMock.Setup(k => k.DecryptPrivateKeyAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(masterKey);
+        _keyMgmtMock.Setup(k => k.DeriveKeyAtPathAsync(masterKey, It.IsAny<DerivationPath>(), "ED25519"))
+            .ReturnsAsync((new byte[32], new byte[32]));
+
+        var keys = await _service.GetDeliveryKeysAsync("ws1qcitizen1");
+
+        keys.Algorithm.Should().Be("ED25519");
+        keys.HolderJwk.GetProperty("kty").GetString().Should().Be("OKP");
+    }
+
+    [Fact]
+    public async Task GetDeliveryKeysAsync_WalletNotFound_ThrowsKeyNotFound()
+    {
+        _repoMock.Setup(r => r.GetByAddressAsync("ghost", false, false, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WalletEntity?)null);
+
+        var act = () => _service.GetDeliveryKeysAsync("ghost");
+
+        await act.Should().ThrowAsync<KeyNotFoundException>();
+    }
+
+    [Fact]
+    public async Task GetDeliveryKeysAsync_WalletWithoutPublicKey_ThrowsKeyNotFound()
+    {
+        var wallet = CreateTestWallet();
+        wallet.PublicKey = null;
+        var masterKey = new byte[64];
+        _repoMock.Setup(r => r.GetByAddressAsync("ws1qcitizen1", false, false, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(wallet);
+        _keyMgmtMock.Setup(k => k.DecryptPrivateKeyAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(masterKey);
+        _keyMgmtMock.Setup(k => k.DeriveKeyAtPathAsync(masterKey, It.IsAny<DerivationPath>(), "ES256"))
+            .ReturnsAsync((new byte[32], GenerateP256PublicKeyBytes()));
+
+        var act = () => _service.GetDeliveryKeysAsync("ws1qcitizen1");
+
+        await act.Should().ThrowAsync<KeyNotFoundException>();
+    }
+
     private void SetupHappyPath(out byte[] derivedPublic)
     {
         var wallet = CreateTestWallet();
