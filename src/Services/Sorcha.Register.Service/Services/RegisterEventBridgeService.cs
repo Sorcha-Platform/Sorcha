@@ -32,7 +32,7 @@ public class RegisterEventBridgeService : BackgroundService
         _logger.LogInformation("RegisterEventBridgeService registering event subscriptions");
 
         await _subscriber.SubscribeAsync<RegisterCreatedEvent>(
-            "register:created",
+            RegisterEventChannels.RegisterCreated,
             async e =>
             {
                 _logger.LogDebug("Bridging RegisterCreated for {RegisterId} to group register:{GroupRegisterId}", e.RegisterId, e.RegisterId);

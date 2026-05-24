@@ -15,6 +15,14 @@ public static class RegisterEventChannels
     public const string TransactionConfirmed = "transaction:confirmed";
 
     /// <summary>
+    /// Published when a register row is created locally — including the create-on-sync path when a
+    /// register first replicates to this node (PR #829). Payload: <see cref="RegisterCreatedEvent"/>.
+    /// Feature 137 (C2): Blueprint.Service subscribes to recover the new register's published
+    /// blueprints immediately, rather than waiting for the next periodic recovery pass.
+    /// </summary>
+    public const string RegisterCreated = "register:created";
+
+    /// <summary>
     /// Published when a docket has been sealed and written. Payload: <see cref="DocketConfirmedEvent"/>.
     /// </summary>
     public const string DocketConfirmed = "docket:confirmed";
