@@ -42,6 +42,7 @@ public sealed class CitizenWalletEnrolEndpointTests
     private readonly Mock<IDeviceDelegationIssuer> _issuer = new();
     private readonly Mock<IOrgStatusSigningWalletResolver> _resolver = new();
     private readonly Mock<IPlatformUserDeviceClient> _deviceClient = new();
+    private readonly Mock<Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository> _walletRepository = new();
     private readonly Mock<IHubContext<WalletHub>> _hub = new();
     private readonly Mock<IHubClients> _hubClients = new();
     private readonly Mock<IClientProxy> _hubGroup = new();
@@ -120,6 +121,7 @@ public sealed class CitizenWalletEnrolEndpointTests
             _resolver.Object,
             _deviceClient.Object,
             _holderAddressLookup.Object,
+            _walletRepository.Object,
             _hub.Object,
             NullLogger<Program>.Instance,
             CancellationToken.None
