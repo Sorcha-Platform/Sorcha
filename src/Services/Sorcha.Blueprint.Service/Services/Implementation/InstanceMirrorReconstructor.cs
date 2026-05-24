@@ -10,10 +10,10 @@ using Microsoft.Extensions.Logging;
 
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.Register.Core.Events;
+using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Wallet;
-
-using StackExchange.Redis;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -48,59 +48,52 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// </remarks>
 public sealed class InstanceMirrorReconstructor : BackgroundService
 {
-    private const string DocketConfirmedChannel = "docket:confirmed";
-
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IConnectionMultiplexer? _redis;
+    private readonly IEventSubscriber? _subscriber;
     private readonly InstanceMirrorReconstructorMetrics _metrics;
     private readonly ILogger<InstanceMirrorReconstructor> _logger;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
 
     public InstanceMirrorReconstructor(
         IServiceScopeFactory scopeFactory,
         InstanceMirrorReconstructorMetrics metrics,
         ILogger<InstanceMirrorReconstructor> logger,
-        IConnectionMultiplexer? redis = null)
+        IEventSubscriber? subscriber = null)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _redis = redis;
+        _subscriber = subscriber;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (_redis is null)
+        if (_subscriber is null)
         {
             _logger.LogWarning(
-                "InstanceMirrorReconstructor: Redis not available — cross-node instance mirroring is disabled. " +
-                "Feature 106 MyActions queries from a holder node will return empty until Redis is reachable.");
+                "InstanceMirrorReconstructor: event subscriber not available — cross-node instance mirroring is disabled. " +
+                "Feature 106 MyActions queries from a holder node will return empty until the event bus is reachable.");
             return;
         }
 
         _logger.LogInformation(
             "InstanceMirrorReconstructor starting — subscribing to {Channel}",
-            DocketConfirmedChannel);
+            RegisterEventChannels.DocketConfirmed);
 
         try
         {
-            var subscriber = _redis.GetSubscriber();
-            await subscriber.SubscribeAsync(
-                RedisChannel.Literal(DocketConfirmedChannel),
-                async (_, message) =>
+            // Subscribe via the Redis Streams IEventSubscriber — the SAME mechanism the Register
+            // Service publishes through (RedisStreamEventPublisher.StreamAddAsync). The previous raw
+            // _redis.GetSubscriber() pub/sub never received these events (the publisher uses Streams,
+            // not pub/sub channels), so the owner node never materialised a mirror for a replica-
+            // originated instance and the analyst had nothing to act on. Mirrors the working
+            // PresentationSealSubscriber pattern.
+            await _subscriber.SubscribeAsync<DocketConfirmedEvent>(
+                RegisterEventChannels.DocketConfirmed,
+                async evt =>
                 {
                     try
                     {
-                        await HandleDocketConfirmedAsync(message!, stoppingToken);
-                    }
-                    catch (JsonException ex)
-                    {
-                        _logger.LogWarning(ex,
-                            "InstanceMirrorReconstructor: malformed docket:confirmed event");
+                        await HandleDocketConfirmedAsync(evt, stoppingToken);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
@@ -108,10 +101,11 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
                             "InstanceMirrorReconstructor: unexpected error processing docket:confirmed");
                         _metrics.RecordErrored();
                     }
-                });
+                },
+                stoppingToken);
 
             _logger.LogInformation(
-                "InstanceMirrorReconstructor subscribed to {Channel}", DocketConfirmedChannel);
+                "InstanceMirrorReconstructor subscribed to {Channel}", RegisterEventChannels.DocketConfirmed);
 
             await Task.Delay(Timeout.Infinite, stoppingToken);
         }
@@ -125,12 +119,11 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         }
     }
 
-    private async Task HandleDocketConfirmedAsync(string message, CancellationToken ct)
+    private async Task HandleDocketConfirmedAsync(DocketConfirmedEvent evt, CancellationToken ct)
     {
         _metrics.RecordDocketObserved();
         var sw = Stopwatch.StartNew();
 
-        var evt = JsonSerializer.Deserialize<DocketConfirmedEvent>(message, JsonOptions);
         if (evt?.TransactionIds is null || evt.TransactionIds.Count == 0)
             return;
 
@@ -309,16 +302,4 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Shape of the <c>docket:confirmed</c> event payload published by
-    /// Register Service. Field names match
-    /// <see cref="TransactionLifecycleEventBridge"/> in Wallet Service.
-    /// </summary>
-    private sealed record DocketConfirmedEvent
-    {
-        public string RegisterId { get; init; } = string.Empty;
-        public ulong DocketId { get; init; }
-        public List<string> TransactionIds { get; init; } = [];
-        public string Hash { get; init; } = string.Empty;
-    }
 }
