@@ -109,6 +109,32 @@ applying point-fixes. That is the purpose of the kickoff prompt.
   failures are a CI-env flake (`SystemWalletSigning:ValidatorId configuration is required`) — they
   pass locally (308/0). claude-review + the per-service Build jobs are the real gates.
 
+## Stage-5 implementation progress (2026-05-24)
+
+The gaps above were turned into Feature 137 (`specs/137-cross-node-submission/`, design at
+`docs/superpowers/specs/2026-05-23-cross-node-submission-design.md`). Trust model decided:
+**separate installations bridged only at the ledger plane** (genesis validator roster + tx/docket
+signatures); the F136 JWT installation boundary is untouched. **Four of five components are merged
+to master:**
+
+- **C5** (PR #831) — cross-node mirror submission. The analyst can act on a register-owning node
+  against a read-only mirror. `nextActionId` is carried in submission metadata and projected onto
+  `TransactionMetaData.NextActionId`; the mirror seeds `CurrentActionIds`; mirror advances go
+  through `UpdateMirrorAsync`.
+- **C1 + C4** (PR #832, US1) — `CreateInstance` is published-store-aware (replicas resolve the
+  replicated blueprint), publish-to-register gated on `IsOwner`, typed 409 when still syncing;
+  `docker-compose` blueprint-service gained `ServiceClients__PeerService__{Address,HttpAddress}` so
+  F108 fan-out reaches the peer.
+- **C2** (PR #833, US3) — `BlueprintRecoveryService` subscribes to `register:created` for immediate
+  per-register blueprint recovery (no restart); periodic loop is the safety net.
+
+**Remaining: C3 / US2 — credential delivery** (bind the issued credential to the citizen's holder
+key + deliver to the local wallet). The SD-JWT `cnf` binding is a pre-existing hole; the PWA
+application-submission surface is a stub; X25519 is derivable from the Ed25519 signing key and the
+AEAD `ExternalRecipientKeys` "supply explicitly" path already exists. Execute via the kickoff prompt
+`docs/superpowers/prompts/137-c3-credential-delivery-kickoff.md` (one big PR is fine). The live
+n1↔local round-trip (SC-001) is the Tier-2 gate on the genesis-key machine.
+
 ## Deferred / backlog already captured
 
 - `.specify/tasks/deferred-tasks.md` → **MCP-101/102/103**: review MCP capabilities — the admin slice

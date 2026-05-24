@@ -63,7 +63,12 @@
       "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\update-agent-context.ps1 -AgentType claude)",
       "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)",
       "PowerShell(.\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1 -Json)",
-      "PowerShell(./scripts/check-pwa-bundle.ps1 2>&1 | Select-Object -Last 30)"
+      "PowerShell(./scripts/check-pwa-bundle.ps1 2>&1 | Select-Object -Last 30)",
+      "PowerShell(az vm run-command invoke *)",
+      "PowerShell(pwsh -File walkthroughs/AssuredIdentity/run-agents.ps1 -TimeoutMinutes 30)",
+      "PowerShell(.specify/scripts/powershell/create-new-feature.ps1 -Json -Number 134 -ShortName \"presentation-history\" \"F114 US5 PR3 cross-device citizen presentation history - Wallet Service durable per-citizen presentation store with read and delete endpoints and a PWA Activity cross-device merge so a freshly-paired device shows past presentations\")",
+      "PowerShell(.specify/scripts/powershell/update-agent-context.ps1 -AgentType claude 2>&1 | Select-Object -Last 20)",
+      "PowerShell(.specify/scripts/powershell/create-new-feature.ps1 -Json -Number 137 -ShortName \"cross-node-submission\" \"Cross-node submission round-trip \\(Stage 5\\): citizen on a local SyncOnly replica submits an AssuredIdentity application that reaches the n1 owner/validator node, is validated/sealed there, approved by the verification-analyst on n1, and the resulting AssuredIdentityCredential is delivered back to the citizen's local wallet. Source of truth: docs/superpowers/specs/2026-05-23-cross-node-submission-design.md\")"
     ],
     "deny": [],
     "ask": []
