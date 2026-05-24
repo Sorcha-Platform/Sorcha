@@ -82,7 +82,7 @@ public class RegisterManager
 
         // Publish register created event
         await _eventPublisher.PublishAsync(
-            "register:created",
+            RegisterEventChannels.RegisterCreated,
             new RegisterCreatedEvent
             {
                 RegisterId = createdRegister.Id,
