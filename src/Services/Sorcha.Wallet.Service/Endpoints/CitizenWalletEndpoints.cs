@@ -10,6 +10,8 @@ using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.ServiceDefaults;
+using Sorcha.Wallet.Core.Domain;
+using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Services.Interfaces;
 
 namespace Sorcha.Wallet.Service.Endpoints;
@@ -345,9 +347,10 @@ public static class CitizenWalletEndpoints
         [FromBody] DelegationRenewalRequest request,
         HttpContext context,
         IDelegationRenewalService renewal,
+        IWalletRepository walletRepository,
         CancellationToken ct)
     {
-        var (platformUserId, citizenWallet, organizationId) = ResolveCitizenContext(context.User);
+        var (platformUserId, citizenWallet, organizationId) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null || organizationId is null)
         {
             return Results.Unauthorized();
@@ -373,9 +376,10 @@ public static class CitizenWalletEndpoints
         HttpContext context,
         ICitizenSyncService sync,
         IHolderKeyService holderKeys,
+        IWalletRepository walletRepository,
         CancellationToken ct)
     {
-        var (platformUserId, citizenWallet, _) = ResolveCitizenContext(context.User);
+        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
 
         var holderKeyId = await holderKeys.GetHolderJwkThumbprintAsync(citizenWallet, ct);
@@ -386,10 +390,11 @@ public static class CitizenWalletEndpoints
     private static async Task<IResult> GetHolderKeys(
         HttpContext context,
         IHolderKeyService holderKeys,
+        IWalletRepository walletRepository,
         ILogger<Program> logger,
         CancellationToken ct)
     {
-        var (platformUserId, citizenWallet, _) = ResolveCitizenContext(context.User);
+        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
 
         try
@@ -423,9 +428,10 @@ public static class CitizenWalletEndpoints
         [FromQuery] string? since,
         ICitizenSyncService sync,
         IHolderKeyService holderKeys,
+        IWalletRepository walletRepository,
         CancellationToken ct)
     {
-        var (platformUserId, citizenWallet, _) = ResolveCitizenContext(context.User);
+        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
 
         var holderKeyId = await holderKeys.GetHolderJwkThumbprintAsync(citizenWallet, ct);
@@ -453,6 +459,7 @@ public static class CitizenWalletEndpoints
         IOrgStatusSigningWalletResolver orgWalletResolver,
         IPlatformUserDeviceClient deviceClient,
         IHolderAddressLookup holderAddressLookup,
+        IWalletRepository walletRepository,
         Microsoft.AspNetCore.SignalR.IHubContext<Sorcha.Wallet.Service.Hubs.WalletHub> hub,
         ILogger<Program> logger,
         CancellationToken ct)
@@ -463,7 +470,7 @@ public static class CitizenWalletEndpoints
             return Results.ValidationProblem(validation.ToDictionary());
         }
 
-        var (platformUserId, citizenWallet, organizationId) = ResolveCitizenContext(context.User);
+        var (platformUserId, citizenWallet, organizationId) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null || organizationId is null)
         {
             return Results.Unauthorized();
@@ -565,6 +572,38 @@ public static class CitizenWalletEndpoints
         if (string.IsNullOrWhiteSpace(walletAddress)) walletAddress = null;
 
         Guid? organizationId = Guid.TryParse(user.FindFirstValue(TokenClaimConstants.OrgId), out var oid) ? oid : null;
+
+        return (platformUserId, walletAddress, organizationId);
+    }
+
+    /// <summary>
+    /// Resolves the citizen context, falling back to a wallet-by-owner lookup when the JWT carries
+    /// no <c>wallet_address</c> claim. Feature 136 strips <c>wallet_address</c> from consumer-tier
+    /// tokens (wallet binding is a platform-privilege marker), but every citizen-wallet surface here
+    /// is consumer-tier — so without this fallback the wallet address is never resolvable for a real
+    /// citizen. The citizen's wallet is owned by their identity (<see cref="ClaimTypes.NameIdentifier"/>
+    /// = the <c>sub</c> claim, the same owner <c>CreateWallet</c> stamps), scoped to the token's
+    /// tenant (<c>"default"</c> for public-org citizens). The active wallet (oldest first) is chosen.
+    /// </summary>
+    internal static async Task<(Guid? platformUserId, string? walletAddress, Guid? organizationId)> ResolveCitizenContextAsync(
+        ClaimsPrincipal user, IWalletRepository walletRepository, CancellationToken ct)
+    {
+        var (platformUserId, walletAddress, organizationId) = ResolveCitizenContext(user);
+
+        if (string.IsNullOrWhiteSpace(walletAddress))
+        {
+            var owner = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
+            if (!string.IsNullOrWhiteSpace(owner))
+            {
+                var tenant = user.FindFirstValue("tenant") ?? "default";
+                var owned = await walletRepository.GetByOwnerAsync(owner, tenant, ct);
+                var chosen = owned
+                    .OrderByDescending(w => w.Status == WalletStatus.Active)
+                    .ThenBy(w => w.CreatedAt)
+                    .FirstOrDefault();
+                walletAddress = chosen?.Address;
+            }
+        }
 
         return (platformUserId, walletAddress, organizationId);
     }
