@@ -339,7 +339,20 @@ builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementati
 // transaction:confirmed Redis Streams channel. See:
 //   docs/superpowers/specs/2026-05-08-feature-111-chain-races-design.md
 //   specs/119-presentation-seal-ordering/spec.md
-builder.Services.AddRedisEventStreams(builder.Configuration);
+// CRITICAL: Blueprint Service MUST consume register events under its OWN consumer
+// group. Redis Streams consumer groups are competing-consumer: every service that
+// joins the same group name on a stream shares the messages (each delivered to ONE
+// member). The shared default "register-service" made Blueprint's reconstructor /
+// presentation-seal subscriber COMPETE with the Register Service's own SignalR
+// bridge on docket:confirmed + transaction:confirmed — so a docket:confirmed event
+// landed on the reconstructor only ~half the time and cross-node instance mirrors
+// were never materialised. A distinct group gives Blueprint its own copy of every
+// event (Validator Service already does this with "validator-service").
+builder.Services.AddRedisEventStreams(config =>
+{
+    builder.Configuration.GetSection("EventStreams:Redis").Bind(config);
+    config.ConsumerGroup = "blueprint-service";
+});
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator,
     Sorcha.Blueprint.Service.Services.Implementation.RedisPresentationSealCoordinator>();
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.PresentationSealSubscriber>();
