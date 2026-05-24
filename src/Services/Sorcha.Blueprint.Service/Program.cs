@@ -1865,52 +1865,104 @@ instancesGroup.MapPost("/", async (
     CreateInstanceRequest request,
     Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
     IBlueprintStore blueprintStore,
+    IPublishedBlueprintStore publishedBlueprintStore,
     Sorcha.ServiceClients.Register.IRegisterServiceClient registerClient) =>
 {
     try
     {
-        // Validate blueprint exists
+        // Resolve the blueprint. The draft/editable store only exists on the node that
+        // authored the blueprint; a replica (Feature 137 / C1) holds it solely in the
+        // published (replicated) store. Try the draft store first, then fall back to the
+        // latest published version so instance creation works on a node that does not own
+        // the register.
         var blueprint = await blueprintStore.GetAsync(request.BlueprintId);
+        var resolvedVersion = 1;
         if (blueprint == null)
         {
-            return Results.BadRequest(new { error = "Blueprint not found" });
+            var publishedVersions = await publishedBlueprintStore.GetVersionsAsync(request.BlueprintId);
+            var latest = PublishedBlueprintSelector.SelectLatest(publishedVersions);
+            if (latest != null)
+            {
+                blueprint = latest.Blueprint;
+                resolvedVersion = latest.Version;
+            }
         }
 
-        // Ensure the blueprint publish transaction exists on the register.
-        // Action 0 chains from this TX, so it must be created before any actions execute.
-        // The Register Service endpoint is idempotent — safe to call on every instance creation.
+        if (blueprint == null)
+        {
+            // Not in either store. On a replica this usually means the register's blueprints
+            // have not finished replicating yet (event-driven recovery is in flight), so
+            // surface a typed, retryable state rather than a bare 400 "not found".
+            return Results.Json(
+                new
+                {
+                    error = "blueprint_not_available",
+                    blueprintId = request.BlueprintId,
+                    registerId = request.RegisterId,
+                    message = "Blueprint is not available on this node yet. If the register was recently synced, retry shortly."
+                },
+                statusCode: StatusCodes.Status409Conflict);
+        }
+
+        // Ensure the blueprint publish transaction exists on the register. Action 0 chains
+        // from this TX, so it must exist before any actions execute. Feature 137 (C1): ONLY
+        // the register owner publishes — a replica must never (re)publish onto a register it
+        // does not own (the publish tx already arrived via replication). The Register Service
+        // endpoint is idempotent, so the owner can safely call it on every instance creation.
+        var isOwner = false;
         try
         {
-            var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint, new System.Text.Json.JsonSerializerOptions
-            {
-                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-                WriteIndented = false
-            });
-
-            var published = await registerClient.PublishBlueprintToRegisterAsync(
-                request.RegisterId,
-                request.BlueprintId,
-                blueprintJson,
-                request.TenantId ?? "system");
-
-            if (!published)
-            {
-                logger.LogWarning(
-                    "Failed to publish blueprint {BlueprintId} to register {RegisterId} during instance creation",
-                    request.BlueprintId, request.RegisterId);
-            }
-            else
-            {
-                logger.LogInformation(
-                    "Blueprint {BlueprintId} published to register {RegisterId} for instance creation",
-                    request.BlueprintId, request.RegisterId);
-            }
+            var relationship = await registerClient.GetLocalRelationshipAsync(request.RegisterId);
+            isOwner = relationship?.IsOwner == true;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex,
-                "Non-fatal: Could not publish blueprint {BlueprintId} to register {RegisterId}",
-                request.BlueprintId, request.RegisterId);
+                "Could not resolve local relationship for register {RegisterId}; treating as non-owner (skipping publish)",
+                request.RegisterId);
+        }
+
+        if (isOwner)
+        {
+            try
+            {
+                var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+                    WriteIndented = false
+                });
+
+                var published = await registerClient.PublishBlueprintToRegisterAsync(
+                    request.RegisterId,
+                    request.BlueprintId,
+                    blueprintJson,
+                    request.TenantId ?? "system");
+
+                if (!published)
+                {
+                    logger.LogWarning(
+                        "Failed to publish blueprint {BlueprintId} to register {RegisterId} during instance creation",
+                        request.BlueprintId, request.RegisterId);
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Blueprint {BlueprintId} published to register {RegisterId} for instance creation",
+                        request.BlueprintId, request.RegisterId);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Non-fatal: Could not publish blueprint {BlueprintId} to register {RegisterId}",
+                    request.BlueprintId, request.RegisterId);
+            }
+        }
+        else
+        {
+            logger.LogDebug(
+                "Skipping blueprint publish for register {RegisterId}: this node is not the owner (replica path)",
+                request.RegisterId);
         }
 
         // Find starting actions
@@ -1939,7 +1991,7 @@ instancesGroup.MapPost("/", async (
         {
             Id = Guid.NewGuid().ToString(),
             BlueprintId = request.BlueprintId,
-            BlueprintVersion = 1, // TODO: Get actual published version
+            BlueprintVersion = resolvedVersion,
             RegisterId = request.RegisterId,
             CurrentActionIds = startingActions,
             ParticipantWallets = participantWallets,

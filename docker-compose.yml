@@ -228,6 +228,13 @@ services:
       ServiceClients__ValidatorService__Address: http://validator-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__HaipService__Address: http://haip-service:8080
+      # Feature 137 (C4): Peer Service client config so F108 submission fan-out
+      # (ActionExecutionService -> IPeerServiceClient.DistributeTransactionAsync) reaches the
+      # peer service. The distribute REST call uses HttpAddress (HTTP/8080); Address is the
+      # gRPC port (5000). Without HttpAddress the HttpClient BaseAddress is unset and fan-out
+      # fails with "BaseAddress must be set".
+      ServiceClients__PeerService__Address: http://peer-service:5000
+      ServiceClients__PeerService__HttpAddress: http://peer-service:8080
       # Service-to-service auth for Wallet/Register Service calls during action execution
       ServiceAuth__ClientId: service-blueprint
       ServiceAuth__ClientSecret: blueprint-service-secret
