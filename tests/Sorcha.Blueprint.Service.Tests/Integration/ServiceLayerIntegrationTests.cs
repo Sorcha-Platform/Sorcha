@@ -54,6 +54,7 @@ public class ServiceLayerIntegrationTests
         var actionResolverLogger = Mock.Of<ILogger<ActionResolverService>>();
         _actionResolver = new ActionResolverService(
             _mockBlueprintStore.Object,
+            Mock.Of<IPublishedBlueprintStore>(),
             _cache,
             actionResolverLogger);
 

@@ -16,6 +16,7 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 public class ActionResolverServiceTests
 {
     private readonly Mock<IBlueprintStore> _mockBlueprintStore;
+    private readonly Mock<IPublishedBlueprintStore> _mockPublishedStore;
     private readonly Mock<IDistributedCache> _mockCache;
     private readonly Mock<ILogger<ActionResolverService>> _mockLogger;
     private readonly ActionResolverService _service;
@@ -23,12 +24,51 @@ public class ActionResolverServiceTests
     public ActionResolverServiceTests()
     {
         _mockBlueprintStore = new Mock<IBlueprintStore>();
+        _mockPublishedStore = new Mock<IPublishedBlueprintStore>();
         _mockCache = new Mock<IDistributedCache>();
         _mockLogger = new Mock<ILogger<ActionResolverService>>();
         _service = new ActionResolverService(
             _mockBlueprintStore.Object,
+            _mockPublishedStore.Object,
             _mockCache.Object,
             _mockLogger.Object);
+    }
+
+    [Fact]
+    public async Task GetBlueprintAsync_DraftMiss_FallsBackToPublishedStore()
+    {
+        // Feature 137: on a replica the blueprint exists only in the replicated published
+        // store, so action execution must fall back to it when the draft store misses.
+        var blueprintId = "replicated-bp";
+        var blueprint = new BlueprintModel { Id = blueprintId, Title = "Replicated", Description = "" };
+
+        _mockCache.Setup(x => x.GetAsync($"blueprint:{blueprintId}", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[]?)null);
+        _mockBlueprintStore.Setup(x => x.GetAsync(blueprintId))
+            .ReturnsAsync((BlueprintModel?)null);
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync(blueprintId))
+            .ReturnsAsync(new[] { new PublishedBlueprint { Version = 2, Blueprint = blueprint } });
+
+        var result = await _service.GetBlueprintAsync(blueprintId);
+
+        result.Should().NotBeNull("a replica resolves the blueprint from the published store");
+        result!.Id.Should().Be(blueprintId);
+        _mockPublishedStore.Verify(x => x.GetVersionsAsync(blueprintId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetBlueprintAsync_NotInEitherStore_ReturnsNull()
+    {
+        var blueprintId = "ghost-bp";
+        _mockCache.Setup(x => x.GetAsync($"blueprint:{blueprintId}", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[]?)null);
+        _mockBlueprintStore.Setup(x => x.GetAsync(blueprintId)).ReturnsAsync((BlueprintModel?)null);
+        _mockPublishedStore.Setup(x => x.GetVersionsAsync(blueprintId))
+            .ReturnsAsync(Array.Empty<PublishedBlueprint>());
+
+        var result = await _service.GetBlueprintAsync(blueprintId);
+
+        result.Should().BeNull();
     }
 
     [Fact]
