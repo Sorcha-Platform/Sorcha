@@ -11,10 +11,13 @@ namespace Sorcha.Peer.Service.Core;
 public class RegisterSyncConfiguration
 {
     /// <summary>
-    /// Periodic sync interval in minutes (default: 5 minutes)
+    /// Periodic sync interval in seconds (default: 90s). Drives the RegisterSyncBackgroundService
+    /// re-pull loop — the upper bound on how long a fully-replicated subscriber lags the owner
+    /// before its incremental re-pull catches a freshly-sealed docket (e.g. a cross-node credential
+    /// delivery). Tightened from the former 5-minute cadence so replication-back is timely.
     /// </summary>
-    [Range(1, 60)]
-    public int PeriodicSyncIntervalMinutes { get; set; } = 5;
+    [Range(20, 3600)]
+    public int PeriodicSyncIntervalSeconds { get; set; } = 90;
 
     /// <summary>
     /// Heartbeat interval in seconds (default: 30 seconds)
@@ -77,8 +80,10 @@ public class RegisterSyncConfiguration
     public int ReplicationTimeoutMinutes { get; set; } = 30;
 
     /// <summary>
-    /// Interval in seconds for periodic relay sync polling of NAT'd peers (default: 60 seconds)
+    /// Interval in seconds for periodic relay sync polling of NAT'd peers (default: 20 seconds).
+    /// Tightened from 60s so a NAT'd subscriber (e.g. the local replica behind Caddy) pulls
+    /// freshly-sealed dockets from the seed quickly rather than lagging up to a minute.
     /// </summary>
     [Range(10, 300)]
-    public int RelayPollIntervalSeconds { get; set; } = 60;
+    public int RelayPollIntervalSeconds { get; set; } = 20;
 }
