@@ -19,7 +19,11 @@ param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
     [switch]$SkipHealthCheck,
-    [switch]$Force
+    [switch]$Force,
+    # DevMode register (plaintext payloads, disclosure-filtered) — the default for the
+    # citizen-late-bound credential demo. Pass -DevMode:$false for a Normal (encrypted)
+    # register to exercise the production field-encryption + cross-node decrypt path.
+    [bool]$DevMode = $true
 )
 
 $ErrorActionPreference = "Stop"
@@ -217,20 +221,26 @@ try {
 # ============================================================================
 Write-WtStep "Step 7: Create Register"
 
-# DevMode — citizen is late-bound and never published to the register, so
-# Action 2's credential delivery uses the plaintext path. Same security
-# posture as HaipVerifiedCitizen (the source this walkthrough replaces).
+# DevMode (default) — citizen is late-bound and never published to the register, so
+# Action 2's credential delivery uses the plaintext path. Same security posture as
+# HaipVerifiedCitizen (the source this walkthrough replaces). Pass -DevMode:$false for
+# a Normal (encrypted) register that exercises the production field-encryption + the
+# cross-node disclosure-group decrypt path.
+Write-WtInfo "Register CryptoPolicy: $(if ($DevMode) { 'DevMode (plaintext)' } else { 'Normal (encrypted)' })"
+# Mode-suffix the name so DevMode and Normal registers are distinct (New-SorchaRegister
+# reuses by name) — lets the Normal (encrypted) path be tested without disturbing the DevMode one.
+$registerName = if ($DevMode) { "Assured Identity Register" } else { "Assured Identity Register (Normal)" }
 $register = New-SorchaRegister `
     -RegisterUrl $sorchaEnv.RegisterUrl `
     -WalletUrl $sorchaEnv.WalletUrl `
-    -Name "Assured Identity Register" `
+    -Name $registerName `
     -Description "Register for Feature 107 Assured Identity workflows" `
     -TenantId $verificationOrgId `
     -OwnerUserId $verificationSession.UserId `
     -OwnerWalletAddress $verificationWallet.Address `
     -Headers $verificationSession.Headers `
     -TenantUrl $sorchaEnv.TenantUrl `
-    -DevMode
+    -DevMode:$DevMode
 Write-WtSuccess "Register: $($register.RegisterId)"
 
 try {
