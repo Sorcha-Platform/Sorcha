@@ -10,11 +10,18 @@
 # and n1 rejects it (VAL_REPLAY_002). Pass -CitizenEmail with a fresh value to
 # get a fresh wallet / sequence space.
 param(
-    [string]$CitizenEmail = "citizen.crossnode@local.node"
+    [string]$CitizenEmail = "citizen.crossnode@local.node",
+    # Default to whatever the last setup.ps1 run created (state.json). Override to target a
+    # specific cross-node register/blueprint (e.g. the DevMode vs Normal register).
+    [string]$RegisterId,
+    [string]$BlueprintId
 )
 
 $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot "../modules/SorchaWalkthrough/SorchaWalkthrough.psm1") -Force
+
+# Resolve the target register/blueprint from state.json (written by setup.ps1) unless overridden.
+$state = Get-Content (Join-Path $PSScriptRoot "state.json") -Raw | ConvertFrom-Json
 
 $gw          = "http://localhost"
 $tenantUrl   = "$gw/api"
@@ -22,10 +29,11 @@ $walletUrl   = "$gw/api"
 $blueprintUrl= "$gw/api"
 $publicOrgId = "00000000-0000-0000-0000-000000000002"
 $sysOrgId    = "00000000-0000-0000-0000-000000000001"
-$registerId  = "deccbf4dc9ad4edebe5d6a3651da80b9"
-$blueprintId = "assured-identity-20260524151245"
+$registerId  = if ($RegisterId) { $RegisterId } else { $state.registerId }
+$blueprintId = if ($BlueprintId) { $BlueprintId } else { $state.blueprintId }
 $citizenEmail = $CitizenEmail
 $pw          = "Dev_Pass_2025!"
+Write-Host "== Target: register=$registerId blueprint=$blueprintId =="
 
 Write-Host "== Step 1: sysadmin login (local) =="
 $admin = Connect-SorchaUser -TenantUrl $tenantUrl -Email "admin@local.node" -Password $pw -OrganizationId $sysOrgId
