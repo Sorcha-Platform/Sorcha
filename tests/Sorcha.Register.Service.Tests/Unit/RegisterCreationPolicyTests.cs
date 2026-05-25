@@ -208,7 +208,7 @@ public class RegisterCreationPolicyTests
         policy.Governance.QuorumFormula.Should().Be(QuorumFormula.StrictMajority);
         policy.Governance.ProposalTtlDays.Should().Be(7);
         policy.Governance.OwnerCanBypassQuorum.Should().BeTrue();
-        policy.Validators.RegistrationMode.Should().Be(RegistrationMode.Public);
+        policy.Validators.RegistrationMode.Should().Be(RegistrationMode.Consent); // F138 US3 / FR-011 default
         policy.Validators.MinValidators.Should().Be(1);
         policy.Validators.MaxValidators.Should().Be(100);
         policy.Validators.RequireStake.Should().BeFalse();

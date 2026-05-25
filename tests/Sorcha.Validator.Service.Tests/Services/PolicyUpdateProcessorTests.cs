@@ -339,6 +339,10 @@ public class PolicyUpdateProcessorTests
     {
         var policy = RegisterPolicy.CreateDefault();
         policy.Version = 2;
+        // The default flipped to Consent (F138 US3 / FR-011). This payload models a plain policy
+        // update against a Public-mode register, so keep the mode Public — otherwise it would encode
+        // a Public→Consent transition, which validly requires a TransitionMode (covered separately).
+        policy.Validators.RegistrationMode = RegistrationMode.Public;
         return new
         {
             policy,
