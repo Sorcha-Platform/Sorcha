@@ -124,8 +124,8 @@ description: "Task list for Federation Trust Hardening (Feature 138)"
 
 ### Implementation for User Story 3
 
-- [ ] T040 [P] [US3] Flip `CreateDefault()` `RegistrationMode` `Public → Consent`, in `src/Common/Sorcha.Register.Models/RegisterPolicy.cs`
-- [ ] T041 [P] [US3] Add `Ejected` status + `EjectionRef` to roster entries, in `src/Common/Sorcha.Register.Models/ValidatorRoster.cs`
+- [X] T040 [P] [US3] Flip `CreateDefault()` `RegistrationMode` `Public → Consent`, in `src/Common/Sorcha.Register.Models/RegisterPolicy.cs`
+- [X] T041 [P] [US3] Add `Ejected` status + `EjectionRef` to roster entries, in `src/Common/Sorcha.Register.Models/ValidatorRoster.cs`
 - [ ] T042 [US3] Implement roster reconstruction from `RegisterControlRecord.Validators` (sealed) and make the `ValidatorRegistry` cache a derived, non-authoritative view (seal wins on divergence), in `src/Services/Sorcha.Validator.Service/Services/ValidatorRegistry.cs`
 - [ ] T043 [US3] Derive vote authority from the sealed roster in `ValidateVotesAsync` (key ∈ sealed ActiveValidators ∧ signatureValid ∧ ¬doubleVote), in `src/Services/Sorcha.Validator.Service/Services/ConsensusEngine.cs`
 - [ ] T044 [P] [US3] Define the `control.validator.eject` and `control.validator.liveness-violation` action types per `contracts/validator-control-transactions.md`, in `src/Common/Sorcha.Register.Models/`
