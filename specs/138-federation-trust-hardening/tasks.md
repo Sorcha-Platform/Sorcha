@@ -147,15 +147,15 @@ description: "Task list for Federation Trust Hardening (Feature 138)"
 
 ### Tests for User Story 4 ⚠️ (write first, must fail)
 
-- [ ] T050 [P] [US4] Negative test: blueprint whose content ≠ sealed `ContentHash` rejected and not stored, in `tests/Sorcha.Blueprint.Service.Tests/BlueprintRecoveryProvenanceTests.cs`
-- [ ] T051 [P] [US4] Negative test: blueprint with no sealed digest not stored; honest-path: matching digest accepted, in `tests/Sorcha.Blueprint.Service.Tests/BlueprintRecoveryHonestPathTests.cs`
+- [X] T050 [P] [US4] Negative test: blueprint whose content ≠ sealed `ContentHash` rejected and not stored, in `tests/Sorcha.Blueprint.Service.Tests/BlueprintRecoveryProvenanceTests.cs`
+- [X] T051 [P] [US4] Negative test: blueprint with no sealed digest not stored; honest-path: matching digest accepted, in `tests/Sorcha.Blueprint.Service.Tests/BlueprintRecoveryHonestPathTests.cs`
 
 ### Implementation for User Story 4
 
-- [ ] T052 [P] [US4] Add `ContentHash` to `PublishedBlueprintEntry`, in `src/Common/Sorcha.ServiceClients/.../IRegisterServiceClient.cs`
-- [ ] T053 [US4] Compute SHA-256 over canonical blueprint JSON at publish time (sealed via `control.blueprint.publish`), with a shared canonical-JSON serializer in `src/Services/Sorcha.Blueprint.Service/`
-- [ ] T054 [US4] Verify the recomputed canonical hash against the sealed `ContentHash` before storing; reject on mismatch/missing, in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/BlueprintRecoveryService.cs`
-- [ ] T055 [US4] Increment `sorcha_blueprint_recovery_rejected_total{reason}`, in `BlueprintRecoveryService.cs`
+- [X] T052 [P] [US4] Add `ContentHash` to `PublishedBlueprintEntry`, in `src/Common/Sorcha.ServiceClients/.../IRegisterServiceClient.cs`
+- [X] T053 [US4] Compute SHA-256 over canonical blueprint JSON at publish time (sealed via `control.blueprint.publish`), with a shared canonical-JSON serializer in `src/Services/Sorcha.Blueprint.Service/`
+- [X] T054 [US4] Verify the recomputed canonical hash against the sealed `ContentHash` before storing; reject on mismatch/missing, in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/BlueprintRecoveryService.cs`
+- [X] T055 [US4] Increment `sorcha_blueprint_recovery_rejected_total{reason}`, in `BlueprintRecoveryService.cs`
 
 **Checkpoint**: US1–US4 independently functional.
 

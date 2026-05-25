@@ -767,4 +767,12 @@ public class PublishedBlueprintEntry
     public DateTimeOffset PublishedAt { get; set; }
     /// <summary>The blueprint json.</summary>
     public string BlueprintJson { get; set; } = string.Empty;
+    /// <summary>
+    /// Feature 138 US4 — the canonical SHA-256 (lowercase hex) of the blueprint JSON, sealed in the
+    /// publish control transaction. A recovering node recomputes the canonical hash of
+    /// <see cref="BlueprintJson"/> and rejects the entry if it does not match this digest (tampered)
+    /// or if this digest is absent (no verifiable provenance). Computed by
+    /// <see cref="BlueprintContentHash.Compute(string)"/>.
+    /// </summary>
+    public string ContentHash { get; set; } = string.Empty;
 }

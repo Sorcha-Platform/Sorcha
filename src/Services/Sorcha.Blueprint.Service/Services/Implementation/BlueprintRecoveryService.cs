@@ -21,6 +21,7 @@ public class BlueprintRecoveryService : BackgroundService
     private readonly RecoveryOptions _options;
     private readonly ILogger<BlueprintRecoveryService> _logger;
     private readonly IConnectionMultiplexer? _redis;
+    private readonly FederationBlueprintMetrics? _metrics;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -30,13 +31,15 @@ public class BlueprintRecoveryService : BackgroundService
         RecoveryState recoveryState,
         IOptions<RecoveryOptions> options,
         ILogger<BlueprintRecoveryService> logger,
-        IConnectionMultiplexer? redis = null)
+        IConnectionMultiplexer? redis = null,
+        FederationBlueprintMetrics? metrics = null)
     {
         _scopeFactory = scopeFactory;
         _recoveryState = recoveryState;
         _options = options.Value;
         _logger = logger;
         _redis = redis;
+        _metrics = metrics;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -259,6 +262,40 @@ public class BlueprintRecoveryService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Feature 138 US4 — decides whether a recovered blueprint's content matches the digest sealed at
+    /// publish time. Returns <c>false</c> (fail closed) with <paramref name="rejectReason"/> set to
+    /// <c>no_provenance</c> (no sealed hash) or <c>hash_mismatch</c> (content tampered / malformed).
+    /// </summary>
+    internal static bool TryVerifyProvenance(string blueprintJson, string contentHash, out string? rejectReason)
+    {
+        if (string.IsNullOrEmpty(contentHash))
+        {
+            rejectReason = "no_provenance";
+            return false;
+        }
+
+        string recomputed;
+        try
+        {
+            recomputed = BlueprintContentHash.Compute(blueprintJson);
+        }
+        catch (JsonException)
+        {
+            rejectReason = "hash_mismatch";
+            return false;
+        }
+
+        if (!string.Equals(recomputed, contentHash, StringComparison.OrdinalIgnoreCase))
+        {
+            rejectReason = "hash_mismatch";
+            return false;
+        }
+
+        rejectReason = null;
+        return true;
+    }
+
     private async Task<(long Height, int BlueprintCount)> RecoverFromRegisterAsync(
         IRegisterServiceClient registerClient,
         IPublishedBlueprintStore publishedStore,
@@ -293,6 +330,18 @@ public class BlueprintRecoveryService : BackgroundService
             {
                 var blueprint = JsonSerializer.Deserialize<Sorcha.Blueprint.Models.Blueprint>(bp.BlueprintJson);
                 if (blueprint is null) continue;
+
+                // Feature 138 US4 — verify provenance against the sealed content hash BEFORE storing.
+                // A blueprint arrives over an untrusted channel; we trust it only if its canonical hash
+                // matches the digest sealed in the publish control transaction. Fail closed.
+                if (!TryVerifyProvenance(bp.BlueprintJson, bp.ContentHash, out var rejectReason))
+                {
+                    _logger.LogWarning(
+                        "Rejecting blueprint {BlueprintId} from register {RegisterId}: provenance check failed ({Reason})",
+                        bp.BlueprintId, registerId, rejectReason);
+                    _metrics?.RecoveryRejected(rejectReason!);
+                    continue;
+                }
 
                 // Check if already in store (idempotent)
                 var existing = await publishedStore.GetVersionsAsync(bp.BlueprintId);

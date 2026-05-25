@@ -273,6 +273,7 @@ builder.Services.TryAddSingleton(TimeProvider.System);
 // sealed-state key and fails closed. Metrics record rejections (FR-022); the configured clock skew
 // bounds freshness tolerance. The StatusListCache auto-injects the metrics via ActivatorUtilities.
 builder.Services.AddSingleton<Sorcha.Verifier.Engine.FederationVerifierMetrics>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.FederationBlueprintMetrics>();
 var f138ClockSkew = TimeSpan.FromSeconds(
     builder.Configuration.GetValue<int?>("Verifier:ClockSkewSeconds") ?? 60);
 var f138KbJwtMaxLifetime = TimeSpan.FromSeconds(
