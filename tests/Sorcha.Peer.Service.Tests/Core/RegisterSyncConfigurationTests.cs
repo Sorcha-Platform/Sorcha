@@ -13,7 +13,8 @@ public class RegisterSyncConfigurationTests
     {
         var config = new RegisterSyncConfiguration();
 
-        config.PeriodicSyncIntervalMinutes.Should().Be(5);
+        config.PeriodicSyncIntervalSeconds.Should().Be(90);
+        config.RelayPollIntervalSeconds.Should().Be(20);
         config.HeartbeatIntervalSeconds.Should().Be(30);
         config.HeartbeatTimeoutSeconds.Should().Be(30);
         config.MaxRetryAttempts.Should().Be(10);
@@ -28,13 +29,13 @@ public class RegisterSyncConfigurationTests
     {
         var config = new RegisterSyncConfiguration
         {
-            PeriodicSyncIntervalMinutes = 10,
+            PeriodicSyncIntervalSeconds = 120,
             HeartbeatIntervalSeconds = 60,
             MaxConcurrentDocketPulls = 5,
             DocketPullBatchSize = 500
         };
 
-        config.PeriodicSyncIntervalMinutes.Should().Be(10);
+        config.PeriodicSyncIntervalSeconds.Should().Be(120);
         config.HeartbeatIntervalSeconds.Should().Be(60);
         config.MaxConcurrentDocketPulls.Should().Be(5);
         config.DocketPullBatchSize.Should().Be(500);

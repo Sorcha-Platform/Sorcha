@@ -29,7 +29,7 @@ public class RegisterSyncBackgroundServiceTests : IDisposable
             NodeId = "test-node",
             RegisterSync = new RegisterSyncConfiguration
             {
-                PeriodicSyncIntervalMinutes = 1,
+                PeriodicSyncIntervalSeconds = 60,
                 MaxRetryAttempts = 3
             },
             PeerDiscovery = new PeerDiscoveryConfiguration(),
@@ -270,7 +270,7 @@ public class RegisterSyncBackgroundServiceRelayTests : IAsyncDisposable
             NodeId = "test-node",
             RegisterSync = new RegisterSyncConfiguration
             {
-                PeriodicSyncIntervalMinutes = 1,
+                PeriodicSyncIntervalSeconds = 60,
                 MaxRetryAttempts = 3,
                 RelayPollIntervalSeconds = 10
             },
@@ -386,7 +386,7 @@ public class RegisterSyncBackgroundServiceWithDbTests : IDisposable
             NodeId = "test-node",
             RegisterSync = new RegisterSyncConfiguration
             {
-                PeriodicSyncIntervalMinutes = 1,
+                PeriodicSyncIntervalSeconds = 60,
                 MaxRetryAttempts = 3
             },
             PeerDiscovery = new PeerDiscoveryConfiguration(),

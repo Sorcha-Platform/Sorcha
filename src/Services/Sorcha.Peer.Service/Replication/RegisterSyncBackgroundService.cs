@@ -76,7 +76,7 @@ public class RegisterSyncBackgroundService : BackgroundService
         // Load existing subscriptions from database
         await LoadSubscriptionsAsync(stoppingToken);
 
-        var periodicInterval = TimeSpan.FromMinutes(_syncConfig.PeriodicSyncIntervalMinutes);
+        var periodicInterval = TimeSpan.FromSeconds(_syncConfig.PeriodicSyncIntervalSeconds);
 
         // Establish reverse stream to seed node before processing subscriptions
         Task? reverseStreamTask = null;
