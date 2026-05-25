@@ -14,7 +14,7 @@ namespace Sorcha.Tenant.Service.Tests.Endpoints;
 public class SocialProvidersEndpointTests
 {
     [Fact]
-    public void ListProviders_ReturnsConfiguredProviderNames()
+    public void ListConfiguredProviders_WhenProvidersConfigured_ReturnsOkWithProviderNames()
     {
         var social = new Mock<ISocialLoginService>();
         social.Setup(s => s.GetConfiguredProviderNames()).Returns(new[] { "Google", "Apple" });
@@ -23,5 +23,17 @@ public class SocialProvidersEndpointTests
 
         var ok = result.Should().BeOfType<Ok<SocialProvidersResponse>>().Subject;
         ok.Value!.Providers.Should().BeEquivalentTo(new[] { "Google", "Apple" });
+    }
+
+    [Fact]
+    public void ListConfiguredProviders_WhenNoProvidersConfigured_ReturnsOkWithEmptyList()
+    {
+        var social = new Mock<ISocialLoginService>();
+        social.Setup(s => s.GetConfiguredProviderNames()).Returns(Array.Empty<string>());
+
+        var result = SocialLoginEndpoints.ListConfiguredProvidersForTest(social.Object);
+
+        var ok = result.Should().BeOfType<Ok<SocialProvidersResponse>>().Subject;
+        ok.Value!.Providers.Should().BeEmpty();
     }
 }
