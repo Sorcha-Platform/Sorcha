@@ -54,21 +54,21 @@ description: "Task list for Federation Trust Hardening (Feature 138)"
 
 ### Tests for User Story 1 ⚠️ (write first, must fail)
 
-- [ ] T005 [P] [US1] Negative test: forged-signature status list rejected, in `tests/Sorcha.Verifier.Engine.Tests/StatusListSignatureTests.cs`
-- [ ] T006 [P] [US1] Negative test: `iss` mismatch rejected even when signature internally valid, in `tests/Sorcha.Verifier.Engine.Tests/StatusListIssuerPinningTests.cs`
-- [ ] T007 [P] [US1] Negative test: fetch failure fails closed (no stale-cache serve), in `tests/Sorcha.Verifier.Engine.Tests/StatusListFailClosedTests.cs`
-- [ ] T008 [P] [US1] Negative test: expired list rejected (no +24h default), and honest-path: genuine signed list reports revoked correctly, in `tests/Sorcha.Verifier.Engine.Tests/StatusListFreshnessTests.cs`
+- [X] T005 [P] [US1] Negative test: forged-signature status list rejected, in `tests/Sorcha.Verifier.Engine.Tests/StatusListSignatureTests.cs`
+- [X] T006 [P] [US1] Negative test: `iss` mismatch rejected even when signature internally valid, in `tests/Sorcha.Verifier.Engine.Tests/StatusListIssuerPinningTests.cs`
+- [X] T007 [P] [US1] Negative test: fetch failure fails closed (no stale-cache serve), in `tests/Sorcha.Verifier.Engine.Tests/StatusListFailClosedTests.cs`
+- [X] T008 [P] [US1] Negative test: expired list rejected (no +24h default), and honest-path: genuine signed list reports revoked correctly, in `tests/Sorcha.Verifier.Engine.Tests/StatusListFreshnessTests.cs`
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Inject `IIssuerKeyResolver` into `StatusListCache` and verify the JWT signature inside `ParseJwt()` before trusting any bit, in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
-- [ ] T010 [US1] Pin `iss` to the expected org DID and reject on mismatch in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
-- [ ] T011 [US1] Make `GetOrFetchAsync` fail closed: remove stale-cache fallback on fetch/verify failure; only cache `Verified` lists, in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
-- [ ] T012 [US1] Enforce freshness against list `exp` within clock skew (T003); remove the +24h default, in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
-- [ ] T013 [US1] Ensure the consuming path treats "unverifiable" as fail (not "unknown ⇒ allowed") at the `IsRevokedAsync` call site, in `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`
-- [ ] T014 [P] [US1] Add a `kid` header identifying the signing verification method, in `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenStatusListPublisher.cs`
-- [ ] T015 [US1] Wire the `IIssuerKeyResolver` into `StatusListCache` registration (DID-backed → JWK-registry composite; JWK-registry path dev-only), in `src/Apps/Sorcha.Verifier/Extensions/ServiceCollectionExtensions.cs`
-- [ ] T016 [US1] Increment `sorcha_statuslist_rejected_total{reason}` on each rejection path, in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
+- [X] T009 [US1] Inject `IIssuerKeyResolver` into `StatusListCache` and verify the JWT signature inside `ParseJwt()` before trusting any bit, in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
+- [X] T010 [US1] Pin `iss` to the expected org DID and reject on mismatch in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
+- [X] T011 [US1] Make `GetOrFetchAsync` fail closed: remove stale-cache fallback on fetch/verify failure; only cache `Verified` lists, in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
+- [X] T012 [US1] Enforce freshness against list `exp` within clock skew (T003); remove the +24h default, in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
+- [X] T013 [US1] Ensure the consuming path treats "unverifiable" as fail (not "unknown ⇒ allowed") at the `IsRevokedAsync` call site, in `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`
+- [X] T014 [P] [US1] Add a `kid` header identifying the signing verification method, in `src/Services/Sorcha.Wallet.Service/Services/Implementation/CitizenStatusListPublisher.cs`
+- [X] T015 [US1] Wire the `IIssuerKeyResolver` into `StatusListCache` registration (DID-backed → JWK-registry composite; JWK-registry path dev-only), in `src/Apps/Sorcha.Verifier/Extensions/ServiceCollectionExtensions.cs`
+- [X] T016 [US1] Increment `sorcha_statuslist_rejected_total{reason}` on each rejection path, in `src/Common/Sorcha.Verifier.Engine/StatusListCache.cs`
 
 **Checkpoint**: US1 fully functional and independently testable — revocation forgery is closed.
 

@@ -192,9 +192,10 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
         list.ExpiresAt = now.Add(ListLifetime);
 
         var compressed = ZlibDeflate(list.Bitstring);
+        var issuer = $"did:sorcha:org:{list.OrganizationId:N}";
         var payload = new
         {
-            iss = $"did:sorcha:org:{list.OrganizationId:N}",
+            iss = issuer,
             iat = now.ToUnixTimeSeconds(),
             exp = list.ExpiresAt.ToUnixTimeSeconds(),
             sub = BuildStatusListUri(list.OrganizationId, list.ListId),
@@ -205,7 +206,11 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
             }
         };
 
-        list.SignedJwt = await SignJwtAsync(payload, signingWalletAddress, ct);
+        // Feature 138 US1 — identify the signing verification method so the verifier's
+        // IIssuerKeyResolver can match the correct key (it falls back to the first VM matching
+        // the alg when the kid does not resolve, preserving back-compat with already-issued lists).
+        var kid = $"{issuer}#citizen-status-signing";
+        list.SignedJwt = await SignJwtAsync(payload, signingWalletAddress, kid, ct);
 
         await _db.SaveChangesAsync(ct);
 
@@ -214,7 +219,7 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
             list.OrganizationId, list.ListId, list.RevokedCount, list.Capacity, list.SignedJwt.Length);
     }
 
-    private async Task<string> SignJwtAsync(object payload, string signingWalletAddress, CancellationToken ct)
+    private async Task<string> SignJwtAsync(object payload, string signingWalletAddress, string kid, CancellationToken ct)
     {
         var wallet = await _walletRepository.GetByAddressAsync(signingWalletAddress, false, false, false, ct)
             ?? throw new KeyNotFoundException($"Signing wallet {signingWalletAddress} not found");
@@ -241,7 +246,7 @@ public sealed class CitizenStatusListPublisher : ICitizenStatusListPublisher
                 _ => throw new NotSupportedException($"Unsupported status-list signing algorithm: {derivationAlg}")
             };
 
-            var header = new { alg = joseAlg, typ = StatusListMediaType };
+            var header = new { alg = joseAlg, kid, typ = StatusListMediaType };
             var headerJson = JsonSerializer.SerializeToUtf8Bytes(header);
             var payloadJson = JsonSerializer.SerializeToUtf8Bytes(payload);
 

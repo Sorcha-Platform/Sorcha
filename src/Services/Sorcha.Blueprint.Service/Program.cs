@@ -269,6 +269,15 @@ builder.Services.AddHttpClient<Sorcha.Verifier.Engine.IStatusListCache,
     Sorcha.Verifier.Engine.StatusListCache>();
 builder.Services.TryAddSingleton(TimeProvider.System);
 
+// Feature 138 US1 — the council-gate verifier authenticates status lists against the issuer's
+// sealed-state key and fails closed. Metrics record rejections (FR-022); the configured clock skew
+// bounds freshness tolerance. The StatusListCache auto-injects the metrics via ActivatorUtilities.
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.FederationVerifierMetrics>();
+var f138ClockSkew = TimeSpan.FromSeconds(
+    builder.Configuration.GetValue<int?>("Verifier:ClockSkewSeconds") ?? 60);
+var f138KbJwtMaxLifetime = TimeSpan.FromSeconds(
+    builder.Configuration.GetValue<int?>("Verifier:KbJwtMaxLifetimeSeconds") ?? 120);
+
 // Feature 120 — DID resolver infrastructure (cache, OTel meters, registry, did:sorcha
 // + did:web + did:key built-ins). Idempotent; safe even if a transitive dependency
 // has already registered the same components.
@@ -294,7 +303,10 @@ builder.Services.AddScoped<Sorcha.Verifier.Engine.IVerifiablePresentationValidat
         sp.GetRequiredService<Sorcha.Verifier.Engine.IIssuerKeyResolver>(),
         sp.GetRequiredService<TimeProvider>(),
         sp.GetRequiredService<ILogger<Sorcha.Verifier.Engine.VerifiablePresentationValidator>>(),
-        requireIssuerSignature: builder.Configuration.GetValue<bool?>("IssuerSignature:Required") ?? true));
+        requireIssuerSignature: builder.Configuration.GetValue<bool?>("IssuerSignature:Required") ?? true,
+        metrics: sp.GetService<Sorcha.Verifier.Engine.FederationVerifierMetrics>(),
+        clockSkew: f138ClockSkew,
+        kbJwtMaxLifetime: f138KbJwtMaxLifetime));
 
 // Feature 127 — Sorcha-wallet consumer. Verifies SD-JWT presentations posted
 // by the citizen's Sorcha wallet via Sorcha.Verifier.Engine. The first

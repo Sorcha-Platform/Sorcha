@@ -5,7 +5,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Sorcha.Verifier.Services;
-using Sorcha.ServiceClients.Http.Extensions;using Sorcha.Verifier.Engine;
+using Sorcha.ServiceClients.Http.Extensions;
+using Sorcha.ServiceDefaults;
+using Sorcha.Verifier.Engine;
 
 
 namespace Sorcha.Verifier.Extensions;
@@ -27,10 +29,29 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration? configuration = null)
     {
-        services.AddHttpClient<IStatusListCache, StatusListCache>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IVerifierSessionStore, InMemoryVerifierSessionStore>();
         services.AddSingleton<IPresentationRequestBuilder, PresentationRequestBuilder>();
+
+        // Feature 138 US1 — verifier trust-rejection metrics + clock-skew tolerance.
+        services.AddSingleton<FederationVerifierMetrics>();
+        services.AddSecurityPostureSignal();
+        var clockSkew = TimeSpan.FromSeconds(
+            configuration?.GetValue<int?>("Verifier:ClockSkewSeconds") ?? 60);
+        var kbJwtMaxLifetime = TimeSpan.FromSeconds(
+            configuration?.GetValue<int?>("Verifier:KbJwtMaxLifetimeSeconds") ?? 120);
+
+        // StatusListCache now verifies the list signature against the sealed-state issuer key, pins iss,
+        // and fails closed (Feature 138). Registered via a factory so the configured skew + metrics flow
+        // in; SCOPED so it can depend on the scoped IIssuerKeyResolver (the DID-backed tier is scoped).
+        services.AddHttpClient(nameof(StatusListCache));
+        services.AddScoped<IStatusListCache>(sp => new StatusListCache(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(StatusListCache)),
+            sp.GetRequiredService<IIssuerKeyResolver>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<StatusListCache>>(),
+            sp.GetService<FederationVerifierMetrics>(),
+            clockSkew));
 
         // Feature 120 US1 — issuer key resolution. The JWK registry tier always exists
         // (demo-mint populates it; empty in production). The DID-backed tier verifies
@@ -84,7 +105,10 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IIssuerKeyResolver>(),
                 sp.GetRequiredService<TimeProvider>(),
                 sp.GetRequiredService<ILogger<VerifiablePresentationValidator>>(),
-                requireIssuerSignature));
+                requireIssuerSignature,
+                sp.GetService<FederationVerifierMetrics>(),
+                clockSkew,
+                kbJwtMaxLifetime));
 
         services.AddSingleton<QrRenderer>();
         return services;

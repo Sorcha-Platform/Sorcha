@@ -32,30 +32,45 @@ namespace Sorcha.Verifier.Engine;
 /// </summary>
 public sealed class VerifiablePresentationValidator : IVerifiablePresentationValidator
 {
+    private static readonly TimeSpan DefaultClockSkew = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DefaultKbJwtMaxLifetime = TimeSpan.FromSeconds(120);
+
     private readonly IStatusListCache _statusListCache;
     private readonly IIssuerKeyResolver _issuerKeys;
     private readonly TimeProvider _clock;
     private readonly ILogger<VerifiablePresentationValidator> _logger;
     private readonly bool _requireIssuerSignature;
+    private readonly FederationVerifierMetrics? _metrics;
+    private readonly TimeSpan _clockSkew;
+    private readonly TimeSpan _kbJwtMaxLifetime;
 
     /// <summary>
     /// Initialises a new instance. <paramref name="issuerKeys"/> defaults to
     /// the opt-out resolver via DI registration; <paramref name="requireIssuerSignature"/>
     /// is read from configuration <c>Verifier:RequireIssuerSignature</c>
     /// (default false in v1, true expected in production hardening pass).
+    /// Feature 138: <paramref name="metrics"/> records trust rejections, <paramref name="clockSkew"/>
+    /// (<c>Verifier:ClockSkewSeconds</c>) bounds wall-clock tolerance, and
+    /// <paramref name="kbJwtMaxLifetime"/> (<c>Verifier:KbJwtMaxLifetimeSeconds</c>) caps KB-JWT lifetime.
     /// </summary>
     public VerifiablePresentationValidator(
         IStatusListCache statusListCache,
         IIssuerKeyResolver issuerKeys,
         TimeProvider clock,
         ILogger<VerifiablePresentationValidator> logger,
-        bool requireIssuerSignature = false)
+        bool requireIssuerSignature = false,
+        FederationVerifierMetrics? metrics = null,
+        TimeSpan? clockSkew = null,
+        TimeSpan? kbJwtMaxLifetime = null)
     {
         _statusListCache = statusListCache ?? throw new ArgumentNullException(nameof(statusListCache));
         _issuerKeys = issuerKeys ?? throw new ArgumentNullException(nameof(issuerKeys));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _requireIssuerSignature = requireIssuerSignature;
+        _metrics = metrics;
+        _clockSkew = clockSkew ?? DefaultClockSkew;
+        _kbJwtMaxLifetime = kbJwtMaxLifetime ?? DefaultKbJwtMaxLifetime;
     }
 
     /// <summary>
@@ -397,7 +412,9 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             return errors;
         }
 
-        // Check status list bit if present
+        // Check status list bit if present. Feature 138 US1 — the status list MUST authenticate against
+        // the issuing org's sealed-state key, pinned to the credential's own iss, and freshness-checked;
+        // anything other than a verified "Active" fails closed (Revoked OR Unverifiable both reject).
         if (payload.Value.TryGetProperty("status", out var status)
             && status.ValueKind == JsonValueKind.Object
             && status.TryGetProperty("status_list", out var sl)
@@ -405,10 +422,30 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             && sl.TryGetProperty("uri", out var uriEl) && uriEl.ValueKind == JsonValueKind.String
             && sl.TryGetProperty("idx", out var idxEl) && idxEl.ValueKind == JsonValueKind.Number)
         {
-            var revoked = await _statusListCache.IsRevokedAsync(uriEl.GetString()!, idxEl.GetInt32(), ct);
-            if (revoked)
+            var expectedIssuer = TryGetString(payload.Value, "iss");
+            if (string.IsNullOrEmpty(expectedIssuer))
             {
-                errors.Add("Delegation credential has been revoked via status list.");
+                // No issuer to pin the status list to — cannot authenticate revocation. Fail closed.
+                errors.Add("Delegation credential is missing iss; cannot authenticate its status list.");
+                _metrics?.PresentationReplayRejected("revoked_at_verify");
+                return errors;
+            }
+
+            var verdict = await _statusListCache.CheckAsync(
+                uriEl.GetString()!, idxEl.GetInt32(), expectedIssuer, ct);
+            switch (verdict)
+            {
+                case StatusListVerdict.Revoked:
+                    errors.Add("Delegation credential has been revoked via status list.");
+                    _metrics?.PresentationReplayRejected("revoked_at_verify");
+                    break;
+                case StatusListVerdict.Unverifiable:
+                    errors.Add("Delegation credential status list could not be authenticated; failing closed.");
+                    _metrics?.PresentationReplayRejected("revoked_at_verify");
+                    break;
+                case StatusListVerdict.Active:
+                default:
+                    break;
             }
         }
 
