@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
+using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Protos;
 
 namespace Sorcha.Peer.Service.Distribution;
@@ -23,6 +24,7 @@ public class TransactionDistributionService
     private readonly GossipProtocolEngine _gossipEngine;
     private readonly RelayCommunicationService _relayCommunication;
     private readonly PeerConnectionPool? _peerConnectionPool;
+    private readonly PeerListManager? _peerListManager;
     private readonly string _localPeerId;
 
     public TransactionDistributionService(
@@ -31,7 +33,8 @@ public class TransactionDistributionService
         TransactionQueueManager queueManager,
         GossipProtocolEngine gossipEngine,
         RelayCommunicationService relayCommunication,
-        PeerConnectionPool? peerConnectionPool = null)
+        PeerConnectionPool? peerConnectionPool = null,
+        PeerListManager? peerListManager = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
@@ -39,6 +42,7 @@ public class TransactionDistributionService
         _gossipEngine = gossipEngine ?? throw new ArgumentNullException(nameof(gossipEngine));
         _relayCommunication = relayCommunication ?? throw new ArgumentNullException(nameof(relayCommunication));
         _peerConnectionPool = peerConnectionPool;
+        _peerListManager = peerListManager;
         _localPeerId = _configuration.ResolvedPeerId ?? "unknown";
     }
 
@@ -63,10 +67,52 @@ public class TransactionDistributionService
         var channels = _peerConnectionPool.GetChannelsForRegister(registerId);
         if (channels.Count == 0)
         {
-            _logger.LogDebug(
-                "ForwardSubmissionAsync: no active channels for register {RegisterId} — treating as locally owned (no fan-out required)",
-                registerId);
-            return (0, 0, LocallyOwned: true);
+            // No peer is currently advertised as holding this register. Do NOT infer local
+            // ownership from an empty channel set — right after a restart the register
+            // advertisements have not been re-exchanged yet, so a subscriber/replica would
+            // wrongly report LocallyOwned=true here and the caller would never fan the
+            // transaction out (it ends up stranded in the local unverified pool).
+            //
+            // Ownership is decided by configuration, not by runtime channel state: a node with
+            // seed node(s) configured is a subscriber that must forward to its seed (the owner
+            // /source); a node with NO seeds is the owner/standalone. Fall back to the
+            // bootstrap-established seed channel(s) — the write-path analog of the replication
+            // seed-node fallback (Feature 137).
+            var seeds = _peerListManager?.GetSeedNodes() ?? [];
+            if (seeds.Count == 0)
+            {
+                _logger.LogDebug(
+                    "ForwardSubmissionAsync: no channels and no seed nodes for register {RegisterId} — locally owned (no fan-out required)",
+                    registerId);
+                return (0, 0, LocallyOwned: true);
+            }
+
+            var seedChannels = new List<(string PeerId, GrpcChannel Channel)>();
+            foreach (var seed in seeds)
+            {
+                var seedChannel = _peerConnectionPool.GetChannel(seed.PeerId);
+                if (seedChannel is not null)
+                    seedChannels.Add((seed.PeerId, seedChannel));
+            }
+
+            if (seedChannels.Count == 0)
+            {
+                // Subscriber (seeds are configured) but no seed channel is connected yet — the
+                // topology is still cold (e.g. immediately after a restart, before the seed
+                // channel re-establishes). This is NOT locally owned; surface a no-target fan-out
+                // so the caller does not mistake it for an owned register. The seed channel
+                // re-establishes on the next relay poll / heartbeat.
+                _logger.LogWarning(
+                    "ForwardSubmissionAsync: register {RegisterId} has no advertised peer and no connected seed channel — " +
+                    "fan-out unavailable (topology cold). Not treating as locally owned.",
+                    registerId);
+                return (0, 0, LocallyOwned: false);
+            }
+
+            _logger.LogInformation(
+                "ForwardSubmissionAsync: no advertised peer for register {RegisterId} — forwarding to {Count} configured seed node(s) as fallback",
+                registerId, seedChannels.Count);
+            channels = seedChannels;
         }
 
         var submittedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
