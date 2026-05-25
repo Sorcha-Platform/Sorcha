@@ -100,6 +100,13 @@ public static class Extensions
 
                 // Feature 136 — tiered-audience identity (tokens minted by tier; tier requests refused)
                 metrics.AddMeter(Sorcha.ServiceDefaults.Auth.IdentityMetrics.MeterName);
+
+                // Feature 138 — federation trust-hardening rejection counters (FR-022).
+                // One meter per boundary owner; counters defined in each service's *TrustMetrics class.
+                metrics.AddMeter("Sorcha.Verifier");
+                metrics.AddMeter("Sorcha.Peer");
+                metrics.AddMeter("Sorcha.Validator");
+                metrics.AddMeter("Sorcha.Blueprint");
             })
             .WithTracing(tracing =>
             {

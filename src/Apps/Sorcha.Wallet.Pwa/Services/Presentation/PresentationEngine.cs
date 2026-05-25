@@ -159,9 +159,14 @@ public sealed class PresentationEngine : IPresentationEngine
         var hashable = credentialJwt + string.Concat(selected.Select(s => "~" + s)) + "~";
         var sdHash = Base64Url.EncodeToString(SHA256.HashData(Encoding.ASCII.GetBytes(hashable)));
 
+        // Feature 138 US5 — the KB-JWT carries its own short, mandatory exp so a captured proof
+        // cannot be replayed beyond a tight window even within an open verifier session. 120s
+        // matches the verifier's KbJwtMaxLifetimeSeconds upper bound.
+        var kbIssuedAt = _clock.GetUtcNow();
         var payload = new Dictionary<string, object>
         {
-            ["iat"] = _clock.GetUtcNow().ToUnixTimeSeconds(),
+            ["iat"] = kbIssuedAt.ToUnixTimeSeconds(),
+            ["exp"] = kbIssuedAt.AddSeconds(120).ToUnixTimeSeconds(),
             ["aud"] = request.ClientId,
             ["nonce"] = request.Nonce,
             ["sd_hash"] = sdHash,

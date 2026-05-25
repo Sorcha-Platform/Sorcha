@@ -90,7 +90,8 @@ public class BlueprintRecoveryServiceTests
                         TransactionId = "tx-1",
                         PublishedBy = "user-1",
                         PublishedAt = DateTimeOffset.UtcNow,
-                        BlueprintJson = blueprintJson
+                        BlueprintJson = blueprintJson,
+                        ContentHash = BlueprintContentHash.Compute(blueprintJson)
                     }
                 ]
             });
@@ -174,7 +175,8 @@ public class BlueprintRecoveryServiceTests
                         BlueprintId = "bp-1",
                         TransactionId = "tx-1",
                         PublishedAt = DateTimeOffset.UtcNow,
-                        BlueprintJson = blueprintJson
+                        BlueprintJson = blueprintJson,
+                        ContentHash = BlueprintContentHash.Compute(blueprintJson)
                     }
                 ]
             });
@@ -207,6 +209,10 @@ public class BlueprintRecoveryServiceTests
     {
         var older = DateTimeOffset.UtcNow.AddHours(-2);
         var newer = DateTimeOffset.UtcNow;
+        // Serialize once — the blueprint model has per-instance default fields, so a fresh
+        // serialization would not match the sealed ContentHash computed from a different instance.
+        var dupJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-dup"));
+        var dupHash = BlueprintContentHash.Compute(dupJson);
 
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
@@ -225,14 +231,16 @@ public class BlueprintRecoveryServiceTests
                         BlueprintId = "bp-dup",
                         TransactionId = "tx-old",
                         PublishedAt = older,
-                        BlueprintJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-dup"))
+                        BlueprintJson = dupJson,
+                        ContentHash = dupHash
                     },
                     new PublishedBlueprintEntry
                     {
                         BlueprintId = "bp-dup",
                         TransactionId = "tx-new",
                         PublishedAt = newer,
-                        BlueprintJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-dup"))
+                        BlueprintJson = dupJson,
+                        ContentHash = dupHash
                     }
                 ]
             });
@@ -303,6 +311,9 @@ public class BlueprintRecoveryServiceTests
     [Fact]
     public async Task RunRecoveryAsync_InvalidBlueprintJson_SkipsAndContinues()
     {
+        var goodJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-good"));
+        var goodHash = BlueprintContentHash.Compute(goodJson);
+
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "R1", Height = 2 }]);
@@ -327,7 +338,8 @@ public class BlueprintRecoveryServiceTests
                         BlueprintId = "bp-good",
                         TransactionId = "tx-2",
                         PublishedAt = DateTimeOffset.UtcNow.AddMinutes(-1),
-                        BlueprintJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-good"))
+                        BlueprintJson = goodJson,
+                        ContentHash = goodHash
                     }
                 ]
             });
@@ -510,7 +522,8 @@ public class BlueprintRecoveryServiceTests
                         BlueprintId = "bp-1",
                         TransactionId = "tx-1",
                         PublishedAt = DateTimeOffset.UtcNow,
-                        BlueprintJson = blueprintJson
+                        BlueprintJson = blueprintJson,
+                        ContentHash = BlueprintContentHash.Compute(blueprintJson)
                     }
                 ]
             });

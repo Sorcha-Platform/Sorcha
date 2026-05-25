@@ -33,11 +33,15 @@ public static class KbJwtBuilder
             ["typ"] = "kb+jwt"
         };
 
+        // Feature 138 US5 — carry a short, mandatory exp (120s) so the proof cannot be replayed
+        // beyond a tight window; verifiers reject KB-JWTs lacking exp or exceeding the lifetime bound.
+        var iat = DateTimeOffset.UtcNow;
         var payload = new Dictionary<string, object>
         {
             ["aud"] = audience,
             ["nonce"] = nonce,
-            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["iat"] = iat.ToUnixTimeSeconds(),
+            ["exp"] = iat.AddSeconds(120).ToUnixTimeSeconds(),
             ["sd_hash"] = sdHash
         };
 

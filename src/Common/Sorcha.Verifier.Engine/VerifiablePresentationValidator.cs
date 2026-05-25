@@ -32,30 +32,45 @@ namespace Sorcha.Verifier.Engine;
 /// </summary>
 public sealed class VerifiablePresentationValidator : IVerifiablePresentationValidator
 {
+    private static readonly TimeSpan DefaultClockSkew = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DefaultKbJwtMaxLifetime = TimeSpan.FromSeconds(120);
+
     private readonly IStatusListCache _statusListCache;
     private readonly IIssuerKeyResolver _issuerKeys;
     private readonly TimeProvider _clock;
     private readonly ILogger<VerifiablePresentationValidator> _logger;
     private readonly bool _requireIssuerSignature;
+    private readonly FederationVerifierMetrics? _metrics;
+    private readonly TimeSpan _clockSkew;
+    private readonly TimeSpan _kbJwtMaxLifetime;
 
     /// <summary>
     /// Initialises a new instance. <paramref name="issuerKeys"/> defaults to
     /// the opt-out resolver via DI registration; <paramref name="requireIssuerSignature"/>
     /// is read from configuration <c>Verifier:RequireIssuerSignature</c>
     /// (default false in v1, true expected in production hardening pass).
+    /// Feature 138: <paramref name="metrics"/> records trust rejections, <paramref name="clockSkew"/>
+    /// (<c>Verifier:ClockSkewSeconds</c>) bounds wall-clock tolerance, and
+    /// <paramref name="kbJwtMaxLifetime"/> (<c>Verifier:KbJwtMaxLifetimeSeconds</c>) caps KB-JWT lifetime.
     /// </summary>
     public VerifiablePresentationValidator(
         IStatusListCache statusListCache,
         IIssuerKeyResolver issuerKeys,
         TimeProvider clock,
         ILogger<VerifiablePresentationValidator> logger,
-        bool requireIssuerSignature = false)
+        bool requireIssuerSignature = false,
+        FederationVerifierMetrics? metrics = null,
+        TimeSpan? clockSkew = null,
+        TimeSpan? kbJwtMaxLifetime = null)
     {
         _statusListCache = statusListCache ?? throw new ArgumentNullException(nameof(statusListCache));
         _issuerKeys = issuerKeys ?? throw new ArgumentNullException(nameof(issuerKeys));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _requireIssuerSignature = requireIssuerSignature;
+        _metrics = metrics;
+        _clockSkew = clockSkew ?? DefaultClockSkew;
+        _kbJwtMaxLifetime = kbJwtMaxLifetime ?? DefaultKbJwtMaxLifetime;
     }
 
     /// <summary>
@@ -191,6 +206,42 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             {
                 errors.Add("KB-JWT signature verification failed against device key.");
                 return Failure(errors);
+            }
+
+            // ── 5b. Enforce KB-JWT freshness (Feature 138 US5) ────────────────────
+            //   The key-binding proof carries its own short, independently-enforced exp. Checked here —
+            //   the earliest point the payload is signature-verified and therefore trustworthy — so a
+            //   captured proof replayed after its exp is rejected even while the session is still open
+            //   (the session nonce/aud/TTL alone left a multi-minute replay window). exp is mandatory
+            //   (FR-017); freshness is wall-clock within the configured skew (FR-018). Mid-session
+            //   revocation is independently re-checked at verify time by the delegation status-list
+            //   check above (US1 fail-closed), together satisfying FR-019.
+            if (!kbPayload.TryGetProperty("exp", out var kbExpEl) || kbExpEl.ValueKind != JsonValueKind.Number)
+            {
+                errors.Add("KB-JWT is missing the mandatory exp claim.");
+                _metrics?.PresentationReplayRejected("kbjwt_missing_exp");
+                return Failure(errors);
+            }
+            var kbExp = DateTimeOffset.FromUnixTimeSeconds(kbExpEl.GetInt64());
+            var nowUtc = _clock.GetUtcNow();
+            if (nowUtc > kbExp + _clockSkew)
+            {
+                errors.Add("KB-JWT has expired; the key-binding proof is no longer fresh.");
+                _metrics?.PresentationReplayRejected("kbjwt_expired");
+                return Failure(errors);
+            }
+            // Cap the proof lifetime so an over-long-lived KB-JWT cannot widen the replay window.
+            if (kbPayload.TryGetProperty("iat", out var kbIatEl) && kbIatEl.ValueKind == JsonValueKind.Number)
+            {
+                var kbIat = DateTimeOffset.FromUnixTimeSeconds(kbIatEl.GetInt64());
+                if (kbExp - kbIat > _kbJwtMaxLifetime)
+                {
+                    errors.Add(
+                        $"KB-JWT lifetime ({(kbExp - kbIat).TotalSeconds:0}s) exceeds the maximum " +
+                        $"permitted ({_kbJwtMaxLifetime.TotalSeconds:0}s).");
+                    _metrics?.PresentationReplayRejected("kbjwt_expired");
+                    return Failure(errors);
+                }
             }
 
             // ── 6. Verify KB-JWT nonce + aud match the session ────────────────────
@@ -397,7 +448,9 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             return errors;
         }
 
-        // Check status list bit if present
+        // Check status list bit if present. Feature 138 US1 — the status list MUST authenticate against
+        // the issuing org's sealed-state key, pinned to the credential's own iss, and freshness-checked;
+        // anything other than a verified "Active" fails closed (Revoked OR Unverifiable both reject).
         if (payload.Value.TryGetProperty("status", out var status)
             && status.ValueKind == JsonValueKind.Object
             && status.TryGetProperty("status_list", out var sl)
@@ -405,10 +458,30 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             && sl.TryGetProperty("uri", out var uriEl) && uriEl.ValueKind == JsonValueKind.String
             && sl.TryGetProperty("idx", out var idxEl) && idxEl.ValueKind == JsonValueKind.Number)
         {
-            var revoked = await _statusListCache.IsRevokedAsync(uriEl.GetString()!, idxEl.GetInt32(), ct);
-            if (revoked)
+            var expectedIssuer = TryGetString(payload.Value, "iss");
+            if (string.IsNullOrEmpty(expectedIssuer))
             {
-                errors.Add("Delegation credential has been revoked via status list.");
+                // No issuer to pin the status list to — cannot authenticate revocation. Fail closed.
+                errors.Add("Delegation credential is missing iss; cannot authenticate its status list.");
+                _metrics?.PresentationReplayRejected("revoked_at_verify");
+                return errors;
+            }
+
+            var verdict = await _statusListCache.CheckAsync(
+                uriEl.GetString()!, idxEl.GetInt32(), expectedIssuer, ct);
+            switch (verdict)
+            {
+                case StatusListVerdict.Revoked:
+                    errors.Add("Delegation credential has been revoked via status list.");
+                    _metrics?.PresentationReplayRejected("revoked_at_verify");
+                    break;
+                case StatusListVerdict.Unverifiable:
+                    errors.Add("Delegation credential status list could not be authenticated; failing closed.");
+                    _metrics?.PresentationReplayRejected("revoked_at_verify");
+                    break;
+                case StatusListVerdict.Active:
+                default:
+                    break;
             }
         }
 

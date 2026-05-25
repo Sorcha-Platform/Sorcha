@@ -1860,7 +1860,11 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
             ["Type"] = "Control",
             ["transactionType"] = "BlueprintPublish",
             ["publishedBy"] = request.PublishedBy,
-            ["SystemWalletAddress"] = signResult.WalletAddress
+            ["SystemWalletAddress"] = signResult.WalletAddress,
+            // Feature 138 US4 — seal the canonical content hash so recovering nodes can verify the
+            // blueprint they receive against a sealed digest rather than trusting the transport.
+            // payloadHashHex is already SHA-256 over the canonical blueprint JSON (see above).
+            ["contentHash"] = payloadHashHex
         }
     };
 
@@ -1935,13 +1939,19 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
             blueprintJson = rawPayload;
         }
 
+        // Feature 138 US4 — the canonical content hash sealed at publish time. Sourced from the
+        // sealed transaction metadata (NOT recomputed from blueprintJson here), so a recovering node
+        // comparing its own recomputed hash against this value detects tampering in transit.
+        var contentHash = tx.MetaData?.TrackingData?.GetValueOrDefault("contentHash", "") ?? "";
+
         return new
         {
             blueprintId,
             transactionId = tx.TxId,
             publishedBy,
             publishedAt = tx.TimeStamp,
-            blueprintJson
+            blueprintJson,
+            contentHash
         };
     }).ToList();
 

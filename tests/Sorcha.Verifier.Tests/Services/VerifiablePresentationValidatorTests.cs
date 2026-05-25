@@ -33,8 +33,8 @@ public sealed class VerifiablePresentationValidatorTests
     public VerifiablePresentationValidatorTests()
     {
         _statusList
-            .Setup(s => s.IsRevokedAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+            .Setup(s => s.CheckAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StatusListVerdict.Active);
         _validator = new VerifiablePresentationValidator(
             _statusList.Object, TimeProvider.System,
             NullLogger<VerifiablePresentationValidator>.Instance);
@@ -140,8 +140,8 @@ public sealed class VerifiablePresentationValidatorTests
     public async Task ValidateAsync_RevokedDelegation_Rejected()
     {
         _statusList
-            .Setup(s => s.IsRevokedAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .Setup(s => s.CheckAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StatusListVerdict.Revoked);
         var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce);
 
         var outcome = await _validator.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
