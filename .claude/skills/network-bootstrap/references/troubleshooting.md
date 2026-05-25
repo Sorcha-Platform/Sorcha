@@ -233,3 +233,67 @@ Workaround: post-PR-#465, the genesis ingest now succeeds end-to-end on
 fresh nodes when the import order is correct (wallet-service alone →
 import → bring up rest). If the wallet is right but the docket still
 doesn't seal, this is the gap to escalate.
+
+## Empty genesis docket 0 → SyncOnly replica rejects the system register
+
+**Symptom:** A SyncOnly replica (e.g. local Phaethon pointed at n1) never finishes
+`SystemRegisterBootstrapper` — it stays in "System register not found — waiting for
+peer sync". The replica's peer-service logs show it DID pull n1's genesis docket but
+rejected it:
+
+```
+SystemRegisterSyncVerifier: System register genesis docket has no resolvable control
+  transaction in cache (register aebf2636…, docket 0, transactionIds=0) — rejecting
+DocketFinalizationService: genesis docket rejected: genesis signature does not match
+  trusted public key
+ValidatorKeyCache: Genesis docket … does not contain ProposerSignature
+```
+
+The forward-pull transport is fine (n1 logs `POST /api/registers/bulk-advertise … 200`
+from the replica; the repeating gRPC `Unimplemented` is only the reverse-stream through
+Caddy, which is non-fatal). The block is the docket CONTENT.
+
+**Root cause:** On the OWNER node, the genesis control transaction landed in **docket 1**
+and **docket 0 is empty** (`TransactionIds=[]`). The SyncOnly verifier reads docket 0,
+finds no transactions, can't extract the genesis control record (the trust anchor), and
+rejects — the "signature does not match" line is a downstream consequence of there being
+no control tx to verify.
+
+This happens only on the **system register's Auto-mode ingest** path. `DocketBuilder.
+BuildDocketAsync` sealed a genesis docket from whatever was in the verified queue at claim
+time, with **no empty-guard on the genesis path** (the normal-docket path guards emptiness
+via `AllowEmptyDockets`). When a docket-build trigger fired during bootstrap before the
+genesis control tx had been verified+queued, it sealed an empty docket 0 and forced the
+genesis tx into docket 1. The `RegisterCreationOrchestrator` path (normal registers like
+AssuredIdentity) is unaffected because it submits the creation txs **before** building, so
+their docket 0 is correct.
+
+**Fix (shipped):** `DocketBuilder.BuildDocketAsync` now **defers (returns null) when
+`needsGenesis` is true but zero transactions are claimed** — docket 0 is created only once
+the genesis control tx is queued; a later build seals it correctly. See
+`src/Services/Sorcha.Validator.Service/Services/DocketBuilder.cs` (genesis path) and
+`DocketBuilderTests.BuildDocketAsync_NeedsGenesisButNoTransactions_ReturnsNullWithoutSealingEmptyGenesis`.
+
+**Recovery on an already-bad node:** an empty docket 0 is sealed and immutable — you cannot
+patch it. Re-bootstrap the owner (`down -v`) with the fixed validator image. Because the
+genesis is embedded and time-boxed to 1h, this means a **fresh genesis ceremony + Docker
+Publish + reset inside the window**. After the reset, verify docket 0 has the genesis tx
+(see SKILL.md Step 7 mongosh check) before reseeding replicas.
+
+## Genesis validator-key import returns HTTP 000 but actually succeeded
+
+**Symptom:** The wallet-alone genesis-key import (`n1-setup-remote.sh` or the manual one-shot
+curl to `/api/v1/wallets/system/recover`) reports `HTTP 000` and the script aborts. Retrying
+the same POST then returns **409 Conflict** ("System wallet … already exists").
+
+**Root cause:** `HTTP 000` means the curl client got no response, **not** that the server
+rejected the request. wallet-service often processes the recover and creates the wallet, but
+the response is lost (connection/timeout on the stdin-piped one-shot curl, e.g. right after
+the health gate). wallet-service running ALONE cannot auto-generate a `validator:<id>` wallet
+(only register/validator services do, and they aren't up yet) — so a subsequent 409 proves the
+**first** POST succeeded server-side with the correct mnemonic.
+
+**Fix:** Treat a 409-after-000 as success. Do NOT `down -v` and retry — that wastes the genesis
+window. Just bring up the rest of the stack (`docker compose … up -d`) and verify the system
+register seals. (A 409 with NO prior import attempt is the real "validator raced ahead and
+auto-generated the wrong wallet" case — see "Genesis ingested but docket never seals".)
