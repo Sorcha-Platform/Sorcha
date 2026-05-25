@@ -30,9 +30,13 @@ dotnet run --project src/Apps/Sorcha.Cli -- system-register create --network-id 
 
 **Outputs:**
 - `src/Common/Sorcha.Register.Models/Resources/system-register-genesis.json` (embedded in assembly)
-- `genesis-validator-key.json` (root of repo, DO NOT commit)
+- `genesis-validator-key.json` (root of repo, DO NOT commit — gitignored)
 
 **CRITICAL:** Store `genesis-validator-key.json` securely. The mnemonic controls all keys derived from this wallet.
+
+> ⚠️ **Genesis is time-boxed to 1 hour (Feature 137).** The validator's `ValidationEngineConfiguration.GenesisMaxAge` (default 1h) rejects a genesis transaction older than the window with `VAL_TIME_002`. There is **no "genesis accepted anytime" exemption** — that older note is wrong. The whole chain **mint → embed → Docker Publish → reset n1 → bootstrap** must complete inside the hour from the `genesisTransaction.signature.signedAt` timestamp. The genesis is embedded in the image, so a regenerated genesis needs a Docker Publish (~12–15 min) before you can deploy it — mint as late as possible and admin-merge to skip the PR-CI wait. The window guards the **ingest-and-seal** path only; a late-joining SyncOnly replica that PULLS the already-sealed genesis docket verifies the sealed docket, not the tx age, so it is not window-bound.
+
+> **DevMode lives in the genesis `CryptoPolicy.DevMode` (Feature 137), not a top-level field.** Default `false` (encrypted/production) — `CryptoPolicy.CreateDefault()` serialises `"devMode": false`. When `true`, the register skips field-level payload encryption (still disclosure-filtered + routed + calculated) and stores plaintext; receivers read it directly. It is baked into the signed genesis so it **replicates to every node**. The transition is **one-way**: a register may be promoted DevMode→Normal via a crypto-policy-update control tx, never Normal→DevMode (the validator rejects re-enabling DevMode). The system register should always be DevMode off; per-workflow registers (e.g. AssuredIdentity) choose at creation. NEVER enable DevMode in a real production network.
 
 ### Step 2: Embed Genesis and Push to CI
 
@@ -253,6 +257,17 @@ Expected output includes:
 - `Auto-creating system register for genesis docket`
 - `Blueprint register-creation-v1 seeded successfully`
 - `System register bootstrap completed successfully`
+
+**Also verify the genesis docket (docket 0) actually CONTAINS the genesis control transaction** — an empty docket 0 silently breaks SyncOnly replication (see troubleshooting "Empty genesis docket 0"):
+
+```bash
+# docket 0 must have a non-empty TransactionIds carrying the genesis tx
+ssh sorcha@51.105.7.135 'docker exec sorcha-mongodb mongosh -u sorcha -p sorcha_dev_password --authenticationDatabase admin --quiet --eval "
+db=db.getSiblingDB(\"sorcha_register_aebf26362e079087571ac0932d4db973\");
+db.dockets.find({}).sort({TimeStamp:1}).forEach(d=>print(\"State=\"+d.State+\" nTx=\"+(d.TransactionIds?d.TransactionIds.length:0)));"'
+# GOOD: first docket nTx>=1 (genesis control tx in docket 0).
+# BAD:  first docket nTx=0 (empty docket 0) — genesis landed in docket 1, replication will fail.
+```
 
 ## Troubleshooting
 
