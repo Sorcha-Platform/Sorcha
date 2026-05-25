@@ -72,6 +72,14 @@ public record PublicPasskeyAssertionVerifyRequest
     /// </summary>
     [JsonPropertyName("assertion_response")]
     public required AuthenticatorAssertionRawResponse AssertionResponse { get; init; }
+
+    /// <summary>
+    /// Optional trust-tier hint (spec 136). Only <c>consumer</c> is honoured —
+    /// it is a safe downgrade for a public-org citizen. Any other value (or null)
+    /// keeps the platform default, so this anonymous endpoint cannot escalate.
+    /// </summary>
+    [JsonPropertyName("tier")]
+    public string? Tier { get; init; }
 }
 
 /// <summary>
