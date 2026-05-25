@@ -107,6 +107,24 @@ public class RegisterReplicationService
             }
         }
 
+        // Last-resort fallback: the configured seed node(s). A full-replica / SyncOnly node
+        // replicates FROM its seed by configuration; if no peer has advertised this register
+        // (e.g. advertisements have not been re-exchanged after a restart) the seed is still
+        // the authoritative source. Seed channels are established at bootstrap, so the
+        // server-streaming PullDocketChain works against them even where the bidirectional
+        // reverse stream (live subscription) does not.
+        if (sourcePeers.Count == 0)
+        {
+            var seedNodes = _peerListManager.GetSeedNodes();
+            if (seedNodes.Count > 0)
+            {
+                sourcePeers = seedNodes;
+                _logger.LogInformation(
+                    "No advertised source peer for register {RegisterId} — falling back to {Count} configured seed node(s)",
+                    registerId, seedNodes.Count);
+            }
+        }
+
         if (sourcePeers.Count == 0)
         {
             _logger.LogWarning("No source peers found for register {RegisterId}", registerId);

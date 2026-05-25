@@ -23,6 +23,7 @@ public class StateReconstructionServiceTests
 {
     private readonly Mock<IRegisterServiceClient> _mockRegisterClient;
     private readonly Mock<IWalletServiceClient> _mockWalletClient;
+    private readonly Mock<Sorcha.Cryptography.Interfaces.ISymmetricCrypto> _mockSymmetricCrypto;
     private readonly Mock<ILogger<StateReconstructionService>> _mockLogger;
     private readonly StateReconstructionService _service;
 
@@ -30,11 +31,13 @@ public class StateReconstructionServiceTests
     {
         _mockRegisterClient = new Mock<IRegisterServiceClient>();
         _mockWalletClient = new Mock<IWalletServiceClient>();
+        _mockSymmetricCrypto = new Mock<Sorcha.Cryptography.Interfaces.ISymmetricCrypto>();
         _mockLogger = new Mock<ILogger<StateReconstructionService>>();
 
         _service = new StateReconstructionService(
             _mockRegisterClient.Object,
             _mockWalletClient.Object,
+            _mockSymmetricCrypto.Object,
             _mockLogger.Object);
     }
 
@@ -48,6 +51,7 @@ public class StateReconstructionServiceTests
             new StateReconstructionService(
                 null!,
                 _mockWalletClient.Object,
+                _mockSymmetricCrypto.Object,
                 _mockLogger.Object));
     }
 
@@ -58,6 +62,19 @@ public class StateReconstructionServiceTests
         Assert.Throws<ArgumentNullException>(() =>
             new StateReconstructionService(
                 _mockRegisterClient.Object,
+                null!,
+                _mockSymmetricCrypto.Object,
+                _mockLogger.Object));
+    }
+
+    [Fact]
+    public void Constructor_WithNullSymmetricCrypto_ThrowsArgumentNullException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() =>
+            new StateReconstructionService(
+                _mockRegisterClient.Object,
+                _mockWalletClient.Object,
                 null!,
                 _mockLogger.Object));
     }
@@ -70,6 +87,7 @@ public class StateReconstructionServiceTests
             new StateReconstructionService(
                 _mockRegisterClient.Object,
                 _mockWalletClient.Object,
+                _mockSymmetricCrypto.Object,
                 null!));
     }
 
@@ -205,6 +223,116 @@ public class StateReconstructionServiceTests
                 It.IsAny<byte[]>(),
                 delegationToken,
                 It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ReconstructAsync_WithDisclosureGroupEnvelope_DecryptsAsLocalParticipant()
+    {
+        // Feature 137 — the production transaction format is the disclosure-group envelope
+        // (Data = JSON { …, "encryptedPayloads": [ { ciphertext, nonce, wrappedKeys:[…] } ] }).
+        // Reconstruction must find the group sealed to a local participant wallet, unwrap its
+        // symmetric key via the Wallet Service, and symmetric-decrypt the group. This is what
+        // lets the owner node recover a cross-node citizen's action-1 payload.
+
+        // Arrange
+        var blueprint = CreateTestBlueprintWithRoutes();
+        var instanceId = "test-instance";
+        var currentActionId = 2;
+        var registerId = "test-register";
+        var delegationToken = "test-delegation-token";
+        var participantWallets = new Dictionary<string, string>
+        {
+            ["applicant"] = "wallet-applicant",
+            ["officer"] = "wallet-officer"   // the acting participant on the owner node
+        };
+
+        var wrappedKeyBytes = Encoding.UTF8.GetBytes("wrapped-symmetric-key");
+        var symmetricKeyBytes = Encoding.UTF8.GetBytes("the-unwrapped-symmetric-key-3232");
+        var ciphertextBytes = Encoding.UTF8.GetBytes("group-ciphertext");
+        var nonceBytes = Encoding.UTF8.GetBytes("group-nonce-24bytes-padxxx");
+        var plaintextJson = JsonSerializer.SerializeToUtf8Bytes(new { loanAmount = 50000, applicantName = "John Doe" });
+
+        // Build the on-register disclosure-group envelope, sealed to the officer wallet.
+        var envelope = new
+        {
+            type = "action",
+            contentEncoding = "encrypted",
+            encryptedPayloads = new[]
+            {
+                new
+                {
+                    groupId = "g1",
+                    disclosedFields = new[] { "loanAmount", "applicantName" },
+                    ciphertext = Convert.ToBase64String(ciphertextBytes),
+                    nonce = Convert.ToBase64String(nonceBytes),
+                    encryptionAlgorithm = "XCHACHA20_POLY1305",
+                    wrappedKeys = new[]
+                    {
+                        new
+                        {
+                            walletAddress = "wallet-officer",
+                            encryptedKey = Convert.ToBase64String(wrappedKeyBytes),
+                            algorithm = "ED25519"
+                        }
+                    }
+                }
+            }
+        };
+        var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope);
+
+        var transactions = new List<TransactionModel>
+        {
+            new TransactionModel
+            {
+                TxId = "tx-001",
+                RegisterId = registerId,
+                TimeStamp = DateTime.UtcNow.AddMinutes(-10),
+                MetaData = new TransactionMetaData { ActionId = 1 },
+                Payloads = new[]
+                {
+                    // WalletAccess intentionally empty — the disclosure-group format does not
+                    // populate it (this is exactly the cross-node case that used to fail).
+                    new PayloadModel
+                    {
+                        Data = Convert.ToBase64String(envelopeBytes),
+                        WalletAccess = Array.Empty<string>()
+                    }
+                }
+            }
+        };
+
+        _mockRegisterClient
+            .Setup(x => x.GetTransactionsByInstanceIdAsync(registerId, instanceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(transactions);
+
+        // Unwrap the symmetric key for the officer wallet (service-to-service unwrap).
+        _mockWalletClient
+            .Setup(x => x.DecryptWithDelegationAsync(
+                "wallet-officer",
+                It.Is<byte[]>(b => b.SequenceEqual(wrappedKeyBytes)),
+                delegationToken,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(symmetricKeyBytes);
+
+        // Symmetric-decrypt the group ciphertext → plaintext action-1 payload.
+        _mockSymmetricCrypto
+            .Setup(x => x.DecryptAsync(It.IsAny<Sorcha.Cryptography.Models.SymmetricCiphertext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Sorcha.Cryptography.Models.CryptoResult<byte[]>.Success(plaintextJson));
+
+        // Act
+        var result = await _service.ReconstructAsync(
+            blueprint, instanceId, currentActionId, registerId, delegationToken, participantWallets);
+
+        // Assert — action 1's payload was recovered via the disclosure-group path.
+        result.Should().NotBeNull();
+        result.ActionCount.Should().Be(1);
+        result.ActionData.Should().ContainKey("1");
+        result.ActionData["1"].GetProperty("loanAmount").GetInt32().Should().Be(50000);
+        result.PreviousTransactionId.Should().Be("tx-001");
+
+        _mockWalletClient.Verify(
+            x => x.DecryptWithDelegationAsync("wallet-officer", It.IsAny<byte[]>(), delegationToken, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

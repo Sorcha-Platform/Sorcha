@@ -119,6 +119,23 @@ public class PeerListManager : IDisposable
     }
 
     /// <summary>
+    /// Gets the configured seed node(s). A full-replica / SyncOnly node replicates FROM its
+    /// seed by configuration, so the seed is the authoritative replication source of last
+    /// resort when no peer has advertised a subscribed register (e.g. advertisements have not
+    /// been re-exchanged after a restart). Seed channels are established at bootstrap, so the
+    /// server-streaming pull path works against them even when the bidirectional live stream
+    /// does not.
+    /// </summary>
+    public IReadOnlyCollection<PeerNode> GetSeedNodes()
+    {
+        return _peers.Values
+            .Where(p => p.IsSeedNode)
+            .OrderBy(p => p.FailureCount)
+            .ToList()
+            .AsReadOnly();
+    }
+
+    /// <summary>
     /// Adds or updates a peer in the list
     /// </summary>
     public async Task<bool> AddOrUpdatePeerAsync(PeerNode peer, CancellationToken cancellationToken = default)

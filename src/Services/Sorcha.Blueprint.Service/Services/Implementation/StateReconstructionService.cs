@@ -4,6 +4,9 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Sorcha.Blueprint.Models;
+using Sorcha.Cryptography.Enums;
+using Sorcha.Cryptography.Interfaces;
+using Sorcha.Cryptography.Models;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Blueprint.Service.Models;
@@ -19,16 +22,19 @@ public class StateReconstructionService : IStateReconstructionService
 {
     private readonly IRegisterServiceClient _registerClient;
     private readonly IWalletServiceClient _walletClient;
+    private readonly ISymmetricCrypto _symmetricCrypto;
     private readonly ILogger<StateReconstructionService> _logger;
     private static readonly ActivitySource ActivitySource = new("Sorcha.Blueprint.Service.StateReconstruction");
 
     public StateReconstructionService(
         IRegisterServiceClient registerClient,
         IWalletServiceClient walletClient,
+        ISymmetricCrypto symmetricCrypto,
         ILogger<StateReconstructionService> logger)
     {
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
+        _symmetricCrypto = symmetricCrypto ?? throw new ArgumentNullException(nameof(symmetricCrypto));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -240,6 +246,24 @@ public class StateReconstructionService : IStateReconstructionService
     /// <summary>
     /// Decrypts a transaction payload using delegated access.
     /// </summary>
+    /// <remarks>
+    /// Feature 137 — the production transaction format is the <b>disclosure-group envelope</b>
+    /// (<c>ITransactionBuilderService.BuildEncryptedActionTransactionAsync</c>): <c>Data</c> is a
+    /// JSON document carrying <c>encryptedPayloads[]</c>, each group symmetric-encrypted
+    /// (XChaCha20-Poly1305) with the symmetric key wrapped per recipient under
+    /// <c>wrappedKeys[]</c>. To recover a prior action's plaintext we find the group sealed to one
+    /// of our local participant wallets, unwrap its symmetric key via the Wallet Service, then
+    /// symmetric-decrypt the group ciphertext — mirroring the holder-side path in
+    /// <c>InboundCredentialDetector.TryDecryptGroupForWalletAsync</c>.
+    /// <para>
+    /// This is what makes <b>cross-node</b> issuance work: on the owner node the acting
+    /// participant's wallet (e.g. the verification-analyst) is local, so the owner can reconstruct
+    /// the citizen's submitted action-1 payload (credential claims + carried holder keys) from the
+    /// register — same-node never needed this because it reads the authoritative instance's
+    /// <c>AccumulatedData</c>. The legacy <c>WalletAccess</c> + whole-<c>Data</c> path is retained
+    /// as a fallback for any pre-disclosure-group transaction.
+    /// </para>
+    /// </remarks>
     private async Task<JsonElement?> DecryptTransactionPayloadAsync(
         Sorcha.Register.Models.TransactionModel transaction,
         string delegationToken,
@@ -256,26 +280,59 @@ public class StateReconstructionService : IStateReconstructionService
                 return null;
             }
 
-            // Determine which wallet to use for decryption
-            // Use the first wallet from the access list
-            var recipientAddress = encryptedPayload.WalletAccess?.FirstOrDefault();
-            if (string.IsNullOrEmpty(recipientAddress))
-            {
-                _logger.LogWarning("Transaction {TxId} payload has no recipient address in WalletAccess", transaction.TxId);
-                return null;
-            }
-
             // Convert Base64/Base64url data to bytes
             var encryptedBytes = Sorcha.TransactionHandler.Services.ContentEncodings.DecodeBase64Auto(encryptedPayload.Data);
 
-            // Decrypt using delegated access
+            // Primary path: disclosure-group envelope ({ …, "encryptedPayloads": [ … ] }).
+            JsonDocument? envelope = null;
+            try
+            {
+                envelope = JsonDocument.Parse(encryptedBytes);
+            }
+            catch (JsonException)
+            {
+                // Not a JSON envelope — fall through to the legacy whole-Data path below.
+            }
+
+            if (envelope is not null)
+            {
+                using (envelope)
+                {
+                    if (envelope.RootElement.ValueKind == JsonValueKind.Object
+                        && envelope.RootElement.TryGetProperty("encryptedPayloads", out var groupsEl)
+                        && groupsEl.ValueKind == JsonValueKind.Array)
+                    {
+                        var decrypted = await TryDecryptDisclosureGroupsAsync(
+                            transaction.TxId, groupsEl, participantWallets, delegationToken, cancellationToken);
+
+                        if (decrypted.HasValue)
+                            return decrypted;
+
+                        _logger.LogWarning(
+                            "Transaction {TxId}: no disclosure group decryptable by a local participant wallet ({WalletCount} candidate(s)) — prior-action state will be incomplete",
+                            transaction.TxId, participantWallets.Count);
+                        return null;
+                    }
+                }
+            }
+
+            // Legacy fallback: the whole Data blob is the recipient-encrypted payload, keyed by
+            // the first WalletAccess entry.
+            var recipientAddress = encryptedPayload.WalletAccess?.FirstOrDefault();
+            if (string.IsNullOrEmpty(recipientAddress))
+            {
+                _logger.LogWarning(
+                    "Transaction {TxId} payload is neither a disclosure-group envelope nor has a WalletAccess recipient — cannot decrypt",
+                    transaction.TxId);
+                return null;
+            }
+
             var decryptedBytes = await _walletClient.DecryptWithDelegationAsync(
                 recipientAddress,
                 encryptedBytes,
                 delegationToken,
                 cancellationToken);
 
-            // Parse the decrypted data as JSON
             var jsonDocument = JsonDocument.Parse(decryptedBytes);
             return jsonDocument.RootElement.Clone();
         }
@@ -284,6 +341,118 @@ public class StateReconstructionService : IStateReconstructionService
             _logger.LogWarning(ex, "Failed to decrypt payload for transaction {TxId}", transaction.TxId);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Walks an <c>encryptedPayloads[]</c> array and decrypts the first group sealed to one of the
+    /// instance's participant wallets. The symmetric key is unwrapped via the Wallet Service
+    /// (<see cref="IWalletServiceClient.DecryptWithDelegationAsync"/>) — service-to-service auth lets
+    /// the owner node unwrap any wallet it custodies; non-local wallets fail the unwrap and are
+    /// skipped. The group ciphertext is then symmetric-decrypted (XChaCha20-Poly1305). Returns the
+    /// decrypted payload JSON, or null if no group is decryptable here.
+    /// </summary>
+    private async Task<JsonElement?> TryDecryptDisclosureGroupsAsync(
+        string txId,
+        JsonElement groupsEl,
+        Dictionary<string, string> participantWallets,
+        string delegationToken,
+        CancellationToken ct)
+    {
+        var candidateWallets = new HashSet<string>(participantWallets.Values, StringComparer.OrdinalIgnoreCase);
+        if (candidateWallets.Count == 0)
+        {
+            _logger.LogDebug("Transaction {TxId}: no participant wallets to decrypt as", txId);
+            return null;
+        }
+
+        foreach (var group in groupsEl.EnumerateArray())
+        {
+            if (!group.TryGetProperty("wrappedKeys", out var wrappedKeysEl)
+                || wrappedKeysEl.ValueKind != JsonValueKind.Array
+                || !group.TryGetProperty("ciphertext", out var ctEl)
+                || !group.TryGetProperty("nonce", out var nonceEl))
+            {
+                continue;
+            }
+
+            byte[] ciphertext;
+            byte[] nonce;
+            try
+            {
+                ciphertext = Convert.FromBase64String(ctEl.GetString()!);
+                nonce = Convert.FromBase64String(nonceEl.GetString()!);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var wk in wrappedKeysEl.EnumerateArray())
+            {
+                var wkAddress = wk.TryGetProperty("walletAddress", out var waEl) ? waEl.GetString() : null;
+                if (string.IsNullOrEmpty(wkAddress) || !candidateWallets.Contains(wkAddress))
+                    continue;
+
+                if (!wk.TryGetProperty("encryptedKey", out var ekEl))
+                    continue;
+
+                byte[] encryptedKey;
+                try
+                {
+                    encryptedKey = Convert.FromBase64String(ekEl.GetString()!);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                byte[] symmetricKey;
+                try
+                {
+                    // Unwrap the group's symmetric key with this wallet's private key. On the owner
+                    // node only the acting participant's wallet is local; a non-local wallet (e.g. the
+                    // cross-node citizen) throws here and we move on to the next wrapped key.
+                    symmetricKey = await _walletClient.DecryptWithDelegationAsync(
+                        wkAddress, encryptedKey, delegationToken, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex,
+                        "Transaction {TxId}: wrapped-key unwrap failed for wallet {Wallet} (likely not local) — trying next recipient",
+                        txId, wkAddress);
+                    continue;
+                }
+
+                using var cipherModel = new SymmetricCiphertext
+                {
+                    Data = ciphertext,
+                    Key = symmetricKey,
+                    IV = nonce,
+                    Type = EncryptionType.XCHACHA20_POLY1305,
+                };
+
+                var decrypt = await _symmetricCrypto.DecryptAsync(cipherModel, ct);
+                if (!decrypt.IsSuccess || decrypt.Value is null)
+                {
+                    _logger.LogDebug(
+                        "Transaction {TxId}: symmetric decrypt failed for wallet {Wallet}: {Error}",
+                        txId, wkAddress, decrypt.ErrorMessage);
+                    continue;
+                }
+
+                try
+                {
+                    return JsonSerializer.Deserialize<JsonElement>(decrypt.Value);
+                }
+                catch (JsonException)
+                {
+                    _logger.LogDebug("Transaction {TxId}: decrypted payload for wallet {Wallet} is not valid JSON", txId, wkAddress);
+                    continue;
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

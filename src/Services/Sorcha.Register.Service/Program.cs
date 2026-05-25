@@ -560,27 +560,105 @@ var registersGroup = app.MapGroup("/api/registers")
     .WithTags("Registers")
     .RequireAuthorization("RequireAuthenticated");
 
-// Disable dev mode (one-way — enables mandatory field-level encryption)
+// Disable dev mode (one-way — enables mandatory field-level encryption).
+// Emits a CryptoPolicyUpdate control transaction (DevMode=false) rather than flipping a local
+// flag, so the promotion is sealed into the chain, passes the validator's one-way guard, and
+// REPLICATES to every node (each projects it onto its register record when the docket finalises).
+// A local-only flip would desync the owner from its replicas — the exact class of bug this avoids.
 registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
     string registerId,
-    RegisterManager manager) =>
+    RegisterManager manager,
+    Sorcha.Register.Service.Services.CryptoPolicyService cryptoPolicyService,
+    Sorcha.Register.Core.Managers.TransactionManager transactionManager,
+    Sorcha.ServiceClients.SystemWallet.ISystemWalletSigningService systemSigning,
+    CancellationToken ct) =>
 {
-    var disabled = await manager.DisableDevModeAsync(registerId);
-    if (!disabled)
+    var register = await manager.GetRegisterAsync(registerId, ct);
+    if (register is null)
+    {
+        return Results.NotFound(new { error = "Register not found" });
+    }
+    if (!register.DevMode)
     {
         return Results.Conflict(new { error = "Dev mode is already disabled on this register." });
     }
 
+    // Base the new policy on the current active one, flipping DevMode off and bumping the version.
+    var activePolicy = await cryptoPolicyService.GetActivePolicyAsync(registerId, ct);
+    activePolicy.DevMode = false;
+    activePolicy.Version += 1;
+    activePolicy.EffectiveFrom = DateTime.UtcNow;
+
+    var policyJson = System.Text.Json.JsonSerializer.Serialize(activePolicy);
+    var policyBytes = System.Text.Encoding.UTF8.GetBytes(policyJson);
+    var payloadData = Convert.ToBase64String(policyBytes);
+    var payloadHash = Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(policyBytes)).ToLowerInvariant();
+
+    var txIdSource = $"crypto-policy-update-{registerId}-v{activePolicy.Version}-devmode-off";
+    var txId = Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(txIdSource)))
+        .ToLowerInvariant();
+
+    var allTxs = await transactionManager.GetTransactionsAsync(registerId, ct);
+    var chainHead = allTxs.OrderByDescending(t => t.TimeStamp).FirstOrDefault();
+
+    var tx = new Sorcha.Register.Models.TransactionModel
+    {
+        TxId = txId,
+        RegisterId = registerId,
+        SenderWallet = "system",
+        PrevTxId = chainHead?.TxId ?? string.Empty,
+        PayloadCount = 1,
+        Payloads = new[]
+        {
+            new Sorcha.Register.Models.PayloadModel
+            {
+                Data = payloadData,
+                Hash = payloadHash,
+                WalletAccess = Array.Empty<string>(),
+                ContentType = "application/json",
+                ContentEncoding = "base64"
+            }
+        },
+        TimeStamp = DateTime.UtcNow,
+        Signature = string.Empty,
+        MetaData = new Sorcha.Register.Models.TransactionMetaData
+        {
+            RegisterId = registerId,
+            TransactionType = TransactionType.Control,
+            TrackingData = new Dictionary<string, string>
+            {
+                ["transactionType"] = "CryptoPolicyUpdate",
+                ["policyVersion"] = activePolicy.Version.ToString()
+            }
+        }
+    };
+
+    var signResult = await systemSigning.SignAsync(
+        registerId: registerId,
+        txId: txId,
+        payloadHash: payloadHash,
+        derivationPath: "sorcha:register-control",
+        transactionType: "CryptoPolicyUpdate",
+        cancellationToken: ct);
+    tx.Signature = Convert.ToBase64String(signResult.Signature);
+
+    await transactionManager.StoreTransactionAsync(tx, ct);
+
     return Results.Ok(new
     {
         registerId,
-        devMode = false,
-        message = "Dev mode disabled. Field-level encryption is now required for new transactions."
+        txId,
+        policyVersion = activePolicy.Version,
+        status = "submitted",
+        message = "Dev mode disable submitted as a crypto-policy update. Field-level encryption " +
+                  "becomes mandatory once the control transaction seals; the change replicates to all nodes."
     });
 })
 .WithName("DisableDevMode")
 .WithSummary("Disable dev mode (one-way)")
-.WithDescription("Irreversibly disables dev mode, enabling mandatory field-level encryption for new transactions. Cannot be undone.")
+.WithDescription("Irreversibly disables dev mode via a replicated crypto-policy update, enabling mandatory field-level encryption for new transactions. Cannot be undone (validators reject re-enabling DevMode).")
 .RequireAuthorization("CanManageRegisters");
 
 // NOTE: POST /api/registers/ (simple CRUD creation) has been removed.
@@ -1430,15 +1508,21 @@ docketsGroup.MapPost("/", async (
             var replicaName = controlRecord?.Name is { Length: > 0 } controlName
                 ? controlName
                 : $"replica-{registerId[..Math.Min(8, registerId.Length)]}";
+            // Respect the owner's DevMode posture from the synced genesis crypto policy. A
+            // DevMode register stores plaintext payloads, so the replica must know this to read
+            // them directly (and to apply the same plaintext-permitting rules). Defaults to
+            // false (encrypted) when the control record/policy is absent — fail-safe toward encryption.
+            var replicaDevMode = controlRecord?.CryptoPolicy?.DevMode ?? false;
             logger.LogInformation(
-                "Auto-creating replicated register {RegisterId} ({Name}) from synced genesis docket",
-                registerId, replicaName);
+                "Auto-creating replicated register {RegisterId} ({Name}) from synced genesis docket (DevMode={DevMode})",
+                registerId, replicaName, replicaDevMode);
             register = await registerManager.CreateRegisterAsync(
                 replicaName,
                 advertise: true,
                 isFullReplica: true,
                 registerId: registerId,
                 description: controlRecord?.Description,
+                devMode: replicaDevMode,
                 purpose: Sorcha.Register.Models.Enums.RegisterPurpose.General,
                 initialControlRecord: controlRecord);
         }
@@ -1575,6 +1659,37 @@ docketsGroup.MapPost("/", async (
                 logger.LogWarning(ex,
                     "Failed to publish event/route notification for tx {TxId} in docket {DocketNumber}",
                     tx.TxId, request.DocketNumber);
+            }
+        }
+
+        // Feature 137 — project a sealed CryptoPolicyUpdate's DevMode onto the register record.
+        // This runs on EVERY node that writes the docket (the owner on seal, and each replica when
+        // it finalises the pulled docket), so a DevMode→Normal promotion replicates consistently
+        // instead of being a local-only flag flip that desyncs nodes. The validator's one-way guard
+        // guarantees a CryptoPolicyUpdate can only carry DevMode=false, so any such update promotes
+        // the register to Normal (encrypted); it never re-enables DevMode.
+        var hasCryptoPolicyUpdate = request.Transactions.Any(t =>
+            t.MetaData?.TransactionType == TransactionType.Control &&
+            t.MetaData.TrackingData?.GetValueOrDefault("transactionType") == "CryptoPolicyUpdate");
+        if (hasCryptoPolicyUpdate)
+        {
+            try
+            {
+                var policyRegister = await repository.GetRegisterAsync(registerId);
+                if (policyRegister is { DevMode: true })
+                {
+                    policyRegister.DevMode = false;
+                    policyRegister.UpdatedAt = DateTime.UtcNow;
+                    await repository.UpdateRegisterAsync(policyRegister);
+                    logger.LogInformation(
+                        "Register {RegisterId} promoted DevMode→Normal by sealed CryptoPolicyUpdate in docket {DocketNumber} — field-level encryption now required",
+                        registerId, request.DocketNumber);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Failed to project CryptoPolicyUpdate DevMode onto register {RegisterId}", registerId);
             }
         }
 

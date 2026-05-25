@@ -278,6 +278,13 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         // Verify all attestation signatures against stored hashes from initiation
         await VerifyAttestationsAsync(request.SignedAttestations, pending, cancellationToken);
 
+        // Bake the register's DevMode posture into the genesis crypto policy so it is part of the
+        // immutable, signed, replicated genesis (a SyncOnly replica reads it from the synced
+        // control record). One-way: promotable to Normal via a crypto-policy update, never back —
+        // validator-enforced.
+        var genesisCryptoPolicy = CryptoPolicy.CreateDefault();
+        genesisCryptoPolicy.DevMode = pending.DevMode;
+
         // Construct control record from verified attestations
         var controlRecord = new RegisterControlRecord
         {
@@ -286,7 +293,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             Description = pending.ControlRecord.Description,
             CreatedAt = pending.ControlRecord.CreatedAt,
             Metadata = pending.ControlRecord.Metadata,
-            CryptoPolicy = CryptoPolicy.CreateDefault(),
+            CryptoPolicy = genesisCryptoPolicy,
             RegisterPolicy = pending.ControlRecord.RegisterPolicy,
             Attestations = request.SignedAttestations.Select(sa => new RegisterAttestation
             {
