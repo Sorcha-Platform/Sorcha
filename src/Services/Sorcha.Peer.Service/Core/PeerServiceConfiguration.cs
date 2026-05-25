@@ -74,11 +74,25 @@ public class PeerServiceConfiguration
     public DataCleanupConfiguration DataCleanup { get; set; } = new();
 
     /// <summary>
-    /// Whether to enable mutual TLS (mTLS) for peer-to-peer gRPC connections (FR-016).
+    /// Whether to require TLS for peer-to-peer gRPC transport (Feature 138 US2, FR-008).
+    /// Outside the Development environment this MUST be honoured fail-closed: a node refuses
+    /// cleartext HTTP/2 when TLS is required. Development may run cleartext. The effective
+    /// requirement is resolved per-environment in <c>Program.cs</c>; this is the operator override.
+    /// </summary>
+    public bool EnableTls { get; set; } = false;
+
+    /// <summary>
+    /// Whether to enable mutual TLS (mTLS) for peer-to-peer gRPC connections (FR-008).
     /// When enabled, peers must present a valid client certificate to establish connections.
-    /// Implementation deferred — this config option is scaffolding only.
     /// </summary>
     public bool EnableMtls { get; set; } = false;
+
+    /// <summary>
+    /// Lifetime, in seconds, of a peer-registration challenge nonce (Feature 138 US2).
+    /// A node must echo back the server-issued nonce in a signed <c>RegisterPeer</c> within
+    /// this window; expired or unknown nonces are refused. Default 30s.
+    /// </summary>
+    public int ChallengeTtlSeconds { get; set; } = 30;
 }
 
 public class NetworkAddressConfiguration

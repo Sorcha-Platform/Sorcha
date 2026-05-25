@@ -28,8 +28,8 @@ description: "Task list for Federation Trust Hardening (Feature 138)"
 
 **Purpose**: Configuration and observability scaffolding consumed across stories
 
-- [ ] T001 [P] Add feature config keys with secure defaults per `contracts/config-and-metrics.md` to the relevant `appsettings.json` and bind via options classes: `Verifier:ClockSkewSeconds` (60), `Verifier:KbJwtMaxLifetimeSeconds` (120) in `src/Apps/Sorcha.Verifier/appsettings.json`; `PeerService:EnableTls`, `PeerService:ChallengeTtlSeconds` (30) in `src/Services/Sorcha.Peer.Service/appsettings.json`; `Consensus:LivenessTimeoutSeconds` (from policy `DocketTimeoutSeconds`) referenced in `src/Services/Sorcha.Validator.Service/appsettings.json`
-- [ ] T002 [P] Declare the 8 new OTel rejection counters on the existing `Sorcha.Verifier` / `Sorcha.Peer` / `Sorcha.Validator` / `Sorcha.Blueprint` meters per `contracts/config-and-metrics.md` (instrument definitions only; incremented within each story)
+- [X] T001 [P] Add feature config keys with secure defaults per `contracts/config-and-metrics.md` to the relevant `appsettings.json` and bind via options classes: `Verifier:ClockSkewSeconds` (60), `Verifier:KbJwtMaxLifetimeSeconds` (120) in `src/Apps/Sorcha.Verifier/appsettings.json`; `PeerService:EnableTls`, `PeerService:ChallengeTtlSeconds` (30) in `src/Services/Sorcha.Peer.Service/appsettings.json`; `Consensus:LivenessTimeoutSeconds` (from policy `DocketTimeoutSeconds`) referenced in `src/Services/Sorcha.Validator.Service/appsettings.json`
+- [X] T002 [P] Declare the 8 new OTel rejection counters on the existing `Sorcha.Verifier` / `Sorcha.Peer` / `Sorcha.Validator` / `Sorcha.Blueprint` meters per `contracts/config-and-metrics.md` (instrument definitions only; incremented within each story)
 
 ---
 
@@ -39,8 +39,8 @@ description: "Task list for Federation Trust Hardening (Feature 138)"
 
 **⚠️ CRITICAL**: Complete before starting the dependent user stories
 
-- [ ] T003 Add a shared clock-skew helper bound to `Verifier:ClockSkewSeconds` in `src/Common/Sorcha.ServiceDefaults/` (consumed by US1 status-list freshness, US2 heartbeat timestamp, US5 KB-JWT exp) using the injected `TimeProvider`
-- [ ] T004 [P] Add a reusable "security-posture degraded" health-check signal helper in `src/Common/Sorcha.ServiceDefaults/` following the Storage Registration Log pattern (CLAUDE.md §10/§11), used by US1 (status-list unverifiable) and US2 (mTLS unavailable)
+- [X] T003 Add a shared clock-skew helper bound to `Verifier:ClockSkewSeconds` in `src/Common/Sorcha.ServiceDefaults/` (consumed by US1 status-list freshness, US2 heartbeat timestamp, US5 KB-JWT exp) using the injected `TimeProvider`
+- [X] T004 [P] Add a reusable "security-posture degraded" health-check signal helper in `src/Common/Sorcha.ServiceDefaults/` following the Storage Registration Log pattern (CLAUDE.md §10/§11), used by US1 (status-list unverifiable) and US2 (mTLS unavailable)
 
 **Checkpoint**: Shared config, metrics, clock-skew, and health signals ready — user stories can begin (in parallel if staffed).
 
