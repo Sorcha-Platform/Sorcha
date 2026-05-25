@@ -77,8 +77,28 @@ public class DocketBuilder : IDocketBuilder
             var needsGenesis = await _genesisManager.NeedsGenesisDocketAsync(registerId, cancellationToken);
             if (needsGenesis)
             {
-                _logger.LogInformation("Register {RegisterId} needs genesis docket", registerId);
                 var transactions = verifiedEntries.Select(v => v.Transaction).ToList();
+
+                // NEVER seal an empty genesis docket. Docket 0 must carry the register's
+                // genesis control transaction — it is the trust anchor a SyncOnly replica
+                // extracts (via SystemRegisterSyncVerifier) to verify the synced chain. If a
+                // docket-build trigger fires before the genesis control tx has been verified
+                // and queued (a bootstrap race), the claim returns nothing; sealing here would
+                // consume docket 0 with zero transactions and force the genesis tx into docket 1,
+                // which breaks genesis replication (the verifier rejects docket 0 with
+                // transactionIds=0). Defer instead — once the genesis tx is queued, a later build
+                // creates docket 0 with it. (An empty claim holds no lease, so there is nothing
+                // to release.)
+                if (transactions.Count == 0)
+                {
+                    _logger.LogInformation(
+                        "Register {RegisterId} needs a genesis docket but no transactions are queued yet — " +
+                        "deferring rather than sealing an empty genesis docket (waiting for the genesis control transaction)",
+                        registerId);
+                    return null;
+                }
+
+                _logger.LogInformation("Register {RegisterId} needs genesis docket", registerId);
                 var genesisDocket = await _genesisManager.CreateGenesisDocketAsync(registerId, transactions, cancellationToken);
 
                 // Confirm the lease — transactions are now committed to the genesis docket.
