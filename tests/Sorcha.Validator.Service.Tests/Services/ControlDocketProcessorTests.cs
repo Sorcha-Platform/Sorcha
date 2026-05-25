@@ -588,6 +588,51 @@ public class ControlDocketProcessorTests
     }
 
     [Fact]
+    public async Task ValidateControlTransactionsAsync_CryptoPolicyUpdateEnablingDevMode_ReturnsError()
+    {
+        // One-way enforcement: a crypto-policy update may never re-enable DevMode (Normal→DevMode).
+        var payload = new
+        {
+            version = 2,
+            acceptedSignatureAlgorithms = new[] { "ED25519" },
+            enforcementMode = "Permissive",
+            devMode = true
+        };
+        var tx = CreateTransaction("tx-001", "control.crypto.update", payload);
+        var docket = CreateDocket([tx]);
+        var controlTransactions = _processor.ExtractControlTransactions(docket);
+
+        var result = await _processor.ValidateControlTransactionsAsync(
+            TestRegisterId, controlTransactions, CancellationToken.None);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainKey("tx-001");
+        result.Errors["tx-001"].Should().Contain(e => e.Contains("DevMode cannot be enabled"));
+    }
+
+    [Fact]
+    public async Task ValidateControlTransactionsAsync_CryptoPolicyUpdateDisablingDevMode_Succeeds()
+    {
+        // Promotion DevMode→Normal (devMode=false) is the allowed one-way direction.
+        var payload = new
+        {
+            version = 2,
+            acceptedSignatureAlgorithms = new[] { "ED25519" },
+            enforcementMode = "Strict",
+            devMode = false
+        };
+        var tx = CreateTransaction("tx-001", "control.crypto.update", payload);
+        var docket = CreateDocket([tx]);
+        var controlTransactions = _processor.ExtractControlTransactions(docket);
+
+        var result = await _processor.ValidateControlTransactionsAsync(
+            TestRegisterId, controlTransactions, CancellationToken.None);
+
+        result.IsValid.Should().BeTrue();
+        result.ValidTransactions.Should().HaveCount(1);
+    }
+
+    [Fact]
     public async Task ValidateControlTransactionsAsync_WithInvalidEndpoint_ReturnsError()
     {
         // Arrange

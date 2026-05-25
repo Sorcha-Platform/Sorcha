@@ -272,6 +272,13 @@ public record CryptoPolicyUpdatePayload : ControlPayload
     /// <summary>Enforcement mode: Permissive or Strict</summary>
     public string EnforcementMode { get; init; } = "Permissive";
 
+    /// <summary>
+    /// DevMode (plaintext payloads, no field-level encryption). The transition is one-way:
+    /// a register may be promoted DevMode→Normal (set false) but never Normal→DevMode (set true) —
+    /// validators reject a policy update that re-enables DevMode. Default false.
+    /// </summary>
+    public bool DevMode { get; init; }
+
     /// <summary>When the policy takes effect</summary>
     public DateTimeOffset? EffectiveFrom { get; init; }
 
