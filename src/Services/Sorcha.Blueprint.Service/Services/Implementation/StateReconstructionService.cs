@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Sorcha.Blueprint.Models;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
@@ -88,6 +89,24 @@ public class StateReconstructionService : IStateReconstructionService
             };
         }
 
+        // Determine the register's DevMode posture once. DevMode registers store payloads as
+        // PLAINTEXT (encryption skipped); the reconstruction below reads them directly. This is the
+        // ONLY input that unlocks the plaintext path — a Normal register must never read plaintext
+        // payloads (that would bypass field-level encryption). Null/unreachable → false (fail closed
+        // to the encrypted/decrypt path).
+        bool registerDevMode = false;
+        try
+        {
+            var register = await _registerClient.GetRegisterAsync(registerId, cancellationToken);
+            registerDevMode = register?.DevMode ?? false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to resolve DevMode for register {RegisterId} during reconstruction — defaulting to encrypted path",
+                registerId);
+        }
+
         // Decrypt and accumulate data from required actions
         var actionData = new Dictionary<string, JsonElement>();
         var branchStates = new Dictionary<string, BranchState>();
@@ -117,9 +136,9 @@ public class StateReconstructionService : IStateReconstructionService
                 continue;
             }
 
-            // Decrypt the payload using delegated access
+            // Decrypt the payload using delegated access (or read plaintext for DevMode registers)
             var decryptedData = await DecryptTransactionPayloadAsync(
-                tx, delegationToken, participantWallets, cancellationToken);
+                tx, delegationToken, participantWallets, registerDevMode, cancellationToken);
 
             if (decryptedData.HasValue)
             {
@@ -268,6 +287,7 @@ public class StateReconstructionService : IStateReconstructionService
         Sorcha.Register.Models.TransactionModel transaction,
         string delegationToken,
         Dictionary<string, string> participantWallets,
+        bool registerDevMode,
         CancellationToken cancellationToken)
     {
         try
@@ -298,6 +318,28 @@ public class StateReconstructionService : IStateReconstructionService
             {
                 using (envelope)
                 {
+                    // DevMode plaintext path — STRICTLY gated on registerDevMode. A DevMode register
+                    // stores payloads unencrypted as { …, "payloads": { "<wallet>": { …fields… } } }.
+                    // We merge the disclosed field objects (preferring this instance's participant
+                    // wallets) and return them as the prior action's data — no decryption. This branch
+                    // is unreachable for a Normal register, so production payloads are never read as
+                    // plaintext even if a "payloads" envelope were somehow present (it falls through to
+                    // the encrypted/decrypt paths and fails closed).
+                    if (registerDevMode
+                        && envelope.RootElement.ValueKind == JsonValueKind.Object
+                        && envelope.RootElement.TryGetProperty("payloads", out var devPayloadsEl)
+                        && devPayloadsEl.ValueKind == JsonValueKind.Object)
+                    {
+                        var plaintext = MergeDevModePlaintextPayloads(transaction.TxId, devPayloadsEl, participantWallets);
+                        if (plaintext.HasValue)
+                            return plaintext;
+
+                        _logger.LogWarning(
+                            "Transaction {TxId}: DevMode register but no usable plaintext payload entry — prior-action state will be incomplete",
+                            transaction.TxId);
+                        return null;
+                    }
+
                     if (envelope.RootElement.ValueKind == JsonValueKind.Object
                         && envelope.RootElement.TryGetProperty("encryptedPayloads", out var groupsEl)
                         && groupsEl.ValueKind == JsonValueKind.Array)
@@ -341,6 +383,56 @@ public class StateReconstructionService : IStateReconstructionService
             _logger.LogWarning(ex, "Failed to decrypt payload for transaction {TxId}", transaction.TxId);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Merges the plaintext disclosed-field objects from a DevMode <c>payloads</c> envelope into a
+    /// single object — the prior action's reconstructed data. Prefers entries keyed by one of this
+    /// instance's participant wallets (the disclosed views this node is entitled to); if none match,
+    /// falls back to merging every entry (DevMode is a plaintext debug posture with no on-ledger
+    /// encryption boundary). Returns null when there is nothing to merge. Only ever invoked for a
+    /// DevMode register — see the gate in <see cref="DecryptTransactionPayloadAsync"/>.
+    /// </summary>
+    private JsonElement? MergeDevModePlaintextPayloads(
+        string txId,
+        JsonElement payloadsObj,
+        Dictionary<string, string> participantWallets)
+    {
+        var localWallets = new HashSet<string>(participantWallets.Values, StringComparer.OrdinalIgnoreCase);
+        var merged = new JsonObject();
+        var matchedParticipantEntry = false;
+
+        // First pass: entries keyed by a participant wallet bound to this instance.
+        foreach (var entry in payloadsObj.EnumerateObject())
+        {
+            if (!localWallets.Contains(entry.Name) || entry.Value.ValueKind != JsonValueKind.Object)
+                continue;
+            foreach (var field in entry.Value.EnumerateObject())
+                merged[field.Name] = JsonNode.Parse(field.Value.GetRawText());
+            matchedParticipantEntry = true;
+        }
+
+        // Fallback: no participant-keyed entry — merge every object entry (debug-mode plaintext,
+        // no encryption boundary to honour).
+        if (!matchedParticipantEntry)
+        {
+            foreach (var entry in payloadsObj.EnumerateObject())
+            {
+                if (entry.Value.ValueKind != JsonValueKind.Object)
+                    continue;
+                foreach (var field in entry.Value.EnumerateObject())
+                    merged[field.Name] = JsonNode.Parse(field.Value.GetRawText());
+            }
+        }
+
+        if (merged.Count == 0)
+        {
+            _logger.LogDebug("Transaction {TxId}: DevMode payloads envelope had no mergeable field objects", txId);
+            return null;
+        }
+
+        using var doc = JsonDocument.Parse(merged.ToJsonString());
+        return doc.RootElement.Clone();
     }
 
     /// <summary>

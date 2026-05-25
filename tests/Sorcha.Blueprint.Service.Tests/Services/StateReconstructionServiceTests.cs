@@ -337,6 +337,137 @@ public class StateReconstructionServiceTests
     }
 
     [Fact]
+    public async Task ReconstructAsync_DevModeRegister_WithPlaintextPayloadsEnvelope_ExtractsFields()
+    {
+        // Feature 137 — a DevMode register stores payloads as PLAINTEXT (encryption skipped):
+        // Data = JSON { type, …, "payloads": { "<wallet>": { …fields… } } }. The owner must
+        // recover the prior action's fields (claims + carried holder keys) from this plaintext
+        // envelope so cross-node credential issuance can resolve the delivery key — no decryption.
+        var blueprint = CreateTestBlueprintWithRoutes();
+        var instanceId = "test-instance";
+        var currentActionId = 2;
+        var registerId = "test-register";
+        var delegationToken = "test-delegation-token";
+        var participantWallets = new Dictionary<string, string>
+        {
+            ["applicant"] = "wallet-applicant",
+            ["officer"] = "wallet-officer"
+        };
+
+        var devModeEnvelope = new
+        {
+            type = "action",
+            blueprintId = "test-blueprint",
+            actionId = 1,
+            instanceId,
+            payloads = new Dictionary<string, object>
+            {
+                ["wallet-applicant"] = new
+                {
+                    applicantName = "John Doe",
+                    loanAmount = 50000,
+                    holderKeys = new { holderJwk = "the-jwk", encryptionPublicKey = "enc-pub-key", algorithm = "ED25519" }
+                }
+            }
+        };
+        var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(devModeEnvelope);
+
+        var transactions = new List<TransactionModel>
+        {
+            new TransactionModel
+            {
+                TxId = "tx-001",
+                RegisterId = registerId,
+                TimeStamp = DateTime.UtcNow.AddMinutes(-10),
+                MetaData = new TransactionMetaData { ActionId = 1 },
+                Payloads = new[]
+                {
+                    new PayloadModel { Data = Convert.ToBase64String(envelopeBytes), WalletAccess = Array.Empty<string>() }
+                }
+            }
+        };
+
+        _mockRegisterClient
+            .Setup(x => x.GetTransactionsByInstanceIdAsync(registerId, instanceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(transactions);
+        _mockRegisterClient
+            .Setup(x => x.GetRegisterAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register { DevMode = true });
+
+        // Act
+        var result = await _service.ReconstructAsync(
+            blueprint, instanceId, currentActionId, registerId, delegationToken, participantWallets);
+
+        // Assert — fields recovered from plaintext, no decryption attempted.
+        result.Should().NotBeNull();
+        result.ActionData.Should().ContainKey("1");
+        result.ActionData["1"].GetProperty("applicantName").GetString().Should().Be("John Doe");
+        result.ActionData["1"].GetProperty("holderKeys").GetProperty("encryptionPublicKey").GetString().Should().Be("enc-pub-key");
+
+        _mockWalletClient.Verify(
+            x => x.DecryptWithDelegationAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ReconstructAsync_NormalRegister_WithPlaintextPayloadsEnvelope_DoesNotReadPlaintext()
+    {
+        // SECURITY GATE — the plaintext-payloads reconstruction path is allowed ONLY when the
+        // register is in DevMode. A Normal/production register must NEVER read a "payloads"
+        // envelope as plaintext (that would bypass field-level encryption). With DevMode=false and
+        // no encryptedPayloads / WalletAccess, reconstruction must recover nothing.
+        var blueprint = CreateTestBlueprintWithRoutes();
+        var instanceId = "test-instance";
+        var currentActionId = 2;
+        var registerId = "test-register";
+        var delegationToken = "test-delegation-token";
+        var participantWallets = new Dictionary<string, string>
+        {
+            ["applicant"] = "wallet-applicant"
+        };
+
+        var plaintextEnvelope = new
+        {
+            type = "action",
+            payloads = new Dictionary<string, object>
+            {
+                ["wallet-applicant"] = new { applicantName = "John Doe", holderKeys = new { encryptionPublicKey = "enc-pub-key" } }
+            }
+        };
+        var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(plaintextEnvelope);
+
+        var transactions = new List<TransactionModel>
+        {
+            new TransactionModel
+            {
+                TxId = "tx-001",
+                RegisterId = registerId,
+                TimeStamp = DateTime.UtcNow.AddMinutes(-10),
+                MetaData = new TransactionMetaData { ActionId = 1 },
+                Payloads = new[]
+                {
+                    new PayloadModel { Data = Convert.ToBase64String(envelopeBytes), WalletAccess = Array.Empty<string>() }
+                }
+            }
+        };
+
+        _mockRegisterClient
+            .Setup(x => x.GetTransactionsByInstanceIdAsync(registerId, instanceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(transactions);
+        _mockRegisterClient
+            .Setup(x => x.GetRegisterAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register { DevMode = false });
+
+        // Act
+        var result = await _service.ReconstructAsync(
+            blueprint, instanceId, currentActionId, registerId, delegationToken, participantWallets);
+
+        // Assert — plaintext was NOT read on a Normal register.
+        result.Should().NotBeNull();
+        result.ActionData.Should().NotContainKey("1");
+    }
+
+    [Fact]
     public async Task ReconstructAsync_WithFirstAction_ReturnsEmptyStateWithNoDataNeeded()
     {
         // Arrange
