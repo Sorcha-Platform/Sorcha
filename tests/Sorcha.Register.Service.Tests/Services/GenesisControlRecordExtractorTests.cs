@@ -63,6 +63,38 @@ public class GenesisControlRecordExtractorTests
     }
 
     [Fact]
+    public void TryExtract_DevModeRegister_PreservesDevModeFromCryptoPolicy()
+    {
+        // A DevMode register bakes the flag into the genesis crypto policy so a replica reads it
+        // from the synced control record and respects the plaintext posture (Feature 137).
+        var record = SampleRecord();
+        record.CryptoPolicy = CryptoPolicy.CreateDefault();
+        record.CryptoPolicy.DevMode = true;
+        var txs = new List<TransactionModel> { BuildControlTx(record) };
+
+        var result = GenesisControlRecordExtractor.TryExtract(txs);
+
+        result.Should().NotBeNull();
+        result!.CryptoPolicy.Should().NotBeNull();
+        result.CryptoPolicy!.DevMode.Should().BeTrue(
+            "the replica's auto-create reads controlRecord.CryptoPolicy.DevMode from the synced genesis");
+    }
+
+    [Fact]
+    public void TryExtract_NormalRegister_DevModeDefaultsFalse()
+    {
+        // Default (production) register: no DevMode. Fail-safe toward encryption.
+        var record = SampleRecord();
+        record.CryptoPolicy = CryptoPolicy.CreateDefault();
+        var txs = new List<TransactionModel> { BuildControlTx(record) };
+
+        var result = GenesisControlRecordExtractor.TryExtract(txs);
+
+        result.Should().NotBeNull();
+        (result!.CryptoPolicy?.DevMode ?? false).Should().BeFalse();
+    }
+
+    [Fact]
     public void TryExtract_NoControlTransaction_ReturnsNull()
     {
         var txs = new List<TransactionModel>

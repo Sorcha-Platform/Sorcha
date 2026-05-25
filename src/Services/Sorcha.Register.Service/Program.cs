@@ -1430,15 +1430,21 @@ docketsGroup.MapPost("/", async (
             var replicaName = controlRecord?.Name is { Length: > 0 } controlName
                 ? controlName
                 : $"replica-{registerId[..Math.Min(8, registerId.Length)]}";
+            // Respect the owner's DevMode posture from the synced genesis crypto policy. A
+            // DevMode register stores plaintext payloads, so the replica must know this to read
+            // them directly (and to apply the same plaintext-permitting rules). Defaults to
+            // false (encrypted) when the control record/policy is absent — fail-safe toward encryption.
+            var replicaDevMode = controlRecord?.CryptoPolicy?.DevMode ?? false;
             logger.LogInformation(
-                "Auto-creating replicated register {RegisterId} ({Name}) from synced genesis docket",
-                registerId, replicaName);
+                "Auto-creating replicated register {RegisterId} ({Name}) from synced genesis docket (DevMode={DevMode})",
+                registerId, replicaName, replicaDevMode);
             register = await registerManager.CreateRegisterAsync(
                 replicaName,
                 advertise: true,
                 isFullReplica: true,
                 registerId: registerId,
                 description: controlRecord?.Description,
+                devMode: replicaDevMode,
                 purpose: Sorcha.Register.Models.Enums.RegisterPurpose.General,
                 initialControlRecord: controlRecord);
         }
