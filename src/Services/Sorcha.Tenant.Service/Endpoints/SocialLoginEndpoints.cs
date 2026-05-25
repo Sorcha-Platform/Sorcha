@@ -65,6 +65,15 @@ public static class SocialLoginEndpoints
         var group = app.MapGroup("/api/auth/social")
             .WithTags("Social Login");
 
+        group.MapGet("/providers", ListConfiguredProviders)
+            .WithName("ListSocialProviders")
+            .WithSummary("List configured social providers")
+            .WithDescription("Returns the social providers that have working credentials on this host. "
+                + "Anonymous — drives the conditional 'Continue with…' buttons on the wallet sign-in screen.")
+            .AllowAnonymous()
+            .RequireRateLimiting("platform-auth")
+            .Produces<SocialProvidersResponse>();
+
         group.MapPost("/initiate", InitiateSocialFlow)
             .WithName("InitiateSocialLogin")
             .WithSummary("Start social login or link flow")
@@ -114,6 +123,17 @@ public static class SocialLoginEndpoints
 
         return app;
     }
+
+    private static IResult ListConfiguredProviders(ISocialLoginService socialLoginService)
+        => ListConfiguredProvidersForTest(socialLoginService);
+
+    /// <summary>Test seam for <see cref="ListConfiguredProviders"/> (no HttpContext needed).</summary>
+    internal static Microsoft.AspNetCore.Http.HttpResults.Ok<SocialProvidersResponse> ListConfiguredProvidersForTest(
+        ISocialLoginService socialLoginService)
+        => TypedResults.Ok(new SocialProvidersResponse
+        {
+            Providers = socialLoginService.GetConfiguredProviderNames()
+        });
 
     /// <summary>
     /// POST /api/auth/social/initiate — start a social login or link flow.

@@ -198,6 +198,18 @@ public record RevokeUserTokensRequest
 }
 
 /// <summary>
+/// Configured social providers available for sign-in. Drives the conditional
+/// "Continue with…" buttons on clients that cannot read service config directly
+/// (e.g. the citizen wallet PWA).
+/// </summary>
+public record SocialProvidersResponse
+{
+    /// <summary>Provider names (case as configured) with working credentials on this host.</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("providers")]
+    public required IReadOnlyList<string> Providers { get; init; }
+}
+
+/// <summary>
 /// Request to revoke all tokens for an organization.
 /// </summary>
 public record RevokeOrganizationTokensRequest
