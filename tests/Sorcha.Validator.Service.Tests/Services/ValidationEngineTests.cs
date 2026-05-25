@@ -534,13 +534,14 @@ public class ValidationEngineTests
     }
 
     [Fact]
-    public async Task ValidateTransactionAsync_OldGenesisTransaction_IsExemptFromTooOldCheck()
+    public async Task ValidateTransactionAsync_StaleGenesisTransaction_RejectedAsTooOld()
     {
-        // Arrange - a pre-signed genesis transaction far older than MaxTransactionAge.
-        // The genesis trust anchor is a ceremony artifact with a fixed timestamp; it is
-        // ingested whenever a node bootstraps (often long after the ceremony). Rejecting
-        // it as "too old" seals the genesis docket empty and prevents federated SyncOnly
-        // nodes from ever obtaining/verifying the system register.
+        // Arrange - a pre-signed genesis transaction far older than GenesisMaxAge.
+        // SECURITY: a stale genesis that stayed valid would be a replay vector. Genesis is
+        // bounded to a short freshness window (default 1h) so a regenerated system register
+        // must be minted, embedded, deployed, and bootstrapped within the hour. (A late-joining
+        // node obtains the system register by pulling the already-sealed genesis docket, which
+        // is verified by the sealed docket's signature/chain — not by re-checking this tx's age.)
         var tx = CreateValidTransaction(
             blueprintId: Sorcha.Register.Models.Constants.GenesisConstants.BlueprintId,
             createdAt: DateTimeOffset.UtcNow.AddDays(-30));
@@ -549,7 +550,24 @@ public class ValidationEngineTests
         // Act
         var result = await _engine.ValidateTransactionAsync(tx);
 
-        // Assert - the genesis transaction must NOT be rejected for being too old
+        // Assert - a stale genesis transaction IS rejected for being too old
+        result.Errors.Should().Contain(e => e.Code == "VAL_TIME_002");
+    }
+
+    [Fact]
+    public async Task ValidateTransactionAsync_FreshGenesisTransaction_NotRejectedAsTooOld()
+    {
+        // Arrange - a genesis transaction minted within GenesisMaxAge (the deploy-within-the-hour
+        // path) must be accepted.
+        var tx = CreateValidTransaction(
+            blueprintId: Sorcha.Register.Models.Constants.GenesisConstants.BlueprintId,
+            createdAt: DateTimeOffset.UtcNow.AddMinutes(-5));
+        SetupSuccessfulValidation(tx);
+
+        // Act
+        var result = await _engine.ValidateTransactionAsync(tx);
+
+        // Assert
         result.Errors.Should().NotContain(e => e.Code == "VAL_TIME_002");
     }
 

@@ -1579,17 +1579,24 @@ public class ValidationEngine : IValidationEngine
         }
 
         // Check for expired transactions.
-        // The pre-signed genesis transaction is exempt: it is a ceremony artifact
-        // with a fixed timestamp, embedded and ingested whenever a node bootstraps
-        // (often days/years after the ceremony). Applying the live-transaction
-        // freshness window to it would reject the trust anchor, leaving the genesis
-        // docket sealed empty so federated SyncOnly nodes can never obtain or verify
-        // the system register. Live control/governance transactions stay subject to it.
-        if (transaction.CreatedAt < now.Subtract(_config.MaxTransactionAge)
-            && !TransactionTypeClassifier.IsGenesisTransaction(transaction))
+        //
+        // The genesis transaction gets its own (short) freshness window rather than the
+        // live-transaction window. SECURITY: a pre-signed genesis is an offline ceremony
+        // artifact; if a stale genesis stayed valid forever it would be a replay vector — an
+        // attacker could push an old/superseded genesis to seed or hijack a bootstrapping node.
+        // Bounding it (GenesisMaxAge, default 1h) forces a regenerated system register to be
+        // minted, embedded, deployed, and bootstrapped within the hour. This guards the
+        // ingest-and-seal path (Auto bootstrap); a node that pulls an already-sealed genesis
+        // docket from a peer verifies the sealed docket (validator signature + chain), not the
+        // genesis tx's age, so late-joining SyncOnly replicas are unaffected.
+        var isGenesis = TransactionTypeClassifier.IsGenesisTransaction(transaction);
+        var maxAge = isGenesis ? _config.GenesisMaxAge : _config.MaxTransactionAge;
+        if (transaction.CreatedAt < now.Subtract(maxAge))
         {
             errors.Add(CreateError("VAL_TIME_002",
-                $"Transaction is too old (max age: {_config.MaxTransactionAge})",
+                isGenesis
+                    ? $"Genesis transaction is too old (max age: {maxAge}); mint, deploy, and bootstrap within this window"
+                    : $"Transaction is too old (max age: {maxAge})",
                 ValidationErrorCategory.Timing, "CreatedAt"));
         }
 

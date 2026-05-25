@@ -79,6 +79,21 @@ public class ValidationEngineConfiguration
     public TimeSpan MaxTransactionAge { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
+    /// Maximum age of a genesis transaction before rejection (VAL_TIME_002).
+    /// </summary>
+    /// <remarks>
+    /// SECURITY: the genesis trust anchor is pre-signed offline, so a stale-but-still-accepted
+    /// genesis is a replay vector — an attacker could push an old (e.g. superseded) genesis to
+    /// seed or hijack a freshly-bootstrapping node. Bounding genesis freshness to a short window
+    /// forces a regenerated system register to be minted, embedded, deployed, and bootstrapped
+    /// within that window. This applies to a node that <b>ingests + seals</b> a pre-signed
+    /// genesis (Auto bootstrap); a node that <b>pulls an already-sealed genesis docket</b> from a
+    /// peer verifies the sealed docket's validator signature + chain, not the genesis
+    /// transaction's age, so late-joining replicas are unaffected. Default 1 hour.
+    /// </remarks>
+    public TimeSpan GenesisMaxAge { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// Enable governance rights enforcement for Control transactions.
     /// When enabled, Control transactions are validated against the register's
     /// admin roster to ensure the submitter has the required role.
