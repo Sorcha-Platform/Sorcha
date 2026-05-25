@@ -200,6 +200,17 @@ public static class SocialLoginEndpoints
             }
         }
 
+        // Validate + normalise surface. null / missing = existing /app web flow.
+        // "wallet" routes the post-OAuth callback into the citizen wallet PWA.
+        var surface = string.IsNullOrWhiteSpace(request.Surface) ? null : request.Surface.Trim().ToLowerInvariant();
+        if (surface is not (null or "wallet" or "app"))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["surface"] = ["surface must be 'wallet' or 'app'"]
+            });
+        }
+
         // Resolve callback URL (config-first, falls back to Request scheme/host).
         // See ResolveCallbackUrl for why config-first is required behind a
         // TLS-terminating reverse proxy.
@@ -208,7 +219,7 @@ public static class SocialLoginEndpoints
         try
         {
             var result = await socialLoginService.GenerateAuthorizationUrlAsync(
-                request.Provider, redirectUri, intent.Value, targetPlatformUserId, ct);
+                request.Provider, redirectUri, intent.Value, targetPlatformUserId, surface, ct);
 
             logger.LogInformation(
                 "Social {Intent} flow initiated for provider {Provider}",
