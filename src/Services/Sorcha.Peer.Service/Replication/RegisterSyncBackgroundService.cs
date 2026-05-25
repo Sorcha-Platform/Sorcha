@@ -414,8 +414,21 @@ public class RegisterSyncBackgroundService : BackgroundService
                 break;
 
             case RegisterSyncState.FullyReplicated:
-            case RegisterSyncState.Active:
                 // Subscribe to live transactions (no-op if already streaming)
+                EnsureLiveSubscription(subscription);
+                // Safety-net incremental re-pull. The live subscription is the low-latency path
+                // for new dockets, but it is best-effort: on a TLS-terminated seed node the
+                // bidirectional reverse stream may be unavailable (Caddy does not relay h2c
+                // bidi on the gRPC vhost), so a FullyReplicated replica would otherwise sit
+                // indefinitely behind the owner — sealed credentials/results never arrive. Each
+                // periodic pass we re-pull any dockets sealed since LastSyncedDocketVersion via
+                // the same direct PullDocketChain path that performed the initial sync. Cheap
+                // no-op when already current.
+                await TryIncrementalResyncAsync(subscription, cancellationToken);
+                break;
+
+            case RegisterSyncState.Active:
+                // ForwardOnly mode: live transactions only (no chain to keep replicated).
                 EnsureLiveSubscription(subscription);
                 break;
 
@@ -431,6 +444,56 @@ public class RegisterSyncBackgroundService : BackgroundService
                     _immediateSyncSignal.Set();
                 }
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Safety-net incremental re-pull for a fully-replicated register. Runs each periodic pass
+    /// alongside the live subscription so that, when the live (reverse-stream) path is
+    /// unavailable, the replica still converges on the owner by pulling dockets sealed since
+    /// <see cref="RegisterSubscription.LastSyncedDocketVersion"/>. Delegates to
+    /// <see cref="RegisterReplicationService.PullFullReplicaAsync"/> (incremental from the last
+    /// synced version via the direct <c>PullDocketChain</c> channel; finalised dockets are
+    /// written through the Register Service, which routes inbound transactions to local wallets).
+    /// Guarded by the per-register semaphore so it never overlaps the live sync or relay poll;
+    /// failures are non-fatal (the live subscription remains the primary path).
+    /// </summary>
+    private async Task TryIncrementalResyncAsync(
+        RegisterSubscription subscription,
+        CancellationToken cancellationToken)
+    {
+        var semaphore = GetSyncSemaphore(subscription.RegisterId);
+        if (!await semaphore.WaitAsync(0, cancellationToken))
+        {
+            _logger.LogDebug(
+                "Incremental resync skipped for register {RegisterId} — sync already in progress",
+                subscription.RegisterId);
+            return;
+        }
+
+        try
+        {
+            var beforeVersion = subscription.LastSyncedDocketVersion;
+            var result = await _replicationService.PullFullReplicaAsync(subscription, cancellationToken);
+
+            if (result.Success && result.DocketsSynced > 0)
+            {
+                _logger.LogInformation(
+                    "Incremental resync pulled {Dockets} docket(s)/{Txs} transaction(s) for register {RegisterId} (v{Before} → v{After})",
+                    result.DocketsSynced, result.TransactionsSynced, subscription.RegisterId,
+                    beforeVersion, subscription.LastSyncedDocketVersion);
+                await PersistSubscriptionAsync(subscription, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Incremental resync failed for register {RegisterId} (non-critical; live subscription remains primary)",
+                subscription.RegisterId);
+        }
+        finally
+        {
+            semaphore.Release();
         }
     }
 
