@@ -125,8 +125,9 @@ public class SocialCallbackModel : PageModel
             return Page();
         }
 
-        // Resolve or create PlatformUser under the strict link policy
-        var resolveResult = await _platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, ct);
+        // Resolve or create PlatformUser under the strict link policy.
+        // Wallet surface is login-only — do not create new accounts via social sign-in.
+        var resolveResult = await _platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, allowCreate: !isWallet, ct);
 
         // Refusal handling (feature 115 FR-016, FR-018)
         if (resolveResult.Refusal != SocialLoginRefusal.None)
@@ -149,22 +150,14 @@ public class SocialCallbackModel : PageModel
             SocialLoginMetrics.RecordRefusal(provider, resolveResult.Refusal);
             if (isWallet)
             {
-                return Redirect(BuildWalletSignInError("refused"));
+                var errorCode = resolveResult.Refusal == SocialLoginRefusal.NoExistingAccount ? "no_account" : "refused";
+                return Redirect(BuildWalletSignInError(errorCode));
             }
             return Page();
         }
 
         var platformUser = resolveResult.User!;
         var isNew = resolveResult.IsNew;
-
-        // Login-only for the wallet surface (signup happens via council enrol /
-        // pairing / web). A social identity that maps to no existing account is
-        // refused with a link to web signup rather than silently creating one.
-        if (isWallet && isNew)
-        {
-            _logger.LogInformation("Wallet social login refused: no existing account for {Provider} identity", provider);
-            return Redirect(BuildWalletSignInError("no_account"));
-        }
 
         // Ensure UserIdentity in public org
         var publicOrgId = WellKnownIds.PublicOrgId;

@@ -316,7 +316,7 @@ public static class SocialLoginEndpoints
         // been validated against the cached state and is the same value used for
         // metrics tagging and logging. Defence-in-depth: never reflect raw
         // request input back into a user-visible message.
-        var resolveResult = await platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, ct);
+        var resolveResult = await platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, allowCreate: true, ct);
         if (resolveResult.Refusal != SocialLoginRefusal.None)
         {
             var resolvedProvider = callbackResult.Provider;

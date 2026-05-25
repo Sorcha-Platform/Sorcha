@@ -111,6 +111,7 @@ public class SocialCallbackModelTests : IDisposable
         _platformUserService
             .Setup(s => s.ResolveOrCreateSocialUserAsync(
                 It.IsAny<SocialAuthCallbackResult>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolveSocialUserResult(
                 User: null, IsNew: false, Refusal: SocialLoginRefusal.ProviderUnverified));
@@ -140,6 +141,7 @@ public class SocialCallbackModelTests : IDisposable
         _platformUserService
             .Setup(s => s.ResolveOrCreateSocialUserAsync(
                 It.IsAny<SocialAuthCallbackResult>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolveSocialUserResult(
                 User: null, IsNew: false, Refusal: SocialLoginRefusal.ExistingUnverified));
