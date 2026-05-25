@@ -25,5 +25,14 @@ public enum ValidatorKeyStatus
     /// <summary>
     /// Key permanently revoked. Rejected for all verification purposes.
     /// </summary>
-    Revoked
+    Revoked,
+
+    /// <summary>
+    /// Validator automatically ejected by a deterministic on-chain rule (Feature 138 US3) — proven
+    /// equivocation or a liveness-timeout. Distinct from operator-driven <see cref="Revoked"/>:
+    /// ejection is sealed by a <c>control.validator.eject</c> / <c>control.validator.liveness-violation</c>
+    /// transaction that every honest node produces and applies identically. Excluded from voting and
+    /// from verification, like Revoked.
+    /// </summary>
+    Ejected
 }

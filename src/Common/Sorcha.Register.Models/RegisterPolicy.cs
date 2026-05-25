@@ -75,7 +75,10 @@ public class RegisterPolicy
             },
             Validators = new PolicyValidatorConfig
             {
-                RegistrationMode = RegistrationMode.Public,
+                // Feature 138 US3 (FR-011) — new registers default to Consent: a validator must be
+                // explicitly approved into the sealed roster before any vote counts. Open
+                // self-registration (Public) remains selectable by the register owner.
+                RegistrationMode = RegistrationMode.Consent,
                 ApprovedValidators = [],
                 MinValidators = 1,
                 MaxValidators = 100,
@@ -145,11 +148,13 @@ public class PolicyGovernanceConfig
 public class PolicyValidatorConfig
 {
     /// <summary>
-    /// How validators are registered: Public (open) or Approved (permissioned).
+    /// How validators are registered: Public (open self-registration) or Consent (permissioned —
+    /// explicit roster approval required). Feature 138 US3 / FR-011 defaults this to Consent so a
+    /// register is not silently open to self-admitting validators.
     /// </summary>
     [JsonPropertyName("registrationMode")]
     [JsonConverter(typeof(JsonStringEnumConverter))]
-    public RegistrationMode RegistrationMode { get; set; } = RegistrationMode.Public;
+    public RegistrationMode RegistrationMode { get; set; } = RegistrationMode.Consent;
 
     /// <summary>
     /// List of pre-approved validators when <see cref="RegistrationMode"/> is Approved.

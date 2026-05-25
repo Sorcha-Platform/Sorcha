@@ -54,11 +54,13 @@ public class RegisterPolicyTests
     // --- CreateDefault: Validators ---
 
     [Fact]
-    public void CreateDefault_Validators_RegistrationMode_IsPublic()
+    public void CreateDefault_Validators_RegistrationMode_IsConsent()
     {
+        // Feature 138 US3 / FR-011 — new registers default to Consent (explicit roster approval),
+        // not open self-registration.
         var policy = RegisterPolicy.CreateDefault();
 
-        policy.Validators.RegistrationMode.Should().Be(RegistrationMode.Public);
+        policy.Validators.RegistrationMode.Should().Be(RegistrationMode.Consent);
     }
 
     [Fact]
@@ -353,8 +355,10 @@ public class RegisterPolicyTests
 
         var json = JsonSerializer.Serialize(policy);
 
-        json.Should().Contain("\"Public\"");
-        json.Should().NotContain("\"registrationMode\":0");
+        // Default is Consent (FR-011); the point of this test is that the enum serializes as a
+        // string, not its numeric value.
+        json.Should().Contain("\"Consent\"");
+        json.Should().NotContain("\"registrationMode\":1");
     }
 
     [Fact]
@@ -387,7 +391,7 @@ public class RegisterPolicyTests
 
         var deserialized = JsonSerializer.Deserialize<RegisterPolicy>(json);
 
-        deserialized!.Validators.RegistrationMode.Should().Be(RegistrationMode.Public);
+        deserialized!.Validators.RegistrationMode.Should().Be(RegistrationMode.Consent);
     }
 
     [Fact]
