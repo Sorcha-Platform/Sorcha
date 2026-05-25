@@ -208,6 +208,42 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 return Failure(errors);
             }
 
+            // ── 5b. Enforce KB-JWT freshness (Feature 138 US5) ────────────────────
+            //   The key-binding proof carries its own short, independently-enforced exp. Checked here —
+            //   the earliest point the payload is signature-verified and therefore trustworthy — so a
+            //   captured proof replayed after its exp is rejected even while the session is still open
+            //   (the session nonce/aud/TTL alone left a multi-minute replay window). exp is mandatory
+            //   (FR-017); freshness is wall-clock within the configured skew (FR-018). Mid-session
+            //   revocation is independently re-checked at verify time by the delegation status-list
+            //   check above (US1 fail-closed), together satisfying FR-019.
+            if (!kbPayload.TryGetProperty("exp", out var kbExpEl) || kbExpEl.ValueKind != JsonValueKind.Number)
+            {
+                errors.Add("KB-JWT is missing the mandatory exp claim.");
+                _metrics?.PresentationReplayRejected("kbjwt_missing_exp");
+                return Failure(errors);
+            }
+            var kbExp = DateTimeOffset.FromUnixTimeSeconds(kbExpEl.GetInt64());
+            var nowUtc = _clock.GetUtcNow();
+            if (nowUtc > kbExp + _clockSkew)
+            {
+                errors.Add("KB-JWT has expired; the key-binding proof is no longer fresh.");
+                _metrics?.PresentationReplayRejected("kbjwt_expired");
+                return Failure(errors);
+            }
+            // Cap the proof lifetime so an over-long-lived KB-JWT cannot widen the replay window.
+            if (kbPayload.TryGetProperty("iat", out var kbIatEl) && kbIatEl.ValueKind == JsonValueKind.Number)
+            {
+                var kbIat = DateTimeOffset.FromUnixTimeSeconds(kbIatEl.GetInt64());
+                if (kbExp - kbIat > _kbJwtMaxLifetime)
+                {
+                    errors.Add(
+                        $"KB-JWT lifetime ({(kbExp - kbIat).TotalSeconds:0}s) exceeds the maximum " +
+                        $"permitted ({_kbJwtMaxLifetime.TotalSeconds:0}s).");
+                    _metrics?.PresentationReplayRejected("kbjwt_expired");
+                    return Failure(errors);
+                }
+            }
+
             // ── 6. Verify KB-JWT nonce + aud match the session ────────────────────
             var kbNonce = TryGetString(kbPayload, "nonce");
             var kbAudience = TryGetString(kbPayload, "aud");

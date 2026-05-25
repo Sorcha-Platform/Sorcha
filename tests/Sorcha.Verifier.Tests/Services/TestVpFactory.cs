@@ -36,7 +36,10 @@ internal static class TestVpFactory
         string verifierNonce,
         DateTimeOffset? delegationExpiresAt = null,
         string statusListUri = "https://verify.test/status/00000000000000000000000000000000/citizen-devices/0.statuslist+jwt",
-        int statusListIndex = 7)
+        int statusListIndex = 7,
+        DateTimeOffset? kbJwtIssuedAt = null,
+        DateTimeOffset? kbJwtExpiresAt = null,
+        bool omitKbJwtExp = false)
     {
         var issuer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var holder = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -103,13 +106,20 @@ internal static class TestVpFactory
             ["typ"] = "kb+jwt",
             ["kid"] = deviceThumbprint,
         };
+        // Feature 138 US5 — the KB-JWT carries its own short exp (default now+120s, within the
+        // 120s max-lifetime bound). Negative tests override iat/exp or omit exp entirely.
+        var kbIat = (kbJwtIssuedAt ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds();
         var kbPayload = new Dictionary<string, object>
         {
-            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["iat"] = kbIat,
             ["aud"] = verifierClientId,
             ["nonce"] = verifierNonce,
             ["sd_hash"] = "placeholder",
         };
+        if (!omitKbJwtExp)
+        {
+            kbPayload["exp"] = (kbJwtExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(120)).ToUnixTimeSeconds();
+        }
         var kbJwt = SignEs256(kbHeader, kbPayload, device);
 
         var disclosureSegments = string.Concat(disclosures.Select(d => "~" + d));

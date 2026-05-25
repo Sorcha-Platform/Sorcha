@@ -169,15 +169,15 @@ description: "Task list for Federation Trust Hardening (Feature 138)"
 
 ### Tests for User Story 5 ⚠️ (write first, must fail)
 
-- [ ] T056 [P] [US5] Negative test: KB-JWT replayed after its `exp` rejected within an open session, in `tests/Sorcha.Verifier.Engine.Tests/KbJwtExpiryTests.cs`
-- [ ] T057 [P] [US5] Negative test: KB-JWT with no `exp` rejected; over-long-lived KB-JWT (> `KbJwtMaxLifetimeSeconds`) rejected, in `tests/Sorcha.Verifier.Engine.Tests/KbJwtMissingExpTests.cs`
-- [ ] T058 [P] [US5] Negative test: device credential revoked mid-session fails verification (revocation re-checked at verify time), in `tests/Sorcha.Verifier.Engine.Tests/MidSessionRevocationTests.cs`
+- [X] T056 [P] [US5] Negative test: KB-JWT replayed after its `exp` rejected within an open session, in `tests/Sorcha.Verifier.Engine.Tests/KbJwtExpiryTests.cs`
+- [X] T057 [P] [US5] Negative test: KB-JWT with no `exp` rejected; over-long-lived KB-JWT (> `KbJwtMaxLifetimeSeconds`) rejected, in `tests/Sorcha.Verifier.Engine.Tests/KbJwtMissingExpTests.cs`
+- [X] T058 [P] [US5] Negative test: device credential revoked mid-session fails verification (revocation re-checked at verify time), in `tests/Sorcha.Verifier.Engine.Tests/MidSessionRevocationTests.cs`
 
 ### Implementation for User Story 5
 
-- [ ] T059 [US5] Require and validate KB-JWT `exp` against wall-clock within clock skew (T003), before delegation/status validation; reject missing `exp`, in `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`
-- [ ] T060 [US5] Enforce `KbJwtMaxLifetimeSeconds` upper bound on `exp − iat`, in `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`
-- [ ] T061 [US5] Increment `sorcha_presentation_replay_rejected_total{reason}`, in `VerifiablePresentationValidator.cs`
+- [X] T059 [US5] Require and validate KB-JWT `exp` against wall-clock within clock skew (T003), before delegation/status validation; reject missing `exp`, in `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`
+- [X] T060 [US5] Enforce `KbJwtMaxLifetimeSeconds` upper bound on `exp − iat`, in `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`
+- [X] T061 [US5] Increment `sorcha_presentation_replay_rejected_total{reason}`, in `VerifiablePresentationValidator.cs`
 
 **Checkpoint**: US1–US5 independently functional.
 
