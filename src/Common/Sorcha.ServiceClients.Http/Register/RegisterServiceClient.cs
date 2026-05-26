@@ -1891,4 +1891,155 @@ public class RegisterServiceClient : IRegisterServiceClient
             return [];
         }
     }
+
+    // =========================================================================
+    // Feature 079 — Transaction verification + lifecycle (Feature 140 MCP surface)
+    // =========================================================================
+
+    /// <inheritdoc />
+    public async Task<TransactionStatusResponse?> GetTransactionStatusAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/transactions/{Uri.EscapeDataString(transactionId)}/status",
+                cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetTransactionStatusAsync failed for {TransactionId} on register {RegisterId}: {StatusCode}",
+                    transactionId, registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<TransactionStatusResponse>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get transaction status for {TransactionId} on register {RegisterId}",
+                transactionId, registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<MerkleInclusionProof?> GetInclusionProofAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/transactions/{Uri.EscapeDataString(transactionId)}/inclusion-proof",
+                cancellationToken);
+
+            // 404 (no such tx) and 409 (not sealed yet) both map to "no proof available".
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Conflict)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetInclusionProofAsync failed for {TransactionId} on register {RegisterId}: {StatusCode}",
+                    transactionId, registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<MerkleInclusionProof>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get inclusion proof for {TransactionId} on register {RegisterId}",
+                transactionId, registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<VerificationBundle?> GetVerificationBundleAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/transactions/{Uri.EscapeDataString(transactionId)}/verification-bundle",
+                cancellationToken);
+
+            // 404 (no such tx) and 409 (not sealed yet) both map to "no bundle available".
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Conflict)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetVerificationBundleAsync failed for {TransactionId} on register {RegisterId}: {StatusCode}",
+                    transactionId, registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<VerificationBundle>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get verification bundle for {TransactionId} on register {RegisterId}",
+                transactionId, registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<RevokeTransactionResult?> RevokeTransactionAsync(
+        string registerId,
+        RevokeTransactionClientRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.PostAsJsonAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/transactions/revoke",
+                request,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "RevokeTransactionAsync failed for {TransactionId} on register {RegisterId}: {StatusCode} - {Error}",
+                    request.OriginalTxId, registerId, response.StatusCode, error);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RevokeTransactionResult>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to revoke transaction {TransactionId} on register {RegisterId}",
+                request.OriginalTxId, registerId);
+            return null;
+        }
+    }
 }

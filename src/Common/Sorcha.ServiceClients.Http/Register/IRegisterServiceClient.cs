@@ -555,6 +555,103 @@ public interface IRegisterServiceClient
     Task<IReadOnlyList<RegisterSummaryInfo>> GetRecentRegistersAsync(
         int limit = 10,
         CancellationToken cancellationToken = default);
+
+    // =========================================================================
+    // Feature 079 — Transaction verification + lifecycle (Feature 140 MCP surface)
+    // =========================================================================
+
+    /// <summary>
+    /// Gets the lifecycle status of a transaction (active / revoked / superseded) via
+    /// <c>GET /api/registers/{registerId}/transactions/{txId}/status</c>. The status is derived
+    /// server-side by checking for revocation transactions that reference the target.
+    /// </summary>
+    /// <param name="registerId">Register containing the transaction.</param>
+    /// <param name="transactionId">Transaction ID to query.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The lifecycle status, or null if the transaction was not found / the call failed.</returns>
+    Task<TransactionStatusResponse?> GetTransactionStatusAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a Merkle inclusion proof for a sealed transaction via
+    /// <c>GET /api/registers/{registerId}/transactions/{txId}/inclusion-proof</c>.
+    /// </summary>
+    /// <param name="registerId">Register containing the transaction.</param>
+    /// <param name="transactionId">Transaction ID to prove inclusion of.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The inclusion proof, or null if the transaction was not found, not yet sealed, or the call failed.</returns>
+    Task<MerkleInclusionProof?> GetInclusionProofAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a portable offline verification bundle for a sealed transaction via
+    /// <c>GET /api/registers/{registerId}/transactions/{txId}/verification-bundle</c>.
+    /// </summary>
+    /// <param name="registerId">Register containing the transaction.</param>
+    /// <param name="transactionId">Transaction ID to export a bundle for.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The verification bundle, or null if the transaction was not found, not yet sealed, or the call failed.</returns>
+    Task<VerificationBundle?> GetVerificationBundleAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Submits a transaction revocation via
+    /// <c>POST /api/registers/{registerId}/transactions/revoke</c>. Creates a new revocation
+    /// transaction that marks the target transaction as revoked or superseded.
+    /// </summary>
+    /// <param name="registerId">Register containing the target transaction.</param>
+    /// <param name="request">Revocation request (target tx id, reason, optional superseding tx and metadata).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The revocation result (revocation tx id + accepted flag), or null on failure.</returns>
+    Task<RevokeTransactionResult?> RevokeTransactionAsync(
+        string registerId,
+        RevokeTransactionClientRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Request to revoke a transaction (Feature 079 / Feature 140 MCP surface). Mirrors the
+/// Register Service's <c>RevokeTransactionRequest</c> body shape.
+/// </summary>
+public sealed record RevokeTransactionClientRequest
+{
+    /// <summary>Transaction ID to revoke.</summary>
+    public required string OriginalTxId { get; init; }
+
+    /// <summary>
+    /// Revocation reason. One of: Superseded, Erroneous, Compromised, Expired, Withdrawn, Regulatory.
+    /// </summary>
+    public required string Reason { get; init; }
+
+    /// <summary>Replacement transaction ID (required when <see cref="Reason"/> is Superseded).</summary>
+    public string? SupersededByTxId { get; init; }
+
+    /// <summary>Additional context metadata (max 10 entries).</summary>
+    public Dictionary<string, string>? Metadata { get; init; }
+
+    /// <summary>Wallet address of the signer submitting the revocation.</summary>
+    public string? SignerWalletAddress { get; init; }
+}
+
+/// <summary>
+/// Result of a transaction revocation submission.
+/// </summary>
+public sealed record RevokeTransactionResult
+{
+    /// <summary>ID of the newly-created revocation transaction.</summary>
+    public string RevocationTxId { get; init; } = string.Empty;
+
+    /// <summary>The original transaction ID that was revoked.</summary>
+    public string OriginalTxId { get; init; } = string.Empty;
+
+    /// <summary>Server-reported status string (e.g. "submitted").</summary>
+    public string Status { get; init; } = string.Empty;
 }
 
 /// <summary>
