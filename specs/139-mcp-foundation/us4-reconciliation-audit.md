@@ -53,6 +53,11 @@ Legend: ✅ existing client method · ➕ add a client method · 🔧 drifted/ne
     - `peer_status` — consumes bespoke `/api/peers/stats` + `/api/peers/health`; no Peer client exists in `Sorcha.ServiceClients.Http` and the shapes don't map to any existing typed method.
     - `register_query` — reads **materialised record data** (`/api/registers/{id}/data`, OData); no typed method returns that shape (register client only exposes transaction reads). Forcing it onto transaction reads would change semantics.
     - `action_validate` — the live `/api/actions/{id}/validate` endpoint returns a rich `{isValid, errors[]}`; the only typed method `ValidatePayloadAsync` returns a bare bool (loses the error list) AND needs blueprintId+actionId the tool doesn't take. Reworking would regress error reporting.
+- ✅ **Batch 2 (Blueprint)** complete: added ~12 raw-JSON Blueprint client methods (list/create/update/diff/route/calculate/workflow-instances/status/action-details/inbox/disclosed/execute); reconciled the designer + participant tools; reworked `action_submit` to `instanceId`+`actionId` → `POST .../execute`. The 4 pure-compute tools untouched.
+- ✅ **Batch 3 (Tenant)** complete: introduced `ITenantServiceClient` (+ impl + DI). Reconciled `tenant_list/create/update`, `user_list/manage`, `token_revoke`; fixed `tenant_create` → `POST /api/platform/organizations`.
+- ✅ **Batch 4 (validator + phantom)** complete:
+  - `validator_status` — **left on bare HttpClient** (token still forwards via the default-client handler). It composes three distinct endpoints (`/health`, `/api/admin/validators/{id}/status`, `/api/validators/{id}/count`) into a bespoke result; `IValidatorServiceClient` has no status endpoint and adding one would force an MCP-specific composite shape into the shared client. Noted, not force-fitted.
+  - `audit_query`, `log_query`, `metrics` — **marked `NotSupported`** (LOCKED DECISION). Auth gate kept; dead backend-call code, unused ctor deps, and private DTOs removed; tests assert the NotSupported + auth-gate behaviour. Tools stay advertised.
 
 ## Suggested execution order (T023–T030)
 
