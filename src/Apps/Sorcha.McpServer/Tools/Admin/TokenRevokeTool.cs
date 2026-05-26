@@ -3,47 +3,37 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tools.Admin;
 
 /// <summary>
-/// Admin tool for revoking authentication tokens.
+/// Admin tool for revoking authentication tokens. Writes via the typed <see cref="ITenantServiceClient"/>
+/// (spec 139 US4) so the caller's bearer is forwarded and the route is contract-pinned.
 /// </summary>
 [McpServerToolType]
 public sealed class TokenRevokeTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ITenantServiceClient _tenantClient;
     private readonly ILogger<TokenRevokeTool> _logger;
-    private readonly string _tenantServiceEndpoint;
 
     public TokenRevokeTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        ITenantServiceClient tenantClient,
         ILogger<TokenRevokeTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _tenantClient = tenantClient;
         _logger = logger;
-
-        _tenantServiceEndpoint = configuration["ServiceClients:TenantService:Address"] ?? "http://localhost:5110";
     }
 
     /// <summary>
@@ -117,11 +107,6 @@ public sealed class TokenRevokeTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var url = $"{_tenantServiceEndpoint.TrimEnd('/')}/api/tokens/revoke";
-
             var requestBody = JsonSerializer.Serialize(new
             {
                 userId,
@@ -129,52 +114,32 @@ public sealed class TokenRevokeTool
                 reason
             });
 
-            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-            var response = await client.PostAsync(url, content, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route (POST api/tokens/revoke).
+            var responseContent = await _tenantClient.RevokeTokenAsync(requestBody, cancellationToken);
 
             stopwatch.Stop();
 
-            if (!response.IsSuccessStatusCode)
+            if (responseContent is null)
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Token revocation failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
                 _availabilityTracker.RecordSuccess("Tenant");
 
-                try
+                return new TokenRevokeResult
                 {
-                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-
-                    return new TokenRevokeResult
-                    {
-                        Status = "Error",
-                        Message = errorResponse?.Error ?? "Token revocation failed.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
-                catch (JsonException)
-                {
-                    return new TokenRevokeResult
-                    {
-                        Status = "Error",
-                        Message = $"Token revocation failed with status {(int)response.StatusCode}.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
+                    Status = "Error",
+                    Message = "Token revocation failed.",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+                };
             }
 
             _availabilityTracker.RecordSuccess("Tenant");
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = JsonSerializer.Deserialize<RevokeResponse>(responseContent, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var result = string.IsNullOrWhiteSpace(responseContent)
+                ? null
+                : JsonSerializer.Deserialize<RevokeResponse>(responseContent, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
 
             _logger.LogInformation(
                 "Revoked {Count} tokens for {Target} in {ElapsedMs}ms",
@@ -243,10 +208,6 @@ public sealed class TokenRevokeTool
         public int UsersAffected { get; set; }
     }
 
-    private sealed class ErrorResponse
-    {
-        public string? Error { get; set; }
-    }
 }
 
 /// <summary>

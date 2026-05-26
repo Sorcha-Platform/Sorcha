@@ -104,6 +104,8 @@ builder.Services.AddHttpClient<Sorcha.ServiceClients.Register.RegisterServiceCli
     .AddHttpMessageHandler<CallerTokenForwardingHandler>();
 builder.Services.AddHttpClient<Sorcha.ServiceClients.Wallet.WalletServiceClient>()
     .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+builder.Services.AddHttpClient<Sorcha.ServiceClients.Tenant.TenantServiceClient>()
+    .AddHttpMessageHandler<CallerTokenForwardingHandler>();
 
 // Configure MCP server with stdio transport and auto-discovery
 builder.Services

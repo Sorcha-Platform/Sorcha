@@ -4,45 +4,36 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tools.Admin;
 
 /// <summary>
-/// Admin tool for listing users.
+/// Admin tool for listing users. Reads via the typed <see cref="ITenantServiceClient"/>
+/// (spec 139 US4) so the caller's bearer is forwarded and the route is contract-pinned.
 /// </summary>
 [McpServerToolType]
 public sealed class UserListTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ITenantServiceClient _tenantClient;
     private readonly ILogger<UserListTool> _logger;
-    private readonly string _tenantServiceEndpoint;
 
     public UserListTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        ITenantServiceClient tenantClient,
         ILogger<UserListTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _tenantClient = tenantClient;
         _logger = logger;
-
-        _tenantServiceEndpoint = configuration["ServiceClients:TenantService:Address"] ?? "http://localhost:5110";
     }
 
     /// <summary>
@@ -132,9 +123,6 @@ public sealed class UserListTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
             // Build query string
             var queryParams = new List<string>
             {
@@ -154,23 +142,20 @@ public sealed class UserListTool
             if (!string.IsNullOrWhiteSpace(search))
                 queryParams.Add($"search={Uri.EscapeDataString(search)}");
 
-            var url = $"{_tenantServiceEndpoint.TrimEnd('/')}/api/users?{string.Join("&", queryParams)}";
-
-            var response = await client.GetAsync(url, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route (GET api/users).
+            var responseContent = await _tenantClient.ListUsersAsync(
+                string.Join("&", queryParams), cancellationToken);
 
             stopwatch.Stop();
 
-            if (!response.IsSuccessStatusCode)
+            if (string.IsNullOrWhiteSpace(responseContent))
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("User list request failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
                 _availabilityTracker.RecordSuccess("Tenant");
 
                 return new UserListResult
                 {
                     Status = "Error",
-                    Message = $"Request failed with status {(int)response.StatusCode}.",
+                    Message = "Failed to retrieve users.",
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };
@@ -178,7 +163,6 @@ public sealed class UserListTool
 
             _availabilityTracker.RecordSuccess("Tenant");
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             var result = JsonSerializer.Deserialize<UserListResponse>(responseContent, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true

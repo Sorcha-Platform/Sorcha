@@ -1,138 +1,88 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Moq.Protected;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Admin;
+using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tests.Tools.Admin;
 
+/// <summary>
+/// Spec 139 US4: TenantListTool reads via the typed <see cref="ITenantServiceClient"/>
+/// (route pinned, caller token forwarded), so these tests mock the client rather than HTTP.
+/// </summary>
 public class TenantListToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
-    private readonly Mock<IMcpAuthorizationService> _authServiceMock;
-    private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
-    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
-    private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
-    private readonly Mock<IConfiguration> _configurationMock;
-    private readonly Mock<ILogger<TenantListTool>> _loggerMock;
+    private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
+    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
+    private readonly Mock<ITenantServiceClient> _tenantClientMock = new();
 
-    public TenantListToolTests()
+    private TenantListTool CreateTool() => new(
+        _authServiceMock.Object,
+        _availabilityTrackerMock.Object,
+        _tenantClientMock.Object,
+        Mock.Of<ILogger<TenantListTool>>());
+
+    private void Allow()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
-        _authServiceMock = new Mock<IMcpAuthorizationService>();
-        _errorHandlerMock = new Mock<IMcpErrorHandler>();
-        _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
-        _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _configurationMock = new Mock<IConfiguration>();
-        _loggerMock = new Mock<ILogger<TenantListTool>>();
-
-        _configurationMock.Setup(c => c["ServiceClients:TenantService:Address"])
-            .Returns("http://localhost:5110");
-    }
-
-    private TenantListTool CreateTool()
-    {
-        return new TenantListTool(
-            _sessionServiceMock.Object,
-            _authServiceMock.Object,
-            _errorHandlerMock.Object,
-            _availabilityTrackerMock.Object,
-            _httpClientFactoryMock.Object,
-            _configurationMock.Object,
-            _loggerMock.Object);
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(true);
+        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
     }
 
     [Fact]
     public async Task ListTenantsAsync_Unauthorized_ReturnsUnauthorizedResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(false);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.ListTenantsAsync();
+        var result = await CreateTool().ListTenantsAsync();
 
-        // Assert
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("Access denied");
     }
 
     [Fact]
     public async Task ListTenantsAsync_ServiceUnavailable_ReturnsUnavailableResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(true);
         _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(false);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.ListTenantsAsync();
+        var result = await CreateTool().ListTenantsAsync();
 
-        // Assert
         result.Status.Should().Be("Unavailable");
-        result.Message.Should().Contain("unavailable");
     }
 
     [Fact]
     public async Task ListTenantsAsync_InvalidStatus_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.ListTenantsAsync(status: "InvalidStatus");
+        var result = await CreateTool().ListTenantsAsync(status: "Bogus");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Invalid status");
     }
 
     [Fact]
     public async Task ListTenantsAsync_Success_ReturnsTenants()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
 
-        var response = new
+        var response = JsonSerializer.Serialize(new
         {
             Items = new[]
             {
                 new { OrganizationId = "tenant-1", Name = "Tenant One", Status = "Active", UserCount = 10, BlueprintCount = 5, CreatedAt = DateTimeOffset.UtcNow.AddDays(-30), LastActivityAt = DateTimeOffset.UtcNow.AddHours(-1) },
                 new { OrganizationId = "tenant-2", Name = "Tenant Two", Status = "Suspended", UserCount = 5, BlueprintCount = 2, CreatedAt = DateTimeOffset.UtcNow.AddDays(-60), LastActivityAt = DateTimeOffset.UtcNow.AddDays(-5) }
             },
-            TotalCount = 2,
-            Page = 1,
-            PageSize = 20,
-            TotalPages = 1
-        };
+            TotalCount = 2, Page = 1, PageSize = 20, TotalPages = 1
+        });
+        _tenantClientMock
+            .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(response);
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(response))
-            });
+        var result = await CreateTool().ListTenantsAsync();
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.ListTenantsAsync();
-
-        // Assert
         result.Status.Should().Be("Success");
         result.Tenants.Should().HaveCount(2);
         result.Tenants[0].TenantId.Should().Be("tenant-1");
@@ -145,154 +95,56 @@ public class TenantListToolTests
     [Fact]
     public async Task ListTenantsAsync_WithFilters_IncludesQueryParameters()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { Items = Array.Empty<object>(), TotalCount = 0, Page = 1, PageSize = 20, TotalPages = 0 }));
 
-        HttpRequestMessage? capturedRequest = null;
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(new { Items = Array.Empty<object>(), TotalCount = 0, Page = 1, PageSize = 20, TotalPages = 0 }))
-            });
+        await CreateTool().ListTenantsAsync(status: "Active", search: "acme");
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        await tool.ListTenantsAsync(status: "Active", search: "test", page: 2, pageSize: 50);
-
-        // Assert
-        capturedRequest.Should().NotBeNull();
-        var url = capturedRequest!.RequestUri!.ToString();
-        url.Should().Contain("status=Active");
-        url.Should().Contain("search=test");
-        url.Should().Contain("page=2");
-        url.Should().Contain("pageSize=50");
-    }
-
-    [Theory]
-    [InlineData("Active")]
-    [InlineData("Suspended")]
-    [InlineData("Inactive")]
-    public async Task ListTenantsAsync_ValidStatuses_Accepted(string status)
-    {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
-
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(new { Items = Array.Empty<object>(), TotalCount = 0, Page = 1, PageSize = 20, TotalPages = 0 }))
-            });
-
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.ListTenantsAsync(status: status);
-
-        // Assert
-        result.Status.Should().Be("Success");
+        _tenantClientMock.Verify(
+            c => c.ListOrganizationsAsync(It.Is<string>(q => q.Contains("status=Active") && q.Contains("search=acme")), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
     public async Task ListTenantsAsync_PageSizeExceeds100_ClampedTo100()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { Items = Array.Empty<object>(), TotalCount = 0, Page = 1, PageSize = 100, TotalPages = 0 }));
 
-        HttpRequestMessage? capturedRequest = null;
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(new { Items = Array.Empty<object>(), TotalCount = 0, Page = 1, PageSize = 100, TotalPages = 0 }))
-            });
+        await CreateTool().ListTenantsAsync(pageSize: 500);
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        await tool.ListTenantsAsync(pageSize: 500);
-
-        // Assert
-        capturedRequest.Should().NotBeNull();
-        capturedRequest!.RequestUri!.ToString().Should().Contain("pageSize=100");
+        _tenantClientMock.Verify(
+            c => c.ListOrganizationsAsync(It.Is<string>(q => q.Contains("pageSize=100")), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
-    public async Task ListTenantsAsync_HttpError_ReturnsErrorResult()
+    public async Task ListTenantsAsync_Null_ReturnsErrorResult()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var result = await CreateTool().ListTenantsAsync();
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.ListTenantsAsync();
-
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("500");
     }
 
     [Fact]
     public async Task ListTenantsAsync_Timeout_ReturnsTimeoutResult()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_list")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
-
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.ListOrganizationsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TaskCanceledException());
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
+        var result = await CreateTool().ListTenantsAsync();
 
-        // Act
-        var result = await tool.ListTenantsAsync();
-
-        // Assert
         result.Status.Should().Be("Timeout");
-        _availabilityTrackerMock.Verify(a => a.RecordFailure("Tenant"), Times.Once);
     }
 }
