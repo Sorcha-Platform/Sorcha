@@ -91,7 +91,7 @@
 
 **Independent Test**: Every advertised tool, invoked with a permitted-tier token against a running backend, returns a real result or a meaningful error — never a drift-induced not-found.
 
-- [ ] T022 [US4] Audit all 36 tools against `contracts/transport-and-tools.md` §3; record per-tool target client method + status (✅/➕/🔧) as the working checklist for this phase
+- [X] T022 [US4] Audited all 36 tools against the typed-client surface → `us4-reconciliation-audit.md` (the working checklist for T023–T030). Verified the technical path: typed clients carry no auth handler, so `CallerTokenForwardingHandler` attaches cleanly per-client + gateway base, no shared-infra change. Surfaced key per-tool nuances: ~10 Blueprint methods to add, no `ITenantServiceClient` exists, `action_submit` needs `instanceId`+`actionId` rework, `audit/log/metrics` target unconfirmed endpoints, and some ✅ mappings (e.g. `register_stats`→`GetStatsAsync`) return a thinner shape than the tool produces today (decide: accept or enrich).
 - [ ] T023 [US4] Fix `sorcha_action_submit` → `IBlueprintServiceClient` `POST /api/instances/{instanceId}/actions/{actionId}/execute` in `src/Apps/Sorcha.McpServer/Tools/Participant/ActionSubmitTool.cs`
 - [ ] T024 [US4] Fix `sorcha_tenant_create` → `ITenantServiceClient` `POST /api/platform/organizations` in `src/Apps/Sorcha.McpServer/Tools/Admin/TenantCreateTool.cs`
 - [ ] T025 [P] [US4] Add any missing typed methods to `src/Common/Sorcha.ServiceClients.Http/` (e.g. Blueprint action/instance reads, Register query/stats/history/disclosed, Wallet info, Tenant user/token/audit ops) — one method per gap identified in T022
