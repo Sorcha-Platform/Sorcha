@@ -15,8 +15,15 @@ namespace Sorcha.McpServer.Tools.Participant;
 
 /// <summary>
 /// Participant tool for signing data with the wallet.
+/// <para>
+/// Spec 139 T029: this tool is intentionally <b>not</b> decorated with
+/// <c>[McpServerToolType]</c>, so the assembly tool scan does not discover or register it and
+/// it is fully absent from the served MCP surface (and from the advertised manifest catalogue).
+/// Direct signing is a high-risk operation that returns in a dedicated, security-reviewed wave;
+/// it was already excluded from <see cref="Services.ToolEntitlements"/> (US2). The class is kept
+/// intact (compiles, unit-tested) so that wave can re-enable it by restoring the attribute.
+/// </para>
 /// </summary>
-[McpServerToolType]
 public sealed class WalletSignTool
 {
     private readonly IMcpSessionService _sessionService;
