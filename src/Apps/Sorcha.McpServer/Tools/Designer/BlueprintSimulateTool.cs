@@ -3,47 +3,38 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Blueprint;
 
 namespace Sorcha.McpServer.Tools.Designer;
 
 /// <summary>
-/// Designer tool for simulating blueprint action execution (dry-run).
+/// Designer tool for simulating blueprint action execution (dry-run). Reads via the typed
+/// <see cref="IBlueprintServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the routes are contract-pinned, not hand-rolled.
 /// </summary>
 [McpServerToolType]
 public sealed class BlueprintSimulateTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IBlueprintServiceClient _blueprintClient;
     private readonly ILogger<BlueprintSimulateTool> _logger;
-    private readonly string _blueprintServiceEndpoint;
 
     public BlueprintSimulateTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IBlueprintServiceClient blueprintClient,
         ILogger<BlueprintSimulateTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _blueprintClient = blueprintClient;
         _logger = logger;
-
-        _blueprintServiceEndpoint = configuration["ServiceClients:BlueprintService:Address"] ?? "http://localhost:5000";
     }
 
     /// <summary>
@@ -148,12 +139,9 @@ public sealed class BlueprintSimulateTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(15);
-
-            // Execute simulation steps in parallel
-            var routeTask = DetermineRoutingAsync(client, blueprintId, actionId, dataJson, cancellationToken);
-            var calculateTask = ApplyCalculationsAsync(client, blueprintId, actionId, dataJson, cancellationToken);
+            // Execute simulation steps in parallel via the typed client (bearer forwarded, routes pinned).
+            var routeTask = DetermineRoutingAsync(blueprintId, actionId, dataJson, cancellationToken);
+            var calculateTask = ApplyCalculationsAsync(blueprintId, actionId, dataJson, cancellationToken);
 
             await Task.WhenAll(routeTask, calculateTask);
 
@@ -257,8 +245,15 @@ public sealed class BlueprintSimulateTool
         }
     }
 
+    private static string BuildSimulationRequest(string blueprintId, string actionId, string dataJson) =>
+        JsonSerializer.Serialize(new
+        {
+            blueprintId,
+            actionId,
+            data = JsonSerializer.Deserialize<Dictionary<string, object>>(dataJson)
+        });
+
     private async Task<RouteResultDto?> DetermineRoutingAsync(
-        HttpClient client,
         string blueprintId,
         string actionId,
         string dataJson,
@@ -266,42 +261,14 @@ public sealed class BlueprintSimulateTool
     {
         try
         {
-            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/execution/route";
+            var requestJson = BuildSimulationRequest(blueprintId, actionId, dataJson);
+            var responseContent = await _blueprintClient.SimulateRouteAsync(requestJson, cancellationToken);
 
-            var requestBody = new
+            if (string.IsNullOrWhiteSpace(responseContent))
             {
-                blueprintId,
-                actionId,
-                data = JsonSerializer.Deserialize<Dictionary<string, object>>(dataJson)
-            };
-
-            var content = new StringContent(
-                JsonSerializer.Serialize(requestBody),
-                Encoding.UTF8,
-                "application/json");
-
-            var response = await client.PostAsync(url, content, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Route request failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
-                try
-                {
-                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-                    return new RouteResultDto { Error = errorResponse?.Error ?? "Routing failed" };
-                }
-                catch (JsonException)
-                {
-                    return new RouteResultDto { Error = "Routing failed" };
-                }
+                return new RouteResultDto { Error = "Routing failed" };
             }
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             var result = JsonSerializer.Deserialize<RouteResponse>(responseContent, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
@@ -329,7 +296,6 @@ public sealed class BlueprintSimulateTool
     }
 
     private async Task<CalculateResultDto?> ApplyCalculationsAsync(
-        HttpClient client,
         string blueprintId,
         string actionId,
         string dataJson,
@@ -337,29 +303,14 @@ public sealed class BlueprintSimulateTool
     {
         try
         {
-            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/execution/calculate";
+            var requestJson = BuildSimulationRequest(blueprintId, actionId, dataJson);
+            var responseContent = await _blueprintClient.SimulateCalculateAsync(requestJson, cancellationToken);
 
-            var requestBody = new
+            if (string.IsNullOrWhiteSpace(responseContent))
             {
-                blueprintId,
-                actionId,
-                data = JsonSerializer.Deserialize<Dictionary<string, object>>(dataJson)
-            };
-
-            var content = new StringContent(
-                JsonSerializer.Serialize(requestBody),
-                Encoding.UTF8,
-                "application/json");
-
-            var response = await client.PostAsync(url, content, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Calculate request failed: HTTP {StatusCode}", response.StatusCode);
                 return null;
             }
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             var result = JsonSerializer.Deserialize<CalculateResponse>(responseContent, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
@@ -401,10 +352,6 @@ public sealed class BlueprintSimulateTool
         public List<string>? CalculatedFields { get; set; }
     }
 
-    private sealed class ErrorResponse
-    {
-        public string? Error { get; set; }
-    }
 
     private sealed class RouteResultDto
     {

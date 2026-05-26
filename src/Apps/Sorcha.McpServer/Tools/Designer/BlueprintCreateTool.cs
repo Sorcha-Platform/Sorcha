@@ -3,48 +3,38 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Net;
-using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Blueprint;
 
 namespace Sorcha.McpServer.Tools.Designer;
 
 /// <summary>
-/// Designer tool for creating blueprints.
+/// Designer tool for creating blueprints. Writes via the typed
+/// <see cref="IBlueprintServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the route is contract-pinned, not hand-rolled.
 /// </summary>
 [McpServerToolType]
 public sealed class BlueprintCreateTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IBlueprintServiceClient _blueprintClient;
     private readonly ILogger<BlueprintCreateTool> _logger;
-    private readonly string _blueprintServiceEndpoint;
 
     public BlueprintCreateTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IBlueprintServiceClient blueprintClient,
         ILogger<BlueprintCreateTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _blueprintClient = blueprintClient;
         _logger = logger;
-
-        _blueprintServiceEndpoint = configuration["ServiceClients:BlueprintService:Address"] ?? "http://localhost:5000";
     }
 
     /// <summary>
@@ -127,10 +117,7 @@ public sealed class BlueprintCreateTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(15);
-
-            var createdBlueprint = await CreateBlueprintInServiceAsync(client, blueprintJson, cancellationToken);
+            var createdBlueprint = await CreateBlueprintInServiceAsync(blueprintJson, cancellationToken);
 
             stopwatch.Stop();
 
@@ -294,26 +281,18 @@ public sealed class BlueprintCreateTool
     }
 
     private async Task<CreatedBlueprintInfo?> CreateBlueprintInServiceAsync(
-        HttpClient client,
         string blueprintJson,
         CancellationToken cancellationToken)
     {
         try
         {
-            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/blueprints/";
-            var content = new StringContent(blueprintJson, Encoding.UTF8, "application/json");
-            var response = await client.PostAsync(url, content, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
+            // Typed client forwards the caller's bearer and pins the route (POST api/blueprints/).
+            var responseContent = await _blueprintClient.CreateBlueprintAsync(blueprintJson, cancellationToken);
+            if (string.IsNullOrWhiteSpace(responseContent))
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
-                    "Failed to create blueprint: HTTP {StatusCode} - {Error}",
-                    response.StatusCode, errorContent);
                 return null;
             }
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             var dto = JsonSerializer.Deserialize<BlueprintResponseDto>(responseContent, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
