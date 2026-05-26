@@ -62,6 +62,9 @@ public sealed class BearerTokenHandler : DelegatingHandler
         return await base.SendAsync(retry, ct);
     }
 
+    // No refresh lock: WASM is single-threaded. Concurrent 401s can interleave across awaits and
+    // double-refresh, but rotating-token servers grant a grace window, so the worst case is one
+    // wasteful refresh call — not a stuck session. A SemaphoreSlim guard isn't worth the complexity here.
     private async Task<AccessTokenRecord?> TryRefreshAsync(
         string refreshToken, string? email, CancellationToken ct)
     {

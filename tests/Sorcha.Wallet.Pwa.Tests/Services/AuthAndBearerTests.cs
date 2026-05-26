@@ -401,6 +401,43 @@ public sealed class AuthAndBearerTests
     }
 
     [Fact]
+    public async Task BearerTokenHandler_On401_PreservesPostBodyOnRetry()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", "rt"));
+
+        string? retriedBody = null;
+        var inner = new SequencedHandler(req =>
+        {
+            var auth = req.Headers.Authorization?.Parameter;
+            if (auth == "new")
+            {
+                // Capture the retried request's body — synchronous GetAwaiter().GetResult() is
+                // acceptable in a test-only delegate; no async path available here.
+                retriedBody = req.Content is null
+                    ? null
+                    : req.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK);
+            }
+            return new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized);
+        });
+
+        // Refresh endpoint returns a fresh token "new".
+        var refreshHttp = new HttpClient(new CapturingHandler(_ =>
+            Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
+            { BaseAddress = new Uri("https://gw.test/") };
+
+        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+
+        var resp = await client.PostAsync("api/v1/wallet/something",
+            new StringContent("{\"k\":\"v\"}", System.Text.Encoding.UTF8, "application/json"));
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        retriedBody.Should().Be("{\"k\":\"v\"}", "CloneAsync must copy the POST body to the retried request");
+    }
+
+    [Fact]
     public async Task BearerTokenHandler_On401_FailedRefresh_ClearsSession()
     {
         var store = new InMemoryAccessTokenStore();
