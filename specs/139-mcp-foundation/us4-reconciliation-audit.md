@@ -36,6 +36,17 @@ Legend: ✅ existing client method · ➕ add a client method · 🔧 drifted/ne
 - **`sorcha_tenant_create`** — POSTs `/api/organizations {name,adminEmail}`; real org-with-admin provisioning is `POST /api/platform/organizations` (SystemAdmin, different body). Reconcile via the new Tenant client.
 - **`sorcha_audit_query`, `sorcha_log_query`, `sorcha_metrics`** — target `/api/audit`, `/api/admin/logs`, `/api/admin/metrics`, whose backends are **unconfirmed**. Verify whether these endpoints exist (Tenant audit? observability surface?). If no backend exists, either point at the real source or mark the tool as not-yet-supported (return a clear "unavailable" status) rather than advertising a dead tool. **Decision needed before reconciling these three.**
 
+## Decisions locked (2026-05-26)
+
+1. **`ITenantServiceClient`** — **introduce it** as a new typed client in `Sorcha.ServiceClients.Http/Tenant/` (interface + impl + DI registration in `AddHttpServiceClients`), then reconcile `tenant_list/create/update`, `user_list/manage`, `token_revoke` onto it. `tenant_create` → `POST /api/platform/organizations` (the correct admin provisioning route).
+2. **`audit_query` / `log_query` / `metrics`** — **mark not-supported**. No backend log/metrics/audit-query API exists. Rewrite each tool to: keep the admin auth gate, then return a clear `NotSupported` result ("the platform exposes no X API yet; this tool will be wired up when an observability/audit surface lands") instead of calling a phantom endpoint. Remove the dead backend-call code + now-unused ctor deps; update each tool's tests. Keep the tools advertised (admin tier) so the catalogue/manifest stays stable, but they fail honestly.
+3. **`register_stats`** — **enrich the client**, don't regress. Add to `IRegisterServiceClient`: a method returning the per-register transaction stats (unique wallets/senders/recipients, payload totals, earliest/latest — the `/api/query/stats?registerId=` shape) plus a recent-registers list, so the reconciled tool preserves today's rich output. Then reconcile `register_stats` onto those methods (dropping its bare HttpClient).
+
+## Reconciliation progress
+
+- ✅ **`blueprint_get`** reconciled onto `IBlueprintServiceClient.GetBlueprintAsync` — the **proven pattern** (commit `c339d2b0`): inject typed client, keep shaping logic, attach `CallerTokenForwardingHandler` to the client in `Program.cs`, flip tests to mock the client. Build + tests green; live forwarding tests still pass.
+- ⏭️ Remaining reusable-now (`transaction_history`, `wallet_info`, `peer_status`, `register_query`, `action_validate`) — follow the `blueprint_get` pattern.
+
 ## Suggested execution order (T023–T030)
 
 1. **Wire the handler + gateway base** onto the typed clients in `Program.cs` (the T008 carry-forward). Build green.
