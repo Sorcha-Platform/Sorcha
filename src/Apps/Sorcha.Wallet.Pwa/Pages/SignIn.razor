@@ -1,0 +1,210 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Dedicated wallet sign-in screen. Login only — signup is via council enrol,
+    pairing, or web. Three methods: passkey, social (dynamic providers), password
+    (+ TOTP 2FA). Visual/layout follows the design screenshots; wiring is final.
+    PUBLIC route (no [Authorize]) — this is the gate's redirect target.
+*@
+@page "/signin"
+@layout MainLayout
+@using Microsoft.JSInterop
+@using Sorcha.Wallet.Pwa.Services
+@inject IAuthService Auth
+@inject IPasskeyInterop Passkey
+@inject ISocialProvidersClient Providers
+@inject WalletAuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+
+<PageTitle>Sign in · Sorcha Wallet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="mt-8">
+    <MudStack Spacing="3" data-testid="signin-screen">
+        <MudText Typo="Typo.h5" Align="Align.Center">Sign in to your wallet</MudText>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" data-testid="signin-error">@_error</MudAlert>
+        }
+
+        @if (!_awaitingTwoFactor)
+        {
+            @if (_passkeySupported)
+            {
+                <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Fingerprint"
+                           OnClick="SignInWithPasskeyAsync" Disabled="@_busy"
+                           data-testid="signin-passkey">
+                    Sign in with a passkey
+                </MudButton>
+            }
+
+            @foreach (var provider in _providers)
+            {
+                <MudButton FullWidth="true" Variant="Variant.Outlined"
+                           OnClick="@(() => BeginSocialAsync(provider))" Disabled="@_busy"
+                           data-testid="@($"signin-social-{provider.ToLowerInvariant()}")">
+                    Continue with @provider
+                </MudButton>
+            }
+
+            <MudDivider Class="my-2" />
+
+            <MudTextField @bind-Value="_email" Label="Email" InputType="InputType.Email"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" data-testid="signin-email" />
+            <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" data-testid="signin-password" />
+            <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="SignInWithPasswordAsync" Disabled="@_busy" data-testid="signin-password-submit">
+                @(_busy ? "Signing in…" : "Sign in")
+            </MudButton>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                Enter the 6-digit code from your authenticator app.
+            </MudText>
+            <MudTextField @bind-Value="_twoFactorCode" Label="Authenticator code"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="6"
+                          InputMode="InputMode.numeric" data-testid="signin-2fa-code" />
+            <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="VerifyTwoFactorAsync"
+                       Disabled="@(_busy || string.IsNullOrWhiteSpace(_twoFactorCode))"
+                       data-testid="signin-2fa-submit">
+                @(_busy ? "Verifying…" : "Verify")
+            </MudButton>
+            <MudButton FullWidth="true" Variant="Variant.Text" OnClick="CancelTwoFactor" Disabled="@_busy">
+                Cancel
+            </MudButton>
+        }
+    </MudStack>
+</MudContainer>
+
+@code {
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] public string? AuthError { get; set; }
+
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private string? _error;
+    private bool _busy;
+    private bool _passkeySupported;
+    private IReadOnlyList<string> _providers = [];
+
+    private bool _awaitingTwoFactor;
+    private string? _loginToken;
+    private string _twoFactorCode = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // A social return may have staged a token in the URL fragment (auth-fragment.js).
+        if (await Auth.TryConsumeSocialReturnAsync(Js))
+        {
+            AuthState.NotifyChanged();
+            NavigateOnSuccess();
+            return;
+        }
+
+        if (await Auth.IsSignedInAsync())
+        {
+            NavigateOnSuccess();
+            return;
+        }
+
+        _error = MapAuthError(AuthError);
+        _providers = await Providers.GetConfiguredAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Hide the passkey button on browsers without WebAuthn.
+        _passkeySupported = await Passkey.IsSupportedAsync();
+        StateHasChanged();
+    }
+
+    private static string? MapAuthError(string? code) => code switch
+    {
+        null or "" => null,
+        "no_account" => "No Sorcha account is linked to that sign-in. Create one on the web, then come back.",
+        "refused" => "That sign-in was refused. Please try another method.",
+        _ => "Sign-in failed. Please try again.",
+    };
+
+    private void NavigateOnSuccess()
+    {
+        var target = string.IsNullOrEmpty(ReturnUrl) ? "" : ReturnUrl!;
+        Nav.NavigateTo(target);
+    }
+
+    private async Task SignInWithPasskeyAsync()
+    {
+        _error = null; _busy = true;
+        try
+        {
+            var result = await Auth.SignInWithPasskeyAsync();
+            await HandleResult(result);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task BeginSocialAsync(string provider)
+    {
+        _error = null; _busy = true;
+        var url = await Auth.BeginSocialSignInAsync(provider);
+        if (string.IsNullOrEmpty(url)) { _error = "Couldn't start social sign-in."; _busy = false; return; }
+        Nav.NavigateTo(url, forceLoad: true); // full-page to the provider
+    }
+
+    private async Task SignInWithPasswordAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        { _error = "Email and password are required."; return; }
+        _busy = true;
+        try
+        {
+            var result = await Auth.SignInAsync(_email, _password);
+            if (result.Status == SignInStatus.TwoFactorRequired)
+            {
+                _loginToken = result.LoginToken; _awaitingTwoFactor = true; _password = string.Empty;
+                return;
+            }
+            await HandleResult(result);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task VerifyTwoFactorAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_loginToken)) { CancelTwoFactor(); return; }
+        _error = null; _busy = true;
+        try
+        {
+            var result = await Auth.VerifyTwoFactorAsync(_loginToken, _email, _twoFactorCode);
+            if (!result.IsSuccess) { _error = result.ErrorMessage ?? "Verification failed."; _twoFactorCode = string.Empty; return; }
+            await HandleResult(result);
+        }
+        finally { _busy = false; }
+    }
+
+    private void CancelTwoFactor()
+    {
+        _awaitingTwoFactor = false; _loginToken = null; _twoFactorCode = string.Empty; _error = null;
+    }
+
+    private async Task HandleResult(SignInResult result)
+    {
+        if (result.IsSuccess)
+        {
+            AuthState.NotifyChanged();
+            NavigateOnSuccess();
+        }
+        else
+        {
+            _error = result.ErrorMessage ?? "Sign-in failed.";
+        }
+    }
+}
