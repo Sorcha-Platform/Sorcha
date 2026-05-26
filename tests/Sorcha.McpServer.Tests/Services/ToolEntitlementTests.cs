@@ -60,6 +60,58 @@ public class ToolEntitlementTests
         tools.Should().NotContain("sorcha_health_check");
     }
 
+    /// <summary>
+    /// The 8 Feature 140 Wave-3 citizen self-service tools are CONSUMER tier only: a consumer-tier
+    /// caller may invoke them, a platform-admin context may NOT (they are the consumer-facing slice).
+    /// </summary>
+    [Theory]
+    [InlineData("sorcha_my_credentials")]
+    [InlineData("sorcha_my_devices")]
+    [InlineData("sorcha_my_device_rename")]
+    [InlineData("sorcha_my_device_revoke")]
+    [InlineData("sorcha_my_persona")]
+    [InlineData("sorcha_pending_applications")]
+    [InlineData("sorcha_my_presentations")]
+    [InlineData("sorcha_my_invitations")]
+    public void Wave3Tools_AreConsumerOnly_NoRole(string toolName)
+    {
+        // Consumer tier (no role) is allowed — citizen self-service.
+        ToolEntitlements.IsPermitted(toolName, Tier.Consumer, []).Should().BeTrue();
+        // A platform admin does NOT see these consumer tools.
+        ToolEntitlements.IsPermitted(toolName, Tier.Platform, ["sorcha:admin"]).Should().BeFalse();
+        ToolEntitlements.IsPermitted(toolName, Tier.Platform, []).Should().BeFalse();
+        // Fail-closed on no tier / service tier.
+        ToolEntitlements.IsPermitted(toolName, null, []).Should().BeFalse();
+        ToolEntitlements.IsPermitted(toolName, Tier.Service, []).Should().BeFalse();
+    }
+
+    /// <summary>The consumer surface (F139 guarantee) now also includes the Wave-3 self-service slice.</summary>
+    [Fact]
+    public void VisibleTools_Consumer_IncludesWave3SelfServiceTools()
+    {
+        var tools = ToolEntitlements.VisibleTools(Tier.Consumer, []);
+
+        tools.Should().Contain("sorcha_my_credentials");
+        tools.Should().Contain("sorcha_my_devices");
+        tools.Should().Contain("sorcha_my_device_rename");
+        tools.Should().Contain("sorcha_my_device_revoke");
+        tools.Should().Contain("sorcha_my_persona");
+        tools.Should().Contain("sorcha_pending_applications");
+        tools.Should().Contain("sorcha_my_presentations");
+        tools.Should().Contain("sorcha_my_invitations");
+    }
+
+    /// <summary>The Wave-3 consumer tools must NOT leak into a platform admin's visible set.</summary>
+    [Fact]
+    public void VisibleTools_PlatformAdmin_ExcludesWave3ConsumerTools()
+    {
+        var tools = ToolEntitlements.VisibleTools(Tier.Platform, ["sorcha:admin"]);
+
+        tools.Should().NotContain("sorcha_my_credentials");
+        tools.Should().NotContain("sorcha_my_persona");
+        tools.Should().NotContain("sorcha_my_invitations");
+    }
+
     /// <summary>The 8 Feature 140 Wave-1 register-control/federation tools are platform + admin only.</summary>
     [Theory]
     [InlineData("sorcha_register_subscribe")]

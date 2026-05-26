@@ -9,6 +9,7 @@ using Sorcha.ServiceClients.CitizenStatusList;
 using Sorcha.ServiceClients.CitizenWallet;
 using Sorcha.ServiceClients.Did;
 using Sorcha.ServiceClients.Events;
+using Sorcha.ServiceClients.Invitation;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.ServiceClients.Register;
@@ -90,6 +91,13 @@ public static class HttpServiceCollectionExtensions
         // Caller-supplied JWT (no service-principal injection — citizen audience required).
         services.AddHttpClient<CitizenWalletClient>();
         services.AddScoped<ICitizenWalletClient, CitizenWalletClient>();
+
+        // Register-invitation client (targets the Tenant Service). Auth rides the caller's
+        // pipeline (no service-principal injection); the MCP server's citizen self-service
+        // tools (Feature 140 Wave 3) forward the consumer's bearer so the listing is scoped
+        // to the caller's organisation.
+        services.AddHttpClient<RegisterInvitationServiceClient>();
+        services.AddScoped<IRegisterInvitationServiceClient, RegisterInvitationServiceClient>();
 
         // Feature 114: Tenant→Wallet S2S client for citizen device revocation
         // (status-list bit flip + SignalR DeviceRevoked broadcast).

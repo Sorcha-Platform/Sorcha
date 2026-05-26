@@ -75,6 +75,20 @@ public class TenantServiceClient : ITenantServiceClient
     public Task<string?> RevokeTokenAsync(string requestJson, CancellationToken cancellationToken = default) =>
         SendRawAsync(HttpMethod.Post, "api/tokens/revoke", requestJson, "revoke token", cancellationToken);
 
+    /// <inheritdoc />
+    public Task<string?> GetMyPersonaAsync(string? queryString = null, CancellationToken cancellationToken = default)
+    {
+        var url = string.IsNullOrWhiteSpace(queryString) ? "api/me/persona" : $"api/me/persona?{queryString}";
+        return GetRawAsync(url, "get my persona", cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<string?> ReplaceMyPersonaAsync(string requestJson, string? queryString = null, CancellationToken cancellationToken = default)
+    {
+        var url = string.IsNullOrWhiteSpace(queryString) ? "api/me/persona" : $"api/me/persona?{queryString}";
+        return SendRawAsync(HttpMethod.Put, url, requestJson, "replace my persona", cancellationToken);
+    }
+
     private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)
     {
         try

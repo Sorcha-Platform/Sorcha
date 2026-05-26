@@ -32,6 +32,7 @@ public static class ToolEntitlements
 
     private static readonly Tier[] PlatformOnly = [Tier.Platform];
     private static readonly Tier[] ConsumerAndPlatform = [Tier.Consumer, Tier.Platform];
+    private static readonly Tier[] ConsumerOnly = [Tier.Consumer];
 
     /// <summary>The complete entitlement table for every advertised tool.</summary>
     public static readonly IReadOnlyList<ToolEntitlement> All =
@@ -96,6 +97,18 @@ public static class ToolEntitlements
         new("sorcha_register_query", ConsumerAndPlatform, null),
         new("sorcha_wallet_info", ConsumerAndPlatform, null),
         // sorcha_wallet_sign — REMOVED from the surface (deferred to a dedicated security-reviewed wave)
+
+        // Citizen self-service (Feature 140 Wave 3) — consumer tier ONLY, no role.
+        // Scoped to the calling citizen by the platform (the forwarded token carries identity);
+        // a platform-admin context does NOT see these — they are the consumer-facing slice.
+        new("sorcha_my_credentials", ConsumerOnly, null),
+        new("sorcha_my_devices", ConsumerOnly, null),
+        new("sorcha_my_device_rename", ConsumerOnly, null),
+        new("sorcha_my_device_revoke", ConsumerOnly, null),
+        new("sorcha_my_persona", ConsumerOnly, null),
+        new("sorcha_pending_applications", ConsumerOnly, null),
+        new("sorcha_my_presentations", ConsumerOnly, null),
+        new("sorcha_my_invitations", ConsumerOnly, null),
     ];
 
     private static readonly Dictionary<string, ToolEntitlement> ByName =

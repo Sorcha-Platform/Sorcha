@@ -171,4 +171,14 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         var response = await _httpClient.DeleteAsync($"api/v1/wallet/presentations/{id}", ct);
         response.EnsureSuccessStatusCode();
     }
+
+    /// <inheritdoc />
+    public async Task<PendingApplicationResponse> GetPendingApplicationAsync(CancellationToken ct = default)
+    {
+        var response = await _httpClient.GetAsync("api/v1/wallet/pending-applications", ct);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<PendingApplicationResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Wallet Service returned an empty body for /pending-applications.");
+    }
 }
