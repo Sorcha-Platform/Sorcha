@@ -2,124 +2,91 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.Extensions.Logging;
+using Sorcha.McpServer.Infrastructure;
+using Sorcha.ServiceDefaults.Auth;
 
 namespace Sorcha.McpServer.Services;
 
 /// <summary>
-/// Handles role-based access control for MCP tools.
+/// Advisory tier/role gate for MCP tools (spec 139). Decides, from the caller's F136 tier
+/// and roles, which tools the caller may see and attempt. This is a UX/efficiency narrowing
+/// only — the API Gateway is the authoritative authorization decision, and this gate can
+/// never grant access the gateway would refuse.
+/// <para>
+/// Tier-primary, role-secondary: consumer-tier callers get citizen + participation tools;
+/// platform-tier admins/designers get their slices; participation tools are cross-tier.
+/// Service-tier (and enrol-session) tokens are not valid MCP callers and see/​invoke nothing.
+/// </para>
 /// </summary>
 public sealed class McpAuthorizationService : IMcpAuthorizationService
 {
-    private readonly IMcpSessionService _sessionService;
+    private readonly ICallerContext _caller;
     private readonly ILogger<McpAuthorizationService> _logger;
 
-    // Role to tool mappings per spec
-    private static readonly Dictionary<string, HashSet<string>> RoleToToolsMap = new()
-    {
-        ["sorcha:admin"] =
-        [
-            "sorcha_health_check",
-            "sorcha_log_query",
-            "sorcha_metrics",
-            "sorcha_tenant_list",
-            "sorcha_tenant_create",
-            "sorcha_tenant_update",
-            "sorcha_user_list",
-            "sorcha_user_manage",
-            "sorcha_peer_status",
-            "sorcha_validator_status",
-            "sorcha_register_stats",
-            "sorcha_audit_query",
-            "sorcha_token_revoke"
-        ],
-        ["sorcha:designer"] =
-        [
-            "sorcha_blueprint_list",
-            "sorcha_blueprint_get",
-            "sorcha_blueprint_create",
-            "sorcha_blueprint_update",
-            "sorcha_blueprint_validate",
-            "sorcha_blueprint_simulate",
-            "sorcha_disclosure_analysis",
-            "sorcha_blueprint_diff",
-            "sorcha_blueprint_export",
-            "sorcha_schema_validate",
-            "sorcha_schema_generate",
-            "sorcha_jsonlogic_test",
-            "sorcha_workflow_instances"
-        ],
-        ["sorcha:participant"] =
-        [
-            "sorcha_inbox_list",
-            "sorcha_action_details",
-            "sorcha_action_submit",
-            "sorcha_action_validate",
-            "sorcha_transaction_history",
-            "sorcha_workflow_status",
-            "sorcha_disclosed_data",
-            "sorcha_wallet_info",
-            "sorcha_wallet_sign",
-            "sorcha_register_query"
-        ]
-    };
-
     public McpAuthorizationService(
-        IMcpSessionService sessionService,
+        ICallerContext caller,
         ILogger<McpAuthorizationService> logger)
     {
-        _sessionService = sessionService;
+        _caller = caller;
         _logger = logger;
     }
 
     /// <inheritdoc />
     public bool CanInvokeTool(string toolName)
     {
-        var session = _sessionService.CurrentSession;
-        if (session is null)
+        if (!_caller.IsAuthenticated)
         {
-            _logger.LogWarning("Authorization check failed: no active session");
+            _logger.LogWarning("Authorization check failed: no authenticated caller");
             return false;
         }
 
-        if (_sessionService.IsTokenExpired())
+        if (!IsCallerTier(out var tier))
         {
-            _logger.LogWarning("Authorization check failed: token expired for user {UserId}", session.UserId);
+            _logger.LogWarning(
+                "Authorization check failed: tier {Tier} is not a valid MCP caller for {ToolName}",
+                _caller.Tier, toolName);
             return false;
         }
 
-        foreach (var role in session.Roles)
+        var permitted = ToolEntitlements.IsPermitted(toolName, tier, _caller.Roles);
+        if (!permitted)
         {
-            if (RoleToToolsMap.TryGetValue(role, out var tools) && tools.Contains(toolName))
-            {
-                _logger.LogDebug("User {UserId} authorized for tool {ToolName} via role {Role}",
-                    session.UserId, toolName, role);
-                return true;
-            }
+            _logger.LogWarning(
+                "Caller {Subject} (tier {Tier}) denied tool {ToolName} — not entitled",
+                _caller.Subject, tier, toolName);
         }
 
-        _logger.LogWarning("User {UserId} denied access to tool {ToolName} - missing required role",
-            session.UserId, toolName);
-        return false;
+        return permitted;
     }
 
     /// <inheritdoc />
     public IReadOnlyList<string> GetAuthorizedTools()
     {
-        var session = _sessionService.CurrentSession;
-        if (session is null || _sessionService.IsTokenExpired())
+        if (!_caller.IsAuthenticated || !IsCallerTier(out var tier))
         {
             return [];
         }
 
-        var authorizedTools = new HashSet<string>();
-        foreach (var role in session.Roles)
-        {
-            if (RoleToToolsMap.TryGetValue(role, out var tools))
-            {
-                authorizedTools.UnionWith(tools);
-            }
-        }
+        return ToolEntitlements.VisibleTools(tier, _caller.Roles);
+    }
 
-        return authorizedTools.Order().ToList();
+    /// <summary>
+    /// True only for the human caller tiers (consumer / platform). Service and enrol-session
+    /// tokens are rejected as MCP callers; a null tier (unrecognised audience) is rejected too.
+    /// </summary>
+    private bool IsCallerTier(out Tier tier)
+    {
+        switch (_caller.Tier)
+        {
+            case Tier.Consumer:
+                tier = Tier.Consumer;
+                return true;
+            case Tier.Platform:
+                tier = Tier.Platform;
+                return true;
+            default:
+                tier = default;
+                return false;
+        }
     }
 }

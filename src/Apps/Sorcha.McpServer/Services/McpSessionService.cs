@@ -5,13 +5,15 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.Extensions.Logging;
 using Sorcha.McpServer.Infrastructure;
+using Sorcha.ServiceDefaults.Auth;
 
 namespace Sorcha.McpServer.Services;
 
 /// <summary>
-/// Manages the current MCP session context derived from JWT authentication.
+/// Manages the current MCP session context derived from JWT authentication. Also serves as
+/// the stdio-transport <see cref="ICallerContext"/> — one caller per process (spec 139).
 /// </summary>
-public sealed class McpSessionService : IMcpSessionService
+public sealed class McpSessionService : IMcpSessionService, ICallerContext
 {
     private readonly IJwtValidationHandler _jwtHandler;
     private readonly ILogger<McpSessionService> _logger;
@@ -96,12 +98,16 @@ public sealed class McpSessionService : IMcpSessionService
             .Select(c => c.Value)
             .ToList();
 
+        // Spec 139: derive the F136 trust tier from the token audience(s).
+        var tier = TierResolution.Resolve(jwt.Audiences);
+
         _currentSession = new McpSession
         {
             UserId = userId,
             TenantId = tenantId,
             OrganizationName = organizationName,
             Roles = roles,
+            Tier = tier,
             WalletAddress = walletAddress,
             Email = email,
             DisplayName = displayName,
@@ -145,6 +151,26 @@ public sealed class McpSessionService : IMcpSessionService
     /// Gets the raw JWT token for forwarding to backend services.
     /// </summary>
     public string? GetRawToken() => _rawToken;
+
+    // --- ICallerContext (stdio transport: one caller per process) ---
+
+    /// <inheritdoc />
+    public string? RawToken => _rawToken;
+
+    /// <inheritdoc />
+    public Tier? Tier => _currentSession?.Tier;
+
+    /// <inheritdoc />
+    public IReadOnlyCollection<string> Roles => _currentSession?.Roles ?? [];
+
+    /// <inheritdoc />
+    public string? OrganizationId => _currentSession?.TenantId;
+
+    /// <inheritdoc />
+    public string? Subject => _currentSession?.UserId;
+
+    /// <inheritdoc />
+    public bool IsAuthenticated => _currentSession is not null && !IsTokenExpired();
 
     private static string? GetClaimValue(ClaimsPrincipal principal, string claimType)
     {

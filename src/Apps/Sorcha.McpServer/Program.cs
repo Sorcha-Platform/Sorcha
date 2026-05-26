@@ -74,6 +74,10 @@ builder.Services.AddSingleton<IMcpSessionService>(sp =>
     return session;
 });
 
+// Spec 139: the stdio session instance is also the ambient caller identity and the source
+// of the bearer token forwarded to backends (one caller per process on stdio).
+builder.Services.AddSingleton<ICallerContext>(sp => (ICallerContext)sp.GetRequiredService<IMcpSessionService>());
+
 // Register MCP infrastructure services
 builder.Services.AddSingleton<IMcpAuthorizationService, McpAuthorizationService>();
 builder.Services.AddSingleton<IRateLimitService, RateLimitService>();
@@ -83,6 +87,12 @@ builder.Services.AddSingleton<IServiceAvailabilityTracker, ServiceAvailabilityTr
 
 // Register Sorcha service clients for backend communication
 builder.Services.AddServiceClients(builder.Configuration);
+
+// Spec 139: forward the caller's bearer to every backend call. Attaching the handler to the
+// default HttpClient covers tools that resolve clients via IHttpClientFactory; the backend
+// (API Gateway) then authorizes the operation as the calling identity rather than anonymously.
+builder.Services.AddTransient<CallerTokenForwardingHandler>();
+builder.Services.AddHttpClient(string.Empty).AddHttpMessageHandler<CallerTokenForwardingHandler>();
 
 // Configure MCP server with stdio transport and auto-discovery
 builder.Services
@@ -105,7 +115,26 @@ builder.Services
             """;
     })
     .WithStdioServerTransport()
-    .WithToolsFromAssembly();
+    .WithToolsFromAssembly()
+    // Spec 139: narrow the advertised tools/list to the caller's tier/role entitlement so a
+    // consumer never even sees admin/designer tools. Advisory only — invocation-time gating
+    // (McpAuthorizationService) and the gateway remain the authoritative enforcement.
+    .WithRequestFilters(filters =>
+    {
+        filters.AddListToolsFilter(next => async (context, cancellationToken) =>
+        {
+            var result = await next(context, cancellationToken);
+
+            var authz = context.Services?.GetService<IMcpAuthorizationService>();
+            if (authz is not null && result.Tools.Count > 0)
+            {
+                var allowed = authz.GetAuthorizedTools().ToHashSet(StringComparer.Ordinal);
+                result.Tools = [.. result.Tools.Where(tool => allowed.Contains(tool.Name))];
+            }
+
+            return result;
+        });
+    });
 
 var app = builder.Build();
 
