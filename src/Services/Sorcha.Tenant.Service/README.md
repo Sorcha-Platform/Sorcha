@@ -261,7 +261,7 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/login` | POST | Login with email and password (returns 2FA challenge if enabled) |
-| `/api/auth/verify-2fa` | POST | Verify TOTP code or backup code to complete login |
+| `/api/auth/verify-2fa` | POST | Verify TOTP code or backup code to complete login. Accepts optional `tier` field (`"consumer"`) — forces Consumer-tier token for wallet sign-in (spec 136). |
 | `/api/auth/register` | POST | Self-register with email/password (public orgs only) |
 | `/api/auth/logout` | POST | Logout and revoke current token |
 | `/api/auth/me` | GET | Get current authenticated user info |
@@ -316,13 +316,14 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/passkey/assertion/options` | POST | Generate discoverable passkey assertion options (optional email filter) |
-| `/api/auth/passkey/assertion/verify` | POST | Verify assertion, resolve user, issue JWT |
+| `/api/auth/passkey/assertion/verify` | POST | Verify assertion, resolve user, issue JWT. Accepts optional `tier` field (`"consumer"`) — safe downgrade for wallet sign-in (spec 136). |
 
-### Public User Social Login (`/api/auth/public/social`)
+### Public User Social Login (`/api/auth/social` and `/api/auth/public/social`)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/auth/public/social/initiate` | POST | Initiate social login/signup with provider (Google, Microsoft, GitHub, Apple) |
+| `/api/auth/social/providers` | GET | List configured providers (anonymous). Returns `{"providers":["google",…]}`. Drives conditional "Continue with…" buttons on the citizen wallet PWA sign-in screen. Rate-limited (`platform-auth`). |
+| `/api/auth/public/social/initiate` | POST | Initiate social login/signup with provider (Google, Microsoft, GitHub, Apple). Optional `surface` field: `"wallet"` routes the callback into the citizen wallet PWA (Consumer-tier mint + `/wallet/#…` redirect + login-only enforcement); null/`"app"` keeps the default web flow. |
 | `/api/auth/public/social/callback` | POST | Handle OAuth callback and issue tokens |
 
 **Browser callback URL:** providers redirect to the Razor page at
@@ -331,6 +332,8 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 The page resolves the provider from the cached state — provider is NOT a
 query parameter — and applies the strict link policy added in
 feature 115 before issuing tokens.
+
+**Wallet surface (`surface:"wallet"`) behaviour.** When `surface:"wallet"` is set on the initiate request, the `SocialCallback` Razor page: (1) mints a Consumer-tier token; (2) redirects to `/wallet/#token=…&refresh=…&expires_in=…` so the PWA's `auth-fragment.js` captures the tokens before Blazor boots; (3) enforces login-only — an unknown social identity is refused (`SocialLoginRefusal.NoExistingAccount`) and the user is redirected to `/wallet/signin?authError=no_account`. No `PlatformUser` is created.
 
 **Strict link policy (feature 115).** Both signup and link flows refuse
 when verification is missing on either side:
