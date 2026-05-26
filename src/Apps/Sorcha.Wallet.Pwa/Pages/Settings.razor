@@ -9,6 +9,8 @@
 *@
 @page "/settings"
 @layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
 @using Microsoft.JSInterop
 @using Sorcha.Wallet.Pwa.Services
 @inject IJSRuntime Js

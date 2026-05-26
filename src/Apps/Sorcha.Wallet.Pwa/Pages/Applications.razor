@@ -11,6 +11,8 @@
 *@
 @page "/applications"
 @layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
 @using Sorcha.Wallet.Pwa.Services.Context
 @inject IUserContext UserContext
 @inject NavigationManager Nav
