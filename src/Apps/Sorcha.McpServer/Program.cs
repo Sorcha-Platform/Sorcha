@@ -115,7 +115,26 @@ builder.Services
             """;
     })
     .WithStdioServerTransport()
-    .WithToolsFromAssembly();
+    .WithToolsFromAssembly()
+    // Spec 139: narrow the advertised tools/list to the caller's tier/role entitlement so a
+    // consumer never even sees admin/designer tools. Advisory only — invocation-time gating
+    // (McpAuthorizationService) and the gateway remain the authoritative enforcement.
+    .WithRequestFilters(filters =>
+    {
+        filters.AddListToolsFilter(next => async (context, cancellationToken) =>
+        {
+            var result = await next(context, cancellationToken);
+
+            var authz = context.Services?.GetService<IMcpAuthorizationService>();
+            if (authz is not null && result.Tools.Count > 0)
+            {
+                var allowed = authz.GetAuthorizedTools().ToHashSet(StringComparer.Ordinal);
+                result.Tools = [.. result.Tools.Where(tool => allowed.Contains(tool.Name))];
+            }
+
+            return result;
+        });
+    });
 
 var app = builder.Build();
 
