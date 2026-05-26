@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
 using Sorcha.McpServer;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
@@ -68,14 +70,15 @@ static async Task<int> RunStdioAsync(string[] args)
     // of the bearer token forwarded to backends (one caller per process on stdio).
     builder.Services.AddSingleton<ICallerContext>(sp => (ICallerContext)sp.GetRequiredService<IMcpSessionService>());
 
-    RegisterMcpInfrastructure(builder.Services);
+    RegisterMcpInfrastructure(builder.Services, builder.Configuration);
     RegisterServiceClients(builder.Services, builder.Configuration);
 
     builder.Services
         .AddMcpServer(ConfigureServerOptions)
         .WithStdioServerTransport()
         .WithToolsFromAssembly()
-        .WithAuthorizationNarrowingListToolsFilter();
+        .WithAuthorizationNarrowingListToolsFilter()
+        .WithToolInvocationAuditFilter();
 
     var app = builder.Build();
 
@@ -125,7 +128,7 @@ static async Task<int> RunHttpAsync(string[] args)
     // scoped dependency (captive-dependency / cross-request token-bleed hazard).
     builder.Services.AddSingleton<ICallerContext, HttpCallerContext>();
 
-    RegisterMcpInfrastructure(builder.Services);
+    RegisterMcpInfrastructure(builder.Services, builder.Configuration);
     RegisterServiceClients(builder.Services, builder.Configuration);
 
     builder.Services
@@ -134,7 +137,8 @@ static async Task<int> RunHttpAsync(string[] args)
         // tools/list filter and token forwarding work per-request automatically.
         .WithHttpTransport(o => o.Stateless = true)
         .WithToolsFromAssembly()
-        .WithAuthorizationNarrowingListToolsFilter();
+        .WithAuthorizationNarrowingListToolsFilter()
+        .WithToolInvocationAuditFilter();
 
     var app = builder.Build();
 
@@ -191,13 +195,27 @@ static void ConfigureJwtOptions(IServiceCollection services, IConfiguration conf
     });
 }
 
-static void RegisterMcpInfrastructure(IServiceCollection services)
+static void RegisterMcpInfrastructure(IServiceCollection services, IConfiguration configuration)
 {
     services.AddSingleton<IMcpAuthorizationService, McpAuthorizationService>();
     services.AddSingleton<IRateLimitService, RateLimitService>();
     services.AddSingleton<IToolAuditService, ToolAuditService>();
     services.AddSingleton<IMcpErrorHandler, McpErrorHandler>();
     services.AddSingleton<IServiceAvailabilityTracker, ServiceAvailabilityTracker>();
+
+    // Spec 139 US5: per-invocation observability. McpMetrics needs IMeterFactory (AddMetrics) and
+    // is registered as a singleton; the central call-tool audit filter records every invocation
+    // through ToolAuditService, which emits these metrics. Add the Sorcha.Mcp meter to the OTel
+    // meter provider so the counters/histogram export when an OTLP endpoint is configured — the
+    // exporter itself is only wired when OTEL_EXPORTER_OTLP_ENDPOINT is set (silent otherwise).
+    services.AddMetrics();
+    services.AddSingleton<McpMetrics>();
+    services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(McpMetrics.MeterName));
+
+    if (!string.IsNullOrWhiteSpace(configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+    {
+        services.AddOpenTelemetry().UseOtlpExporter();
+    }
 }
 
 static void RegisterServiceClients(IServiceCollection services, IConfiguration configuration)
