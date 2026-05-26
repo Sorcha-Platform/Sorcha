@@ -1,6 +1,6 @@
 # Feature Specification: Citizen Wallet Home — "Bolder" Visual Reskin
 
-**Feature Branch**: `140-wallet-home-redesign`
+**Feature Branch**: `141-wallet-home-redesign`
 **Created**: 2026-05-26
 **Status**: Draft
 **Input**: Redesign the Citizen Wallet PWA Home screen to the approved "B · Bolder" visual direction (`docs/mockups/design_handoff_wallet_home/`). A visual reskin of the existing home chrome — not a change to its information architecture or behaviour.
