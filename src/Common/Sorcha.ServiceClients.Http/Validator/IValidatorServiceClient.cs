@@ -31,6 +31,30 @@ public interface IValidatorServiceClient
         string registerId,
         string walletAddress,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Starts the validator for a register (Feature 140 Wave 4 — admin orchestration).
+    /// Calls <c>POST /api/admin/validators/start</c>.
+    /// </summary>
+    /// <param name="registerId">The register whose validator to start.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True on success; false on a non-success status. Transport faults propagate.</returns>
+    Task<bool> StartValidatorAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stops the validator for a register (Feature 140 Wave 4 — admin orchestration).
+    /// Calls <c>POST /api/admin/validators/stop</c>.
+    /// </summary>
+    /// <param name="registerId">The register whose validator to stop.</param>
+    /// <param name="persistMemPool">Whether to persist the mempool before stopping.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True on success; false on a non-success status. Transport faults propagate.</returns>
+    Task<bool> StopValidatorAsync(
+        string registerId,
+        bool persistMemPool,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

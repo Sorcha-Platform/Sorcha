@@ -203,6 +203,59 @@ public class ValidatorServiceClient : IValidatorServiceClient
         }
     }
 
+    /// <summary>
+    /// Starts the validator for a register (Feature 140 Wave 4 — admin orchestration).
+    /// </summary>
+    public async Task<bool> StartValidatorAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        var response = await _httpClient.PostAsJsonAsync(
+            "/api/admin/validators/start",
+            new { registerId },
+            JsonOptions,
+            cancellationToken);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        _logger.LogWarning(
+            "Start validator for register {RegisterId} failed: {StatusCode}",
+            registerId, response.StatusCode);
+        return false;
+    }
+
+    /// <summary>
+    /// Stops the validator for a register (Feature 140 Wave 4 — admin orchestration).
+    /// </summary>
+    public async Task<bool> StopValidatorAsync(
+        string registerId,
+        bool persistMemPool,
+        CancellationToken cancellationToken = default)
+    {
+        await SetAuthHeaderAsync(cancellationToken);
+
+        var response = await _httpClient.PostAsJsonAsync(
+            "/api/admin/validators/stop",
+            new { registerId, persistMemPool },
+            JsonOptions,
+            cancellationToken);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        _logger.LogWarning(
+            "Stop validator for register {RegisterId} failed: {StatusCode}",
+            registerId, response.StatusCode);
+        return false;
+    }
+
     private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
         ServiceClientAuthHelper.SetAuthHeaderAsync(
             _httpClient, _serviceAuth, _logger, "Validator Service", cancellationToken);

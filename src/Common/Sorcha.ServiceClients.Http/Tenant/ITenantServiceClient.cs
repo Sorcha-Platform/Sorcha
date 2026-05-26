@@ -103,4 +103,74 @@ public interface ITenantServiceClient
         string requestJson,
         string? queryString = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets an organisation's status (Active / Suspended) via the platform-admin route
+    /// (Feature 140 Wave 4). Calls <c>PUT /api/platform/organizations/{orgId}/status</c>.
+    /// </summary>
+    /// <param name="organizationId">Organisation ID.</param>
+    /// <param name="requestJson">The <c>{ "status": "Active|Suspended" }</c> body as JSON.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The updated organisation-summary JSON body, or null on non-success.</returns>
+    Task<string?> SetOrganizationStatusAsync(
+        string organizationId,
+        string requestJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the platform settings (public-org toggle, max-orgs-per-user) for system admins
+    /// (Feature 140 Wave 4). Calls <c>GET /api/platform/settings</c>.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The platform-settings JSON body, or null on non-success.</returns>
+    Task<string?> GetPlatformSettingsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Enables or disables the public organisation (atomic org-status + self-registration toggle)
+    /// (Feature 140 Wave 4). Calls <c>PUT /api/platform/settings/public-org</c>.
+    /// </summary>
+    /// <param name="requestJson">The <c>{ "enabled": true|false }</c> body as JSON.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The updated platform-settings JSON body, or null on non-success.</returns>
+    Task<string?> UpdatePublicOrgAsync(
+        string requestJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a read-only paginated user list for an organisation (audit view)
+    /// (Feature 140 Wave 4). Calls <c>GET /api/platform/organizations/{orgId}/users</c>.
+    /// </summary>
+    /// <param name="organizationId">Organisation ID.</param>
+    /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The org-user-list JSON body, or null on non-success.</returns>
+    Task<string?> GetOrganizationUsersAsync(
+        string organizationId,
+        string? queryString = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Provisions a platform user into an organisation (Feature 140 Wave 4).
+    /// Calls <c>POST /api/platform/users/</c>.
+    /// </summary>
+    /// <param name="requestJson">The AdminProvisionUserRequest body as JSON.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The provisioned-user JSON body, or null on non-success.</returns>
+    Task<string?> ProvisionPlatformUserAsync(
+        string requestJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resets a platform user's password (Feature 140 Wave 4).
+    /// Calls <c>PUT /api/platform/users/{id}/password</c>.
+    /// </summary>
+    /// <param name="userId">The platform user's ID.</param>
+    /// <param name="requestJson">The <c>{ "newPassword": "..." }</c> body as JSON.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The password-reset confirmation JSON body, or null on non-success.</returns>
+    Task<string?> ResetPlatformUserPasswordAsync(
+        string userId,
+        string requestJson,
+        CancellationToken cancellationToken = default);
 }
