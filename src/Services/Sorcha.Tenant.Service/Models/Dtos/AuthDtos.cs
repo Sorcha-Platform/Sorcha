@@ -325,6 +325,13 @@ public record Verify2FaRequest
     /// </summary>
     [JsonPropertyName("is_backup_code")]
     public bool IsBackupCode { get; init; }
+
+    /// <summary>
+    /// Optional trust-tier hint (spec 136). Only <c>consumer</c> is honoured —
+    /// a safe downgrade for the wallet. Other values keep the platform default.
+    /// </summary>
+    [JsonPropertyName("tier")]
+    public string? Tier { get; init; }
 }
 
 /// <summary>
