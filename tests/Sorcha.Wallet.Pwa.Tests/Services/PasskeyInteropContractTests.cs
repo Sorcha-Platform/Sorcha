@@ -29,7 +29,7 @@ public class PasskeyInteropContractTests
 internal sealed class FakePasskeyInterop : IPasskeyInterop
 {
     public bool Supported = true;
-    public JsonElement Assertion = JsonDocument.Parse("{\"id\":\"abc\"}").RootElement;
+    public JsonElement Assertion = JsonDocument.Parse("{\"id\":\"abc\"}").RootElement.Clone();
     public Task<bool> IsSupportedAsync() => Task.FromResult(Supported);
     public Task<JsonElement> GetAssertionAsync(JsonElement options) => Task.FromResult(Assertion);
 }

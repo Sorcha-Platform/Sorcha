@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -219,11 +220,43 @@ public sealed class AuthAndBearerTests
         loaded!.RefreshToken.Should().Be("rt");
     }
 
+    [Fact]
+    public async Task SignInWithPasskeyAsync_HappyPath_PersistsConsumerToken()
+    {
+        var responses = new Queue<HttpResponseMessage>(new[]
+        {
+            JsonOk("{\"transaction_id\":\"tx1\",\"options\":{\"challenge\":\"AA\"}}"),
+            JsonOk("{\"access_token\":\"at\",\"refresh_token\":\"rt\",\"expires_in\":3600}")
+        });
+        var handler = new CapturingHandler(_ => Task.FromResult(responses.Dequeue()));
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+        var store = new InMemoryAccessTokenStore();
+        var auth = new AuthService(http, store, new NoopLocalDataPurge(), new FakePasskeyInterop());
+
+        var result = await auth.SignInWithPasskeyAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        (await store.GetAsync())!.RefreshToken.Should().Be("rt");
+    }
+
+    [Fact]
+    public async Task SignInWithPasskeyAsync_Unsupported_ReturnsServerError()
+    {
+        var http = new HttpClient(new CapturingHandler(_ => Task.FromResult(JsonOk("{}"))))
+            { BaseAddress = new Uri("https://gw.test/") };
+        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge(),
+            new FakePasskeyInterop { Supported = false });
+
+        var result = await auth.SignInWithPasskeyAsync();
+
+        result.Status.Should().Be(SignInStatus.ServerError);
+    }
+
     // Constructs an AuthService with a throwaway purge for the tests that
     // don't assert on the sign-out cascade; AuthService_SignOut_PurgesAllLocalData
     // passes its own spy to inspect the call.
     private static AuthService NewAuth(HttpClient http, IAccessTokenStore store, ILocalDataPurge? purge = null)
-        => new(http, store, purge ?? new SpyLocalDataPurge());
+        => new(http, store, purge ?? new SpyLocalDataPurge(), new FakePasskeyInterop());
 
     private sealed class SpyLocalDataPurge : ILocalDataPurge
     {
@@ -254,7 +287,7 @@ public sealed class AuthAndBearerTests
             return JsonOk("{\"access_token\":\"at\",\"expires_in\":3600,\"requires_two_factor\":false}");
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
-        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge());
+        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge(), new FakePasskeyInterop());
 
         await auth.SignInAsync("a@b.test", "pw");
 

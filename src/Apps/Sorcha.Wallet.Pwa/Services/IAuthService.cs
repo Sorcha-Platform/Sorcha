@@ -2,7 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.JSInterop;
 
 namespace Sorcha.Wallet.Pwa.Services;
 
@@ -41,6 +43,12 @@ public interface IAuthService
     /// <param name="isBackupCode">True when <paramref name="code"/> is a backup code.</param>
     Task<SignInResult> VerifyTwoFactorAsync(
         string loginToken, string email, string code, bool isBackupCode = false, CancellationToken ct = default);
+
+    /// <summary>
+    /// Passwordless sign-in with a passkey. Discoverable-first when
+    /// <paramref name="email"/> is null. Persists a Consumer-tier token on success.
+    /// </summary>
+    Task<SignInResult> SignInWithPasskeyAsync(string? email = null, CancellationToken ct = default);
 
     /// <summary>
     /// Signs the citizen out: clears the persisted token AND wipes every
@@ -83,13 +91,15 @@ public sealed class AuthService : IAuthService
     private readonly HttpClient _http;
     private readonly IAccessTokenStore _store;
     private readonly ILocalDataPurge _purge;
+    private readonly IPasskeyInterop _passkey;
 
     /// <summary>Initialises a new instance.</summary>
-    public AuthService(HttpClient http, IAccessTokenStore store, ILocalDataPurge purge)
+    public AuthService(HttpClient http, IAccessTokenStore store, ILocalDataPurge purge, IPasskeyInterop passkey)
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _purge = purge ?? throw new ArgumentNullException(nameof(purge));
+        _passkey = passkey ?? throw new ArgumentNullException(nameof(passkey));
     }
 
     /// <inheritdoc />
@@ -138,7 +148,7 @@ public sealed class AuthService : IAuthService
                 return new SignInResult(SignInStatus.ServerError, "Auth server did not return an access token.");
             }
 
-            await PersistAsync(body.AccessToken, body.ExpiresIn, email.Trim(), ct);
+            await PersistAsync(body.AccessToken, body.ExpiresIn, email.Trim(), body.RefreshToken, ct);
             return new SignInResult(SignInStatus.Success);
         }
         catch (HttpRequestException ex)
@@ -174,7 +184,47 @@ public sealed class AuthService : IAuthService
                 return new SignInResult(SignInStatus.ServerError, "Verification succeeded but no token was returned.");
             }
 
-            await PersistAsync(body.AccessToken, body.ExpiresIn, email.Trim(), ct);
+            await PersistAsync(body.AccessToken, body.ExpiresIn, email.Trim(), body.RefreshToken, ct);
+            return new SignInResult(SignInStatus.Success);
+        }
+        catch (HttpRequestException ex)
+        {
+            return new SignInResult(SignInStatus.ServerError, ex.Message);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<SignInResult> SignInWithPasskeyAsync(string? email = null, CancellationToken ct = default)
+    {
+        if (!await _passkey.IsSupportedAsync())
+            return new SignInResult(SignInStatus.ServerError, "This device doesn't support passkeys.");
+
+        try
+        {
+            var optionsResp = await _http.PostAsJsonAsync(
+                "api/auth/passkey/assertion/options",
+                new AssertionOptionsRequest(string.IsNullOrWhiteSpace(email) ? null : email!.Trim()), ct);
+            optionsResp.EnsureSuccessStatusCode();
+            var options = await optionsResp.Content.ReadFromJsonAsync<AssertionOptionsResponse>(ct);
+            if (options is null || string.IsNullOrEmpty(options.TransactionId))
+                return new SignInResult(SignInStatus.ServerError, "Could not start passkey sign-in.");
+
+            JsonElement assertion;
+            try { assertion = await _passkey.GetAssertionAsync(options.Options); }
+            catch (JSException) { return new SignInResult(SignInStatus.InvalidCredentials, "Passkey sign-in was cancelled."); }
+
+            var verifyResp = await _http.PostAsJsonAsync(
+                "api/auth/passkey/assertion/verify",
+                new AssertionVerifyRequest(options.TransactionId, assertion, "consumer"), ct);
+            if (verifyResp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return new SignInResult(SignInStatus.InvalidCredentials, "That passkey isn't recognised.");
+            verifyResp.EnsureSuccessStatusCode();
+
+            var body = await verifyResp.Content.ReadFromJsonAsync<PublicTokenBody>(ct);
+            if (body is null || string.IsNullOrEmpty(body.AccessToken))
+                return new SignInResult(SignInStatus.ServerError, "Passkey sign-in returned no token.");
+
+            await PersistAsync(body.AccessToken, body.ExpiresIn, email, body.RefreshToken, ct);
             return new SignInResult(SignInStatus.Success);
         }
         catch (HttpRequestException ex)
@@ -192,12 +242,13 @@ public sealed class AuthService : IAuthService
         await _purge.PurgeAsync(ct);
     }
 
-    private async Task PersistAsync(string accessToken, int expiresIn, string email, CancellationToken ct)
+    private async Task PersistAsync(string accessToken, int expiresIn, string? email, string? refreshToken, CancellationToken ct)
     {
         var record = new AccessTokenRecord(
             accessToken,
             DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn)),
-            email);
+            email,
+            refreshToken);
         await _store.SetAsync(record, ct);
     }
 
@@ -213,5 +264,23 @@ public sealed class AuthService : IAuthService
         [property: JsonPropertyName("access_token")] string? AccessToken,
         [property: JsonPropertyName("expires_in")] int ExpiresIn,
         [property: JsonPropertyName("requires_two_factor")] bool RequiresTwoFactor,
-        [property: JsonPropertyName("login_token")] string? LoginToken);
+        [property: JsonPropertyName("login_token")] string? LoginToken,
+        [property: JsonPropertyName("refresh_token")] string? RefreshToken);
+
+    private sealed record AssertionOptionsRequest(
+        [property: JsonPropertyName("email")] string? Email);
+
+    private sealed record AssertionOptionsResponse(
+        [property: JsonPropertyName("transaction_id")] string TransactionId,
+        [property: JsonPropertyName("options")] JsonElement Options);
+
+    private sealed record AssertionVerifyRequest(
+        [property: JsonPropertyName("transaction_id")] string TransactionId,
+        [property: JsonPropertyName("assertion_response")] JsonElement AssertionResponse,
+        [property: JsonPropertyName("tier")] string Tier);
+
+    private sealed record PublicTokenBody(
+        [property: JsonPropertyName("access_token")] string? AccessToken,
+        [property: JsonPropertyName("refresh_token")] string? RefreshToken,
+        [property: JsonPropertyName("expires_in")] int ExpiresIn);
 }
