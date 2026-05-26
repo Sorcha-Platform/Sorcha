@@ -10,20 +10,10 @@
   "description": "Sorcha Wallet — your credentials, applications, evidence, identity in one place.",
   "icons": [
     {
-      "src": "icons/icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    },
-    {
-      "src": "icons/icon-192-maskable.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "maskable"
+      "src": "icons/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
     }
   ]
 }

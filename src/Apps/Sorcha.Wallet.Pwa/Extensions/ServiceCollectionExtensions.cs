@@ -57,6 +57,23 @@ public static class ServiceCollectionExtensions
         // plus Feature 125 guided-tour dismissal).
         services.AddSingleton<IWalletFlagsStore, IndexedDbWalletFlagsStore>();
 
+        // Feature 141 — theme service so the shell (MainLayout) can drive dark
+        // mode from the citizen's resolved preference. IThemeService lives in
+        // Sorcha.UI.Core but its registration was web-host-only; the PWA must
+        // register it too or MainLayout's @inject fails at startup.
+        // UserPreferencesService swallows transport errors and returns defaults,
+        // so an unauthenticated citizen (no per-user prefs endpoint) still gets
+        // OS-driven light/dark via ThemeService's matchMedia detection.
+        services.AddSingleton<IUserPreferencesService>(sp =>
+            new UserPreferencesService(
+                sp.GetRequiredService<HttpClient>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<UserPreferencesService>>()));
+        services.AddSingleton<IThemeService>(sp =>
+            new ThemeService(
+                sp.GetRequiredService<IUserPreferencesService>(),
+                sp.GetRequiredService<Microsoft.JSInterop.IJSRuntime>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ThemeService>>()));
+
         // Feature 125 — PR-A foundation. The signing seam (IUserSigner) and
         // its v1 managed-mode implementation; per-device stores for active
         // org context, per-context persona cache, verification history. The
