@@ -1,0 +1,107 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+   Feature 141 — empty ghost card stack. Offsets/rotations/opacities verbatim
+   from design/wallet.jsx GhostCardStack (comfy density). */
+
+.ghost-stack {
+    position: relative;
+    height: 170px;
+    margin-top: 8px;
+}
+
+.ghost-card {
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    top: 12px;
+    height: 145px;
+    border-radius: 16px;
+    transform-origin: center bottom;
+    box-sizing: border-box;
+}
+
+/* Top (live) card — gradient fill, full content. */
+.ghost-card--1 {
+    z-index: 3;
+    transform: translateY(0) rotate(0deg) scale(1);
+    opacity: 1;
+    background: var(--sorcha-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+    box-shadow: 0 18px 36px rgba(80, 90, 150, .32);
+    color: #fff;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: left;
+    border: none;
+    cursor: pointer;
+    overflow: hidden;
+    font-family: inherit;
+}
+
+/* Cards behind — neutral fill, no content. */
+.ghost-card--2 {
+    z-index: 2;
+    transform: translateY(10px) rotate(-3deg) scale(.96);
+    opacity: .65;
+    background: #dbdef0;
+    box-shadow: 0 8px 18px rgba(80, 90, 150, .18);
+}
+
+.ghost-card--3 {
+    z-index: 1;
+    transform: translateY(20px) rotate(4deg) scale(.92);
+    opacity: .35;
+    background: #dbdef0;
+    box-shadow: 0 8px 18px rgba(80, 90, 150, .18);
+}
+
+.ghost-stack--dark .ghost-card--2,
+.ghost-stack--dark .ghost-card--3 {
+    background: #22243a;
+}
+
+.ghost-card__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.ghost-card__titles {
+    display: flex;
+    flex-direction: column;
+}
+
+.ghost-card__eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    opacity: .8;
+    text-transform: uppercase;
+}
+
+.ghost-card__title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-top: 2px;
+    letter-spacing: -.01em;
+}
+
+.ghost-card__plus {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .18);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.ghost-card__subtitle {
+    font-size: 11px;
+    opacity: .85;
+    line-height: 1.4;
+}
+
+/* The ghost stack is static (no entrance/swap animation), so reduced-motion
+   has nothing to suppress here; the transforms are the design, not motion. */

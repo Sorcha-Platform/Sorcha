@@ -1,12 +1,39 @@
 /* SPDX-License-Identifier: MIT
    Copyright (c) 2026 Sorcha Contributors */
 
+/* Feature 141 "Bolder" reskin — brand tokens shared by the wallet chrome
+   components (WalletHero / BigActionButton / WalletCardStack / FloatingTabBar).
+   Surfaces, backgrounds, and text use MudBlazor's own --mud-palette-* variables
+   (which the MudThemeProvider keeps in sync with light/dark), so only the
+   bespoke, non-palette values live here. Each component also inlines a fallback
+   in its var() usage so it renders correctly even when hosted somewhere that
+   does not define these (e.g. the /app web host render-sanity path, FR-025). */
+:root {
+    --sorcha-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --sorcha-accent: #48bb78;
+    --sorcha-warn: #d69e2e;
+}
+
 html, body {
     margin: 0;
     padding: 0;
     height: 100%;
-    background: #f5f6fa;
-    color: #222;
+    /* Follow the active MudBlazor palette so dark mode does not flash a light
+       page behind the layout; fall back to the light page bg token. */
+    background: var(--mud-palette-background, #f4f5fb);
+    color: var(--mud-palette-text-primary, #0f1024);
+}
+
+/* Feature 141 — reserve space for the floating tab bar (56px bar + 14px inset
+   + breathing room + iOS home indicator) so page content is never obscured. */
+.wallet-content {
+    padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+}
+
+/* On Home the gradient hero is the header (no app bar), so content starts at
+   the very top — drop MudMainContent's app-bar top padding. */
+.wallet-content--home {
+    padding-top: 0;
 }
 
 #blazor-error-ui {

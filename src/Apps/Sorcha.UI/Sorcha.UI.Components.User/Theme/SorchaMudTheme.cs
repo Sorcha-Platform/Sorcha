@@ -30,23 +30,32 @@ public static class SorchaMudTheme
 
     private static MudTheme Build() => new()
     {
+        // Light + dark palettes carry the Feature 141 "Bolder" design tokens
+        // (docs/mockups/design_handoff_wallet_home/) so MudBlazor surfaces,
+        // backgrounds, and text follow the wallet design without per-component
+        // overrides. Primary/Secondary are the long-standing brand colours.
         PaletteLight = new PaletteLight
         {
             Primary = "#667eea",
             Secondary = "#764ba2",
             AppbarBackground = "#667eea",
+            Background = "#f4f5fb",
+            Surface = "#ffffff",
+            TextPrimary = "#0f1024",
+            TextSecondary = "#5a607a",
+            LinesDefault = "#e5e7ef",
         },
         PaletteDark = new PaletteDark
         {
             Primary = "#667eea",
             Secondary = "#764ba2",
-            AppbarBackground = "#1e1e1e",
-            Surface = "#1e1e1e",
-            Background = "#121212",
-            DrawerBackground = "#1e1e1e",
-            TextPrimary = "#e0e0e0",
-            TextSecondary = "#b0b0b0",
-            LinesDefault = "#333333",
+            AppbarBackground = "#181928",
+            Surface = "#181928",
+            Background = "#0a0b14",
+            DrawerBackground = "#181928",
+            TextPrimary = "#f3f4fa",
+            TextSecondary = "#9a9cb3",
+            LinesDefault = "#252638",
         }
     };
 }

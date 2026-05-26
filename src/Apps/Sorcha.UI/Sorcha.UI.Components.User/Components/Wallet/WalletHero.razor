@@ -1,0 +1,77 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 141 — the wallet Home gradient hero. A clipped gradient bleeds
+    down behind the header row and hero copy; on Home it replaces the app bar,
+    so the host folds the org switcher + notifications bell + scan affordances
+    into <see cref="HeaderContent"/> (rendered white-on-gradient). Mode drives
+    the eyebrow / headline / subtitle copy. Design:
+    docs/mockups/design_handoff_wallet_home/ (BoldScreen hero).
+*@
+@namespace Sorcha.UI.Core.Components.Wallet
+
+<header class="@RootClass" data-testid="wallet-hero">
+    @* Gradient layer + subtle grid texture — purely decorative. *@
+    <div class="wallet-hero__bg" aria-hidden="true">
+        <svg class="wallet-hero__grid" width="100%" height="100%" preserveAspectRatio="none">
+            <defs>
+                <pattern id="wallet-hero-grid" width="28" height="28" patternUnits="userSpaceOnUse">
+                    <path d="M 28 0 L 0 0 0 28" fill="none" stroke="white" stroke-width=".6" />
+                </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#wallet-hero-grid)" />
+        </svg>
+    </div>
+
+    <div class="wallet-hero__content">
+        @if (HeaderContent is not null)
+        {
+            <div class="wallet-hero__header" data-testid="wallet-hero-header">
+                @HeaderContent
+            </div>
+        }
+
+        <div class="wallet-hero__copy">
+            <div class="wallet-hero__eyebrow" data-testid="wallet-hero-eyebrow">@EyebrowText</div>
+            <h1 class="wallet-hero__headline" data-testid="wallet-hero-headline">@HeadlineText</h1>
+            <p class="wallet-hero__subtitle">@SubtitleText</p>
+        </div>
+    </div>
+</header>
+
+@code {
+    /// <summary>Empty vs active wallet — drives the default copy.</summary>
+    [Parameter, EditorRequired] public WalletHeroMode Mode { get; set; }
+
+    /// <summary>Credential count rendered in the Active headline.</summary>
+    [Parameter] public int CredentialCount { get; set; }
+
+    /// <summary>Header row content (org switcher + bell + scan), styled white-on-gradient.</summary>
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+
+    /// <summary>Dark-mode gradient variant.</summary>
+    [Parameter] public bool Dark { get; set; }
+
+    /// <summary>Override the eyebrow copy.</summary>
+    [Parameter] public string? Eyebrow { get; set; }
+
+    /// <summary>Override the headline copy.</summary>
+    [Parameter] public string? Headline { get; set; }
+
+    /// <summary>Override the subtitle copy.</summary>
+    [Parameter] public string? Subtitle { get; set; }
+
+    private string RootClass => "wallet-hero" + (Dark ? " wallet-hero--dark" : "");
+
+    private string EyebrowText => Eyebrow
+        ?? (Mode == WalletHeroMode.Active ? "ACTIVE WALLET" : "WELCOME");
+
+    private string HeadlineText => Headline ?? (Mode == WalletHeroMode.Active
+        ? (CredentialCount == 1 ? "1 credential" : $"{CredentialCount} credentials")
+        : "Your wallet is empty");
+
+    private string SubtitleText => Subtitle ?? (Mode == WalletHeroMode.Active
+        ? "Tap a card to present, or scan to verify."
+        : "Enrol this device to load yours.");
+}
