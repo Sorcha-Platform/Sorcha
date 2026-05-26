@@ -249,6 +249,10 @@ walkthroughs/.secrets/
 !walkthroughs/.secrets/.gitkeep
 walkthroughs/**/state.json
 
+# Cross-node walkthrough run artefacts + ad-hoc compliance reports (local-only, never commit)
+walkthroughs/**/crossnode-state.json
+walkthroughs/COMPLIANCE-REPORT.md
+
 # Performance benchmark test results
 walkthroughs/PerformanceBenchmark/results/*.json
 walkthroughs/PerformanceBenchmark/results/*.md
