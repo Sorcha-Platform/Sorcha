@@ -9,6 +9,10 @@
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
     <link href="css/app.css" rel="stylesheet" />
     <link href="css/welcome-takeover.css" rel="stylesheet" />
+    <!-- Blazor CSS-isolation bundle — without this, every component .razor.css
+         (incl. the Feature 141 wallet chrome + shared Sorcha.UI.Components.User
+         scoped styles) is never loaded and components render unstyled. -->
+    <link href="Sorcha.Wallet.Pwa.styles.css" rel="stylesheet" />
 </head>
 <body>
     <div id="app">
