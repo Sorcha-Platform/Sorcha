@@ -854,6 +854,38 @@ services:
     stdin_open: true  # Enable interactive stdin for MCP stdio transport
     tty: true         # Allocate a pseudo-TTY
 
+  # MCP server, Streamable HTTP transport (spec 139 US3). Always-on remote surface:
+  # the per-request Authorization bearer is validated against the installation issuer +
+  # tier audiences (JWT env below) before any tool dispatches. Exposed to agents through
+  # the gateway /mcp route. Backends are reached via the gateway so the platform authorizes
+  # the forwarded caller token authoritatively.
+  mcp-server-http:
+    build:
+      context: .
+      dockerfile: src/Apps/Sorcha.McpServer/Dockerfile
+    image: sorchadev/mcp-server:latest
+    container_name: sorcha-mcp-server-http
+    <<: *app-hardening
+    mem_limit: 512m
+    command: [ "--transport", "http" ]
+    environment:
+      <<: [ *otel-env, *jwt-env ]
+      OTEL_SERVICE_NAME: mcp-server-http
+      DOTNET_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      # Backend communication flows through the gateway so the forwarded caller token is
+      # authorized by the platform (not by anonymous service-to-service trust).
+      ServiceClients__BlueprintService__Address: http://api-gateway:8080
+      ServiceClients__WalletService__Address: http://api-gateway:8080
+      ServiceClients__RegisterService__Address: http://api-gateway:8080
+      ServiceClients__TenantService__Address: http://api-gateway:8080
+      ServiceClients__ValidatorService__Address: http://api-gateway:8080
+    depends_on:
+      - api-gateway
+      - aspire-dashboard
+    networks:
+      - sorcha-network
+
 networks:
   # Bridge network for all services
   # All containers communicate via Docker DNS (e.g., http://wallet-service:8080)

@@ -5,17 +5,22 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- ASP.NET Core host for the Streamable HTTP transport (spec 139 US3) -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Sorcha.McpServer.Tests" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- MCP SDK -->
     <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
 
-    <!-- Hosting and DI -->
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <!-- Hosting, DI, configuration + rate limiting come from the Microsoft.AspNetCore.App
+         framework reference (added above for the US3 HTTP host); explicit package
+         references would be pruned (NU1510). -->
 
     <!-- Input Validation -->
     <PackageReference Include="FluentValidation" />
@@ -23,9 +28,6 @@
 
     <!-- JWT Token Handling -->
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
-
-    <!-- Rate Limiting -->
-    <PackageReference Include="System.Threading.RateLimiting" />
 
     <!-- Schema and Logic Processing -->
     <PackageReference Include="JsonSchema.Net" />

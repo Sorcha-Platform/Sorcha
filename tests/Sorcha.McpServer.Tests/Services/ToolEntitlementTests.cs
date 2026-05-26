@@ -59,4 +59,22 @@ public class ToolEntitlementTests
         tools.Should().Contain("sorcha_inbox_list");
         tools.Should().NotContain("sorcha_health_check");
     }
+
+    /// <summary>The 8 Feature 140 Wave-1 register-control/federation tools are platform + admin only.</summary>
+    [Theory]
+    [InlineData("sorcha_register_subscribe")]
+    [InlineData("sorcha_register_unsubscribe")]
+    [InlineData("sorcha_register_sync_state")]
+    [InlineData("sorcha_register_relationship")]
+    [InlineData("sorcha_transaction_status")]
+    [InlineData("sorcha_transaction_inclusion_proof")]
+    [InlineData("sorcha_transaction_verification_bundle")]
+    [InlineData("sorcha_transaction_revoke")]
+    public void Wave1Tools_RequirePlatformAndAdminRole(string toolName)
+    {
+        ToolEntitlements.IsPermitted(toolName, Tier.Platform, ["sorcha:admin"]).Should().BeTrue();
+        ToolEntitlements.IsPermitted(toolName, Tier.Platform, ["sorcha:designer"]).Should().BeFalse();
+        ToolEntitlements.IsPermitted(toolName, Tier.Consumer, ["sorcha:admin"]).Should().BeFalse();
+        ToolEntitlements.IsPermitted(toolName, Tier.Platform, []).Should().BeFalse();
+    }
 }
