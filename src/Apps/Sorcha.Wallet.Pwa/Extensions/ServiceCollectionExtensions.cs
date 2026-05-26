@@ -183,6 +183,12 @@ public static class ServiceCollectionExtensions
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Social sign-in provider list (anonymous endpoint — no bearer token).
+        // Still observes the server clock for consistency with other unauthenticated calls.
+        services.AddHttpClient<ISocialProvidersClient, SocialProvidersClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 125 / PR-B — user context (active org) + memberships client.
         // ManagedUserContext drives /api/auth/switch-org through the bearer-
         // and clock-handler chain so the new JWT is acquired with the

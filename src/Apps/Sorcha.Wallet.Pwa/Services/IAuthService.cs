@@ -57,6 +57,20 @@ public interface IAuthService
     /// signed-out citizen survives for the next user on this device.
     /// </summary>
     Task SignOutAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Starts a social sign-in. Calls /api/auth/social/initiate with surface=wallet
+    /// and returns the provider authorization URL for the caller to navigate to
+    /// (full-page). Returns null on failure.
+    /// </summary>
+    Task<string?> BeginSocialSignInAsync(string provider, CancellationToken ct = default);
+
+    /// <summary>
+    /// Consumes a staged OAuth fragment-return token (from auth-fragment.js),
+    /// persisting it as the Consumer-tier session. Returns true when a token was
+    /// consumed. Pass the page's IJSRuntime.
+    /// </summary>
+    Task<bool> TryConsumeSocialReturnAsync(Microsoft.JSInterop.IJSRuntime js, CancellationToken ct = default);
 }
 
 /// <summary>Outcome of <see cref="IAuthService.SignInAsync"/> / <see cref="IAuthService.VerifyTwoFactorAsync"/>.</summary>
@@ -243,6 +257,35 @@ public sealed class AuthService : IAuthService
         await _purge.PurgeAsync(ct);
     }
 
+    /// <inheritdoc />
+    public async Task<string?> BeginSocialSignInAsync(string provider, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(provider);
+        try
+        {
+            var resp = await _http.PostAsJsonAsync(
+                "api/auth/social/initiate",
+                new SocialInitiateBody(provider, "login", "wallet"), ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            var body = await resp.Content.ReadFromJsonAsync<SocialInitiateBodyResponse>(ct);
+            return body?.AuthorizationUrl;
+        }
+        catch (HttpRequestException) { return null; }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> TryConsumeSocialReturnAsync(Microsoft.JSInterop.IJSRuntime js, CancellationToken ct = default)
+    {
+        FragmentReturn? fragment;
+        try { fragment = await js.InvokeAsync<FragmentReturn?>("sorchaAuthFragment.consume", ct); }
+        catch { return false; }
+
+        if (fragment is null || string.IsNullOrEmpty(fragment.Token)) return false;
+
+        await PersistAsync(fragment.Token, fragment.ExpiresIn, email: null, fragment.Refresh, ct);
+        return true;
+    }
+
     private async Task PersistAsync(string accessToken, int expiresIn, string? email, string? refreshToken, CancellationToken ct)
     {
         var record = new AccessTokenRecord(
@@ -284,4 +327,19 @@ public sealed class AuthService : IAuthService
         [property: JsonPropertyName("access_token")] string? AccessToken,
         [property: JsonPropertyName("refresh_token")] string? RefreshToken,
         [property: JsonPropertyName("expires_in")] int ExpiresIn);
+
+    private sealed record SocialInitiateBody(
+        [property: JsonPropertyName("provider")] string Provider,
+        [property: JsonPropertyName("intent")] string Intent,
+        [property: JsonPropertyName("surface")] string Surface);
+
+    private sealed record SocialInitiateBodyResponse(
+        [property: JsonPropertyName("authorization_url")] string? AuthorizationUrl,
+        [property: JsonPropertyName("state")] string? State);
+
+    private sealed record FragmentReturn(
+        [property: JsonPropertyName("token")] string? Token,
+        [property: JsonPropertyName("refresh")] string? Refresh,
+        [property: JsonPropertyName("expiresIn")] int ExpiresIn,
+        [property: JsonPropertyName("returnUrl")] string? ReturnUrl);
 }

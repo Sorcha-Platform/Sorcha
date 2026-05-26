@@ -311,6 +311,34 @@ public sealed class AuthAndBearerTests
         capturedBody.Should().Contain("\"tier\":\"consumer\"");
     }
 
+    [Fact]
+    public async Task BeginSocialSignInAsync_ReturnsAuthorizationUrl()
+    {
+        var handler = new CapturingHandler(_ =>
+            Task.FromResult(JsonOk("{\"authorization_url\":\"https://idp/auth?x=1\",\"state\":\"st\"}")));
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge(), new FakePasskeyInterop());
+
+        var url = await auth.BeginSocialSignInAsync("Google");
+
+        url.Should().Be("https://idp/auth?x=1");
+    }
+
+    [Fact]
+    public async Task TryConsumeSocialReturnAsync_NoFragment_ReturnsFalse_And_StaysSignedOut()
+    {
+        var js = new NullConsumeJsRuntime();
+        var store = new InMemoryAccessTokenStore();
+        var auth = new AuthService(
+            new HttpClient(new CapturingHandler(_ => Task.FromResult(JsonOk("{}")))) { BaseAddress = new Uri("https://gw.test/") },
+            store, new NoopLocalDataPurge(), new FakePasskeyInterop());
+
+        var consumed = await auth.TryConsumeSocialReturnAsync(js);
+
+        consumed.Should().BeFalse();
+        (await store.GetAsync()).Should().BeNull();
+    }
+
     private sealed class CapturingHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -326,4 +354,12 @@ public sealed class AuthAndBearerTests
     {
         Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
     };
+}
+
+internal sealed class NullConsumeJsRuntime : Microsoft.JSInterop.IJSRuntime
+{
+    public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        => new((TValue)(object?)default!);
+    public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken ct, object?[]? args)
+        => new((TValue)(object?)default!);
 }
