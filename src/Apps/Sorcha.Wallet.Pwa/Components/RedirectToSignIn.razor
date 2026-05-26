@@ -1,0 +1,20 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Auth-gate NotAuthorized target. Sends signed-out citizens to the dedicated
+    sign-in screen, preserving where they were headed via returnUrl. Base-relative
+    nav — the PWA is mounted under /wallet/.
+*@
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        var returnUrl = Nav.ToBaseRelativePath(Nav.Uri);
+        var target = string.IsNullOrEmpty(returnUrl) || returnUrl.StartsWith("signin")
+            ? "signin"
+            : $"signin?returnUrl={Uri.EscapeDataString(returnUrl)}";
+        Nav.NavigateTo(target);
+    }
+}

@@ -45,6 +45,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IStatusListService, IndexedDbStatusListService>();
         services.AddSingleton<ISyncCursorStore, IndexedDbSyncCursorStore>();
         services.AddSingleton<IAccessTokenStore, IndexedDbAccessTokenStore>();
+        services.AddSingleton<WalletAuthenticationStateProvider>();
+        services.AddSingleton<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider>(
+            sp => sp.GetRequiredService<WalletAuthenticationStateProvider>());
         services.AddSingleton<ISyncService, SyncService>();
         services.AddSingleton<IDeviceMetaStore, IndexedDbDeviceMetaStore>();
         services.AddSingleton<IEnrolmentService, EnrolmentService>();
