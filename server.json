@@ -3,12 +3,51 @@
   "name": "io.github.sorcha-platform/sorcha",
   "description": "Verifiable-credential & distributed-register platform exposed as MCP tools for AI workflow automation.",
   "status": "active",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "websiteUrl": "https://docs.sorcha.io",
   "repository": {
     "url": "https://github.com/Sorcha-Platform/Sorcha",
     "source": "github"
   },
+  "_tiered_surface": "Tools are tier-gated (F136): consumer tokens see citizen self-service + workflow-participation tools; platform tokens with the admin/designer role additionally see those slices. The served set is authoritative; this manifest advertises it.",
+  "_tools_note": "Spec 139 US5 (T041): the tools list below MUST match the [McpServerTool(Name=...)] set in the Sorcha.McpServer assembly and the gateway appsettings.json McpManifest catalogue EXACTLY. ManifestIntegrityTests fails build-and-test on any drift. sorcha_wallet_sign is intentionally absent (T029 — de-registered, returns in a dedicated security-reviewed wave).",
+  "tools": [
+    "sorcha_action_details",
+    "sorcha_action_submit",
+    "sorcha_action_validate",
+    "sorcha_audit_query",
+    "sorcha_blueprint_create",
+    "sorcha_blueprint_diff",
+    "sorcha_blueprint_export",
+    "sorcha_blueprint_get",
+    "sorcha_blueprint_list",
+    "sorcha_blueprint_simulate",
+    "sorcha_blueprint_update",
+    "sorcha_blueprint_validate",
+    "sorcha_disclosed_data",
+    "sorcha_disclosure_analysis",
+    "sorcha_health_check",
+    "sorcha_inbox_list",
+    "sorcha_jsonlogic_test",
+    "sorcha_log_query",
+    "sorcha_metrics",
+    "sorcha_peer_status",
+    "sorcha_register_query",
+    "sorcha_register_stats",
+    "sorcha_schema_generate",
+    "sorcha_schema_validate",
+    "sorcha_tenant_create",
+    "sorcha_tenant_list",
+    "sorcha_tenant_update",
+    "sorcha_token_revoke",
+    "sorcha_transaction_history",
+    "sorcha_user_list",
+    "sorcha_user_manage",
+    "sorcha_validator_status",
+    "sorcha_wallet_info",
+    "sorcha_workflow_instances",
+    "sorcha_workflow_status"
+  ],
   "packages": [
     {
       "registryType": "oci",
@@ -21,7 +60,7 @@
       "environmentVariables": [
         {
           "name": "SORCHA_JWT_TOKEN",
-          "description": "Sorcha JWT bearer token scoping the MCP tools to the caller's role and organisation. Obtain via scripts/get-jwt-token.sh or the Tenant Service auth flow.",
+          "description": "Sorcha JWT bearer token scoping the MCP tools to the caller's trust tier (F136) and organisation. Obtain via scripts/get-jwt-token.sh or the Tenant Service auth flow.",
           "isRequired": true,
           "isSecret": true
         },
@@ -29,6 +68,20 @@
           "name": "SORCHA_GATEWAY_URL",
           "description": "Base URL of the Sorcha API gateway the MCP server targets (e.g. https://n1.sorcha.dev).",
           "isRequired": false
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://n1.sorcha.dev/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer <Sorcha JWT>. The Streamable HTTP transport (spec 139 US3) is a protected resource: the per-request bearer is validated against the installation issuer + tier audiences before dispatch.",
+          "isRequired": true,
+          "isSecret": true
         }
       ]
     }
