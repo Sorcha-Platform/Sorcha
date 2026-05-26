@@ -12,7 +12,10 @@
     protected override void OnInitialized()
     {
         var returnUrl = Nav.ToBaseRelativePath(Nav.Uri);
-        var target = string.IsNullOrEmpty(returnUrl) || returnUrl.StartsWith("signin")
+        var alreadyOnSignIn = returnUrl.Equals("signin", StringComparison.OrdinalIgnoreCase)
+            || returnUrl.StartsWith("signin?", StringComparison.OrdinalIgnoreCase)
+            || returnUrl.StartsWith("signin/", StringComparison.OrdinalIgnoreCase);
+        var target = string.IsNullOrEmpty(returnUrl) || alreadyOnSignIn
             ? "signin"
             : $"signin?returnUrl={Uri.EscapeDataString(returnUrl)}";
         Nav.NavigateTo(target);

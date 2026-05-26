@@ -11,10 +11,12 @@ namespace Sorcha.Wallet.Pwa.Services;
 
 /// <summary>
 /// Auth state for the wallet gate. Authenticated iff <see cref="IAccessTokenStore"/>
-/// holds a non-expired token (the store self-purges expired tokens on read). No
-/// JWT parsing is needed — the protected pages only require presence, not claims.
-/// Email is surfaced as the Name claim for display. Call <see cref="NotifyChanged"/>
-/// after sign-in / sign-out so the gate re-evaluates.
+/// holds a token that is both present and not yet expired. A missing token, an empty
+/// access-token string, or a token whose <c>ExpiresAt</c> is in the past are all
+/// treated as anonymous — the provider does not rely solely on the store self-purging
+/// expired records. No JWT parsing is needed — the protected pages only require
+/// presence, not claims. Email is surfaced as the Name claim for display. Call
+/// <see cref="NotifyChanged"/> after sign-in / sign-out so the gate re-evaluates.
 /// </summary>
 public sealed class WalletAuthenticationStateProvider : AuthenticationStateProvider
 {
@@ -31,7 +33,7 @@ public sealed class WalletAuthenticationStateProvider : AuthenticationStateProvi
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
         var record = await _store.GetAsync();
-        if (record is null || string.IsNullOrEmpty(record.AccessToken))
+        if (record is null || string.IsNullOrEmpty(record.AccessToken) || record.ExpiresAt <= DateTimeOffset.UtcNow)
             return Anonymous;
 
         var claims = new List<Claim> { new(ClaimTypes.Name, record.Email ?? "citizen") };

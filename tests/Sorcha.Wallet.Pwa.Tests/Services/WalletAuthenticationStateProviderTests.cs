@@ -5,6 +5,7 @@ using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.AspNetCore.Components.Authorization;
 using Sorcha.Wallet.Pwa.Services;
 using Xunit;
 
@@ -44,5 +45,34 @@ public class WalletAuthenticationStateProviderTests
         provider.NotifyChanged();
 
         (await provider.GetAuthenticationStateAsync()).User.Identity!.IsAuthenticated.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task NotifyChanged_RaisesAuthenticationStateChanged_WithAuthenticatedState()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("at", DateTimeOffset.UtcNow.AddHours(1), "a@b.test"));
+        var provider = new WalletAuthenticationStateProvider(store);
+
+        Task<AuthenticationState>? raised = null;
+        provider.AuthenticationStateChanged += t => raised = t;
+
+        provider.NotifyChanged();
+
+        raised.Should().NotBeNull();
+        var state = await raised!;
+        state.User.Identity!.IsAuthenticated.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetAuthenticationState_ExpiredToken_IsAnonymous()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("at", DateTimeOffset.UtcNow.AddMinutes(-1), "a@b.test"));
+        var provider = new WalletAuthenticationStateProvider(store);
+
+        var state = await provider.GetAuthenticationStateAsync();
+
+        state.User.Identity!.IsAuthenticated.Should().BeFalse();
     }
 }
