@@ -16,6 +16,7 @@
 @using System.Text.Json
 @using Sorcha.UI.Components.User.Components.Context
 @using Sorcha.UI.Components.User.Components.Home
+@using Sorcha.UI.Core.Components.Wallet
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Context
 @using Sorcha.Wallet.Pwa.Services.Presentation
@@ -46,28 +47,47 @@
                      OnDismiss="HandleWelcomeDismissedAsync" />
 }
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
-    @* Feature 125 / PR-B + PR-C — hero row: Present (holder) + Verify
-       (citizen-as-verifier). Two taps to either capability from Home. *@
-    <MudStack Row="true" Spacing="2">
-        <div style="flex:1;">
-            <PresentHomeAction CredentialCount="@(_credentials?.Count ?? 0)"
-                               OnPresentRequested="@HandlePresentRequestedAsync" />
+@{
+    var dark = Shell?.IsDark ?? false;
+    var hasCreds = _credentials is { Count: > 0 };
+    var credCount = _credentials?.Count ?? 0;
+}
+
+@* Feature 141 — gradient hero. On Home it owns the header row (org switcher +
+   inbox bell + scan), folded out of the app bar via the cascaded shell. *@
+<WalletHero Mode="@(hasCreds ? WalletHeroMode.Active : WalletHeroMode.Empty)"
+            CredentialCount="@credCount"
+            Dark="@dark">
+    <HeaderContent>
+        @if (Shell is not null)
+        {
+            <ContextChipSwitcher ActiveLabel="@Shell.ActiveLabel"
+                                 ActiveContextOrgId="@Shell.ActiveContextOrgId"
+                                 Memberships="@Shell.ChipMemberships"
+                                 OnContextSelected="@Shell.OnContextSelectedAsync" />
+        }
+        <div class="wallet-hero-actions">
+            <MudIconButton Icon="@Icons.Material.Filled.Notifications"
+                           Color="Color.Inherit"
+                           OnClick="@(() => Shell?.OpenInbox())"
+                           data-testid="topbar-inbox-button"
+                           aria-label="Inbox">
+                @if ((Shell?.InboxUnreadCount ?? 0) > 0)
+                {
+                    <MudBadge Content="@(Shell!.InboxUnreadCount)" Color="Color.Error" Overlap="true"
+                              data-testid="topbar-inbox-badge" />
+                }
+            </MudIconButton>
+            <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner"
+                           Color="Color.Inherit"
+                           OnClick="@(() => Nav.NavigateTo("present"))"
+                           data-testid="topbar-present-button"
+                           aria-label="Present a credential" />
         </div>
-        <div style="flex:1;">
-            <VerifyHomeAction OnVerifyRequested="@OpenVerifyAsync" />
-        </div>
-    </MudStack>
+    </HeaderContent>
+</WalletHero>
 
-    @* Feature 125 / PR-B — Needs-attention band. Conditional render — the
-       band hides entirely when no items. Derived from F124's pending-app
-       notice today; future PRs add expiring-credential and action-required
-       sources. *@
-    <NeedsAttentionBand Items="@_needsAttentionItems"
-                       OnItemActivated="@HandleNeedsAttentionActivatedAsync" />
-
-    <MudText Typo="Typo.h5" Class="mb-3">Your credentials</MudText>
-
+<MudContainer MaxWidth="MaxWidth.Small" Class="pt-2">
     @{
         var skewMinutes = (int)Math.Abs(ServerClock.GetSkew().TotalMinutes);
     }
@@ -86,30 +106,28 @@
         </MudAlert>
     }
 
+    @* Credential surface: empty → ghost card stack (Enrol tap-target) or the
+       F124 waiting card; populated → the existing credential cards (unchanged —
+       the fanned/accented populated stack is deferred to a later pass). *@
     @if (_credentials is null)
     {
-        <MudProgressCircular Indeterminate="true" Size="Size.Small" data-testid="credentials-loading" />
+        <div class="d-flex justify-center pa-6">
+            <MudProgressCircular Indeterminate="true" Size="Size.Small" data-testid="credentials-loading" />
+        </div>
     }
     else if (_credentials.Count == 0)
     {
-        @* Feature 124 (US2, FR-002): when a pending-application notice is set,
-           replace the bare empty state with the waiting-card so the citizen sees
-           a designed in-progress beat rather than "nothing here". *@
         @if (_pendingNotice is not null)
         {
             <WaitingCard Label="@_pendingNotice.Label" data-testid="home-waiting-state" />
         }
         else
         {
-            <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="home-empty-state">
-                No credentials yet. Enrol this device to load yours, or try the demo card.
-            </MudAlert>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.PhoneIphone"
-                       OnClick="@(() => Nav.NavigateTo("enrol"))" FullWidth="true" Class="mb-2"
-                       data-testid="enrol-device-button">
-                Enrol this device
-            </MudButton>
+            <div data-testid="home-empty-state">
+                <WalletCardStack Dark="@dark"
+                                 TestId="enrol-device-button"
+                                 OnAddCredential="@(() => Nav.NavigateTo("enrol"))" />
+            </div>
         }
     }
     else
@@ -132,14 +150,35 @@
         </div>
     }
 
-    @* Feature 125 / PR-B — Recent activity feed. Hides when no events. The
-       data source (transaction history) lands with US4 / PR-E; until then
-       this passes an empty list and the section hides. *@
+    @* Feature 141 — the big Present / Verify action pair. Present is disabled
+       (and non-actioning) until at least one credential exists. *@
+    <div class="wallet-action-pair">
+        <BigActionButton Kind="BigActionKind.Primary"
+                         Icon="@Icons.Material.Filled.QrCode2"
+                         Title="Present"
+                         Subtitle="@(hasCreds ? "Share a card" : "No cards yet")"
+                         Disabled="@(!hasCreds)"
+                         Dark="@dark"
+                         TestId="home-present-button"
+                         OnActivated="HandlePresentRequestedAsync" />
+        <BigActionButton Kind="BigActionKind.Ghost"
+                         Icon="@Icons.Material.Filled.VerifiedUser"
+                         Title="Verify"
+                         Subtitle="Scan someone"
+                         Dark="@dark"
+                         TestId="home-verify-button"
+                         OnActivated="OpenVerifyAsync" />
+    </div>
+
+    @* Feature 125 / PR-B — Needs-attention band. Hides entirely when no items. *@
+    <NeedsAttentionBand Items="@_needsAttentionItems"
+                       OnItemActivated="@HandleNeedsAttentionActivatedAsync" />
+
+    @* Feature 125 / PR-B — Recent activity feed. Hides when no events. *@
     <RecentActivityFeed Events="@_recentActivityEntries"
                        OnSeeAll="@(() => Nav.NavigateTo("activity"))" />
 
-    @* Feature 125 / PR-B — Sync + demo controls. The old "Present a
-       credential" button is superseded by the PresentHomeAction hero above. *@
+    @* Feature 125 / PR-B — Sync + demo controls. *@
     <MudStack Row="true" Spacing="2" Class="mt-4">
         <MudButton Color="Color.Tertiary" Variant="Variant.Outlined"
                    StartIcon="@Icons.Material.Filled.Sync"
@@ -152,8 +191,7 @@
         </MudButton>
     </MudStack>
 
-    @* Feature 125 / PR-B — Peek footer for other-context content. Hides when
-       the user has zero credentials in non-active contexts. *@
+    @* Feature 125 / PR-B — Peek footer for other-context content. *@
     <ContextPeekFooter OtherCount="@_otherContextCount"
                       OtherContextName="@_otherContextName"
                       OnSwitchRequested="@HandlePeekSwitchRequestedAsync" />
@@ -169,6 +207,11 @@
 </MudContainer>
 
 @code {
+    // Feature 141 — the wallet shell (MainLayout) cascades itself so the hero
+    // can reuse the org switcher, inbox bell + unread count, and dark-mode flag
+    // the layout owns, without duplicating the F118 inbox wiring.
+    [CascadingParameter] public MainLayout? Shell { get; set; }
+
     private IReadOnlyList<CachedCredential>? _credentials;
     private PendingApplicationView? _pendingNotice;
     private bool _seeding;

@@ -15,6 +15,7 @@
 @using Sorcha.UI.Components.User.Components.Context
 @using Sorcha.UI.Components.User.Components.Onboarding
 @using Sorcha.UI.Core.Components.Inbox
+@using Sorcha.UI.Core.Components.Wallet
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Theme
 @using Sorcha.Wallet.Pwa.Services
@@ -29,8 +30,11 @@
 @inject IInboxApiService InboxApi
 @inject TenantHubConnection TenantHub
 @inject IAccessTokenStore AccessTokens
+@inject IThemeService ThemeService
 
-<MudThemeProvider Theme="SorchaMudTheme.Default" />
+@* Feature 141 — dark mode now follows IThemeService (previously the provider
+   was unbound, so the wallet never rendered dark). *@
+<MudThemeProvider Theme="SorchaMudTheme.Default" IsDarkMode="@_isDark" />
 <MudPopoverProvider />
 <MudDialogProvider />
 @* Snackbar Phase 6 (closer): MudSnackbarProvider unmounted across the
@@ -49,59 +53,58 @@
     </Authorized>
 </AuthorizeView>
 
+@* Feature 141 — cascade the shell so the Home hero can host the org switcher,
+   inbox bell, and scan affordances (folded out of the app bar) without
+   duplicating the F118 inbox wiring this layout owns. *@
+<CascadingValue Value="this" IsFixed="false">
 <MudLayout>
-    <MudAppBar Elevation="1">
-        <MudText Typo="Typo.h6">Sorcha Wallet</MudText>
-        <MudSpacer />
-        <ContextChipSwitcher ActiveLabel="@_activeLabel"
-                             ActiveContextOrgId="@UserContext.ActiveContextOrgId"
-                             Memberships="@_chipMemberships"
-                             OnContextSelected="@OnContextSelectedAsync" />
-        <MudSpacer />
-        @* Feature 118 / Phase A — durable inbox bell. Same surface as the
-           main web app's MainLayout.razor; backed by the same /api/me/inbox
-           REST endpoints and TenantHub realtime signals. *@
-        <MudIconButton Icon="@Icons.Material.Filled.Notifications"
-                       Color="Color.Inherit"
-                       OnClick="@ToggleInboxPanel"
-                       data-testid="topbar-inbox-button"
-                       aria-label="Inbox"
-                       Title="Inbox">
-            @if (_inboxUnreadCount > 0)
-            {
-                <MudBadge Content="@_inboxUnreadCount"
-                          Color="Color.Primary"
-                          Overlap="true"
-                          data-testid="topbar-inbox-badge" />
-            }
-        </MudIconButton>
-        <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner"
-                       Color="Color.Inherit"
-                       OnClick="@(() => Nav.NavigateTo("present"))"
-                       data-testid="topbar-present-button"
-                       aria-label="Present a credential" />
-    </MudAppBar>
-    <MudMainContent Class="pb-16">
+    @* Feature 141 — the top app bar is suppressed on Home: there the gradient
+       hero owns the header row (org switcher + bell + scan). Every other
+       wallet page keeps the standard app bar. *@
+    @if (!_isHome)
+    {
+        <MudAppBar Elevation="1">
+            <MudText Typo="Typo.h6">Sorcha Wallet</MudText>
+            <MudSpacer />
+            <ContextChipSwitcher ActiveLabel="@_activeLabel"
+                                 ActiveContextOrgId="@UserContext.ActiveContextOrgId"
+                                 Memberships="@_chipMemberships"
+                                 OnContextSelected="@OnContextSelectedAsync" />
+            <MudSpacer />
+            @* Feature 118 / Phase A — durable inbox bell. Same surface as the
+               main web app's MainLayout.razor; backed by the same /api/me/inbox
+               REST endpoints and TenantHub realtime signals. *@
+            <MudIconButton Icon="@Icons.Material.Filled.Notifications"
+                           Color="Color.Inherit"
+                           OnClick="@ToggleInboxPanel"
+                           data-testid="topbar-inbox-button"
+                           aria-label="Inbox"
+                           Title="Inbox">
+                @if (_inboxUnreadCount > 0)
+                {
+                    <MudBadge Content="@_inboxUnreadCount"
+                              Color="Color.Primary"
+                              Overlap="true"
+                              data-testid="topbar-inbox-badge" />
+                }
+            </MudIconButton>
+            <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner"
+                           Color="Color.Inherit"
+                           OnClick="@(() => Nav.NavigateTo("present"))"
+                           data-testid="topbar-present-button"
+                           aria-label="Present a credential" />
+        </MudAppBar>
+    }
+    <MudMainContent Class="@(_isHome ? "wallet-content wallet-content--home" : "wallet-content")">
         @* Phase 1 of the Snackbar retirement — inline feedback host renders
            at the top of the content region. Stays empty (and occupies no
            vertical space) until a page surfaces a message via IInlineFeedback. *@
         <Sorcha.UI.Core.Components.Feedback.InlineFeedbackHost />
         @Body
     </MudMainContent>
-    <MudAppBar Bottom="true" Fixed="true" Elevation="4" Color="Color.Surface" Class="d-flex justify-space-around">
-        <MudIconButton Icon="@Icons.Material.Filled.Home" OnClick="@(() => Nav.NavigateTo(""))"
-                       data-testid="footer-nav-home"
-                       aria-label="Home" />
-        <MudIconButton Icon="@Icons.Material.Filled.PhoneIphone" OnClick="@(() => Nav.NavigateTo("devices"))"
-                       data-testid="footer-nav-devices"
-                       aria-label="Devices" />
-        <MudIconButton Icon="@Icons.Material.Filled.History" OnClick="@(() => Nav.NavigateTo("activity"))"
-                       data-testid="footer-nav-activity"
-                       aria-label="Activity" />
-        <MudIconButton Icon="@Icons.Material.Filled.Settings" OnClick="@(() => Nav.NavigateTo("settings"))"
-                       data-testid="footer-nav-settings"
-                       aria-label="Settings" />
-    </MudAppBar>
+    @* Feature 141 — floating pill nav replaces the flush bottom rail. Shell-
+       level, so it appears on every primary wallet screen. *@
+    <FloatingTabBar ActiveRoute="@_activeRoute" Dark="@_isDark" OnNavigate="HandleTabNavigate" />
 
     @* Feature 125 / PR-F (T104-T108) — guided tour on first wallet open
        after enrolment. WalletFlagsRecord.TourDismissedAt is the per-device
@@ -117,6 +120,7 @@
        OnInboxUnreadCountUpdated wired up below. *@
     <InboxPanel @bind-IsOpen="_inboxPanelOpen" />
 </MudLayout>
+</CascadingValue>
 
 @code {
     private IReadOnlyList<UserOrgMembership> _memberships = Array.Empty<UserOrgMembership>();
@@ -129,8 +133,41 @@
     private bool _inboxHubStarted;
     private bool _inboxInitInFlight;
 
+    // Feature 141 — chrome state. _isDark mirrors IThemeService so the
+    // MudThemeProvider + the floating bar render the dark variant; _isHome
+    // suppresses the top app bar on the wallet root (the hero owns the header
+    // there); _activeRoute highlights the matching floating-bar tab.
+    private bool _isDark;
+    private bool _isHome = true;
+    private string _activeRoute = "";
+
+    // ── Shell surface for the Home hero (Feature 141) ──────────────────────
+    // The Home page cascades to this layout instance so its gradient hero can
+    // reuse the org switcher, inbox bell, and scan affordances without
+    // duplicating the F118 inbox wiring this layout owns.
+    /// <summary>Active-context label shown on the org switcher chip.</summary>
+    public string ActiveLabel => _activeLabel;
+    /// <summary>Active organisational context (null = Personal).</summary>
+    public Guid? ActiveContextOrgId => UserContext.ActiveContextOrgId;
+    /// <summary>Org memberships for the switcher picker.</summary>
+    public IReadOnlyList<ContextChipSwitcher.ContextChipMembership> ChipMemberships => _chipMemberships;
+    /// <summary>Current unread inbox count for the bell badge.</summary>
+    public int InboxUnreadCount => _inboxUnreadCount;
+    /// <summary>Resolved dark-mode flag, for components that need a non-palette dark variant.</summary>
+    public bool IsDark => _isDark;
+    /// <summary>Opens/closes the inbox drawer (the hero bell calls this on Home).</summary>
+    public void OpenInbox() { _inboxPanelOpen = true; StateHasChanged(); }
+
     protected override async Task OnInitializedAsync()
     {
+        // Feature 141 — track route for the floating bar + Home app-bar
+        // suppression, and resolve dark mode from the user's theme preference.
+        UpdateRoute();
+        Nav.LocationChanged += HandleLocationChanged;
+        ThemeService.OnThemeChanged += HandleThemeChanged;
+        await ThemeService.InitializeAsync();
+        _isDark = ThemeService.IsDarkMode;
+
         UserContext.OnContextChanged += HandleContextChanged;
         await UserContext.InitializeAsync();
         await ReloadMembershipsAsync();
@@ -138,6 +175,32 @@
         await EvaluateTourEligibilityAsync();
         await InitialiseInboxAsync();
     }
+
+    /// <summary>Feature 141 — base-relative route → Home flag + active tab.</summary>
+    private void UpdateRoute()
+    {
+        var rel = Nav.ToBaseRelativePath(Nav.Uri);
+        // Strip query/fragment, then take the first path segment.
+        var path = rel.Split('?', '#')[0].Trim('/');
+        var segment = path.Length == 0 ? "" : path.Split('/')[0];
+        _isHome = segment.Length == 0;
+        _activeRoute = segment;
+    }
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        UpdateRoute();
+        StateHasChanged();
+    }
+
+    private void HandleThemeChanged()
+    {
+        _isDark = ThemeService.IsDarkMode;
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Feature 141 — floating-bar navigation (base-relative; Home = "").</summary>
+    private void HandleTabNavigate(string route) => Nav.NavigateTo(route);
 
     /// <summary>
     /// IAccessTokenStore has no Changed event, so the SPA login flow (which
@@ -255,7 +318,8 @@
             : "Personal";
     }
 
-    private async Task OnContextSelectedAsync(Guid? orgId)
+    /// <summary>Switches the active org context (used by the app-bar chip and the Home hero chip).</summary>
+    public async Task OnContextSelectedAsync(Guid? orgId)
     {
         var ok = await UserContext.SetActiveContextAsync(orgId);
         if (!ok)
@@ -276,6 +340,8 @@
     public async ValueTask DisposeAsync()
     {
         UserContext.OnContextChanged -= HandleContextChanged;
+        Nav.LocationChanged -= HandleLocationChanged;
+        ThemeService.OnThemeChanged -= HandleThemeChanged;
         if (_inboxHubStarted)
         {
             TenantHub.OnInboxUnreadCountUpdated -= OnInboxUnreadCountUpdated;

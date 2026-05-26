@@ -1,0 +1,56 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 141 — empty-wallet "ghost" card stack. Three stacked rounded
+    rectangles (Apple-Wallet-style hint); the top card is the live tap-target
+    that starts device enrolment, the two beneath are decorative (offset,
+    rotated, dimmed) to imply a stack. Populated state is out of scope — when
+    the citizen has credentials the host renders the real credential cards
+    instead. Design: docs/mockups/design_handoff_wallet_home/ (GhostCardStack).
+*@
+@namespace Sorcha.UI.Core.Components.Wallet
+
+<div class="@RootClass" data-testid="ghost-card-stack">
+    @* Decorative cards behind — not focusable, hidden from assistive tech. *@
+    <div class="ghost-card ghost-card--3" aria-hidden="true"></div>
+    <div class="ghost-card ghost-card--2" aria-hidden="true"></div>
+
+    @* Live top card — the enrol tap-target. *@
+    <button type="button"
+            class="ghost-card ghost-card--1"
+            aria-label="Add a credential — enrol this device"
+            data-testid="@TestId"
+            @onclick="HandleAddAsync">
+        <span class="ghost-card__head">
+            <span class="ghost-card__titles">
+                <span class="ghost-card__eyebrow">SORCHA</span>
+                <span class="ghost-card__title">Add a credential</span>
+            </span>
+            <span class="ghost-card__plus">
+                <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Medium" />
+            </span>
+        </span>
+        <span class="ghost-card__subtitle">
+            Tap to enrol this device — or load a demo card to look around.
+        </span>
+    </button>
+</div>
+
+@code {
+    /// <summary>Dark-mode styling for the decorative neutral cards (non-palette).</summary>
+    [Parameter] public bool Dark { get; set; }
+
+    /// <summary>Stable test id placed on the interactive top card.</summary>
+    [Parameter] public string? TestId { get; set; }
+
+    /// <summary>Fired when the top card is tapped (host routes to enrolment).</summary>
+    [Parameter] public EventCallback OnAddCredential { get; set; }
+
+    private string RootClass => "ghost-stack" + (Dark ? " ghost-stack--dark" : "");
+
+    private async Task HandleAddAsync()
+    {
+        if (OnAddCredential.HasDelegate) await OnAddCredential.InvokeAsync();
+    }
+}

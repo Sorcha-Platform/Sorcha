@@ -1,0 +1,22 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+   Feature 141 — wallet Home layout glue. */
+
+/* Header affordances inside the gradient hero (inbox bell + scan), rendered
+   white-on-gradient. */
+.wallet-hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #fff;
+}
+
+/* The big Present / Verify action pair — two equal columns, 10px gap
+   (handoff: gridTemplateColumns 1fr 1fr, gap 10). */
+.wallet-action-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 16px;
+    margin-bottom: 8px;
+}

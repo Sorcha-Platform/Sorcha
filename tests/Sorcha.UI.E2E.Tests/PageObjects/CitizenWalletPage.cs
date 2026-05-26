@@ -46,6 +46,31 @@ public class CitizenWalletPage
     public ILocator PresentButton => _page.Locator("button:has-text('Present a credential')");
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Feature 141 — "Bolder" home reskin locators.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The gradient hero region.</summary>
+    public ILocator Hero => _page.Locator("[data-testid='wallet-hero']");
+
+    /// <summary>Hero eyebrow ("WELCOME" / "ACTIVE WALLET").</summary>
+    public ILocator HeroEyebrow => _page.Locator("[data-testid='wallet-hero-eyebrow']");
+
+    /// <summary>Hero headline ("Your wallet is empty" / "N credentials").</summary>
+    public ILocator HeroHeadline => _page.Locator("[data-testid='wallet-hero-headline']");
+
+    /// <summary>Empty-state ghost card stack container.</summary>
+    public ILocator GhostCardStack => _page.Locator("[data-testid='ghost-card-stack']");
+
+    /// <summary>Big "Present" action button (gradient primary).</summary>
+    public ILocator BigPresent => _page.Locator("[data-testid='home-present-button']");
+
+    /// <summary>Big "Verify" action button (ghost).</summary>
+    public ILocator BigVerify => _page.Locator("[data-testid='home-verify-button']");
+
+    /// <summary>The floating pill navigation bar.</summary>
+    public ILocator FloatingTabBar => _page.Locator("[data-testid='floating-tab-bar']");
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Nav-bar locators (covered by CitizenWalletNavigationTests). Filed
     // against issue #700 — every PWA nav element gets a stable data-testid
     // and a click+URL assertion so the leading-slash NavigateTo regression
