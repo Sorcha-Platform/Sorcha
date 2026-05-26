@@ -240,6 +240,23 @@ public sealed class AuthAndBearerTests
     }
 
     [Fact]
+    public async Task SignInWithPasskeyAsync_UnrecognisedPasskey_ReturnsInvalidCredentials()
+    {
+        var responses = new Queue<HttpResponseMessage>(new[]
+        {
+            JsonOk("{\"transaction_id\":\"tx1\",\"options\":{\"challenge\":\"AA\"}}"),
+            new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized)
+        });
+        var handler = new CapturingHandler(_ => Task.FromResult(responses.Dequeue()));
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge(), new FakePasskeyInterop());
+
+        var result = await auth.SignInWithPasskeyAsync();
+
+        result.Status.Should().Be(SignInStatus.InvalidCredentials);
+    }
+
+    [Fact]
     public async Task SignInWithPasskeyAsync_Unsupported_ReturnsServerError()
     {
         var http = new HttpClient(new CapturingHandler(_ => Task.FromResult(JsonOk("{}"))))

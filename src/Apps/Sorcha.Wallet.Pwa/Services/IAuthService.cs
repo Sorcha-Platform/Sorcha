@@ -203,13 +203,14 @@ public sealed class AuthService : IAuthService
         {
             var optionsResp = await _http.PostAsJsonAsync(
                 "api/auth/passkey/assertion/options",
-                new AssertionOptionsRequest(string.IsNullOrWhiteSpace(email) ? null : email!.Trim()), ct);
+                new AssertionOptionsRequest(string.IsNullOrWhiteSpace(email) ? null : email.Trim()), ct);
             optionsResp.EnsureSuccessStatusCode();
             var options = await optionsResp.Content.ReadFromJsonAsync<AssertionOptionsResponse>(ct);
             if (options is null || string.IsNullOrEmpty(options.TransactionId))
                 return new SignInResult(SignInStatus.ServerError, "Could not start passkey sign-in.");
 
             JsonElement assertion;
+            // ct intentionally not forwarded — the WebAuthn browser ceremony has no JS-side cancel API
             try { assertion = await _passkey.GetAssertionAsync(options.Options); }
             catch (JSException) { return new SignInResult(SignInStatus.InvalidCredentials, "Passkey sign-in was cancelled."); }
 
