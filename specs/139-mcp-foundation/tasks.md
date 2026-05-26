@@ -26,8 +26,8 @@
 
 **Purpose**: Bring in the HTTP-transport dependency and the test scaffolding everything else uses.
 
-- [ ] T001 ⏭️ DEFERRED to US3 — `ModelContextProtocol.AspNetCore` is an HTTP-transport dependency; not needed for the stdio MVP. Add when building US3.
-- [ ] T002 ⏭️ DEFERRED to US3 — ASP.NET Core framework reference is an HTTP-host prerequisite; add with US3.
+- [X] T001 ✅ DONE in US3 — `ModelContextProtocol.AspNetCore` 1.1.0 pinned in `Directory.Packages.props` (aligned to the `ModelContextProtocol` core pin) + `<PackageReference>` in `Sorcha.McpServer.csproj`.
+- [X] T002 ✅ DONE in US3 — `<FrameworkReference Include="Microsoft.AspNetCore.App" />` added to `Sorcha.McpServer.csproj`. Removed the now-redundant `Microsoft.Extensions.Hosting` / `Configuration.Json` / `Configuration.EnvironmentVariables` / `System.Threading.RateLimiting` package references (provided by the framework reference; would otherwise warn NU1510).
 - [ ] T003 ⏭️ FOLDED into US1 (T015) — the integration scaffolding + `TierTokenFixture` lands with the first integration test (US1), so the fixture and base class are exercised immediately rather than sitting unused.
 
 ---
@@ -111,15 +111,15 @@
 
 **Independent Test**: In network mode, an authenticated request dispatches a tool and an unauthenticated one is rejected before dispatch; in local mode the same identity behaves identically.
 
-- [ ] T031 [US3] Restructure `Program.cs` from console `Host` to `WebApplication` with a `--transport stdio|http` switch (default `stdio`); preserve the stdio path verbatim. File: `src/Apps/Sorcha.McpServer/Program.cs`
-- [ ] T032 [US3] Implement `HttpCallerContext` (per-request, via `IHttpContextAccessor` — validated `ClaimsPrincipal` + raw bearer) in `src/Apps/Sorcha.McpServer/Infrastructure/HttpCallerContext.cs`; register it for the HTTP transport
-- [ ] T033 [US3] Wire `WithHttpTransport(stateless)` + `app.MapMcp()`; protect the endpoint with ServiceDefaults `AddJwtAuthentication` (F136 issuer/audiences) so invalid/absent bearers are rejected before dispatch. File: `src/Apps/Sorcha.McpServer/Program.cs`
-- [ ] T034 [US3] Use the stateless `ConfigureSessionOptions(httpContext,…)` hook to scope the advertised tool collection per request by caller tier (HTTP equivalent of the US2 `ListTools` filter). File: `src/Apps/Sorcha.McpServer/Program.cs`
-- [ ] T035 [P] [US3] Add a `/mcp` YARP route to the MCP server in `src/Services/Sorcha.ApiGateway/appsettings.json`
-- [ ] T036 [P] [US3] Add an HTTP-mode `mcp-server` service to `docker-compose.yml` (port on `sorcha-network`, `--transport http`, gateway base-URL env); keep the stdio `--profile tools` definition
-- [ ] T037 [US3] Integration test: HTTP request with a valid bearer dispatches a tool; no/invalid bearer is rejected pre-dispatch; stdio parity for the same identity. File: `tests/Sorcha.McpServer.Tests/Integration/TransportParityTests.cs`
+- [X] T031 [US3] Restructured `Program.cs` to top-level dispatch on `--transport stdio|http` (default `stdio`). stdio uses `Host.CreateApplicationBuilder` (preserved verbatim — `--jwt-token`, singleton `McpSession` `ICallerContext`, `WithStdioServerTransport`, the list-tools filter); http uses `WebApplication.CreateBuilder`. Shared wiring (config, JwtOptions, MCP infra, ServiceClients + forwarding handlers, server options) is factored into local statics so both paths are identical apart from transport + caller context. File: `src/Apps/Sorcha.McpServer/Program.cs`
+- [X] T032 [US3] `HttpCallerContext` reads `IHttpContextAccessor.HttpContext` on **every** property access (token from `Authorization`, tier/roles/subject/org from the validated `HttpContext.User`, reusing `TierResolution.Resolve` + the stdio role-mapping). Registered as a **singleton** for the HTTP transport — per-request values without making the pooled `CallerTokenForwardingHandler` capture a scoped dependency. File: `src/Apps/Sorcha.McpServer/Infrastructure/HttpCallerContext.cs`
+- [X] T033 [US3] HTTP path wires `AddJwtAuthentication()` (F136 issuer/audiences from `JwtSettings:InstallationName`) + `AddAuthorization()` + `WithHttpTransport(o => o.Stateless = true)` + `app.MapMcp().RequireAuthorization()` so an absent/invalid bearer is rejected by the auth middleware before dispatch. File: `src/Apps/Sorcha.McpServer/Program.cs`
+- [X] T034 [US3] ✅ Satisfied by the shared `WithAuthorizationNarrowingListToolsFilter()` (in `Infrastructure/TransportConfiguration.cs`), not `ConfigureSessionOptions`. *Deviation: the existing `AddListToolsFilter` already narrows `tools/list` per request via `IMcpAuthorizationService.GetAuthorizedTools()`, and with the per-request `HttpCallerContext` that works automatically under stateless mode — no `ConfigureSessionOptions` hook needed. The filter is extracted into one extension so stdio + HTTP wire it identically.*
+- [X] T035 [P] [US3] Added `mcp` + `mcp-root` YARP routes (`/mcp/{**catch-all}` and `/mcp`, `PathRemovePrefix:/mcp`) → new `mcp-cluster` (`http://mcp-server-http:8080`) in `src/Services/Sorcha.ApiGateway/appsettings.json`. No gateway-side auth policy — the MCP server validates the bearer itself.
+- [X] T036 [P] [US3] Added `mcp-server-http` service to `docker-compose.yml` (`--transport http`, `ASPNETCORE_URLS=http://+:8080` on `sorcha-network`, `*jwt-env` for issuer/audience/signing-key validation, `ServiceClients:*:Address` → gateway). Existing stdio `mcp-server` (`--profile tools`) left intact.
+- [X] T037 [US3] Integration test `HttpTransportIntegrationTests` (Docker-gated): no bearer → 401 pre-dispatch; valid platform bearer → passes the auth gate (initialize processed). Plus `HttpCallerContextTests` (8 unit tests) covering token/tier/roles/subject/org parsing + per-request semantics + the no-context case. File: `tests/Sorcha.McpServer.Tests/Integration/HttpTransportIntegrationTests.cs` + `tests/Sorcha.McpServer.Tests/Infrastructure/HttpCallerContextTests.cs`. *Note: filed as `HttpTransportIntegrationTests` rather than `TransportParityTests` — stdio parity is the same `ICallerContext`/filter path, unit-covered.*
 
-**Checkpoint**: Both transports functional; remote agents can connect through the gateway.
+**Checkpoint**: ✅ Both transports functional; remote agents can connect through the gateway. **Live-proven**: built `mcp-server-http` + `api-gateway` images, brought the HTTP service up — `POST /mcp` returns 401 anon and a 200 MCP `initialize` SSE response with a valid admin bearer; full suite **478/478 green, 0 skipped** against the live route.
 
 ---
 
