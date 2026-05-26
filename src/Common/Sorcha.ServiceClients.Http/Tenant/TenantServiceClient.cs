@@ -89,6 +89,35 @@ public class TenantServiceClient : ITenantServiceClient
         return SendRawAsync(HttpMethod.Put, url, requestJson, "replace my persona", cancellationToken);
     }
 
+    /// <inheritdoc />
+    public Task<string?> SetOrganizationStatusAsync(string organizationId, string requestJson, CancellationToken cancellationToken = default) =>
+        SendRawAsync(HttpMethod.Put, $"api/platform/organizations/{Uri.EscapeDataString(organizationId)}/status", requestJson, "set organization status", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> GetPlatformSettingsAsync(CancellationToken cancellationToken = default) =>
+        GetRawAsync("api/platform/settings", "get platform settings", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> UpdatePublicOrgAsync(string requestJson, CancellationToken cancellationToken = default) =>
+        SendRawAsync(HttpMethod.Put, "api/platform/settings/public-org", requestJson, "update public org settings", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> GetOrganizationUsersAsync(string organizationId, string? queryString = null, CancellationToken cancellationToken = default)
+    {
+        var url = string.IsNullOrWhiteSpace(queryString)
+            ? $"api/platform/organizations/{Uri.EscapeDataString(organizationId)}/users"
+            : $"api/platform/organizations/{Uri.EscapeDataString(organizationId)}/users?{queryString}";
+        return GetRawAsync(url, "get organization users", cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<string?> ProvisionPlatformUserAsync(string requestJson, CancellationToken cancellationToken = default) =>
+        SendRawAsync(HttpMethod.Post, "api/platform/users/", requestJson, "provision platform user", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> ResetPlatformUserPasswordAsync(string userId, string requestJson, CancellationToken cancellationToken = default) =>
+        SendRawAsync(HttpMethod.Put, $"api/platform/users/{Uri.EscapeDataString(userId)}/password", requestJson, "reset platform user password", cancellationToken);
+
     private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)
     {
         try

@@ -268,6 +268,15 @@ static void RegisterServiceClients(IServiceCollection services, IConfiguration c
         .AddHttpMessageHandler<CallerTokenForwardingHandler>();
     services.AddHttpClient<Sorcha.ServiceClients.Invitation.RegisterInvitationServiceClient>()
         .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+
+    // Feature 140 Wave 4: the platform-administration depth tools route org-status, platform-settings,
+    // org-user-audit, user-provision and user-password-reset through the Tenant client (already covered
+    // above) and validator start/stop through the Validator typed client. The ValidatorServiceClient is
+    // registered concrete-type-keyed in AddServiceClients (AddHttpClient<ValidatorServiceClient>()) —
+    // re-open that same named registration to append the forwarding handler so the admin's bearer rides
+    // every validator-control call to the gateway (which enforces the SystemAdmin gate server-side).
+    services.AddHttpClient<Sorcha.ServiceClients.Validator.ValidatorServiceClient>()
+        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
 }
 
 static void ConfigureServerOptions(McpServerOptions options)

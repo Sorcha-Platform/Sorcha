@@ -71,6 +71,14 @@ public static class ToolEntitlements
         new("sorcha_credential_reinstate", PlatformOnly, AdminRole),
         new("sorcha_credential_refresh", PlatformOnly, AdminRole),
 
+        // Platform-administration depth (Feature 140 Wave 4) — platform tier + admin role
+        new("sorcha_org_status", PlatformOnly, AdminRole),
+        new("sorcha_platform_settings", PlatformOnly, AdminRole),
+        new("sorcha_org_user_audit", PlatformOnly, AdminRole),
+        new("sorcha_validator_control", PlatformOnly, AdminRole),
+        new("sorcha_user_provision", PlatformOnly, AdminRole),
+        new("sorcha_user_password_reset", PlatformOnly, AdminRole),
+
         // Designer — platform tier + designer role
         new("sorcha_blueprint_list", PlatformOnly, DesignerRole),
         new("sorcha_blueprint_get", PlatformOnly, DesignerRole),
