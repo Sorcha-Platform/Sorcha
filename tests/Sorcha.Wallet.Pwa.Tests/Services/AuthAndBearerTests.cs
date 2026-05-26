@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -182,7 +183,9 @@ public sealed class AuthAndBearerTests
             observedAuth = req.Headers.Authorization?.ToString();
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
-        var bearer = new BearerTokenHandler(store) { InnerHandler = inner };
+        var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
+            { BaseAddress = new Uri("https://localhost/") };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp) { InnerHandler = inner };
         var http = new HttpClient(bearer) { BaseAddress = new Uri("https://localhost/") };
 
         await http.GetAsync("api/v1/wallet/sync");
@@ -200,7 +203,9 @@ public sealed class AuthAndBearerTests
             observedAuth = req.Headers.Authorization?.ToString();
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
-        var bearer = new BearerTokenHandler(store) { InnerHandler = inner };
+        var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
+            { BaseAddress = new Uri("https://localhost/") };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp) { InnerHandler = inner };
         var http = new HttpClient(bearer) { BaseAddress = new Uri("https://localhost/") };
 
         await http.GetAsync("api/v1/wallet/sync");
@@ -208,11 +213,71 @@ public sealed class AuthAndBearerTests
         observedAuth.Should().BeNull("requests must go out unauthenticated when no token is stored");
     }
 
+    [Fact]
+    public async Task InMemoryAccessTokenStore_RoundTripsRefreshToken()
+    {
+        var store = new InMemoryAccessTokenStore();
+        var record = new AccessTokenRecord("at", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", "rt");
+        await store.SetAsync(record);
+
+        var loaded = await store.GetAsync();
+        loaded!.RefreshToken.Should().Be("rt");
+    }
+
+    [Fact]
+    public async Task SignInWithPasskeyAsync_HappyPath_PersistsConsumerToken()
+    {
+        var responses = new Queue<HttpResponseMessage>(new[]
+        {
+            JsonOk("{\"transaction_id\":\"tx1\",\"options\":{\"challenge\":\"AA\"}}"),
+            JsonOk("{\"access_token\":\"at\",\"refresh_token\":\"rt\",\"expires_in\":3600}")
+        });
+        var handler = new CapturingHandler(_ => Task.FromResult(responses.Dequeue()));
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+        var store = new InMemoryAccessTokenStore();
+        var auth = new AuthService(http, store, new NoopLocalDataPurge(), new FakePasskeyInterop());
+
+        var result = await auth.SignInWithPasskeyAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        (await store.GetAsync())!.RefreshToken.Should().Be("rt");
+    }
+
+    [Fact]
+    public async Task SignInWithPasskeyAsync_UnrecognisedPasskey_ReturnsInvalidCredentials()
+    {
+        var responses = new Queue<HttpResponseMessage>(new[]
+        {
+            JsonOk("{\"transaction_id\":\"tx1\",\"options\":{\"challenge\":\"AA\"}}"),
+            new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized)
+        });
+        var handler = new CapturingHandler(_ => Task.FromResult(responses.Dequeue()));
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge(), new FakePasskeyInterop());
+
+        var result = await auth.SignInWithPasskeyAsync();
+
+        result.Status.Should().Be(SignInStatus.InvalidCredentials);
+    }
+
+    [Fact]
+    public async Task SignInWithPasskeyAsync_Unsupported_ReturnsServerError()
+    {
+        var http = new HttpClient(new CapturingHandler(_ => Task.FromResult(JsonOk("{}"))))
+            { BaseAddress = new Uri("https://gw.test/") };
+        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge(),
+            new FakePasskeyInterop { Supported = false });
+
+        var result = await auth.SignInWithPasskeyAsync();
+
+        result.Status.Should().Be(SignInStatus.ServerError);
+    }
+
     // Constructs an AuthService with a throwaway purge for the tests that
     // don't assert on the sign-out cascade; AuthService_SignOut_PurgesAllLocalData
     // passes its own spy to inspect the call.
     private static AuthService NewAuth(HttpClient http, IAccessTokenStore store, ILocalDataPurge? purge = null)
-        => new(http, store, purge ?? new SpyLocalDataPurge());
+        => new(http, store, purge ?? new SpyLocalDataPurge(), new FakePasskeyInterop());
 
     private sealed class SpyLocalDataPurge : ILocalDataPurge
     {
@@ -232,4 +297,194 @@ public sealed class AuthAndBearerTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
             => Task.FromResult(_respond(request, ct));
     }
+
+    [Fact]
+    public async Task SignInAsync_SendsConsumerTierHint()
+    {
+        string? capturedBody = null;
+        var handler = new CapturingHandler(async req =>
+        {
+            capturedBody = await req.Content!.ReadAsStringAsync();
+            return JsonOk("{\"access_token\":\"at\",\"expires_in\":3600,\"requires_two_factor\":false}");
+        });
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge(), new FakePasskeyInterop());
+
+        await auth.SignInAsync("a@b.test", "pw");
+
+        capturedBody.Should().Contain("\"tier\":\"consumer\"");
+    }
+
+    [Fact]
+    public async Task BeginSocialSignInAsync_ReturnsAuthorizationUrl_AndSendsWalletSurface()
+    {
+        string? capturedBody = null;
+        var handler = new CapturingHandler(async req =>
+        {
+            capturedBody = await req.Content!.ReadAsStringAsync();
+            return JsonOk("{\"authorizationUrl\":\"https://idp/auth?x=1\",\"state\":\"st\"}");
+        });
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge(), new FakePasskeyInterop());
+
+        var url = await auth.BeginSocialSignInAsync("Google");
+
+        url.Should().Be("https://idp/auth?x=1");
+        capturedBody.Should().Contain("\"surface\":\"wallet\"");
+        capturedBody.Should().Contain("\"intent\":\"login\"");
+        capturedBody.Should().Contain("\"provider\":\"Google\"");
+    }
+
+    [Fact]
+    public async Task TryConsumeSocialReturnAsync_NoFragment_ReturnsFalse_And_StaysSignedOut()
+    {
+        var js = new NullConsumeJsRuntime();
+        var store = new InMemoryAccessTokenStore();
+        var auth = new AuthService(
+            new HttpClient(new CapturingHandler(_ => Task.FromResult(JsonOk("{}")))) { BaseAddress = new Uri("https://gw.test/") },
+            store, new NoopLocalDataPurge(), new FakePasskeyInterop());
+
+        var consumed = await auth.TryConsumeSocialReturnAsync(js);
+
+        consumed.Should().BeFalse();
+        (await store.GetAsync()).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task BearerTokenHandler_On401_RefreshesAndRetries()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", "rt"));
+
+        // Inner handler: request with stale "old" token → 401; with "new" token → 200.
+        var inner = new SequencedHandler(req =>
+        {
+            var auth = req.Headers.Authorization?.Parameter;
+            return auth == "new"
+                ? new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                : new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized);
+        });
+
+        // Refresh endpoint returns a fresh token "new".
+        var refreshHttp = new HttpClient(new CapturingHandler(_ =>
+            Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
+            { BaseAddress = new Uri("https://gw.test/") };
+
+        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+
+        var resp = await client.GetAsync("api/v1/wallet/credentials");
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        (await store.GetAsync())!.AccessToken.Should().Be("new");
+    }
+
+    [Fact]
+    public async Task BearerTokenHandler_On401_WithNoRefreshToken_Returns401Untouched()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", null));
+
+        var inner = new SequencedHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized));
+        var refreshHttp = new HttpClient(new CapturingHandler(_ =>
+            Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
+            { BaseAddress = new Uri("https://gw.test/") };
+
+        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+
+        var resp = await client.GetAsync("api/v1/wallet/credentials");
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        // Token should be unchanged (no refresh attempted, no clear)
+        (await store.GetAsync())!.AccessToken.Should().Be("old");
+    }
+
+    [Fact]
+    public async Task BearerTokenHandler_On401_PreservesPostBodyOnRetry()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", "rt"));
+
+        string? retriedBody = null;
+        var inner = new SequencedHandler(req =>
+        {
+            var auth = req.Headers.Authorization?.Parameter;
+            if (auth == "new")
+            {
+                // Capture the retried request's body — synchronous GetAwaiter().GetResult() is
+                // acceptable in a test-only delegate; no async path available here.
+                retriedBody = req.Content is null
+                    ? null
+                    : req.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK);
+            }
+            return new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized);
+        });
+
+        // Refresh endpoint returns a fresh token "new".
+        var refreshHttp = new HttpClient(new CapturingHandler(_ =>
+            Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
+            { BaseAddress = new Uri("https://gw.test/") };
+
+        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+
+        var resp = await client.PostAsync("api/v1/wallet/something",
+            new StringContent("{\"k\":\"v\"}", System.Text.Encoding.UTF8, "application/json"));
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        retriedBody.Should().Be("{\"k\":\"v\"}", "CloneAsync must copy the POST body to the retried request");
+    }
+
+    [Fact]
+    public async Task BearerTokenHandler_On401_FailedRefresh_ClearsSession()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", "rt"));
+
+        var inner = new SequencedHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized));
+        // Refresh endpoint returns 401 (refresh token invalid/expired)
+        var refreshHttp = new HttpClient(new CapturingHandler(_ =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized))))
+            { BaseAddress = new Uri("https://gw.test/") };
+
+        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+
+        var resp = await client.GetAsync("api/v1/wallet/credentials");
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        (await store.GetAsync()).Should().BeNull("failed refresh must clear the session");
+    }
+
+    private sealed class CapturingHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => responder(request);
+    }
+
+    private sealed class NoopLocalDataPurge : ILocalDataPurge
+    {
+        public Task PurgeAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private static HttpResponseMessage JsonOk(string json) => new(System.Net.HttpStatusCode.OK)
+    {
+        Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+    };
+}
+
+internal sealed class SequencedHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        => Task.FromResult(responder(request));
+}
+
+internal sealed class NullConsumeJsRuntime : Microsoft.JSInterop.IJSRuntime
+{
+    public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        => new((TValue)(object?)default!);
+    public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken ct, object?[]? args)
+        => new((TValue)(object?)default!);
 }

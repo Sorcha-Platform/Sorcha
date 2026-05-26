@@ -33,6 +33,9 @@ public enum SocialLoginRefusal
 
     /// <summary>The email matches an existing Sorcha account whose own <c>EmailVerified</c> is <c>false</c>. Refused per FR-011.</summary>
     ExistingUnverified,
+
+    /// <summary>No existing account matched and creation was disabled (login-only surface, e.g. the citizen wallet PWA). No PlatformUser is created.</summary>
+    NoExistingAccount = 3,
 }
 
 /// <summary>
@@ -154,16 +157,26 @@ public interface IPlatformUserService
     /// provider's <c>EmailVerified</c> claim and the existing user's
     /// <c>EmailVerified</c> are <c>true</c> (FR-011, FR-012). Otherwise
     /// return <see cref="SocialLoginRefusal.ExistingUnverified"/>.</item>
-    /// <item>Create new user only when the provider asserts
-    /// <c>EmailVerified=true</c> (FR-010). Otherwise return
-    /// <see cref="SocialLoginRefusal.ProviderUnverified"/>.</item>
+    /// <item>Create new user only when <paramref name="allowCreate"/> is <c>true</c>
+    /// and the provider asserts <c>EmailVerified=true</c> (FR-010). When
+    /// <paramref name="allowCreate"/> is <c>false</c> and neither Step 1 nor Step 2
+    /// matched, returns <see cref="SocialLoginRefusal.NoExistingAccount"/> and
+    /// creates nothing — used on login-only surfaces such as the citizen wallet PWA.
+    /// Otherwise return <see cref="SocialLoginRefusal.ProviderUnverified"/>.</item>
     /// </list>
     /// </summary>
     /// <param name="claim">The verified-or-not claim set returned by <see cref="ISocialLoginService.ExchangeCodeAsync"/>. Must have a non-null <c>Subject</c>.</param>
+    /// <param name="allowCreate">
+    /// When <c>true</c> (default for standard web surfaces), a genuinely-new social identity
+    /// will create a new <see cref="PlatformUser"/>. When <c>false</c> (login-only surfaces
+    /// such as the citizen wallet PWA), an unknown identity is refused with
+    /// <see cref="SocialLoginRefusal.NoExistingAccount"/> and no account is persisted.
+    /// Steps 1 and 2 (existing-user lookup and email-collision linking) are unaffected.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A <see cref="ResolveSocialUserResult"/> indicating success, refusal reason, and new-user state.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="claim"/> is null.</exception>
     /// <exception cref="ArgumentException">Thrown when <paramref name="claim"/>'s <c>Subject</c> is null. Callers should validate the upstream exchange succeeded before invoking this method.</exception>
     Task<ResolveSocialUserResult> ResolveOrCreateSocialUserAsync(
-        SocialAuthCallbackResult claim, CancellationToken ct);
+        SocialAuthCallbackResult claim, bool allowCreate, CancellationToken ct);
 }

@@ -28,7 +28,8 @@ public interface IAccessTokenStore
 /// <param name="AccessToken">JWT access token.</param>
 /// <param name="ExpiresAt">UTC expiry derived from the OAuth <c>expires_in</c> at issue time.</param>
 /// <param name="Email">Citizen email, captured at sign-in for display only (NOT used for auth).</param>
-public sealed record AccessTokenRecord(string AccessToken, DateTimeOffset ExpiresAt, string? Email);
+/// <param name="RefreshToken">OAuth refresh token, used for silent renewal; null when none issued.</param>
+public sealed record AccessTokenRecord(string AccessToken, DateTimeOffset ExpiresAt, string? Email, string? RefreshToken = null);
 
 /// <summary>In-memory <see cref="IAccessTokenStore"/> for unit tests.</summary>
 public sealed class InMemoryAccessTokenStore : IAccessTokenStore

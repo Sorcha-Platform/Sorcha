@@ -79,7 +79,7 @@ public class SocialLoginPolicyTests : IDisposable
         var claim = Claim(emailVerified: false, displayName: "New Name From Google");
 
         // Act
-        var result = await _service.ResolveOrCreateSocialUserAsync(claim, CancellationToken.None);
+        var result = await _service.ResolveOrCreateSocialUserAsync(claim, allowCreate: true, CancellationToken.None);
 
         // Assert
         result.Refusal.Should().Be(SocialLoginRefusal.None);
@@ -119,7 +119,7 @@ public class SocialLoginPolicyTests : IDisposable
 
         // Act — provider returned no display name
         var result = await _service.ResolveOrCreateSocialUserAsync(
-            Claim(subject: "sub-empty", displayName: null), CancellationToken.None);
+            Claim(subject: "sub-empty", displayName: null), allowCreate: true, CancellationToken.None);
 
         // Assert
         result.Refusal.Should().Be(SocialLoginRefusal.None);
@@ -149,7 +149,7 @@ public class SocialLoginPolicyTests : IDisposable
         // Act — Google returns the same email, asserts verified
         var result = await _service.ResolveOrCreateSocialUserAsync(
             Claim(email: "alice@example.com", emailVerified: true, displayName: "Alice G"),
-            CancellationToken.None);
+            allowCreate: true, CancellationToken.None);
 
         // Assert
         result.Refusal.Should().Be(SocialLoginRefusal.None);
@@ -183,7 +183,7 @@ public class SocialLoginPolicyTests : IDisposable
         // Act — provider says verified, but existing isn't
         var result = await _service.ResolveOrCreateSocialUserAsync(
             Claim(email: "alice@example.com", emailVerified: true),
-            CancellationToken.None);
+            allowCreate: true, CancellationToken.None);
 
         // Assert
         result.Refusal.Should().Be(SocialLoginRefusal.ExistingUnverified);
@@ -216,7 +216,7 @@ public class SocialLoginPolicyTests : IDisposable
         // Act
         var result = await _service.ResolveOrCreateSocialUserAsync(
             Claim(email: "alice@example.com", emailVerified: false),
-            CancellationToken.None);
+            allowCreate: true, CancellationToken.None);
 
         // Assert — provider is the unverified party, so refusal directs the user there
         result.Refusal.Should().Be(SocialLoginRefusal.ProviderUnverified);
@@ -235,7 +235,7 @@ public class SocialLoginPolicyTests : IDisposable
         // Act
         var result = await _service.ResolveOrCreateSocialUserAsync(
             Claim(email: "newcomer@example.com", subject: "sub-newcomer", emailVerified: true),
-            CancellationToken.None);
+            allowCreate: true, CancellationToken.None);
 
         // Assert
         result.Refusal.Should().Be(SocialLoginRefusal.None);
@@ -266,7 +266,7 @@ public class SocialLoginPolicyTests : IDisposable
             Claim(provider: "GitHub", subject: "github-noverify-123",
                   email: null, displayName: "octouser",
                   emailVerified: false),
-            CancellationToken.None);
+            allowCreate: true, CancellationToken.None);
 
         // Assert
         result.Refusal.Should().Be(SocialLoginRefusal.ProviderUnverified);
@@ -283,7 +283,7 @@ public class SocialLoginPolicyTests : IDisposable
         // Act
         var result = await _service.ResolveOrCreateSocialUserAsync(
             Claim(email: "untrusted@example.com", subject: "sub-untrusted", emailVerified: false),
-            CancellationToken.None);
+            allowCreate: true, CancellationToken.None);
 
         // Assert
         result.Refusal.Should().Be(SocialLoginRefusal.ProviderUnverified);
@@ -292,6 +292,86 @@ public class SocialLoginPolicyTests : IDisposable
 
         var afterCount = await _db.PlatformUsers.CountAsync();
         afterCount.Should().Be(beforeCount, "no user record should be created on a refused signup");
+    }
+
+    // --- Scenario D: login-only surface (allowCreate: false) ---
+
+    [Fact]
+    public async Task AllowCreateFalse_UnknownIdentity_RefusesWithNoExistingAccount_NothingPersisted()
+    {
+        // Arrange — no pre-existing user by provider+subject or email
+        var beforeCount = await _db.PlatformUsers.CountAsync();
+
+        // Act — wallet (login-only) surface presents a brand-new social identity
+        var result = await _service.ResolveOrCreateSocialUserAsync(
+            Claim(email: "newwallet@example.com", subject: "sub-wallet-new", emailVerified: true),
+            allowCreate: false, CancellationToken.None);
+
+        // Assert — refused with the login-only gate
+        result.Refusal.Should().Be(SocialLoginRefusal.NoExistingAccount);
+        result.User.Should().BeNull();
+        result.IsNew.Should().BeFalse();
+
+        // No PlatformUser should have been created
+        var afterCount = await _db.PlatformUsers.CountAsync();
+        afterCount.Should().Be(beforeCount, "login-only surface must not create a PlatformUser for an unknown identity");
+
+        // No PlatformSocialLogin should have been created
+        var linkCount = await _db.PlatformSocialLogins.CountAsync(s => s.Subject == "sub-wallet-new");
+        linkCount.Should().Be(0, "no social link row should be persisted on login-only refusal");
+    }
+
+    [Fact]
+    public async Task AllowCreateTrue_UnknownIdentity_CreatesUser()
+    {
+        // Companion assertion: the gate is the ONLY difference — allowCreate:true still creates the user.
+        var beforeCount = await _db.PlatformUsers.CountAsync();
+
+        var result = await _service.ResolveOrCreateSocialUserAsync(
+            Claim(email: "newwebuser@example.com", subject: "sub-web-new", emailVerified: true),
+            allowCreate: true, CancellationToken.None);
+
+        result.Refusal.Should().Be(SocialLoginRefusal.None);
+        result.User.Should().NotBeNull();
+        result.IsNew.Should().BeTrue();
+
+        var afterCount = await _db.PlatformUsers.CountAsync();
+        afterCount.Should().Be(beforeCount + 1, "allowCreate:true should create a new PlatformUser");
+    }
+
+    [Fact]
+    public async Task AllowCreateFalse_ExistingUserByProvider_AllowsLogin()
+    {
+        // Step 1 (returning user) must still work on a login-only surface.
+        var existing = new PlatformUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "wallet-returning@example.com",
+            DisplayName = "Wallet User",
+            EmailVerified = true,
+            Status = PlatformUserStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-5),
+        };
+        _db.PlatformUsers.Add(existing);
+        _db.PlatformSocialLogins.Add(new PlatformSocialLogin
+        {
+            Id = Guid.NewGuid(),
+            PlatformUserId = existing.Id,
+            Provider = "Google",
+            Subject = "sub-wallet-returning",
+            Email = "wallet-returning@example.com",
+            LinkedAt = DateTimeOffset.UtcNow.AddDays(-5),
+        });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.ResolveOrCreateSocialUserAsync(
+            Claim(subject: "sub-wallet-returning", email: "wallet-returning@example.com", emailVerified: true),
+            allowCreate: false, CancellationToken.None);
+
+        result.Refusal.Should().Be(SocialLoginRefusal.None);
+        result.User.Should().NotBeNull();
+        result.User!.Id.Should().Be(existing.Id);
+        result.IsNew.Should().BeFalse();
     }
 
     [Fact]

@@ -377,7 +377,7 @@ Local email/password authentication with progressive lockout, token lifecycle ma
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/api/auth/login` | Anonymous | Login with email/password (returns JWT or 2FA challenge) |
-| POST | `/api/auth/verify-2fa` | Anonymous | Verify TOTP code to complete login (rate limited) |
+| POST | `/api/auth/verify-2fa` | Anonymous | Verify TOTP code to complete login (rate limited). Optional `tier` field: `"consumer"` forces Consumer-tier token (wallet sign-in, spec 136). |
 | POST | `/api/auth/register` | Anonymous | Self-register with email/password (public orgs only, NIST password policy) |
 | POST | `/api/auth/token/refresh` | Anonymous | Exchange refresh token for new access token |
 | POST | `/api/auth/token/revoke` | Authenticated | Revoke an access or refresh token |
@@ -443,17 +443,18 @@ FIDO2/WebAuthn passkey authentication for both organizational users (2FA) and pu
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/api/auth/passkey/assertion/options` | Anonymous | Get assertion options (discoverable credentials, no email needed) |
-| POST | `/api/auth/passkey/assertion/verify` | Anonymous | Verify assertion and issue tokens |
+| POST | `/api/auth/passkey/assertion/verify` | Anonymous | Verify assertion and issue tokens. Optional `tier` field: `"consumer"` forces Consumer-tier token (wallet sign-in, spec 136). |
 
 #### Public User Social Login
 
-**Base Path:** `/api/auth/public/social`
+**Base Path:** `/api/auth/social` (providers) and `/api/auth/public/social` (flows)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/auth/public/social/initiate` | Anonymous | Initiate OAuth flow for provider (Google, Microsoft, GitHub, Apple) |
+| GET  | `/api/auth/social/providers` | Anonymous | List configured social providers. Returns `{"providers":["google",…]}`. Drives conditional "Continue with…" buttons on the citizen wallet PWA sign-in screen. |
+| POST | `/api/auth/public/social/initiate` | Anonymous | Initiate OAuth flow for provider (Google, Microsoft, GitHub, Apple). Optional `surface` field: `"wallet"` routes the post-OAuth callback into the citizen wallet PWA (mints Consumer-tier, redirects to `/wallet/#token=…&refresh=…&expires_in=…`, login-only — unknown identity → `?authError=no_account`). Null/`"app"` keeps the default web flow. |
 | POST | `/api/auth/public/social/callback` | Anonymous | Handle OAuth callback (SPA flow), provision user under strict link policy, issue tokens. Returns 400 with refusal message when `email_verified=false` from provider or when target user is unverified. |
-| GET  | `/auth/social/callback` | Anonymous | Razor-page browser redirect URI for OAuth providers. Single canonical path per environment. Provider is recovered from cached state, NOT a query parameter. See `docs/guides/SOCIAL-LOGIN-SETUP.md`. |
+| GET  | `/auth/social/callback` | Anonymous | Razor-page browser redirect URI for OAuth providers. Single canonical path per environment. Provider is recovered from cached state, NOT a query parameter. See `docs/guides/SOCIAL-LOGIN-SETUP.md`. When `surface=wallet` was used, redirects to `/wallet/#token=…&refresh=…&expires_in=…` with a Consumer-tier token. |
 
 #### Public User Auth Method Management
 

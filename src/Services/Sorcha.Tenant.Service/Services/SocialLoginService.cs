@@ -153,7 +153,7 @@ public class SocialLoginService : ISocialLoginService
         string redirectUri,
         CancellationToken cancellationToken = default)
         => GenerateAuthorizationUrlAsync(
-            provider, redirectUri, SocialFlowIntent.Login, targetPlatformUserId: null, cancellationToken);
+            provider, redirectUri, SocialFlowIntent.Login, targetPlatformUserId: null, surface: null, cancellationToken);
 
     /// <inheritdoc />
     public async Task<SocialAuthInitiateResult> GenerateAuthorizationUrlAsync(
@@ -161,6 +161,7 @@ public class SocialLoginService : ISocialLoginService
         string redirectUri,
         SocialFlowIntent intent,
         Guid? targetPlatformUserId,
+        string? surface = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -199,6 +200,7 @@ public class SocialLoginService : ISocialLoginService
             Provider = provider,
             Intent = intent,
             TargetPlatformUserId = targetPlatformUserId,
+            Surface = surface,
         });
 
         var cacheKey = $"social:state:{state}";
@@ -299,6 +301,7 @@ public class SocialLoginService : ISocialLoginService
             {
                 Intent = stateData.Intent,
                 TargetPlatformUserId = stateData.TargetPlatformUserId,
+                Surface = stateData.Surface,
             };
         }
         catch (Exception ex)
@@ -608,6 +611,11 @@ public class SocialLoginService : ISocialLoginService
         // Captured at initiate time when Intent=Link. Callback verifies the
         // active bearer matches this id before persisting the link.
         public Guid? TargetPlatformUserId { get; init; }
+
+        // Optional return-surface for the post-OAuth redirect. null = existing /app
+        // web flow (backwards-compatible); "wallet" = citizen wallet PWA surface.
+        // Added for PWA social sign-in (Feature 138 / pwa-social-passkey-signin).
+        public string? Surface { get; init; }
     }
 
     private readonly record struct TokenExchangeResult(string AccessToken, string? IdToken);

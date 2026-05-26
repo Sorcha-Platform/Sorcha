@@ -30,6 +30,14 @@ public class SocialLoginInitiateRequest
     /// </summary>
     [JsonPropertyName("intent")]
     public string? Intent { get; set; }
+
+    /// <summary>
+    /// Optional return-surface for the post-OAuth redirect: <c>wallet</c> routes
+    /// the callback back into the citizen wallet PWA (and mints Consumer-tier);
+    /// null/anything else keeps the default /app web flow. Spec: PWA social sign-in.
+    /// </summary>
+    [JsonPropertyName("surface")]
+    public string? Surface { get; init; }
 }
 
 /// <summary>

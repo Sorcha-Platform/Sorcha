@@ -637,6 +637,46 @@ End-to-end working wallet ecosystem. Twelve PRs landed 2026-04-26 (#427-#438). W
 | POST | `/verify/r/{sessionId}/response` | OID4VP `direct_post` ingest — wallet POSTs `{vpToken, delegation}` here. |
 | GET | `/verify/r/{sessionId}/status` | Polled by the verifier UI for outcome. |
 
+### Sign-in (social + passkey)
+
+The PWA has a dedicated `/wallet/signin` screen. `WalletAuthenticationStateProvider` provides the Blazor auth state; the router uses `AuthorizeRouteView` so all routes require authentication by default. Public routes (sign-in, enrol, cancelled-enrolment, and the social OAuth fragment-return landing) are exempted via `[AllowAnonymous]`. `Components/RedirectToSignIn.razor` handles the redirect from any protected page to `/wallet/signin`.
+
+All three sign-in methods mint a **Consumer-tier** token (`{installation}:consumer` audience, spec 136).
+
+#### Methods
+
+| Method | PWA entry point | Server endpoints | Notes |
+|--------|-----------------|------------------|-------|
+| **Passkey** | `IPasskeyInterop` / `wwwroot/js/webauthn.js` | `POST /api/auth/passkey/assertion/options`, `POST /api/auth/passkey/assertion/verify` | Verify request carries `"tier":"consumer"`. |
+| **Social** | `ISocialProvidersClient` drives provider buttons; `IAuthService.BeginSocialSignInAsync` starts the flow | `GET /api/auth/social/providers` (anonymous; returns `{"providers":[...]}`) → `POST /api/auth/social/initiate` (body: `{"provider":"…","surface":"wallet"}`) → `GET /auth/social/callback` Razor page → redirect to `/wallet/#token=…&refresh=…&expires_in=…` | `auth-fragment.js` IIFE captures the fragment before Blazor boots; `IAuthService.TryConsumeSocialReturnAsync` persists the tokens. |
+| **Password + 2FA** | `IAuthService` | `POST /api/auth/login` (body: `{"tier":"consumer",…}`) + `POST /api/auth/verify-2fa` (body: `{"tier":"consumer",…}`) | `tier` field on both requests forces Consumer-tier regardless of `returnTo`. |
+
+#### Login-only enforcement
+
+Unknown social identity → `SocialCallbackModel` calls `ResolveOrCreateSocialUserAsync(…, allowCreate: false)` → `SocialLoginRefusal.NoExistingAccount` → redirect to `/wallet/signin?authError=no_account`. No `PlatformUser` is created. Other refusal reasons (unverified provider, unverified existing account) also redirect to `/wallet/signin?authError=refused`.
+
+#### Silent refresh
+
+`BearerTokenHandler` (delegating handler on the PWA's typed HTTP clients) silently re-mints the session via `POST /api/auth/token/refresh` when the access token is near expiry. A failed refresh clears the token store and redirects to `/wallet/signin`.
+
+#### Key files — PWA sign-in surface
+
+| File | Purpose |
+|------|---------|
+| `src/Apps/Sorcha.Wallet.Pwa/Pages/SignIn.razor` | Sign-in screen — password/2FA form + passkey button + social provider buttons |
+| `src/Apps/Sorcha.Wallet.Pwa/Services/WalletAuthenticationStateProvider.cs` | Blazor auth state, token storage, Consumer-tier gate |
+| `src/Apps/Sorcha.Wallet.Pwa/Services/IAuthService.cs` | Login, 2FA verify, social initiate/consume, signout |
+| `src/Apps/Sorcha.Wallet.Pwa/Services/IPasskeyInterop.cs` | JS interop seam for `webauthn.js` |
+| `src/Apps/Sorcha.Wallet.Pwa/Services/ISocialProvidersClient.cs` | Typed HTTP client for `GET /api/auth/social/providers` |
+| `src/Apps/Sorcha.Wallet.Pwa/Services/BearerTokenHandler.cs` | Delegating handler; silent refresh via `/api/auth/token/refresh` |
+| `src/Apps/Sorcha.Wallet.Pwa/Components/RedirectToSignIn.razor` | Redirect component for protected routes |
+| `src/Apps/Sorcha.Wallet.Pwa/wwwroot/js/webauthn.js` | Passkey assertion (client-side FIDO2) |
+| `src/Apps/Sorcha.Wallet.Pwa/wwwroot/js/auth-fragment.js` | IIFE: captures `#token=…&refresh=…&expires_in=…` fragment before Blazor boots |
+| `src/Services/Sorcha.Tenant.Service/Endpoints/SocialLoginEndpoints.cs` | `GET /api/auth/social/providers` + `POST /api/auth/social/initiate` (surface field) |
+| `src/Services/Sorcha.Tenant.Service/Pages/Auth/SocialCallback.cshtml.cs` | Wallet branch: Consumer-tier mint + `/wallet/#…` redirect + login-only refusal |
+| `src/Services/Sorcha.Tenant.Service/Endpoints/PublicPasskeyEndpoints.cs` | `POST /api/auth/passkey/assertion/verify` (tier hint) |
+| `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs` | `POST /api/auth/verify-2fa` (tier hint) |
+
 ### Key Models
 
 - **`PlatformUserDevice`** (Tenant Service) — `Active|Revoked` status, RFC 7638 thumbprint (43 chars), citizen-editable `Label`, `DelegationExpiresAt` + `DelegationCredentialJti` rotated on renewal, `(StatusListId, StatusListIndex)` pair allocated from the org's pool (lists roll over at 32 768 bits — both fields needed to disambiguate after rollover). Cascade delete from `PlatformUser`.

@@ -483,14 +483,25 @@ public static class AuthEndpoints
         user.LastLoginAt = DateTimeOffset.UtcNow;
         await identityRepository.UpdateUserAsync(user, cancellationToken);
 
-        // Generate tokens
-        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken: cancellationToken);
+        // Generate tokens — honour a consumer-tier hint from the wallet (spec 136).
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(
+            user, organization, user.PlatformUserId, ResolveVerify2FaTier(request.Tier), cancellationToken);
 
         logger.LogInformation("User completed 2FA login - UserId: {UserId}, OrgId: {OrgId}",
             user.Id, organization.Id);
 
         return TypedResults.Ok(tokenResponse);
     }
+
+    /// <summary>
+    /// Resolves the mint tier for 2FA completion. Only an explicit <c>consumer</c>
+    /// hint is honoured (safe downgrade); everything else keeps the platform
+    /// default so the path can't escalate.
+    /// </summary>
+    internal static Sorcha.ServiceDefaults.Auth.Tier ResolveVerify2FaTier(string? hint)
+        => string.Equals(hint, "consumer", StringComparison.OrdinalIgnoreCase)
+            ? Sorcha.ServiceDefaults.Auth.Tier.Consumer
+            : Sorcha.ServiceDefaults.Auth.Tier.Platform;
 
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> RefreshToken(
         TokenRefreshRequest request,

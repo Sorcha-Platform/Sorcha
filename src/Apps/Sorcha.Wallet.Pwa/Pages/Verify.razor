@@ -9,6 +9,8 @@
 *@
 @page "/verify"
 @layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
 @using Sorcha.UI.Components.User.Components.Verify
 @using Sorcha.UI.Components.User.Models.Verification
 @using Sorcha.Wallet.Pwa.Services

@@ -264,7 +264,7 @@ public class PlatformUserService : IPlatformUserService
 
     /// <inheritdoc />
     public async Task<ResolveSocialUserResult> ResolveOrCreateSocialUserAsync(
-        SocialAuthCallbackResult claim, CancellationToken ct)
+        SocialAuthCallbackResult claim, bool allowCreate, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(claim);
 
@@ -350,6 +350,17 @@ public class PlatformUserService : IPlatformUserService
 
         // Step 3: Genuinely new user — provider must assert email_verified=true (FR-010).
         // Refusal here means no PlatformUser is created at all.
+
+        // Login-only surfaces (e.g. the citizen wallet PWA) must not create an
+        // account for an unknown social identity — refuse instead of signing up.
+        if (!allowCreate)
+        {
+            _logger.LogInformation(
+                "Social login refused: no existing account for {Provider}/{Subject} and creation is disabled (login-only surface)",
+                provider, subject);
+            return new ResolveSocialUserResult(User: null, IsNew: false, SocialLoginRefusal.NoExistingAccount);
+        }
+
         if (!claim.EmailVerified)
         {
             _logger.LogWarning(

@@ -45,6 +45,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IStatusListService, IndexedDbStatusListService>();
         services.AddSingleton<ISyncCursorStore, IndexedDbSyncCursorStore>();
         services.AddSingleton<IAccessTokenStore, IndexedDbAccessTokenStore>();
+        services.AddSingleton<WalletAuthenticationStateProvider>();
+        services.AddSingleton<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider>(
+            sp => sp.GetRequiredService<WalletAuthenticationStateProvider>());
         services.AddSingleton<ISyncService, SyncService>();
         services.AddSingleton<IDeviceMetaStore, IndexedDbDeviceMetaStore>();
         services.AddSingleton<IEnrolmentService, EnrolmentService>();
@@ -111,10 +114,21 @@ public static class ServiceCollectionExtensions
         // welcome/tour flags behind for the next user on the device.
         services.AddSingleton<ILocalDataPurge, IndexedDbLocalDataPurge>();
 
-        // Auth surface: a separate HttpClient that does NOT inject the bearer
-        // token (so sign-in requests don't carry stale tokens). Still observes
-        // the server clock — sign-in is a great moment to capture initial drift.
-        services.AddTransient<BearerTokenHandler>();
+        // WebAuthn ceremony bridge for the wallet sign-in screen (Feature 138).
+        // Behind IPasskeyInterop so AuthService unit tests use FakePasskeyInterop
+        // instead of mocking IJSRuntime (brittle — F114 lesson).
+        services.AddSingleton<IPasskeyInterop, PasskeyInterop>();
+
+        // Unauthenticated client used ONLY by BearerTokenHandler to refresh — must NOT carry the
+        // bearer handler (no recursion).
+        services.AddHttpClient("AuthRefresh", c => c.BaseAddress = new Uri(gatewayBaseAddress));
+        services.AddTransient(sp => new BearerTokenHandler(
+            sp.GetRequiredService<IAccessTokenStore>(),
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh")));
+
+        // Auth surface: a separate HttpClient that does NOT inject the bearer token
+        // (so sign-in requests don't carry stale tokens). Still observes the server
+        // clock — sign-in is a great moment to capture initial drift.
         services.AddHttpClient<IAuthService, AuthService>(c =>
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<ServerClockHandler>();
@@ -172,6 +186,12 @@ public static class ServiceCollectionExtensions
         // sub-affordance ("Already started on another device?"). Anonymous
         // call: the 6-digit code is the credential for this single endpoint.
         services.AddHttpClient<IPairingShortCodeRedeemer, PairingShortCodeRedeemer>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        // Social sign-in provider list (anonymous endpoint — no bearer token).
+        // Still observes the server clock for consistency with other unauthenticated calls.
+        services.AddHttpClient<ISocialProvidersClient, SocialProvidersClient>(c =>
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<ServerClockHandler>();
 

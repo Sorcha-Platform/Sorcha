@@ -11,6 +11,7 @@
     active organisational context is always visible. The chip is non-
     interactive when the user only holds the Personal context.
 *@
+@using Microsoft.AspNetCore.Components.Authorization
 @using Sorcha.UI.Components.User.Components.Context
 @using Sorcha.UI.Components.User.Components.Onboarding
 @using Sorcha.UI.Core.Components.Inbox
@@ -39,8 +40,14 @@
    full-screen overlay covers nav + content uniformly when an unpaired
    signed-in citizen lands in the wallet. The component self-gates on
    IHasPairedDeviceProbe and dismisses on local OR remote pair-success
-   via the CitizenWalletHub OnDeviceEnrolled event. *@
-<PairingTakeover />
+   via the CitizenWalletHub OnDeviceEnrolled event.
+   AuthorizeView ensures the takeover is suppressed entirely for signed-out
+   users (e.g. the /signin page) so the sign-in screen is never obscured. *@
+<AuthorizeView>
+    <Authorized>
+        <PairingTakeover />
+    </Authorized>
+</AuthorizeView>
 
 <MudLayout>
     <MudAppBar Elevation="1">

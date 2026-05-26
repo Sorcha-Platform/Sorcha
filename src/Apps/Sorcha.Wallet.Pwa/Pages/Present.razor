@@ -10,6 +10,8 @@
 *@
 @page "/present"
 @layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
 @implements IAsyncDisposable
 @using System.Net.Http
 @using System.Net.Http.Json

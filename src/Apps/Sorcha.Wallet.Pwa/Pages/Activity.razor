@@ -24,6 +24,8 @@
 *@
 @page "/activity"
 @layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
 @using MudBlazor
 @using Sorcha.UI.Components.User.Components.History
 @using Sorcha.Wallet.Pwa.Services

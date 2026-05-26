@@ -13,6 +13,8 @@
 *@
 @page "/applications/{InstanceId:guid}"
 @layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
 @using Sorcha.UI.Core.Components.Forms
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.Wallet.Pwa.Services

@@ -111,6 +111,7 @@ public class SocialCallbackModelTests : IDisposable
         _platformUserService
             .Setup(s => s.ResolveOrCreateSocialUserAsync(
                 It.IsAny<SocialAuthCallbackResult>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolveSocialUserResult(
                 User: null, IsNew: false, Refusal: SocialLoginRefusal.ProviderUnverified));
@@ -140,6 +141,7 @@ public class SocialCallbackModelTests : IDisposable
         _platformUserService
             .Setup(s => s.ResolveOrCreateSocialUserAsync(
                 It.IsAny<SocialAuthCallbackResult>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolveSocialUserResult(
                 User: null, IsNew: false, Refusal: SocialLoginRefusal.ExistingUnverified));
@@ -153,5 +155,36 @@ public class SocialCallbackModelTests : IDisposable
         result.Should().BeOfType<PageResult>();
         model.ErrorMessage.Should().Contain("account exists");
         model.ErrorMessage.Should().Contain("verify");
+    }
+
+    [Fact]
+    public async Task OnGetAsync_WalletSurface_UnknownIdentity_RedirectsToWalletSignInNoAccount()
+    {
+        // Arrange
+        _socialLoginService
+            .Setup(s => s.ExchangeCodeAsync(string.Empty, "code", "state", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SocialAuthCallbackResult(
+                Success: true, Error: null,
+                Subject: "sub-wallet-1", Email: "citizen@y.com", DisplayName: "Citizen",
+                EmailVerified: true, Provider: "Google",
+                Surface: "wallet"));
+
+        _platformUserService
+            .Setup(s => s.ResolveOrCreateSocialUserAsync(
+                It.IsAny<SocialAuthCallbackResult>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolveSocialUserResult(
+                User: null, IsNew: false, Refusal: SocialLoginRefusal.NoExistingAccount));
+
+        var model = CreateModel();
+
+        // Act
+        var result = await model.OnGetAsync("code", "state", null, CancellationToken.None);
+
+        // Assert — wallet surface refusal for unknown identity must redirect to wallet sign-in
+        // with authError=no_account so the PWA can show the appropriate screen.
+        var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+        redirect.Url.Should().Be("/wallet/signin?authError=no_account");
     }
 }
