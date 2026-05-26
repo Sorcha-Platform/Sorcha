@@ -114,6 +114,11 @@ public static class ServiceCollectionExtensions
         // welcome/tour flags behind for the next user on the device.
         services.AddSingleton<ILocalDataPurge, IndexedDbLocalDataPurge>();
 
+        // WebAuthn ceremony bridge for the wallet sign-in screen (Feature 138).
+        // Behind IPasskeyInterop so AuthService unit tests use FakePasskeyInterop
+        // instead of mocking IJSRuntime (brittle — F114 lesson).
+        services.AddSingleton<IPasskeyInterop, PasskeyInterop>();
+
         // Auth surface: a separate HttpClient that does NOT inject the bearer
         // token (so sign-in requests don't carry stale tokens). Still observes
         // the server clock — sign-in is a great moment to capture initial drift.
