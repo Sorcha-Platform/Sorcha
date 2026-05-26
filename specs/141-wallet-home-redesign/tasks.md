@@ -11,6 +11,8 @@ description: "Task list for Citizen Wallet Home Bolder reskin"
 
 **Organization**: By user story (US1 empty home = MVP). The feature centres on two host files (`Index.razor`, `MainLayout.razor`) and four new shared components, so genuine cross-story parallelism is limited to distinct component/CSS/test files — `[P]` is applied only where files truly don't collide.
 
+> **Implementation status (2026-05-26, PR #857)**: Setup + Foundational + US1–US5 implemented and verified. bUnit `WalletChromeComponentTests` (14) green; Playwright `WalletHomeRedesignTests` + `WalletHomeResponsiveTests` + existing `CitizenWalletNavigationTests` regression green against the rebuilt `sorcha-wallet-pwa` container; `check-no-snackbar` + `check-pwa-bundle` gates pass; lib/PWA/web-host build clean. **Deferred**: T027 sync-warning amber-pill cosmetic + localisation-resource move (functional warning preserved, FR-020 behaviour met); populated fanned/accented card stack; authenticated/populated + dark-mode E2E (component-covered; needs enrolled-citizen fixture, issue #700).
+
 ## Path Conventions
 
 - Shared components: `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Wallet/`
