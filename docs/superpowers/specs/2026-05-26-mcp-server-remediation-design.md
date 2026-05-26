@@ -130,6 +130,15 @@ One coherent milestone in waves; **Phase 0 is load-bearing** — nothing else sh
 
 Each wave is independently shippable on top of Phase 0.
 
+### 5.1 Spec-kit decomposition
+
+This milestone is specified as **two consecutive spec-kit features**:
+
+1. **Feature 1 — Foundation** = Phase 0 above. Makes the existing 36-tool surface genuinely work, tiered by token, over both transports.
+2. **Feature 2 — Capability gap closure** = Waves 1–4 (register-control/federation, credential & presentation lifecycle, citizen self-service, platform-admin depth), built on top of Feature 1.
+
+The `wallet_sign` wave and the full MCP OAuth 2.1 AS remain **separate backlogged efforts**, each with its own design — they are not part of either feature.
+
 ---
 
 ## 6. Cross-cutting concerns
