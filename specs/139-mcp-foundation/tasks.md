@@ -26,9 +26,9 @@
 
 **Purpose**: Bring in the HTTP-transport dependency and the test scaffolding everything else uses.
 
-- [ ] T001 Add `ModelContextProtocol.AspNetCore` (version aligned to the `ModelContextProtocol` 1.1.0 pin) to `Directory.Packages.props` and reference it from `src/Apps/Sorcha.McpServer/Sorcha.McpServer.csproj`
-- [ ] T002 [P] Add the ASP.NET Core framework reference (`<FrameworkReference Include="Microsoft.AspNetCore.App" />`) to `src/Apps/Sorcha.McpServer/Sorcha.McpServer.csproj` (HTTP host prerequisite)
-- [ ] T003 [P] Create the integration-test scaffolding in `tests/Sorcha.McpServer.Tests/Integration/`: `McpIntegrationTestBase` (Docker-gated `[Trait("Category","McpIntegration")]`, INFRA-skip when no gateway), plus a `TierTokenFixture` that mints real consumer / platform-admin / platform-designer tokens against the running Tenant Service
+- [ ] T001 ⏭️ DEFERRED to US3 — `ModelContextProtocol.AspNetCore` is an HTTP-transport dependency; not needed for the stdio MVP. Add when building US3.
+- [ ] T002 ⏭️ DEFERRED to US3 — ASP.NET Core framework reference is an HTTP-host prerequisite; add with US3.
+- [ ] T003 ⏭️ FOLDED into US1 (T015) — the integration scaffolding + `TierTokenFixture` lands with the first integration test (US1), so the fixture and base class are exercised immediately rather than sitting unused.
 
 ---
 
@@ -38,16 +38,16 @@
 
 **⚠️ CRITICAL**: No user-story work begins until this phase is complete.
 
-- [ ] T004 Define `Tier` enum (`Consumer`/`Platform`/`Service`) + an `aud`→tier parser using `SorchaAudiences` in `src/Apps/Sorcha.McpServer/Infrastructure/Tier.cs`
-- [ ] T005 Define `ICallerContext` (`RawToken`, `Tier`, `Roles`, `OrganizationId`, `Subject`, `IsAuthenticated`) in `src/Apps/Sorcha.McpServer/Infrastructure/ICallerContext.cs`
-- [ ] T006 Implement `StdioCallerContext` (validate the startup `--jwt-token`/`SORCHA_JWT_TOKEN` once via the existing `JwtValidationHandler`; expose claims + raw token) in `src/Apps/Sorcha.McpServer/Infrastructure/StdioCallerContext.cs`
-- [ ] T007 Implement `CallerTokenForwardingHandler : DelegatingHandler` (stamp `Authorization: Bearer` from `ICallerContext`; no-op cleanly when unauthenticated) in `src/Apps/Sorcha.McpServer/Infrastructure/CallerTokenForwardingHandler.cs`
-- [ ] T008 Point all `Sorcha.ServiceClients` base addresses at the API Gateway and attach `CallerTokenForwardingHandler` to their HttpClients, in `src/Apps/Sorcha.McpServer/Program.cs` (gateway URL from config; one place)
-- [ ] T009 Rework `McpErrorHandler` to map gateway `401/403/404/429/5xx`/connection failures to `ToolResultStatus` (`Unauthorized`/`Forbidden`/`NotFound`/`RateLimited`/`Unavailable`/`Error`; carry Retry-After) in `src/Apps/Sorcha.McpServer/Infrastructure/McpErrorHandler.cs`
-- [ ] T010 Remove the singleton `McpSessionService`; rewire `Program.cs` DI to register `ICallerContext` (stdio impl for now), `IHttpContextAccessor`, the forwarding handler, and the existing infra services
-- [ ] T011 [P] Add `ToolEntitlement` model + the static entitlement table (tier(s) + optional role per tool, per `contracts/transport-and-tools.md` §2) in `src/Apps/Sorcha.McpServer/Services/ToolEntitlement.cs` (data only; application is US2)
+- [X] T004 `aud`→`Tier` parser via audience suffix (`TierResolution.Resolve`, reusing the existing `Sorcha.ServiceDefaults.Auth.Tier` enum rather than duplicating it) — `src/Apps/Sorcha.McpServer/Infrastructure/ICallerContext.cs`
+- [X] T005 `ICallerContext` (`RawToken`, `Tier`, `Roles`, `OrganizationId`, `Subject`, `IsAuthenticated`) — `src/Apps/Sorcha.McpServer/Infrastructure/ICallerContext.cs`
+- [X] T006 Stdio caller context — `McpSessionService` now implements `ICallerContext` (computes `Tier` from `jwt.Audiences`; exposes raw token + claims). *Deviation: kept `McpSessionService` as the stdio impl instead of a separate `StdioCallerContext` class — minimal churn, no tool/test breakage; a dedicated `HttpCallerContext` arrives in US3 and the two unify there.*
+- [X] T007 `CallerTokenForwardingHandler : DelegatingHandler` (stamps `Authorization: Bearer` from `ICallerContext`; no-op when unauthenticated or header already present) — `src/Apps/Sorcha.McpServer/Infrastructure/CallerTokenForwardingHandler.cs`
+- [X] T008 Forwarding handler attached to the default `HttpClient` so all current tools forward the caller token immediately — `Program.cs`. *Carry-forward: pointing the typed `Sorcha.ServiceClients` at the gateway lands in US1 with the first reconciled typed client.*
+- [ ] T009 ⏭️ MOVED to US1 — gateway HTTP-status→`ToolResultStatus` mapping is exercised by the first reconciled tools; doing it there keeps it testable rather than speculative.
+- [X] T010 DI rewired in `Program.cs`: `ICallerContext` registered as the stdio session instance; forwarding handler registered. *Deviation: `McpSessionService` retained (see T006); `IHttpContextAccessor` registration deferred to US3 (HTTP only).*
+- [X] T011 [P] `ToolEntitlement` model + static tier→tool table (per `contracts/transport-and-tools.md` §2; `wallet_sign` excluded) — `src/Apps/Sorcha.McpServer/Services/ToolEntitlement.cs` (consumed by US2)
 
-**Checkpoint**: A tool invoked over stdio now reaches the gateway carrying the caller's token; failures map to clean statuses. Tier model exists but is not yet applied.
+**Checkpoint**: ✅ Reached. Token-forwarding spine live over stdio (all tools forward the caller's bearer); tier derived from the token; entitlement table modelled. Server + test projects build; **550/550 existing unit tests pass**. Deviations recorded inline + in the Implementation Log below.
 
 ---
 
