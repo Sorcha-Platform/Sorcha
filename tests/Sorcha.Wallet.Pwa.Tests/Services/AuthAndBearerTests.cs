@@ -208,6 +208,17 @@ public sealed class AuthAndBearerTests
         observedAuth.Should().BeNull("requests must go out unauthenticated when no token is stored");
     }
 
+    [Fact]
+    public async Task InMemoryAccessTokenStore_RoundTripsRefreshToken()
+    {
+        var store = new InMemoryAccessTokenStore();
+        var record = new AccessTokenRecord("at", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", "rt");
+        await store.SetAsync(record);
+
+        var loaded = await store.GetAsync();
+        loaded!.RefreshToken.Should().Be("rt");
+    }
+
     // Constructs an AuthService with a throwaway purge for the tests that
     // don't assert on the sign-out cascade; AuthService_SignOut_PurgesAllLocalData
     // passes its own spy to inspect the call.
