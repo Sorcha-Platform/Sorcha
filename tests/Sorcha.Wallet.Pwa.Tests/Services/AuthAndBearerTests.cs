@@ -183,7 +183,9 @@ public sealed class AuthAndBearerTests
             observedAuth = req.Headers.Authorization?.ToString();
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
-        var bearer = new BearerTokenHandler(store) { InnerHandler = inner };
+        var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
+            { BaseAddress = new Uri("https://localhost/") };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp) { InnerHandler = inner };
         var http = new HttpClient(bearer) { BaseAddress = new Uri("https://localhost/") };
 
         await http.GetAsync("api/v1/wallet/sync");
@@ -201,7 +203,9 @@ public sealed class AuthAndBearerTests
             observedAuth = req.Headers.Authorization?.ToString();
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
-        var bearer = new BearerTokenHandler(store) { InnerHandler = inner };
+        var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
+            { BaseAddress = new Uri("https://localhost/") };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp) { InnerHandler = inner };
         var http = new HttpClient(bearer) { BaseAddress = new Uri("https://localhost/") };
 
         await http.GetAsync("api/v1/wallet/sync");
@@ -346,6 +350,77 @@ public sealed class AuthAndBearerTests
         (await store.GetAsync()).Should().BeNull();
     }
 
+    [Fact]
+    public async Task BearerTokenHandler_On401_RefreshesAndRetries()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", "rt"));
+
+        // Inner handler: request with stale "old" token → 401; with "new" token → 200.
+        var inner = new SequencedHandler(req =>
+        {
+            var auth = req.Headers.Authorization?.Parameter;
+            return auth == "new"
+                ? new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                : new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized);
+        });
+
+        // Refresh endpoint returns a fresh token "new".
+        var refreshHttp = new HttpClient(new CapturingHandler(_ =>
+            Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
+            { BaseAddress = new Uri("https://gw.test/") };
+
+        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+
+        var resp = await client.GetAsync("api/v1/wallet/credentials");
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        (await store.GetAsync())!.AccessToken.Should().Be("new");
+    }
+
+    [Fact]
+    public async Task BearerTokenHandler_On401_WithNoRefreshToken_Returns401Untouched()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", null));
+
+        var inner = new SequencedHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized));
+        var refreshHttp = new HttpClient(new CapturingHandler(_ =>
+            Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
+            { BaseAddress = new Uri("https://gw.test/") };
+
+        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+
+        var resp = await client.GetAsync("api/v1/wallet/credentials");
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        // Token should be unchanged (no refresh attempted, no clear)
+        (await store.GetAsync())!.AccessToken.Should().Be("old");
+    }
+
+    [Fact]
+    public async Task BearerTokenHandler_On401_FailedRefresh_ClearsSession()
+    {
+        var store = new InMemoryAccessTokenStore();
+        await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", "rt"));
+
+        var inner = new SequencedHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized));
+        // Refresh endpoint returns 401 (refresh token invalid/expired)
+        var refreshHttp = new HttpClient(new CapturingHandler(_ =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized))))
+            { BaseAddress = new Uri("https://gw.test/") };
+
+        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+
+        var resp = await client.GetAsync("api/v1/wallet/credentials");
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        (await store.GetAsync()).Should().BeNull("failed refresh must clear the session");
+    }
+
     private sealed class CapturingHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -361,6 +436,12 @@ public sealed class AuthAndBearerTests
     {
         Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
     };
+}
+
+internal sealed class SequencedHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        => Task.FromResult(responder(request));
 }
 
 internal sealed class NullConsumeJsRuntime : Microsoft.JSInterop.IJSRuntime

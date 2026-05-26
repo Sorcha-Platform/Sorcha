@@ -122,7 +122,13 @@ public static class ServiceCollectionExtensions
         // Auth surface: a separate HttpClient that does NOT inject the bearer
         // token (so sign-in requests don't carry stale tokens). Still observes
         // the server clock — sign-in is a great moment to capture initial drift.
-        services.AddTransient<BearerTokenHandler>();
+
+        // Unauthenticated client used ONLY by BearerTokenHandler to refresh — it
+        // MUST NOT itself carry BearerTokenHandler (that would recurse infinitely on 401).
+        services.AddHttpClient("AuthRefresh", c => c.BaseAddress = new Uri(gatewayBaseAddress));
+        services.AddTransient(sp => new BearerTokenHandler(
+            sp.GetRequiredService<IAccessTokenStore>(),
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh")));
         services.AddHttpClient<IAuthService, AuthService>(c =>
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<ServerClockHandler>();
