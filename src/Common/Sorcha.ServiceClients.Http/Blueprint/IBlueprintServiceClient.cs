@@ -184,6 +184,83 @@ public interface IBlueprintServiceClient
         string actionId,
         string payloadJson,
         CancellationToken cancellationToken = default);
+
+    // =========================================================================
+    // Feature 140 Wave 2 — credential & presentation lifecycle MCP surface.
+    // Each returns the raw response body (the caller does its own shaping) or
+    // null when the service responds with a non-success status / the call fails.
+    // =========================================================================
+
+    /// <summary>
+    /// Gets the current lifecycle state of a presentation attempt (Feature 111).
+    /// Calls <c>GET /api/presentations/{presentationRequestId}/status</c>.
+    /// </summary>
+    /// <param name="presentationRequestId">The presentation request ID to poll.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The status JSON body (state + expiry), or null on non-success.</returns>
+    Task<string?> GetPresentationStatusAsync(
+        string presentationRequestId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Revokes a previously-issued credential. Calls
+    /// <c>POST /api/v1/credentials/{credentialId}/revoke</c>.
+    /// </summary>
+    /// <param name="credentialId">The credential ID to revoke.</param>
+    /// <param name="issuerWallet">Wallet address of the issuing authority requesting revocation.</param>
+    /// <param name="reason">Optional human-readable reason for revocation.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The revocation-result JSON body, or null on non-success.</returns>
+    Task<string?> RevokeCredentialAsync(
+        string credentialId,
+        string issuerWallet,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Temporarily suspends an Active credential (reversible). Calls
+    /// <c>POST /api/v1/credentials/{credentialId}/suspend</c>.
+    /// </summary>
+    /// <param name="credentialId">The credential ID to suspend.</param>
+    /// <param name="issuerWallet">Wallet address of the issuing authority.</param>
+    /// <param name="reason">Optional human-readable reason for the suspension.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The suspend-result JSON body, or null on non-success.</returns>
+    Task<string?> SuspendCredentialAsync(
+        string credentialId,
+        string issuerWallet,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reinstates a Suspended credential back to Active. Calls
+    /// <c>POST /api/v1/credentials/{credentialId}/reinstate</c>.
+    /// </summary>
+    /// <param name="credentialId">The credential ID to reinstate.</param>
+    /// <param name="issuerWallet">Wallet address of the issuing authority.</param>
+    /// <param name="reason">Optional human-readable reason for the reinstatement.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The reinstate-result JSON body, or null on non-success.</returns>
+    Task<string?> ReinstateCredentialAsync(
+        string credentialId,
+        string issuerWallet,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reissues an Expired credential with a fresh expiry period. Calls
+    /// <c>POST /api/v1/credentials/{credentialId}/refresh</c>.
+    /// </summary>
+    /// <param name="credentialId">The expired credential ID to refresh.</param>
+    /// <param name="issuerWallet">Wallet address of the issuing authority.</param>
+    /// <param name="newExpiryDuration">Optional ISO 8601 duration for the new expiry (default P365D).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The refresh-result JSON body (original + new credential), or null on non-success.</returns>
+    Task<string?> RefreshCredentialAsync(
+        string credentialId,
+        string issuerWallet,
+        string? newExpiryDuration = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

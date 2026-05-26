@@ -374,6 +374,50 @@ public class BlueprintServiceClient : IBlueprintServiceClient
             "execute action",
             cancellationToken);
 
+    // =========================================================================
+    // Feature 140 Wave 2 — credential & presentation lifecycle MCP surface.
+    // =========================================================================
+
+    /// <inheritdoc />
+    public Task<string?> GetPresentationStatusAsync(string presentationRequestId, CancellationToken cancellationToken = default) =>
+        GetRawAsync($"api/presentations/{Uri.EscapeDataString(presentationRequestId)}/status", "presentation status", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> RevokeCredentialAsync(string credentialId, string issuerWallet, string? reason = null, CancellationToken cancellationToken = default) =>
+        SendRawAsync(
+            HttpMethod.Post,
+            $"api/v1/credentials/{Uri.EscapeDataString(credentialId)}/revoke",
+            JsonSerializer.Serialize(new { issuerWallet, reason }, JsonOptions),
+            "revoke credential",
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> SuspendCredentialAsync(string credentialId, string issuerWallet, string? reason = null, CancellationToken cancellationToken = default) =>
+        SendRawAsync(
+            HttpMethod.Post,
+            $"api/v1/credentials/{Uri.EscapeDataString(credentialId)}/suspend",
+            JsonSerializer.Serialize(new { issuerWallet, reason }, JsonOptions),
+            "suspend credential",
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> ReinstateCredentialAsync(string credentialId, string issuerWallet, string? reason = null, CancellationToken cancellationToken = default) =>
+        SendRawAsync(
+            HttpMethod.Post,
+            $"api/v1/credentials/{Uri.EscapeDataString(credentialId)}/reinstate",
+            JsonSerializer.Serialize(new { issuerWallet, reason }, JsonOptions),
+            "reinstate credential",
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> RefreshCredentialAsync(string credentialId, string issuerWallet, string? newExpiryDuration = null, CancellationToken cancellationToken = default) =>
+        SendRawAsync(
+            HttpMethod.Post,
+            $"api/v1/credentials/{Uri.EscapeDataString(credentialId)}/refresh",
+            JsonSerializer.Serialize(new { issuerWallet, newExpiryDuration }, JsonOptions),
+            "refresh credential",
+            cancellationToken);
+
     private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)
     {
         try
