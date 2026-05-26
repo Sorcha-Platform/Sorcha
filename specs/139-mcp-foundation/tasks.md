@@ -215,6 +215,11 @@ Delivers the existing tool surface working over stdio, tiered by token, with pri
 3. Entitlement tags centralised in `ToolEntitlements.All` rather than per-tool attributes (single source of truth; feeds the US5 manifest gate).
 4. T001/T002 (HTTP deps) deferred to US3; T009 (HTTP-status→ToolResultStatus mapping) and T013/T014 (typed-client reconciliation) folded into US4/Docker step since token forwarding already works via the default client.
 
+### 2026-05-26 — Live token-forwarding proof (Docker stack `phaethon`)
+
+- Integration harness landed: `McpIntegrationTestBase` (gateway reachability skip-gate + real admin-token login helper) and `TokenForwardingIntegrationTests` (`[Trait Category=McpIntegration]`). This is the deferred T003 scaffolding, exercised immediately.
+- **Ran live against the running gateway (`urn:sorcha:phaethon`, `aud phaethon:platform`): 537 tests, 0 skipped, 0 failed.** The forwarding handler stamps the caller bearer → authenticated gateway endpoint returns **200**; no token → **401**. Defect 1 (anonymous backend calls) is fixed and proven end-to-end on the stack.
+
 **Remaining to fully close the MVP (the "stop and validate" step the user asked for):**
 - **Protocol-level `tools/list` filtering** — wire `GetAuthorizedTools` into the MCP server's tool-list response so a consumer doesn't *see* admin/designer tools (needs an SDK list-handler seam). Security is already enforced at invocation (T012); this is the advertised-list cosmetic + UX.
 - **Two Docker integration tests** — T015 (privilege: admin success / consumer forbidden-by-gateway / expired unauthorized) and T021 (consumer invokes participation tool). Need a running stack + per-tier token minting (`TierTokenFixture`).
