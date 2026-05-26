@@ -312,16 +312,23 @@ public sealed class AuthAndBearerTests
     }
 
     [Fact]
-    public async Task BeginSocialSignInAsync_ReturnsAuthorizationUrl()
+    public async Task BeginSocialSignInAsync_ReturnsAuthorizationUrl_AndSendsWalletSurface()
     {
-        var handler = new CapturingHandler(_ =>
-            Task.FromResult(JsonOk("{\"authorization_url\":\"https://idp/auth?x=1\",\"state\":\"st\"}")));
+        string? capturedBody = null;
+        var handler = new CapturingHandler(async req =>
+        {
+            capturedBody = await req.Content!.ReadAsStringAsync();
+            return JsonOk("{\"authorizationUrl\":\"https://idp/auth?x=1\",\"state\":\"st\"}");
+        });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
         var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge(), new FakePasskeyInterop());
 
         var url = await auth.BeginSocialSignInAsync("Google");
 
         url.Should().Be("https://idp/auth?x=1");
+        capturedBody.Should().Contain("\"surface\":\"wallet\"");
+        capturedBody.Should().Contain("\"intent\":\"login\"");
+        capturedBody.Should().Contain("\"provider\":\"Google\"");
     }
 
     [Fact]

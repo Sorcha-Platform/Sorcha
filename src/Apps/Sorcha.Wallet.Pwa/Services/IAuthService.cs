@@ -265,6 +265,7 @@ public sealed class AuthService : IAuthService
         {
             var resp = await _http.PostAsJsonAsync(
                 "api/auth/social/initiate",
+                // wallet surface is always login-only — provider linking happens in the web app, not the PWA
                 new SocialInitiateBody(provider, "login", "wallet"), ct);
             if (!resp.IsSuccessStatusCode) return null;
             var body = await resp.Content.ReadFromJsonAsync<SocialInitiateBodyResponse>(ct);
@@ -334,7 +335,7 @@ public sealed class AuthService : IAuthService
         [property: JsonPropertyName("surface")] string Surface);
 
     private sealed record SocialInitiateBodyResponse(
-        [property: JsonPropertyName("authorization_url")] string? AuthorizationUrl,
+        [property: JsonPropertyName("authorizationUrl")] string? AuthorizationUrl,
         [property: JsonPropertyName("state")] string? State);
 
     private sealed record FragmentReturn(
