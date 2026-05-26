@@ -292,6 +292,153 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         ServiceClientAuthHelper.SetAuthHeaderAsync(
             _httpClient, _serviceAuth, _logger, "BlueprintService", cancellationToken);
 
+    // =========================================================================
+    // Spec 139 US4 — MCP reconciliation reads/writes.
+    // =========================================================================
+
+    /// <inheritdoc />
+    public Task<string?> ListBlueprintsAsync(
+        int page = 1,
+        int pageSize = 20,
+        string? search = null,
+        string? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (!string.IsNullOrWhiteSpace(search)) query.Add($"search={Uri.EscapeDataString(search)}");
+        if (!string.IsNullOrWhiteSpace(status)) query.Add($"status={Uri.EscapeDataString(status)}");
+        return GetRawAsync($"api/blueprints/?{string.Join("&", query)}", "list blueprints", cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<string?> CreateBlueprintAsync(string blueprintJson, CancellationToken cancellationToken = default) =>
+        SendRawAsync(HttpMethod.Post, "api/blueprints/", blueprintJson, "create blueprint", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> UpdateBlueprintAsync(string blueprintId, string blueprintJson, CancellationToken cancellationToken = default) =>
+        SendRawAsync(HttpMethod.Put, $"api/blueprints/{Uri.EscapeDataString(blueprintId)}", blueprintJson, "update blueprint", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> GetBlueprintDiffAsync(string blueprintId, int fromVersion, int? toVersion = null, CancellationToken cancellationToken = default)
+    {
+        var url = $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/diff?from={fromVersion}";
+        if (toVersion is { } to && to > 0) url += $"&to={to}";
+        return GetRawAsync(url, "blueprint diff", cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<string?> SimulateRouteAsync(string requestJson, CancellationToken cancellationToken = default) =>
+        SendRawAsync(HttpMethod.Post, "api/execution/route", requestJson, "simulate route", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> SimulateCalculateAsync(string requestJson, CancellationToken cancellationToken = default) =>
+        SendRawAsync(HttpMethod.Post, "api/execution/calculate", requestJson, "simulate calculate", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> GetWorkflowInstancesAsync(string? queryString = null, CancellationToken cancellationToken = default)
+    {
+        var url = string.IsNullOrWhiteSpace(queryString) ? "api/workflows" : $"api/workflows?{queryString}";
+        return GetRawAsync(url, "workflow instances", cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<string?> GetWorkflowStatusAsync(string workflowInstanceId, CancellationToken cancellationToken = default) =>
+        GetRawAsync($"api/workflows/{Uri.EscapeDataString(workflowInstanceId)}", "workflow status", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> GetActionDetailsAsync(string actionInstanceId, CancellationToken cancellationToken = default) =>
+        GetRawAsync($"api/actions/{Uri.EscapeDataString(actionInstanceId)}", "action details", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> GetInboxAsync(string? queryString = null, CancellationToken cancellationToken = default)
+    {
+        var url = string.IsNullOrWhiteSpace(queryString) ? "api/inbox" : $"api/inbox?{queryString}";
+        return GetRawAsync(url, "inbox", cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<string?> GetDisclosedDataAsync(string workflowInstanceId, string? actionInstanceId = null, CancellationToken cancellationToken = default)
+    {
+        var url = string.IsNullOrWhiteSpace(actionInstanceId)
+            ? $"api/workflows/{Uri.EscapeDataString(workflowInstanceId)}/disclosures"
+            : $"api/workflows/{Uri.EscapeDataString(workflowInstanceId)}/actions/{Uri.EscapeDataString(actionInstanceId)}/disclosures";
+        return GetRawAsync(url, "disclosed data", cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<string?> ExecuteActionAsync(string instanceId, string actionId, string payloadJson, CancellationToken cancellationToken = default) =>
+        SendRawAsync(
+            HttpMethod.Post,
+            $"api/instances/{Uri.EscapeDataString(instanceId)}/actions/{Uri.EscapeDataString(actionId)}/execute",
+            payloadJson,
+            "execute action",
+            cancellationToken);
+
+    private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Blueprint {Operation} failed: {StatusCode}", operation, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed Blueprint {Operation}", operation);
+            return null;
+        }
+    }
+
+    private async Task<string?> SendRawAsync(HttpMethod method, string url, string bodyJson, string operation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            using var request = new HttpRequestMessage(method, url)
+            {
+                Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json")
+            };
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Blueprint {Operation} failed: {StatusCode}", operation, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed Blueprint {Operation}", operation);
+            return null;
+        }
+    }
+
     /// <summary>
     /// Request DTO for validation endpoint
     /// </summary>

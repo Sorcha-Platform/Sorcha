@@ -13,6 +13,7 @@ using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Subscription;
+using Sorcha.ServiceClients.Tenant;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
 
@@ -62,6 +63,10 @@ public static class HttpServiceCollectionExtensions
 
         services.AddHttpClient<ParticipantServiceClient>();
         services.AddScoped<IParticipantServiceClient, ParticipantServiceClient>();
+
+        // Spec 139 US4: typed Tenant client for MCP org/user/token reconciliation.
+        services.AddHttpClient<TenantServiceClient>();
+        services.AddScoped<ITenantServiceClient, TenantServiceClient>();
 
         services.AddHttpClient<EventServiceClient>();
         services.AddScoped<IEventServiceClient, EventServiceClient>();

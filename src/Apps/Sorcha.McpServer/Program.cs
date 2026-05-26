@@ -94,6 +94,19 @@ builder.Services.AddServiceClients(builder.Configuration);
 builder.Services.AddTransient<CallerTokenForwardingHandler>();
 builder.Services.AddHttpClient(string.Empty).AddHttpMessageHandler<CallerTokenForwardingHandler>();
 
+// Spec 139 US4: as tools are reconciled onto typed Sorcha.ServiceClients, attach the
+// forwarding handler to each typed client's HttpClient (keyed by concrete type name) so the
+// caller's bearer rides every typed call. Base addresses come from ServiceClients:*:Address
+// (point these at the API Gateway in deployment config).
+builder.Services.AddHttpClient<Sorcha.ServiceClients.Blueprint.BlueprintServiceClient>()
+    .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+builder.Services.AddHttpClient<Sorcha.ServiceClients.Register.RegisterServiceClient>()
+    .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+builder.Services.AddHttpClient<Sorcha.ServiceClients.Wallet.WalletServiceClient>()
+    .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+builder.Services.AddHttpClient<Sorcha.ServiceClients.Tenant.TenantServiceClient>()
+    .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+
 // Configure MCP server with stdio transport and auto-discovery
 builder.Services
     .AddMcpServer(options =>

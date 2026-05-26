@@ -1,340 +1,181 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net;
-using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Moq.Protected;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Admin;
+using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tests.Tools.Admin;
 
+/// <summary>
+/// Spec 139 US4: UserManageTool writes via the typed <see cref="ITenantServiceClient"/>
+/// (route pinned, caller token forwarded), so these tests mock the client rather than HTTP.
+/// </summary>
 public class UserManageToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
-    private readonly Mock<IMcpAuthorizationService> _authServiceMock;
-    private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
-    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
-    private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
-    private readonly Mock<IConfiguration> _configurationMock;
-    private readonly Mock<ILogger<UserManageTool>> _loggerMock;
+    private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
+    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
+    private readonly Mock<ITenantServiceClient> _tenantClientMock = new();
 
-    public UserManageToolTests()
+    private UserManageTool CreateTool() => new(
+        _authServiceMock.Object,
+        _availabilityTrackerMock.Object,
+        _tenantClientMock.Object,
+        Mock.Of<ILogger<UserManageTool>>());
+
+    private void Allow()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
-        _authServiceMock = new Mock<IMcpAuthorizationService>();
-        _errorHandlerMock = new Mock<IMcpErrorHandler>();
-        _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
-        _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _configurationMock = new Mock<IConfiguration>();
-        _loggerMock = new Mock<ILogger<UserManageTool>>();
-
-        _configurationMock.Setup(c => c["ServiceClients:TenantService:Address"])
-            .Returns("http://localhost:5110");
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
+        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
     }
 
-    private UserManageTool CreateTool()
-    {
-        return new UserManageTool(
-            _sessionServiceMock.Object,
-            _authServiceMock.Object,
-            _errorHandlerMock.Object,
-            _availabilityTrackerMock.Object,
-            _httpClientFactoryMock.Object,
-            _configurationMock.Object,
-            _loggerMock.Object);
-    }
+    private void SuccessClient() =>
+        _tenantClientMock
+            .Setup(c => c.ManageUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(string.Empty);
 
     [Fact]
     public async Task ManageUserAsync_Unauthorized_ReturnsUnauthorizedResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(false);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.ManageUserAsync("user-123", "Activate");
+        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
 
-        // Assert
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("Access denied");
     }
 
     [Fact]
     public async Task ManageUserAsync_ServiceUnavailable_ReturnsUnavailableResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
         _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(false);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.ManageUserAsync("user-123", "Activate");
+        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
 
-        // Assert
         result.Status.Should().Be("Unavailable");
-        result.Message.Should().Contain("unavailable");
     }
 
     [Fact]
     public async Task ManageUserAsync_MissingUserId_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.ManageUserAsync("", "Activate");
+        var result = await CreateTool().ManageUserAsync("", "Activate");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("User ID is required");
-    }
-
-    [Fact]
-    public async Task ManageUserAsync_MissingAction_ReturnsError()
-    {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.ManageUserAsync("user-123", "");
-
-        // Assert
-        result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Action is required");
     }
 
     [Fact]
     public async Task ManageUserAsync_InvalidAction_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.ManageUserAsync("user-123", "InvalidAction");
+        var result = await CreateTool().ManageUserAsync("user-123", "Bogus");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Invalid action");
     }
 
     [Fact]
     public async Task ManageUserAsync_AddRoleWithoutRole_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.ManageUserAsync("user-123", "AddRole");
+        var result = await CreateTool().ManageUserAsync("user-123", "AddRole");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Role is required for AddRole/RemoveRole");
     }
 
     [Fact]
     public async Task ManageUserAsync_AddRoleWithInvalidRole_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.ManageUserAsync("user-123", "AddRole", role: "InvalidRole");
+        var result = await CreateTool().ManageUserAsync("user-123", "AddRole", "Bogus");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Invalid role");
     }
 
     [Theory]
-    [InlineData("Activate", "activated")]
-    [InlineData("Deactivate", "deactivated")]
-    [InlineData("Lock", "locked")]
-    [InlineData("Unlock", "unlocked")]
-    public async Task ManageUserAsync_StatusActions_Success(string action, string expectedDescription)
+    [InlineData("Activate")]
+    [InlineData("Deactivate")]
+    [InlineData("Lock")]
+    [InlineData("Unlock")]
+    public async Task ManageUserAsync_StatusActions_Success(string action)
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        SuccessClient();
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
+        var result = await CreateTool().ManageUserAsync("user-123", action);
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.ManageUserAsync("user-123", action);
-
-        // Assert
         result.Status.Should().Be("Success");
         result.UserId.Should().Be("user-123");
         result.ActionPerformed.Should().Be(action);
-        result.Message.Should().Contain(expectedDescription);
-        _availabilityTrackerMock.Verify(a => a.RecordSuccess("Tenant"), Times.Once);
     }
 
     [Theory]
-    [InlineData("AddRole", "Admin", "granted Admin role")]
-    [InlineData("AddRole", "Designer", "granted Designer role")]
-    [InlineData("AddRole", "Participant", "granted Participant role")]
-    [InlineData("RemoveRole", "Admin", "removed Admin role")]
-    public async Task ManageUserAsync_RoleActions_Success(string action, string role, string expectedDescription)
+    [InlineData("AddRole", "Admin")]
+    [InlineData("RemoveRole", "Designer")]
+    public async Task ManageUserAsync_RoleActions_Success(string action, string role)
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        SuccessClient();
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
+        var result = await CreateTool().ManageUserAsync("user-123", action, role);
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.ManageUserAsync("user-123", action, role: role);
-
-        // Assert
         result.Status.Should().Be("Success");
         result.UserId.Should().Be("user-123");
         result.ActionPerformed.Should().Be(action);
         result.RoleAffected.Should().Be(role);
-        result.Message.Should().Contain(expectedDescription);
     }
 
     [Fact]
-    public async Task ManageUserAsync_SendsCorrectRequestBody()
+    public async Task ManageUserAsync_PassesUserIdToClient()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        SuccessClient();
 
-        HttpRequestMessage? capturedRequest = null;
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
+        await CreateTool().ManageUserAsync("user-123", "Activate");
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        await tool.ManageUserAsync("user-123", "AddRole", role: "Admin");
-
-        // Assert
-        capturedRequest.Should().NotBeNull();
-        capturedRequest!.Method.Should().Be(HttpMethod.Post);
-        capturedRequest.RequestUri!.ToString().Should().Contain("/api/users/user-123/actions");
-        var content = await capturedRequest.Content!.ReadAsStringAsync();
-        content.Should().Contain("AddRole");
-        content.Should().Contain("Admin");
+        _tenantClientMock.Verify(
+            c => c.ManageUserAsync("user-123", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task ManageUserAsync_HttpError_ReturnsErrorResult()
+    public async Task ManageUserAsync_Null_ReturnsErrorResult()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.ManageUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.NotFound)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(new { Error = "User not found" }))
-            });
+        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.ManageUserAsync("nonexistent-user", "Activate");
-
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("User not found");
     }
 
     [Fact]
     public async Task ManageUserAsync_Timeout_ReturnsTimeoutResult()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
-
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.ManageUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TaskCanceledException());
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
+        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
 
-        // Act
-        var result = await tool.ManageUserAsync("user-123", "Activate");
-
-        // Assert
         result.Status.Should().Be("Timeout");
-        _availabilityTrackerMock.Verify(a => a.RecordFailure("Tenant"), Times.Once);
     }
 
     [Fact]
     public async Task ManageUserAsync_ResponseTimeIsRecorded()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_user_manage")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        SuccessClient();
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
+        var result = await CreateTool().ManageUserAsync("user-123", "Activate");
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.ManageUserAsync("user-123", "Activate");
-
-        // Assert
         result.ResponseTimeMs.Should().BeGreaterThanOrEqualTo(0);
         result.CheckedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
     }

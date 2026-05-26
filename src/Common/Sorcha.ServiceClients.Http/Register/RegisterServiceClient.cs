@@ -1824,4 +1824,71 @@ public class RegisterServiceClient : IRegisterServiceClient
             return new RegisterStatsResponse();
         }
     }
+
+    /// <inheritdoc />
+    public async Task<RegisterTransactionStatistics?> GetRegisterTransactionStatsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/query/stats?registerId={Uri.EscapeDataString(registerId)}",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetRegisterTransactionStatsAsync failed for {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RegisterTransactionStatistics>(
+                JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch transaction statistics for register {RegisterId}", registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RegisterSummaryInfo>> GetRecentRegistersAsync(
+        int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync("api/registers/", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("GetRecentRegistersAsync failed: {StatusCode}", response.StatusCode);
+                return [];
+            }
+
+            var registers = await response.Content.ReadFromJsonAsync<List<RegisterSummaryInfo>>(
+                JsonOptions, cancellationToken);
+
+            if (registers == null)
+            {
+                return [];
+            }
+
+            return registers
+                .OrderByDescending(r => r.CreatedAt)
+                .Take(limit < 1 ? 10 : limit)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch recent registers");
+            return [];
+        }
+    }
 }

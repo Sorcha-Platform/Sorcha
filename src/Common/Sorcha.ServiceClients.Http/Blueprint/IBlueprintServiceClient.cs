@@ -63,6 +63,127 @@ public interface IBlueprintServiceClient
         string contentType,
         byte[] chunkContent,
         CancellationToken cancellationToken = default);
+
+    // =========================================================================
+    // Spec 139 US4 — MCP reconciliation reads/writes.
+    // Each returns the raw response body (the caller does its own shaping) or
+    // null when the service responds with a non-success status / the call fails.
+    // =========================================================================
+
+    /// <summary>
+    /// Lists blueprints with optional search/status filters and pagination.
+    /// Calls <c>GET /api/blueprints/</c>.
+    /// </summary>
+    /// <returns>The raw paged-list JSON body, or null on non-success.</returns>
+    Task<string?> ListBlueprintsAsync(
+        int page = 1,
+        int pageSize = 20,
+        string? search = null,
+        string? status = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a blueprint from a JSON definition. Calls <c>POST /api/blueprints/</c>.
+    /// </summary>
+    /// <returns>The created-blueprint JSON body, or null on non-success.</returns>
+    Task<string?> CreateBlueprintAsync(
+        string blueprintJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates an existing blueprint from a JSON definition. Calls <c>PUT /api/blueprints/{id}</c>.
+    /// </summary>
+    /// <returns>The updated-blueprint JSON body, or null on non-success.</returns>
+    Task<string?> UpdateBlueprintAsync(
+        string blueprintId,
+        string blueprintJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Computes the diff between two versions of a blueprint. Calls
+    /// <c>GET /api/blueprints/{id}/diff?from=&amp;to=</c> (to omitted compares against latest).
+    /// </summary>
+    /// <returns>The diff JSON body, or null on non-success.</returns>
+    Task<string?> GetBlueprintDiffAsync(
+        string blueprintId,
+        int fromVersion,
+        int? toVersion = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Simulates action routing for a blueprint. Calls <c>POST /api/execution/route</c>.
+    /// </summary>
+    /// <returns>The route-simulation JSON body, or null on non-success.</returns>
+    Task<string?> SimulateRouteAsync(
+        string requestJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Calculates derived/computed action data for a blueprint. Calls <c>POST /api/execution/calculate</c>.
+    /// </summary>
+    /// <returns>The calculation JSON body, or null on non-success.</returns>
+    Task<string?> SimulateCalculateAsync(
+        string requestJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists workflow instances with the supplied query string. Calls <c>GET /api/workflows</c>.
+    /// </summary>
+    /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
+    /// <returns>The workflow-list JSON body, or null on non-success.</returns>
+    Task<string?> GetWorkflowInstancesAsync(
+        string? queryString = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a workflow instance's current status. Calls <c>GET /api/workflows/{id}</c>.
+    /// </summary>
+    /// <returns>The workflow-status JSON body, or null on non-success.</returns>
+    Task<string?> GetWorkflowStatusAsync(
+        string workflowInstanceId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the details of an action instance. Calls <c>GET /api/actions/{id}</c>.
+    /// </summary>
+    /// <returns>The action-details JSON body, or null on non-success.</returns>
+    Task<string?> GetActionDetailsAsync(
+        string actionInstanceId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists inbox (pending action) items with the supplied query string. Calls <c>GET /api/inbox</c>.
+    /// </summary>
+    /// <param name="queryString">Already-built query string (without leading '?'), or null.</param>
+    /// <returns>The inbox JSON body, or null on non-success.</returns>
+    Task<string?> GetInboxAsync(
+        string? queryString = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets disclosed data for a workflow instance, optionally scoped to a single action instance.
+    /// Calls <c>GET /api/workflows/{id}/disclosures</c> (or the action-scoped variant).
+    /// </summary>
+    /// <returns>The disclosures JSON body, or null on non-success.</returns>
+    Task<string?> GetDisclosedDataAsync(
+        string workflowInstanceId,
+        string? actionInstanceId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes (submits) an action against a workflow instance. Calls
+    /// <c>POST /api/instances/{instanceId}/actions/{actionId}/execute</c>.
+    /// </summary>
+    /// <param name="instanceId">Workflow instance ID.</param>
+    /// <param name="actionId">Action ID within the instance.</param>
+    /// <param name="payloadJson">Action payload as a JSON object.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The execution-result JSON body, or null on non-success.</returns>
+    Task<string?> ExecuteActionAsync(
+        string instanceId,
+        string actionId,
+        string payloadJson,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

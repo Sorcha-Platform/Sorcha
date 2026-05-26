@@ -533,6 +533,79 @@ public interface IRegisterServiceClient
     Task<RegisterStatsResponse> GetStatsAsync(
         IReadOnlyList<string>? registerIds = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches per-register transaction statistics (unique wallets/senders/recipients, payload totals,
+    /// earliest/latest transaction timestamps) via <c>GET /api/query/stats?registerId=</c>.
+    /// </summary>
+    /// <param name="registerId">Register ID to compute statistics for.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The register's transaction statistics, or null if the register was not found / the call failed.</returns>
+    Task<RegisterTransactionStatistics?> GetRegisterTransactionStatsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches a summary list of registers (most-recently created first), used for inventory dashboards.
+    /// Calls <c>GET /api/registers/</c> and orders/truncates client-side.
+    /// </summary>
+    /// <param name="limit">Maximum number of registers to return (most recent first).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The most-recently created registers, or an empty list on failure.</returns>
+    Task<IReadOnlyList<RegisterSummaryInfo>> GetRecentRegistersAsync(
+        int limit = 10,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Per-register transaction statistics returned by <c>GET /api/query/stats</c>.
+/// </summary>
+public class RegisterTransactionStatistics
+{
+    /// <summary>Total number of transactions in the register.</summary>
+    public int TotalTransactions { get; set; }
+
+    /// <summary>Number of unique wallets involved (senders + recipients).</summary>
+    public int UniqueWallets { get; set; }
+
+    /// <summary>Number of unique sender addresses.</summary>
+    public int UniqueSenders { get; set; }
+
+    /// <summary>Number of unique recipient addresses.</summary>
+    public int UniqueRecipients { get; set; }
+
+    /// <summary>Total number of payloads across all transactions.</summary>
+    public long TotalPayloads { get; set; }
+
+    /// <summary>Timestamp of the earliest transaction, if any.</summary>
+    public DateTime? EarliestTransaction { get; set; }
+
+    /// <summary>Timestamp of the most recent transaction, if any.</summary>
+    public DateTime? LatestTransaction { get; set; }
+}
+
+/// <summary>
+/// Summary information about a register for inventory listings.
+/// </summary>
+public class RegisterSummaryInfo
+{
+    /// <summary>Register unique identifier.</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Register display name.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Current status (Active, Inactive, etc.).</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>Owning tenant identifier.</summary>
+    public string TenantId { get; set; } = string.Empty;
+
+    /// <summary>Current chain height (number of dockets).</summary>
+    public long Height { get; set; }
+
+    /// <summary>When the register was created.</summary>
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 /// <summary>
