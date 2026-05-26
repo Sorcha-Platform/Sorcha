@@ -248,6 +248,14 @@ static void RegisterServiceClients(IServiceCollection services, IConfiguration c
     // subscribe/unsubscribe calls ride the caller's bearer to the gateway.
     services.AddHttpClient<Sorcha.ServiceClients.Peer.IPeerServiceClient, Sorcha.ServiceClients.Peer.PeerServiceClient>()
         .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+
+    // Feature 140 Wave 2: the HAIP typed client is also registered interface-first in
+    // AddServiceClients (AddHttpClient<IHaipServiceClient, HaipServiceClient>). Re-open that
+    // same named registration to append the forwarding handler so the credential-offer /
+    // presentation-request tools ride the caller's bearer to the gateway. The Blueprint client
+    // (used by the presentation-status + credential-lifecycle tools) is already covered above.
+    services.AddHttpClient<Sorcha.ServiceClients.Haip.IHaipServiceClient, Sorcha.ServiceClients.Haip.HaipServiceClient>()
+        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
 }
 
 static void ConfigureServerOptions(McpServerOptions options)

@@ -61,6 +61,15 @@ public static class ToolEntitlements
         new("sorcha_transaction_verification_bundle", PlatformOnly, AdminRole),
         new("sorcha_transaction_revoke", PlatformOnly, AdminRole),
 
+        // Credential & presentation lifecycle (Feature 140 Wave 2) — platform tier + admin role
+        new("sorcha_credential_offer", PlatformOnly, AdminRole),
+        new("sorcha_presentation_request", PlatformOnly, AdminRole),
+        new("sorcha_presentation_status", PlatformOnly, AdminRole),
+        new("sorcha_credential_revoke", PlatformOnly, AdminRole),
+        new("sorcha_credential_suspend", PlatformOnly, AdminRole),
+        new("sorcha_credential_reinstate", PlatformOnly, AdminRole),
+        new("sorcha_credential_refresh", PlatformOnly, AdminRole),
+
         // Designer — platform tier + designer role
         new("sorcha_blueprint_list", PlatformOnly, DesignerRole),
         new("sorcha_blueprint_get", PlatformOnly, DesignerRole),
