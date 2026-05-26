@@ -8,7 +8,9 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 
 # Frontend-design Skill
 
-Sorcha uses **MudBlazor 8.15.0** for Material Design components with **CSS Isolation** as the primary styling approach. The design system follows Material Design 3 with custom extensions for blockchain/workflow visualization.
+Sorcha uses **MudBlazor 9.2.0** for Material Design components with **CSS Isolation** as the primary styling approach. The design system follows Material Design 3 with custom extensions for blockchain/workflow visualization.
+
+The canonical theme is `SorchaMudTheme.Default` (`Sorcha.UI.Components.User/Theme/SorchaMudTheme.cs`) — both the web host and the Citizen Wallet PWA bind their `MudThemeProvider` to it; it carries the light + dark palette tokens (page background, surface, text, lines). Bespoke non-palette values (brand gradient, accent green, warn amber) are CSS custom properties (`--sorcha-gradient`, `--sorcha-accent`, `--sorcha-warn`); isolated component CSS reads MudBlazor's own `--mud-palette-*` variables for surfaces/text so light/dark switch automatically, with literal fallbacks for cross-host rendering. The wallet "Bolder" home chrome (Feature 141) — `WalletHero`, `BigActionButton`, `WalletCardStack`, `FloatingTabBar` — lives in `Sorcha.UI.Components.User/Components/Wallet/` (namespace `Sorcha.UI.Core.Components.Wallet`).
 
 ## Quick Start
 
