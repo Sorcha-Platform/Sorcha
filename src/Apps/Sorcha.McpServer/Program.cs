@@ -100,6 +100,10 @@ builder.Services.AddHttpClient(string.Empty).AddHttpMessageHandler<CallerTokenFo
 // (point these at the API Gateway in deployment config).
 builder.Services.AddHttpClient<Sorcha.ServiceClients.Blueprint.BlueprintServiceClient>()
     .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+builder.Services.AddHttpClient<Sorcha.ServiceClients.Register.RegisterServiceClient>()
+    .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+builder.Services.AddHttpClient<Sorcha.ServiceClients.Wallet.WalletServiceClient>()
+    .AddHttpMessageHandler<CallerTokenForwardingHandler>();
 
 // Configure MCP server with stdio transport and auto-discovery
 builder.Services

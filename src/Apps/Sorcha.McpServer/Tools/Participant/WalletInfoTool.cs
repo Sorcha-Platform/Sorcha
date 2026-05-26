@@ -3,56 +3,49 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.McpServer.Tools.Participant;
 
 /// <summary>
-/// Participant tool for getting wallet information.
+/// Participant tool for getting wallet information. Reads via the typed
+/// <see cref="IWalletServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the route is contract-pinned, not hand-rolled.
 /// </summary>
 [McpServerToolType]
 public sealed class WalletInfoTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IWalletServiceClient _walletClient;
     private readonly ILogger<WalletInfoTool> _logger;
-    private readonly string _walletServiceEndpoint;
 
     public WalletInfoTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IWalletServiceClient walletClient,
         ILogger<WalletInfoTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _walletClient = walletClient;
         _logger = logger;
-
-        _walletServiceEndpoint = configuration["ServiceClients:WalletService:Address"] ?? "http://localhost:5001";
     }
 
     /// <summary>
-    /// Gets information about the user's wallet.
+    /// Gets the public metadata for a wallet by its address.
     /// </summary>
+    /// <param name="walletAddress">The wallet address to inspect (required).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Wallet information.</returns>
     [McpServerTool(Name = "sorcha_wallet_info")]
-    [Description("Return the metadata for the participant's BIP32/39/44 hierarchical deterministic wallet, including derived public addresses, key types (ED25519, P-256, ML-DSA), and address indices. No private key material or mnemonic is exposed — only the public surface needed to identify the signing wallet. Call this when an agent needs to confirm which signing identity a participant is operating under or pick an address index before invoking sorcha_wallet_sign; use sorcha_wallet_sign rather than this tool when you actually need to produce a signature, not just inspect the wallet.")]
+    [Description("Return the public metadata for a Sorcha wallet identified by its address: the wallet name, primary public address, key algorithm (ED25519, P-256, RSA-4096), public key, and status. No private key material or mnemonic is exposed — only the public surface needed to identify the signing wallet. A walletAddress is required. Call this when an agent needs to confirm which signing identity an address belongs to or inspect a wallet's algorithm and status before relying on it; use sorcha_transaction_history rather than this tool when you want the wallet's activity rather than its identity.")]
     public async Task<WalletInfoResult> GetWalletInfoAsync(
+        [Description("The wallet address to inspect (required)")] string walletAddress,
         CancellationToken cancellationToken = default)
     {
         // Authorization check
@@ -62,6 +55,17 @@ public sealed class WalletInfoTool
             {
                 Status = "Unauthorized",
                 Message = "Access denied. This tool requires the sorcha:participant role.",
+                CheckedAt = DateTimeOffset.UtcNow
+            };
+        }
+
+        // Validate input
+        if (string.IsNullOrWhiteSpace(walletAddress))
+        {
+            return new WalletInfoResult
+            {
+                Status = "Error",
+                Message = "Wallet address is required.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
@@ -77,70 +81,23 @@ public sealed class WalletInfoTool
             };
         }
 
-        _logger.LogInformation("Getting wallet info");
+        _logger.LogInformation("Getting wallet info for {WalletAddress}", walletAddress);
 
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var url = $"{_walletServiceEndpoint.TrimEnd('/')}/api/wallet/info";
-
-            var response = await client.GetAsync(url, cancellationToken);
+            var wallet = await _walletClient.GetWalletAsync(walletAddress, cancellationToken);
 
             stopwatch.Stop();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Wallet info request failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
-                _availabilityTracker.RecordSuccess("Wallet");
-
-                try
-                {
-                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-
-                    return new WalletInfoResult
-                    {
-                        Status = "Error",
-                        Message = errorResponse?.Error ?? "Failed to retrieve wallet info.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
-                catch (JsonException)
-                {
-                    return new WalletInfoResult
-                    {
-                        Status = "Error",
-                        Message = $"Request failed with status {(int)response.StatusCode}.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
-            }
-
-            // Record success
             _availabilityTracker.RecordSuccess("Wallet");
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = JsonSerializer.Deserialize<WalletInfoResponse>(responseContent, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
-            if (result == null)
+            if (wallet == null)
             {
                 return new WalletInfoResult
                 {
-                    Status = "Error",
-                    Message = "Failed to parse wallet info response.",
+                    Status = "NotFound",
+                    Message = $"Wallet '{walletAddress}' was not found.",
                     CheckedAt = DateTimeOffset.UtcNow,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };
@@ -158,18 +115,22 @@ public sealed class WalletInfoTool
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 Wallet = new WalletInfo
                 {
-                    WalletId = result.WalletId ?? "",
-                    PrimaryAddress = result.PrimaryAddress ?? "",
-                    Algorithm = result.Algorithm ?? "ED25519",
-                    PublicKey = result.PublicKey,
-                    CreatedAt = result.CreatedAt,
-                    Addresses = result.Addresses?.Select(a => new WalletAddress
-                    {
-                        Address = a.Address ?? "",
-                        DerivationPath = a.DerivationPath,
-                        Algorithm = a.Algorithm ?? "ED25519",
-                        IsDefault = a.IsDefault
-                    }).ToList() ?? []
+                    WalletId = wallet.Name,
+                    PrimaryAddress = wallet.Address,
+                    Algorithm = wallet.Algorithm,
+                    PublicKey = wallet.PublicKey,
+                    StatusValue = wallet.Status,
+                    CreatedAt = wallet.CreatedAt,
+                    Addresses =
+                    [
+                        new WalletAddress
+                        {
+                            Address = wallet.Address,
+                            DerivationPath = null,
+                            Algorithm = wallet.Algorithm,
+                            IsDefault = true
+                        }
+                    ]
                 }
             };
         }
@@ -214,30 +175,6 @@ public sealed class WalletInfoTool
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
             };
         }
-    }
-
-    // Internal response models
-    private sealed class WalletInfoResponse
-    {
-        public string? WalletId { get; set; }
-        public string? PrimaryAddress { get; set; }
-        public string? Algorithm { get; set; }
-        public string? PublicKey { get; set; }
-        public DateTimeOffset? CreatedAt { get; set; }
-        public List<WalletAddressDto>? Addresses { get; set; }
-    }
-
-    private sealed class WalletAddressDto
-    {
-        public string? Address { get; set; }
-        public string? DerivationPath { get; set; }
-        public string? Algorithm { get; set; }
-        public bool IsDefault { get; set; }
-    }
-
-    private sealed class ErrorResponse
-    {
-        public string? Error { get; set; }
     }
 }
 
@@ -296,6 +233,11 @@ public sealed record WalletInfo
     /// The public key (base64 encoded).
     /// </summary>
     public string? PublicKey { get; init; }
+
+    /// <summary>
+    /// Wallet status (Active, Revoked, etc.).
+    /// </summary>
+    public string? StatusValue { get; init; }
 
     /// <summary>
     /// When the wallet was created.

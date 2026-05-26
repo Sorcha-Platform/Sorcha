@@ -45,7 +45,14 @@ Legend: ✅ existing client method · ➕ add a client method · 🔧 drifted/ne
 ## Reconciliation progress
 
 - ✅ **`blueprint_get`** reconciled onto `IBlueprintServiceClient.GetBlueprintAsync` — the **proven pattern** (commit `c339d2b0`): inject typed client, keep shaping logic, attach `CallerTokenForwardingHandler` to the client in `Program.cs`, flip tests to mock the client. Build + tests green; live forwarding tests still pass.
-- ⏭️ Remaining reusable-now (`transaction_history`, `wallet_info`, `peer_status`, `register_query`, `action_validate`) — follow the `blueprint_get` pattern.
+- ✅ **Batch 1 (reusable-now)** complete:
+  - `register_stats` → enriched `IRegisterServiceClient`: added `GetRegisterTransactionStatsAsync` (`/api/query/stats`) + `GetRecentRegistersAsync` (`/api/registers/`); `GetStatsAsync` supplies the platform count. Rich per-register output preserved.
+  - `transaction_history` → reworked params (registerId now **required**, optional workflowInstanceId). Uses `GetTransactionsByInstanceIdAsync` (instance-scoped) or `GetTransactionsAsync` (paged). The old `/api/transactions` route did not exist.
+  - `wallet_info` → reworked to take a **walletAddress** param (was ambient `/api/wallet/info`). Uses `IWalletServiceClient.GetWalletAsync`.
+  - **Left on bare HttpClient (no clean mapping — token still forwards via default-client handler):**
+    - `peer_status` — consumes bespoke `/api/peers/stats` + `/api/peers/health`; no Peer client exists in `Sorcha.ServiceClients.Http` and the shapes don't map to any existing typed method.
+    - `register_query` — reads **materialised record data** (`/api/registers/{id}/data`, OData); no typed method returns that shape (register client only exposes transaction reads). Forcing it onto transaction reads would change semantics.
+    - `action_validate` — the live `/api/actions/{id}/validate` endpoint returns a rich `{isValid, errors[]}`; the only typed method `ValidatePayloadAsync` returns a bare bool (loses the error list) AND needs blueprintId+actionId the tool doesn't take. Reworking would regress error reporting.
 
 ## Suggested execution order (T023–T030)
 
