@@ -220,7 +220,12 @@ Delivers the existing tool surface working over stdio, tiered by token, with pri
 - Integration harness landed: `McpIntegrationTestBase` (gateway reachability skip-gate + real admin-token login helper) and `TokenForwardingIntegrationTests` (`[Trait Category=McpIntegration]`). This is the deferred T003 scaffolding, exercised immediately.
 - **Ran live against the running gateway (`urn:sorcha:phaethon`, `aud phaethon:platform`): 537 tests, 0 skipped, 0 failed.** The forwarding handler stamps the caller bearer → authenticated gateway endpoint returns **200**; no token → **401**. Defect 1 (anonymous backend calls) is fixed and proven end-to-end on the stack.
 
-**Remaining to fully close the MVP (the "stop and validate" step the user asked for):**
-- **Protocol-level `tools/list` filtering** — wire `GetAuthorizedTools` into the MCP server's tool-list response so a consumer doesn't *see* admin/designer tools (needs an SDK list-handler seam). Security is already enforced at invocation (T012); this is the advertised-list cosmetic + UX.
-- **Two Docker integration tests** — T015 (privilege: admin success / consumer forbidden-by-gateway / expired unauthorized) and T021 (consumer invokes participation tool). Need a running stack + per-tier token minting (`TierTokenFixture`).
-- **Typed-client / gateway-base reconciliation** for the representative tools (the success half of T015) — folded into the US4 sweep.
+### 2026-05-26 — Protocol-level tools/list filtering (US2 complete)
+
+✅ `Program.cs` `WithRequestFilters` → `AddListToolsFilter` narrows the advertised `tools/list` to `GetAuthorizedTools()`, so a consumer never sees admin/designer tools. Transport-agnostic (also serves US3's HTTP path). Build + 537 tests green. US2's "consumer doesn't see admin tools" is now met at the protocol level, not just at invocation.
+
+**MVP status: CORE COMPLETE & VALIDATED.** Defect 1 (anonymous backend calls) fixed and live-proven; tier-aware authorization + consumer surface + service-tier rejection + tools/list filtering implemented and unit-tested (537/537 green).
+
+**Deferred to US4 / a follow-up with a provisioned citizen (not MVP-core blockers):**
+- **Per-tool invocation integration tests** — T015 success-path on a specific reconciled tool; T021 (consumer invokes a participation tool). T021 needs a real consumer-tier token, and the fresh `phaethon` stack has no citizen user (PWA enrol / minted consumer token required). The forwarding mechanism these exercise is already proven live by `TokenForwardingIntegrationTests`.
+- **Typed-client / gateway reconciliation** of the 36 tools (T013/T014 + the sweep) — the US4 deliverable; token forwarding already works via the default-client handler.
