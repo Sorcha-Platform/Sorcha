@@ -241,6 +241,13 @@ static void RegisterServiceClients(IServiceCollection services, IConfiguration c
         .AddHttpMessageHandler<CallerTokenForwardingHandler>();
     services.AddHttpClient<Sorcha.ServiceClients.Tenant.TenantServiceClient>()
         .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+
+    // Feature 140 Wave 1: the Peer typed client is registered interface-first in AddServiceClients
+    // (AddHttpClient<IPeerServiceClient, PeerServiceClient>), so its named HttpClient is keyed by the
+    // interface. Re-open that same registration to append the forwarding handler so register
+    // subscribe/unsubscribe calls ride the caller's bearer to the gateway.
+    services.AddHttpClient<Sorcha.ServiceClients.Peer.IPeerServiceClient, Sorcha.ServiceClients.Peer.PeerServiceClient>()
+        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
 }
 
 static void ConfigureServerOptions(McpServerOptions options)
