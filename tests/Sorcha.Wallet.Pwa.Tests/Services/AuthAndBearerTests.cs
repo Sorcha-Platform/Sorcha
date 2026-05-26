@@ -243,4 +243,37 @@ public sealed class AuthAndBearerTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
             => Task.FromResult(_respond(request, ct));
     }
+
+    [Fact]
+    public async Task SignInAsync_SendsConsumerTierHint()
+    {
+        string? capturedBody = null;
+        var handler = new CapturingHandler(async req =>
+        {
+            capturedBody = await req.Content!.ReadAsStringAsync();
+            return JsonOk("{\"access_token\":\"at\",\"expires_in\":3600,\"requires_two_factor\":false}");
+        });
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
+        var auth = new AuthService(http, new InMemoryAccessTokenStore(), new NoopLocalDataPurge());
+
+        await auth.SignInAsync("a@b.test", "pw");
+
+        capturedBody.Should().Contain("\"tier\":\"consumer\"");
+    }
+
+    private sealed class CapturingHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => responder(request);
+    }
+
+    private sealed class NoopLocalDataPurge : ILocalDataPurge
+    {
+        public Task PurgeAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private static HttpResponseMessage JsonOk(string json) => new(System.Net.HttpStatusCode.OK)
+    {
+        Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+    };
 }

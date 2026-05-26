@@ -110,7 +110,7 @@ public sealed class AuthService : IAuthService
         {
             var response = await _http.PostAsJsonAsync(
                 "api/auth/login",
-                new LoginRequest(email.Trim(), password),
+                new LoginRequest(email.Trim(), password, "consumer"),
                 ct);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
@@ -158,7 +158,7 @@ public sealed class AuthService : IAuthService
         {
             var response = await _http.PostAsJsonAsync(
                 "api/auth/verify-2fa",
-                new Verify2FaRequest(loginToken, code.Trim(), isBackupCode),
+                new Verify2FaRequest(loginToken, code.Trim(), isBackupCode, "consumer"),
                 ct);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
@@ -201,12 +201,13 @@ public sealed class AuthService : IAuthService
         await _store.SetAsync(record, ct);
     }
 
-    private sealed record LoginRequest(string Email, string Password);
+    private sealed record LoginRequest(string Email, string Password, string Tier);
 
     private sealed record Verify2FaRequest(
         [property: JsonPropertyName("login_token")] string LoginToken,
         [property: JsonPropertyName("code")] string Code,
-        [property: JsonPropertyName("is_backup_code")] bool IsBackupCode);
+        [property: JsonPropertyName("is_backup_code")] bool IsBackupCode,
+        [property: JsonPropertyName("tier")] string Tier);
 
     private sealed record LoginResponse(
         [property: JsonPropertyName("access_token")] string? AccessToken,
