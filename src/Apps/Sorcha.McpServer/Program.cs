@@ -256,6 +256,18 @@ static void RegisterServiceClients(IServiceCollection services, IConfiguration c
     // (used by the presentation-status + credential-lifecycle tools) is already covered above.
     services.AddHttpClient<Sorcha.ServiceClients.Haip.IHaipServiceClient, Sorcha.ServiceClients.Haip.HaipServiceClient>()
         .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+
+    // Feature 140 Wave 3: the citizen self-service tools are CONSUMER tier and MUST act as the
+    // calling citizen. The CitizenWalletClient and RegisterInvitationServiceClient are registered
+    // concrete-type-keyed in AddServiceClients (AddHttpClient<CitizenWalletClient>() /
+    // AddHttpClient<RegisterInvitationServiceClient>()) — re-open those same named registrations to
+    // append the forwarding handler so the consumer's bearer rides every my-credentials /
+    // my-devices / my-presentations / my-invitations call. The Tenant client (used by the
+    // my-persona tool) already has the handler attached above.
+    services.AddHttpClient<Sorcha.ServiceClients.CitizenWallet.CitizenWalletClient>()
+        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
+    services.AddHttpClient<Sorcha.ServiceClients.Invitation.RegisterInvitationServiceClient>()
+        .AddHttpMessageHandler<CallerTokenForwardingHandler>();
 }
 
 static void ConfigureServerOptions(McpServerOptions options)

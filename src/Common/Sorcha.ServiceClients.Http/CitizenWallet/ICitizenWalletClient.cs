@@ -94,4 +94,12 @@ public interface ICitizenWalletClient
     /// succeeds (cross-user / non-existent ids are indistinguishable 204s).
     /// </summary>
     Task DeletePresentationAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reads the citizen's current pending-application notice (Feature 124). Calls
+    /// <c>GET /api/v1/wallet/pending-applications</c>. The envelope is always returned;
+    /// a null <see cref="PendingApplicationResponse.Notice"/> means no application is
+    /// in flight. Scoped to the calling citizen by the platform via the forwarded JWT.
+    /// </summary>
+    Task<PendingApplicationResponse> GetPendingApplicationAsync(CancellationToken ct = default);
 }

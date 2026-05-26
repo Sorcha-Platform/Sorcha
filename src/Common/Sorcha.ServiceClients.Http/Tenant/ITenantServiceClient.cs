@@ -78,4 +78,29 @@ public interface ITenantServiceClient
     Task<string?> RevokeTokenAsync(
         string requestJson,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the signed-in user's persona for a context (Feature 125, 140 Wave 3).
+    /// Calls <c>GET /api/me/persona</c>. The caller's identity comes from the forwarded
+    /// JWT, so a consumer-tier citizen reads only their own Personal-context persona.
+    /// </summary>
+    /// <param name="queryString">Already-built query string (without leading '?'), or null for the Personal context.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The persona read-model JSON body, or null on non-success.</returns>
+    Task<string?> GetMyPersonaAsync(
+        string? queryString = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the signed-in user's persona for a context (full replace). Calls
+    /// <c>PUT /api/me/persona</c>. The caller's identity comes from the forwarded JWT.
+    /// </summary>
+    /// <param name="requestJson">The PersonaAttributesV1 body as JSON.</param>
+    /// <param name="queryString">Already-built query string (without leading '?'), or null for the Personal context.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The canonical persona read-model JSON body, or null on non-success.</returns>
+    Task<string?> ReplaceMyPersonaAsync(
+        string requestJson,
+        string? queryString = null,
+        CancellationToken cancellationToken = default);
 }
