@@ -73,6 +73,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFormSchemaService, FormSchemaService>();
         services.AddScoped<IFormSigningService, FormSigningService>();
 
+        // Feature 142 — designer-only quick dry-run harness (D3/T024). Drives the portable
+        // Blueprint Engine in-WASM (validate→calc→route→disclose) with no register/backend.
+        // Scoped: holds per-session walk-through state. The engine it composes is dependency-free.
+        services.AddScoped<Sorcha.UI.Core.Services.Designer.IDryRunHarness>(
+            _ => Sorcha.UI.Core.Services.Designer.DryRunHarness.CreateDefault());
+
         // Feature 107 — client-side portrait token resizer for `x-file.embedAs`
         // fields. The interop is scoped (holds a lazy IJSObjectReference);
         // the resizer itself is stateless quality-stepping over that interop.
