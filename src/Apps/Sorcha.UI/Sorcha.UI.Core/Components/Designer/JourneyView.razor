@@ -1,0 +1,119 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+@using Sorcha.UI.Core.Models.Designer
+@using Sorcha.UI.Core.Services.Designer
+@inject DesignerContext Context
+@implements IDisposable
+
+@*
+    Feature 142 "Understand" canvas (T016 / FR-006 / FR-007 / FR-009): a derived, read-only,
+    plain-language journey of the service. One role-coloured step card per Blueprint Action,
+    laid out left-to-right in flow order. Each card carries "Must prove" / "Issues" credential
+    chips. Clicking a card selects its action (drives the T017 step-detail panel). Empty when no
+    Blueprint is loaded. Copy is factual — no marketing language.
+*@
+
+<div class="journey-view" data-testid="journey-view">
+    @if (_journey.Steps.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="journey-view__empty">
+            Describe your service first to see who does what, in order.
+        </MudText>
+    }
+    else
+    {
+        <div class="journey-view__flow">
+            @for (var i = 0; i < _journey.Steps.Count; i++)
+            {
+                var step = _journey.Steps[i];
+                var selected = IsSelected(step);
+
+                <MudPaper Elevation="@(selected ? 4 : 1)"
+                          Class="@CardClass(selected)"
+                          Style="@CardStyle(step.Role.Colour)"
+                          data-testid="@($"journey-step-{step.Detail.ActionId}")"
+                          data-selected="@(selected ? "true" : "false")"
+                          @onclick="@(() => SelectStep(step))">
+                    <MudText Typo="Typo.overline" Class="journey-step__role">@step.Role.Name</MudText>
+                    <MudText Typo="Typo.subtitle1" Class="journey-step__title">@step.Title</MudText>
+                    <MudText Typo="Typo.body2" Class="journey-step__summary">@step.PlainSummary</MudText>
+
+                    @if (step.Badges.Count > 0)
+                    {
+                        <div class="journey-step__badges">
+                            @foreach (var badge in step.Badges)
+                            {
+                                @if (badge.Kind == JourneyBadgeKind.MustProve)
+                                {
+                                    <MudChip T="string"
+                                             Size="Size.Small"
+                                             Color="Color.Warning"
+                                             Variant="Variant.Outlined"
+                                             data-testid="journey-badge-mustprove">
+                                        🛡 Must prove: @badge.CredentialType
+                                    </MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string"
+                                             Size="Size.Small"
+                                             Color="Color.Success"
+                                             Variant="Variant.Outlined"
+                                             data-testid="journey-badge-issues">
+                                        🎓 Issues: @badge.CredentialType
+                                    </MudChip>
+                                }
+                            }
+                        </div>
+                    }
+                </MudPaper>
+
+                @if (i < _journey.Steps.Count - 1)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward"
+                             Size="Size.Small"
+                             Class="journey-view__arrow" />
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private JourneyViewModel _journey = JourneyViewModel.Empty;
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        Context.Changed += OnContextChanged;
+        Remap();
+    }
+
+    private void OnContextChanged()
+    {
+        Remap();
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Recomputes the derived journey from the current Blueprint.</summary>
+    private void Remap() => _journey = JourneyViewMapper.Map(Context.Blueprint);
+
+    /// <summary>Selects a step's action manually, driving the shared designer cursor (T017 detail panel).</summary>
+    private void SelectStep(JourneyStep step) =>
+        Context.SetActiveActionManual(step.Detail.ActionId.ToString());
+
+    private bool IsSelected(JourneyStep step) =>
+        Context.ActiveActionId == step.Detail.ActionId.ToString();
+
+    private static string CardClass(bool selected) =>
+        selected ? "journey-step journey-step--selected" : "journey-step";
+
+    /// <summary>Role-band left border + a faint role tint so a participant reads consistently across steps.</summary>
+    private static string CardStyle(string colour) =>
+        $"border-left: 4px solid {colour};";
+
+    /// <inheritdoc />
+    public void Dispose() => Context.Changed -= OnContextChanged;
+}
