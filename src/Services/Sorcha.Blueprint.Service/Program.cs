@@ -227,6 +227,38 @@ else
         "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres");
 }
 
+// Feature 142 — RehearsalPass + PublishOverride storage (EF Core when configured,
+// InMemory fallback). Convenience-grade: NOT on the F113 fail-fast audited list, so
+// these warn on in-memory but do not gate startup.
+if (!string.IsNullOrEmpty(blueprintDbConn))
+{
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IRehearsalPassStore, Sorcha.Blueprint.Service.Storage.EfCoreRehearsalPassStore>();
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Blueprint.Service.Storage.IRehearsalPassStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.EfCoreRehearsalPassStore).FullName!,
+        "postgres");
+
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IPublishOverrideStore, Sorcha.Blueprint.Service.Storage.EfCorePublishOverrideStore>();
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Blueprint.Service.Storage.IPublishOverrideStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.EfCorePublishOverrideStore).FullName!,
+        "postgres");
+}
+else
+{
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IRehearsalPassStore, Sorcha.Blueprint.Service.Storage.InMemoryRehearsalPassStore>();
+    storageLog.RegisterInMemory(
+        typeof(Sorcha.Blueprint.Service.Storage.IRehearsalPassStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.InMemoryRehearsalPassStore).FullName!,
+        "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres — convenience-grade, not audited");
+
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IPublishOverrideStore, Sorcha.Blueprint.Service.Storage.InMemoryPublishOverrideStore>();
+    storageLog.RegisterInMemory(
+        typeof(Sorcha.Blueprint.Service.Storage.IPublishOverrideStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.InMemoryPublishOverrideStore).FullName!,
+        "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres — convenience-grade, not audited");
+}
+
 // Add Orchestration services (Sprint 6)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateReconstructionService,
     Sorcha.Blueprint.Service.Services.Implementation.StateReconstructionService>();
