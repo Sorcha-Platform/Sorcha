@@ -191,6 +191,23 @@ public static class ServiceCollectionExtensions
             return new BlueprintApiService(httpClient, logger);
         });
 
+        // Feature 142 — full-rehearsal API service (US2). Authenticated gateway HttpClient,
+        // same pattern as the Blueprint API Service above. Drives the server-side rehearsal
+        // walk-through (start/get/role/step/delete) against the org sandbox register.
+        services.AddScoped<Sorcha.UI.Core.Services.Designer.IRehearsalApiService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+
+            var httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri(baseAddress)
+            };
+
+            var logger = sp.GetRequiredService<ILogger<Sorcha.UI.Core.Services.Designer.RehearsalApiService>>();
+            return new Sorcha.UI.Core.Services.Designer.RehearsalApiService(httpClient, logger);
+        });
+
         // Template API Service
         services.AddScoped<ITemplateApiService>(sp =>
         {
