@@ -54,6 +54,34 @@ public class DesignerLifecyclePage
     public ILocator FirstRunOverlay => _page.Locator("[data-testid='rail-first-run-overlay']");
     public ILocator FirstRunDismiss => _page.Locator("[data-testid='rail-first-run-dismiss']");
 
+    // --- Rehearse stage (T021 / T031-T032) --------------------------------
+    public ILocator RehearseModeDryRun => _page.Locator("[data-testid='rehearse-mode-dryrun']");
+    public ILocator RehearseModeFull => _page.Locator("[data-testid='rehearse-mode-full']");
+
+    /// <summary>The "private sandbox — nothing public" banner shown in full-rehearsal mode.</summary>
+    public ILocator RehearseSandboxBanner => _page.Locator("[data-testid='rehearse-sandbox-banner']");
+
+    /// <summary>The "Start full rehearsal" button shown before a server-side rehearsal begins.</summary>
+    public ILocator RehearseFullStart => _page.Locator("[data-testid='rehearse-full-start']");
+
+    public ILocator RehearsalStepper => _page.Locator("[data-testid='rehearsal-stepper']");
+    public ILocator RehearsalRoleSwitcher => _page.Locator("[data-testid='rehearsal-role-switcher']");
+    public ILocator RehearsalLog => _page.Locator("[data-testid='rehearsal-log']");
+    public ILocator RehearsalStepSubmit => _page.Locator("[data-testid='rehearsal-step-submit']");
+    public ILocator RehearsalReset => _page.Locator("[data-testid='rehearsal-reset']");
+
+    // --- Go live stage (T033 / T036-T040) ---------------------------------
+    public ILocator GoLivePanel => _page.Locator("[data-testid='golive-panel']");
+    public ILocator GoLiveRegisterSelect => _page.Locator("[data-testid='golive-register-select']");
+    public ILocator GoLiveSystemInfoCard => _page.Locator("[data-testid='golive-systeminfo-card']");
+    public ILocator GoLiveNoRights => _page.Locator("[data-testid='golive-no-rights']");
+    public ILocator GoLiveNoEligibleRegisters => _page.Locator("[data-testid='golive-no-eligible-registers']");
+    public ILocator GoLiveReview => _page.Locator("[data-testid='golive-review']");
+    public ILocator GoLiveVersion => _page.Locator("[data-testid='golive-version']");
+    public ILocator GoLivePublishButton => _page.Locator("[data-testid='golive-publish-btn']");
+    public ILocator GoLiveOverrideConfirm => _page.Locator("[data-testid='golive-override-confirm']");
+    public ILocator GoLiveLockedHint => _page.Locator("[data-testid='golive-locked-hint']");
+
     public Task NavigateAsync(string? blueprintId = null)
     {
         var url = BaseUrl;
