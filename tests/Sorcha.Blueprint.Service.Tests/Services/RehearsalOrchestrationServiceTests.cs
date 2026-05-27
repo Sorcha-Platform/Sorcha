@@ -1,0 +1,383 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Sorcha.Blueprint.Engine.Implementation;
+using Sorcha.Blueprint.Service.Models;
+using Sorcha.Blueprint.Service.Models.Requests;
+using Sorcha.Blueprint.Service.Models.Responses;
+using Sorcha.Blueprint.Service.Services.Implementation;
+using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Blueprint.Service.Storage;
+using Sorcha.ServiceClients.Blueprint.Models;
+using Sorcha.ServiceClients.Wallet;
+using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
+using ActionModel = Sorcha.Blueprint.Models.Action;
+using ParticipantModel = Sorcha.Blueprint.Models.Participant;
+
+namespace Sorcha.Blueprint.Service.Tests.Services;
+
+/// <summary>
+/// Feature 142 (T028 / T022) — tests for <see cref="RehearsalOrchestrationService"/>: sandbox
+/// provisioning + ephemeral wallet minting on start, RehearsalPass on terminal success, reset
+/// idempotency, and sandbox isolation (the orchestration only ever targets the sandbox register).
+/// </summary>
+public class RehearsalOrchestrationServiceTests
+{
+    private const string OrgId = "org-1";
+    private const string BlueprintId = "bp-1";
+    private const string SandboxRegisterId = "sandbox-reg-abc";
+    private const string LiveRegisterId = "live-reg-DANGER";
+
+    private readonly Mock<ISandboxRegisterProvider> _sandboxProvider = new();
+    private readonly Mock<IWalletServiceClient> _walletClient = new();
+    private readonly Mock<IBlueprintStore> _blueprintStore = new();
+    private readonly Mock<IPublishService> _publishService = new();
+    private readonly Mock<IActionExecutionService> _execution = new();
+    private readonly InMemoryRehearsalPassStore _passStore = new();
+    private readonly Mock<IInstanceStore> _instanceStore = new();
+
+    private int _walletCounter;
+
+    public RehearsalOrchestrationServiceTests()
+    {
+        _sandboxProvider
+            .Setup(p => p.GetOrCreateSandboxRegisterAsync(OrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SandboxRegisterId);
+
+        _walletClient
+            .Setup(w => w.CreateWalletAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new WalletInfo
+            {
+                Address = $"ws11q-sandbox-{Interlocked.Increment(ref _walletCounter)}",
+                Name = "sandbox",
+                PublicKey = "pk",
+                Algorithm = "ED25519",
+                Status = "Active",
+                Tenant = OrgId,
+                Owner = "sandbox-owner",
+            });
+
+        // Default: blueprint valid, publish succeeds, instance creates.
+        _publishService
+            .Setup(p => p.ValidateAsync(BlueprintId))
+            .ReturnsAsync(new BlueprintValidationResult(BlueprintId, "Title", true, [], []));
+
+        _publishService
+            .Setup(p => p.PublishAsync(BlueprintId, It.IsAny<string>()))
+            .ReturnsAsync((string id, string reg) =>
+                PublishResult.Success(new PublishedBlueprint { BlueprintId = id, RegisterId = reg }));
+
+        _instanceStore
+            .Setup(s => s.CreateAsync(It.IsAny<Instance>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Instance i, CancellationToken _) => i);
+
+        _blueprintStore
+            .Setup(s => s.GetAsync(BlueprintId))
+            .ReturnsAsync(TwoStepBlueprint());
+    }
+
+    private RehearsalOrchestrationService CreateService()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped(_ => _blueprintStore.Object);
+        services.AddScoped(_ => _publishService.Object);
+        services.AddScoped(_ => _walletClient.Object);
+        services.AddScoped(_ => _execution.Object);
+        services.AddScoped(_ => _instanceStore.Object);
+        services.AddSingleton<IRehearsalPassStore>(_passStore);
+        var provider = services.BuildServiceProvider();
+
+        return new RehearsalOrchestrationService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            _sandboxProvider.Object,
+            NullLogger<RehearsalOrchestrationService>.Instance,
+            new ExecutableDefinitionHasher());
+    }
+
+    // -------------------------------------------------------------------------
+    // StartFull
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task StartFull_ProvisionsSandbox_MintsPerRoleWallets_ReturnsInProgressWithSteps()
+    {
+        var service = CreateService();
+
+        var rehearsal = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+
+        rehearsal.Outcome.Should().Be(RehearsalOutcome.InProgress);
+        rehearsal.Mode.Should().Be(RehearsalMode.Full);
+        rehearsal.SandboxRegisterId.Should().Be(SandboxRegisterId);
+        rehearsal.Steps.Should().HaveCount(2);
+        rehearsal.Steps[0].Status.Should().Be(RehearsalStepStatus.Current);
+        rehearsal.Steps[1].Status.Should().Be(RehearsalStepStatus.Pending);
+
+        // One ephemeral wallet per participant role (2 participants).
+        _walletClient.Verify(w => w.CreateWalletAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            OrgId, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _sandboxProvider.Verify(p => p.GetOrCreateSandboxRegisterAsync(
+            OrgId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task StartFull_BlueprintHasBlockingErrors_ThrowsRehearsalValidationException()
+    {
+        _publishService
+            .Setup(p => p.ValidateAsync(BlueprintId))
+            .ReturnsAsync(new BlueprintValidationResult(
+                BlueprintId, "Title", false,
+                [new ValidationIssueDto("error", "Action 1 sender is not a participant")],
+                []));
+        var service = CreateService();
+
+        var act = () => service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+
+        var ex = (await act.Should().ThrowAsync<RehearsalValidationException>()).Which;
+        ex.Errors.Should().ContainSingle().Which.Should().Contain("not a participant");
+
+        // No sandbox provisioned, no wallets minted when validation blocks.
+        _sandboxProvider.Verify(p => p.GetOrCreateSandboxRegisterAsync(
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _walletClient.Verify(w => w.CreateWalletAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // -------------------------------------------------------------------------
+    // Sandbox isolation — only ever targets the sandbox register
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SubmitStep_OnlyEverTargetsSandboxRegister_NeverLive()
+    {
+        _execution
+            .Setup(e => e.ExecuteAsync(
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<ActionSubmissionRequest>(),
+                It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NextActionResponseFor(nextActionId: 2));
+
+        var service = CreateService();
+        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+        await service.SwitchRoleAsync(started.RehearsalId, "applicant");
+
+        await service.SubmitStepAsync(started.RehearsalId, actionId: 1, payloadJson: "{\"x\":1}");
+
+        // Assert the execution pipeline + publish only ever saw the sandbox register id.
+        _execution.Verify(e => e.ExecuteAsync(
+            It.IsAny<string>(), It.IsAny<int>(),
+            It.Is<ActionSubmissionRequest>(r => r.RegisterAddress == SandboxRegisterId),
+            It.IsAny<string>(), null, It.IsAny<CancellationToken>()), Times.Once);
+        _execution.Verify(e => e.ExecuteAsync(
+            It.IsAny<string>(), It.IsAny<int>(),
+            It.Is<ActionSubmissionRequest>(r => r.RegisterAddress == LiveRegisterId),
+            It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        _publishService.Verify(p => p.PublishAsync(BlueprintId, SandboxRegisterId), Times.Once);
+        _publishService.Verify(p => p.PublishAsync(BlueprintId, LiveRegisterId), Times.Never);
+        _instanceStore.Verify(s => s.CreateAsync(
+            It.Is<Instance>(i => i.RegisterId == SandboxRegisterId), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SubmitStep_SignsAsActingRoleWallet()
+    {
+        _execution
+            .Setup(e => e.ExecuteAsync(
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<ActionSubmissionRequest>(),
+                It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NextActionResponseFor(nextActionId: 2));
+
+        var service = CreateService();
+        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+        await service.SwitchRoleAsync(started.RehearsalId, "applicant");
+
+        await service.SubmitStepAsync(started.RehearsalId, 1, "{}");
+
+        // The acting role's ephemeral sandbox wallet is the SenderWallet (server signs as it).
+        _execution.Verify(e => e.ExecuteAsync(
+            It.IsAny<string>(), 1,
+            It.Is<ActionSubmissionRequest>(r => r.SenderWallet.StartsWith("ws11q-sandbox-")),
+            It.IsAny<string>(), null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // -------------------------------------------------------------------------
+    // RehearsalPass on terminal success
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SubmitStep_TerminalSuccess_WritesExactlyOneRehearsalPassWithCurrentExecDefHash()
+    {
+        // First step routes to action 2; second step completes the workflow.
+        _execution
+            .SetupSequence(e => e.ExecuteAsync(
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<ActionSubmissionRequest>(),
+                It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NextActionResponseFor(nextActionId: 2))
+            .ReturnsAsync(CompleteResponse());
+
+        var hasher = new ExecutableDefinitionHasher();
+        var expectedHash = hasher.ComputeHash(TwoStepBlueprint());
+
+        var service = CreateService();
+        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+
+        await service.SwitchRoleAsync(started.RehearsalId, "applicant");
+        await service.SubmitStepAsync(started.RehearsalId, 1, "{}");
+        await service.SwitchRoleAsync(started.RehearsalId, "approver");
+        var final = await service.SubmitStepAsync(started.RehearsalId, 2, "{}");
+
+        final!.Outcome.Should().Be(RehearsalOutcome.Passed);
+
+        var pass = await _passStore.GetLatestAsync(BlueprintId, expectedHash);
+        pass.Should().NotBeNull();
+        pass!.ExecDefHash.Should().Be(expectedHash);
+        pass.ExecDefHash.Should().Be(started.ExecDefHash);
+        pass.SandboxRegisterId.Should().Be(SandboxRegisterId);
+    }
+
+    [Fact]
+    public async Task SubmitStep_NonTerminal_DoesNotWriteRehearsalPass()
+    {
+        _execution
+            .Setup(e => e.ExecuteAsync(
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<ActionSubmissionRequest>(),
+                It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NextActionResponseFor(nextActionId: 2));
+
+        var service = CreateService();
+        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+        await service.SwitchRoleAsync(started.RehearsalId, "applicant");
+
+        var after = await service.SubmitStepAsync(started.RehearsalId, 1, "{}");
+
+        after!.Outcome.Should().Be(RehearsalOutcome.InProgress);
+        var pass = await _passStore.GetLatestAsync(BlueprintId, started.ExecDefHash);
+        pass.Should().BeNull();
+    }
+
+    // -------------------------------------------------------------------------
+    // Reset — discards instance + wallet map, idempotent
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Reset_DiscardsInstanceAndWalletMap_SecondResetIsIdempotent()
+    {
+        var service = CreateService();
+        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+
+        var first = await service.ResetAsync(started.RehearsalId);
+        var second = await service.ResetAsync(started.RehearsalId);
+
+        first.Should().BeTrue();
+        second.Should().BeTrue(); // session still present; reset is idempotent
+
+        var afterReset = await service.GetAsync(started.RehearsalId);
+        afterReset!.Outcome.Should().Be(RehearsalOutcome.Abandoned);
+        afterReset.CurrentActingRole.Should().BeEmpty();
+        afterReset.Steps.Should().OnlyContain(s => s.Status == RehearsalStepStatus.Pending);
+    }
+
+    [Fact]
+    public async Task Reset_UnknownRehearsal_ReturnsFalse()
+    {
+        var service = CreateService();
+
+        var result = await service.ResetAsync(Guid.NewGuid());
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SubmitStep_AfterReset_Throws()
+    {
+        var service = CreateService();
+        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+        await service.ResetAsync(started.RehearsalId);
+
+        var act = () => service.SubmitStepAsync(started.RehearsalId, 1, "{}");
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    // -------------------------------------------------------------------------
+    // Get / SwitchRole
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Get_UnknownRehearsal_ReturnsNull()
+    {
+        var service = CreateService();
+
+        var result = await service.GetAsync(Guid.NewGuid());
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SwitchRole_UnknownRole_Throws()
+    {
+        var service = CreateService();
+        var started = await service.StartFullAsync(BlueprintId, OrgId, Guid.NewGuid());
+
+        var act = () => service.SwitchRoleAsync(started.RehearsalId, "nope");
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    // -------------------------------------------------------------------------
+    // Fixtures
+    // -------------------------------------------------------------------------
+
+    private static BlueprintModel TwoStepBlueprint() => new()
+    {
+        Id = BlueprintId,
+        Title = "Two Step",
+        OrganizationId = OrgId,
+        Participants =
+        [
+            new ParticipantModel { Id = "applicant", Name = "Applicant" },
+            new ParticipantModel { Id = "approver", Name = "Approver" },
+        ],
+        Actions =
+        [
+            new ActionModel { Id = 1, Title = "Apply", Sender = "applicant", IsStartingAction = true },
+            new ActionModel { Id = 2, Title = "Approve", Sender = "approver" },
+        ],
+    };
+
+    private static ActionSubmissionResponse NextActionResponseFor(int nextActionId) => new()
+    {
+        TransactionId = "tx-" + Guid.NewGuid().ToString("N")[..8],
+        InstanceId = "inst-1",
+        IsComplete = false,
+        NextActions =
+        [
+            new NextActionResponse
+            {
+                ActionId = nextActionId,
+                ActionTitle = "Approve",
+                ParticipantId = "approver",
+            },
+        ],
+    };
+
+    private static ActionSubmissionResponse CompleteResponse() => new()
+    {
+        TransactionId = "tx-final",
+        InstanceId = "inst-1",
+        IsComplete = true,
+        NextActions = [],
+    };
+}
