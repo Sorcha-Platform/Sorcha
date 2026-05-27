@@ -1,13 +1,69 @@
 @* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
-@* Feature 142 — Understand stage canvas (journey-first visualisation). *@
-@* Placeholder scaffold (T001); built out in User Story 1 (T016–T017). *@
-@* Hosts JourneyView by default with a "Show technical flow" toggle to DiagramPane *@
-@* and click-step detail reusing FormPreviewPane/SorchaFormRenderer. *@
+@* Feature 142 — Understand stage canvas (journey-first visualisation; T017 / FR-006..FR-009). *@
+@* JourneyView is the default; a "Show technical flow" toggle swaps in the technical node/route *@
+@* graph (DiagramPane). Selecting a journey step (Context.ActiveActionId) reveals that action's *@
+@* participant-facing form via the existing FormPreviewPane. *@
 
 @namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Stages
+@using MudBlazor
+@using Sorcha.UI.Core.Components.Designer
+@using Sorcha.UI.Core.Services.Designer
+@using Sorcha.UI.Web.Client.Pages.DesignerShell.Panes
+@inject DesignerContext Context
+@implements IDisposable
 
 <div class="designer-stage designer-stage--understand" data-testid="stage-understand">
-    @* TODO(T016/T017): JourneyView + technical-flow toggle + step detail. *@
+    <div class="understand-stage__toolbar">
+        <MudSwitch T="bool"
+                   Value="_technicalFlow"
+                   ValueChanged="OnToggleTechnicalFlow"
+                   Color="Color.Primary"
+                   Label="Show technical flow"
+                   data-testid="understand-technical-toggle" />
+    </div>
+
+    <div class="understand-stage__main">
+        @if (_technicalFlow)
+        {
+            <div class="understand-stage__diagram">
+                <DiagramPane />
+            </div>
+        }
+        else
+        {
+            <div class="understand-stage__journey">
+                <JourneyView />
+            </div>
+
+            @if (HasSelectedStep)
+            {
+                <div class="understand-stage__detail" data-testid="understand-step-detail">
+                    <FormPreviewPane />
+                </div>
+            }
+        }
+    </div>
 </div>
+
+@code {
+    private bool _technicalFlow;
+
+    /// <summary>True when a journey step is selected (drives the form-detail region).</summary>
+    private bool HasSelectedStep => !string.IsNullOrEmpty(Context.ActiveActionId);
+
+    /// <inheritdoc />
+    protected override void OnInitialized() => Context.Changed += OnContextChanged;
+
+    private void OnContextChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnToggleTechnicalFlow(bool value)
+    {
+        _technicalFlow = value;
+        StateHasChanged();
+    }
+
+    /// <inheritdoc />
+    public void Dispose() => Context.Changed -= OnContextChanged;
+}
