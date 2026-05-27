@@ -7,6 +7,15 @@
 
 **Authoritative design**: `docs/superpowers/specs/2026-05-27-blueprint-lifecycle-overhaul-design.md`
 
+## Clarifications
+
+### Session 2026-05-27
+
+- Q: Where is the rehearsal→Go-live gate enforced? → A: Hybrid — the UI disables Go live, and the publish operation enforces a **soft** server-side gate (blocks an unrehearsed version with a warning) that a user holding the register's publish-governance authority may explicitly override; every override is recorded for audit.
+- Q: How does "act as each participant" sign during a full rehearsal? → A: System-managed ephemeral identities — the platform auto-creates per-role sandbox wallets and signs as the acting role on the administrator's behalf; they are discarded with the disposable sandbox. The administrator needs no wallet knowledge.
+- Q: What does the quick dry-run exercise? → A: Flow only — schema validation, calculations, routing, and disclosure. Credential prerequisites and credential issuance are NOT exercised in dry-run (clearly marked "checked in full rehearsal"); they are owned by the full rehearsal.
+- Q: What invalidates a passing rehearsal? → A: Only changes to the **executable definition** (participants, actions, routes, data schemas, calculations, disclosures, credential prerequisites/issuance, and behavioural form keywords such as file upload or credential-offer) re-lock Go live. Purely **presentational** layout edits (sectioning, wizard paging, width, introduction, review-summary, address-lookup, profile-autofill binding) do NOT re-lock — so a published service's layout may have been refined after its rehearsal.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The persona throughout is a **non-technical authority/control administrator** — e.g. a council officer who wants certified individuals to be able to apply for a service or grant. They are not expected to understand Blueprints, registers, credentials, or schemas as technical artefacts. The feature's job is to let them turn a plain-English intent into a live, governed public service, and to amend it over time, while the experience teaches the underlying model as they go.
@@ -118,7 +127,7 @@ The administrator can reopen a service that is already live, make changes, and p
 ### Edge Cases
 
 - **Blueprint has blocking validation errors**: Rehearse is unavailable; the rail communicates what must be fixed before rehearsal.
-- **Administrator edits the Blueprint after a passing rehearsal**: the passing state is invalidated and Go live re-locks until the new version passes rehearsal (prevents publishing something other than what was rehearsed).
+- **Administrator edits the Blueprint after a passing rehearsal**: an executable-definition change invalidates the passing state and re-locks Go live until re-rehearsed (FR-023); a purely presentational layout edit does not re-lock.
 - **Administrator has no register they may publish to**: Go live explains there is no eligible register and how to obtain rights, rather than presenting an empty, confusing picker.
 - **Selected live register is owned by another node / not caught up / in developer mode**: the system-info card surfaces this so the administrator can make an informed choice (e.g. avoid publishing a public service to a developer-mode register).
 - **Test-register provisioning fails or is slow**: the rehearsal surfaces a clear status and a retry; the quick dry-run remains available for iteration meanwhile.
@@ -134,7 +143,7 @@ The administrator can reopen a service that is already live, make changes, and p
 - **FR-001**: The designer MUST present a single workspace organised as one staged path with a persistent rail showing the stages Describe, Understand, Rehearse, and Go live.
 - **FR-002**: The rail MUST indicate, per stage, whether it is completed, current, available, or locked, and MUST keep itself to a compact footprint with explanatory copy presented on hover rather than as permanent text.
 - **FR-003**: The administrator MUST be able to move between available stages freely (non-linear), while locked stages remain inaccessible until their precondition is met.
-- **FR-004**: Go live MUST remain locked until the current Blueprint version has passed a full rehearsal, and the lock MUST explain the reason in plain language.
+- **FR-004**: Go live MUST remain locked in the UI until the current Blueprint version has passed a full rehearsal, and the lock MUST explain the reason in plain language. (UI gate; the server-side soft gate and override are FR-032.)
 - **FR-005**: A first-time administrator MUST be offered a dismissible guidance overlay introducing the staged path.
 
 **Understand / visualisation**
@@ -156,19 +165,20 @@ The administrator can reopen a service that is already live, make changes, and p
 - **FR-017**: Authored layout MUST be persisted on the Blueprint in the platform's standard form-layout representation, such that a hand-edited and a UI-edited Blueprint are equivalent.
 
 **Rehearse**
-- **FR-018**: The administrator MUST be able to run a quick dry-run that simulates the flow in the designer without creating any register.
+- **FR-018**: The administrator MUST be able to run a quick dry-run that simulates the flow in the designer without creating any register. The dry-run MUST exercise schema validation, calculations, routing, and disclosure; it MUST NOT exercise credential prerequisites or credential issuance, and any such step MUST be clearly marked as "checked in full rehearsal" so the dry-run is not mistaken for full fidelity.
 - **FR-019**: The administrator MUST be able to run a full rehearsal that exercises the real pipeline on a private test register that is provisioned automatically, without the administrator selecting or configuring a register.
 - **FR-020**: The full rehearsal's test register MUST be isolated from any live/public register, clearly marked as a private sandbox, and disposable (resettable/deletable).
-- **FR-021**: Both rehearsal modes MUST let one administrator act as each participant in turn (role switching) to walk a multi-party flow end-to-end.
+- **FR-021**: Both rehearsal modes MUST let one administrator act as each participant in turn (role switching) to walk a multi-party flow end-to-end. For a full rehearsal, the platform MUST mint ephemeral per-role sandbox identities and sign as the acting role on the administrator's behalf (the administrator needs no wallet of their own per role); these identities MUST be discarded when the sandbox is reset/deleted.
 - **FR-022**: The full rehearsal MUST exercise the real behaviours the live service would (including any credential prerequisite check, routing on decisions, and credential issuance/delivery) and MUST present a plain-language log of the real events.
-- **FR-023**: A successful full rehearsal MUST be recorded against the current Blueprint version and MUST unlock Go live; any subsequent change to the Blueprint MUST invalidate that state and re-lock Go live.
+- **FR-023**: A successful full rehearsal MUST be recorded against the rehearsed **executable definition** and MUST unlock Go live. A subsequent change that affects the executable definition (participants, actions, routes, data schemas, calculations, disclosures, credential prerequisites/issuance, or behavioural form keywords such as file upload or credential-offer) MUST invalidate that state and re-lock Go live. Purely presentational layout changes (sectioning, wizard paging, width, introduction, review-summary, address-lookup, profile-autofill binding) MUST NOT re-lock.
 
 **Go live / governance**
-- **FR-024**: Go live MUST publish the exact Blueprint version that was rehearsed.
+- **FR-024**: Go live MUST publish the current Blueprint version, whose **executable definition** MUST match a passing full rehearsal; presentational layout may have been refined after that rehearsal without re-locking (FR-023).
 - **FR-025**: The register picker MUST present candidate live registers as a selectable list and MUST clearly distinguish registers the administrator may not publish to.
 - **FR-026**: Selecting a register MUST present a system-information detail card sourced from that register's own metadata, including ownership, validation (validators and required signatures), visibility, synchronisation state, developer-mode status, count of services already published, and the administrator's governance role.
 - **FR-027**: Publication MUST enforce the existing register publish-governance check and MUST refuse, with a clear reason and no record written, when the administrator is not authorised.
 - **FR-028**: A successful publication MUST create a new immutable, versioned record on the chosen register and MUST reflect the service as live with its version.
+- **FR-032**: The publish operation MUST verify server-side that the **executable definition** of the Blueprint version being published matches a recorded passing full rehearsal (presentational-only differences do not fail this check). If it does not, publication MUST be blocked with a clear warning; a user holding the register's publish-governance authority MAY override the block by explicit confirmation. Every override (who, when, which version, which register, and the reason if given) MUST be recorded for audit.
 
 **Amend loop**
 - **FR-029**: The administrator MUST be able to reopen an already-published service, which MUST derive a new draft version.
@@ -190,7 +200,7 @@ The administrator can reopen a service that is already live, make changes, and p
 ### Measurable Outcomes
 
 - **SC-001**: A non-technical administrator, given only a plain-English intent, can produce a working service and take it live following the staged path without external help or documentation, in a single session.
-- **SC-002**: 100% of services taken live have been through a successful full rehearsal of the exact published version (no service can be published without rehearsing the version being published).
+- **SC-002**: Every service taken live has either passed a full rehearsal of the published version's executable definition or carries a recorded, attributable override by an authorised user — publishing an unrehearsed executable definition is impossible without such a logged override.
 - **SC-003**: An administrator can complete a full rehearsal of a typical three-step service (apply → review → issue) end-to-end, acting as each participant, in under 5 minutes from a validated Blueprint.
 - **SC-004**: A schema imported with no layout is usable in a form (renders with sensible fields) with zero manual steps, and can be re-laid-out without editing raw schema text.
 - **SC-005**: Before confirming Go live, an administrator can identify the target register's owner, validation, visibility, mode, and their own publish rights from the on-screen detail without leaving the workspace.
@@ -202,7 +212,7 @@ The administrator can reopen a service that is already live, make changes, and p
 
 - **Single-author editing**: One administrator authors a given service at a time; collaborative/concurrent multi-author editing is out of scope.
 - **Test-register provisioning exists or is built as part of this feature**: a mechanism to auto-provision a private developer-mode register plus sandbox participant identities for a rehearsal, and to tear it down, is assumed available to the workspace; its precise ownership (which service provisions it) is an implementation decision deferred to planning.
-- **Sandbox signing**: during a full rehearsal, acting as different participants uses sandbox identities created for the rehearsal; the administrator does not need real participant wallets to walk the flow.
+- **Sandbox signing**: during a full rehearsal the platform mints ephemeral per-role sandbox identities and signs as the acting role on the administrator's behalf; the administrator does not supply or manage any participant wallet, and the identities are discarded with the sandbox (resolved — Clarifications 2026-05-27).
 - **Register system information is obtainable**: ownership/relationship, validator roster and required signatures, visibility, synchronisation state, and developer-mode status are available to surface in the Go-live detail card (possibly via a new aggregate read over existing data).
 - **Existing governance is authoritative**: this feature surfaces and enforces the existing register publish-governance roster; it does not introduce new governance mechanics.
 - **Reusing the live form and run components**: the form surface and the full-rehearsal run reuse the production renderer and execution path rather than re-implementing them, so rehearsal fidelity matches production.
@@ -213,6 +223,7 @@ The administrator can reopen a service that is already live, make changes, and p
 - The currently non-functional "open/load an existing Blueprint into the designer" path must be made to work (blocks the amend loop and reopening drafts).
 - Automatic provisioning and teardown of a disposable developer-mode test register, with sandbox participant identities.
 - A register system-information source sufficient to populate the Go-live detail card (ownership, validation roster + required signatures, visibility, sync state, developer-mode, published count, caller's governance role).
+- A defined classification of Blueprint form/layout keywords as **presentational** (do not re-lock the rehearsal gate) versus **behavioural** (part of the executable definition; re-lock), used by FR-023/FR-032. Initial split: presentational = sectioning, wizard paging, width, introduction, review-summary, address-lookup, profile-autofill binding; behavioural = file upload, credential-offer (and anything that changes data submitted, transactions produced, or credentials consumed/issued).
 
 ## Out of Scope
 
