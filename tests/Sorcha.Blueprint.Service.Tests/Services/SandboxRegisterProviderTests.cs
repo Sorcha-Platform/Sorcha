@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Blueprint.Service.Services.Implementation;
@@ -25,8 +26,19 @@ public class SandboxRegisterProviderTests
     private int _registerCounter;
     private int _walletCounter;
 
-    private SandboxRegisterProvider CreateProvider() =>
-        new(_registerClient.Object, _walletClient.Object, NullLogger<SandboxRegisterProvider>.Instance);
+    private SandboxRegisterProvider CreateProvider()
+    {
+        // The provider is a singleton that resolves its scoped clients per-operation via
+        // IServiceScopeFactory; back that factory with the mocks (registered singleton so they
+        // resolve inside the created scopes and the Verify assertions hit the same instances).
+        var services = new ServiceCollection();
+        services.AddSingleton(_registerClient.Object);
+        services.AddSingleton(_walletClient.Object);
+        var provider = services.BuildServiceProvider();
+        return new SandboxRegisterProvider(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<SandboxRegisterProvider>.Instance);
+    }
 
     public SandboxRegisterProviderTests()
     {

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
@@ -44,8 +45,10 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// </remarks>
 public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
 {
-    private readonly IRegisterServiceClient _registerClient;
-    private readonly IWalletServiceClient _walletClient;
+    // Scoped clients (IRegisterServiceClient / IWalletServiceClient) are resolved per-operation
+    // from a fresh scope: this provider is a singleton (its per-org caches are process-wide), so it
+    // cannot capture scoped services as fields (DI scope validation rejects it at startup).
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SandboxRegisterProvider> _logger;
 
     /// <summary>org id → sandbox register id (resolved once, reused thereafter).</summary>
@@ -71,12 +74,10 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
 
     /// <summary>Initialises a new instance of the <see cref="SandboxRegisterProvider"/> class.</summary>
     public SandboxRegisterProvider(
-        IRegisterServiceClient registerClient,
-        IWalletServiceClient walletClient,
+        IServiceScopeFactory scopeFactory,
         ILogger<SandboxRegisterProvider> logger)
     {
-        _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
-        _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -110,11 +111,16 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
                 "Provisioning sandbox register for organisation {OrgId} (devMode, sandbox-tagged, not advertised)",
                 organizationId);
 
+            // Scoped clients live for the duration of this creation ceremony only.
+            using var scope = _scopeFactory.CreateScope();
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+            var walletClient = scope.ServiceProvider.GetRequiredService<IWalletServiceClient>();
+
             // Mint (or reuse) the org's stable sandbox-owner wallet — the attestation signer.
-            var ownerWalletAddress = await GetOrCreateOwnerWalletAsync(organizationId, cancellationToken);
+            var ownerWalletAddress = await GetOrCreateOwnerWalletAsync(organizationId, walletClient, cancellationToken);
 
             var resolvedId = await RunCreationCeremonyAsync(
-                organizationId, ownerWalletAddress, cancellationToken);
+                organizationId, ownerWalletAddress, registerClient, walletClient, cancellationToken);
 
             _byOrg[organizationId] = resolvedId;
 
@@ -136,6 +142,7 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
     /// </summary>
     private async Task<string> GetOrCreateOwnerWalletAsync(
         string organizationId,
+        IWalletServiceClient walletClient,
         CancellationToken cancellationToken)
     {
         if (_ownerWalletByOrg.TryGetValue(organizationId, out var existing))
@@ -143,7 +150,7 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
             return existing;
         }
 
-        var wallet = await _walletClient.CreateWalletAsync(
+        var wallet = await walletClient.CreateWalletAsync(
             name: $"sandbox-owner-{organizationId}",
             algorithm: OwnerWalletAlgorithm,
             owner: $"sandbox-owner:{organizationId}",
@@ -161,6 +168,8 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
     private async Task<string> RunCreationCeremonyAsync(
         string organizationId,
         string ownerWalletAddress,
+        IRegisterServiceClient registerClient,
+        IWalletServiceClient walletClient,
         CancellationToken cancellationToken)
     {
         // Phase 1 — initiate: devMode + sandbox tag + not advertised, owned by the org's wallet.
@@ -184,7 +193,7 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
             ]
         };
 
-        var initiateResponse = await _registerClient.InitiateRegisterCreationAsync(
+        var initiateResponse = await registerClient.InitiateRegisterCreationAsync(
             initiateRequest, cancellationToken);
 
         // Phase 2 — sign each attestation hash with the owner wallet (pre-hashed signing), then
@@ -195,7 +204,7 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
         {
             var hashBytes = Convert.FromHexString(attestation.DataToSign);
 
-            var signResult = await _walletClient.SignTransactionAsync(
+            var signResult = await walletClient.SignTransactionAsync(
                 walletAddress: attestation.WalletId,
                 transactionData: hashBytes,
                 derivationPath: null,
@@ -219,7 +228,7 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
             SignedAttestations = signedAttestations
         };
 
-        var finalizeResponse = await _registerClient.FinalizeRegisterCreationAsync(
+        var finalizeResponse = await registerClient.FinalizeRegisterCreationAsync(
             finalizeRequest, cancellationToken);
 
         return string.IsNullOrWhiteSpace(finalizeResponse.RegisterId)
