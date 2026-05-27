@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Blueprint.Models;
 using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Blueprint;
@@ -417,6 +418,40 @@ public class BlueprintServiceClient : IBlueprintServiceClient
             JsonSerializer.Serialize(new { issuerWallet, newExpiryDuration }, JsonOptions),
             "refresh credential",
             cancellationToken);
+
+    // =========================================================================
+    // Feature 142 — Blueprint Design Lifecycle Overhaul.
+    // Signatures wired here for compile; the rehearsal / publish-override / amend
+    // behaviour is implemented in US2/US3. Thin throwing stubs until then.
+    // =========================================================================
+
+    /// <inheritdoc />
+    public Task<Rehearsal?> StartRehearsalAsync(string blueprintId, StartRehearsalRequest request, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("TODO(US2/US3): rehearsal start — Feature 142.");
+
+    /// <inheritdoc />
+    public Task<Rehearsal?> GetRehearsalAsync(string blueprintId, Guid rehearsalId, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("TODO(US2/US3): rehearsal get — Feature 142.");
+
+    /// <inheritdoc />
+    public Task<bool> ResetRehearsalAsync(string blueprintId, Guid rehearsalId, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("TODO(US2/US3): rehearsal reset/delete — Feature 142.");
+
+    /// <inheritdoc />
+    public Task<Rehearsal?> SwitchRehearsalRoleAsync(string blueprintId, Guid rehearsalId, SwitchRehearsalRoleRequest request, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("TODO(US2/US3): rehearsal role switch — Feature 142.");
+
+    /// <inheritdoc />
+    public Task<Rehearsal?> SubmitRehearsalStepAsync(string blueprintId, Guid rehearsalId, SubmitRehearsalStepRequest request, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("TODO(US2/US3): rehearsal step submit — Feature 142.");
+
+    /// <inheritdoc />
+    public Task<PublishBlueprintOutcome?> PublishBlueprintAsync(string blueprintId, PublishBlueprintRequest request, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("TODO(US2/US3): governance-hard / rehearsal-soft publish — Feature 142.");
+
+    /// <inheritdoc />
+    public Task<CloneFromPublishedResult?> CloneFromPublishedAsync(CloneFromPublishedRequest request, CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException("TODO(US2/US3): clone-from-published (amend) — Feature 142.");
 
     private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)
     {
