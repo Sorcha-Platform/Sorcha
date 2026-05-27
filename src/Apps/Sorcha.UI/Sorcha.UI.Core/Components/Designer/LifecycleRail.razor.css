@@ -1,0 +1,18 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+.lifecycle-rail {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.lifecycle-rail__sep {
+    opacity: 0.4;
+}
+
+.lifecycle-rail__lock {
+    margin-left: 0.25rem;
+    font-size: 0.85em;
+    line-height: 1;
+}

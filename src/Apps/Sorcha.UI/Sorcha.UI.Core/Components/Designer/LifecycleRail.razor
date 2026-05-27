@@ -1,0 +1,198 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+@using Sorcha.UI.Core.Services.Designer
+@inject DesignerContext Context
+@implements IDisposable
+
+@*
+    Feature 142 lifecycle rail: a compact, always-visible single line of the four golden-path stages
+    (Describe -> Understand -> Rehearse -> Go live). Per-stage visual state is done / current / available
+    / locked. Order is enforced only where it matters: Go live is locked until a full rehearsal passes
+    (FR-002 / FR-004). Explanatory copy lives in hover tooltips, never as permanent text.
+*@
+
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="lifecycle-rail" data-testid="lifecycle-rail">
+    @foreach (var stage in _stages)
+    {
+        var state = StateFor(stage);
+        var navigable = state is StageVisual.Done or StageVisual.Available or StageVisual.Current;
+
+        <MudTooltip Text="@TooltipFor(stage, state)">
+            <MudButton Variant="@(state == StageVisual.Current ? Variant.Filled : Variant.Text)"
+                       Color="@ColorFor(state)"
+                       Size="Size.Small"
+                       DisableElevation="true"
+                       Disabled="@(!navigable)"
+                       StartIcon="@IconFor(state)"
+                       OnClick="@(() => NavigateTo(stage))"
+                       data-testid="@TestIdFor(stage)"
+                       data-stage-state="@StateName(state)">
+                @LabelFor(stage)
+                @if (stage == LifecycleStage.GoLive && state == StageVisual.Locked)
+                {
+                    <span data-testid="rail-golive-lock" class="lifecycle-rail__lock">🔒</span>
+                }
+            </MudButton>
+        </MudTooltip>
+
+        @if (stage != LifecycleStage.GoLive)
+        {
+            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" Class="lifecycle-rail__sep" />
+        }
+    }
+</MudStack>
+
+@code {
+    private static readonly LifecycleStage[] _stages =
+    [
+        LifecycleStage.Describe,
+        LifecycleStage.Understand,
+        LifecycleStage.Rehearse,
+        LifecycleStage.GoLive,
+    ];
+
+    /// <summary>Visual state of a single rail stage.</summary>
+    private enum StageVisual
+    {
+        /// <summary>An earlier stage the author has moved past.</summary>
+        Done,
+
+        /// <summary>The stage currently shown in the workspace.</summary>
+        Current,
+
+        /// <summary>Reachable but not the current stage.</summary>
+        Available,
+
+        /// <summary>Gated — its precondition is not yet satisfied.</summary>
+        Locked,
+    }
+
+    /// <inheritdoc />
+    protected override void OnInitialized() => Context.Changed += OnContextChanged;
+
+    private void OnContextChanged() => InvokeAsync(StateHasChanged);
+
+    /// <summary>Routes a stage click through the gate; locked stages are not navigable.</summary>
+    private void NavigateTo(LifecycleStage stage)
+    {
+        if (StateFor(stage) == StageVisual.Locked)
+        {
+            return;
+        }
+
+        Context.SetStage(stage);
+    }
+
+    /// <summary>Computes the visual state for a stage from the current designer context and gates.</summary>
+    private StageVisual StateFor(LifecycleStage stage)
+    {
+        if (stage == Context.Lifecycle.CurrentStage)
+        {
+            return StageVisual.Current;
+        }
+
+        var available = IsAvailable(stage);
+        if (!available)
+        {
+            return StageVisual.Locked;
+        }
+
+        // Available and ordered before the current stage => treat as done (✓).
+        return stage < Context.Lifecycle.CurrentStage ? StageVisual.Done : StageVisual.Available;
+    }
+
+    /// <summary>
+    /// Per-stage gating (FR-001..FR-004):
+    /// Describe is always available; Understand needs a blueprint; Rehearse needs a blueprint that
+    /// validates with no blocking errors; Go live needs a recorded passing rehearsal for the current
+    /// executable definition.
+    /// </summary>
+    private bool IsAvailable(LifecycleStage stage) => stage switch
+    {
+        LifecycleStage.Describe => true,
+        LifecycleStage.Understand => Context.Blueprint is not null,
+        LifecycleStage.Rehearse => Context.Blueprint is not null && HasNoBlockingErrors(),
+        LifecycleStage.GoLive => Context.Lifecycle.RehearsalPassedForCurrentExecDef,
+        _ => false,
+    };
+
+    /// <summary>
+    /// "No blocking errors" predicate for the Rehearse gate: a validation result exists, it is valid,
+    /// and it carries zero <see cref="Sorcha.UI.Core.Models.Chat.ValidationError"/> entries (warnings
+    /// do not block).
+    /// </summary>
+    private bool HasNoBlockingErrors() =>
+        Context.Validation is { IsValid: true } v && v.Errors.Count == 0;
+
+    private static string TestIdFor(LifecycleStage stage) => stage switch
+    {
+        LifecycleStage.Describe => "rail-stage-describe",
+        LifecycleStage.Understand => "rail-stage-understand",
+        LifecycleStage.Rehearse => "rail-stage-rehearse",
+        LifecycleStage.GoLive => "rail-stage-golive",
+        _ => "rail-stage-unknown",
+    };
+
+    private static string LabelFor(LifecycleStage stage) => stage switch
+    {
+        LifecycleStage.Describe => "Describe",
+        LifecycleStage.Understand => "Understand",
+        LifecycleStage.Rehearse => "Rehearse",
+        LifecycleStage.GoLive => "Go live",
+        _ => stage.ToString(),
+    };
+
+    private static string StateName(StageVisual state) => state switch
+    {
+        StageVisual.Done => "done",
+        StageVisual.Current => "current",
+        StageVisual.Available => "available",
+        StageVisual.Locked => "locked",
+        _ => "unknown",
+    };
+
+    private static Color ColorFor(StageVisual state) => state switch
+    {
+        StageVisual.Current => Color.Primary,
+        StageVisual.Done => Color.Success,
+        StageVisual.Available => Color.Default,
+        StageVisual.Locked => Color.Default,
+        _ => Color.Default,
+    };
+
+    private static string? IconFor(StageVisual state) => state switch
+    {
+        StageVisual.Done => Icons.Material.Filled.CheckCircle,
+        StageVisual.Locked => Icons.Material.Filled.Lock,
+        _ => null,
+    };
+
+    /// <summary>Hover-only explanatory copy; locked stages explain their gate in plain language.</summary>
+    private string TooltipFor(LifecycleStage stage, StageVisual state)
+    {
+        if (state != StageVisual.Locked)
+        {
+            return stage switch
+            {
+                LifecycleStage.Describe => "Turn a plain-English intent into a draft service.",
+                LifecycleStage.Understand => "See who does what, in order, as a human journey.",
+                LifecycleStage.Rehearse => "Dry-run and rehearse the service end-to-end on a sandbox register.",
+                LifecycleStage.GoLive => "Promote the rehearsed version to a live register.",
+                _ => string.Empty,
+            };
+        }
+
+        return stage switch
+        {
+            LifecycleStage.Understand => "Describe your service first so there's something to visualise.",
+            LifecycleStage.Rehearse => "Fix the outstanding validation errors before you can rehearse.",
+            LifecycleStage.GoLive => "Rehearse a successful end-to-end run before publishing to a live register.",
+            _ => string.Empty,
+        };
+    }
+
+    /// <inheritdoc />
+    public void Dispose() => Context.Changed -= OnContextChanged;
+}
