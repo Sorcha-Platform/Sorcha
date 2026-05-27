@@ -126,8 +126,18 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
         AppendLog(session, RehearsalEventKind.Info,
             $"Created {session.RoleWallets.Count} stand-in participant{(session.RoleWallets.Count == 1 ? "" : "s")} so you can act as each role.");
 
-        // Publish the current draft to the sandbox register (reuse the publish path).
-        var publishResult = await publishService.PublishAsync(blueprintId, sandboxRegisterId);
+        // Publish a sandbox-specific COPY of the blueprint with each NON-starting participant's
+        // ephemeral wallet baked into its walletAddress. The validator resolves sender authorization
+        // from the PUBLISHED blueprint on the register (not our in-memory instance state), so a
+        // null-wallet reviewer/officer would be rejected with VAL_BP_002. Starting-action senders
+        // stay null (open → late-bind on submission; VAL_BP_010 forbids a baked wallet there). The
+        // RehearsalPass keeps the ORIGINAL exec-def hash computed above, so the sandbox copy's wallet
+        // differences never reach the Go-live gate.
+        var sandboxBlueprint = BuildSandboxBlueprint(blueprint, session.RoleWallets, rehearsalId);
+        var savedSandboxBlueprint = await blueprintStore.AddAsync(sandboxBlueprint);
+        var sandboxBlueprintId = savedSandboxBlueprint.Id;
+
+        var publishResult = await publishService.PublishAsync(sandboxBlueprintId, sandboxRegisterId);
         if (!publishResult.IsSuccess)
         {
             session.Outcome = RehearsalOutcome.Failed;
@@ -139,9 +149,9 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             return ToContract(session);
         }
 
-        // Create a fresh sandbox instance.
+        // Create a fresh sandbox instance against the sandbox blueprint copy.
         var instance = await CreateSandboxInstanceAsync(
-            sp, blueprint, blueprintId, sandboxRegisterId, organizationId, session.RoleWallets, cancellationToken);
+            sp, sandboxBlueprint, sandboxBlueprintId, sandboxRegisterId, organizationId, session.RoleWallets, cancellationToken);
         session.InstanceId = instance.Id;
 
         // Build the ordered walk-through steps from the blueprint actions in flow order.
@@ -451,6 +461,49 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             AppendLog(session, RehearsalEventKind.Routed,
                 $"Routed to {string.Join(", ", routedNames)}.");
         }
+    }
+
+    /// <summary>
+    /// Builds a sandbox-specific copy of the blueprint (fresh id, deep-cloned via JSON round-trip so
+    /// the caller's draft is never mutated) with each NON-starting participant's ephemeral wallet
+    /// baked into its <c>WalletAddress</c>. Starting-action senders are left null so open-participant
+    /// late-binding still fires (and VAL_BP_010 is not tripped). This copy is what gets published to
+    /// the sandbox register; the original blueprint and its exec-def hash are untouched.
+    /// </summary>
+    private static BlueprintModel BuildSandboxBlueprint(
+        BlueprintModel original,
+        IReadOnlyDictionary<string, string> roleWallets,
+        Guid rehearsalId)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(original);
+        var clone = System.Text.Json.JsonSerializer.Deserialize<BlueprintModel>(json)
+            ?? throw new InvalidOperationException("Failed to clone blueprint for sandbox rehearsal.");
+
+        clone.Id = $"rehearsal-{rehearsalId:N}";
+
+        var startingSenders = original.Actions
+            .Where(a => a.IsStartingAction)
+            .Select(a => a.Sender)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var participant in clone.Participants)
+        {
+            if (startingSenders.Contains(participant.Id))
+            {
+                participant.WalletAddress = null;
+                continue;
+            }
+
+            if (roleWallets.TryGetValue(participant.Id, out var wallet))
+            {
+                participant.WalletAddress = wallet;
+            }
+        }
+
+        clone.Metadata ??= new Dictionary<string, string>();
+        clone.Metadata["rehearsalSandboxClone"] = "true";
+        return clone;
     }
 
     private async Task<Instance> CreateSandboxInstanceAsync(
