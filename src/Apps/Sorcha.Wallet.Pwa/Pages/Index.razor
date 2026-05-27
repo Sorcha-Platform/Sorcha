@@ -64,7 +64,8 @@
             <ContextChipSwitcher ActiveLabel="@Shell.ActiveLabel"
                                  ActiveContextOrgId="@Shell.ActiveContextOrgId"
                                  Memberships="@Shell.ChipMemberships"
-                                 OnContextSelected="@Shell.OnContextSelectedAsync" />
+                                 OnContextSelected="@Shell.OnContextSelectedAsync"
+                                 OnHero="true" />
         }
         <div class="wallet-hero-actions">
             <MudIconButton Icon="@Icons.Material.Filled.Notifications"
@@ -132,20 +133,35 @@
     }
     else
     {
-        <div data-testid="credentials-list">
-            @foreach (var c in _credentials)
+        @* FOLLOWUP #1 (27 May 2026) — gradient wallet card replaces the
+           dev-placeholder MudCard. Raw VC URL + claim list moved to the
+           credential detail page; the home card carries issuer + name +
+           type chip + meta + faux QR only. *@
+        <div data-testid="credentials-list" class="credential-stack">
+            @{
+                var top = _credentials[0];
+                var topAccent = AccentFor(top);
+            }
+            <CredentialWalletCard Issuer="@IssuerFor(top)"
+                                  Name="@(top.DisplayLabel ?? top.Vct)"
+                                  TypeLabel="@TypeLabelFor(top)"
+                                  Meta="@MetaFor(top)"
+                                  Accent="@topAccent"
+                                  TestId="@($"credential-card-{top.Id}")"
+                                  OnActivated="@(() => Nav.NavigateTo($"credentials/{top.Id}"))" />
+            @if (_credentials.Count > 1)
             {
-                <MudCard Class="mb-3" Style="cursor:pointer;"
+                @* Remaining credentials peek as 32px strips (FOLLOWUP §1 tail). *@
+                @foreach (var c in _credentials.Skip(1))
+                {
+                    <div class="credential-peek"
+                         role="button" tabindex="0"
+                         style="@($"background: linear-gradient(135deg, {AccentFor(c)} 0%, color-mix(in srgb, {AccentFor(c)} 82%, black) 100%);")"
                          @onclick="@(() => Nav.NavigateTo($"credentials/{c.Id}"))"
                          data-testid="@($"credential-card-{c.Id}")">
-                    <MudCardContent>
-                        <MudText Typo="Typo.subtitle1">@(c.DisplayLabel ?? c.Vct)</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@c.Vct</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
-                            Claims: @string.Join(", ", c.AvailableClaimNames)
-                        </MudText>
-                    </MudCardContent>
-                </MudCard>
+                        <span class="credential-peek__eyebrow">@IssuerFor(c) · @(c.DisplayLabel ?? c.Vct)</span>
+                    </div>
+                }
             }
         </div>
     }
@@ -178,18 +194,24 @@
     <RecentActivityFeed Events="@_recentActivityEntries"
                        OnSeeAll="@(() => Nav.NavigateTo("activity"))" />
 
-    @* Feature 125 / PR-B — Sync + demo controls. *@
-    <MudStack Row="true" Spacing="2" Class="mt-4">
-        <MudButton Color="Color.Tertiary" Variant="Variant.Outlined"
-                   StartIcon="@Icons.Material.Filled.Sync"
-                   OnClick="@(() => SyncNowAsync(false))" Disabled="@_syncing">
-            @(_syncing ? "Syncing…" : "Sync now")
-        </MudButton>
-        <MudButton Color="Color.Secondary" Variant="Variant.Text"
-                   OnClick="LoadDemoAsync" Disabled="@_seeding">
-            @(_seeding ? "Loading…" : "Load demo credential")
-        </MudButton>
-    </MudStack>
+    @* FOLLOWUP #4 — matched ghost-button pair, title case. Replaces the
+       mismatched outlined-green Sync + uppercase-purple Load demo combo. *@
+    <div class="wallet-secondary-pair">
+        <button type="button" class="wallet-ghost-button"
+                disabled="@_syncing"
+                data-testid="home-sync-button"
+                @onclick="@(() => SyncNowAsync(false))">
+            <MudIcon Icon="@Icons.Material.Filled.Sync" Size="Size.Small" />
+            <span>@(_syncing ? "Syncing…" : "Sync")</span>
+        </button>
+        <button type="button" class="wallet-ghost-button"
+                disabled="@_seeding"
+                data-testid="home-load-demo-button"
+                @onclick="LoadDemoAsync">
+            <MudIcon Icon="@(hasCreds ? Icons.Material.Filled.Add : Icons.Material.Filled.Download)" Size="Size.Small" />
+            <span>@(_seeding ? "Loading…" : (hasCreds ? "Add" : "Load demo"))</span>
+        </button>
+    </div>
 
     @* Feature 125 / PR-B — Peek footer for other-context content. *@
     <ContextPeekFooter OtherCount="@_otherContextCount"
@@ -568,6 +590,36 @@
         }
         catch (Exception ex) { _seedError = ex.Message; }
         finally { _seeding = false; }
+    }
+
+    // ── FOLLOWUP #1 (27 May 2026) credential card field derivation ──────────
+    // CachedCredential carries IssuerDid + Vct + DisplayLabel but no issuer
+    // display name or accent today. Until the issuer registry exposes those,
+    // derive readable defaults here. The demo VC (issued by did:sorcha:org:demo)
+    // gets the sorcha.dev eyebrow + EU-ID type chip + the "Demo · For testing
+    // only" meta line called out explicitly in the followup.
+    private static bool IsDemo(CachedCredential c) =>
+        string.Equals(c.IssuerDid, "did:sorcha:org:demo", StringComparison.OrdinalIgnoreCase);
+
+    private static string IssuerFor(CachedCredential c) =>
+        IsDemo(c) ? "sorcha.dev" : (c.IssuerDid ?? "Sorcha");
+
+    private static string AccentFor(CachedCredential c) =>
+        // Default to brand blue; later: pull from issuer registry / theme.
+        "#667eea";
+
+    private static string TypeLabelFor(CachedCredential c) =>
+        IsDemo(c) ? "EU-ID" : ShortVct(c.Vct);
+
+    private static string MetaFor(CachedCredential c) =>
+        IsDemo(c) ? "Demo · For testing only" : c.Vct;
+
+    private static string ShortVct(string vct)
+    {
+        // Last URI segment, uppercased, capped at 6 chars — readable as a chip.
+        var slash = vct.LastIndexOfAny(new[] { '/', ':' });
+        var tail = slash >= 0 ? vct[(slash + 1)..] : vct;
+        return tail.Length <= 6 ? tail.ToUpperInvariant() : tail[..6].ToUpperInvariant();
     }
 
     private sealed record DemoMintShape(

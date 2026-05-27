@@ -6,18 +6,42 @@
     in the wallet's top app bar; tap to open the picker, select an
     organisation, switch context. Non-interactive when the user has zero
     additional memberships beyond Personal (set the mental model anyway).
+
+    27-May FOLLOWUP #5 — adds OnHero=true variant that renders a
+    translucent-white chip with a green status dot + chevron, sized to read
+    cleanly over the wallet Home gradient hero. The SwapHoriz icon read as a
+    "transition state" against the gradient and made the chip look disabled.
 *@
 @namespace Sorcha.UI.Components.User.Components.Context
 
-<MudChip T="string"
-         Icon="@Icons.Material.Filled.SwapHoriz"
-         Color="Color.Primary"
-         Variant="Variant.Filled"
-         OnClick="@OnChipClicked"
-         Disabled="@(!CanSwitch)"
-         data-testid="context-chip">
-    @ActiveLabel
-</MudChip>
+@if (OnHero)
+{
+    <button type="button"
+            class="@HeroClass"
+            @onclick="@OnChipClicked"
+            disabled="@(!CanSwitch)"
+            aria-label="@($"Active context: {ActiveLabel}. Tap to switch.")"
+            data-testid="context-chip">
+        <span class="context-chip-hero__dot" aria-hidden="true"></span>
+        <span class="context-chip-hero__label">@ActiveLabel</span>
+        @if (CanSwitch)
+        {
+            <MudIcon Icon="@Icons.Material.Filled.KeyboardArrowDown" Size="Size.Small" Class="context-chip-hero__chevron" />
+        }
+    </button>
+}
+else
+{
+    <MudChip T="string"
+             Icon="@Icons.Material.Filled.SwapHoriz"
+             Color="Color.Primary"
+             Variant="Variant.Filled"
+             OnClick="@OnChipClicked"
+             Disabled="@(!CanSwitch)"
+             data-testid="context-chip">
+        @ActiveLabel
+    </MudChip>
+}
 
 @if (_pickerOpen)
 {
@@ -56,8 +80,18 @@
     /// <summary>Fires when the user picks a new context; null = Personal.</summary>
     [Parameter] public EventCallback<Guid?> OnContextSelected { get; set; }
 
+    /// <summary>
+    /// FOLLOWUP #5: when true, render the translucent hero chip (green dot +
+    /// chevron) instead of the standard MudChip. The Home gradient hero sets
+    /// this; everywhere else stays on the default MudChip.
+    /// </summary>
+    [Parameter] public bool OnHero { get; set; }
+
     private bool _pickerOpen;
     private bool CanSwitch => Memberships.Count > 0;
+
+    private string HeroClass =>
+        "context-chip-hero" + (CanSwitch ? "" : " context-chip-hero--static");
 
     private static DialogOptions DialogOptions { get; } = new()
     {
