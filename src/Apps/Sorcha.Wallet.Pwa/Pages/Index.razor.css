@@ -3,13 +3,35 @@
    Feature 141 — wallet Home layout glue. */
 
 /* Header affordances inside the gradient hero (inbox bell + scan), rendered
-   white-on-gradient. */
+   white-on-gradient. FOLLOWUP polish — both icons land in matched 34×34
+   translucent buttons with a 6px gap so the right edge reads as a balanced
+   pair rather than two unrelated controls. */
 .wallet-hero-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     color: #fff;
 }
+
+.wallet-hero-actions ::deep .mud-icon-button {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    background: rgba(255, 255, 255, .15);
+    color: #fff;
+    border-radius: 10px;
+}
+
+    .wallet-hero-actions ::deep .mud-icon-button:hover {
+        background: rgba(255, 255, 255, .22);
+    }
+
+    .wallet-hero-actions ::deep .mud-icon-button .mud-icon-root {
+        width: 17px;
+        height: 17px;
+        font-size: 17px;
+        color: #fff;
+    }
 
 /* The big Present / Verify action pair — two equal columns, 10px gap
    (handoff: gridTemplateColumns 1fr 1fr, gap 10). */
@@ -19,4 +41,70 @@
     gap: 10px;
     margin-top: 16px;
     margin-bottom: 8px;
+}
+
+/* FOLLOWUP #4 — matched ghost-button pair below the Present/Verify grid. */
+.wallet-secondary-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+/* Ghost button surface follows the active MudBlazor palette so the chrome
+   is visible on both light and dark page backgrounds. mud-palette-action-
+   default-hover sits ~6% on top of the surface in both themes, which matches
+   the FOLLOWUP spec's "subtle on light / barely-there on dark" intent. */
+.wallet-ghost-button {
+    height: 42px;
+    border-radius: 11px;
+    border: 1px solid var(--mud-palette-lines-default, rgba(255, 255, 255, .10));
+    background: var(--mud-palette-action-default-hover, rgba(255, 255, 255, .08));
+    color: var(--mud-palette-text-primary, #f3f4fa);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-family: inherit;
+    text-transform: none;
+    /* MudButton minimum-width default would let one tile stretch — pin both. */
+    width: 100%;
+}
+
+.wallet-ghost-button[disabled] {
+    opacity: .6;
+    cursor: default;
+}
+
+/* FOLLOWUP #1 — credential stack: top card is full, rest peek as 32px strips. */
+.credential-stack {
+    display: flex;
+    flex-direction: column;
+}
+
+.credential-peek {
+    height: 32px;
+    border-radius: 16px;
+    margin-top: -10px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    color: #fff;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 8px 18px rgba(80, 90, 150, .18);
+}
+
+.credential-peek__eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    opacity: .9;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

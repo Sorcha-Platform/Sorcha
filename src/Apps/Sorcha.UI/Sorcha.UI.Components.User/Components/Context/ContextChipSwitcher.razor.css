@@ -1,0 +1,48 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+   27-May FOLLOWUP #5 — translucent hero variant of the org chip. Spec verbatim:
+   white-on-gradient pill, 6×6 green status dot with a ring, chevron-down. */
+
+.context-chip-hero {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .18);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, .12);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: 1;
+}
+
+.context-chip-hero--static {
+    cursor: default;
+}
+
+.context-chip-hero__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #48bb78;
+    box-shadow: 0 0 0 3px rgba(72, 187, 120, .25);
+    flex-shrink: 0;
+}
+
+.context-chip-hero__label {
+    color: #fff;
+}
+
+.context-chip-hero__chevron {
+    /* MudIcon Size=Small is ~20px; the spec wants ~14px on this chip. */
+    width: 14px !important;
+    height: 14px !important;
+    font-size: 14px !important;
+    color: #fff;
+    margin-left: -2px;
+}
