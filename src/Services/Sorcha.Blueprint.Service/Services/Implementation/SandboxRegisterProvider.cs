@@ -3,7 +3,10 @@
 
 using System.Collections.Concurrent;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 using Sorcha.ServiceClients.Register;
+using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -15,11 +18,25 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// </summary>
 /// <remarks>
 /// <para>
+/// Register creation is the platform's two-phase owner-attestation ceremony, not a bare POST:
+/// <list type="number">
+/// <item><c>POST /api/registers/initiate</c> returns one attestation hash per owner.</item>
+/// <item>Each hash is signed with the org's sandbox-owner wallet (pre-hashed signing).</item>
+/// <item><c>POST /api/registers/finalize</c> submits the signed attestations; the server verifies
+/// them, seals the genesis transaction, and creates the register.</item>
+/// </list>
+/// The signing flow mirrors the CLI's <c>RegisterCreateCommand</c> (the canonical server-side
+/// reference): convert the hex <see cref="AttestationToSign.DataToSign"/> hash to bytes, sign
+/// pre-hashed, and base64-encode the signature + public key into the
+/// <see cref="SignedAttestation"/> (the orchestrator verifies via base64-auto decode).
+/// </para>
+/// <para>
 /// Sandbox registers are created in <b>devMode</b> (plaintext payloads with disclosure filtering,
-/// no envelope encryption — fast, throwaway) and tagged <c>Metadata["sandbox"] = "true"</c> so the
-/// Go-live picker and normal listings exclude them (the computed <c>Register.Sandbox</c> flag from
-/// T009). A "reset" of a rehearsal discards the rehearsal instance and the ephemeral identities,
-/// never the register — so the same sandbox register backs every rehearsal an org ever runs.
+/// no envelope encryption — fast, throwaway), <b>not advertised</b>, and tagged
+/// <c>Metadata["sandbox"] = "true"</c> so the Go-live picker and normal listings exclude them
+/// (the computed <c>Register.Sandbox</c> flag from T009). A "reset" of a rehearsal discards the
+/// rehearsal instance and the ephemeral identities, never the register — so the same sandbox
+/// register backs every rehearsal an org ever runs.
 /// </para>
 /// <para>
 /// Registered as a singleton because the per-org cache is process-wide transient state.
@@ -28,10 +45,15 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
 {
     private readonly IRegisterServiceClient _registerClient;
+    private readonly IWalletServiceClient _walletClient;
     private readonly ILogger<SandboxRegisterProvider> _logger;
 
     /// <summary>org id → sandbox register id (resolved once, reused thereafter).</summary>
     private readonly ConcurrentDictionary<string, string> _byOrg =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>org id → sandbox-owner wallet address (minted once, reused for re-locking).</summary>
+    private readonly ConcurrentDictionary<string, string> _ownerWalletByOrg =
         new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>org id → per-org creation gate, so concurrent starts share one register.</summary>
@@ -41,12 +63,20 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
     /// <summary>Marker carried on the sandbox register's metadata (D1 / T009).</summary>
     public const string SandboxMetadataKey = "sandbox";
 
+    /// <summary>Display name carried on every org's sandbox register.</summary>
+    private const string SandboxRegisterName = "Rehearsal Sandbox";
+
+    /// <summary>Algorithm used to mint the per-org sandbox-owner wallet.</summary>
+    private const string OwnerWalletAlgorithm = "ED25519";
+
     /// <summary>Initialises a new instance of the <see cref="SandboxRegisterProvider"/> class.</summary>
     public SandboxRegisterProvider(
         IRegisterServiceClient registerClient,
+        IWalletServiceClient walletClient,
         ILogger<SandboxRegisterProvider> logger)
     {
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
+        _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -76,24 +106,16 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
                 return cached;
             }
 
-            var registerId = GenerateSandboxRegisterId(organizationId);
-            var name = $"Sandbox {Truncate(organizationId, 24)}";
-
             _logger.LogInformation(
-                "Provisioning sandbox register {RegisterId} for organisation {OrgId} (devMode, sandbox-tagged)",
-                registerId, organizationId);
+                "Provisioning sandbox register for organisation {OrgId} (devMode, sandbox-tagged, not advertised)",
+                organizationId);
 
-            // D1: devMode + Metadata["sandbox"]="true", owned by the org. The created register is
-            // tagged so the Go-live picker / listings can exclude it via Register.Sandbox (T009).
-            var register = await _registerClient.CreateRegisterAsync(
-                registerId,
-                name,
-                blueprintId: string.Empty,
-                owner: organizationId,
-                tenant: organizationId,
-                cancellationToken);
+            // Mint (or reuse) the org's stable sandbox-owner wallet — the attestation signer.
+            var ownerWalletAddress = await GetOrCreateOwnerWalletAsync(organizationId, cancellationToken);
 
-            var resolvedId = string.IsNullOrWhiteSpace(register?.Id) ? registerId : register!.Id;
+            var resolvedId = await RunCreationCeremonyAsync(
+                organizationId, ownerWalletAddress, cancellationToken);
+
             _byOrg[organizationId] = resolvedId;
 
             _logger.LogInformation(
@@ -109,18 +131,108 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
     }
 
     /// <summary>
-    /// Builds a deterministic 32-char lowercase-hex register id derived from the org id, prefixed so
-    /// it is recognisably a sandbox. Stable per org so a process restart reattaches rather than
-    /// orphaning the existing sandbox register.
+    /// Mints the org's sandbox-owner wallet on first use, caching the address so reuse never
+    /// re-mints. Owner = <c>sandbox-owner:{org}</c>, tenant = the org.
     /// </summary>
-    private static string GenerateSandboxRegisterId(string organizationId)
+    private async Task<string> GetOrCreateOwnerWalletAsync(
+        string organizationId,
+        CancellationToken cancellationToken)
     {
-        var seed = $"sandbox:{organizationId}";
-        var bytes = System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(seed));
-        return Convert.ToHexString(bytes)[..32].ToLowerInvariant();
+        if (_ownerWalletByOrg.TryGetValue(organizationId, out var existing))
+        {
+            return existing;
+        }
+
+        var wallet = await _walletClient.CreateWalletAsync(
+            name: $"sandbox-owner-{organizationId}",
+            algorithm: OwnerWalletAlgorithm,
+            owner: $"sandbox-owner:{organizationId}",
+            tenant: organizationId,
+            cancellationToken);
+
+        _ownerWalletByOrg[organizationId] = wallet.Address;
+        return wallet.Address;
     }
 
-    private static string Truncate(string value, int max) =>
-        value.Length <= max ? value : value[..max];
+    /// <summary>
+    /// Runs the two-phase owner-attestation ceremony (initiate → sign → finalize) and returns the
+    /// created register id. Mirrors the CLI's RegisterCreateCommand signing logic.
+    /// </summary>
+    private async Task<string> RunCreationCeremonyAsync(
+        string organizationId,
+        string ownerWalletAddress,
+        CancellationToken cancellationToken)
+    {
+        // Phase 1 — initiate: devMode + sandbox tag + not advertised, owned by the org's wallet.
+        var initiateRequest = new InitiateRegisterCreationRequest
+        {
+            Name = SandboxRegisterName,
+            DevMode = true,
+            Advertise = false,
+            Purpose = RegisterPurpose.General,
+            Metadata = new Dictionary<string, string>
+            {
+                [SandboxMetadataKey] = "true"
+            },
+            Owners =
+            [
+                new OwnerInfo
+                {
+                    UserId = organizationId,
+                    WalletId = ownerWalletAddress
+                }
+            ]
+        };
+
+        var initiateResponse = await _registerClient.InitiateRegisterCreationAsync(
+            initiateRequest, cancellationToken);
+
+        // Phase 2 — sign each attestation hash with the owner wallet (pre-hashed signing), then
+        // base64-encode the signature + public key into the signed attestation. This mirrors the
+        // CLI flow: DataToSign is a hex SHA-256 hash; convert to bytes and sign with isPreHashed.
+        var signedAttestations = new List<SignedAttestation>(initiateResponse.AttestationsToSign.Count);
+        foreach (var attestation in initiateResponse.AttestationsToSign)
+        {
+            var hashBytes = Convert.FromHexString(attestation.DataToSign);
+
+            var signResult = await _walletClient.SignTransactionAsync(
+                walletAddress: attestation.WalletId,
+                transactionData: hashBytes,
+                derivationPath: null,
+                isPreHashed: true,
+                cancellationToken);
+
+            signedAttestations.Add(new SignedAttestation
+            {
+                AttestationData = attestation.AttestationData,
+                PublicKey = Convert.ToBase64String(signResult.PublicKey),
+                Signature = Convert.ToBase64String(signResult.Signature),
+                Algorithm = ParseAlgorithm(signResult.Algorithm)
+            });
+        }
+
+        // Phase 3 — finalize: submit the signed attestations; server verifies + seals genesis.
+        var finalizeRequest = new FinalizeRegisterCreationRequest
+        {
+            RegisterId = initiateResponse.RegisterId,
+            Nonce = initiateResponse.Nonce,
+            SignedAttestations = signedAttestations
+        };
+
+        var finalizeResponse = await _registerClient.FinalizeRegisterCreationAsync(
+            finalizeRequest, cancellationToken);
+
+        return string.IsNullOrWhiteSpace(finalizeResponse.RegisterId)
+            ? initiateResponse.RegisterId
+            : finalizeResponse.RegisterId;
+    }
+
+    /// <summary>
+    /// Maps the wallet service's algorithm string onto the register <see cref="SignatureAlgorithm"/>,
+    /// defaulting to ED25519 (the sandbox-owner wallet's algorithm) when unrecognised.
+    /// </summary>
+    private static SignatureAlgorithm ParseAlgorithm(string algorithm) =>
+        Enum.TryParse<SignatureAlgorithm>(algorithm, ignoreCase: true, out var parsed)
+            ? parsed
+            : SignatureAlgorithm.ED25519;
 }
