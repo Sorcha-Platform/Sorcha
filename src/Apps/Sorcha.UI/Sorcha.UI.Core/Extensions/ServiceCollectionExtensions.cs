@@ -911,6 +911,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRegisterReadService>(sp => sp.GetRequiredService<RegisterService>());
         services.AddScoped<IRegisterGovernanceService>(sp => sp.GetRequiredService<RegisterService>());
 
+        // Feature 142 — Go-live system-info card aggregator (T035). Pure client-side fan-out over
+        // the register read + governance roster reads; no new server endpoint.
+        services.AddScoped<IRegisterSystemInfoService, RegisterSystemInfoService>();
+
         // Payload Decoder Service
         services.AddSingleton<IPayloadDecoderService, PayloadDecoderService>();
 

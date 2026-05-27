@@ -1,0 +1,457 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@* Feature 142 — Go-live panel (T036/T040). The governed promote of the rehearsed version to a *@
+@* live register. Refactors the substance of PublishBlueprintWizard (register-select + rights + *@
+@* review) into a stage-hosted panel and adds the D6 system-info detail card, the rehearsal soft- *@
+@* gate handling (409 + override), and live reflection of the published version. *@
+
+@using Sorcha.Register.Models.Enums
+@using Sorcha.UI.Core.Models.Blueprints
+@using Sorcha.UI.Core.Models.Registers
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Designer
+@using Sorcha.UI.Core.Services.Feedback
+
+@inject IBlueprintApiService BlueprintApi
+@inject IRegisterReadService RegisterReadService
+@inject IRegisterSubscriptionService SubscriptionService
+@inject IRegisterSystemInfoService SystemInfoService
+@inject IInlineFeedback Feedback
+@inject DesignerContext Context
+@implements IDisposable
+
+<div class="golive-panel" data-testid="golive-panel">
+
+    @if (_published is not null)
+    {
+        @* --- Published: reflect the service as live with its version ----------------------- *@
+        <MudAlert Severity="Severity.Success"
+                  Variant="Variant.Filled"
+                  Icon="@Icons.Material.Filled.CheckCircle"
+                  Class="mb-4"
+                  data-testid="golive-published">
+            <MudText Typo="Typo.subtitle1">
+                ✓ Published v@(_published.Version) to @(_systemInfo?.Name ?? _selectedRegisterId)
+            </MudText>
+            <MudText Typo="Typo.body2">
+                @ServiceName is now live as an immutable version. To change it, create a new version
+                and rehearse it again before re-publishing.
+                @if (_published.Overridden)
+                {
+                    <span> (Published via a recorded rehearsal-gate override.)</span>
+                }
+            </MudText>
+        </MudAlert>
+    }
+    else if (Context.Blueprint is null)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true">
+            Describe a service first so there is something to publish.
+        </MudAlert>
+    }
+    else
+    {
+        @* --- Register picker ------------------------------------------------------------- *@
+        @if (_loadingRegisters)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="py-4">
+                <MudProgressCircular Indeterminate="true" Size="Size.Medium" Color="Color.Primary" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Loading registers…</MudText>
+            </MudStack>
+        }
+        else if (_registers.Count == 0)
+        {
+            @* Helpful empty state (spec edge case) rather than an empty picker. *@
+            <MudAlert Severity="Severity.Warning" data-testid="golive-no-eligible-registers">
+                <MudText Typo="Typo.subtitle2">No eligible registers</MudText>
+                <MudText Typo="Typo.body2" Class="mt-1">
+                    You have no live register you may publish to. Ask a register owner or admin to
+                    grant you a publishing role (Owner, Admin, or Designer), or create a register
+                    from the Registers page. Sandbox registers used for rehearsal cannot be published to.
+                </MudText>
+            </MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Choose a live register to publish to</MudText>
+
+            <MudSelect T="string"
+                       Value="_selectedRegisterId"
+                       ValueChanged="OnRegisterSelected"
+                       Label="Target register"
+                       Placeholder="Choose a register"
+                       Variant="Variant.Outlined"
+                       FullWidth="true"
+                       AnchorOrigin="Origin.BottomCenter"
+                       data-testid="golive-register-select">
+                @foreach (var register in _registers)
+                {
+                    var noRights = _noRightsRegisterIds.Contains(register.Id);
+                    <MudSelectItem Value="@register.Id" Disabled="@noRights">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" />
+                            <MudText Typo="Typo.body2">@register.Name</MudText>
+                            @if (noRights)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default">
+                                    No publish rights
+                                </MudChip>
+                            }
+                            @if (!register.IsOnline)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">
+                                    @register.StatusText
+                                </MudChip>
+                            }
+                        </MudStack>
+                    </MudSelectItem>
+                }
+            </MudSelect>
+
+            @* --- System-info detail card (D6 / FR-026) ----------------------------------- *@
+            @if (_loadingSystemInfo)
+            {
+                <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="py-4">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Primary" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Reading register details…</MudText>
+                </MudStack>
+            }
+            else if (_systemInfo is not null)
+            {
+                <MudPaper Elevation="1" Class="pa-4 mt-4" data-testid="golive-systeminfo-card">
+                    <MudText Typo="Typo.subtitle2" Class="mb-3">@_systemInfo.Name — register details</MudText>
+                    <MudSimpleTable Dense="true" Hover="false" Bordered="false" Striped="true">
+                        <tbody>
+                            <tr>
+                                <td><MudText Typo="Typo.caption" Color="Color.Secondary">Owned by</MudText></td>
+                                <td><MudText Typo="Typo.body2">@_systemInfo.OwnershipText</MudText></td>
+                            </tr>
+                            <tr>
+                                <td><MudText Typo="Typo.caption" Color="Color.Secondary">Validation</MudText></td>
+                                <td>
+                                    <MudText Typo="Typo.body2">
+                                        @if (_systemInfo.ValidationAvailable)
+                                        {
+                                            @($"{_systemInfo.ValidatorCount} validator(s), {_systemInfo.RequiredSignatures} signature(s) required")
+                                        }
+                                        else
+                                        {
+                                            @:Unknown
+                                        }
+                                    </MudText>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><MudText Typo="Typo.caption" Color="Color.Secondary">Visibility</MudText></td>
+                                <td><MudText Typo="Typo.body2">@_systemInfo.VisibilityText</MudText></td>
+                            </tr>
+                            <tr>
+                                <td><MudText Typo="Typo.caption" Color="Color.Secondary">Sync state</MudText></td>
+                                <td><MudText Typo="Typo.body2">@_systemInfo.SyncStateText</MudText></td>
+                            </tr>
+                            <tr>
+                                <td><MudText Typo="Typo.caption" Color="Color.Secondary">Mode</MudText></td>
+                                <td>
+                                    <MudText Typo="Typo.body2">@_systemInfo.ModeText</MudText>
+                                    @if (_systemInfo.DevMode)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning"
+                                                 Class="ml-2">developer mode</MudChip>
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><MudText Typo="Typo.caption" Color="Color.Secondary">Services published</MudText></td>
+                                <td><MudText Typo="Typo.body2">@_systemInfo.PublishedServiceCount</MudText></td>
+                            </tr>
+                            <tr>
+                                <td><MudText Typo="Typo.caption" Color="Color.Secondary">Your role</MudText></td>
+                                <td>
+                                    <MudChip T="string" Size="Size.Small"
+                                             Color="@(_systemInfo.CallerCanPublish ? Color.Primary : Color.Default)">
+                                        @_systemInfo.CallerRole
+                                    </MudChip>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+
+                    @if (!_systemInfo.CallerCanPublish)
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3"
+                                  data-testid="golive-no-rights">
+                            You do not have publishing rights on this register. Choose another register
+                            or ask an owner/admin to grant you a publishing role.
+                        </MudAlert>
+                    }
+                    @if (_systemInfo.DevMode)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                            This register is in developer mode — field-level encryption is not enforced.
+                            Avoid publishing a public service here.
+                        </MudAlert>
+                    }
+                </MudPaper>
+            }
+
+            @* --- Review summary (FR-024) ------------------------------------------------- *@
+            <MudPaper Elevation="0" Outlined="true" Class="pa-4 mt-4" data-testid="golive-review">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Review</MudText>
+                <MudStack Spacing="2">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Service</MudText>
+                        <MudText Typo="Typo.body2">@ServiceName</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Journey</MudText>
+                        <MudText Typo="Typo.body2">
+                            @ActionCount step(s), @ParticipantCount participant(s)
+                        </MudText>
+                    </MudStack>
+                    @if (!string.IsNullOrEmpty(IssuesSummary))
+                    {
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Issues</MudText>
+                            <MudText Typo="Typo.body2">@IssuesSummary</MudText>
+                        </MudStack>
+                    }
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Version</MudText>
+                        <MudText Typo="Typo.body2" data-testid="golive-version">v@(BlueprintVersion)</MudText>
+                    </MudStack>
+                </MudStack>
+
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mt-3">
+                    Publishing makes this a live public service. The published version is immutable —
+                    to change it you create a new version and rehearse it again before re-publishing.
+                </MudAlert>
+            </MudPaper>
+
+            @* --- Rehearsal soft-gate override affordance (FR-032 / T040) ----------------- *@
+            @if (_rehearsalRequired is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-4" data-testid="golive-rehearsal-required">
+                    <MudText Typo="Typo.body2">
+                        @_rehearsalRequired.Message This version has not passed a full rehearsal.
+                        As an authorised publisher you may override this — the override is recorded for audit.
+                    </MudText>
+                    <MudTextField @bind-Value="_overrideReason"
+                                  Label="Reason (optional)"
+                                  Variant="Variant.Text"
+                                  Class="mt-2"
+                                  Immediate="true" />
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Warning"
+                               StartIcon="@Icons.Material.Filled.GppMaybe"
+                               Disabled="@_publishing"
+                               OnClick="@PublishWithOverrideAsync"
+                               Class="mt-2"
+                               data-testid="golive-override-confirm">
+                        Override and publish anyway
+                    </MudButton>
+                </MudAlert>
+            }
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-4" data-testid="golive-error">
+                    @_errorMessage
+                </MudAlert>
+            }
+
+            @* --- Publish action (gated) -------------------------------------------------- *@
+            <div class="golive-panel__actions mt-4">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Publish"
+                           Disabled="@(!CanPublish)"
+                           OnClick="@PublishAsync"
+                           data-testid="golive-publish-btn">
+                    @(_publishing ? "Publishing…" : "Publish to live register")
+                </MudButton>
+                @if (!Context.Lifecycle.RehearsalPassedForCurrentExecDef)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-3"
+                             data-testid="golive-locked-hint">
+                        Rehearse a successful end-to-end run before publishing to a live register.
+                    </MudText>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<RegisterViewModel> _registers = [];
+    private HashSet<string> _noRightsRegisterIds = new(StringComparer.OrdinalIgnoreCase);
+    private string? _selectedRegisterId;
+    private RegisterSystemInfoViewModel? _systemInfo;
+    private Sorcha.ServiceClients.Blueprint.Models.PublishBlueprintResult? _published;
+    private Sorcha.ServiceClients.Blueprint.Models.RehearsalRequiredError? _rehearsalRequired;
+    private string? _overrideReason;
+    private string? _errorMessage;
+
+    private bool _loadingRegisters;
+    private bool _loadingSystemInfo;
+    private bool _publishing;
+
+    private string ServiceName => Context.Blueprint?.Title ?? "This service";
+    private int ActionCount => Context.Blueprint?.Actions.Count ?? 0;
+    private int ParticipantCount => Context.Blueprint?.Participants.Count ?? 0;
+    private int BlueprintVersion => Context.Blueprint?.Version ?? 1;
+
+    /// <summary>Plain-language list of credentials this service issues (from the journey badges).</summary>
+    private string? IssuesSummary
+    {
+        get
+        {
+            if (Context.Blueprint is null)
+            {
+                return null;
+            }
+            var journey = JourneyViewMapper.Map(Context.Blueprint);
+            var issued = journey.Steps
+                .SelectMany(s => s.Badges)
+                .Where(b => b.Kind == Sorcha.UI.Core.Models.Designer.JourneyBadgeKind.Issues)
+                .Select(b => b.CredentialType)
+                .Distinct()
+                .ToList();
+            return issued.Count == 0 ? null : string.Join(", ", issued);
+        }
+    }
+
+    /// <summary>
+    /// UI gate (FR-004): Publish is enabled only when a full rehearsal has passed for the current
+    /// executable definition AND a register the caller may publish to is selected — and not while a
+    /// publish is in flight or already published.
+    /// </summary>
+    private bool CanPublish =>
+        !_publishing
+        && _published is null
+        && Context.Lifecycle.RehearsalPassedForCurrentExecDef
+        && _selectedRegisterId is not null
+        && (_systemInfo?.CallerCanPublish ?? false);
+
+    /// <inheritdoc />
+    protected override async Task OnInitializedAsync()
+    {
+        Context.Changed += OnContextChanged;
+        if (Context.Blueprint is not null)
+        {
+            await LoadRegistersAsync();
+        }
+    }
+
+    /// <summary>Re-render when the lifecycle state changes (e.g. a rehearsal pass unlocks Publish).</summary>
+    private void OnContextChanged() => InvokeAsync(StateHasChanged);
+
+    /// <inheritdoc />
+    public void Dispose() => Context.Changed -= OnContextChanged;
+
+    private async Task LoadRegistersAsync()
+    {
+        _loadingRegisters = true;
+        try
+        {
+            var subscriptions = await SubscriptionService.GetMySubscribedRegistersAsync();
+            var subscribedIds = subscriptions
+                .Select(s => s.RegisterId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var allRegisters = await RegisterReadService.GetRegistersAsync();
+
+            // Candidate live registers: subscribed, online, and NOT a rehearsal sandbox (FR-025/T040/SC-008).
+            _registers = allRegisters
+                .Where(r => subscribedIds.Contains(r.Id))
+                .Where(r => !r.Sandbox)
+                .ToList();
+        }
+        catch
+        {
+            _registers = [];
+        }
+        finally
+        {
+            _loadingRegisters = false;
+        }
+    }
+
+    private async Task OnRegisterSelected(string registerId)
+    {
+        _selectedRegisterId = registerId;
+        _systemInfo = null;
+        _rehearsalRequired = null;
+        _errorMessage = null;
+
+        _loadingSystemInfo = true;
+        StateHasChanged();
+        try
+        {
+            _systemInfo = await SystemInfoService.GetSystemInfoAsync(registerId);
+            if (!_systemInfo.CallerCanPublish)
+            {
+                _noRightsRegisterIds.Add(registerId);
+            }
+        }
+        finally
+        {
+            _loadingSystemInfo = false;
+        }
+    }
+
+    private Task PublishAsync() => DoPublishAsync(confirmOverride: false);
+
+    private Task PublishWithOverrideAsync() => DoPublishAsync(confirmOverride: true);
+
+    private async Task DoPublishAsync(bool confirmOverride)
+    {
+        if (Context.Blueprint is null || _selectedRegisterId is null)
+        {
+            return;
+        }
+
+        _publishing = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var outcome = await BlueprintApi.PublishGoLiveAsync(
+                Context.Blueprint.Id,
+                _selectedRegisterId,
+                confirmOverride: confirmOverride,
+                overrideReason: confirmOverride ? _overrideReason : null);
+
+            switch (outcome.Status)
+            {
+                case GoLivePublishStatus.Published:
+                    _published = outcome.Result;
+                    _rehearsalRequired = null;
+                    Feedback.ShowSuccess(
+                        $"Published v{outcome.Result!.Version} to {_systemInfo?.Name ?? _selectedRegisterId}.");
+                    break;
+
+                case GoLivePublishStatus.RehearsalRequired:
+                    _rehearsalRequired = outcome.RehearsalRequired;
+                    break;
+
+                case GoLivePublishStatus.Forbidden:
+                    _noRightsRegisterIds.Add(_selectedRegisterId);
+                    _errorMessage = outcome.Message;
+                    Feedback.ShowError(outcome.Message!, autoDismissMs: 0);
+                    break;
+
+                default:
+                    _errorMessage = outcome.Message;
+                    Feedback.ShowError(outcome.Message ?? "Publishing failed.");
+                    break;
+            }
+        }
+        finally
+        {
+            _publishing = false;
+        }
+    }
+}

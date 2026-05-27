@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Models;
+using Sorcha.ServiceClients.Blueprint.Models;
 using Sorcha.UI.Core.Models.Blueprints;
 using Sorcha.UI.Core.Models.Common;
 using Sorcha.UI.Core.Models.Workflows;
@@ -174,6 +176,68 @@ public class BlueprintApiService : IBlueprintApiService
         {
             _logger.LogError(ex, "Error publishing blueprint {Id} to register {RegisterId}", id, registerId);
             return null;
+        }
+    }
+
+    public async Task<GoLivePublishOutcome> PublishGoLiveAsync(
+        string id,
+        string registerId,
+        bool confirmOverride = false,
+        string? overrideReason = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new PublishBlueprintRequest
+            {
+                RegisterId = registerId,
+                Override = confirmOverride
+                    ? new PublishOverride { Confirm = true, Reason = overrideReason }
+                    : null
+            };
+
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/blueprints/{id}/publish", request, cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<PublishBlueprintResult>(
+                    cancellationToken: cancellationToken);
+                return result is not null
+                    ? GoLivePublishOutcome.Published(result)
+                    : GoLivePublishOutcome.Errored("Publish succeeded but the response could not be read.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Conflict)
+            {
+                var error = await response.Content.ReadFromJsonAsync<RehearsalRequiredError>(
+                    cancellationToken: cancellationToken);
+                return GoLivePublishOutcome.NeedsRehearsal(
+                    error ?? new RehearsalRequiredError
+                    {
+                        Message = "This version has not passed a full rehearsal."
+                    });
+            }
+
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                _logger.LogInformation(
+                    "Publish of blueprint {Id} to register {RegisterId} refused (403 — no publish rights)",
+                    id, registerId);
+                return GoLivePublishOutcome.Refused(
+                    "You do not have publishing rights (Owner, Admin, or Designer) on this register.");
+            }
+
+            _logger.LogWarning(
+                "Go-live publish of blueprint {Id} to register {RegisterId} failed: {StatusCode}",
+                id, registerId, response.StatusCode);
+            return GoLivePublishOutcome.Errored(
+                $"Publishing failed ({(int)response.StatusCode}). Please try again.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error publishing blueprint {Id} to register {RegisterId}", id, registerId);
+            return GoLivePublishOutcome.Errored($"Publishing error: {ex.Message}");
         }
     }
 
