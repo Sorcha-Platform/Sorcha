@@ -867,6 +867,13 @@ blueprintGroup.MapGet("/{id}/versions/{version}", async (string id, int version,
 .CacheOutput(policy => policy.Expire(TimeSpan.FromDays(365)).Tag("published")); // Cache permanently - immutable
 
 // ===========================
+// Rehearsal Endpoints (Feature 142 — Blueprint Design Lifecycle, US2)
+// ===========================
+
+// Map full-rehearsal walk-through endpoints (POST/GET/DELETE under /api/blueprints/{id}/rehearsals).
+app.MapRehearsalEndpoints();
+
+// ===========================
 // Schema Endpoints (Sprint 7 - Schema Store)
 // ===========================
 

@@ -426,24 +426,151 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     // =========================================================================
 
     /// <inheritdoc />
-    public Task<Rehearsal?> StartRehearsalAsync(string blueprintId, StartRehearsalRequest request, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("TODO(US2/US3): rehearsal start — Feature 142.");
+    public async Task<Rehearsal?> StartRehearsalAsync(string blueprintId, StartRehearsalRequest request, CancellationToken cancellationToken = default)
+    {
+        // The endpoint accepts { mode: "full" }; the wire contract expects the lowercase enum value.
+        var body = new { mode = "full" };
+        return await PostRehearsalAsync(
+            $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals",
+            body,
+            "start rehearsal",
+            cancellationToken);
+    }
 
     /// <inheritdoc />
-    public Task<Rehearsal?> GetRehearsalAsync(string blueprintId, Guid rehearsalId, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("TODO(US2/US3): rehearsal get — Feature 142.");
+    public async Task<Rehearsal?> GetRehearsalAsync(string blueprintId, Guid rehearsalId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.GetAsync(
+                $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals/{rehearsalId}",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // 404 (unknown rehearsal) and any other non-success surface as null.
+                _logger.LogDebug("Get rehearsal {RehearsalId} returned {StatusCode}", rehearsalId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<Rehearsal>(JsonOptions, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get rehearsal {RehearsalId}", rehearsalId);
+            return null;
+        }
+    }
 
     /// <inheritdoc />
-    public Task<bool> ResetRehearsalAsync(string blueprintId, Guid rehearsalId, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("TODO(US2/US3): rehearsal reset/delete — Feature 142.");
+    public async Task<bool> ResetRehearsalAsync(string blueprintId, Guid rehearsalId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.DeleteAsync(
+                $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals/{rehearsalId}",
+                cancellationToken);
+
+            // Idempotent: the endpoint returns 204 whether or not the rehearsal existed; tolerate 404 too.
+            if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return true;
+            }
+
+            _logger.LogWarning("Reset rehearsal {RehearsalId} failed: {StatusCode}", rehearsalId, response.StatusCode);
+            return false;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reset rehearsal {RehearsalId}", rehearsalId);
+            return false;
+        }
+    }
 
     /// <inheritdoc />
-    public Task<Rehearsal?> SwitchRehearsalRoleAsync(string blueprintId, Guid rehearsalId, SwitchRehearsalRoleRequest request, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("TODO(US2/US3): rehearsal role switch — Feature 142.");
+    public async Task<Rehearsal?> SwitchRehearsalRoleAsync(string blueprintId, Guid rehearsalId, SwitchRehearsalRoleRequest request, CancellationToken cancellationToken = default) =>
+        await PostRehearsalAsync(
+            $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals/{rehearsalId}/role",
+            new { role = request.Role },
+            "switch rehearsal role",
+            cancellationToken);
 
     /// <inheritdoc />
-    public Task<Rehearsal?> SubmitRehearsalStepAsync(string blueprintId, Guid rehearsalId, SubmitRehearsalStepRequest request, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("TODO(US2/US3): rehearsal step submit — Feature 142.");
+    public async Task<Rehearsal?> SubmitRehearsalStepAsync(string blueprintId, Guid rehearsalId, SubmitRehearsalStepRequest request, CancellationToken cancellationToken = default)
+    {
+        // The wire contract carries payload as a JSON object; the DTO holds it as a raw JSON string.
+        JsonElement payload;
+        try
+        {
+            payload = string.IsNullOrWhiteSpace(request.PayloadJson)
+                ? JsonSerializer.Deserialize<JsonElement>("{}")
+                : JsonSerializer.Deserialize<JsonElement>(request.PayloadJson);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Submit rehearsal step {RehearsalId}: payload is not valid JSON", rehearsalId);
+            return null;
+        }
+
+        return await PostRehearsalAsync(
+            $"api/blueprints/{Uri.EscapeDataString(blueprintId)}/rehearsals/{rehearsalId}/steps",
+            new { actionId = request.ActionId, payload },
+            "submit rehearsal step",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Shared helper: POSTs a JSON body to a rehearsal endpoint and deserializes the <see cref="Rehearsal"/>
+    /// response. Returns null on any non-success status (e.g. 409 blocking validation, 403 unauthorised,
+    /// 404 unknown, 422 payload/step error) — matching the documented method contracts.
+    /// </summary>
+    private async Task<Rehearsal?> PostRehearsalAsync(string url, object body, string operation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync(url, body, JsonOptions, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Blueprint {Operation} failed: {StatusCode}", operation, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<Rehearsal>(JsonOptions, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed Blueprint {Operation}", operation);
+            return null;
+        }
+    }
 
     /// <inheritdoc />
     public Task<PublishBlueprintOutcome?> PublishBlueprintAsync(string blueprintId, PublishBlueprintRequest request, CancellationToken cancellationToken = default) =>
