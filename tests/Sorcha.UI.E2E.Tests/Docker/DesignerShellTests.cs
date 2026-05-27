@@ -128,16 +128,13 @@ public class DesignerShellTests : AuthenticatedDockerTestBase
     [Retry(2)]
     public async Task DesignerShell_ConsoleNoErrors_DuringStageNavigation()
     {
-        await _shell.NavigateAsync();
+        // Switch the visible stage via ?stage= deep-links using the auth-aware navigation so the
+        // role-gated designer route resolves without a login bounce on each reload (real-UI, no hooks,
+        // and no need to click under the first-run overlay scrim). The point is that switching the
+        // stage stays console-clean.
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.DesignerBlueprint + "?stage=understand");
         await Page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
-
-        // Navigate the rail (real-UI, no hooks). Understand may be locked without a blueprint, so the
-        // click is tolerated either way; the point is that switching the visible stage stays clean.
-        try { await _shell.RailUnderstand.ClickAsync(new LocatorClickOptions { Timeout = 3000 }); }
-        catch { /* may be locked */ }
-        await Page.WaitForTimeoutAsync(300);
-
-        await _shell.RailDescribe.ClickAsync();
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.DesignerBlueprint + "?stage=describe");
         await Page.WaitForTimeoutAsync(300);
 
         // AssertNoConsoleErrors runs automatically in TearDown against the
@@ -280,7 +277,7 @@ public class DesignerShellTests : AuthenticatedDockerTestBase
     [Retry(2)]
     public async Task DesignerShell_LegacyChatRoute_Redirects()
     {
-        await Page.GotoAsync($"{TestConstants.UiWebUrl}/designer/chat");
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AppBase}/designer/chat");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await Page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
 
@@ -304,7 +301,7 @@ public class DesignerShellTests : AuthenticatedDockerTestBase
     [Retry(2)]
     public async Task DesignerShell_LegacyDesignerRoute_Redirects()
     {
-        await Page.GotoAsync($"{TestConstants.UiWebUrl}/designer");
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AppBase}/designer");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await Page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
 

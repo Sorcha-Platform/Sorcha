@@ -62,8 +62,10 @@ public class LifecycleRailTests : DesignerSuiteBase
         Assert.That(await Designer.GoLiveLock.CountAsync(), Is.GreaterThan(0),
             "Go live should start locked (no rehearsal recorded), so rail-golive-lock is present.");
 
-        // Hover the locked Go-live stage to surface the explanatory MudTooltip.
-        await Designer.RailGoLive.HoverAsync();
+        // Hover the locked Go-live stage to surface the explanatory MudTooltip. The stage button is
+        // disabled and wrapped by MudTooltip's own root, which Playwright's strict actionability check
+        // treats as a pointer-event interceptor — Force dispatches the hover so the tooltip shows.
+        await Designer.RailGoLive.HoverAsync(new LocatorHoverOptions { Force = true });
         await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
 
         // The MudTooltip copy explains the gate in plain language. Match on the live copy from
@@ -102,7 +104,8 @@ public class LifecycleRailTests : DesignerSuiteBase
     public async Task LifecycleRail_FirstRunOverlay_ShowsThenDismisses()
     {
         // A fresh browser context has no railTourDismissed flag, so the overlay should appear.
-        await OpenDesignerAsync();
+        // Open WITHOUT the harness auto-dismiss so we can assert the overlay then dismiss it ourselves.
+        await OpenDesignerAsync(dismissFirstRunOverlay: false);
 
         Assert.That(await Designer.FirstRunOverlay.IsVisibleAsync(), Is.True,
             "The first-run guided overlay should appear on a fresh context.");
