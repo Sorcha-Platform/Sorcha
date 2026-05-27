@@ -2,38 +2,44 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @implements IDisposable
-@inject EventsHubConnection EventsHub
-@inject ISnackbar Snackbar
+@inject WalletHubConnection WalletHub
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Services
-@using MudBlazor
+
+@* TODO: remove component entirely if no longer needed.
+   Phase 5e (Snackbar retirement): encryption completion + failure
+   events are now durably written to the inbox by the Phase 2 writers;
+   the bell drawer is the authoritative surface. The hub subscriptions
+   below are retained as no-op anchors in case future work needs them
+   (e.g. driving a per-route inline IInlineFeedback host). *@
 
 @code {
     /// <inheritdoc />
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        EventsHub.OnEncryptionOperationCompleted += HandleOperationCompleted;
+        // Feature 118 T114 — encryption events live on WalletHub. Subscribe
+        // to keep the connection warm; handlers are intentional no-ops since
+        // the inbox writers (Phase 2) own the durable surface.
+        WalletHub.OnEncryptionComplete += HandleComplete;
+        WalletHub.OnEncryptionFailed += HandleFailed;
+        try
+        {
+            await WalletHub.StartAsync();
+        }
+        catch
+        {
+            // Hub may be unavailable — SignalR auto-reconnect handles transient outages.
+        }
     }
 
-    private void HandleOperationCompleted(EncryptionSignal signal)
-    {
-        if (string.Equals(signal.Status, "complete", StringComparison.OrdinalIgnoreCase))
-        {
-            Snackbar.Add("Encryption complete", Severity.Success);
-        }
-        else if (string.Equals(signal.Status, "failed", StringComparison.OrdinalIgnoreCase))
-        {
-            Snackbar.Add("Encryption failed", Severity.Error);
-        }
-        else
-        {
-            Snackbar.Add($"Encryption operation: {signal.Status}", Severity.Info);
-        }
-    }
+    private Task HandleComplete(EncryptionSignal _) => Task.CompletedTask;
+
+    private Task HandleFailed(EncryptionSignal _) => Task.CompletedTask;
 
     /// <inheritdoc />
     public void Dispose()
     {
-        EventsHub.OnEncryptionOperationCompleted -= HandleOperationCompleted;
+        WalletHub.OnEncryptionComplete -= HandleComplete;
+        WalletHub.OnEncryptionFailed -= HandleFailed;
     }
 }

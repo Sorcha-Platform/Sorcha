@@ -36,6 +36,12 @@ public static class ServiceCollectionExtensions
         // Encryption
         services.AddScoped<IEncryptionProvider, BrowserEncryptionProvider>();
 
+        // Phase 1 of the Snackbar retirement — page-scoped inline feedback for
+        // actor's-own-action results. Replacement for ISnackbar; see
+        // .snackbar-allowlist + scripts/check-no-snackbar.ps1 for the ratchet.
+        services.AddScoped<Sorcha.UI.Core.Services.Feedback.IInlineFeedback,
+                           Sorcha.UI.Core.Services.Feedback.InlineFeedback>();
+
         // Token cache
         services.AddScoped<ITokenCache, BrowserTokenCache>();
 
@@ -360,6 +366,18 @@ public static class ServiceCollectionExtensions
             return new Sorcha.UI.Core.Services.AddressLookup.AddressLookupHttpClient(httpClient, logger);
         });
 
+        // Holder-Key Client (Feature 137) — required by HolderKeyRenderer. Auth-wrapped so the
+        // citizen's consumer-tier JWT reaches the Wallet Service holder-keys endpoint (which is
+        // gated by RequireConsumerAudience); a bare HttpClient would 401 at the gateway.
+        services.AddScoped<Sorcha.UI.Core.Services.HolderKeys.IHolderKeyClient>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<Sorcha.UI.Core.Services.HolderKeys.HolderKeyHttpClient>>();
+            return new Sorcha.UI.Core.Services.HolderKeys.HolderKeyHttpClient(httpClient, logger);
+        });
+
         // Persona autofill resolver — pure function, singleton.
         services.AddSingleton<Sorcha.UI.Core.Services.Forms.PersonaAutofillResolver>();
 
@@ -374,10 +392,14 @@ public static class ServiceCollectionExtensions
         });
 
         // Actions Hub Connection (SignalR for real-time action notifications)
-        services.AddActionsHubServices(baseAddress);
+        services.AddBlueprintHubServices(baseAddress);
 
-        // Events Hub Connection (SignalR for real-time activity event notifications)
-        services.AddEventsHubServices(baseAddress);
+        // Tenant Hub Connection (Phase 5 of Feature 118 — durable inbox events)
+        services.AddTenantHubServices(baseAddress);
+
+        // Wallet Hub Connection (Feature 114 citizen wallet + future home for
+        // wallet-domain encryption / credential / transaction events per Feature 118 US2)
+        services.AddWalletHubServices(baseAddress);
 
         // Theme Service (043 - T042)
         services.AddScoped<IThemeService>(sp =>
@@ -471,9 +493,9 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Registers the Actions Hub connection for real-time action notifications.
     /// </summary>
-    public static IServiceCollection AddActionsHubServices(this IServiceCollection services, string baseAddress)
+    public static IServiceCollection AddBlueprintHubServices(this IServiceCollection services, string baseAddress)
     {
-        services.AddScoped<ActionsHubConnection>(sp =>
+        services.AddScoped<BlueprintHubConnection>(sp =>
         {
             string hubBaseUrl;
             if (Uri.TryCreate(baseAddress, UriKind.Absolute, out var uri))
@@ -487,8 +509,8 @@ public static class ServiceCollectionExtensions
 
             var authService = sp.GetRequiredService<IAuthenticationService>();
             var configService = sp.GetRequiredService<IConfigurationService>();
-            var logger = sp.GetRequiredService<ILogger<ActionsHubConnection>>();
-            return new ActionsHubConnection(hubBaseUrl, authService, configService, logger);
+            var logger = sp.GetRequiredService<ILogger<BlueprintHubConnection>>();
+            return new BlueprintHubConnection(hubBaseUrl, authService, configService, logger);
         });
 
         // Encryption operation tracker (global state across page navigation)
@@ -498,11 +520,13 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the Events Hub connection for real-time activity event notifications.
+    /// Registers the Wallet Hub connection. Subscribes to citizen-wallet device +
+    /// credential events today; future home for encryption / org-credential /
+    /// transaction-tick events as the server-side migration lands.
     /// </summary>
-    public static IServiceCollection AddEventsHubServices(this IServiceCollection services, string baseAddress)
+    public static IServiceCollection AddWalletHubServices(this IServiceCollection services, string baseAddress)
     {
-        services.AddScoped<EventsHubConnection>(sp =>
+        services.AddScoped<WalletHubConnection>(sp =>
         {
             string hubBaseUrl;
             if (Uri.TryCreate(baseAddress, UriKind.Absolute, out var uri))
@@ -516,8 +540,45 @@ public static class ServiceCollectionExtensions
 
             var authService = sp.GetRequiredService<IAuthenticationService>();
             var configService = sp.GetRequiredService<IConfigurationService>();
-            var logger = sp.GetRequiredService<ILogger<EventsHubConnection>>();
-            return new EventsHubConnection(hubBaseUrl, authService, configService, logger);
+            var logger = sp.GetRequiredService<ILogger<WalletHubConnection>>();
+            return new WalletHubConnection(hubBaseUrl, authService, configService, logger);
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="TenantHubConnection"/> for real-time inbox events
+    /// (Phase 5 of Feature 118). Bell badge + activity panel + pending-action
+    /// inbox subscribe to <c>OnInboxEntryAdded</c> + <c>OnInboxUnreadCountUpdated</c>.
+    /// </summary>
+    public static IServiceCollection AddTenantHubServices(this IServiceCollection services, string baseAddress)
+    {
+        services.AddScoped<TenantHubConnection>(sp =>
+        {
+            string hubBaseUrl;
+            if (Uri.TryCreate(baseAddress, UriKind.Absolute, out var uri))
+            {
+                hubBaseUrl = $"{uri.Scheme}://{uri.Authority}";
+            }
+            else
+            {
+                hubBaseUrl = "";
+            }
+
+            var authService = sp.GetRequiredService<IAuthenticationService>();
+            var configService = sp.GetRequiredService<IConfigurationService>();
+            var logger = sp.GetRequiredService<ILogger<TenantHubConnection>>();
+            var inboxApi = sp.GetService<IInboxApiService>();
+            return new TenantHubConnection(
+                hubBaseUrl,
+                accessTokenProvider: async () =>
+                {
+                    var profileName = await configService.GetActiveProfileNameAsync();
+                    return await authService.GetAccessTokenAsync(profileName);
+                },
+                logger,
+                inboxApi);
         });
 
         return services;
@@ -709,6 +770,16 @@ public static class ServiceCollectionExtensions
             return new OperationStatusService(httpClient, logger);
         });
 
+        // Feature 118 / US3 — UI-side wrapper for /api/me/inbox/* endpoints.
+        services.AddScoped<IInboxApiService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<InboxApiService>>();
+            return new InboxApiService(httpClient, logger);
+        });
+
         // IDP Configuration Client Service (054 - authenticated)
         services.AddScoped<IIdpConfigurationClientService>(sp =>
         {
@@ -796,8 +867,12 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddRegisterServices(this IServiceCollection services, string baseAddress)
     {
-        // Register Service
-        services.AddScoped<IRegisterService>(sp =>
+        // Register Service — split into IRegisterReadService (user) +
+        // IRegisterGovernanceService (admin) by Feature 123. Both interfaces
+        // resolve to the same scoped RegisterService instance, matching the
+        // pre-refactor behaviour where any IRegisterService injection got one
+        // instance per scope.
+        services.AddScoped<RegisterService>(sp =>
         {
             var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
             handler.InnerHandler = new HttpClientHandler();
@@ -810,6 +885,8 @@ public static class ServiceCollectionExtensions
             var logger = sp.GetRequiredService<ILogger<RegisterService>>();
             return new RegisterService(httpClient, logger);
         });
+        services.AddScoped<IRegisterReadService>(sp => sp.GetRequiredService<RegisterService>());
+        services.AddScoped<IRegisterGovernanceService>(sp => sp.GetRequiredService<RegisterService>());
 
         // Payload Decoder Service
         services.AddSingleton<IPayloadDecoderService, PayloadDecoderService>();
@@ -842,8 +919,11 @@ public static class ServiceCollectionExtensions
             return new TransactionService(httpClient, logger);
         });
 
-        // Register Hub Connection (SignalR)
-        // Strip the /app/ path prefix — SignalR hubs are at the API Gateway root
+        // Register Hub Connection (SignalR).
+        // Strip the /app/ path prefix — SignalR hubs are at the API Gateway root.
+        // Feature 118 / T089 — pass the JWT via ?access_token= so the server can
+        // identify the connection. The hub is permissive today; the [Authorize]
+        // cutover (T080) lands in a later release.
         services.AddScoped<RegisterHubConnection>(sp =>
         {
             string hubBaseUrl;
@@ -856,8 +936,17 @@ public static class ServiceCollectionExtensions
                 hubBaseUrl = "";
             }
 
+            var authService = sp.GetRequiredService<IAuthenticationService>();
+            var configService = sp.GetRequiredService<IConfigurationService>();
             var logger = sp.GetRequiredService<ILogger<RegisterHubConnection>>();
-            return new RegisterHubConnection(hubBaseUrl, logger);
+            return new RegisterHubConnection(
+                hubBaseUrl,
+                accessTokenProvider: async () =>
+                {
+                    var profileName = await configService.GetActiveProfileNameAsync();
+                    return await authService.GetAccessTokenAsync(profileName);
+                },
+                logger);
         });
 
         return services;

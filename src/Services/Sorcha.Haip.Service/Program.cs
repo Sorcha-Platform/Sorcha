@@ -4,6 +4,7 @@
 using Sorcha.AtomicCache.Extensions;
 using Sorcha.Haip.Service.Endpoints;
 using Sorcha.Haip.Service.Services;
+using Sorcha.ServiceClients.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -57,50 +58,59 @@ builder.Services.AddSingleton<HaipCredentialMinter>();
 
 // Feature 098: HAIP verifier services
 builder.Services.AddSingleton<PresentationRequestStore>();
-builder.Services.AddSingleton<HaipPresentationVerifier>(sp =>
+
+// Feature 135 (T032/T034) — the HAIP verifier routes its trust decision through the unified
+// ITrustEvaluator shared with the internal engine path. The x5c chain validation that used to
+// live on the verifier as a static trusted-root list is now the x509-tenant trust source over
+// ConfiguredTenantTrustAnchorProvider (still sourced from Haip:TrustedRootCertificates). Scoped
+// because the directory adapter consumes the scoped IDidResolverRegistry.
+builder.Services.AddSingleton<Sorcha.Blueprint.Engine.Credentials.ITenantTrustAnchorProvider,
+    Sorcha.Haip.Service.Services.ConfiguredTenantTrustAnchorProvider>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory,
+    Sorcha.Haip.Service.Services.DidIssuerDirectory>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.X509TenantTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.ITenantTrustAnchorProvider>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.RegisterTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.DidAllowlistTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustResolverRegistry>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry(
+        sp.GetServices<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IStatusListChecker>(sp =>
+    sp.GetRequiredService<IetfTokenStatusListChecker>());
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator,
+    Sorcha.Blueprint.Engine.Credentials.TrustEvaluator>();
+builder.Services.AddScoped<HaipPresentationVerifier>(sp => new HaipPresentationVerifier(
+    sp.GetRequiredService<Sorcha.Cryptography.SdJwt.ISdJwtService>(),
+    sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator>(),
+    sp.GetRequiredService<ILogger<HaipPresentationVerifier>>(),
+    sp.GetService<Sorcha.ServiceClients.Did.IDidResolverRegistry>()));
+
+// Feature 135 (US3) — org cert chain fetch for x5c-attach on x509-anchored issuance (mirrors the
+// Wallet Service wiring). HAIP resolves the issuing org's leaf+root from the Tenant Service.
+builder.Services.AddHttpClient("trust-service", (sp, http) =>
 {
-    // Feature 096 US6 — deployments with reachable CRL endpoints opt in with
-    // Haip:VerifyRevocation=true. Default off so the chain walk doesn't block
-    // on dead CDP URLs in test/dev environments.
-    var revocationMode = builder.Configuration.GetValue<bool>("Haip:VerifyRevocation")
-        ? System.Security.Cryptography.X509Certificates.X509RevocationMode.Online
-        : System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
-
-    var verifier = new HaipPresentationVerifier(
-        sp.GetRequiredService<Sorcha.Cryptography.SdJwt.ISdJwtService>(),
-        sp.GetRequiredService<ILogger<HaipPresentationVerifier>>(),
-        sp.GetService<Sorcha.ServiceClients.Did.IDidResolverRegistry>(),
-        sp.GetService<IetfTokenStatusListChecker>(),
-        revocationMode);
-
-    // Feature 096 US6 — load trusted root CA certs from config. Deployments
-    // list them under `Haip:TrustedRootCertificates` as base64-DER strings.
-    // Without at least one root, x5c chain validation will reject every cert.
-    var configuredRoots = builder.Configuration
-        .GetSection("Haip:TrustedRootCertificates")
-        .Get<string[]>() ?? Array.Empty<string>();
-    var logger = sp.GetRequiredService<ILogger<HaipPresentationVerifier>>();
-    foreach (var rootBase64 in configuredRoots)
-    {
-        if (string.IsNullOrWhiteSpace(rootBase64))
-            continue;
-        try
-        {
-            var der = Convert.FromBase64String(rootBase64);
-            var cert = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(der);
-            verifier.AddTrustedRoot(cert);
-            logger.LogInformation(
-                "Loaded trusted root CA into HAIP verifier: {Subject} (NotAfter={NotAfter})",
-                cert.Subject, cert.NotAfter);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex,
-                "Failed to load a Haip:TrustedRootCertificates entry — skipping and continuing");
-        }
-    }
-    return verifier;
+    var address = builder.Configuration["ServiceClients:TenantService:Address"] ?? "https+http://tenant-service";
+    http.BaseAddress = new Uri(address.TrimEnd('/') + "/");
 });
+builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.IOrgCertChainProvider>(sp =>
+{
+    var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("trust-service");
+    return new Sorcha.ServiceClients.Trust.TrustServiceClient(
+        http, sp.GetRequiredService<ILogger<Sorcha.ServiceClients.Trust.TrustServiceClient>>());
+});
+
+// Feature 135 (US2) — mso_mdoc verification. MdocFormatHandler runs the ISO 18013-5 format crypto
+// and routes the trust decision through the same scoped ITrustEvaluator (x509-tenant source over
+// the configured anchors). The direct_post endpoint dispatches mdoc vp_tokens to this verifier.
+builder.Services.AddSingleton<Sorcha.Cryptography.Mdoc.IMdocService, Sorcha.Cryptography.Mdoc.MdocService>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler>();
+builder.Services.AddScoped<MdocPresentationVerifier>();
+
 builder.Services.AddSingleton<RequestObjectSigner>();
 
 // Feature 095 US4: status list fetch for the verifier. Registered as HttpClient-
@@ -114,6 +124,13 @@ builder.Services.AddHttpClient<IetfTokenStatusListChecker>(client =>
 // Feature 111 — HAIP as a consumer of the Timebound Presentation Lifecycle.
 builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
     Sorcha.Haip.Service.Services.HaipPresentationConsumer>();
+
+// PresentationCallbackRelay needs IServiceAuthClient to authenticate the s2s
+// callback into Blueprint Service. Register the standard service-client stack
+// (matches every other Sorcha service — Blueprint, Register, Tenant, Validator,
+// Wallet, Peer all call AddServiceClients in their Program.cs).
+builder.Services.AddServiceClients(builder.Configuration);
+
 builder.Services.AddHttpClient<Sorcha.Haip.Service.Services.PresentationCallbackRelay>(client =>
 {
     var blueprintAddress = builder.Configuration["ServiceClients:BlueprintService:Address"]
@@ -121,6 +138,36 @@ builder.Services.AddHttpClient<Sorcha.Haip.Service.Services.PresentationCallback
     client.BaseAddress = new Uri(blueprintAddress);
     client.Timeout = TimeSpan.FromSeconds(15);
 });
+
+// Feature 120 T039 — cross-service trigger for the wallet's lazy issuance-key
+// derivation. HAIP's /credential endpoint calls this before minting so the
+// org's published DID document is in place by the time a verifier resolves it.
+builder.Services.AddHttpClient<
+    Sorcha.ServiceClients.IssuanceKey.IIssuanceKeyClient,
+    Sorcha.ServiceClients.IssuanceKey.IssuanceKeyClient>(client =>
+{
+    var walletAddress = builder.Configuration["ServiceClients:WalletService:Address"]
+        ?? "http://wallet-service:8080";
+    client.BaseAddress = new Uri(walletAddress);
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
+// Feature 120 — verifier-side anonymous DID resolution. SorchaDidResolver in HAIP
+// hits wallet's /api/v1/wallets/{addr}/did-document (anonymous) so the verifier
+// path doesn't need service-auth bearer just to read the public key.
+builder.Services.AddHttpClient("PublicWalletDid", client =>
+{
+    var walletAddress = builder.Configuration["ServiceClients:WalletService:Address"]
+        ?? "http://wallet-service:8080";
+    client.BaseAddress = new Uri(walletAddress);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+// Override SorchaDidResolver registration to use the constructor that takes the public-DID HttpClient.
+builder.Services.AddScoped<Sorcha.ServiceClients.Did.SorchaDidResolver>(sp =>
+    new Sorcha.ServiceClients.Did.SorchaDidResolver(
+        sp.GetRequiredService<Sorcha.ServiceClients.Wallet.IWalletServiceClient>(),
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient("PublicWalletDid"),
+        sp.GetRequiredService<ILogger<Sorcha.ServiceClients.Did.SorchaDidResolver>>()));
 
 var app = builder.Build();
 

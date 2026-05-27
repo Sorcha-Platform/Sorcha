@@ -4,8 +4,9 @@
 @using Microsoft.AspNetCore.Authorization
 @using MudBlazor
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject IOrgProvisioningClientService OrgService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject NavigationManager Navigation
 
 <PageTitle>Create Organisation</PageTitle>
@@ -92,7 +93,7 @@
                 _success = true;
                 _resultName = result.OrganizationName;
                 _resultSubdomain = result.Subdomain;
-                Snackbar.Add("Organisation created!", Severity.Success);
+                Feedback.ShowSuccess("Organisation created!");
             }
             else
             {

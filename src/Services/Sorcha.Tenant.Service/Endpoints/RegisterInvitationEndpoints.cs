@@ -32,7 +32,7 @@ public static class RegisterInvitationEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status429TooManyRequests)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         group.MapPost("/accept", AcceptInvitation)
             .WithName("AcceptRegisterInvitation")
@@ -43,7 +43,7 @@ public static class RegisterInvitationEndpoints
             .Produces<InvitationAcceptedResponse>()
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status409Conflict)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         group.MapGet("/", ListInvitations)
             .WithName("ListRegisterInvitations")
@@ -60,7 +60,7 @@ public static class RegisterInvitationEndpoints
                 + "Already-accepted invitations cannot be revoked.")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         return app;
     }

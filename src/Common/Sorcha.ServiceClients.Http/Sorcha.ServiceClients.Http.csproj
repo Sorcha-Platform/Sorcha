@@ -11,7 +11,9 @@
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <PackageReference Include="SimpleBase" />
   </ItemGroup>
 
@@ -20,6 +22,10 @@
     <ProjectReference Include="..\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
     <!-- Feature 114: citizen wallet DTO surface -->
     <ProjectReference Include="..\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.ServiceClients.Tests" />
   </ItemGroup>
 
 </Project>

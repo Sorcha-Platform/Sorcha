@@ -25,6 +25,19 @@ public class SdJwtService : ISdJwtService
 {
     private static readonly TimeSpan DefaultClockSkew = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// Records a verification error in both the legacy <see cref="SdJwtVerificationResult.Errors"/>
+    /// string list (kept for backward compatibility) and the typed
+    /// <see cref="SdJwtVerificationResult.ErrorDetails"/> list (issue #221 item 2).
+    /// New consumers should branch on <see cref="SdJwtErrorKind"/> via ErrorDetails;
+    /// existing log call sites and substring-asserting tests continue to use Errors.
+    /// </summary>
+    private static void AddError(SdJwtVerificationResult result, SdJwtErrorKind kind, string message)
+    {
+        result.Errors.Add(message);
+        result.ErrorDetails.Add(new SdJwtError { Kind = kind, Message = message });
+    }
+
     /// <inheritdoc />
     public Task<SdJwtToken> CreateTokenAsync(
         Dictionary<string, object> claims,
@@ -35,10 +48,11 @@ public class SdJwtService : ISdJwtService
         string algorithm,
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default,
-        IReadOnlyList<byte[]>? x5cChain = null)
+        IReadOnlyList<byte[]>? x5cChain = null,
+        string? kid = null)
     {
         return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
-            algorithm, holderJwk: null, expiresAt, x5cChain, cancellationToken);
+            algorithm, holderJwk: null, expiresAt, x5cChain, kid, externalSigner: null, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -52,13 +66,34 @@ public class SdJwtService : ISdJwtService
         JsonElement holderJwk,
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default,
-        IReadOnlyList<byte[]>? x5cChain = null)
+        IReadOnlyList<byte[]>? x5cChain = null,
+        string? kid = null)
     {
         return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
-            algorithm, holderJwk, expiresAt, x5cChain, cancellationToken);
+            algorithm, holderJwk, expiresAt, x5cChain, kid, externalSigner: null, cancellationToken);
     }
 
-    private Task<SdJwtToken> CreateTokenCoreAsync(
+    /// <inheritdoc />
+    public Task<SdJwtToken> CreateTokenAsync(
+        Dictionary<string, object> claims,
+        IEnumerable<string>? disclosableClaims,
+        string issuer,
+        string subject,
+        string algorithm,
+        Func<byte[], CancellationToken, Task<byte[]>> externalSigner,
+        JsonElement? holderJwk,
+        string? kid,
+        DateTimeOffset? expiresAt = null,
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<byte[]>? x5cChain = null)
+    {
+        ArgumentNullException.ThrowIfNull(externalSigner);
+        return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject,
+            signingKey: Array.Empty<byte>(), algorithm, holderJwk, expiresAt, x5cChain, kid,
+            externalSigner, cancellationToken);
+    }
+
+    private async Task<SdJwtToken> CreateTokenCoreAsync(
         Dictionary<string, object> claims,
         IEnumerable<string>? disclosableClaims,
         string issuer,
@@ -68,13 +103,20 @@ public class SdJwtService : ISdJwtService
         JsonElement? holderJwk,
         DateTimeOffset? expiresAt,
         IReadOnlyList<byte[]>? x5cChain,
+        string? kid,
+        Func<byte[], CancellationToken, Task<byte[]>>? externalSigner,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(claims);
         ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-        ArgumentNullException.ThrowIfNull(signingKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(algorithm);
+
+        // signingKey is required when no externalSigner is supplied; ignored otherwise.
+        if (externalSigner is null)
+        {
+            ArgumentNullException.ThrowIfNull(signingKey);
+        }
 
         var disclosableList = disclosableClaims?.ToList() ?? claims.Keys.ToList();
 
@@ -158,6 +200,14 @@ public class SdJwtService : ISdJwtService
             ["typ"] = "vc+sd-jwt"
         };
 
+        // Feature 120 — kid header for issuer-key resolution. Production callers pass
+        // the versioned form (`did:sorcha:org:{addr}#vc-issuance-{n}`) so verifiers can
+        // resolve the matching VerificationMethod via DidResolverBackedIssuerKeyResolver.
+        if (!string.IsNullOrEmpty(kid))
+        {
+            header["kid"] = kid;
+        }
+
         // Feature 096 US3 — x5c chain, if the caller supplied one. RFC 7515 §4.1.6
         // mandates base64 (NOT base64url) encoding for x5c entries.
         if (x5cChain is { Count: > 0 })
@@ -169,7 +219,10 @@ public class SdJwtService : ISdJwtService
         var headerB64 = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(header));
         var payloadB64 = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(payload));
         var signingInput = $"{headerB64}.{payloadB64}";
-        var signature = Sign(Encoding.UTF8.GetBytes(signingInput), signingKey, algorithm);
+        var signingInputBytes = Encoding.UTF8.GetBytes(signingInput);
+        var signature = externalSigner is not null
+            ? await externalSigner(signingInputBytes, cancellationToken).ConfigureAwait(false)
+            : Sign(signingInputBytes, signingKey, algorithm);
         var signatureB64 = Base64UrlEncode(signature);
 
         // Assemble the SD-JWT: header.payload.signature~disclosure1~disclosure2~
@@ -186,7 +239,7 @@ public class SdJwtService : ISdJwtService
             RawToken = rawToken
         };
 
-        return Task.FromResult(token);
+        return token;
     }
 
     /// <inheritdoc />
@@ -206,7 +259,7 @@ public class SdJwtService : ISdJwtService
             var parts = rawToken.TrimEnd('~').Split('~');
             if (parts.Length < 1)
             {
-                result.Errors.Add("Invalid SD-JWT format: no JWT part found");
+                AddError(result, SdJwtErrorKind.InvalidFormat, "Invalid SD-JWT format: no JWT part found");
                 return Task.FromResult(result);
             }
 
@@ -217,7 +270,7 @@ public class SdJwtService : ISdJwtService
             var jwtSegments = jwtPart.Split('.');
             if (jwtSegments.Length != 3)
             {
-                result.Errors.Add("Invalid JWT format: expected 3 segments");
+                AddError(result, SdJwtErrorKind.InvalidFormat, "Invalid JWT format: expected 3 segments");
                 return Task.FromResult(result);
             }
 
@@ -226,7 +279,7 @@ public class SdJwtService : ISdJwtService
 
             if (!Verify(Encoding.UTF8.GetBytes(signingInput), signatureBytes, issuerPublicKey, algorithm))
             {
-                result.Errors.Add("Invalid signature");
+                AddError(result, SdJwtErrorKind.SignatureInvalid, "Invalid signature");
                 return Task.FromResult(result);
             }
 
@@ -280,7 +333,8 @@ public class SdJwtService : ISdJwtService
                 }
                 catch
                 {
-                    result.Errors.Add($"Failed to parse disclosure: {disclosure[..Math.Min(20, disclosure.Length)]}...");
+                    AddError(result, SdJwtErrorKind.DisclosureIntegrityFailure,
+                        $"Failed to parse disclosure: {disclosure[..Math.Min(20, disclosure.Length)]}...");
                 }
             }
 
@@ -288,7 +342,7 @@ public class SdJwtService : ISdJwtService
         }
         catch (Exception ex)
         {
-            result.Errors.Add($"Verification failed: {ex.Message}");
+            AddError(result, SdJwtErrorKind.VerificationException, $"Verification failed: {ex.Message}");
         }
 
         return Task.FromResult(result);
@@ -467,7 +521,8 @@ public class SdJwtService : ISdJwtService
             if (kbJwtRaw == null)
             {
                 result.IsValid = false;
-                result.Errors.Add("Missing KB-JWT: credential has cnf claim but presentation has no Key Binding JWT");
+                AddError(result, SdJwtErrorKind.KeyBindingFailure,
+                    "Missing KB-JWT: credential has cnf claim but presentation has no Key Binding JWT");
                 return result;
             }
 
@@ -476,7 +531,7 @@ public class SdJwtService : ISdJwtService
             if (kbSegments.Length != 3)
             {
                 result.IsValid = false;
-                result.Errors.Add("Invalid KB-JWT format");
+                AddError(result, SdJwtErrorKind.KeyBindingFailure, "Invalid KB-JWT format");
                 return result;
             }
 
@@ -488,14 +543,16 @@ public class SdJwtService : ISdJwtService
             if (holderKeyBytes == null)
             {
                 result.IsValid = false;
-                result.Errors.Add("Key binding mismatch: cannot extract public key from cnf JWK");
+                AddError(result, SdJwtErrorKind.KeyBindingFailure,
+                    "Key binding mismatch: cannot extract public key from cnf JWK");
                 return result;
             }
 
             if (!Verify(kbSigningInput, kbSignatureBytes, holderKeyBytes, holderAlg))
             {
                 result.IsValid = false;
-                result.Errors.Add("Key binding mismatch: KB-JWT signature invalid against cnf public key");
+                AddError(result, SdJwtErrorKind.KeyBindingFailure,
+                    "Key binding mismatch: KB-JWT signature invalid against cnf public key");
                 return result;
             }
 
@@ -509,7 +566,8 @@ public class SdJwtService : ISdJwtService
             if (audValue != expectedAudience)
             {
                 result.IsValid = false;
-                result.Errors.Add($"Audience mismatch: KB-JWT aud '{audValue ?? "<missing>"}' does not match expected '{expectedAudience}'");
+                AddError(result, SdJwtErrorKind.AudienceMismatch,
+                    $"Audience mismatch: KB-JWT aud '{audValue ?? "<missing>"}' does not match expected '{expectedAudience}'");
                 return result;
             }
 
@@ -517,7 +575,8 @@ public class SdJwtService : ISdJwtService
             if (!kbPayload.TryGetValue("nonce", out var nonceEl) || nonceEl.GetString() != expectedNonce)
             {
                 result.IsValid = false;
-                result.Errors.Add($"Nonce mismatch: KB-JWT nonce does not match expected value");
+                AddError(result, SdJwtErrorKind.NonceMismatch,
+                    "Nonce mismatch: KB-JWT nonce does not match expected value");
                 return result;
             }
 
@@ -525,7 +584,7 @@ public class SdJwtService : ISdJwtService
             if (!kbPayload.TryGetValue("iat", out var kbIat))
             {
                 result.IsValid = false;
-                result.Errors.Add("Clock skew: KB-JWT missing iat claim");
+                AddError(result, SdJwtErrorKind.ClockSkew, "Clock skew: KB-JWT missing iat claim");
                 return result;
             }
 
@@ -534,7 +593,8 @@ public class SdJwtService : ISdJwtService
             if (kbIssuedAt < now - DefaultClockSkew || kbIssuedAt > now + DefaultClockSkew)
             {
                 result.IsValid = false;
-                result.Errors.Add($"Clock skew: KB-JWT iat {kbIssuedAt:O} is outside the ±{DefaultClockSkew.TotalSeconds}s window");
+                AddError(result, SdJwtErrorKind.ClockSkew,
+                    $"Clock skew: KB-JWT iat {kbIssuedAt:O} is outside the ±{DefaultClockSkew.TotalSeconds}s window");
                 return result;
             }
 
@@ -542,7 +602,7 @@ public class SdJwtService : ISdJwtService
             if (!kbPayload.TryGetValue("sd_hash", out var sdHashEl))
             {
                 result.IsValid = false;
-                result.Errors.Add("sd_hash mismatch: KB-JWT missing sd_hash claim");
+                AddError(result, SdJwtErrorKind.SdHashMismatch, "sd_hash mismatch: KB-JWT missing sd_hash claim");
                 return result;
             }
 
@@ -550,7 +610,8 @@ public class SdJwtService : ISdJwtService
             if (sdHashEl.GetString() != expectedSdHash)
             {
                 result.IsValid = false;
-                result.Errors.Add("sd_hash mismatch: KB-JWT sd_hash does not match presentation content");
+                AddError(result, SdJwtErrorKind.SdHashMismatch,
+                    "sd_hash mismatch: KB-JWT sd_hash does not match presentation content");
                 return result;
             }
 

@@ -53,7 +53,7 @@
 
 | ID | Task | Priority | Effort | Status | Notes |
 |----|------|----------|--------|--------|-------|
-| GOV-1 | ZKP-based admin credentials via register DIDs | P4 | 40h | 📋 Deferred | IDIDResolver interface designed for extensibility; requires ZKP library integration |
+| GOV-1 | ZKP-based admin credentials via register DIDs | P4 | 40h | 📋 Deferred | DID resolution lives in `IDidResolverRegistry` (W3C shape, retired the legacy `IDIDResolver` in Feature 120 Phase 0); requires ZKP library integration |
 | GOV-2 | Social recovery for lost Owner wallet access | P4 | 24h | 📋 Deferred | Multi-party recovery blueprints or ZKP-based recovery; currently register becomes unmodifiable |
 | GOV-3 | Concurrent governance proposals | P3 | 16h | 📋 Deferred | Current: single proposal at a time (implicit queueing via blueprint loop); future: multi-instance or queue-based |
 | GOV-4 | Enhanced DID resolution with retry & fallback | P3 | 12h | 📋 Deferred | Retry with exponential backoff, consensus-based fallback for unreachable registers |
@@ -201,9 +201,72 @@
 
 ---
 
+## Blueprint Engine — Adaptive Credential Audience (Backlog)
+
+> **Context:** `CredentialIssuanceConfig.TargetAudience` currently requires the blueprint author to commit at design time to either `SorchaLocalWallet` (Feature 106 register-native delivery) or `HaipExternalWallet` (OID4VCI handoff). Both targets are valid, but the right choice depends on the *recipient* — a Citizen Wallet PWA holder benefits from the SorchaLocalWallet path (server-staged inbox, push notification, Feature 114 sync surface), while a generic GOV.UK Wallet / EUDIW holder must use HaipExternalWallet because it has no Sorcha-platform wallet row.
+>
+> **Vision:** The engine inspects the resolved recipient at issuance time and selects the audience automatically. If the recipient address resolves to a Sorcha-platform wallet (i.e. has a `Wallet` row, including citizen holder slot-108 wallets), use `SorchaLocalWallet`. Otherwise — or when the recipient is a JWK/DID with no platform wallet — fall back to `HaipExternalWallet`. Blueprint authors set `targetAudience: "Adaptive"` (new enum value) and stop having to know in advance whether their flow targets Sorcha PWA holders, third-party wallets, or both.
+>
+> **Decision (2026-05-07):** Deferred — Feature 114 US4 ships citizen-PWA SorchaLocalWallet delivery first. Validate the citizen-side projection with a single explicit-audience blueprint, then revisit adaptive selection once we have data on which flows mix recipient types.
+
+| ID | Task | Priority | Effort | Status | Notes |
+|----|------|----------|--------|--------|-------|
+| BPE-001 | Add `TargetAudience.Adaptive` enum value + publish-time validation | P3 | 4h | 🔬 Research | Validator must reject Adaptive when the recipient participant has a hard-coded wallet that's known to be a non-Sorcha JWK. |
+| BPE-002 | Recipient-type resolver in `ActionExecutionService` | P3 | 8h | 🔬 Research | At step 9b in the issuance pipeline, look up `recipientWallet` in `IWalletRepository`. Hit → SorchaLocalWallet; miss → HaipExternalWallet. Cache the decision on the action's instance state for audit. |
+| BPE-003 | Blueprint-author docs + worked example | P3 | 2h | 🔬 Research | Update `blueprint-builder` skill and `sorcha-architecture` skill once shipped. |
+| BPE-004 | Telemetry — emit a counter per resolved audience | P3 | 2h | 🔬 Research | `sorcha_blueprint_credential_audience_total{resolved="local|haip"}` so we can see real-world mix before tightening defaults. |
+
+---
+
+## MCP Server Capability Review (2026-05-23)
+
+> **Context:** During cross-node federation work (PRs #828 system-register genesis sync, #829 create-on-sync for regular registers) the operator had to drive register subscription/sync via direct service-to-service peer-service calls (`POST /api/registers/{id}/subscribe`, `RequireService`). The MCP server's admin slice (35-tool catalogue) is **observational** — `sorcha_peer_status`, `sorcha_register_stats`, `sorcha_register_query`, `sorcha_validator_status` — plus tenant/user/token management. It has **no register-control / sync / replication / bootstrap tools**, so an AI agent can *observe* federation state but not *drive* it. Register control was expected to be useful here; review whether infra/register-control operations should be first-class MCP tools.
+
+| ID | Task | Priority | Effort | Status | Notes |
+|----|------|----------|--------|--------|-------|
+| MCP-101 | Audit MCP tool catalogue for register-control / infra gaps | P2 | 4h | 📋 | Review the 35-tool catalogue (Admin/Designer/Participant) against operator+agent needs surfaced by the federation work. Decide which infra actions (register subscribe/unsubscribe, sync-state, local-relationship, validator enrol/suspend) belong as MCP tools vs staying service-to-service only. |
+| MCP-102 | Add register-control admin tools (if MCP-101 approves) | P2 | 8h | 📋 | e.g. `sorcha_register_subscribe` / `sorcha_register_unsubscribe` / `sorcha_register_sync_status` wrapping peer-service `/api/registers/{id}/subscribe`+`/subscriptions` and register-service `/sync-state`+`/local-relationship`. Admin-role gated; the underlying `RequireService` s2s call handled server-side so the agent never holds a service secret. |
+| MCP-103 | Decide policy on node-lifecycle tools (bootstrap / validator-key import / reset) | P3 | 4h | 📋 | High-blast-radius; likely keep OUT of MCP (operator-only) but document the decision so it's deliberate, not an omission. |
+
+---
+
+## Cross-Node Credential Delivery — Feature 137 (2026-05-24)
+
+> **Context:** Stage-5 cross-node round-trip (citizen on a SyncOnly replica → register owner seals → analyst approves → credential delivered back). The write + analyst-approval paths now work live on n1 after three fixes merged in **PR #837** (Blueprint Service own Redis consumer group; `nextActionId` propagation through `ToTransactionSubmission`; blueprint-aware participant-id keying in `InstanceMirrorReconstructor`). One blocker remains before the credential is issued/delivered cross-node.
+
+| ID | Task | Priority | Effort | Status | Notes |
+|----|------|----------|--------|--------|-------|
+| F137-X1 | Owner-side state reconstruction must decrypt the disclosure-group payload format | P2 | 8h | 📋 | **GitHub #838.** `StateReconstructionService.DecryptTransactionPayloadAsync` uses a legacy `WalletAccess` + whole-`Data` path; the stored payload is disclosure-group format (`encryptedPayloads[]` + per-group `Challenges`) → recovers 0 actions cross-node → `mergedData` empty → issuance fails `VAL_RUNTIME_CRED_004` (and would have empty credential claims too — the claims come from the same decrypted action-1 payload). Fix: reuse the canonical recipient decryptor `InboundCredentialDetector.TryDecryptGroupForWalletAsync` (walk encryptedPayloads → unwrap the acting wallet's challenge → symmetric-decrypt). Analyst is disclosed `/*` on action 1 and `ReconstructAsync` already holds the analyst delegation token. General fix: repairs cross-node prior-action reconstruction for ANY multi-action flow. Matches FR-013. Do NOT carry the keys in public tx metadata (dead end — claims still missing). |
+| F137-X2 | Verify direction 2 (local-owned register, n1 citizen) end-to-end | P2 | 2h | 📋 | Gated on F137-X1. Same delivery path; once X1 lands, run the reverse direction to confirm symmetry. |
+## Permissionless Validation — Open-Membership Consensus (Backlog)
+
+> **Context:** Red-team threat-model (2026-05-24) of a hardened v1, framed around "anyone can run a node." The analysis split into two features. The **federation hardening** feature (`specs/138-*`) makes the *permissioned-federation* model safe: validation is gated by an on-chain roster you control, peer participation is open but signed/authenticated, and the trust anchors that are currently soft (revocation list signature, peer advertisement provenance, blueprint-recovery provenance) get fixed. This backlog item is the **second** feature — making validation safe when admission to the validator set is *itself* open to anyone, with no roster gatekeeper.
+>
+> **Why it's separate, not just "more of 138":** Federation hardening assumes a *known, bounded* validator set whose misbehaviour can be punished by ejection from a roster you administer. Permissionless validation removes that assumption — admission is free, so identity is cheap (Sybil), and ejection is meaningless (re-register for nothing). Safety must then come from *economic* cost (bonded stake, slashing of real collateral) and Sybil-resistant consensus, which is a fundamentally different and larger design than roster governance.
+>
+> **Decision (2026-05-24):** Do federation first (`138`); backlog permissionless. The federation feature deliberately builds the primitives this depends on — an **on-chain roster as the sole vote-authority anchor** and **automatic, deterministic equivocation detection** — so that "swap roster-admission for stake-admission, swap roster-ejection for collateral-slashing" becomes the shape of this feature rather than a rewrite. Related existing items: `ADV-2` (Advanced consensus), `TRUST-6` (Consensus Finality Guarantees).
+
+| ID | Area | Priority | Impact | Status | Description |
+|----|------|----------|--------|--------|-------------|
+| PERM-1 | Sybil-resistant validator admission | P3 | High | 🔬 Research | Replace federation's roster-allowlist admission with a permissionless mechanism that makes validator identity *costly*: bonded stake / collateral deposit, proof-of-authority-at-scale, or equivalent. Admission record sealed on-chain (extends 138's on-chain roster). The cost-to-create-an-identity is the whole Sybil defence. |
+| PERM-2 | Bonded collateral + economic slashing | P3 | High | 🔬 Research | Federation punishes detected equivocation/withholding by roster ejection (138). Permissionless needs *financial* consequence: bonded collateral that is slashed automatically on a sealed proof-of-misbehaviour. Requires a stake/escrow primitive and an on-chain slashing transaction type. Depends on 138's deterministic equivocation detection. |
+| PERM-3 | Majority-collusion resistance under free admission | P3 | High | 🔬 Research | When admission is free, an attacker can cheaply approach quorum. Model the honest-majority assumption explicitly, choose a BFT threshold (≥2/3) with finality depth (ties to `TRUST-6`), and analyse the cost of a 1/3 / 1/2 / 2/3 attack given the PERM-1 admission cost. Output: a stated, quantified security margin rather than "assume most validators are honest." |
+| PERM-4 | Eclipse resistance without trusted seeds | P3 | Medium | 🔬 Research | Federation leans on operator-controlled seed nodes as the eclipse anchor (acceptable when you run them). Permissionless can't trust seeds. Needs diverse/authenticated peer selection (signed node identities from 138 + DHT-style or stake-weighted neighbour selection) so a victim node can't be surrounded by attacker-controlled peers cheaply. |
+| PERM-5 | Validator key liveness & rotation under open membership | P3 | Medium | 🔬 Research | Open validators join/leave continuously. Needs on-chain key rotation, graceful exit (unbonding period before collateral release), and liveness proofs so a withholding validator's stake can be slashed after a sealed timeout proof. Ties to `WALLET-R4` (key rotation) and `TRUST-9` (timestamp authority for the timeout proof). |
+
+### Priority Rationale
+
+| Tier | IDs | Rationale |
+|------|-----|-----------|
+| **Tier 1 — Sybil + economic core** | PERM-1, PERM-2 | The two primitives that make open admission safe at all: costly identity and slashable collateral. Everything else assumes these exist. |
+| **Tier 2 — Consensus safety margin** | PERM-3, PERM-4 | Quantified attack-cost analysis and eclipse resistance once admission is open. Depends on the Tier 1 cost mechanisms. |
+| **Tier 3 — Operational lifecycle** | PERM-5 | Join/leave/rotate/unbond lifecycle under continuous open membership. Important for a live permissionless network, not for the initial design. |
+
+---
+
 ## Summary
 
-**Total Deferred Tasks:** 69 (11 now completed/implemented)
+**Total Deferred Tasks:** 74 (11 now completed/implemented)
 **Total Deferred Effort:** 588+ hours (~15 weeks, excluding research items)
 
 These tasks represent features that enhance the platform but are not critical for the Minimum Viable Deliverable (MVD). They can be prioritized for post-MVD development based on user feedback and business requirements.

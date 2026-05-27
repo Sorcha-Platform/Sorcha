@@ -2,9 +2,10 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject IOrganizationAdminService OrganizationService
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <MudExpansionPanels data-testid="org-selector-panel">
     <MudExpansionPanel @bind-IsExpanded="_isExpanded"
@@ -93,7 +94,7 @@
 
         if (result is { Canceled: false, Data: OrganizationDto newOrg })
         {
-            Snackbar.Add($"Organisation '{newOrg.Name}' created successfully.", Severity.Success);
+            Feedback.ShowSuccess($"Organisation '{newOrg.Name}' created successfully.");
             await OnOrganizationSelected.InvokeAsync(newOrg);
             _isExpanded = false;
         }

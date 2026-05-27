@@ -13,6 +13,7 @@
 
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
@@ -32,6 +33,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Sorcha.ServiceDefaults.Tests" />
+    <!-- Feature 118: hub conventions internals exposed to the test project. -->
   </ItemGroup>
 
 </Project>

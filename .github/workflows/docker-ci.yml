@@ -8,6 +8,7 @@ on:
       - 'src/Apps/**'
       - 'src/Common/**'
       - 'src/Core/**'
+      - 'samples/**'
       - 'docker-compose.yml'
       - 'Directory.Packages.props'
 
@@ -40,10 +41,12 @@ jobs:
             dockerfile: src/Apps/Sorcha.McpServer/Dockerfile
           - service: ui-web
             dockerfile: src/Apps/Sorcha.UI/Sorcha.UI.Web/Dockerfile
-          - service: citizen-wallet
-            dockerfile: src/Apps/Sorcha.Citizen.Wallet/Dockerfile
-          - service: citizen-verifier
-            dockerfile: src/Apps/Sorcha.Citizen.Verifier/Dockerfile
+          - service: wallet-pwa
+            dockerfile: src/Apps/Sorcha.Wallet.Pwa/Dockerfile
+          - service: verifier
+            dockerfile: src/Apps/Sorcha.Verifier/Dockerfile
+          - service: sample-strathcarron-portal
+            dockerfile: samples/strathcarron-portal/Dockerfile
 
     name: Build ${{ matrix.service }}
     steps:

@@ -55,7 +55,7 @@ public sealed class DisclosureAnalysisTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Analysis showing what data each participant would receive based on disclosure rules.</returns>
     [McpServerTool(Name = "sorcha_disclosure_analysis")]
-    [Description("Analyze disclosure rules for an action. Shows what data each participant will receive based on the action's disclosure configuration. Useful for verifying privacy settings and data visibility rules in blueprints.")]
+    [Description("Evaluates a blueprint action's disclosure rules against supplied JSON data and returns a per-participant breakdown of which fields each party would receive after selective-disclosure key wrapping is applied. Call this when verifying that privacy boundaries in a blueprint match intent before publishing — particularly for actions touching regulated or commercially sensitive fields; use sorcha_blueprint_simulate instead when you also need routing and calculation outputs, and prefer this over reading the raw blueprint when you need to reason about visibility rather than structure.")]
     public async Task<DisclosureAnalysisResult> AnalyzeDisclosuresAsync(
         [Description("Blueprint ID containing the action")] string blueprintId,
         [Description("Action ID (sequence number) to analyze")] string actionId,

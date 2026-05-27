@@ -15,6 +15,7 @@ using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Service.Extensions;
 using Sorcha.Register.Service.Hubs;
+using Sorcha.ServiceDefaults.Hubs;
 using Sorcha.Register.Service.Services;
 using Microsoft.Extensions.Options;
 using Sorcha.Register.Storage.InMemory;
@@ -57,8 +58,13 @@ builder.AddRateLimiting();
 // Add input validation (SEC-003)
 builder.AddInputValidation();
 
-// Add SignalR for real-time notifications
-builder.Services.AddSignalR();
+// Feature 118 — multi-node hub fan-out via Redis backplane (US1).
+// Wires JWT auth + Redis backplane (ChannelPrefix=sorcha:signalr:register) +
+// reconnect-with-jitter + OpenTelemetry instrumentation.
+// RegisterHub does not yet have [Authorize] — that lands in Phase 6 (FR-011)
+// after the UI client ships token-passing one release earlier.
+builder.Services.AddSorchaHub<RegisterHub, IRegisterHubClient>(
+    builder.Configuration, "/hubs/register", "register");
 
 // Configure OData
 var modelBuilder = new ODataConventionModelBuilder();
@@ -196,8 +202,6 @@ builder.Services.AddScoped<Sorcha.Register.Service.Services.CryptoPolicyService>
 // Register governance roster service
 builder.Services.AddScoped<Sorcha.Register.Core.Services.IGovernanceRosterService,
     Sorcha.Register.Core.Services.GovernanceRosterService>();
-builder.Services.AddScoped<Sorcha.Register.Core.Services.IDIDResolver,
-    Sorcha.Register.Core.Services.DIDResolver>();
 
 // Feature 048: Register policy service (reads policy from control chain via direct repository access)
 builder.Services.AddScoped<Sorcha.Register.Core.Services.ISystemBlueprintValidator,
@@ -284,8 +288,8 @@ app.UseInputValidation();
 // Configure OpenAPI and Scalar API documentation UI (development only)
 app.MapSorchaOpenApiUi("Register Service");
 
-// Map SignalR hub
-app.MapHub<RegisterHub>("/hubs/register");
+// Map SignalR hub via MapSorchaHubs from the AddSorchaHub registry (Feature 118 US1).
+app.MapSorchaHubs();
 
 // Feature 047: Map RegisterAddress gRPC service for bloom filter operations
 app.MapGrpcService<Sorcha.Register.Service.GrpcServices.RegisterAddressGrpcService>();
@@ -323,8 +327,19 @@ app.UseRateLimiting();
 // Internal discovery endpoint for service-to-service recovery (no auth)
 app.MapGet("/api/internal/registers", async (RegisterManager manager) =>
 {
+    // Status is serialised as the enum name (string) — the consumer-side
+    // InternalRegisterInfo.Status is typed string. Without the explicit
+    // ToString(), default System.Text.Json emits the underlying int and the
+    // client throws JsonException, which the catch-all returns as [],
+    // silently breaking bloom-filter fan-out for new wallet addresses.
     var allRegisters = await manager.GetAllRegistersAsync();
-    return Results.Ok(allRegisters.Select(r => new { r.Id, r.Name, r.Height, r.Status }).ToList());
+    return Results.Ok(allRegisters.Select(r => new
+    {
+        r.Id,
+        r.Name,
+        r.Height,
+        Status = r.Status.ToString()
+    }).ToList());
 })
 .WithName("InternalGetRegisters")
 .WithSummary("Internal: List all registers for service recovery")
@@ -545,27 +560,105 @@ var registersGroup = app.MapGroup("/api/registers")
     .WithTags("Registers")
     .RequireAuthorization("RequireAuthenticated");
 
-// Disable dev mode (one-way — enables mandatory field-level encryption)
+// Disable dev mode (one-way — enables mandatory field-level encryption).
+// Emits a CryptoPolicyUpdate control transaction (DevMode=false) rather than flipping a local
+// flag, so the promotion is sealed into the chain, passes the validator's one-way guard, and
+// REPLICATES to every node (each projects it onto its register record when the docket finalises).
+// A local-only flip would desync the owner from its replicas — the exact class of bug this avoids.
 registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
     string registerId,
-    RegisterManager manager) =>
+    RegisterManager manager,
+    Sorcha.Register.Service.Services.CryptoPolicyService cryptoPolicyService,
+    Sorcha.Register.Core.Managers.TransactionManager transactionManager,
+    Sorcha.ServiceClients.SystemWallet.ISystemWalletSigningService systemSigning,
+    CancellationToken ct) =>
 {
-    var disabled = await manager.DisableDevModeAsync(registerId);
-    if (!disabled)
+    var register = await manager.GetRegisterAsync(registerId, ct);
+    if (register is null)
+    {
+        return Results.NotFound(new { error = "Register not found" });
+    }
+    if (!register.DevMode)
     {
         return Results.Conflict(new { error = "Dev mode is already disabled on this register." });
     }
 
+    // Base the new policy on the current active one, flipping DevMode off and bumping the version.
+    var activePolicy = await cryptoPolicyService.GetActivePolicyAsync(registerId, ct);
+    activePolicy.DevMode = false;
+    activePolicy.Version += 1;
+    activePolicy.EffectiveFrom = DateTime.UtcNow;
+
+    var policyJson = System.Text.Json.JsonSerializer.Serialize(activePolicy);
+    var policyBytes = System.Text.Encoding.UTF8.GetBytes(policyJson);
+    var payloadData = Convert.ToBase64String(policyBytes);
+    var payloadHash = Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(policyBytes)).ToLowerInvariant();
+
+    var txIdSource = $"crypto-policy-update-{registerId}-v{activePolicy.Version}-devmode-off";
+    var txId = Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(txIdSource)))
+        .ToLowerInvariant();
+
+    var allTxs = await transactionManager.GetTransactionsAsync(registerId, ct);
+    var chainHead = allTxs.OrderByDescending(t => t.TimeStamp).FirstOrDefault();
+
+    var tx = new Sorcha.Register.Models.TransactionModel
+    {
+        TxId = txId,
+        RegisterId = registerId,
+        SenderWallet = "system",
+        PrevTxId = chainHead?.TxId ?? string.Empty,
+        PayloadCount = 1,
+        Payloads = new[]
+        {
+            new Sorcha.Register.Models.PayloadModel
+            {
+                Data = payloadData,
+                Hash = payloadHash,
+                WalletAccess = Array.Empty<string>(),
+                ContentType = "application/json",
+                ContentEncoding = "base64"
+            }
+        },
+        TimeStamp = DateTime.UtcNow,
+        Signature = string.Empty,
+        MetaData = new Sorcha.Register.Models.TransactionMetaData
+        {
+            RegisterId = registerId,
+            TransactionType = TransactionType.Control,
+            TrackingData = new Dictionary<string, string>
+            {
+                ["transactionType"] = "CryptoPolicyUpdate",
+                ["policyVersion"] = activePolicy.Version.ToString()
+            }
+        }
+    };
+
+    var signResult = await systemSigning.SignAsync(
+        registerId: registerId,
+        txId: txId,
+        payloadHash: payloadHash,
+        derivationPath: "sorcha:register-control",
+        transactionType: "CryptoPolicyUpdate",
+        cancellationToken: ct);
+    tx.Signature = Convert.ToBase64String(signResult.Signature);
+
+    await transactionManager.StoreTransactionAsync(tx, ct);
+
     return Results.Ok(new
     {
         registerId,
-        devMode = false,
-        message = "Dev mode disabled. Field-level encryption is now required for new transactions."
+        txId,
+        policyVersion = activePolicy.Version,
+        status = "submitted",
+        message = "Dev mode disable submitted as a crypto-policy update. Field-level encryption " +
+                  "becomes mandatory once the control transaction seals; the change replicates to all nodes."
     });
 })
 .WithName("DisableDevMode")
 .WithSummary("Disable dev mode (one-way)")
-.WithDescription("Irreversibly disables dev mode, enabling mandatory field-level encryption for new transactions. Cannot be undone.")
+.WithDescription("Irreversibly disables dev mode via a replicated crypto-policy update, enabling mandatory field-level encryption for new transactions. Cannot be undone (validators reject re-enabling DevMode).")
 .RequireAuthorization("CanManageRegisters");
 
 // NOTE: POST /api/registers/ (simple CRUD creation) has been removed.
@@ -1384,7 +1477,13 @@ docketsGroup.MapPost("/", async (
     string registerId,
     WriteDocketRequest request) =>
 {
-    // Validate register exists (auto-create for genesis docket 0 on system register)
+    // Validate register exists. A genesis docket (DocketNumber 0) for a register not
+    // yet known locally is the create-on-sync path: a peer is replicating a register's
+    // genesis to this node. By the time the docket reaches here the peer's
+    // DocketFinalizationService has already verified chain integrity, docket hash, and
+    // proposer signature (and the trust anchor, for the system register), so creating
+    // the register from the verified genesis is safe. The node only pulls genesis
+    // dockets for registers it has explicitly subscribed to.
     var register = await repository.GetRegisterAsync(registerId);
     if (register == null)
     {
@@ -1399,6 +1498,33 @@ docketsGroup.MapPost("/", async (
                 registerId: registerId,
                 description: "Sorcha platform system register — root of trust for blueprints and governance.",
                 purpose: Sorcha.Register.Models.Enums.RegisterPurpose.System);
+        }
+        else if (request.DocketNumber == 0)
+        {
+            // Regular register replicated from a peer: derive name/description from the
+            // genesis control record where available, else fall back to a synthetic name
+            // so the register row exists and subsequent dockets can be written.
+            var controlRecord = Sorcha.Register.Service.Services.GenesisControlRecordExtractor.TryExtract(request.Transactions);
+            var replicaName = controlRecord?.Name is { Length: > 0 } controlName
+                ? controlName
+                : $"replica-{registerId[..Math.Min(8, registerId.Length)]}";
+            // Respect the owner's DevMode posture from the synced genesis crypto policy. A
+            // DevMode register stores plaintext payloads, so the replica must know this to read
+            // them directly (and to apply the same plaintext-permitting rules). Defaults to
+            // false (encrypted) when the control record/policy is absent — fail-safe toward encryption.
+            var replicaDevMode = controlRecord?.CryptoPolicy?.DevMode ?? false;
+            logger.LogInformation(
+                "Auto-creating replicated register {RegisterId} ({Name}) from synced genesis docket (DevMode={DevMode})",
+                registerId, replicaName, replicaDevMode);
+            register = await registerManager.CreateRegisterAsync(
+                replicaName,
+                advertise: true,
+                isFullReplica: true,
+                registerId: registerId,
+                description: controlRecord?.Description,
+                devMode: replicaDevMode,
+                purpose: Sorcha.Register.Models.Enums.RegisterPurpose.General,
+                initialControlRecord: controlRecord);
         }
         else
         {
@@ -1536,12 +1662,52 @@ docketsGroup.MapPost("/", async (
             }
         }
 
+        // Feature 137 — project a sealed CryptoPolicyUpdate's DevMode onto the register record.
+        // This runs on EVERY node that writes the docket (the owner on seal, and each replica when
+        // it finalises the pulled docket), so a DevMode→Normal promotion replicates consistently
+        // instead of being a local-only flag flip that desyncs nodes. The validator's one-way guard
+        // guarantees a CryptoPolicyUpdate can only carry DevMode=false, so any such update promotes
+        // the register to Normal (encrypted); it never re-enables DevMode.
+        var hasCryptoPolicyUpdate = request.Transactions.Any(t =>
+            t.MetaData?.TransactionType == TransactionType.Control &&
+            t.MetaData.TrackingData?.GetValueOrDefault("transactionType") == "CryptoPolicyUpdate");
+        if (hasCryptoPolicyUpdate)
+        {
+            try
+            {
+                var policyRegister = await repository.GetRegisterAsync(registerId);
+                if (policyRegister is { DevMode: true })
+                {
+                    policyRegister.DevMode = false;
+                    policyRegister.UpdatedAt = DateTime.UtcNow;
+                    await repository.UpdateRegisterAsync(policyRegister);
+                    logger.LogInformation(
+                        "Register {RegisterId} promoted DevMode→Normal by sealed CryptoPolicyUpdate in docket {DocketNumber} — field-level encryption now required",
+                        registerId, request.DocketNumber);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Failed to project CryptoPolicyUpdate DevMode onto register {RegisterId}", registerId);
+            }
+        }
+
         // Feature 108 — if this docket contains a Control transaction, invalidate the
         // local-relationship cache and publish a register:relationship-changed event.
         var hasControlTx = request.Transactions.Any(t => t.MetaData?.TransactionType == TransactionType.Control);
         if (hasControlTx)
         {
-            _ = Task.Run(() => relationshipNotifier.PublishIfChangedAsync(registerId));
+            // Fire-and-forget: PublishIfChangedAsync has its own try/catch internally,
+            // but tag the task with a ContinueWith so any escape (cancellation during
+            // shutdown, unexpected scheduler error) is logged rather than silently
+            // abandoned to the unobserved-task pipeline.
+            _ = Task.Run(() => relationshipNotifier.PublishIfChangedAsync(registerId))
+                .ContinueWith(
+                    t => logger.LogWarning(t.Exception,
+                        "RelationshipChangeNotifier.PublishIfChangedAsync escaped for register {RegisterId}",
+                        registerId),
+                    TaskContinuationOptions.OnlyOnFaulted);
         }
 
         // Publish docket confirmed event
@@ -1694,7 +1860,11 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
             ["Type"] = "Control",
             ["transactionType"] = "BlueprintPublish",
             ["publishedBy"] = request.PublishedBy,
-            ["SystemWalletAddress"] = signResult.WalletAddress
+            ["SystemWalletAddress"] = signResult.WalletAddress,
+            // Feature 138 US4 — seal the canonical content hash so recovering nodes can verify the
+            // blueprint they receive against a sealed digest rather than trusting the transport.
+            // payloadHashHex is already SHA-256 over the canonical blueprint JSON (see above).
+            ["contentHash"] = payloadHashHex
         }
     };
 
@@ -1769,13 +1939,19 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
             blueprintJson = rawPayload;
         }
 
+        // Feature 138 US4 — the canonical content hash sealed at publish time. Sourced from the
+        // sealed transaction metadata (NOT recomputed from blueprintJson here), so a recovering node
+        // comparing its own recomputed hash against this value detects tampering in transit.
+        var contentHash = tx.MetaData?.TrackingData?.GetValueOrDefault("contentHash", "") ?? "";
+
         return new
         {
             blueprintId,
             transactionId = tx.TxId,
             publishedBy,
             publishedAt = tx.TimeStamp,
-            blueprintJson
+            blueprintJson,
+            contentHash
         };
     }).ToList();
 
@@ -2852,7 +3028,7 @@ receiptsGroup.MapPost("/receipts/verify", (
 // ===========================
 
 var adminGroup = app.MapGroup("/api/admin/registers/{registerId}")
-    .RequireAuthorization("RequireAdministrator")
+    .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
     .WithTags("Admin");
 
 // <summary>
@@ -3079,10 +3255,34 @@ static async IAsyncEnumerable<string> ExtractAddressStrings(IAsyncEnumerable<Sor
 // ===========================
 
 app.MapGet("/api/stats", async (
-    IRegisterRepository repository) =>
+    IRegisterRepository repository,
+    string? registerIds) =>
 {
     try
     {
+        // Feature 131 / UX-005 — optional ?registerIds=a,b,c filter. When set,
+        // counts are scoped to the listed registers; this lets Tenant Service
+        // build org-scoped dashboard stats by passing the org's subscribed
+        // register ids.
+        if (!string.IsNullOrWhiteSpace(registerIds))
+        {
+            var listed = registerIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Take(50)
+                .ToArray();
+            var listedTransactionCount = 0;
+            foreach (var id in listed)
+            {
+                var transactions = await repository.GetTransactionsAsync(id);
+                listedTransactionCount += transactions.Count();
+            }
+            return Results.Ok(new
+            {
+                registerCount = listed.Length,
+                transactionCount = listedTransactionCount
+            });
+        }
+
         var registerCount = await repository.CountRegistersAsync();
 
         // Sum docket heights across all registers as a transaction count proxy
@@ -3112,7 +3312,7 @@ app.MapGet("/api/stats", async (
 })
 .WithName("GetRegisterStats")
 .WithSummary("Get register statistics (public)")
-.WithDescription("Returns aggregate counts of registers and transactions. No authentication required.")
+.WithDescription("Returns aggregate counts of registers and transactions. Optional ?registerIds=a,b,c (comma-separated, max 50) filters the counts to the listed registers. No authentication required.")
 .WithTags("Statistics")
 .AllowAnonymous();
 

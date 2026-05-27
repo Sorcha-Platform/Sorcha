@@ -249,4 +249,103 @@ public class XReviewExtensionParserTests
 
         result.Pages![0].ReviewExtension.Should().BeNull();
     }
+
+    // -- EnumerateUnknownReviewLayouts (Issue #337, WARN_BP_REVIEW_001 source) --
+
+    [Fact]
+    public void EnumerateUnknownReviewLayouts_AllValid_YieldsNothing()
+    {
+        var schema = Parse("""
+        {
+            "type": "object",
+            "x-pages": [
+                { "x-review": { "layout": "id-card",       "header": { "issuerName": "X", "credentialName": "Y" } } },
+                { "x-review": { "layout": "passport-page", "header": { "issuerName": "X", "credentialName": "Y" } } },
+                { "x-review": { "layout": "tabular",       "header": { "issuerName": "X", "credentialName": "Y" } } },
+                { "x-review": { "layout": "receipt",       "header": { "issuerName": "X", "credentialName": "Y" } } }
+            ]
+        }
+        """);
+
+        SchemaLayoutParser.EnumerateUnknownReviewLayouts(schema).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void EnumerateUnknownReviewLayouts_TypoLayout_YieldsTheTypo()
+    {
+        var schema = Parse("""
+        {
+            "type": "object",
+            "x-pages": [
+                { "x-review": { "layout": "hologram", "header": { "issuerName": "X", "credentialName": "Y" } } }
+            ]
+        }
+        """);
+
+        SchemaLayoutParser.EnumerateUnknownReviewLayouts(schema).Should().Equal("hologram");
+    }
+
+    [Fact]
+    public void EnumerateUnknownReviewLayouts_MultipleTypos_YieldsEachOccurrence()
+    {
+        var schema = Parse("""
+        {
+            "type": "object",
+            "x-pages": [
+                { "x-review": { "layout": "hologram",   "header": { "issuerName": "X", "credentialName": "Y" } } },
+                { "x-review": { "layout": "id-card",    "header": { "issuerName": "X", "credentialName": "Y" } } },
+                { "x-review": { "layout": "id_card",    "header": { "issuerName": "X", "credentialName": "Y" } } }
+            ]
+        }
+        """);
+
+        SchemaLayoutParser.EnumerateUnknownReviewLayouts(schema).Should().Equal("hologram", "id_card");
+    }
+
+    [Fact]
+    public void EnumerateUnknownReviewLayouts_LayoutAbsent_YieldsNothing()
+    {
+        // Absent layout property is not an error — SchemaLayoutParser falls back to id-card.
+        var schema = Parse("""
+        {
+            "type": "object",
+            "x-pages": [
+                { "x-review": { "header": { "issuerName": "X", "credentialName": "Y" } } }
+            ]
+        }
+        """);
+
+        SchemaLayoutParser.EnumerateUnknownReviewLayouts(schema).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void EnumerateUnknownReviewLayouts_NoXPages_YieldsNothing()
+    {
+        var schema = Parse("""{ "type": "object", "properties": { "givenName": { "type": "string" } } }""");
+
+        SchemaLayoutParser.EnumerateUnknownReviewLayouts(schema).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void EnumerateUnknownReviewLayouts_LayoutCaseInsensitive_TreatsKnownVariantsAsValid()
+    {
+        // LayoutVariantMap is OrdinalIgnoreCase, so "ID-CARD" should pass.
+        var schema = Parse("""
+        {
+            "type": "object",
+            "x-pages": [
+                { "x-review": { "layout": "ID-CARD", "header": { "issuerName": "X", "credentialName": "Y" } } }
+            ]
+        }
+        """);
+
+        SchemaLayoutParser.EnumerateUnknownReviewLayouts(schema).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void KnownReviewLayoutVariants_IncludesEveryShippedVariant()
+    {
+        SchemaLayoutParser.KnownReviewLayoutVariants
+            .Should().BeEquivalentTo(new[] { "id-card", "passport-page", "tabular", "receipt" });
+    }
 }

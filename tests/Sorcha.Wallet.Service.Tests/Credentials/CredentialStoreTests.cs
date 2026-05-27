@@ -23,7 +23,10 @@ public class CredentialStoreTests : IDisposable
             .Options;
 
         _db = new TestCredentialDbContext(options);
-        _store = new CredentialStore(_db, NullLogger<CredentialStore>.Instance);
+        _store = new CredentialStore(
+            _db,
+            Moq.Mock.Of<Sorcha.Wallet.Service.Services.Interfaces.ICitizenInboxProjector>(),
+            NullLogger<CredentialStore>.Instance);
     }
 
     public void Dispose()
@@ -63,7 +66,8 @@ public class CredentialStoreTests : IDisposable
 
         await _store.StoreAsync(credential);
 
-        var stored = await _db.Credentials.FindAsync("cred-1");
+        var stored = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == "cred-1" && c.WalletAddress == "wallet-1");
         stored.Should().NotBeNull();
         stored!.Type.Should().Be("LicenseCredential");
         stored.IssuerDid.Should().Be("did:sorcha:issuer:gov");
@@ -79,7 +83,8 @@ public class CredentialStoreTests : IDisposable
         updated.Status = CredentialStatus.Revoked;
         await _store.StoreAsync(updated);
 
-        var stored = await _db.Credentials.FindAsync("cred-1");
+        var stored = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == "cred-1" && c.WalletAddress == "wallet-1");
         stored.Should().NotBeNull();
         stored!.Status.Should().Be(CredentialStatus.Revoked);
     }
@@ -136,21 +141,35 @@ public class CredentialStoreTests : IDisposable
     [Fact]
     public async Task DeleteAsync_ExistingCredential_ReturnsTrue()
     {
-        await _store.StoreAsync(CreateCredential("cred-1"));
+        await _store.StoreAsync(CreateCredential("cred-1", walletAddress: "wallet-1"));
 
-        var deleted = await _store.DeleteAsync("cred-1");
+        var deleted = await _store.DeleteAsync("cred-1", "wallet-1");
 
         deleted.Should().BeTrue();
-        var afterDelete = await _db.Credentials.FindAsync("cred-1");
+        var afterDelete = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == "cred-1" && c.WalletAddress == "wallet-1");
         afterDelete.Should().BeNull();
     }
 
     [Fact]
     public async Task DeleteAsync_NonExistentCredential_ReturnsFalse()
     {
-        var deleted = await _store.DeleteAsync("does-not-exist");
+        var deleted = await _store.DeleteAsync("does-not-exist", "wallet-1");
 
         deleted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WrongWallet_ReturnsFalseAndLeavesOtherRow()
+    {
+        await _store.StoreAsync(CreateCredential("cred-1", walletAddress: "wallet-issuer"));
+
+        var deleted = await _store.DeleteAsync("cred-1", "wallet-other");
+
+        deleted.Should().BeFalse();
+        var issuerRow = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == "cred-1" && c.WalletAddress == "wallet-issuer");
+        issuerRow.Should().NotBeNull();
     }
 
     [Fact]
@@ -211,6 +230,80 @@ public class CredentialStoreTests : IDisposable
 
         results.Should().ContainSingle();
     }
+
+    // ===== Feature 106 disambiguation — same credential id held by issuer and recipient =====
+
+    [Fact]
+    public async Task DeleteAsync_DualWallet_OnlyDeletesTargetRow()
+    {
+        // Issuer stores "cred-dup" as Active; recipient receives it as PendingAcceptance.
+        await _store.StoreAsync(CreateCredential("cred-dup", walletAddress: "wallet-issuer"));
+        await _store.StoreAsync(CreateCredential("cred-dup", walletAddress: "wallet-recipient",
+            status: CredentialStatus.PendingAcceptance));
+
+        var deleted = await _store.DeleteAsync("cred-dup", "wallet-recipient");
+
+        deleted.Should().BeTrue();
+        var issuerRow = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == "cred-dup" && c.WalletAddress == "wallet-issuer");
+        issuerRow.Should().NotBeNull("issuer row must survive the recipient's delete");
+        var recipientRow = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == "cred-dup" && c.WalletAddress == "wallet-recipient");
+        recipientRow.Should().BeNull("recipient row should have been removed");
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_DualWallet_OnlyUpdatesTargetRow()
+    {
+        await _store.StoreAsync(CreateCredential("cred-dup", walletAddress: "wallet-issuer"));
+        await _store.StoreAsync(CreateCredential("cred-dup", walletAddress: "wallet-recipient"));
+
+        var updated = await _store.UpdateStatusAsync("cred-dup", "wallet-recipient", CredentialStatus.Revoked);
+
+        updated.Should().BeTrue();
+        var issuerRow = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == "cred-dup" && c.WalletAddress == "wallet-issuer");
+        issuerRow!.Status.Should().Be(CredentialStatus.Active, "issuer row must be unaffected");
+        var recipientRow = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == "cred-dup" && c.WalletAddress == "wallet-recipient");
+        recipientRow!.Status.Should().Be(CredentialStatus.Revoked, "recipient row should be revoked");
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_DualWallet_PrefersActiveRow()
+    {
+        // Issuer's copy is Active; recipient's copy is PendingAcceptance.
+        await _store.StoreAsync(CreateCredential("cred-dup", walletAddress: "wallet-issuer"));
+        await _store.StoreAsync(CreateCredential("cred-dup", walletAddress: "wallet-recipient",
+            status: CredentialStatus.PendingAcceptance));
+
+        var result = await _store.GetByIdAsync("cred-dup");
+
+        result.Should().NotBeNull();
+        result!.Status.Should().Be(CredentialStatus.Active,
+            "GetByIdAsync must prefer the Active row when multiple exist");
+        result.WalletAddress.Should().Be("wallet-issuer");
+    }
+
+    [Fact]
+    public async Task RecordPresentationAsync_DualWallet_OperatesOnActiveRow()
+    {
+        // Both wallets have Active copies of the same credential.
+        await _store.StoreAsync(CreateCredential("cred-dup", walletAddress: "wallet-issuer",
+            type: "TradeFinanceCertificate"));
+        await _store.StoreAsync(CreateCredential("cred-dup", walletAddress: "wallet-recipient",
+            type: "TradeFinanceCertificate"));
+
+        var consumed = await _store.RecordPresentationAsync("cred-dup");
+
+        // At least one Active row must have its count incremented.
+        var rows = await _db.Credentials
+            .Where(c => c.Id == "cred-dup")
+            .ToListAsync();
+        rows.Sum(r => r.PresentationCount).Should().Be(1,
+            "exactly one row should have been incremented");
+        consumed.Should().BeFalse("Reusable policy never consumes");
+    }
 }
 
 /// <summary>
@@ -234,10 +327,11 @@ internal class TestCredentialDbContext : WalletDbContext
         modelBuilder.Ignore<WalletAccess>();
         modelBuilder.Ignore<WalletTransaction>();
 
-        // Only configure the Credential entity
+        // Only configure the Credential entity. Use the same composite key as the real schema
+        // so that disambiguation tests can store two rows sharing an Id across different wallets.
         modelBuilder.Entity<CredentialEntity>(entity =>
         {
-            entity.HasKey(e => e.Id);
+            entity.HasKey(e => new { e.Id, e.WalletAddress });
             entity.Property(e => e.Type).IsRequired();
             entity.Property(e => e.IssuerDid).IsRequired();
             entity.Property(e => e.SubjectDid).IsRequired();

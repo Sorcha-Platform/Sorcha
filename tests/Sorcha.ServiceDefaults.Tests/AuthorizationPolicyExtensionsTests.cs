@@ -192,19 +192,48 @@ public class AuthorizationPolicyExtensionsTests
     #region RequireService Policy
 
     [Fact]
-    public async Task RequireService_WithServiceTokenType_Succeeds()
+    public async Task RequireService_WithServiceTokenTypeAndServiceAudience_Succeeds()
     {
-        // Arrange
+        // Arrange — spec 136: RequireService now also requires this installation's :service audience.
         using var provider = BuildServiceProvider();
         var user = CreateAuthenticatedUser(
-            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService),
+            new Claim("aud", "sorcha:service"));
 
         // Act
         var result = await EvaluatePolicyAsync(provider, "RequireService", user);
 
         // Assert
         result.Succeeded.Should().BeTrue(
-            "a token with token_type=service should satisfy the RequireService policy");
+            "a service token carrying the :service audience should satisfy RequireService");
+    }
+
+    [Fact]
+    public async Task RequireService_WithServiceTokenTypeButNoServiceAudience_Fails()
+    {
+        // Spec 136: token_type alone is no longer sufficient — the :service audience is required.
+        using var provider = BuildServiceProvider();
+        var user = CreateAuthenticatedUser(
+            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+
+        var result = await EvaluatePolicyAsync(provider, "RequireService", user);
+
+        result.Succeeded.Should().BeFalse(
+            "without the :service audience a service-typed token must be refused at the audience layer");
+    }
+
+    [Fact]
+    public async Task RequireService_WithServiceAudienceFromAnotherInstallation_Fails()
+    {
+        // Cross-installation: the default installation here is "sorcha"; a foreign :service aud is refused.
+        using var provider = BuildServiceProvider();
+        var user = CreateAuthenticatedUser(
+            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService),
+            new Claim("aud", "acme:service"));
+
+        var result = await EvaluatePolicyAsync(provider, "RequireService", user);
+
+        result.Succeeded.Should().BeFalse("a service token from a different installation must be refused");
     }
 
     [Fact]
@@ -447,19 +476,32 @@ public class AuthorizationPolicyExtensionsTests
     #region CanWriteDockets Policy
 
     [Fact]
-    public async Task CanWriteDockets_WithServiceTokenType_Succeeds()
+    public async Task CanWriteDockets_WithServiceTokenAndServiceAudience_Succeeds()
     {
-        // Arrange
+        // Arrange — spec 136: CanWriteDockets mirrors the extended RequireService (:service audience).
         using var provider = BuildServiceProvider();
         var user = CreateAuthenticatedUser(
-            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService),
+            new Claim("aud", "sorcha:service"));
 
         // Act
         var result = await EvaluatePolicyAsync(provider, "CanWriteDockets", user);
 
         // Assert
         result.Succeeded.Should().BeTrue(
-            "a service token should satisfy CanWriteDockets");
+            "a service token carrying the :service audience should satisfy CanWriteDockets");
+    }
+
+    [Fact]
+    public async Task CanWriteDockets_WithServiceTokenButNoServiceAudience_Fails()
+    {
+        using var provider = BuildServiceProvider();
+        var user = CreateAuthenticatedUser(
+            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+
+        var result = await EvaluatePolicyAsync(provider, "CanWriteDockets", user);
+
+        result.Succeeded.Should().BeFalse("the :service audience is required (spec 136)");
     }
 
     [Fact]
@@ -491,6 +533,64 @@ public class AuthorizationPolicyExtensionsTests
         // Assert
         result.Succeeded.Should().BeFalse(
             "a token without token_type should not satisfy CanWriteDockets");
+    }
+
+    #endregion
+
+    #region Tier-audience policies (spec 136)
+
+    [Fact]
+    public async Task RequireConsumerAudience_WithConsumerAudience_Succeeds()
+    {
+        using var provider = BuildServiceProvider();
+        var user = CreateAuthenticatedUser(new Claim("aud", "sorcha:consumer"));
+
+        var result = await EvaluatePolicyAsync(provider, "RequireConsumerAudience", user);
+
+        result.Succeeded.Should().BeTrue("a consumer-tier token satisfies RequireConsumerAudience");
+    }
+
+    [Fact]
+    public async Task RequireConsumerAudience_WithPlatformAudience_Fails()
+    {
+        using var provider = BuildServiceProvider();
+        var user = CreateAuthenticatedUser(new Claim("aud", "sorcha:platform"));
+
+        var result = await EvaluatePolicyAsync(provider, "RequireConsumerAudience", user);
+
+        result.Succeeded.Should().BeFalse("a platform-tier token must be refused at a consumer surface");
+    }
+
+    [Fact]
+    public async Task RequirePlatformAudience_WithPlatformAudience_Succeeds()
+    {
+        using var provider = BuildServiceProvider();
+        var user = CreateAuthenticatedUser(new Claim("aud", "sorcha:platform"));
+
+        var result = await EvaluatePolicyAsync(provider, "RequirePlatformAudience", user);
+
+        result.Succeeded.Should().BeTrue("a platform-tier token satisfies RequirePlatformAudience");
+    }
+
+    [Fact]
+    public async Task RequirePlatformAudience_WithConsumerAudience_Fails()
+    {
+        using var provider = BuildServiceProvider();
+        var user = CreateAuthenticatedUser(new Claim("aud", "sorcha:consumer"));
+
+        var result = await EvaluatePolicyAsync(provider, "RequirePlatformAudience", user);
+
+        result.Succeeded.Should().BeFalse("a consumer-tier token must be refused at a platform surface");
+    }
+
+    [Fact]
+    public async Task TierAudiencePolicies_UnauthenticatedUser_Fails()
+    {
+        using var provider = BuildServiceProvider();
+        var user = CreateUnauthenticatedUser();
+
+        (await EvaluatePolicyAsync(provider, "RequireConsumerAudience", user)).Succeeded.Should().BeFalse();
+        (await EvaluatePolicyAsync(provider, "RequirePlatformAudience", user)).Succeeded.Should().BeFalse();
     }
 
     #endregion

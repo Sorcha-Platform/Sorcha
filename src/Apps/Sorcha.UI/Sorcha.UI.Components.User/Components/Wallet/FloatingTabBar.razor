@@ -1,0 +1,61 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 141 — floating pill navigation bar for the wallet shell. Replaces
+    the flush bottom MudAppBar rail. Four fixed destinations; the active tab
+    shows a gradient pill + label, the rest are icon-only. The host owns
+    navigation (base-relative) via OnNavigate. Design:
+    docs/mockups/design_handoff_wallet_home/ (TabBar variant="bold").
+*@
+@namespace Sorcha.UI.Core.Components.Wallet
+
+<nav class="@RootClass" aria-label="Wallet navigation" data-testid="floating-tab-bar">
+    @foreach (var tab in Tabs)
+    {
+        var active = string.Equals(NormalizedActive, tab.Route, StringComparison.OrdinalIgnoreCase);
+        <button type="button"
+                class="@($"tab-pill{(active ? " tab-pill--active" : "")}")"
+                aria-label="@tab.Label"
+                aria-current="@(active ? "page" : null)"
+                data-testid="@tab.TestId"
+                @onclick="@(() => HandleNavigateAsync(tab.Route))">
+            <MudIcon Icon="@tab.Icon" Size="Size.Medium" />
+            @if (active)
+            {
+                <span class="tab-pill__label">@tab.Label</span>
+            }
+        </button>
+    }
+</nav>
+
+@code {
+    /// <summary>Base-relative route of the active destination ("", "devices", "activity", "settings").</summary>
+    [Parameter] public string ActiveRoute { get; set; } = "";
+
+    /// <summary>Dark-mode surface variant.</summary>
+    [Parameter] public bool Dark { get; set; }
+
+    /// <summary>Fired with the base-relative route when a tab is tapped (host performs NavigateTo).</summary>
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+
+    private string RootClass => "floating-tab-bar" + (Dark ? " floating-tab-bar--dark" : "");
+
+    // Trim a leading slash so callers can pass "" or "/" for Home interchangeably.
+    private string NormalizedActive => ActiveRoute.TrimStart('/');
+
+    private sealed record Tab(string Route, string Label, string Icon, string TestId);
+
+    private static readonly Tab[] Tabs =
+    [
+        new("", "Home", Icons.Material.Filled.Home, "footer-nav-home"),
+        new("devices", "Devices", Icons.Material.Filled.PhoneIphone, "footer-nav-devices"),
+        new("activity", "Activity", Icons.Material.Filled.History, "footer-nav-activity"),
+        new("settings", "Settings", Icons.Material.Filled.Settings, "footer-nav-settings"),
+    ];
+
+    private async Task HandleNavigateAsync(string route)
+    {
+        if (OnNavigate.HasDelegate) await OnNavigate.InvokeAsync(route);
+    }
+}

@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net.Http;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.Models;
+using Sorcha.ServiceClients.Participant;
 using Sorcha.Wallet.Service.Services.Implementation;
 using Sorcha.Wallet.Service.Tests.Helpers;
 using StackExchange.Redis;
@@ -14,18 +18,29 @@ using Xunit;
 
 namespace Sorcha.Wallet.Service.Tests.Services;
 
+/// <summary>
+/// Tests for the post-T076 <see cref="NotificationDigestWorker"/> — drained
+/// digest events now produce a single durable inbox entry per user per cycle
+/// instead of being republished to the legacy <c>wallet:notifications</c>
+/// Redis pub/sub channel.
+/// </summary>
 public class NotificationDigestWorkerTests
 {
-    private readonly Mock<IConnectionMultiplexer> _mockRedis;
-    private readonly Mock<IDatabase> _mockDatabase;
-    private readonly Mock<ISubscriber> _mockSubscriber;
-    private readonly Mock<ILogger<NotificationDigestWorker>> _mockLogger;
+    private readonly Mock<IConnectionMultiplexer> _mockRedis = new();
+    private readonly Mock<IDatabase> _mockDatabase = new();
+    private readonly Mock<ISubscriber> _mockSubscriber = new();
+    private readonly Mock<IParticipantServiceClient> _mockParticipants = new();
+    private readonly Mock<IPlatformInboxClient> _mockInbox = new();
+    private readonly Mock<ILogger<NotificationDigestWorker>> _mockLogger = new();
 
     private const string TestUserId = "user-001";
     private const string AnotherUserId = "user-002";
+    private const string TestWallet = "bc1qtest000000000000000000000000000000000";
     private const string DigestKeyPrefix = "wallet:digest:";
     private const string DigestActiveUsersKey = "wallet:digest:active-users";
-    private const string PubSubChannel = "wallet:notifications";
+
+    private static readonly Guid TestUserIdentityId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid TestPlatformUserId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -35,23 +50,30 @@ public class NotificationDigestWorkerTests
 
     public NotificationDigestWorkerTests()
     {
-        _mockRedis = new Mock<IConnectionMultiplexer>();
-        _mockDatabase = new Mock<IDatabase>();
-        _mockSubscriber = new Mock<ISubscriber>();
-        _mockLogger = new Mock<ILogger<NotificationDigestWorker>>();
-
-        _mockRedis
-            .Setup(r => r.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
+        _mockRedis.Setup(r => r.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
             .Returns(_mockDatabase.Object);
-
-        _mockRedis
-            .Setup(r => r.GetSubscriber(It.IsAny<object>()))
+        _mockRedis.Setup(r => r.GetSubscriber(It.IsAny<object>()))
             .Returns(_mockSubscriber.Object);
-    }
 
-    // ---------------------------------------------------------------------------
-    // Helper methods
-    // ---------------------------------------------------------------------------
+        // Default: participant + inbox resolution succeed for TestWallet.
+        _mockParticipants
+            .Setup(p => p.GetByWalletAddressAsync(TestWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ParticipantInfo
+            {
+                Id = Guid.NewGuid(),
+                UserId = TestUserIdentityId,
+                OrganizationId = Guid.NewGuid(),
+                DisplayName = "x",
+                Email = "x@example.com",
+                Status = "Active",
+            });
+        _mockInbox
+            .Setup(i => i.ResolvePlatformUserIdAsync(TestUserIdentityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TestPlatformUserId);
+        _mockInbox
+            .Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+    }
 
     private NotificationDigestWorker CreateWorker(int checkIntervalMinutes = 5)
     {
@@ -59,28 +81,33 @@ public class NotificationDigestWorkerTests
         {
             ["Notifications:DigestCheckIntervalMinutes"] = checkIntervalMinutes.ToString()
         };
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(configData).Build();
 
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configData)
-            .Build();
+        var services = new ServiceCollection();
+        services.AddSingleton(_mockParticipants.Object);
+        services.AddSingleton(_mockInbox.Object);
+        var sp = services.BuildServiceProvider();
+        var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
 
         return new NotificationDigestWorker(
             _mockRedis.Object,
             configuration,
             new NotificationMetrics(new TestMeterFactory()),
+            scopeFactory,
             _mockLogger.Object);
     }
 
     private static InboundActionEvent CreateTestEvent(
         string userId = TestUserId,
         string? blueprintId = "bp-001",
-        DateTimeOffset? timestamp = null)
-    {
-        return new InboundActionEvent
+        string? walletAddress = null,
+        DateTimeOffset? timestamp = null,
+        string? transactionId = null)
+        => new()
         {
-            WalletAddress = "bc1qtest000000000000000000000000000000000",
+            WalletAddress = walletAddress ?? TestWallet,
             UserId = userId,
-            TransactionId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            TransactionId = transactionId ?? "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
             RegisterId = "reg-001",
             BlueprintId = blueprintId,
             InstanceId = "inst-001",
@@ -89,32 +116,25 @@ public class NotificationDigestWorkerTests
             DocketNumber = 42,
             Timestamp = timestamp ?? new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero)
         };
-    }
 
     private void SetupActiveUsers(params string[] userIds)
     {
         var members = userIds.Select(id => (RedisValue)id).ToArray();
         _mockDatabase
-            .Setup(db => db.SetMembersAsync(
-                (RedisKey)DigestActiveUsersKey,
-                It.IsAny<CommandFlags>()))
+            .Setup(db => db.SetMembersAsync((RedisKey)DigestActiveUsersKey, It.IsAny<CommandFlags>()))
             .ReturnsAsync(members);
 
-        // Default: SortedSetLengthAsync returns 0 (empty after processing) so user is removed from set
         _mockDatabase
             .Setup(db => db.SortedSetLengthAsync(
-                It.IsAny<RedisKey>(), It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Exclude>(), It.IsAny<CommandFlags>()))
+                It.IsAny<RedisKey>(), It.IsAny<double>(), It.IsAny<double>(),
+                It.IsAny<Exclude>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(0);
     }
 
     private void SetupEmptyActiveUsers()
-    {
-        _mockDatabase
-            .Setup(db => db.SetMembersAsync(
-                (RedisKey)DigestActiveUsersKey,
-                It.IsAny<CommandFlags>()))
+        => _mockDatabase
+            .Setup(db => db.SetMembersAsync((RedisKey)DigestActiveUsersKey, It.IsAny<CommandFlags>()))
             .ReturnsAsync(Array.Empty<RedisValue>());
-    }
 
     private void SetupScriptResult(string userId, params InboundActionEvent[] events)
     {
@@ -145,620 +165,232 @@ public class NotificationDigestWorkerTests
     }
 
     // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Timer fires and processes pending digests
+    // Inbox write — happy paths
     // ---------------------------------------------------------------------------
 
     [Fact]
-    public async Task ProcessPendingDigestsAsync_PendingDigestExists_PublishesConsolidatedNotification()
+    public async Task ProcessPendingDigestsAsync_PendingEvents_WritesOneInboxEntryPerUser()
     {
-        // Arrange
-        var event1 = CreateTestEvent(blueprintId: "bp-001");
-        var event2 = CreateTestEvent(blueprintId: "bp-001");
-
         SetupActiveUsers(TestUserId);
-        SetupScriptResult(TestUserId, event1, event2);
+        SetupScriptResult(TestUserId, CreateTestEvent(), CreateTestEvent(transactionId: "tx2"));
 
         var worker = CreateWorker();
-
-        // Act
         await worker.ProcessPendingDigestsAsync();
 
-        // Assert
-        _mockSubscriber.Verify(
-            s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.Is<RedisValue>(v => VerifyDigestPayload(v, TestUserId, expectedEventCount: 2)),
-                It.IsAny<CommandFlags>()),
+        _mockInbox.Verify(
+            i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
             Times.Once);
+        _mockSubscriber.Verify(
+            s => s.PublishAsync(It.IsAny<RedisChannel>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()),
+            Times.Never,
+            "Legacy wallet:notifications publish must be gone post-T076");
     }
 
     [Fact]
-    public async Task ProcessPendingDigestsAsync_MultipleUsers_ProcessesAllDigests()
+    public async Task ProcessPendingDigestsAsync_BuildsExpectedPayloadShape()
     {
-        // Arrange
-        var event1 = CreateTestEvent(userId: TestUserId, blueprintId: "bp-001");
-        var event2 = CreateTestEvent(userId: AnotherUserId, blueprintId: "bp-002");
+        var ts = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+        SetupActiveUsers(TestUserId);
+        SetupScriptResult(TestUserId,
+            CreateTestEvent(blueprintId: "bp-001", timestamp: ts, transactionId: "tx1"),
+            CreateTestEvent(blueprintId: "bp-002", timestamp: ts.AddMinutes(1), transactionId: "tx2"));
 
-        SetupActiveUsers(TestUserId, AnotherUserId);
-        SetupScriptResult(TestUserId, event1);
-        SetupScriptResult(AnotherUserId, event2);
+        InboxWritePayload? captured = null;
+        _mockInbox
+            .Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
         var worker = CreateWorker();
-
-        // Act
         await worker.ProcessPendingDigestsAsync();
 
-        // Assert — one publish per user
-        _mockSubscriber.Verify(
-            s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.IsAny<RedisValue>(),
-                It.IsAny<CommandFlags>()),
+        captured.Should().NotBeNull();
+        captured!.PlatformUserId.Should().Be(TestPlatformUserId);
+        captured.Category.Should().Be("Action");
+        captured.Severity.Should().Be("Info");
+        captured.Title.Should().Be("2 actions awaiting your attention");
+        captured.Summary.Should().Be("Across 2 blueprints");
+        captured.DetailHref.Should().Be("/api/me/inbox");
+        captured.IconKey.Should().Be("action.digest");
+        captured.OccurredAt.Should().Be(ts.AddMinutes(1));
+        captured.CorrelationKey.Should().Be($"digest:{TestUserId}:{ts.AddMinutes(1).ToUnixTimeMilliseconds()}");
+        captured.ChannelHints.Should().Be(1 | 8, "Inbox|Digest = 9");
+    }
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_SingleEventSingleBlueprint_OmitsAcrossBlueprintsSummary()
+    {
+        SetupActiveUsers(TestUserId);
+        SetupScriptResult(TestUserId, CreateTestEvent(blueprintId: "bp-001"));
+
+        InboxWritePayload? captured = null;
+        _mockInbox
+            .Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) => captured = p)
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+
+        var worker = CreateWorker();
+        await worker.ProcessPendingDigestsAsync();
+
+        captured!.Title.Should().Be("1 action awaiting your attention");
+        captured.Summary.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_SourceEventIdIsDeterministicAcrossRuns()
+    {
+        SetupActiveUsers(TestUserId);
+        var e1 = CreateTestEvent(transactionId: "tx-a");
+        var e2 = CreateTestEvent(transactionId: "tx-b");
+        SetupScriptResult(TestUserId, e1, e2);
+
+        var captured = new List<Guid>();
+        _mockInbox
+            .Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) => captured.Add(p.SourceEventId))
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+
+        var worker = CreateWorker();
+        await worker.ProcessPendingDigestsAsync();
+
+        // Reset the sorted-set length stub so the second sweep behaves the same way.
+        await worker.ProcessPendingDigestsAsync();
+
+        captured.Should().HaveCount(2);
+        captured[0].Should().Be(captured[1]);
+    }
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_MultipleUsers_WritesOneEntryPerUser()
+    {
+        var anotherWallet = "bc1qother00000000000000000000000000000000";
+        var anotherIdentity = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var anotherPlatform = Guid.Parse("44444444-4444-4444-4444-444444444444");
+
+        _mockParticipants
+            .Setup(p => p.GetByWalletAddressAsync(anotherWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ParticipantInfo
+            {
+                Id = Guid.NewGuid(), UserId = anotherIdentity,
+                OrganizationId = Guid.NewGuid(), DisplayName = "y",
+                Email = "y@example.com", Status = "Active"
+            });
+        _mockInbox
+            .Setup(i => i.ResolvePlatformUserIdAsync(anotherIdentity, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(anotherPlatform);
+
+        SetupActiveUsers(TestUserId, AnotherUserId);
+        SetupScriptResult(TestUserId, CreateTestEvent(userId: TestUserId));
+        SetupScriptResult(AnotherUserId, CreateTestEvent(userId: AnotherUserId, walletAddress: anotherWallet));
+
+        var worker = CreateWorker();
+        await worker.ProcessPendingDigestsAsync();
+
+        _mockInbox.Verify(
+            i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
             Times.Exactly(2));
     }
 
     // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Events grouped by blueprint with counts
+    // No-op paths
     // ---------------------------------------------------------------------------
 
     [Fact]
-    public async Task ProcessPendingDigestsAsync_EventsFromMultipleBlueprints_GroupsByBlueprintInPayload()
+    public async Task ProcessPendingDigestsAsync_NoActiveUsers_DoesNotWriteInbox()
     {
-        // Arrange — 3 events across 2 blueprints
-        var eventBp1a = CreateTestEvent(blueprintId: "bp-001");
-        var eventBp1b = CreateTestEvent(blueprintId: "bp-001");
-        var eventBp2 = CreateTestEvent(blueprintId: "bp-002");
-
-        SetupActiveUsers(TestUserId);
-        SetupScriptResult(TestUserId, eventBp1a, eventBp1b, eventBp2);
-
-        string? capturedJson = null;
-        _mockSubscriber
-            .Setup(s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.IsAny<RedisValue>(),
-                It.IsAny<CommandFlags>()))
-            .Callback<RedisChannel, RedisValue, CommandFlags>((_, value, _) =>
-                capturedJson = value.ToString())
-            .ReturnsAsync(1);
-
-        var worker = CreateWorker();
-
-        // Act
-        await worker.ProcessPendingDigestsAsync();
-
-        // Assert
-        capturedJson.Should().NotBeNull();
-        var digest = JsonSerializer.Deserialize<DigestNotification>(capturedJson!, JsonOptions);
-        digest.Should().NotBeNull();
-        digest!.TotalEvents.Should().Be(3);
-        digest.BlueprintGroups.Should().HaveCount(2);
-
-        var bp1Group = digest.BlueprintGroups.Single(g => g.BlueprintId == "bp-001");
-        bp1Group.ActionCount.Should().Be(2);
-
-        var bp2Group = digest.BlueprintGroups.Single(g => g.BlueprintId == "bp-002");
-        bp2Group.ActionCount.Should().Be(1);
-    }
-
-    // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Empty digest suppressed
-    // ---------------------------------------------------------------------------
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_NoDigestKeys_DoesNotPublish()
-    {
-        // Arrange
         SetupEmptyActiveUsers();
-
         var worker = CreateWorker();
-
-        // Act
         await worker.ProcessPendingDigestsAsync();
 
-        // Assert
-        _mockSubscriber.Verify(
-            s => s.PublishAsync(
-                It.IsAny<RedisChannel>(),
-                It.IsAny<RedisValue>(),
-                It.IsAny<CommandFlags>()),
-            Times.Never,
-            "Should not publish when no digest keys exist");
+        _mockInbox.Verify(
+            i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
-    public async Task ProcessPendingDigestsAsync_DigestKeyExistsButEmpty_DoesNotPublish()
+    public async Task ProcessPendingDigestsAsync_EmptyScriptResult_DoesNotWriteInbox()
     {
-        // Arrange — key exists but Lua script returns empty array
         SetupActiveUsers(TestUserId);
         SetupEmptyScriptResult(TestUserId);
 
         var worker = CreateWorker();
-
-        // Act
         await worker.ProcessPendingDigestsAsync();
 
-        // Assert
-        _mockSubscriber.Verify(
-            s => s.PublishAsync(
-                It.IsAny<RedisChannel>(),
-                It.IsAny<RedisValue>(),
-                It.IsAny<CommandFlags>()),
-            Times.Never,
-            "Should suppress empty digest when no events in sorted set");
+        _mockInbox.Verify(
+            i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Atomic dequeue (no double delivery)
+    // Atomic dequeue preserved
     // ---------------------------------------------------------------------------
 
     [Fact]
-    public async Task ProcessPendingDigestsAsync_AtomicDequeue_UsesLuaScriptWithCorrectKey()
+    public async Task ProcessPendingDigestsAsync_StillUsesAtomicDequeueLuaScript()
     {
-        // Arrange
-        var testEvent = CreateTestEvent();
-
         SetupActiveUsers(TestUserId);
-        SetupScriptResult(TestUserId, testEvent);
+        SetupScriptResult(TestUserId, CreateTestEvent());
 
         var worker = CreateWorker();
-
-        // Act
         await worker.ProcessPendingDigestsAsync();
 
-        // Assert — Lua script called with correct key for atomic dequeue
         _mockDatabase.Verify(
             db => db.ScriptEvaluateAsync(
-                It.Is<string>(script =>
-                    script.Contains("ZRANGEBYSCORE") && script.Contains("ZREMRANGEBYSCORE")),
-                It.Is<RedisKey[]>(keys =>
-                    keys.Length == 1 && keys[0].ToString() == $"{DigestKeyPrefix}{TestUserId}"),
+                It.Is<string>(script => script.Contains("ZRANGEBYSCORE") && script.Contains("ZREMRANGEBYSCORE")),
+                It.Is<RedisKey[]>(keys => keys.Length == 1 && keys[0].ToString() == $"{DigestKeyPrefix}{TestUserId}"),
                 It.IsAny<RedisValue[]>(),
+                It.IsAny<CommandFlags>()),
+            Times.Once);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Degraded paths
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_NoParticipantForWallet_StillRemovesUserFromActiveSet()
+    {
+        _mockParticipants
+            .Setup(p => p.GetByWalletAddressAsync(TestWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ParticipantInfo?)null);
+
+        SetupActiveUsers(TestUserId);
+        SetupScriptResult(TestUserId, CreateTestEvent());
+
+        var worker = CreateWorker();
+        await worker.ProcessPendingDigestsAsync();
+
+        _mockInbox.Verify(
+            i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _mockDatabase.Verify(
+            db => db.SetRemoveAsync(
+                (RedisKey)DigestActiveUsersKey,
+                (RedisValue)TestUserId,
                 It.IsAny<CommandFlags>()),
             Times.Once,
-            "Should use Lua script for atomic read+delete to prevent double delivery");
+            "Active-users flag must clear once the queue drains, even if inbox-write was skipped");
     }
 
     [Fact]
-    public async Task ProcessPendingDigestsAsync_AtomicDequeue_PassesCurrentTimestampAsMaxScore()
+    public async Task ProcessPendingDigestsAsync_InboxWriteThrows_DoesNotPropagateOrLeakBetweenUsers()
     {
-        // Arrange
-        var testEvent = CreateTestEvent();
-
-        SetupActiveUsers(TestUserId);
-        SetupScriptResult(TestUserId, testEvent);
-
-        RedisValue[]? capturedValues = null;
-        _mockDatabase
-            .Setup(db => db.ScriptEvaluateAsync(
-                It.IsAny<string>(),
-                It.IsAny<RedisKey[]>(),
-                It.IsAny<RedisValue[]>(),
-                It.IsAny<CommandFlags>()))
-            .Callback<string, RedisKey[], RedisValue[], CommandFlags>((_, _, values, _) =>
-                capturedValues = values)
-            .ReturnsAsync(RedisResult.Create(
-                new[] { RedisResult.Create((RedisValue)JsonSerializer.Serialize(testEvent, JsonOptions)) }));
-
-        var worker = CreateWorker();
-        var before = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        // Act
-        await worker.ProcessPendingDigestsAsync();
-
-        var after = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        // Assert — score should be a recent timestamp
-        capturedValues.Should().NotBeNull();
-        capturedValues.Should().HaveCount(1);
-
-        var scoreValue = (long)capturedValues![0];
-        scoreValue.Should().BeInRange(before, after,
-            "Max score should be current timestamp for atomic dequeue window");
-    }
-
-    // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Digest payload structure
-    // ---------------------------------------------------------------------------
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_SingleBlueprint_PublishesCorrectDigestStructure()
-    {
-        // Arrange
-        var testEvent = CreateTestEvent(blueprintId: "bp-001",
-            timestamp: new DateTimeOffset(2026, 3, 1, 14, 30, 0, TimeSpan.Zero));
-
-        SetupActiveUsers(TestUserId);
-        SetupScriptResult(TestUserId, testEvent);
-
-        string? capturedJson = null;
-        _mockSubscriber
-            .Setup(s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.IsAny<RedisValue>(),
-                It.IsAny<CommandFlags>()))
-            .Callback<RedisChannel, RedisValue, CommandFlags>((_, value, _) =>
-                capturedJson = value.ToString())
-            .ReturnsAsync(1);
-
-        var worker = CreateWorker();
-
-        // Act
-        await worker.ProcessPendingDigestsAsync();
-
-        // Assert
-        capturedJson.Should().NotBeNull();
-        var digest = JsonSerializer.Deserialize<DigestNotification>(capturedJson!, JsonOptions);
-        digest.Should().NotBeNull();
-        digest!.UserId.Should().Be(TestUserId);
-        digest.TotalEvents.Should().Be(1);
-        digest.BlueprintGroups.Should().ContainSingle();
-        digest.BlueprintGroups[0].BlueprintId.Should().Be("bp-001");
-        digest.BlueprintGroups[0].ActionCount.Should().Be(1);
-        digest.DigestTimestamp.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
-    }
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_NullBlueprintId_GroupsUnderUnknown()
-    {
-        // Arrange — event with null blueprint ID
-        var testEvent = CreateTestEvent(blueprintId: null);
-
-        SetupActiveUsers(TestUserId);
-        SetupScriptResult(TestUserId, testEvent);
-
-        string? capturedJson = null;
-        _mockSubscriber
-            .Setup(s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.IsAny<RedisValue>(),
-                It.IsAny<CommandFlags>()))
-            .Callback<RedisChannel, RedisValue, CommandFlags>((_, value, _) =>
-                capturedJson = value.ToString())
-            .ReturnsAsync(1);
-
-        var worker = CreateWorker();
-
-        // Act
-        await worker.ProcessPendingDigestsAsync();
-
-        // Assert — null BlueprintId grouped under "unknown"
-        capturedJson.Should().NotBeNull();
-        var digest = JsonSerializer.Deserialize<DigestNotification>(capturedJson!, JsonOptions);
-        digest!.BlueprintGroups.Should().ContainSingle()
-            .Which.BlueprintId.Should().Be("unknown");
-    }
-
-    // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Error handling
-    // ---------------------------------------------------------------------------
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_NoActiveUsers_ReturnsWithoutError()
-    {
-        // Arrange — active-users set is empty
-        SetupEmptyActiveUsers();
-
-        var worker = CreateWorker();
-
-        // Act
-        var act = () => worker.ProcessPendingDigestsAsync();
-
-        // Assert — should handle gracefully
-        await act.Should().NotThrowAsync();
-        _mockDatabase.Verify(
-            db => db.ScriptEvaluateAsync(
-                It.IsAny<string>(),
-                It.IsAny<RedisKey[]>(),
-                It.IsAny<RedisValue[]>(),
-                It.IsAny<CommandFlags>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_ScriptEvaluateThrows_ContinuesWithNextUser()
-    {
-        // Arrange — user-001 script fails, user-002 succeeds
-        var event2 = CreateTestEvent(userId: AnotherUserId, blueprintId: "bp-002");
-
         SetupActiveUsers(TestUserId, AnotherUserId);
+        SetupScriptResult(TestUserId, CreateTestEvent());
+        SetupScriptResult(AnotherUserId, CreateTestEvent(userId: AnotherUserId));
 
-        _mockDatabase
-            .Setup(db => db.ScriptEvaluateAsync(
-                It.IsAny<string>(),
-                It.Is<RedisKey[]>(k => k[0].ToString() == $"{DigestKeyPrefix}{TestUserId}"),
-                It.IsAny<RedisValue[]>(),
-                It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToResolvePhysicalConnection, "Test failure"));
-
-        SetupScriptResult(AnotherUserId, event2);
-
-        var worker = CreateWorker();
-
-        // Act
-        await worker.ProcessPendingDigestsAsync();
-
-        // Assert — user-002 digest still delivered despite user-001 failure
-        _mockSubscriber.Verify(
-            s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.Is<RedisValue>(v => VerifyDigestPayload(v, AnotherUserId, expectedEventCount: 1)),
-                It.IsAny<CommandFlags>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_MalformedJsonEntry_SkipsAndProcessesRemaining()
-    {
-        // Arrange — one valid event, one malformed JSON
-        var validEvent = CreateTestEvent(blueprintId: "bp-001");
-        var key = (RedisKey)$"{DigestKeyPrefix}{TestUserId}";
-
-        SetupActiveUsers(TestUserId);
-
-        var entries = new[]
-        {
-            RedisResult.Create((RedisValue)"{ this is not valid json }"),
-            RedisResult.Create((RedisValue)JsonSerializer.Serialize(validEvent, JsonOptions))
-        };
-
-        _mockDatabase
-            .Setup(db => db.ScriptEvaluateAsync(
-                It.IsAny<string>(),
-                It.Is<RedisKey[]>(k => k.Length == 1 && k[0] == key),
-                It.IsAny<RedisValue[]>(),
-                It.IsAny<CommandFlags>()))
-            .ReturnsAsync(RedisResult.Create(entries));
-
-        var worker = CreateWorker();
-
-        // Act
-        await worker.ProcessPendingDigestsAsync();
-
-        // Assert — digest published with only the valid event
-        _mockSubscriber.Verify(
-            s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.Is<RedisValue>(v => VerifyDigestPayload(v, TestUserId, expectedEventCount: 1)),
-                It.IsAny<CommandFlags>()),
-            Times.Once);
-    }
-
-    // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Active-users set cleanup
-    // ---------------------------------------------------------------------------
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_QueueEmptyAfterProcessing_RemovesUserFromActiveUsersSet()
-    {
-        // Arrange
-        var testEvent = CreateTestEvent();
-
-        SetupActiveUsers(TestUserId);
-        SetupScriptResult(TestUserId, testEvent);
-
-        // SortedSetLengthAsync returns 0 (empty after processing) — default in SetupActiveUsers
-        var worker = CreateWorker();
-
-        // Act
-        await worker.ProcessPendingDigestsAsync();
-
-        // Assert — user removed from active-users set since queue is now empty
-        _mockDatabase.Verify(
-            db => db.SetRemoveAsync(
-                (RedisKey)DigestActiveUsersKey,
-                (RedisValue)TestUserId,
-                It.IsAny<CommandFlags>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_QueueStillHasItemsAfterProcessing_DoesNotRemoveUserFromActiveUsersSet()
-    {
-        // Arrange
-        var testEvent = CreateTestEvent();
-
-        SetupActiveUsers(TestUserId);
-        SetupScriptResult(TestUserId, testEvent);
-
-        // Override SortedSetLengthAsync to return non-zero (items arrived during processing)
-        _mockDatabase
-            .Setup(db => db.SortedSetLengthAsync(
-                It.Is<RedisKey>(k => k.ToString() == $"{DigestKeyPrefix}{TestUserId}"),
-                It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Exclude>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync(3);
-
-        var worker = CreateWorker();
-
-        // Act
-        await worker.ProcessPendingDigestsAsync();
-
-        // Assert — user should NOT be removed since queue still has items
-        _mockDatabase.Verify(
-            db => db.SetRemoveAsync(
-                (RedisKey)DigestActiveUsersKey,
-                (RedisValue)TestUserId,
-                It.IsAny<CommandFlags>()),
-            Times.Never);
-    }
-
-    // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Concurrent safety (each user processed independently)
-    // ---------------------------------------------------------------------------
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_OneUserFails_OtherUsersStillProcessed()
-    {
-        // Arrange — user-001 script fails, user-002 succeeds
-        var event2 = CreateTestEvent(userId: AnotherUserId, blueprintId: "bp-002");
-
-        SetupActiveUsers(TestUserId, AnotherUserId);
-
-        _mockDatabase
-            .Setup(db => db.ScriptEvaluateAsync(
-                It.IsAny<string>(),
-                It.Is<RedisKey[]>(k => k[0].ToString() == $"{DigestKeyPrefix}{TestUserId}"),
-                It.IsAny<RedisValue[]>(),
-                It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisConnectionException(
-                ConnectionFailureType.UnableToResolvePhysicalConnection, "Timeout"));
-
-        SetupScriptResult(AnotherUserId, event2);
-
-        var worker = CreateWorker();
-
-        // Act — should not throw
-        var act = () => worker.ProcessPendingDigestsAsync();
-        await act.Should().NotThrowAsync();
-
-        // Assert — user-002 digest still delivered
-        _mockSubscriber.Verify(
-            s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.Is<RedisValue>(v => VerifyDigestPayload(v, AnotherUserId, expectedEventCount: 1)),
-                It.IsAny<CommandFlags>()),
-            Times.Once);
-    }
-
-    // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Publish failure for one user
-    // ---------------------------------------------------------------------------
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_PublishFailsForOneUser_ContinuesWithNextUser()
-    {
-        // Arrange
-        var event1 = CreateTestEvent(userId: TestUserId, blueprintId: "bp-001");
-        var event2 = CreateTestEvent(userId: AnotherUserId, blueprintId: "bp-002");
-
-        SetupActiveUsers(TestUserId, AnotherUserId);
-        SetupScriptResult(TestUserId, event1);
-        SetupScriptResult(AnotherUserId, event2);
-
-        var publishCallCount = 0;
-        _mockSubscriber
-            .Setup(s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.IsAny<RedisValue>(),
-                It.IsAny<CommandFlags>()))
-            .ReturnsAsync(() =>
+        var calls = 0;
+        _mockInbox
+            .Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Returns<InboxWritePayload, CancellationToken>((_, _) =>
             {
-                publishCallCount++;
-                if (publishCallCount == 1)
-                    throw new RedisConnectionException(
-                        ConnectionFailureType.UnableToResolvePhysicalConnection, "First publish failed");
-                return 1;
+                if (++calls == 1) throw new HttpRequestException("Tenant unreachable");
+                return Task.FromResult(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
             });
 
         var worker = CreateWorker();
-
-        // Act — should not throw
-        var act = () => worker.ProcessPendingDigestsAsync();
-        await act.Should().NotThrowAsync();
-
-        // Assert — publish was attempted for both users
-        _mockSubscriber.Verify(
-            s => s.PublishAsync(
-                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
-                It.IsAny<RedisValue>(),
-                It.IsAny<CommandFlags>()),
-            Times.Exactly(2));
-    }
-
-    // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — Cancellation token respected
-    // ---------------------------------------------------------------------------
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_CancellationRequested_StopsProcessingUsers()
-    {
-        // Arrange — two users, but cancel after first
-        SetupActiveUsers(TestUserId, AnotherUserId);
-
-        using var cts = new CancellationTokenSource();
-
-        // Cancel when script is evaluated for user-001
-        _mockDatabase
-            .Setup(db => db.ScriptEvaluateAsync(
-                It.IsAny<string>(),
-                It.Is<RedisKey[]>(k => k[0].ToString() == $"{DigestKeyPrefix}{TestUserId}"),
-                It.IsAny<RedisValue[]>(),
-                It.IsAny<CommandFlags>()))
-            .Callback(() => cts.Cancel())
-            .ReturnsAsync(RedisResult.Create(Array.Empty<RedisResult>()));
-
-        var worker = CreateWorker();
-
-        // Act
-        await worker.ProcessPendingDigestsAsync(cts.Token);
-
-        // Assert — second user should not be processed
-        _mockDatabase.Verify(
-            db => db.ScriptEvaluateAsync(
-                It.IsAny<string>(),
-                It.Is<RedisKey[]>(k => k[0].ToString() == $"{DigestKeyPrefix}{AnotherUserId}"),
-                It.IsAny<RedisValue[]>(),
-                It.IsAny<CommandFlags>()),
-            Times.Never);
-    }
-
-    // ---------------------------------------------------------------------------
-    // ProcessPendingDigestsAsync — All JSON entries malformed
-    // ---------------------------------------------------------------------------
-
-    [Fact]
-    public async Task ProcessPendingDigestsAsync_AllEntriesMalformed_DoesNotPublish()
-    {
-        // Arrange — all entries are invalid JSON
-        var key = (RedisKey)$"{DigestKeyPrefix}{TestUserId}";
-
-        SetupActiveUsers(TestUserId);
-
-        var entries = new[]
-        {
-            RedisResult.Create((RedisValue)"not-json-1"),
-            RedisResult.Create((RedisValue)"not-json-2")
-        };
-
-        _mockDatabase
-            .Setup(db => db.ScriptEvaluateAsync(
-                It.IsAny<string>(),
-                It.Is<RedisKey[]>(k => k.Length == 1 && k[0] == key),
-                It.IsAny<RedisValue[]>(),
-                It.IsAny<CommandFlags>()))
-            .ReturnsAsync(RedisResult.Create(entries));
-
-        var worker = CreateWorker();
-
-        // Act
         await worker.ProcessPendingDigestsAsync();
 
-        // Assert — no publish since no valid events
-        _mockSubscriber.Verify(
-            s => s.PublishAsync(
-                It.IsAny<RedisChannel>(),
-                It.IsAny<RedisValue>(),
-                It.IsAny<CommandFlags>()),
-            Times.Never);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Verification helper
-    // ---------------------------------------------------------------------------
-
-    private static bool VerifyDigestPayload(RedisValue value, string expectedUserId, int expectedEventCount)
-    {
-        try
-        {
-            var json = value.ToString();
-            var digest = JsonSerializer.Deserialize<DigestNotification>(json, JsonOptions);
-            return digest != null
-                && digest.UserId == expectedUserId
-                && digest.TotalEvents == expectedEventCount;
-        }
-        catch
-        {
-            return false;
-        }
+        calls.Should().Be(2);
     }
 }

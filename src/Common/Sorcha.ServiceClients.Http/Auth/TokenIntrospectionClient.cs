@@ -95,24 +95,31 @@ public class TokenIntrospectionClient : ITokenIntrospectionClient
 
     private sealed class IntrospectionResponse
     {
+        /// <summary>Flag indicating active.</summary>
         [JsonPropertyName("active")]
         public bool Active { get; set; }
 
+        /// <summary>The sub.</summary>
         [JsonPropertyName("sub")]
         public string? Sub { get; set; }
 
+        /// <summary>The token type.</summary>
         [JsonPropertyName("token_type")]
         public string? TokenType { get; set; }
 
+        /// <summary>The scope.</summary>
         [JsonPropertyName("scope")]
         public string? Scope { get; set; }
 
+        /// <summary>Identifier of the client.</summary>
         [JsonPropertyName("client_id")]
         public string? ClientId { get; set; }
 
+        /// <summary>Numeric value for exp.</summary>
         [JsonPropertyName("exp")]
         public long? Exp { get; set; }
 
+        /// <summary>Numeric value for iat.</summary>
         [JsonPropertyName("iat")]
         public long? Iat { get; set; }
     }

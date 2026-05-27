@@ -8,8 +8,10 @@ using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using System.Text.Json;
 using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Events.Models;
+using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
@@ -98,6 +100,8 @@ public sealed class EncryptionBackgroundService : BackgroundService
         var transactionBuilder = scope.ServiceProvider.GetRequiredService<ITransactionBuilderService>();
         var walletClient = scope.ServiceProvider.GetRequiredService<IWalletServiceClient>();
         var validatorClient = scope.ServiceProvider.GetRequiredService<IValidatorServiceClient>();
+        // Feature 108 — optional peer fan-out (subscriber nodes forward to the register owner).
+        var peerClient = scope.ServiceProvider.GetService<IPeerServiceClient>();
 
         try
         {
@@ -179,6 +183,15 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 workItem.PreviousTransactionId,
                 ct);
 
+            // Feature 137 (C5): carry the resolved next action so a cross-node mirror can seed
+            // CurrentActionIds when this tx seals. Mirrors the synchronous path in
+            // ActionExecutionService; DocketBuildTriggerService projects it onto TransactionMetaData.
+            var nextActionId = workItem.RoutingResult.NextActions.FirstOrDefault()?.ActionId;
+            if (nextActionId.HasValue)
+            {
+                transaction.Metadata["nextActionId"] = nextActionId.Value.ToString();
+            }
+
             // Step 4: Signing and Submitting
             await UpdateOperationStepAsync(operationId, EncryptionOpStatus.Submitting,
                 StepSubmitting, "Signing and submitting", 80);
@@ -198,12 +211,31 @@ public sealed class EncryptionBackgroundService : BackgroundService
             var nextSeqNum = await validatorClient.GetNextSequenceNumberAsync(
                 workItem.RegisterId, workItem.SenderWallet, ct);
             var submission = transaction.ToTransactionSubmission(signResult, nextSeqNum);
-            var validatorResult = await validatorClient.SubmitTransactionAsync(submission, ct);
 
-            if (!validatorResult.Success)
+            // Feature 108 / Feature 137 — submit to BOTH the local validator (seals iff this node is
+            // on the roster) AND the peer-service fan-out (forwards to source peers for subscribed
+            // registers). This async/encrypted path previously skipped the fan-out, so a replica-
+            // origin encrypted submission never reached the register owner and never sealed.
+            var validatorTask = validatorClient.SubmitTransactionAsync(submission, ct);
+            var distributeTask = peerClient is null
+                ? Task.FromResult(new DistributeTransactionResult(0, 0, LocallyOwned: true))
+                : DistributeEncryptedSubmissionAsync(peerClient, workItem.RegisterId, submission, ct);
+            await Task.WhenAll(validatorTask, distributeTask);
+            var validatorResult = validatorTask.Result;
+            var distributeResult = distributeTask.Result;
+
+            _logger.LogInformation(
+                "Encrypted submission {TxId} for register {RegisterId}: validator success={ValidatorSuccess}, fan-out targets={Targets} accepted={Accepted} locallyOwned={Local}",
+                transaction.TxId, workItem.RegisterId, validatorResult.Success,
+                distributeResult.TargetPeerCount, distributeResult.AcceptedCount, distributeResult.LocallyOwned);
+
+            // Fail only when the local validator rejected AND no peer accepted the fan-out AND the
+            // register is not locally owned — a subscriber's local validator never seals (off-roster),
+            // so a peer-accepted submission is the success signal there.
+            if (!validatorResult.Success && distributeResult.AcceptedCount == 0 && !distributeResult.LocallyOwned)
             {
                 await HandleFailureAsync(operationId, workItem.SenderWallet,
-                    $"Validator rejected transaction: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage}",
+                    $"Validator rejected transaction: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage} — and no peer accepted the fan-out",
                     null, StepSubmitting,
                     notificationService, scope.ServiceProvider, workItem, ct);
                 return;
@@ -278,6 +310,35 @@ public sealed class EncryptionBackgroundService : BackgroundService
             op.StepName = stepName;
             op.PercentComplete = percent;
             await _operationStore.UpdateAsync(op);
+        }
+    }
+
+    /// <summary>
+    /// Feature 108 — fans an encrypted, signed submission out to the register's source peers so a
+    /// replica-origin submission reaches the owner for sealing. Mirrors
+    /// <c>ActionExecutionService.DistributeSubmissionAsync</c>: best-effort, never throws; a fan-out
+    /// failure degrades to validator-only (logged) rather than failing the operation.
+    /// </summary>
+    private async Task<DistributeTransactionResult> DistributeEncryptedSubmissionAsync(
+        IPeerServiceClient peerClient,
+        string registerId,
+        Sorcha.ServiceClients.Validator.TransactionSubmission submission,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var json = JsonSerializer.SerializeToUtf8Bytes(
+                submission,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            return await peerClient.DistributeTransactionAsync(registerId, json, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Feature 108 — peer fan-out errored for encrypted submission on register {RegisterId} " +
+                "(tx {TxId}); falling back to validator-only. Subscriber nodes depend on this path to reach the owner.",
+                registerId, submission.TransactionId);
+            return new DistributeTransactionResult(0, 0, LocallyOwned: false);
         }
     }
 
@@ -403,11 +464,68 @@ public sealed class EncryptionBackgroundService : BackgroundService
             instance.CompletedAt = DateTimeOffset.UtcNow;
         }
 
-        await instanceStore.UpdateAsync(instance, ct);
+        // Feature 137 (C5): on the register-OWNING node a cross-node workflow surfaces as a
+        // read-only mirror row (the owner never ran CreateInstance), yet the owner MUST advance it
+        // when its own participant acts (e.g. the verification-analyst's credential issuance).
+        // IInstanceStore.UpdateAsync rejects mirror rows by design (Feature 106), so route the
+        // advance through the mirror-safe writer — mirroring the inline path's PersistInstanceAsync.
+        // Without this the async-encrypted issuance sealed the credential but threw here, leaving the
+        // owner's mirror stuck at the issuing action (the citizen's claim action never surfaced on n1).
+        if (instance.IsReadOnlyMirror)
+        {
+            await instanceStore.UpdateMirrorAsync(instance, ct);
+        }
+        else
+        {
+            await instanceStore.UpdateAsync(instance, ct);
+        }
         _logger.LogInformation(
-            "Instance {InstanceId} advanced after encrypted action {ActionId}. Next actions: [{NextActions}]",
-            workItem.InstanceId, workItem.ActionId,
+            "Instance {InstanceId} advanced after encrypted action {ActionId} (mirror={IsMirror}). Next actions: [{NextActions}]",
+            workItem.InstanceId, workItem.ActionId, instance.IsReadOnlyMirror,
             string.Join(", ", instance.CurrentActionIds));
+
+        // B-15 — notify the next-action participants and emit workflow-complete
+        // when the chain has run out. The inline ActionExecutionService path
+        // calls NotifyParticipantsAsync at step 15; the async-encrypted path
+        // skipped this, so a user awaiting an action from someone whose
+        // submission went through the encrypted pipeline never received the
+        // real-time SignalR push and saw "All Caught Up" until manual refresh.
+        // Try/catch swallow — a notification failure must NOT roll back the
+        // committed instance state.
+        try
+        {
+            var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
+            foreach (var nextAction in workItem.RoutingResult.NextActions)
+            {
+                string? walletAddress = null;
+                instance.ParticipantWallets?.TryGetValue(nextAction.ParticipantId, out walletAddress);
+
+                await notificationService.NotifyActionAvailableAsync(
+                    instance.Id,
+                    walletAddress,
+                    actionId: nextAction.ActionId.ToString(),
+                    ct: ct);
+            }
+
+            if (workItem.RoutingResult.NextActions.Count == 0)
+            {
+                var walletAddresses = instance.ParticipantWallets?.Values
+                    .Where(w => !string.IsNullOrEmpty(w))
+                    .Distinct()
+                    ?? [];
+
+                await notificationService.NotifyWorkflowCompletedAsync(
+                    instance.Id,
+                    walletAddresses!,
+                    ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "NotifyParticipantsAsync (async-encrypted path) failed for instance {InstanceId} after action {ActionId}; instance state is committed but next-participant SignalR push was missed",
+                workItem.InstanceId, workItem.ActionId);
+        }
     }
 
     private async Task StoreActivityEventAsync(

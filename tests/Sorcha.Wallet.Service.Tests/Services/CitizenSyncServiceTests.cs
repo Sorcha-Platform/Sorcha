@@ -46,10 +46,10 @@ public sealed class CitizenSyncServiceTests
     [Fact]
     public async Task ComposeDeltaAsync_IncrementalSync_ProjectsAddedRevokedReplaced()
     {
-        var addedId = Guid.NewGuid();
-        var revokedId = Guid.NewGuid();
-        var replacedOldId = Guid.NewGuid();
-        var replacedNewId = Guid.NewGuid();
+        var addedId = $"urn:credential:test:{Guid.NewGuid():N}";
+        var revokedId = $"urn:credential:test:{Guid.NewGuid():N}";
+        var replacedOldId = $"urn:credential:test:{Guid.NewGuid():N}";
+        var replacedNewId = $"urn:credential:test:{Guid.NewGuid():N}";
 
         _events.Append(1, CitizenCredentialEventKind.Added, new CachedCredentialPayload
         {
@@ -121,8 +121,8 @@ public sealed class CitizenSyncServiceTests
     [Fact]
     public async Task ListAllCredentialsAsync_ReplaysToNetSnapshot()
     {
-        var keepId = Guid.NewGuid();
-        var dropId = Guid.NewGuid();
+        var keepId = $"urn:credential:test:{Guid.NewGuid():N}";
+        var dropId = $"urn:credential:test:{Guid.NewGuid():N}";
         _events.Append(1, CitizenCredentialEventKind.Added, NewPayload(keepId));
         _events.Append(2, CitizenCredentialEventKind.Added, NewPayload(dropId));
         _events.Append(3, CitizenCredentialEventKind.Revoked, new RevokedCredentialEntry
@@ -138,9 +138,9 @@ public sealed class CitizenSyncServiceTests
         snapshot.Credentials.Should().NotContain(p => p.Id == dropId);
     }
 
-    private CachedCredentialPayload NewPayload(Guid? id = null) => new()
+    private CachedCredentialPayload NewPayload(string? id = null) => new()
     {
-        Id = id ?? Guid.NewGuid(),
+        Id = id ?? $"urn:credential:test:{Guid.NewGuid():N}",
         Vct = "https://sorcha.dev/vc/test/v1",
         Jwt = "eyJ...",
         IssuerDid = "did:sorcha:org:test",

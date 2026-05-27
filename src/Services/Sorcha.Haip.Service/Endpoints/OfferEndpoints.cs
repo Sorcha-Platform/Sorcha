@@ -34,6 +34,10 @@ public static class OfferEndpoints
         group.MapGet("/{offerId:guid}", GetOfferStatus)
             .WithName("GetOfferStatus")
             .WithSummary("Get Credential Offer status (service-to-service)")
+            .WithDescription(
+                "Returns the current lifecycle state of a Credential Offer (Pending, Exchanged, Expired). " +
+                "The Blueprint Service polls this to drive the issuance workflow forward — for example, " +
+                "advancing a workflow step once the wallet has redeemed the pre-authorized code.")
             .Produces<object>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
             .RequireAuthorization(AuthorizationPolicies.RequireService); // SEC-013

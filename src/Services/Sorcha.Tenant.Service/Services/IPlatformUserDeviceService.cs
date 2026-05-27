@@ -31,7 +31,8 @@ public interface IPlatformUserDeviceService
     /// <param name="userAgent">Raw User-Agent header at enrolment.</param>
     /// <param name="delegationExpiresAt">Expiry of the device delegation credential.</param>
     /// <param name="delegationCredentialJti">JTI of the current delegation credential.</param>
-    /// <param name="statusListIndex">Bit position allocated in the org's citizen-devices status list.</param>
+    /// <param name="statusListId">Identifier of the status list (per-org; rolls over at capacity).</param>
+    /// <param name="statusListIndex">Bit position allocated within the status list.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>
     /// The persisted device record. On a duplicate <c>(PlatformUserId, Thumbprint)</c>
@@ -47,6 +48,7 @@ public interface IPlatformUserDeviceService
         string userAgent,
         DateTimeOffset delegationExpiresAt,
         string delegationCredentialJti,
+        int statusListId,
         int statusListIndex,
         CancellationToken ct = default);
 
@@ -59,5 +61,67 @@ public interface IPlatformUserDeviceService
     Task<PlatformUserDevice?> GetByIdAsync(
         Guid deviceId,
         Guid platformUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// List every device enrolled by the supplied platform user, ordered by
+    /// <see cref="PlatformUserDevice.EnrolledAt"/> descending. Includes both
+    /// active and revoked devices — the citizen needs to see revoked devices
+    /// in their device list to confirm a revocation took effect.
+    /// </summary>
+    Task<IReadOnlyList<PlatformUserDevice>> ListAsync(
+        Guid platformUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Aggregate query for the F128 cold-start surfaces: does this user have
+    /// at least one ACTIVE (non-revoked) paired device? If yes, returns the
+    /// most recent enrolment timestamp; if no, returns
+    /// <c>(false, null)</c>.
+    /// </summary>
+    /// <remarks>
+    /// Used by the wallet PWA pairing takeover trigger (FR-010) and the
+    /// Sorcha Web nag-banner trigger (FR-024) via the shared
+    /// <c>IHasPairedDeviceProbe</c> client service. Does not expose the
+    /// per-device list — the nag-banner doesn't need that detail and a
+    /// boolean aggregate is cheaper to cache + invalidate.
+    /// </remarks>
+    Task<(bool HasAnyDevice, DateTimeOffset? LatestEnrolledAt)> HasAnyAsync(
+        Guid platformUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes the device by setting <see cref="PlatformUserDevice.Status"/> to
+    /// <see cref="PlatformUserDeviceStatus.Revoked"/>, recording the revocation
+    /// timestamp and the platform user who triggered it. Idempotent: a
+    /// re-revocation against an already-revoked device is a successful no-op
+    /// (the original <c>RevokedAt</c> / <c>RevokedByPlatformUserId</c> are
+    /// preserved).
+    /// </summary>
+    /// <returns>
+    /// The device after the revocation, or <c>null</c> if the device does not
+    /// exist OR is not owned by <paramref name="platformUserId"/> (intentionally
+    /// indistinguishable — see <see cref="GetByIdAsync"/>).
+    /// </returns>
+    /// <remarks>
+    /// This implementation only flips the Tenant-side status. Propagation to the
+    /// Wallet Service status-list bit is performed by callers (the endpoint
+    /// layer) in PR2; keeping the service local-only here avoids tangling the
+    /// service-to-service call into the unit-of-work boundary.
+    /// </remarks>
+    Task<PlatformUserDevice?> RevokeAsync(
+        Guid deviceId,
+        Guid platformUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates the citizen-visible <see cref="PlatformUserDevice.Label"/>. Returns
+    /// <c>null</c> when the device does not exist OR is not owned by the supplied
+    /// platform user (intentionally indistinguishable). Validates length 1..120.
+    /// </summary>
+    Task<PlatformUserDevice?> UpdateLabelAsync(
+        Guid deviceId,
+        Guid platformUserId,
+        string label,
         CancellationToken ct = default);
 }

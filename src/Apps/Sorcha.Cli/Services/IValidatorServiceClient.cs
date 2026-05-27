@@ -112,4 +112,53 @@ public interface IValidatorServiceClient
     /// </summary>
     [Post("/api/v1/validators/threshold/setup")]
     Task<HttpResponseMessage> SetupThresholdAsync([Body] object request, [Header("Authorization")] string authorization);
+
+    // --- Roster Governance (Feature 086) ---
+
+    /// <summary>
+    /// Self-registers a validator for a register.
+    /// </summary>
+    [Post("/api/validators/register")]
+    Task<RegisterValidatorResponse> RegisterValidatorAsync([Body] RegisterValidatorRequest request, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets the active validator count for a register.
+    /// </summary>
+    [Get("/api/validators/{registerId}/count")]
+    Task<ValidatorCountResponse> GetValidatorCountAsync(string registerId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets the validator roster audit trail for a register.
+    /// </summary>
+    [Get("/api/validators/{registerId}/audit")]
+    Task<ValidatorAuditResponse> GetValidatorAuditAsync(
+        string registerId,
+        [Query] string? validatorId,
+        [Query] int? limit,
+        [Query] int? offset,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Suspends an active validator.
+    /// </summary>
+    [Post("/api/validators/{registerId}/{validatorId}/suspend")]
+    Task<ValidatorLifecycleResponse> SuspendValidatorAsync(string registerId, string validatorId, [Body] SuspendValidatorRequest request, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Reactivates a suspended validator.
+    /// </summary>
+    [Post("/api/validators/{registerId}/{validatorId}/reactivate")]
+    Task<ValidatorLifecycleResponse> ReactivateValidatorAsync(string registerId, string validatorId, [Body] ReactivateValidatorRequest request, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Permanently revokes a validator.
+    /// </summary>
+    [Post("/api/validators/{registerId}/{validatorId}/revoke")]
+    Task<ValidatorLifecycleResponse> RevokeValidatorAsync(string registerId, string validatorId, [Body] RevokeValidatorRequest request, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets a wallet's sequence numbers for a register.
+    /// </summary>
+    [Get("/api/validators/{registerId}/sequence/{walletAddress}")]
+    Task<ValidatorSequenceResponse> GetValidatorSequenceAsync(string registerId, string walletAddress, [Header("Authorization")] string authorization);
 }

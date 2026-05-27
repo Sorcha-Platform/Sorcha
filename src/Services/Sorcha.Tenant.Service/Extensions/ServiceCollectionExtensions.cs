@@ -53,6 +53,7 @@ public static class WebApplicationExtensions
         services.AddScoped<IAuthChallengeService, AuthChallengeService>();
         services.AddScoped<IAuthMethodService, AuthMethodService>();
         services.AddScoped<ISocialLinkService, SocialLinkService>();
+        services.AddScoped<IPasswordManagementService, PasswordManagementService>();
 
         // AuthMetrics is a singleton wrapper around the OpenTelemetry meter —
         // counters are process-wide and must outlive any individual scope.
@@ -98,6 +99,11 @@ public static class ServiceCollectionExtensions
         // Demo-environment banner flag (e.g. n1.sorcha.dev). Default off; flipped
         // on per deployment via the DemoEnvironment__Enabled env var.
         services.Configure<DemoEnvironmentSettings>(configuration.GetSection("DemoEnvironment"));
+
+        // Feature 120 US2 — per-org DID document service.
+        services.Configure<Configuration.TenantSettings>(
+            configuration.GetSection(Configuration.TenantSettings.SectionName));
+        services.AddScoped<IOrgDidDocumentService, OrgDidDocumentService>();
 
         // Add FIDO2/WebAuthn services
         services.AddFido2WebAuthn(configuration);
@@ -178,6 +184,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IParticipantService, ParticipantService>();
         services.AddScoped<IWalletVerificationService, WalletVerificationService>();
         services.AddScoped<IParticipantPublishingService, ParticipantPublishingService>();
+        // Spec 136: tiered-audience identity metrics (Sorcha.Identity meter). Singleton so the
+        // instruments are created once; consumed by TokenService to record tokens minted per tier.
+        services.AddSingleton<Sorcha.ServiceDefaults.Auth.IdentityMetrics>();
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IServiceAuthService, ServiceAuthService>();
         services.AddScoped<ITotpService, TotpService>();
@@ -191,6 +200,10 @@ public static class ServiceCollectionExtensions
 
         // Platform services
         services.AddScoped<IPlatformUserService, PlatformUserService>();
+        // Feature 118 / US3 follow-up #3 — Tenant-side inbox writer for org membership events.
+        services.AddScoped<ITenantMembershipInboxWriter, TenantMembershipInboxWriter>();
+        // Feature 118 — Tenant-side inbox writer for security events (2FA enable/disable).
+        services.AddScoped<ITenantSecurityInboxWriter, TenantSecurityInboxWriter>();
         services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
         services.AddScoped<IOrgProvisioningService, OrgProvisioningService>();
         services.AddScoped<IPlatformUserProvisioningService, PlatformUserProvisioningService>();

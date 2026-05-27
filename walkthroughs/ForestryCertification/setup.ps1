@@ -75,28 +75,18 @@ function New-ParticipantUserSession {
     $email = "$ParticipantId@$Subdomain.sorcha.dev"
     $password = Get-ParticipantPassword -Subdomain $Subdomain -ParticipantId $ParticipantId
 
-    try {
-        $null = Register-SorchaPublicUser `
-            -TenantUrl $sorchaEnv.TenantUrl `
-            -Email $email `
-            -Password $password `
-            -DisplayName $DisplayName
-    } catch { Write-WtInfo "  user $email may already exist" }
-
-    try {
-        $null = Invoke-SorchaApi -Method POST `
-            -Uri "$($sorchaEnv.TenantUrl)/platform/users/verify-email" `
-            -Body @{ email = $email } `
-            -Headers $sysAdmin.Headers
-    } catch { Write-WtWarn "  email verify failed for $email" }
-
-    $userId = Get-OrCreateUser `
+    # Spec 136: provision the operator org-scoped + verified (single-org — no public account, no
+    # multi-org clash). Org operators are never public users; only citizens are.
+    $provisioned = New-SorchaOrgUser `
         -TenantUrl $sorchaEnv.TenantUrl `
         -OrganizationId $OrganizationId `
         -Email $email `
+        -Password $password `
         -DisplayName $DisplayName `
         -Headers $OrgAdminHeaders `
-        -Roles @("Consumer")
+        -Roles @("Consumer") `
+        -EmailVerified
+    $userId = $provisioned.UserId
 
     $session = Connect-SorchaUser `
         -TenantUrl $sorchaEnv.TenantUrl `
@@ -140,27 +130,17 @@ $fcSubdomain = "forestry-certification"
 $fcAdminEmail = "admin@$fcSubdomain.sorcha.dev"
 $fcAdminPassword = Get-OrgAdminPassword -Subdomain $fcSubdomain
 
-try {
-    $null = Register-SorchaPublicUser `
-        -TenantUrl $sorchaEnv.TenantUrl `
-        -Email $fcAdminEmail `
-        -Password $fcAdminPassword `
-        -DisplayName "Forestry Certification Admin"
-} catch { Write-WtInfo "  user $fcAdminEmail may already exist" }
-
-try {
-    $null = Invoke-SorchaApi -Method POST `
-        -Uri "$($sorchaEnv.TenantUrl)/platform/users/verify-email" `
-        -Body @{ email = $fcAdminEmail } `
-        -Headers $sysAdmin.Headers
-} catch { Write-WtWarn "  email verify failed for $fcAdminEmail" }
-
+# Spec 136: provision the org admin org-scoped + verified in one call (single-org — no public
+# account, no multi-org clash, no SMTP invite).
 try {
     $fcOrg = New-SorchaOrganization `
         -TenantUrl $sorchaEnv.TenantUrl `
         -Name "Forestry Certification" `
         -Subdomain $fcSubdomain `
         -AdminEmail $fcAdminEmail `
+        -AdminPassword $fcAdminPassword `
+        -AdminDisplayName "Forestry Certification Admin" `
+        -AdminEmailVerified `
         -Headers $sysAdmin.Headers `
         -Description "Independent forestry auditor — issues Digital Product Passports for timber batches"
     $fcOrgId = $fcOrg.OrganizationId
@@ -185,27 +165,16 @@ $htSubdomain = "highland-timber"
 $htAdminEmail = "admin@$htSubdomain.sorcha.dev"
 $htAdminPassword = Get-OrgAdminPassword -Subdomain $htSubdomain
 
-try {
-    $null = Register-SorchaPublicUser `
-        -TenantUrl $sorchaEnv.TenantUrl `
-        -Email $htAdminEmail `
-        -Password $htAdminPassword `
-        -DisplayName "Highland Timber Admin"
-} catch { Write-WtInfo "  user $htAdminEmail may already exist" }
-
-try {
-    $null = Invoke-SorchaApi -Method POST `
-        -Uri "$($sorchaEnv.TenantUrl)/platform/users/verify-email" `
-        -Body @{ email = $htAdminEmail } `
-        -Headers $sysAdmin.Headers
-} catch { Write-WtWarn "  email verify failed for $htAdminEmail" }
-
+# Spec 136: provision the org admin org-scoped + verified in one call (single-org).
 try {
     $htOrg = New-SorchaOrganization `
         -TenantUrl $sorchaEnv.TenantUrl `
         -Name "Highland Timber Supplies" `
         -Subdomain $htSubdomain `
         -AdminEmail $htAdminEmail `
+        -AdminPassword $htAdminPassword `
+        -AdminDisplayName "Highland Timber Admin" `
+        -AdminEmailVerified `
         -Headers $sysAdmin.Headers `
         -Description "Timber supplier — applies for Digital Product Passport certification on harvested batches"
     $htOrgId = $htOrg.OrganizationId

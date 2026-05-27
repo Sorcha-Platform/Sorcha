@@ -320,6 +320,84 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("IdentityProviderConfigurations", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.InboxEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("ChannelHints")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CorrelationKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("DetailHref")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<DateTimeOffset?>("DismissedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IconKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("SourceEventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("WriterServiceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlatformUserId", "OccurredAt")
+                        .HasDatabaseName("IX_InboxEntries_PlatformUserId_OccurredAt");
+
+                    b.HasIndex("PlatformUserId", "SourceEventId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_InboxEntries_PlatformUserId_SourceEventId");
+
+                    b.HasIndex("PlatformUserId", "Category", "OccurredAt")
+                        .HasDatabaseName("IX_InboxEntries_PlatformUserId_Category_OccurredAt");
+
+                    b.HasIndex("PlatformUserId", "CorrelationKey", "OccurredAt")
+                        .HasDatabaseName("IX_InboxEntries_PlatformUserId_CorrelationKey_OccurredAt");
+
+                    b.ToTable("InboxEntries", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.InvitationNonce", b =>
                 {
                     b.Property<Guid>("Id")
@@ -414,6 +492,59 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasFilter("\"Status\" = 'Active'");
 
                     b.ToTable("LinkedWalletAddresses", "public");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.OrgDidDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DocumentJson")
+                        .IsRequired()
+                        .HasMaxLength(16384)
+                        .HasColumnType("character varying(16384)");
+
+                    b.Property<string>("FederatedDid")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("KeyVersionFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("LastRegeneratedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LastRegenerationReason")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PrimaryDid")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FederatedDid")
+                        .HasDatabaseName("IX_OrgDidDocuments_FederatedDid");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_OrgDidDocuments_OrganizationId");
+
+                    b.HasIndex("PrimaryDid")
+                        .HasDatabaseName("IX_OrgDidDocuments_PrimaryDid");
+
+                    b.ToTable("OrgDidDocuments", "public");
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.OrgInvitation", b =>
@@ -1054,6 +1185,9 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<int>("StatusListId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("StatusListIndex")
                         .HasColumnType("integer");
 
@@ -1112,6 +1246,9 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Property<Guid>("PlatformUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("ContextOrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<byte[]>("CiphertextBlob")
                         .IsRequired()
                         .HasColumnType("bytea");
@@ -1135,7 +1272,7 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
-                    b.HasKey("PlatformUserId");
+                    b.HasKey("PlatformUserId", "ContextOrgId");
 
                     b.ToTable("PlatformUserPersonas", "public");
                 });
@@ -1548,6 +1685,15 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Navigation("Organization");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.InboxEntry", b =>
+                {
+                    b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("PlatformUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.LinkedWalletAddress", b =>
                 {
                     b.HasOne("Sorcha.Tenant.Service.Models.ParticipantIdentity", "Participant")
@@ -1669,8 +1815,8 @@ namespace Sorcha.Tenant.Service.Migrations
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserPersona", b =>
                 {
                     b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
-                        .WithOne()
-                        .HasForeignKey("Sorcha.Tenant.Service.Models.PlatformUserPersona", "PlatformUserId")
+                        .WithMany()
+                        .HasForeignKey("PlatformUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

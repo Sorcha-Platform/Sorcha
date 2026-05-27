@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -28,6 +29,7 @@ public class LoginModelTests
     private readonly Mock<IIdentityRepository> _identityRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
     private readonly Mock<ISocialLoginService> _socialLoginService = new();
+    private readonly Mock<IPlatformUserDeviceService> _deviceService = new();
 
     private LoginModel CreateModel()
     {
@@ -39,7 +41,9 @@ public class LoginModelTests
             _orgRepo.Object,
             NullLogger<LoginModel>.Instance,
             Options.Create(new DemoEnvironmentSettings()),
-            _socialLoginService.Object);
+            _socialLoginService.Object,
+            Options.Create(new ReturnToAllowlistOptions()),
+            _deviceService.Object);
 
         var httpContext = new DefaultHttpContext();
         model.PageContext = new PageContext(new ActionContext(
@@ -93,7 +97,7 @@ public class LoginModelTests
     {
         // Arrange
         var tokens = CreateTokens();
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(true, Tokens: tokens));
 
         var model = CreateModel();
@@ -115,7 +119,7 @@ public class LoginModelTests
     public async Task OnPostAsync_InvalidCredentials_ShowsError()
     {
         // Arrange
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "wrong", It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "wrong", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(false, Error: "Invalid email or password."));
 
         var model = CreateModel();
@@ -134,7 +138,7 @@ public class LoginModelTests
     public async Task OnPostAsync_TwoFactorRequired_ShowsTwoFactorForm()
     {
         // Arrange
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(
                 true,
                 TwoFactorRequired: true,
@@ -187,7 +191,7 @@ public class LoginModelTests
             .ReturnsAsync(user);
         _orgRepo.Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
-        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(tokens);
 
         var model = CreateModel();
@@ -236,7 +240,7 @@ public class LoginModelTests
     {
         // Arrange
         var tokens = CreateTokens();
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(true, Tokens: tokens));
 
         var model = CreateModel();
@@ -260,7 +264,7 @@ public class LoginModelTests
     {
         // Arrange
         var tokens = CreateTokens();
-        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<CancellationToken>()))
+        _loginService.Setup(s => s.LoginAsync("user@test.com", "password123", It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(true, Tokens: tokens));
 
         var model = CreateModel();
@@ -286,7 +290,7 @@ public class LoginModelTests
         var tokens = CreateTokens();
 
         _loginService.Setup(s => s.CompleteOrgSelectionAsync(
-                "platform-token", orgBId, It.IsAny<CancellationToken>()))
+                "platform-token", orgBId, It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(true, Tokens: tokens));
 
         var model = CreateModel();
@@ -310,7 +314,7 @@ public class LoginModelTests
         var orgBId = Guid.NewGuid();
 
         _loginService.Setup(s => s.CompleteOrgSelectionAsync(
-                "platform-token", orgBId, It.IsAny<CancellationToken>()))
+                "platform-token", orgBId, It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LoginResult(
                 true,
                 TwoFactorRequired: true,
@@ -380,7 +384,7 @@ public class LoginModelTests
         _orgRepo.Setup(r => r.GetByIdAsync(orgBId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(orgB);
         _tokenService.Setup(t => t.GenerateUserTokenAsync(
-                userInOrgB, orgB, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                userInOrgB, orgB, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(tokens);
 
         var model = CreateModel();
@@ -394,7 +398,7 @@ public class LoginModelTests
         // Assert — token generated for Org B, NOT Org A
         result.Should().BeOfType<RedirectResult>();
         _tokenService.Verify(t => t.GenerateUserTokenAsync(
-            userInOrgB, orgB, It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            userInOrgB, orgB, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()),
             Times.Once, "JWT must be generated for the selected org (Org B), not the user's default org");
         _orgRepo.Verify(r => r.GetByIdAsync(orgAId, It.IsAny<CancellationToken>()),
             Times.Never, "Should NOT look up Org A — user selected Org B");
@@ -453,7 +457,7 @@ public class LoginModelTests
         model.ErrorMessage.Should().Be("You are not a member of the selected organization.");
         _tokenService.Verify(t => t.GenerateUserTokenAsync(
             It.IsAny<UserIdentity>(), It.IsAny<Organization>(),
-            It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()),
             Times.Never, "Must NOT issue a JWT for an org the user doesn't belong to");
     }
 
@@ -489,7 +493,7 @@ public class LoginModelTests
             .ReturnsAsync(user);
         _orgRepo.Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
-        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(tokens);
 
         var model = CreateModel();
@@ -503,7 +507,7 @@ public class LoginModelTests
         // Assert — falls back to user's default org
         result.Should().BeOfType<RedirectResult>();
         _tokenService.Verify(t => t.GenerateUserTokenAsync(
-            user, org, It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 }

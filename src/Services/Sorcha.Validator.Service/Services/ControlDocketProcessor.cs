@@ -746,6 +746,21 @@ public class ControlDocketProcessor : IControlDocketProcessor
             errors.Add($"EnforcementMode must be one of: {string.Join(", ", validModes)}");
         }
 
+        // One-way DevMode enforcement (consensus-level): a register's DevMode posture is set ONCE
+        // at genesis. A crypto-policy UPDATE may only promote DevMode→Normal (DevMode stays/goes
+        // false), never Normal→DevMode. Refusing DevMode=true on any update makes the downgrade
+        // (plaintext) path unreachable post-genesis — an attacker cannot submit a policy update to
+        // strip encryption off a live register. (Consequence: any crypto-policy update on a
+        // still-DevMode register also promotes it to Normal — a safe nudge toward encryption for a
+        // debug-only mode.) The genesis control record is NOT a CryptoPolicyUpdate, so a register
+        // can still be born in DevMode.
+        if (payload.DevMode)
+        {
+            errors.Add(
+                "DevMode cannot be enabled via a crypto-policy update — it is a one-way, " +
+                "genesis-only posture (a register may be promoted DevMode→Normal, never the reverse).");
+        }
+
         return errors;
     }
 
@@ -951,14 +966,16 @@ public class ControlDocketProcessor : IControlDocketProcessor
         var payload = (CryptoPolicyUpdatePayload)controlTx.Payload;
 
         _logger.LogInformation(
-            "Crypto policy updated for register {RegisterId}: version {Version}, mode {Mode}, accepted algorithms: {Algorithms}",
-            registerId, payload.Version, payload.EnforcementMode,
+            "Crypto policy updated for register {RegisterId}: version {Version}, mode {Mode}, devMode {DevMode}, accepted algorithms: {Algorithms}",
+            registerId, payload.Version, payload.EnforcementMode, payload.DevMode,
             string.Join(", ", payload.AcceptedSignatureAlgorithms));
 
         // Policy change is persisted in the transaction chain and read by CryptoPolicyService
-        // on the Register Service side. The Validator refreshes its genesis config cache above.
+        // on the Register Service side (which projects DevMode onto the register record). The
+        // Validator refreshes its genesis config cache above. Validation has already guaranteed
+        // payload.DevMode is false (one-way: updates only promote DevMode→Normal).
 
-        return $"Crypto policy updated to version {payload.Version} ({payload.EnforcementMode} mode, {payload.AcceptedSignatureAlgorithms.Length} accepted algorithms)";
+        return $"Crypto policy updated to version {payload.Version} ({payload.EnforcementMode} mode, devMode={payload.DevMode}, {payload.AcceptedSignatureAlgorithms.Length} accepted algorithms)";
     }
 
     private async Task<string> ApplyPolicyUpdateAsync(

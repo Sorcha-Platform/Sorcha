@@ -51,6 +51,12 @@ public enum SocialFlowIntent
 /// verify that the active bearer matches this id before persisting the
 /// link — defence against a session swap mid-flight.
 /// </param>
+/// <param name="Surface">
+/// Optional return-surface for the post-OAuth redirect recovered from the
+/// cached state. <c>"wallet"</c> routes the callback into the citizen wallet
+/// PWA (Consumer-tier token); null / anything else keeps the default /app
+/// web flow. Set at initiate time by the PWA social sign-in flow.
+/// </param>
 public record SocialAuthCallbackResult(
     bool Success,
     string? Error,
@@ -60,7 +66,8 @@ public record SocialAuthCallbackResult(
     bool EmailVerified,
     string Provider,
     SocialFlowIntent Intent = SocialFlowIntent.Login,
-    Guid? TargetPlatformUserId = null);
+    Guid? TargetPlatformUserId = null,
+    string? Surface = null);
 
 /// <summary>
 /// Service for public user social login via OAuth2/OIDC providers (Google, Microsoft, GitHub, Apple).
@@ -89,13 +96,15 @@ public interface ISocialLoginService
     /// when starting a <see cref="SocialFlowIntent.Link"/> flow — pass the active
     /// PlatformUser's id as <paramref name="targetPlatformUserId"/> so the callback
     /// can verify the session has not swapped between initiate and callback.
-    /// Feature 116 Q6.
+    /// Feature 116 Q6. Pass <paramref name="surface"/> as <c>"wallet"</c> from the
+    /// citizen wallet PWA to route the callback back into the PWA after OAuth.
     /// </summary>
     Task<SocialAuthInitiateResult> GenerateAuthorizationUrlAsync(
         string provider,
         string redirectUri,
         SocialFlowIntent intent,
         Guid? targetPlatformUserId,
+        string? surface = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

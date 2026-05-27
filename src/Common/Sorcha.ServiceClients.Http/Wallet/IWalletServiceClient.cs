@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
+
 namespace Sorcha.ServiceClients.Wallet;
 
 /// <summary>
@@ -167,6 +169,9 @@ public interface IWalletServiceClient
     /// credentialStatus claim in the signed SD-JWT payload (Feature 093 US2).</param>
     /// <param name="statusListIndex">Optional pre-allocated status list index. See <paramref name="statusListUrl"/>.</param>
     /// <param name="statusListPurpose">Optional status purpose identifier. Defaults to "revocation" when the pair is provided.</param>
+    /// <param name="holderJwk">Feature 137 — recipient holder's public JWK (slot 108) for the SD-JWT
+    /// <c>cnf</c> key-confirmation binding. When supplied, the issued credential is bound to the holder
+    /// key so only the holder can present it. Null leaves the credential unbound (pre-137 behaviour).</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Issued credential information including the signed SD-JWT VC token</returns>
     Task<CredentialIssuanceResult> IssueCredentialAsync(
@@ -183,6 +188,7 @@ public interface IWalletServiceClient
         bool skipRecipientStore = false,
         string? issuerOrgName = null,
         string? tenantId = null,
+        JsonElement? holderJwk = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -447,6 +453,14 @@ public class CredentialIssuanceResult
     /// Index position in the Bitstring Status List.
     /// </summary>
     public int? StatusListIndex { get; init; }
+
+    /// <summary>
+    /// Register the credential was issued against. Needed by Blueprint Service
+    /// credential-lifecycle endpoints (revoke / suspend / reinstate) to submit
+    /// the corresponding <c>CredentialStatusChange</c> register transaction
+    /// (multi-node audit CRITICAL #2).
+    /// </summary>
+    public string? RegisterId { get; init; }
 }
 
 /// <summary>

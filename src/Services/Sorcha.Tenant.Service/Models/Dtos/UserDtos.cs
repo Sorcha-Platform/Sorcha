@@ -30,6 +30,34 @@ public record AddUserToOrganizationRequest
 }
 
 /// <summary>
+/// Request to provision a NEW org-scoped password user directly into an organisation (spec 136
+/// follow-up). Unlike <see cref="AddUserToOrganizationRequest"/> (OIDC, links an existing user),
+/// this creates a single-org PlatformUser + identity + membership — no public account, no
+/// invitation. Used so org operators are single-org and avoid the multi-org OAuth-grant clash.
+/// </summary>
+public record ProvisionOrgUserRequest
+{
+    /// <summary>User email address (MUST be new platform-wide).</summary>
+    public required string Email { get; init; }
+
+    /// <summary>User display name.</summary>
+    public required string DisplayName { get; init; }
+
+    /// <summary>Initial password (the user authenticates with email + password).</summary>
+    public required string Password { get; init; }
+
+    /// <summary>Roles to assign in this organisation.</summary>
+    public UserRole[] Roles { get; init; } = [UserRole.Consumer];
+
+    /// <summary>
+    /// Mark the email verified (bypasses the verification loop). GATED by
+    /// <c>Platform:AllowAdminVerifiedUserCreation</c> (off by default incl. production) — the
+    /// request is rejected when disabled. Always org-admin gated + audit-logged.
+    /// </summary>
+    public bool EmailVerified { get; init; }
+}
+
+/// <summary>
 /// Request to update a user's details.
 /// </summary>
 public record UpdateUserRequest

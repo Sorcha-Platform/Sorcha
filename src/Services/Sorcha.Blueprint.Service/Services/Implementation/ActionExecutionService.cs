@@ -16,6 +16,7 @@ using Sorcha.ServiceClients.Register.Models;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Haip;
 using Sorcha.Blueprint.Engine.Credentials;
+using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Engine.Interfaces;
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Blueprint.Service.Models;
@@ -66,6 +67,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IInstanceBindingCache? _bindingCache;
     private readonly TransactionConfirmationOptions _confirmationOptions;
     private readonly bool _credentialStatusEmbeddingEnabled;
+    private readonly Configuration.WalletOwnershipSettings _walletOwnershipSettings;
     private readonly ILogger<ActionExecutionService> _logger;
     private static readonly ActivitySource ActivitySource = new("Sorcha.Blueprint.Service.ActionExecution");
 
@@ -101,7 +103,8 @@ public class ActionExecutionService : IActionExecutionService
         IPeerServiceClient? peerClient = null,
         IPresentationLifecycleService? presentationLifecycle = null,
         IPresentationRateLimiter? presentationRateLimiter = null,
-        PresentationLifecycleMetrics? presentationMetrics = null)
+        PresentationLifecycleMetrics? presentationMetrics = null,
+        IOptions<Configuration.WalletOwnershipSettings>? walletOwnershipSettings = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -135,6 +138,9 @@ public class ActionExecutionService : IActionExecutionService
         // behaviour for dev environments that do not run a status list manager.
         _credentialStatusEmbeddingEnabled =
             configuration?.GetValue<bool?>("CredentialStatus:EnableEmbedding") ?? true;
+
+        _walletOwnershipSettings = walletOwnershipSettings?.Value
+            ?? new Configuration.WalletOwnershipSettings();
     }
 
     /// <inheritdoc/>
@@ -506,6 +512,11 @@ public class ActionExecutionService : IActionExecutionService
         //     carried forward to the claim action via Route.OutputMapping.
         //     Internal Sorcha issuance (issuedCredential) still runs later at
         //     step 9d because it depends on the built transaction context.
+        // Caller's org context — used both for the HAIP offer (so HAIP can swap to the
+        // org's issuance key) and for SorchaLocalWallet credential issuance below.
+        var callerIssuerOrgName = caller?.FindFirst("org_name")?.Value;
+        var callerIssuerTenantId = caller?.FindFirst("org_id")?.Value;
+
         CreateOfferResult? haipOfferResult = null;
         if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet)
@@ -536,9 +547,13 @@ public class ActionExecutionService : IActionExecutionService
                     actionDef.CredentialIssuanceConfig.CredentialType,
                     string.Join(", ", haipClaimsForWire.Keys));
 
+                // Feature 120 — pass the issuer's actual TenantId (org_id from caller
+                // JWT) so HAIP's /credential endpoint can swap to the org's issuance
+                // key. Previously this argument was `instance.RegisterId`, which made
+                // the offer's TenantId a register UUID and bypassed the kid-swap path.
                 haipOfferResult = await _haipClient.CreateCredentialOfferAsync(
                     request.SenderWallet,
-                    instance.RegisterId,
+                    callerIssuerTenantId ?? instance.RegisterId,
                     actionDef.CredentialIssuanceConfig.CredentialType,
                     haipClaimsForWire,
                     actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
@@ -566,8 +581,14 @@ public class ActionExecutionService : IActionExecutionService
         //     Contract: specs/106-register-native-credentials/contracts/credential-issuance-config.md
         CredentialIssuanceResult? localWalletCredential = null;
         string? localWalletRecipient = null;
-        var issuerOrgName = caller?.FindFirst("org_name")?.Value;
-        var issuerTenantId = caller?.FindFirst("org_id")?.Value;
+        // Feature 137 / C3 — carried encryption key injected into the encryption pipeline at
+        // step 9d when the recipient is an open-participant citizen with no published participant
+        // record (cross-node late binding). Null on the pre-137 (published/derivation) path.
+        ExternalKeyInfo? crossNodeDeliveryKey = null;
+        // Reuse the caller's org context computed earlier (used by both the HAIP path
+        // and SorchaLocalWallet path).
+        var issuerOrgName = callerIssuerOrgName;
+        var issuerTenantId = callerIssuerTenantId;
         if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience is TargetAudience.SorchaLocalWallet
                 or TargetAudience.SorchaInternal)
@@ -583,10 +604,65 @@ public class ActionExecutionService : IActionExecutionService
                     $"Ensure the recipient has submitted a prior action or is pre-bound in the published blueprint.");
             }
 
+            // Feature 137 / C3 — when the blueprint opts in via HolderKeySourceField, resolve the
+            // recipient's delivery keys with FR-012 precedence BEFORE minting so a credential that
+            // cannot be bound + delivered is never issued (SC-004 fail-closed). Blueprints that leave
+            // HolderKeySourceField null keep the pre-137 behaviour (no cnf binding; recipient key
+            // resolved from the register or derived from the Ed25519 signing key at step 9d).
+            JsonElement? holderJwk = null;
+            var holderKeySourceField = actionDef.CredentialIssuanceConfig.HolderKeySourceField;
+            if (!string.IsNullOrWhiteSpace(holderKeySourceField))
+            {
+                var carried = ResolveCarriedHolderKeys(mergedData, holderKeySourceField);
+                holderJwk = carried.HolderJwk;
+
+                // Delivery (encryption) key precedence: (1) published participant record wins;
+                // (2) carried key fallback; (3) fail closed. ResolvePublicKeyAsync returns null on
+                // not-found and throws on revoked (410) — a revoked recipient is a hard stop, which
+                // is the correct fail-closed outcome (no delivery to a revoked participant).
+                var publishedKey = await _registerClient.ResolvePublicKeyAsync(
+                    instance.RegisterId, localWalletRecipient, cancellationToken: cancellationToken);
+                if (publishedKey is not null)
+                {
+                    _logger.LogInformation(
+                        "[137] Recipient {Recipient} resolved from a published participant record on register {RegisterId} — published delivery key wins.",
+                        localWalletRecipient, instance.RegisterId);
+                }
+                else if (!string.IsNullOrEmpty(carried.EncryptionPublicKey)
+                         && !string.IsNullOrEmpty(carried.Algorithm))
+                {
+                    crossNodeDeliveryKey = new ExternalKeyInfo
+                    {
+                        PublicKey = carried.EncryptionPublicKey!,
+                        Algorithm = carried.Algorithm!
+                    };
+                    _logger.LogInformation(
+                        "[137] Recipient {Recipient} has no published participant record on register {RegisterId} — using the carried delivery key ({Algorithm}).",
+                        localWalletRecipient, instance.RegisterId, carried.Algorithm);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"[VAL_RUNTIME_CRED_004] SorchaLocalWallet issuance for action {actionDef.Id} could not resolve a delivery key for recipient " +
+                        $"'{localWalletRecipient}': no published participant record on register {instance.RegisterId} and no carried encryption key in the submission. " +
+                        $"Failing closed without issuing a credential (FR-012 / SC-004).");
+                }
+
+                // FR-014 — the credential MUST be bound to the recipient's holder key. A configured
+                // HolderKeySourceField that resolves no holder JWK is a fail-closed condition.
+                if (holderJwk is null)
+                {
+                    throw new InvalidOperationException(
+                        $"[VAL_RUNTIME_CRED_005] SorchaLocalWallet issuance for action {actionDef.Id} is configured with HolderKeySourceField " +
+                        $"'{holderKeySourceField}' but no holder JWK resolved from the submission. Failing closed — the credential cannot be " +
+                        $"bound to the recipient's holder key (FR-014).");
+                }
+            }
+
             try
             {
                 localWalletCredential = await IssueCredentialFromActionAsync(
-                    actionDef, mergedData, request.SenderWallet, instance, issuerOrgName, issuerTenantId, cancellationToken);
+                    actionDef, mergedData, request.SenderWallet, instance, issuerOrgName, issuerTenantId, holderJwk, cancellationToken);
             }
             catch (Exception ex) when (ex is not InvalidOperationException)
             {
@@ -691,9 +767,23 @@ public class ActionExecutionService : IActionExecutionService
         DisclosureGroup[]? disclosureGroups = null;
         if (!registerDevMode && _encryptionPipeline != null && disclosedPayloads.Count > 0)
         {
-            // US4: Automatic register resolution with external key override
+            // US4: Automatic register resolution with external key override.
+            // Feature 137 / C3 — merge any carried cross-node delivery key for the SorchaLocalWallet
+            // recipient into the external-key set so the pipeline can wrap the credential disclosure
+            // to an open participant who has no published participant record. Honours "published wins"
+            // because crossNodeDeliveryKey is only populated (at step 8c) when the register lookup
+            // missed, and TryAdd never overrides an explicitly-supplied external key.
+            var effectiveExternalKeys = request.ExternalRecipientKeys;
+            if (crossNodeDeliveryKey is not null && !string.IsNullOrEmpty(localWalletRecipient))
+            {
+                effectiveExternalKeys = effectiveExternalKeys is null
+                    ? new Dictionary<string, ExternalKeyInfo>(StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, ExternalKeyInfo>(effectiveExternalKeys, StringComparer.OrdinalIgnoreCase);
+                effectiveExternalKeys.TryAdd(localWalletRecipient, crossNodeDeliveryKey);
+            }
+
             var (recipients, resolveError) = await ResolveRecipientKeysAsync(
-                disclosedPayloads.Keys, request.ExternalRecipientKeys, instance.RegisterId, cancellationToken);
+                disclosedPayloads.Keys, effectiveExternalKeys, instance.RegisterId, cancellationToken);
             if (resolveError != null)
             {
                 throw new InvalidOperationException(resolveError);
@@ -891,6 +981,17 @@ public class ActionExecutionService : IActionExecutionService
             transaction.Metadata["credentialRecipient"] = issuedCredential.SubjectDid;
         }
 
+        // 10c. Feature 137 (C5): carry the resolved next action so that when this tx seals on
+        //      the owning node, a cross-node InstanceMirrorReconstructor can seed the mirror's
+        //      CurrentActionIds (DocketBuildTriggerService projects it onto TransactionMetaData).
+        //      Singular (first routed next action) — exact for linear flows; fan-out carries the
+        //      primary branch only.
+        var nextActionId = routingResult.NextActions.FirstOrDefault()?.ActionId;
+        if (nextActionId.HasValue)
+        {
+            transaction.Metadata["nextActionId"] = nextActionId.Value.ToString();
+        }
+
         // 11. Sign transaction using "{TxId}:{PayloadHash}" contract (matches Validator verification)
         var signResult = await _walletClient.SignTransactionAsync(
             request.SenderWallet,
@@ -1030,6 +1131,11 @@ public class ActionExecutionService : IActionExecutionService
         }
 
         // 16. Build response
+        var issuedCredentialResponse = issuedCredential is null
+            ? null
+            : await BuildIssuedCredentialResponseAsync(
+                issuedCredential, blueprint, actionDef, caller, cancellationToken);
+
         var response = new ActionSubmissionResponse
         {
             TransactionId = confirmedTxId,
@@ -1045,6 +1151,7 @@ public class ActionExecutionService : IActionExecutionService
             IsComplete = routingResult.NextActions.Count == 0,
             Warnings = validationResult.Warnings,
             IssuedCredentialId = issuedCredential?.CredentialId,
+            IssuedCredential = issuedCredentialResponse,
             CredentialOffer = haipOfferResult != null
                 ? new HaipCredentialOfferResponse
                 {
@@ -1179,7 +1286,7 @@ public class ActionExecutionService : IActionExecutionService
             instance.CurrentActionIds = [actionDef.RejectionConfig.TargetActionId];
         }
         instance.LastTransactionId = transaction.TxId;
-        instance = await _instanceStore.UpdateAsync(instance, cancellationToken);
+        instance = await PersistInstanceAsync(instance, cancellationToken);
 
         // 10. Notify target participant via thin signal
         var targetParticipantId = actionDef.RejectionConfig.TargetParticipantId ?? targetAction.Sender;
@@ -1188,7 +1295,7 @@ public class ActionExecutionService : IActionExecutionService
         await _notificationService.NotifyActionRejectedAsync(
             instanceId,
             targetWalletAddress,
-            cancellationToken);
+            ct: cancellationToken);
 
         return new ActionRejectionResponse
         {
@@ -1239,6 +1346,93 @@ public class ActionExecutionService : IActionExecutionService
             Errors = errors,
             Warnings = []
         };
+    }
+
+    /// <inheritdoc />
+    public async Task CompleteAfterPresentationAsync(
+        string instanceId,
+        int completedActionId,
+        string outcomeTransactionId,
+        IReadOnlyDictionary<string, object>? draftPayload,
+        CancellationToken cancellationToken = default)
+    {
+        using var activity = ActivitySource.StartActivity("CompleteAfterPresentation");
+        activity?.SetTag("instance.id", instanceId);
+        activity?.SetTag("action.id", completedActionId);
+        activity?.SetTag("tx.id", outcomeTransactionId);
+
+        _logger.LogInformation(
+            "FR-015: completing action {ActionId} for instance {InstanceId} after presentation outcome tx {TxId}",
+            completedActionId, instanceId, outcomeTransactionId);
+
+        var instance = await _instanceStore.GetAsync(instanceId, cancellationToken)
+            ?? throw new InvalidOperationException($"Instance {instanceId} not found");
+
+        // NOTE: a downstream submission's state-reconstruction may race the
+        // outcome tx's docket seal and chain off the wrong transaction (the
+        // validator returns VAL_BP_003). That race is NOT fixed here — see
+        // issue #582. Adding a confirmation wait at this point doesn't help
+        // because the outcome tx's own previousTransactionId race
+        // (VAL_CHAIN_001 against the not-yet-sealed presentation-initiated tx)
+        // can prevent the outcome from ever sealing. Fixing the chain is
+        // a Feature 111 design pass; this method advances the action's
+        // lifecycle state idempotently regardless of validator-side outcome.
+
+        if (!instance.CurrentActionIds.Contains(completedActionId))
+        {
+            // Idempotent replay — the action has already been advanced past this point
+            // (e.g. duplicate callback racing the outcome write, or a manual replay).
+            _logger.LogInformation(
+                "Action {ActionId} on instance {InstanceId} is already not-current; skipping FR-015 advancement (idempotent replay)",
+                completedActionId, instanceId);
+            return;
+        }
+
+        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken)
+            ?? throw new InvalidOperationException($"Blueprint {instance.BlueprintId} not found");
+
+        var actionDef = _actionResolver.GetActionDefinition(blueprint, completedActionId.ToString())
+            ?? throw new InvalidOperationException($"Action {completedActionId} not found in blueprint {blueprint.Id}");
+
+        // Build mergedData from the draft payload only. State reconstruction would
+        // require a delegation token to decrypt prior payloads — see XML doc on
+        // IActionExecutionService.CompleteAfterPresentationAsync. Routes that don't
+        // depend on prior decrypted state (the AssuredIdentity flow and any other
+        // unconditional / payload-only-conditioned routing) work correctly with this
+        // narrower context.
+        var mergedData = draftPayload is null
+            ? new Dictionary<string, object>()
+            : draftPayload.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+        var calculations = await EvaluateCalculationsAsync(actionDef, mergedData, cancellationToken);
+        if (calculations is not null)
+        {
+            foreach (var kvp in calculations)
+            {
+                mergedData[kvp.Key] = kvp.Value;
+            }
+        }
+
+        var outputSource = BuildOutputMappingSource(
+            payloadData: mergedData,
+            calculations: calculations,
+            haipOfferResult: null,
+            actionDef: actionDef);
+
+        var routingResult = await EvaluateRoutingAsync(blueprint, actionDef, mergedData, outputSource, cancellationToken);
+
+        instance = await UpdateInstanceAfterExecutionAsync(
+            instance,
+            completedActionId,
+            outcomeTransactionId,
+            routingResult,
+            cancellationToken);
+
+        await NotifyParticipantsAsync(instance, actionDef, routingResult, cancellationToken);
+
+        _logger.LogInformation(
+            "FR-015: action {ActionId} on instance {InstanceId} completed; {NextCount} next action(s) routed; isComplete={IsComplete}",
+            completedActionId, instanceId, routingResult.NextActions.Count, routingResult.NextActions.Count == 0);
     }
 
     private async Task<RoutingResult> EvaluateRoutingAsync(
@@ -1513,7 +1707,7 @@ public class ActionExecutionService : IActionExecutionService
 
             try
             {
-                return await _instanceStore.UpdateAsync(instance, cancellationToken);
+                return await PersistInstanceAsync(instance, cancellationToken);
             }
             catch (ConcurrencyException) when (attempt < MaxConcurrencyRetries)
             {
@@ -1525,6 +1719,20 @@ public class ActionExecutionService : IActionExecutionService
         throw new InvalidOperationException(
             $"Failed to update instance {instance.Id} after {MaxConcurrencyRetries} retries due to concurrent modifications");
     }
+
+    /// <summary>
+    /// Feature 137 (C5): persists instance state changes, choosing the mirror-safe writer when the
+    /// instance is a read-only mirror. On the register-owning node a cross-node workflow surfaces as
+    /// a mirror row (the node never ran CreateInstance), yet the owner MUST advance it when its own
+    /// participant acts (e.g. the verification-analyst approves). <see cref="IInstanceStore.UpdateAsync"/>
+    /// rejects mirror rows by design (Feature 106), so the advance is routed through
+    /// <see cref="IInstanceStore.UpdateMirrorAsync"/>. The register stays the source of truth — the
+    /// InstanceMirrorReconstructor re-derives the mirror when the resulting transaction seals.
+    /// </summary>
+    private Task<Instance> PersistInstanceAsync(Instance instance, CancellationToken cancellationToken)
+        => instance.IsReadOnlyMirror
+            ? _instanceStore.UpdateMirrorAsync(instance, cancellationToken)
+            : _instanceStore.UpdateAsync(instance, cancellationToken);
 
     private static void ApplyInstanceStateChanges(
         Instance instance,
@@ -1615,7 +1823,8 @@ public class ActionExecutionService : IActionExecutionService
             await _notificationService.NotifyActionAvailableAsync(
                 instance.Id,
                 walletAddress,
-                cancellationToken);
+                actionId: nextAction.ActionId.ToString(),
+                ct: cancellationToken);
         }
 
         if (routingResult.NextActions.Count == 0)
@@ -1706,7 +1915,7 @@ public class ActionExecutionService : IActionExecutionService
                         "({ActualChars} chars); dropping claim and issuing credential without portrait. " +
                         "Warning code: {WarningCode}",
                         mapping.ClaimName, PortraitTokenMaxBase64Chars, portraitBase64.Length,
-                        PortraitOversizeWarningCode);
+                        ValidationWarningCodes.CredentialPortraitOversize);
                     continue;
                 }
 
@@ -1737,14 +1946,6 @@ public class ActionExecutionService : IActionExecutionService
     /// ships in the SD-JWT.
     /// </summary>
     private const int PortraitTokenMaxBase64Chars = 27_000;
-
-    /// <summary>
-    /// Local duplicate of <c>ValidationErrorCodes.CredentialPortraitOversize</c>
-    /// (defined in <c>Sorcha.Validator.Service</c>). Blueprint.Service does not
-    /// reference Validator.Service, so the code is stringified here with this
-    /// explicit comment binding the two — if either side is renamed, fix both.
-    /// </summary>
-    private const string PortraitOversizeWarningCode = "WARN_CRED_PORTRAIT_OVERSIZE_001";
 
     /// <summary>
     /// Treats any claim mapping whose source pointer ends in
@@ -1844,6 +2045,7 @@ public class ActionExecutionService : IActionExecutionService
         Instance instance,
         string? issuerOrgName,
         string? issuerTenantId,
+        JsonElement? holderJwk,
         CancellationToken cancellationToken)
     {
         var config = actionDef.CredentialIssuanceConfig!;
@@ -1954,6 +2156,7 @@ public class ActionExecutionService : IActionExecutionService
                 skipRecipientStore: config.TargetAudience is TargetAudience.SorchaLocalWallet or TargetAudience.SorchaInternal,
                 issuerOrgName: issuerOrgName,
                 tenantId: issuerTenantId,
+                holderJwk: holderJwk,
                 cancellationToken: cancellationToken);
 
             return result;
@@ -1967,6 +2170,57 @@ public class ActionExecutionService : IActionExecutionService
             return null;
         }
     }
+
+    /// <summary>
+    /// Feature 137 / C3 — resolves the recipient's carried delivery keys from reconstructed
+    /// instance state. <paramref name="holderJwkPointer"/> (e.g. <c>/holderKeys/holderJwk</c>)
+    /// locates the holder JWK for the SD-JWT <c>cnf</c> binding; the sibling
+    /// <c>encryptionPublicKey</c> + <c>algorithm</c> are read from the same parent object and feed
+    /// the on-register AEAD envelope wrap. All values are public material written by a
+    /// <c>sorcha-holder-key</c> form field on the starting action. Any segment that does not
+    /// resolve is returned as null.
+    /// </summary>
+    internal static (JsonElement? HolderJwk, string? EncryptionPublicKey, string? Algorithm) ResolveCarriedHolderKeys(
+        Dictionary<string, object> mergedData,
+        string holderJwkPointer)
+    {
+        JsonElement? holderJwk = null;
+        if (TryResolveJsonPointer(mergedData!, holderJwkPointer, out var jwkValue) && jwkValue is not null)
+        {
+            // Re-serialise to a JsonElement regardless of whether the reconstructed value is a
+            // JsonElement (register-sourced) or a Dictionary (instance-stored fallback).
+            holderJwk = JsonSerializer.SerializeToElement(jwkValue);
+        }
+
+        var lastSlash = holderJwkPointer.LastIndexOf('/');
+        var parentPointer = lastSlash > 0 ? holderJwkPointer[..lastSlash] : string.Empty;
+
+        var encryptionPublicKey = TryResolveJsonPointer(mergedData!, $"{parentPointer}/encryptionPublicKey", out var encValue)
+            ? CoercePointerValueToString(encValue)
+            : null;
+        var algorithm = TryResolveJsonPointer(mergedData!, $"{parentPointer}/algorithm", out var algValue)
+            ? CoercePointerValueToString(algValue)
+            : null;
+
+        return (
+            holderJwk,
+            string.IsNullOrWhiteSpace(encryptionPublicKey) ? null : encryptionPublicKey,
+            string.IsNullOrWhiteSpace(algorithm) ? null : algorithm);
+    }
+
+    /// <summary>
+    /// Coerces a JSON-Pointer-resolved value to its string form. Handles raw strings,
+    /// <see cref="JsonElement"/> string nodes, and null/undefined nodes (returned as null).
+    /// </summary>
+    private static string? CoercePointerValueToString(object? value) => value switch
+    {
+        null => null,
+        string s => s,
+        JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+        JsonElement je when je.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined => null,
+        JsonElement je => je.ToString(),
+        _ => value.ToString()
+    };
 
     private async Task RecordCredentialOnRegisterAsync(
         CredentialIssuanceResult credential,
@@ -2094,8 +2348,10 @@ public class ActionExecutionService : IActionExecutionService
         }
 
         // Look up participant for this user + org.
-        // If the Participant Service is unavailable or the user has no profile,
-        // degrade gracefully — the user is already authenticated via JWT.
+        // Multi-node audit CRITICAL #3 — cross-node Participant Service failures
+        // (network blips between nodes) must NOT silently degrade authorization
+        // to "any authenticated user". Enforcement mode is fail-closed by default;
+        // dev environments opt out via Security:WalletOwnership:EnforcementMode=FailOpen.
         ParticipantInfo? participant;
         try
         {
@@ -2103,14 +2359,33 @@ public class ActionExecutionService : IActionExecutionService
         }
         catch (Exception ex)
         {
+            if (_walletOwnershipSettings.EnforcementMode == Configuration.WalletOwnershipEnforcementMode.FailClosed)
+            {
+                _logger.LogError(ex,
+                    "Participant Service unavailable for wallet ownership check — rejecting request (fail-closed). Wallet: {Wallet}",
+                    senderWallet);
+                throw new UnauthorizedAccessException(
+                    "Participant Service unavailable; cannot verify wallet ownership.");
+            }
+
             _logger.LogWarning(ex,
-                "Participant Service unavailable for wallet ownership check — allowing authenticated user. Wallet: {Wallet}",
+                "Participant Service unavailable for wallet ownership check — allowing authenticated user (fail-open). Wallet: {Wallet}",
                 senderWallet);
             return;
         }
 
         if (participant == null)
         {
+            if (!_walletOwnershipSettings.AllowMissingParticipant
+                && _walletOwnershipSettings.EnforcementMode == Configuration.WalletOwnershipEnforcementMode.FailClosed)
+            {
+                _logger.LogWarning(
+                    "No participant profile found for user {UserId} in org {OrgId} — rejecting request (fail-closed). Wallet: {Wallet}",
+                    userId, orgId, senderWallet);
+                throw new UnauthorizedAccessException(
+                    "No participant profile linked to authenticated user.");
+            }
+
             _logger.LogWarning(
                 "No participant profile found for user {UserId} in org {OrgId} — allowing authenticated user. Wallet: {Wallet}",
                 userId, orgId, senderWallet);
@@ -2130,8 +2405,17 @@ public class ActionExecutionService : IActionExecutionService
         }
         catch (Exception ex)
         {
+            if (_walletOwnershipSettings.EnforcementMode == Configuration.WalletOwnershipEnforcementMode.FailClosed)
+            {
+                _logger.LogError(ex,
+                    "Failed to fetch linked wallets for participant {ParticipantId} — rejecting request (fail-closed)",
+                    participant.Id);
+                throw new UnauthorizedAccessException(
+                    "Linked-wallets lookup failed; cannot verify wallet ownership.");
+            }
+
             _logger.LogWarning(ex,
-                "Failed to fetch linked wallets for participant {ParticipantId} — allowing authenticated user",
+                "Failed to fetch linked wallets for participant {ParticipantId} — allowing authenticated user (fail-open)",
                 participant.Id);
             return;
         }
@@ -2141,6 +2425,16 @@ public class ActionExecutionService : IActionExecutionService
 
         if (!walletMatch)
         {
+            if (!_walletOwnershipSettings.AllowUnlinkedWallet
+                && _walletOwnershipSettings.EnforcementMode == Configuration.WalletOwnershipEnforcementMode.FailClosed)
+            {
+                _logger.LogWarning(
+                    "Wallet {Wallet} is not linked to participant {ParticipantId} — rejecting request (fail-closed)",
+                    senderWallet, participant.Id);
+                throw new UnauthorizedAccessException(
+                    "Sender wallet is not linked to authenticated participant.");
+            }
+
             _logger.LogWarning(
                 "Wallet {Wallet} is not linked to participant {ParticipantId} — allowing authenticated user (participant system may not be fully configured)",
                 senderWallet, participant.Id);
@@ -2379,6 +2673,101 @@ public class ActionExecutionService : IActionExecutionService
                 instance.Id);
         }
     }
+
+    /// <summary>
+    /// Build the post-action <see cref="IssuedCredentialResponse"/> summary. Best-effort lookups
+    /// — a participant-lookup failure degrades to a truncated DID rather than failing the response.
+    /// </summary>
+    private async Task<IssuedCredentialResponse> BuildIssuedCredentialResponseAsync(
+        Sorcha.ServiceClients.Wallet.CredentialIssuanceResult issuedCredential,
+        BlueprintModel blueprint,
+        ActionModel actionDef,
+        ClaimsPrincipal? caller,
+        CancellationToken cancellationToken)
+    {
+        var issuedToName = await ResolveRecipientNameAsync(issuedCredential.SubjectDid, cancellationToken);
+        var processedByName = caller?.FindFirst("name")?.Value
+                              ?? caller?.FindFirst(ClaimTypes.Name)?.Value
+                              ?? "Unknown";
+        var processedByRole = caller?.FindFirst("role")?.Value
+                              ?? caller?.FindFirst(ClaimTypes.Role)?.Value
+                              ?? "Member";
+
+        // Org name comes from the caller's JWT (org_name claim) — same source used by
+        // the credential mint path. Falls back to a truncated issuer DID when missing.
+        var signedByOrg = caller?.FindFirst("org_name")?.Value;
+        if (string.IsNullOrEmpty(signedByOrg))
+        {
+            signedByOrg = TruncateDid(issuedCredential.IssuerDid);
+        }
+
+        var disclosableCount = actionDef.CredentialIssuanceConfig?.Disclosable?.Count() ?? 0;
+
+        return new IssuedCredentialResponse
+        {
+            CredentialId = issuedCredential.CredentialId,
+            CredentialType = string.IsNullOrEmpty(issuedCredential.Type)
+                ? actionDef.CredentialIssuanceConfig?.CredentialType ?? "Credential"
+                : issuedCredential.Type,
+            IssuedToDid = issuedCredential.SubjectDid,
+            IssuedToName = issuedToName,
+            SignedByOrg = signedByOrg,
+            ProcessedByName = processedByName,
+            ProcessedByRole = processedByRole,
+            TotalClaims = issuedCredential.Claims.Count,
+            DisclosableClaims = disclosableCount,
+            UsagePolicy = FormatUsagePolicy(
+                actionDef.CredentialIssuanceConfig?.UsagePolicy ?? UsagePolicy.Reusable,
+                actionDef.CredentialIssuanceConfig?.MaxPresentations),
+            ExpiresAt = issuedCredential.ExpiresAt,
+            BlueprintName = string.IsNullOrEmpty(blueprint.Title) ? blueprint.Id : blueprint.Title,
+            ActionName = string.IsNullOrEmpty(actionDef.Title) ? actionDef.Id.ToString() : actionDef.Title
+        };
+    }
+
+    private async Task<string> ResolveRecipientNameAsync(string subjectDid, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(subjectDid))
+        {
+            return "Unknown recipient";
+        }
+
+        // SubjectDid is usually a wallet address (ws11q...). Try the participant lookup;
+        // fall back to a truncated DID display when no participant has linked it.
+        try
+        {
+            var participant = await _participantClient.GetByWalletAddressAsync(subjectDid, cancellationToken);
+            if (participant is not null && !string.IsNullOrEmpty(participant.DisplayName))
+            {
+                return participant.DisplayName;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Participant lookup failed for credential subject {SubjectDid} — falling back to truncated DID",
+                subjectDid);
+        }
+
+        return TruncateDid(subjectDid);
+    }
+
+    private static string TruncateDid(string did)
+    {
+        if (string.IsNullOrEmpty(did)) return "(unknown)";
+        if (did.Length <= 16) return did;
+        return $"{did[..8]}…{did[^4..]}";
+    }
+
+    private static string FormatUsagePolicy(UsagePolicy policy, int? maxPresentations) => policy switch
+    {
+        UsagePolicy.Reusable => "Reusable",
+        UsagePolicy.SingleUse => "Single-use",
+        UsagePolicy.LimitedUse => maxPresentations is > 0
+            ? $"Up to {maxPresentations} presentations"
+            : "Limited use",
+        _ => policy.ToString()
+    };
 }
 
 /// <summary>

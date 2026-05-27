@@ -1,0 +1,50 @@
+@namespace Sorcha.UI.Core.Components.EnrolGate
+@inject NavigationManager Navigation
+
+@*
+    Feature 126 — Tier 3 cold-start preflight surface.
+
+    Renders a plain-English explainer of why the citizen needs an account
+    and a wallet, with a single "Sign in or create your account" CTA that
+    routes to the F116 signup flow with ?returnTo=<currentUrl>. No QR is
+    rendered at this stage (FR-004 — wallet conversation only begins after
+    the citizen has committed to creating an account).
+*@
+
+<div class="enrol-preflight" data-testid="enrol-preflight">
+    <h2 class="enrol-preflight__heading">Before you start your @ServiceLabel</h2>
+
+    <p class="enrol-preflight__explainer">
+        @CouncilName uses your Sorcha Wallet to deliver the credential
+        you'll receive at the end of this application. You'll need a
+        Sorcha account and a wallet on your phone before we begin the form.
+    </p>
+
+    <a href="@SignupUrl"
+       class="enrol-preflight__cta"
+       data-testid="enrol-signup-cta">
+        Sign in or create your account
+    </a>
+
+    <details class="enrol-preflight__more">
+        <summary>What is Sorcha Wallet?</summary>
+        <p>
+            Sorcha Wallet is a free app that holds credentials councils and
+            other organisations issue you — like a driving licence or a
+            blue badge — under your control on your own phone.
+        </p>
+    </details>
+</div>
+
+@code {
+    /// <summary>Display name of the council hosting this page.</summary>
+    [Parameter] public string CouncilName { get; set; } = "this council";
+
+    /// <summary>Friendly label for the service the citizen is applying for. E.g. "driving licence application".</summary>
+    [Parameter] public string ServiceLabel { get; set; } = "application";
+
+    /// <summary>Base URL of the Sorcha signup page. Defaults to <c>/auth/signup</c> on the same origin.</summary>
+    [Parameter] public string SignupBaseUrl { get; set; } = "/auth/signup";
+
+    private string SignupUrl => $"{SignupBaseUrl}?returnUrl={Uri.EscapeDataString(Navigation.Uri)}";
+}

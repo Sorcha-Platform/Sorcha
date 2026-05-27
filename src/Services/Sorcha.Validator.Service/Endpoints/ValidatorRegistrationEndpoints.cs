@@ -81,7 +81,7 @@ public static class ValidatorRegistrationEndpoints
             .WithName("SuspendValidator")
             .WithSummary("Suspend an active validator")
             .WithDescription("Suspends an active validator, preventing consensus participation. Cannot suspend the last active validator. Requires SystemAdmin authorization.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<object>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
@@ -90,7 +90,7 @@ public static class ValidatorRegistrationEndpoints
             .WithName("ReactivateValidator")
             .WithSummary("Reactivate a suspended validator")
             .WithDescription("Reactivates a previously suspended validator. Only valid from Suspended state. Requires SystemAdmin authorization.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<object>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
@@ -99,7 +99,7 @@ public static class ValidatorRegistrationEndpoints
             .WithName("RevokeValidator")
             .WithSummary("Permanently revoke a validator")
             .WithDescription("Permanently revokes a validator (terminal state). Cannot be re-activated. Cannot revoke the last active validator. Requires SystemAdmin authorization.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<object>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
@@ -114,7 +114,7 @@ public static class ValidatorRegistrationEndpoints
             .WithName("GetValidatorAuditTrail")
             .WithSummary("Get validator audit trail")
             .WithDescription("Returns audit trail of all validator state transitions for a register. Supports filtering by validator and pagination.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<object>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized);
 

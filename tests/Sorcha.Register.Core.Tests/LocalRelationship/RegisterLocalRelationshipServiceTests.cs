@@ -74,6 +74,29 @@ public class RegisterLocalRelationshipServiceTests
     }
 
     [Fact]
+    public async Task Derive_ValidatorKeyNonNullButNotOnRoster_LocalIsOwner_IsValidatorFalse()
+    {
+        // Isolates the "validator key non-null but not on the roster" signal from the
+        // wallet-mismatch case. Local wallet IS the owner so IsOwner is true; the
+        // validator-key check must independently return false when the local key is
+        // absent from the roster, even though the wallet check succeeded. Guards
+        // against accidental coupling of the two membership decisions.
+        var record = BuildControlRecord(
+            ownerAddress: LocalWalletAddress,
+            validatorKeys: new[] { OtherValidatorKey });
+
+        var svc = BuildService(
+            record,
+            walletAddresses: new[] { LocalWalletAddress },
+            validatorKey: LocalValidatorKey);
+        var rel = await svc.DeriveAsync(RegisterId);
+
+        rel.Should().NotBeNull();
+        rel!.IsOwner.Should().BeTrue();
+        rel.IsValidator.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Derive_PlainSubscriber_ReturnsNoneRolesAndIsSubscriberTrue()
     {
         var record = BuildControlRecord(

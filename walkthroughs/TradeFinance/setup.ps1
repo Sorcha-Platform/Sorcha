@@ -146,38 +146,19 @@ foreach ($org in $selectedOrgs) {
     } else {
         $adminEmail = "admin@$subdomain.sorcha.dev"
 
-        # Register the admin user on the public org first so PlatformUser exists
-        try {
-            $null = Register-SorchaPublicUser `
-                -TenantUrl $env.TenantUrl `
-                -Email $adminEmail `
-                -Password (Get-AdminPassword -OrgSubdomain $subdomain) `
-                -DisplayName "$($org.name) Admin"
-        } catch {
-            # User may already exist from a previous run — continue
-            Write-WtInfo "  Admin user $adminEmail may already exist — continuing"
-        }
-
-        # Verify the admin's email via platform API so New-SorchaOrganization
-        # can add them directly without triggering an SMTP invite email.
-        # Nodes without SMTP (e.g. n1) fail hard otherwise.
-        try {
-            $null = Invoke-SorchaApi -Method POST `
-                -Uri "$($env.TenantUrl)/platform/users/verify-email" `
-                -Body @{ email = $adminEmail } `
-                -Headers $seedAdmin.Headers
-            Write-WtInfo "  Verified email for $adminEmail"
-        } catch {
-            Write-WtWarn "  Could not verify $adminEmail — org creation may fall back to SMTP invite"
-        }
-
-        # Create the private org via platform admin API
+        # Spec 136: provision the org admin directly as an org-scoped, verified password user
+        # in one call — single-org (no public account → no multi-org clash → the OAuth2 password
+        # grant works), and no SMTP invite. The verified bypass requires the installation to enable
+        # Platform:AllowAdminVerifiedUserCreation (dev + n1 do; production does not).
         try {
             $newOrg = New-SorchaOrganization `
                 -TenantUrl $env.TenantUrl `
                 -Name $org.name `
                 -Subdomain $subdomain `
                 -AdminEmail $adminEmail `
+                -AdminPassword (Get-AdminPassword -OrgSubdomain $subdomain) `
+                -AdminDisplayName "$($org.name) Admin" `
+                -AdminEmailVerified `
                 -Headers $seedAdmin.Headers `
                 -Description "TradeFinance walkthrough - $($org.role)"
 
@@ -244,41 +225,23 @@ foreach ($org in $selectedOrgs) {
         $password = Get-ParticipantPassword -OrgSubdomain $subdomain -ParticipantId $partId
 
         if (-not ($state.roles.ContainsKey($roleKey) -and $state.roles[$roleKey].email)) {
-            # Register platform user first (may already exist from previous run)
-            # Retry on 429 (rate limit) with 2s backoff
-            $registered = $false
-            for ($attempt = 1; $attempt -le 3; $attempt++) {
-                try {
-                    $null = Register-SorchaPublicUser `
-                        -TenantUrl $env.TenantUrl `
-                        -Email $email `
-                        -Password $password `
-                        -DisplayName $participant.displayName
-                    $registered = $true
-                    break
-                } catch {
-                    $statusCode = $null
-                    try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
-                    if ($statusCode -eq 429 -and $attempt -lt 3) {
-                        Write-WtWarn "  Rate limited — retrying in 2s (attempt $attempt/3)"
-                        Start-Sleep -Seconds 2
-                    } else {
-                        Write-WtInfo "  User $email may already exist — continuing"
-                        break
-                    }
-                }
+            # Spec 136: provision the participant org-scoped + verified in one call (single-org —
+            # no public account, no multi-org clash). Org operators are never public users.
+            try {
+                $provisioned = New-SorchaOrgUser `
+                    -TenantUrl $env.TenantUrl `
+                    -OrganizationId $ctx.OrganizationId `
+                    -Email $email `
+                    -Password $password `
+                    -DisplayName $participant.displayName `
+                    -Headers $ctx.Headers `
+                    -Roles @("Consumer") `
+                    -EmailVerified
+                $userId = $provisioned.UserId
+                Write-WtInfo "  User provisioned (org-scoped): $($participant.displayName) ($email)"
+            } catch {
+                Write-WtInfo "  User $email may already exist — continuing"
             }
-
-            # Add user to the org
-            $userId = Get-OrCreateUser `
-                -TenantUrl $env.TenantUrl `
-                -OrganizationId $ctx.OrganizationId `
-                -Email $email `
-                -DisplayName $participant.displayName `
-                -Headers $ctx.Headers `
-                -Roles @("Consumer")
-
-            Write-WtInfo "  User created: $($participant.displayName) ($email)"
         } else {
             Write-WtInfo "  User '$($participant.displayName)' already in state"
         }
@@ -296,9 +259,17 @@ foreach ($org in $selectedOrgs) {
         if ($state.wallets.ContainsKey($walletKey) -and $state.wallets[$walletKey]) {
             Write-WtInfo "  Wallet for '$partId' already exists: $($state.wallets[$walletKey])"
         } else {
+            # Wallet name = participant displayName (no " Wallet" suffix). The
+            # name is the idempotency key for New-SorchaWallet — keeping it
+            # aligned with other walkthroughs (ForestryCertification uses
+            # "Sales Manager" too) means the same user across walkthroughs
+            # gets ONE wallet, and credentials issued by one walkthrough are
+            # visible to another (e.g. ForestryCertification's
+            # ForestProductDPPCredential reaches TradeFinance's Invoice
+            # Finance phase).
             $wallet = New-SorchaWallet `
                 -WalletUrl $env.WalletUrl `
-                -Name "$($participant.displayName) Wallet" `
+                -Name $participant.displayName `
                 -Headers $participantSession.Headers `
                 -Algorithm $participant.algorithm `
                 -FetchPublicKey

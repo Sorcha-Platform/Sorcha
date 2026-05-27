@@ -1,0 +1,19 @@
+{
+  "name": "Sorcha Wallet",
+  "short_name": "Sorcha Wallet",
+  "id": "/wallet/",
+  "start_url": "/wallet/",
+  "scope": "/wallet/",
+  "display": "standalone",
+  "background_color": "#1a1f3a",
+  "theme_color": "#1a1f3a",
+  "description": "Sorcha Wallet — your credentials, applications, evidence, identity in one place.",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}

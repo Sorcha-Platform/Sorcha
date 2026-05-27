@@ -43,7 +43,8 @@ public interface ISdJwtService
         string algorithm,
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default,
-        IReadOnlyList<byte[]>? x5cChain = null);
+        IReadOnlyList<byte[]>? x5cChain = null,
+        string? kid = null);
 
     /// <summary>
     /// Creates a new SD-JWT VC token with selective disclosure and holder key binding (cnf).
@@ -67,6 +68,27 @@ public interface ISdJwtService
         byte[] signingKey,
         string algorithm,
         JsonElement holderJwk,
+        DateTimeOffset? expiresAt = null,
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<byte[]>? x5cChain = null,
+        string? kid = null);
+
+    /// <summary>
+    /// External-signer overload for sign-on-behalf flows (Feature 120 HAIP kid-swap).
+    /// The caller supplies an <paramref name="externalSigner"/> that produces the
+    /// signature for the unsigned JWS bytes; <paramref name="signingKey"/> may be
+    /// null/empty when the external signer is supplied. Used by HAIP service to
+    /// delegate signing to wallet without holding private key material.
+    /// </summary>
+    Task<SdJwtToken> CreateTokenAsync(
+        Dictionary<string, object> claims,
+        IEnumerable<string>? disclosableClaims,
+        string issuer,
+        string subject,
+        string algorithm,
+        Func<byte[], CancellationToken, Task<byte[]>> externalSigner,
+        JsonElement? holderJwk,
+        string? kid,
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default,
         IReadOnlyList<byte[]>? x5cChain = null);

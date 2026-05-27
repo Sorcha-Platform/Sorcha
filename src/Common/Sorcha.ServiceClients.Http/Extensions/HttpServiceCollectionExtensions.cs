@@ -5,13 +5,16 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Blueprint;
+using Sorcha.ServiceClients.CitizenStatusList;
 using Sorcha.ServiceClients.CitizenWallet;
 using Sorcha.ServiceClients.Did;
 using Sorcha.ServiceClients.Events;
+using Sorcha.ServiceClients.Invitation;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Subscription;
+using Sorcha.ServiceClients.Tenant;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
 
@@ -62,6 +65,10 @@ public static class HttpServiceCollectionExtensions
         services.AddHttpClient<ParticipantServiceClient>();
         services.AddScoped<IParticipantServiceClient, ParticipantServiceClient>();
 
+        // Spec 139 US4: typed Tenant client for MCP org/user/token reconciliation.
+        services.AddHttpClient<TenantServiceClient>();
+        services.AddScoped<ITenantServiceClient, TenantServiceClient>();
+
         services.AddHttpClient<EventServiceClient>();
         services.AddScoped<IEventServiceClient, EventServiceClient>();
 
@@ -76,10 +83,26 @@ public static class HttpServiceCollectionExtensions
         services.AddHttpClient<PlatformUserDeviceClient>();
         services.AddScoped<IPlatformUserDeviceClient, PlatformUserDeviceClient>();
 
+        // Feature 118 / US3: durable user inbox writer — POSTs entries to Tenant Service.
+        services.AddHttpClient<Inbox.PlatformInboxClient>();
+        services.AddScoped<Inbox.IPlatformInboxClient, Inbox.PlatformInboxClient>();
+
         // Feature 114: Citizen wallet client used by the PWA to call Wallet Service.
         // Caller-supplied JWT (no service-principal injection — citizen audience required).
         services.AddHttpClient<CitizenWalletClient>();
         services.AddScoped<ICitizenWalletClient, CitizenWalletClient>();
+
+        // Register-invitation client (targets the Tenant Service). Auth rides the caller's
+        // pipeline (no service-principal injection); the MCP server's citizen self-service
+        // tools (Feature 140 Wave 3) forward the consumer's bearer so the listing is scoped
+        // to the caller's organisation.
+        services.AddHttpClient<RegisterInvitationServiceClient>();
+        services.AddScoped<IRegisterInvitationServiceClient, RegisterInvitationServiceClient>();
+
+        // Feature 114: Tenant→Wallet S2S client for citizen device revocation
+        // (status-list bit flip + SignalR DeviceRevoked broadcast).
+        services.AddHttpClient<CitizenStatusListClient>();
+        services.AddScoped<ICitizenStatusListClient, CitizenStatusListClient>();
 
         // DID resolvers
         services.AddDidResolvers();
@@ -89,9 +112,11 @@ public static class HttpServiceCollectionExtensions
 
     /// <summary>
     /// Registers DID resolver infrastructure: IDidResolverRegistry and all built-in resolvers
-    /// (did:sorcha, did:web, did:key).
+    /// (did:sorcha, did:web, did:key), the Feature 120 cross-resolution cache, and OTel meters.
     /// </summary>
-    public static IServiceCollection AddDidResolvers(this IServiceCollection services)
+    public static IServiceCollection AddDidResolvers(
+        this IServiceCollection services,
+        IConfiguration? configuration = null)
     {
         // SorchaDidResolver depends on IWalletServiceClient (Scoped), so it must also be Scoped.
         // KeyDidResolver has no scoped dependencies — Singleton is fine.
@@ -101,11 +126,16 @@ public static class HttpServiceCollectionExtensions
         services.AddScoped<IDidResolver>(sp => sp.GetRequiredService<SorchaDidResolver>());
         services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<KeyDidResolver>());
 
-        // Registry must be Scoped to resolve the Scoped SorchaDidResolver
+        // Registry must be Scoped to resolve the Scoped SorchaDidResolver. Production
+        // wiring passes the Singleton DidResolverCache + DidResolverMetrics so the
+        // cross-resolution algorithm (Feature 120 US4) honours per-method TTLs and
+        // emits OTel counters.
         services.AddScoped<IDidResolverRegistry>(sp =>
         {
             var registry = new DidResolverRegistry(
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DidResolverRegistry>>());
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DidResolverRegistry>>(),
+                sp.GetRequiredService<DidResolverCache>(),
+                sp.GetRequiredService<DidResolverMetrics>());
 
             foreach (var resolver in sp.GetServices<IDidResolver>())
             {
@@ -118,6 +148,31 @@ public static class HttpServiceCollectionExtensions
             return registry;
         });
 
+        // Feature 120 — cross-resolution cache (singleton; per-method TTLs) and OTel meter.
+        if (configuration is not null)
+        {
+            services.Configure<DidResolverCacheOptions>(
+                configuration.GetSection(DidResolverCacheOptions.SectionName));
+        }
+        else
+        {
+            services.AddOptions<DidResolverCacheOptions>();
+        }
+        services.AddSingleton<DidResolverCache>();
+        services.AddSingleton<DidResolverMetrics>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Wires the <see cref="DidSorchaCacheInvalidationService"/> hosted service that drains
+    /// confirmed-transaction events into <see cref="DidResolverCache"/> invalidations.
+    /// Callers MUST register an <see cref="IDidCacheTransactionEventSource"/> implementation
+    /// (typically a thin adapter over the service-level <c>IEventSubscriber</c>).
+    /// </summary>
+    public static IServiceCollection AddDidSorchaCacheInvalidation(this IServiceCollection services)
+    {
+        services.AddHostedService<DidSorchaCacheInvalidationService>();
         return services;
     }
 }

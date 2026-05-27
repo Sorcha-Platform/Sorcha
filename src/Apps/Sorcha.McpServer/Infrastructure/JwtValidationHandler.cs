@@ -99,14 +99,16 @@ public enum JwtValidationErrorCode
 public sealed class JwtOptions
 {
     /// <summary>
-    /// Expected token issuer.
+    /// Expected token issuer. Spec 136: resolved at startup from the installation identity
+    /// (<see cref="Sorcha.ServiceDefaults.Auth.SorchaIssuer"/>) — no shared default.
     /// </summary>
-    public string Issuer { get; set; } = "https://tenant.sorcha.io";
+    public string Issuer { get; set; } = string.Empty;
 
     /// <summary>
-    /// Expected token audiences.
+    /// Expected token audiences. Spec 136: derived at startup from the installation's tier
+    /// audiences (<see cref="Sorcha.ServiceDefaults.Auth.SorchaAudiences"/>) — not hardcoded.
     /// </summary>
-    public string[] Audiences { get; set; } = ["https://api.sorcha.io"];
+    public string[] Audiences { get; set; } = [];
 
     /// <summary>
     /// Signing key for HMAC validation (development only).

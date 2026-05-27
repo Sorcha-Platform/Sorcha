@@ -1,6 +1,7 @@
 @using MudBlazor
 @using Sorcha.UI.Core.Models.Designer
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Models.SchemaLibrary
 @using Sorcha.Blueprint.Models
 @using System.Text.Json
@@ -495,7 +496,7 @@
     private IDialogService DialogService { get; set; } = null!;
 
     [Inject]
-    private ISnackbar Snackbar { get; set; } = null!;
+    private IInlineFeedback Feedback { get; set; } = null!;
 
     [Inject]
     private ISchemaLibraryApiService SchemaLibraryApi { get; set; } = null!;
@@ -618,7 +619,7 @@
             var participant = savedModel.ToParticipant();
             Blueprint.Participants.Add(participant);
             editedBlueprint.Participants = Blueprint.Participants;
-            Snackbar.Add($"Participant '{participant.Name}' added", Severity.Success);
+            Feedback.ShowSuccess($"Participant '{participant.Name}' added");
             StateHasChanged();
         }
     }
@@ -655,7 +656,7 @@
             {
                 Blueprint.Participants[index] = updatedParticipant;
                 editedBlueprint.Participants = Blueprint.Participants;
-                Snackbar.Add($"Participant '{updatedParticipant.Name}' updated", Severity.Success);
+                Feedback.ShowSuccess($"Participant '{updatedParticipant.Name}' updated");
                 StateHasChanged();
             }
         }
@@ -673,7 +674,7 @@
         {
             Blueprint.Participants.Remove(participant);
             editedBlueprint.Participants = Blueprint.Participants;
-            Snackbar.Add($"Participant '{participant.Name}' deleted", Severity.Warning);
+            Feedback.ShowWarning($"Participant '{participant.Name}' deleted");
             StateHasChanged();
         }
     }
@@ -737,7 +738,7 @@
         if (result is not null && !result.Canceled && result.Data is ConditionModel savedModel)
         {
             editedAction.Condition = savedModel.ToJsonLogic();
-            Snackbar.Add("Routing condition updated", Severity.Success);
+            Feedback.ShowSuccess("Routing condition updated");
             StateHasChanged();
         }
     }
@@ -788,7 +789,7 @@
             {
                 editedAction.Calculations ??= [];
                 editedAction.Calculations[savedModel.TargetFieldPath] = jsonLogic;
-                Snackbar.Add($"Calculation '{savedModel.TargetFieldPath}' added", Severity.Success);
+                Feedback.ShowSuccess($"Calculation '{savedModel.TargetFieldPath}' added");
                 StateHasChanged();
             }
         }
@@ -828,7 +829,7 @@
 
                 editedAction.Calculations ??= [];
                 editedAction.Calculations[savedModel.TargetFieldPath] = jsonLogic;
-                Snackbar.Add($"Calculation '{savedModel.TargetFieldPath}' updated", Severity.Success);
+                Feedback.ShowSuccess($"Calculation '{savedModel.TargetFieldPath}' updated");
                 StateHasChanged();
             }
         }
@@ -845,7 +846,7 @@
         if (confirm == true && editedAction.Calculations != null)
         {
             editedAction.Calculations.Remove(fieldName);
-            Snackbar.Add($"Calculation '{fieldName}' deleted", Severity.Warning);
+            Feedback.ShowWarning($"Calculation '{fieldName}' deleted");
             StateHasChanged();
         }
     }
@@ -923,7 +924,7 @@
                 var schemas = editedAction.DataSchemas?.ToList() ?? [];
                 schemas.Add(detail.Content);
                 editedAction.DataSchemas = schemas;
-                Snackbar.Add($"Schema '{detail.Title}' added to action", Severity.Success);
+                Feedback.ShowSuccess($"Schema '{detail.Title}' added to action");
                 StateHasChanged();
             }
         }
@@ -936,7 +937,7 @@
         var schemas = editedAction.DataSchemas.ToList();
         schemas.Remove(schema);
         editedAction.DataSchemas = schemas;
-        Snackbar.Add("Schema removed from action", Severity.Warning);
+        Feedback.ShowWarning("Schema removed from action");
         StateHasChanged();
     }
 

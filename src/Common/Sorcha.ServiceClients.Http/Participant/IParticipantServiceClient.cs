@@ -206,8 +206,12 @@ public record LinkedWalletInfo
 /// </summary>
 public record AutoLinkResultInfo
 {
+    /// <summary>Flag indicating participant created.</summary>
     public bool ParticipantCreated { get; init; }
+    /// <summary>Flag indicating wallet linked.</summary>
     public bool WalletLinked { get; init; }
+    /// <summary>Identifier of the participant.</summary>
     public Guid? ParticipantId { get; init; }
+    /// <summary>The skip reason.</summary>
     public string? SkipReason { get; init; }
 }

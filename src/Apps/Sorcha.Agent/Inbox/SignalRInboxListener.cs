@@ -49,22 +49,12 @@ public class SignalRInboxListener : IInboxListener, IAsyncDisposable
         // Thin signal handler — signal contains only type + instanceId.
         // Write a trigger action to the channel so the polling mechanism
         // immediately refreshes the instance to discover pending actions.
-        _connection.On<object>("ActionAvailable", notification =>
+        _connection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (instanceId, actionId, occurredAt, traceId) =>
         {
             try
             {
-                var json = System.Text.Json.JsonSerializer.Serialize(notification);
-                var doc = System.Text.Json.JsonDocument.Parse(json);
-                var root = doc.RootElement;
-
-                // Extract instanceId from thin signal
-                var instanceId = root.TryGetProperty("instanceId", out var instProp)
-                    ? instProp.GetString() ?? ""
-                    : root.TryGetProperty("InstanceId", out var inst2) ? inst2.GetString() ?? "" : "";
-
-                var signalType = root.TryGetProperty("signalType", out var stProp)
-                    ? stProp.GetString() ?? "action-available"
-                    : root.TryGetProperty("SignalType", out var st2) ? st2.GetString() ?? "action-available" : "action-available";
+                const string signalType = "action-available";
 
                 _logger.LogInformation(
                     "Received signal {SignalType} for instance {InstanceId}, triggering poll",

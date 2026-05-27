@@ -4,7 +4,11 @@
 using FluentAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
+using Moq;
+
+using Sorcha.ServiceClients.Register;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
@@ -15,6 +19,7 @@ public class DashboardServiceTests : IDisposable
 {
     private readonly TenantDbContext _dbContext;
     private readonly DashboardService _service;
+    private readonly Mock<IRegisterServiceClient> _registerClient = new();
     private readonly Guid _orgId = Guid.NewGuid();
 
     public DashboardServiceTests()
@@ -24,7 +29,10 @@ public class DashboardServiceTests : IDisposable
             .Options;
 
         _dbContext = new TenantDbContext(options);
-        _service = new DashboardService(_dbContext);
+        _service = new DashboardService(
+            _dbContext,
+            _registerClient.Object,
+            NullLogger<DashboardService>.Instance);
     }
 
     [Fact]
@@ -200,6 +208,109 @@ public class DashboardServiceTests : IDisposable
             ProvisionedVia = provisionedVia,
             CreatedAt = DateTimeOffset.UtcNow
         };
+    }
+
+    // ---------------------------------------------------------------------
+    // Feature 131 / UX-005 — GetOrgSummaryAsync
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetOrgSummaryAsync_CountsActiveUsersAndPendingInvitations()
+    {
+        SeedUsers(active: 4, suspended: 1);
+        _dbContext.OrgInvitations.Add(new OrgInvitation
+        {
+            OrganizationId = _orgId, Email = "p@t.com", Token = "p1",
+            Status = InvitationStatus.Pending, ExpiresAt = DateTimeOffset.UtcNow.AddDays(3),
+            InvitedByUserId = Guid.NewGuid()
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _service.GetOrgSummaryAsync(_orgId);
+
+        result.OrgId.Should().Be(_orgId);
+        result.ActiveUsers.Should().Be(4);
+        result.PendingInvitations.Should().Be(1);
+        result.SubscribedRegisters.Should().Be(0);
+        result.RecentTransactions.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetOrgSummaryAsync_CountsActiveSubscribedRegisters()
+    {
+        SeedUsers(active: 1);
+        _dbContext.OrganizationRegisterSubscriptions.AddRange(
+            new OrganizationRegisterSubscription
+            {
+                Id = Guid.NewGuid(), OrganizationId = _orgId, RegisterId = "reg-a",
+                Status = SubscriptionStatus.Active, SubscriptionType = SubscriptionType.Owner,
+                SubscribedAt = DateTimeOffset.UtcNow, SubscribedByUserId = Guid.NewGuid()
+            },
+            new OrganizationRegisterSubscription
+            {
+                Id = Guid.NewGuid(), OrganizationId = _orgId, RegisterId = "reg-b",
+                Status = SubscriptionStatus.Active, SubscriptionType = SubscriptionType.Public,
+                SubscribedAt = DateTimeOffset.UtcNow, SubscribedByUserId = Guid.NewGuid()
+            },
+            new OrganizationRegisterSubscription
+            {
+                Id = Guid.NewGuid(), OrganizationId = _orgId, RegisterId = "reg-c",
+                Status = SubscriptionStatus.Revoked, SubscriptionType = SubscriptionType.Owner,
+                SubscribedAt = DateTimeOffset.UtcNow, SubscribedByUserId = Guid.NewGuid()
+            });
+        await _dbContext.SaveChangesAsync();
+
+        _registerClient
+            .Setup(c => c.GetStatsAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RegisterStatsResponse { RegisterCount = 2, TransactionCount = 17 });
+
+        var result = await _service.GetOrgSummaryAsync(_orgId);
+
+        result.SubscribedRegisters.Should().Be(2);     // active only
+        result.RecentTransactions.Should().Be(17);
+        _registerClient.Verify(
+            c => c.GetStatsAsync(
+                It.Is<IReadOnlyList<string>>(ids => ids.Count == 2
+                                                  && ids.Contains("reg-a")
+                                                  && ids.Contains("reg-b")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOrgSummaryAsync_SkipsRegisterCallWhenNoSubscriptions()
+    {
+        SeedUsers(active: 1);
+
+        var result = await _service.GetOrgSummaryAsync(_orgId);
+
+        result.SubscribedRegisters.Should().Be(0);
+        result.RecentTransactions.Should().Be(0);
+        _registerClient.Verify(
+            c => c.GetStatsAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOrgSummaryAsync_RegisterClientThrows_DegradesToZeroTransactions()
+    {
+        SeedUsers(active: 1);
+        _dbContext.OrganizationRegisterSubscriptions.Add(new OrganizationRegisterSubscription
+        {
+            Id = Guid.NewGuid(), OrganizationId = _orgId, RegisterId = "reg-a",
+            Status = SubscriptionStatus.Active, SubscriptionType = SubscriptionType.Owner,
+            SubscribedAt = DateTimeOffset.UtcNow, SubscribedByUserId = Guid.NewGuid()
+        });
+        await _dbContext.SaveChangesAsync();
+
+        _registerClient
+            .Setup(c => c.GetStatsAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("register down"));
+
+        var result = await _service.GetOrgSummaryAsync(_orgId);
+
+        result.SubscribedRegisters.Should().Be(1);
+        result.RecentTransactions.Should().Be(0); // graceful degrade
     }
 
     public void Dispose()

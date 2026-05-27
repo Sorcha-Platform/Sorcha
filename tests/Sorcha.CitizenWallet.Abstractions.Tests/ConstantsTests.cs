@@ -33,10 +33,4 @@ public sealed class ConstantsTests
         VctUris.CitizenDeviceDelegationV1
             .Should().Be("https://sorcha.dev/vc/citizen-device-delegation/v1");
     }
-
-    [Fact]
-    public void JwtAudiences_CitizenWallet_IsExpectedString()
-    {
-        JwtAudiences.CitizenWallet.Should().Be("sorcha:citizen-wallet");
-    }
 }

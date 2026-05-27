@@ -22,7 +22,7 @@ public static class CustomDomainEndpoints
     {
         var group = app.MapGroup("/api/organizations/{organizationId:guid}/custom-domain")
             .WithTags("Custom Domain")
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         group.MapGet("/", GetCustomDomain)
             .WithName("GetCustomDomain")

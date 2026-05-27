@@ -1,0 +1,209 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@*
+    Re-authentication step-up dialog (Feature 116 T023).
+
+    Caller pattern:
+        var parameters = new DialogParameters
+        {
+            ["Scope"] = ScopedOperation.RemoveAuthMethod,
+        };
+        var dialog = await DialogService.ShowAsync<AuthChallengeDialog>(
+            "Confirm it's you", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: string token })
+        {
+            // attach token to the subsequent mutation call
+        }
+*@
+
+@using System.Text.Json
+@using MudBlazor
+@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Services
+@inject IAuthMethodsClientService AuthMethodsClient
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Security" />
+            <MudText Typo="Typo.h6">Confirm it's you</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Style="min-width: 320px;">
+            @if (_loadingInitiate)
+            {
+                <MudProgressLinear Indeterminate="true" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Preparing step-up...</MudText>
+            }
+            else if (_initiateFailed)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">
+                    No re-authentication method is available for your account.
+                </MudAlert>
+            }
+            else if (_initiated is not null)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    For security, confirm this action with your @MethodLabel(_initiated.Method).
+                </MudText>
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+                }
+
+                @switch (_initiated.Method)
+                {
+                    case ChallengeMethod.Totp:
+                        <MudTextField T="string" @bind-Value="_totpCode"
+                                      Label="Authenticator code"
+                                      Variant="Variant.Outlined"
+                                      Immediate="true"
+                                      MaxLength="6"
+                                      InputMode="InputMode.numeric"
+                                      Placeholder="123456"
+                                      Disabled="_submitting" />
+                        break;
+
+                    case ChallengeMethod.Password:
+                        <MudTextField T="string" @bind-Value="_password"
+                                      Label="Password"
+                                      Variant="Variant.Outlined"
+                                      InputType="InputType.Password"
+                                      Immediate="true"
+                                      Disabled="_submitting" />
+                        break;
+
+                    case ChallengeMethod.Passkey:
+                    case ChallengeMethod.ReOAuth:
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            @MethodLabel(_initiated.Method) step-up will land in a follow-up.
+                            For now, please ensure you have a TOTP or password method enrolled.
+                        </MudAlert>
+                        break;
+                }
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_submitting">Cancel</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   OnClick="SubmitAsync"
+                   Disabled="@(!CanSubmit)">
+            @if (_submitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                <span>Verifying...</span>
+            }
+            else
+            {
+                <span>Confirm</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public ScopedOperation Scope { get; set; }
+
+    private ChallengeInitiateResult? _initiated;
+    private bool _loadingInitiate = true;
+    private bool _initiateFailed;
+    private bool _submitting;
+    private string? _errorMessage;
+
+    private string _totpCode = string.Empty;
+    private string _password = string.Empty;
+
+    private bool CanSubmit
+    {
+        get
+        {
+            if (_submitting || _initiated is null) return false;
+            return _initiated.Method switch
+            {
+                ChallengeMethod.Totp => _totpCode.Length == 6 && _totpCode.All(char.IsDigit),
+                ChallengeMethod.Password => !string.IsNullOrEmpty(_password),
+                _ => false,
+            };
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _initiated = await AuthMethodsClient.InitiateChallengeAsync(Scope);
+        _loadingInitiate = false;
+        _initiateFailed = _initiated is null;
+        StateHasChanged();
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_initiated is null || _submitting) return;
+
+        _submitting = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var proof = BuildProof(_initiated.Method);
+            var result = await AuthMethodsClient.VerifyChallengeAsync(
+                _initiated.Method, Scope, proof);
+
+            if (result.Succeeded && !string.IsNullOrEmpty(result.Token))
+            {
+                MudDialog.Close(DialogResult.Ok(result.Token));
+                return;
+            }
+
+            _errorMessage = result.Error switch
+            {
+                ChallengeVerifyError.ProofRejected => _initiated.Method switch
+                {
+                    ChallengeMethod.Totp => "That code didn't match. Try again.",
+                    ChallengeMethod.Password => "Password didn't match. Try again.",
+                    _ => "Verification failed. Try again.",
+                },
+                ChallengeVerifyError.Expired => "Step-up timed out. Close this dialog and try again.",
+                _ => "Something went wrong. Try again.",
+            };
+
+            // Clear the secret on failure so the user re-enters.
+            if (_initiated.Method == ChallengeMethod.Password) _password = string.Empty;
+            if (_initiated.Method == ChallengeMethod.Totp) _totpCode = string.Empty;
+        }
+        finally
+        {
+            _submitting = false;
+            StateHasChanged();
+        }
+    }
+
+    private JsonElement BuildProof(ChallengeMethod method)
+    {
+        object proof = method switch
+        {
+            ChallengeMethod.Totp => new { code = _totpCode },
+            ChallengeMethod.Password => new { password = _password },
+            _ => new { },
+        };
+        return JsonSerializer.SerializeToElement(proof);
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string MethodLabel(ChallengeMethod m) => m switch
+    {
+        ChallengeMethod.Totp => "authenticator app",
+        ChallengeMethod.Password => "password",
+        ChallengeMethod.Passkey => "passkey",
+        ChallengeMethod.ReOAuth => "social provider",
+        _ => "method",
+    };
+}

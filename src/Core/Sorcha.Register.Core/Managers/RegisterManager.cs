@@ -40,7 +40,10 @@ public class RegisterManager
     /// <param name="isFullReplica">Whether this is a full replica</param>
     /// <param name="registerId">Optional pre-generated register ID (used by two-phase creation flow)</param>
     /// <param name="description">Optional register description</param>
+    /// <param name="devMode">Whether the register is in DevMode (plaintext payloads, no field-level encryption)</param>
     /// <param name="purpose">Register purpose classification</param>
+    /// <param name="syncState">Optional initial sync state for replicated registers</param>
+    /// <param name="initialControlRecord">Optional genesis control record to stash for early relationship/roster resolution</param>
     /// <param name="cancellationToken">Cancellation token</param>
     public virtual async Task<Models.Register> CreateRegisterAsync(
         string name,
@@ -82,7 +85,7 @@ public class RegisterManager
 
         // Publish register created event
         await _eventPublisher.PublishAsync(
-            "register:created",
+            RegisterEventChannels.RegisterCreated,
             new RegisterCreatedEvent
             {
                 RegisterId = createdRegister.Id,

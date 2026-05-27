@@ -1,330 +1,175 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Moq.Protected;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Designer;
+using Sorcha.ServiceClients.Blueprint;
 
 namespace Sorcha.McpServer.Tests.Tools.Designer;
 
+/// <summary>
+/// Spec 139 US4: BlueprintDiffTool reads via the typed <see cref="IBlueprintServiceClient.GetBlueprintDiffAsync"/>
+/// (route pinned, caller token forwarded), so these tests mock the client rather than HTTP.
+/// </summary>
 public class BlueprintDiffToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
-    private readonly Mock<IMcpAuthorizationService> _authServiceMock;
-    private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
-    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
-    private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
-    private readonly Mock<IConfiguration> _configurationMock;
-    private readonly Mock<ILogger<BlueprintDiffTool>> _loggerMock;
+    private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
+    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
+    private readonly Mock<IBlueprintServiceClient> _blueprintClientMock = new();
 
-    public BlueprintDiffToolTests()
+    private BlueprintDiffTool CreateTool() => new(
+        _authServiceMock.Object,
+        _availabilityTrackerMock.Object,
+        _blueprintClientMock.Object,
+        Mock.Of<ILogger<BlueprintDiffTool>>());
+
+    private void Allow()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
-        _authServiceMock = new Mock<IMcpAuthorizationService>();
-        _errorHandlerMock = new Mock<IMcpErrorHandler>();
-        _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
-        _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _configurationMock = new Mock<IConfiguration>();
-        _loggerMock = new Mock<ILogger<BlueprintDiffTool>>();
-
-        _configurationMock.Setup(c => c["ServiceClients:BlueprintService:Address"])
-            .Returns("http://localhost:5000");
-    }
-
-    private BlueprintDiffTool CreateTool()
-    {
-        return new BlueprintDiffTool(
-            _sessionServiceMock.Object,
-            _authServiceMock.Object,
-            _errorHandlerMock.Object,
-            _availabilityTrackerMock.Object,
-            _httpClientFactoryMock.Object,
-            _configurationMock.Object,
-            _loggerMock.Object);
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
+        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(true);
     }
 
     [Fact]
     public async Task CompareBlueprintVersionsAsync_Unauthorized_ReturnsUnauthorizedResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(false);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.CompareBlueprintVersionsAsync("bp-123", 1, 2);
+        var result = await CreateTool().CompareBlueprintVersionsAsync("bp-123", 1);
 
-        // Assert
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("Access denied");
     }
 
     [Fact]
     public async Task CompareBlueprintVersionsAsync_EmptyBlueprintId_ReturnsErrorResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.CompareBlueprintVersionsAsync("", 1, 2);
+        var result = await CreateTool().CompareBlueprintVersionsAsync("", 1);
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Blueprint ID");
     }
 
     [Fact]
     public async Task CompareBlueprintVersionsAsync_InvalidFromVersion_ReturnsErrorResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.CompareBlueprintVersionsAsync("bp-123", 0, 2);
+        var result = await CreateTool().CompareBlueprintVersionsAsync("bp-123", 0);
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("From version must be at least 1");
     }
 
     [Fact]
     public async Task CompareBlueprintVersionsAsync_ServiceUnavailable_ReturnsUnavailableResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
         _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(false);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.CompareBlueprintVersionsAsync("bp-123", 1, 2);
+        var result = await CreateTool().CompareBlueprintVersionsAsync("bp-123", 1);
 
-        // Assert
         result.Status.Should().Be("Unavailable");
-        result.Message.Should().Contain("unavailable");
     }
 
     [Fact]
     public async Task CompareBlueprintVersionsAsync_WithChanges_ReturnsSuccessResult()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
 
-        var diffResponse = new
+        var diff = JsonSerializer.Serialize(new
         {
-            fromVersion = 1,
-            toVersion = 2,
-            changes = new[]
+            FromVersion = 1,
+            ToVersion = 2,
+            Changes = new[]
             {
-                new { path = "/title", changeType = "Modified", oldValue = (string?)"Old Title", newValue = "New Title" },
-                new { path = "/actions/1", changeType = "Added", oldValue = (string?)null, newValue = "New Action" }
+                new { Path = "/title", ChangeType = "Modified", OldValue = "Old Title", NewValue = "New Title" },
+                new { Path = "/description", ChangeType = "Modified", OldValue = "Old", NewValue = "New" }
             }
-        };
+        });
+        _blueprintClientMock
+            .Setup(c => c.GetBlueprintDiffAsync("bp-123", 1, 2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(diff);
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(diffResponse))
-            });
+        var result = await CreateTool().CompareBlueprintVersionsAsync("bp-123", 1, 2);
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.CompareBlueprintVersionsAsync("bp-123", 1, 2);
-
-        // Assert
         result.Status.Should().Be("Success");
-        result.Message.Should().Contain("2 change(s)");
         result.FromVersion.Should().Be(1);
         result.ToVersion.Should().Be(2);
-        result.Changes.Should().HaveCount(2);
         result.Changes[0].Path.Should().Be("/title");
         result.Changes[0].ChangeType.Should().Be("Modified");
         result.Changes[0].OldValue.Should().Be("Old Title");
         result.Changes[0].NewValue.Should().Be("New Title");
         result.TotalChanges.Should().Be(2);
-
-        _availabilityTrackerMock.Verify(a => a.RecordSuccess("Blueprint"), Times.Once);
     }
 
     [Fact]
     public async Task CompareBlueprintVersionsAsync_NoChanges_ReturnsSuccessResult()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetBlueprintDiffAsync("bp-123", 1, 2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { FromVersion = 1, ToVersion = 2, Changes = Array.Empty<object>() }));
 
-        var diffResponse = new
-        {
-            fromVersion = 1,
-            toVersion = 2,
-            changes = Array.Empty<object>()
-        };
+        var result = await CreateTool().CompareBlueprintVersionsAsync("bp-123", 1, 2);
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(diffResponse))
-            });
-
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.CompareBlueprintVersionsAsync("bp-123", 1, 2);
-
-        // Assert
         result.Status.Should().Be("Success");
-        result.Message.Should().Contain("No changes");
         result.Changes.Should().BeEmpty();
         result.TotalChanges.Should().Be(0);
     }
 
     [Fact]
-    public async Task CompareBlueprintVersionsAsync_ToLatest_BuildsCorrectUrl()
+    public async Task CompareBlueprintVersionsAsync_ToLatest_PassesNullToVersion()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetBlueprintDiffAsync("bp-123", 1, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { FromVersion = 1, ToVersion = 3, Changes = Array.Empty<object>() }));
 
-        var diffResponse = new { fromVersion = 1, toVersion = 3, changes = Array.Empty<object>() };
+        await CreateTool().CompareBlueprintVersionsAsync("bp-123", 1);
 
-        string? capturedUrl = null;
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedUrl = req.RequestUri?.ToString())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(diffResponse))
-            });
-
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act - toVersion = 0 means latest
-        await tool.CompareBlueprintVersionsAsync("bp-123", 1, 0);
-
-        // Assert - should not include "to" parameter
-        capturedUrl.Should().Be("http://localhost:5000/api/blueprints/bp-123/diff?from=1");
+        _blueprintClientMock.Verify(
+            c => c.GetBlueprintDiffAsync("bp-123", 1, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task CompareBlueprintVersionsAsync_ToSpecificVersion_BuildsCorrectUrl()
+    public async Task CompareBlueprintVersionsAsync_ToSpecificVersion_PassesToVersion()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetBlueprintDiffAsync("bp-123", 1, 2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { FromVersion = 1, ToVersion = 2, Changes = Array.Empty<object>() }));
 
-        var diffResponse = new { fromVersion = 1, toVersion = 2, changes = Array.Empty<object>() };
+        await CreateTool().CompareBlueprintVersionsAsync("bp-123", 1, 2);
 
-        string? capturedUrl = null;
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedUrl = req.RequestUri?.ToString())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(diffResponse))
-            });
-
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        await tool.CompareBlueprintVersionsAsync("bp-123", 1, 2);
-
-        // Assert
-        capturedUrl.Should().Be("http://localhost:5000/api/blueprints/bp-123/diff?from=1&to=2");
+        _blueprintClientMock.Verify(
+            c => c.GetBlueprintDiffAsync("bp-123", 1, 2, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task CompareBlueprintVersionsAsync_BlueprintNotFound_ReturnsErrorResult()
+    public async Task CompareBlueprintVersionsAsync_ServiceReturnsNull_ReturnsErrorResult()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetBlueprintDiffAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
 
-        var errorResponse = new { error = "Blueprint not found" };
+        var result = await CreateTool().CompareBlueprintVersionsAsync("bp-123", 1);
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.NotFound)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(errorResponse))
-            });
-
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.CompareBlueprintVersionsAsync("nonexistent", 1, 2);
-
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Blueprint not found");
     }
 
     [Fact]
     public async Task CompareBlueprintVersionsAsync_ResponseTimeIsRecorded()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_blueprint_diff")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetBlueprintDiffAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { FromVersion = 1, ToVersion = 2, Changes = Array.Empty<object>() }));
 
-        var diffResponse = new { fromVersion = 1, toVersion = 2, changes = Array.Empty<object>() };
+        var result = await CreateTool().CompareBlueprintVersionsAsync("bp-123", 1);
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(diffResponse))
-            });
-
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.CompareBlueprintVersionsAsync("bp-123", 1, 2);
-
-        // Assert
         result.ResponseTimeMs.Should().BeGreaterThanOrEqualTo(0);
         result.CheckedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
     }

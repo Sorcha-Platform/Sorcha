@@ -2,12 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.ComponentModel;
-using System.Diagnostics;
-using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
-using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 
 namespace Sorcha.McpServer.Tools.Admin;
@@ -15,38 +11,28 @@ namespace Sorcha.McpServer.Tools.Admin;
 /// <summary>
 /// Admin tool for querying audit logs.
 /// </summary>
+/// <remarks>
+/// Spec 139 US4 (LOCKED DECISION): the platform exposes no audit-query API yet, so this tool
+/// is marked <c>NotSupported</c>. It keeps its admin authorization gate and stays advertised so
+/// the catalogue/manifest is stable, but it fails honestly instead of calling a phantom endpoint.
+/// Wire it up when an audit surface lands.
+/// </remarks>
 [McpServerToolType]
 public sealed class AuditQueryTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
-    private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<AuditQueryTool> _logger;
-    private readonly string _tenantServiceEndpoint;
 
     public AuditQueryTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
-        IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
         ILogger<AuditQueryTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
-        _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
         _logger = logger;
-
-        _tenantServiceEndpoint = configuration["ServiceClients:TenantService:Address"] ?? "http://localhost:5110";
     }
 
     /// <summary>
-    /// Queries audit logs for security and compliance.
+    /// Queries audit logs for security and compliance. Currently not supported (no backend API).
     /// </summary>
     /// <param name="tenantId">Filter by tenant/organization ID (optional).</param>
     /// <param name="userId">Filter by user ID (optional).</param>
@@ -57,10 +43,10 @@ public sealed class AuditQueryTool
     /// <param name="page">Page number (1-based, default: 1).</param>
     /// <param name="pageSize">Items per page (default: 50, max: 200).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Audit log entries.</returns>
+    /// <returns>A NotSupported result until an audit API exists.</returns>
     [McpServerTool(Name = "sorcha_audit_query")]
-    [Description("Query audit logs for security and compliance. Track user actions, access patterns, and system changes. Essential for security investigations.")]
-    public async Task<AuditQueryResult> QueryAuditLogsAsync(
+    [Description("Returns paged audit-log entries describing who took which administrative action against which resource and when, filtered by tenant, user, event type, resource type, or time window. NOTE: the platform exposes no audit-query API yet, so this tool currently returns a NotSupported result; it will be wired up when an audit surface lands. Call this when investigating a security incident, building a compliance report, or reconstructing a sequence of admin or user actions; prefer this over sorcha_log_query when the question is about user or admin behaviour rather than service-level diagnostic output.")]
+    public Task<AuditQueryResult> QueryAuditLogsAsync(
         [Description("Filter by tenant/organization ID")] string? tenantId = null,
         [Description("Filter by user ID")] string? userId = null,
         [Description("Filter by event type: Login, Logout, Create, Update, Delete, Access")] string? eventType = null,
@@ -74,235 +60,22 @@ public sealed class AuditQueryTool
         // Authorization check
         if (!_authService.CanInvokeTool("sorcha_audit_query"))
         {
-            return new AuditQueryResult
+            return Task.FromResult(new AuditQueryResult
             {
                 Status = "Unauthorized",
                 Message = "Access denied. This tool requires the sorcha:admin role.",
                 CheckedAt = DateTimeOffset.UtcNow
-            };
-        }
-
-        // Validate pagination
-        if (page < 1) page = 1;
-        if (pageSize < 1) pageSize = 50;
-        if (pageSize > 200) pageSize = 200;
-
-        // Validate event type if provided
-        if (!string.IsNullOrWhiteSpace(eventType))
-        {
-            var validTypes = new[] { "Login", "Logout", "Create", "Update", "Delete", "Access" };
-            if (!validTypes.Contains(eventType, StringComparer.OrdinalIgnoreCase))
-            {
-                return new AuditQueryResult
-                {
-                    Status = "Error",
-                    Message = "Invalid event type. Must be Login, Logout, Create, Update, Delete, or Access.",
-                    CheckedAt = DateTimeOffset.UtcNow
-                };
-            }
-        }
-
-        // Validate resource type if provided
-        if (!string.IsNullOrWhiteSpace(resourceType))
-        {
-            var validResources = new[] { "User", "Tenant", "Blueprint", "Workflow" };
-            if (!validResources.Contains(resourceType, StringComparer.OrdinalIgnoreCase))
-            {
-                return new AuditQueryResult
-                {
-                    Status = "Error",
-                    Message = "Invalid resource type. Must be User, Tenant, Blueprint, or Workflow.",
-                    CheckedAt = DateTimeOffset.UtcNow
-                };
-            }
-        }
-
-        // Check service availability
-        if (!_availabilityTracker.IsServiceAvailable("Tenant"))
-        {
-            return new AuditQueryResult
-            {
-                Status = "Unavailable",
-                Message = "Tenant service is currently unavailable. Please try again later.",
-                CheckedAt = DateTimeOffset.UtcNow
-            };
-        }
-
-        _logger.LogInformation(
-            "Querying audit logs. Tenant: {Tenant}, User: {User}, Event: {Event}, Resource: {Resource}",
-            tenantId ?? "all", userId ?? "all", eventType ?? "all", resourceType ?? "all");
-
-        var stopwatch = Stopwatch.StartNew();
-
-        try
-        {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            // Build query string
-            var queryParams = new List<string>
-            {
-                $"page={page}",
-                $"pageSize={pageSize}"
-            };
-
-            if (!string.IsNullOrWhiteSpace(tenantId))
-                queryParams.Add($"organizationId={Uri.EscapeDataString(tenantId)}");
-
-            if (!string.IsNullOrWhiteSpace(userId))
-                queryParams.Add($"userId={Uri.EscapeDataString(userId)}");
-
-            if (!string.IsNullOrWhiteSpace(eventType))
-                queryParams.Add($"eventType={Uri.EscapeDataString(eventType)}");
-
-            if (!string.IsNullOrWhiteSpace(resourceType))
-                queryParams.Add($"resourceType={Uri.EscapeDataString(resourceType)}");
-
-            if (!string.IsNullOrWhiteSpace(startTime))
-                queryParams.Add($"startTime={Uri.EscapeDataString(startTime)}");
-
-            if (!string.IsNullOrWhiteSpace(endTime))
-                queryParams.Add($"endTime={Uri.EscapeDataString(endTime)}");
-
-            var url = $"{_tenantServiceEndpoint.TrimEnd('/')}/api/audit?{string.Join("&", queryParams)}";
-
-            var response = await client.GetAsync(url, cancellationToken);
-
-            stopwatch.Stop();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Audit query failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
-                _availabilityTracker.RecordSuccess("Tenant");
-
-                return new AuditQueryResult
-                {
-                    Status = "Error",
-                    Message = $"Audit query failed with status {(int)response.StatusCode}.",
-                    CheckedAt = DateTimeOffset.UtcNow,
-                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                };
-            }
-
-            _availabilityTracker.RecordSuccess("Tenant");
-
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = JsonSerializer.Deserialize<AuditQueryResponse>(responseContent, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
             });
-
-            if (result == null)
-            {
-                return new AuditQueryResult
-                {
-                    Status = "Error",
-                    Message = "Failed to parse audit query response.",
-                    CheckedAt = DateTimeOffset.UtcNow,
-                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                };
-            }
-
-            _logger.LogInformation(
-                "Retrieved {Count} audit entries in {ElapsedMs}ms",
-                result.Items?.Count ?? 0, stopwatch.ElapsedMilliseconds);
-
-            return new AuditQueryResult
-            {
-                Status = "Success",
-                Message = $"Retrieved {result.Items?.Count ?? 0} audit entries.",
-                CheckedAt = DateTimeOffset.UtcNow,
-                ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
-                Entries = result.Items?.Select(e => new AuditEntry
-                {
-                    AuditId = e.AuditId ?? "",
-                    Timestamp = e.Timestamp,
-                    TenantId = e.OrganizationId,
-                    UserId = e.UserId,
-                    UserEmail = e.UserEmail,
-                    EventType = e.EventType ?? "Unknown",
-                    ResourceType = e.ResourceType,
-                    ResourceId = e.ResourceId,
-                    Action = e.Action ?? "",
-                    IpAddress = e.IpAddress,
-                    UserAgent = e.UserAgent,
-                    Details = e.Details
-                }).ToList() ?? [],
-                TotalCount = result.TotalCount,
-                Page = result.Page,
-                PageSize = result.PageSize,
-                TotalPages = result.TotalPages
-            };
         }
-        catch (TaskCanceledException)
+
+        _logger.LogInformation("sorcha_audit_query invoked but no audit-query API is available (NotSupported).");
+
+        return Task.FromResult(new AuditQueryResult
         {
-            stopwatch.Stop();
-            _availabilityTracker.RecordFailure("Tenant");
-
-            return new AuditQueryResult
-            {
-                Status = "Timeout",
-                Message = "Audit query request timed out.",
-                CheckedAt = DateTimeOffset.UtcNow,
-                ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-            };
-        }
-        catch (HttpRequestException ex)
-        {
-            stopwatch.Stop();
-            _availabilityTracker.RecordFailure("Tenant", ex);
-
-            return new AuditQueryResult
-            {
-                Status = "Error",
-                Message = $"Failed to connect to Tenant service: {ex.Message}",
-                CheckedAt = DateTimeOffset.UtcNow,
-                ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-            };
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            _availabilityTracker.RecordFailure("Tenant", ex);
-
-            _logger.LogError(ex, "Unexpected error querying audit logs");
-
-            return new AuditQueryResult
-            {
-                Status = "Error",
-                Message = "An unexpected error occurred while querying audit logs.",
-                CheckedAt = DateTimeOffset.UtcNow,
-                ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-            };
-        }
-    }
-
-    // Internal response models
-    private sealed class AuditQueryResponse
-    {
-        public List<AuditEntryDto>? Items { get; set; }
-        public int TotalCount { get; set; }
-        public int Page { get; set; }
-        public int PageSize { get; set; }
-        public int TotalPages { get; set; }
-    }
-
-    private sealed class AuditEntryDto
-    {
-        public string? AuditId { get; set; }
-        public DateTimeOffset? Timestamp { get; set; }
-        public string? OrganizationId { get; set; }
-        public string? UserId { get; set; }
-        public string? UserEmail { get; set; }
-        public string? EventType { get; set; }
-        public string? ResourceType { get; set; }
-        public string? ResourceId { get; set; }
-        public string? Action { get; set; }
-        public string? IpAddress { get; set; }
-        public string? UserAgent { get; set; }
-        public string? Details { get; set; }
+            Status = "NotSupported",
+            Message = "The platform exposes no audit-query API yet; this tool will be wired up when an audit surface lands.",
+            CheckedAt = DateTimeOffset.UtcNow
+        });
     }
 }
 

@@ -278,6 +278,13 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         // Verify all attestation signatures against stored hashes from initiation
         await VerifyAttestationsAsync(request.SignedAttestations, pending, cancellationToken);
 
+        // Bake the register's DevMode posture into the genesis crypto policy so it is part of the
+        // immutable, signed, replicated genesis (a SyncOnly replica reads it from the synced
+        // control record). One-way: promotable to Normal via a crypto-policy update, never back —
+        // validator-enforced.
+        var genesisCryptoPolicy = CryptoPolicy.CreateDefault();
+        genesisCryptoPolicy.DevMode = pending.DevMode;
+
         // Construct control record from verified attestations
         var controlRecord = new RegisterControlRecord
         {
@@ -286,7 +293,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             Description = pending.ControlRecord.Description,
             CreatedAt = pending.ControlRecord.CreatedAt,
             Metadata = pending.ControlRecord.Metadata,
-            CryptoPolicy = CryptoPolicy.CreateDefault(),
+            CryptoPolicy = genesisCryptoPolicy,
             RegisterPolicy = pending.ControlRecord.RegisterPolicy,
             Attestations = request.SignedAttestations.Select(sa => new RegisterAttestation
             {
@@ -474,7 +481,14 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         // RegisterMonitoringBootstrap will re-reconcile, find this register via the
         // stashed control record, and start sealing the genesis tx waiting in its pool.
         // Fire-and-forget — Redis publish failure is non-fatal, the safety poll covers it.
-        _ = Task.Run(() => _relationshipNotifier.PublishIfChangedAsync(register.Id));
+        // ContinueWith logs any task-level escape so the unobserved-task pipeline doesn't
+        // swallow shutdown / scheduler faults.
+        _ = Task.Run(() => _relationshipNotifier.PublishIfChangedAsync(register.Id))
+            .ContinueWith(
+                t => _logger.LogWarning(t.Exception,
+                    "RelationshipChangeNotifier.PublishIfChangedAsync escaped for register {RegisterId}",
+                    register.Id),
+                TaskContinuationOptions.OnlyOnFaulted);
 
         // Set register Online after successful creation
         // SignalR notifications (RegisterStatusChanged, RegisterCreated) handled by RegisterEventBridgeService

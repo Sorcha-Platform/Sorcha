@@ -142,6 +142,8 @@ No constitution violations — no entries needed.
 
 ### Phase 3: DID Resolution Service (Medium Risk)
 
+> **Historical (Feature 120 Phase 0, 2026-05-09):** Superseded by the W3C-shaped `IDidResolverRegistry` (`src/Common/Sorcha.ServiceClients.Http/Did/`). The Sorcha-specific `IDIDResolver` / `DIDResolver` types described below were deleted in Phase 0 of Feature 120 — they had no consumers in src/ or tests/.
+
 **Goal**: Implement DID resolver for both wallet and register DID types.
 
 **Files Created**:

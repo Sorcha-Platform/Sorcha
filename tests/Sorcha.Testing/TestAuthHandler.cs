@@ -4,8 +4,10 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.ServiceDefaults.Auth;
 
 namespace Sorcha.Testing;
 
@@ -74,6 +76,30 @@ public class TestAuthHandler : AuthenticationHandler<TestAuthHandlerOptions>
             if (Request.Headers.TryGetValue(header, out var headerValue))
             {
                 claims.Add(new Claim(claimType, headerValue.ToString()));
+            }
+        }
+
+        // Spec 136 tier audiences. An explicit X-Test-Audience (comma-separated) sets the aud claim(s)
+        // for tier-isolation tests; otherwise inject all four tier audiences for the default
+        // installation so pre-spec-136 tests authenticate at any tier-gated endpoint unchanged.
+        if (Request.Headers.TryGetValue("X-Test-Audience", out var audHeader))
+        {
+            claims.RemoveAll(c => c.Type == "aud");
+            foreach (var aud in audHeader.ToString()
+                         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                claims.Add(new Claim("aud", aud));
+            }
+        }
+        else if (!claims.Any(c => c.Type == "aud"))
+        {
+            // Resolve the SAME SorchaAudiences the tier-audience policies use (registered from the
+            // host's configured InstallationName), so injected audiences always match the validator.
+            var audiences = Context.RequestServices.GetService<SorchaAudiences>()
+                ?? new SorchaAudiences(installationName: null);
+            foreach (var aud in audiences.All)
+            {
+                claims.Add(new Claim("aud", aud));
             }
         }
 

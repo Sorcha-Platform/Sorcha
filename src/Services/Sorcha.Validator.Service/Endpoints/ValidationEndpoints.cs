@@ -21,8 +21,8 @@ public static class ValidationEndpoints
     {
         group.MapPost("/validate", ValidateTransaction)
             .WithName("ValidateTransaction")
-            .WithSummary("Validates a transaction and adds it to the memory pool")
-            .WithDescription("Validates transaction structure, signatures, and blueprint compliance before adding to memory pool")
+            .WithSummary("Validate a transaction and submit it to the memory pool")
+            .WithDescription("Validates transaction structure, payload hash, wallet signatures, and per-sender sequence number, then submits the transaction to the unverified pool for downstream consensus and docket sealing. Call this when an AI agent needs to record a signed action on a Sorcha register and obtain a verifiable receipt that the validator accepted it.")
             .Produces<object>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
@@ -30,8 +30,8 @@ public static class ValidationEndpoints
 
         group.MapGet("/mempool/{registerId}", GetMemPoolStats)
             .WithName("GetMemPoolStats")
-            .WithSummary("Gets memory pool statistics for a register")
-            .WithDescription("Returns current transaction counts, fill percentage, and other memory pool metrics")
+            .WithSummary("Get memory pool statistics for a register")
+            .WithDescription("Returns the current memory-pool state for a register: transaction counts by priority, fill percentage, oldest and newest transaction timestamps. Call this to gauge pending consensus load before submitting time-sensitive transactions or to monitor a register's throughput.")
             .Produces<MemPoolStats>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized);
 
@@ -45,7 +45,6 @@ public static class ValidationEndpoints
         [FromBody] ValidateTransactionRequest request,
         [FromServices] ITransactionValidator validator,
         [FromServices] ITransactionPoolPoller poolPoller,
-        [FromServices] IRegisterMonitoringRegistry monitoringRegistry,
         [FromServices] IHashProvider hashProvider,
         [FromServices] ILogger<Program> logger,
         CancellationToken cancellationToken)
@@ -152,13 +151,9 @@ public static class ValidationEndpoints
             logger.LogInformation("Transaction {TransactionId} validated and submitted to unverified pool", request.TransactionId);
 
             // Feature 108 — monitoring enrolment is now roster-driven via RegisterMonitoringBootstrap.
-            // We intentionally do NOT call monitoringRegistry.RegisterForMonitoring(registerId) here
-            // any more. Nodes that are not on the register's validator roster will accept the
-            // transaction into their mempool for onward forwarding, but will not produce dockets.
-            // The `monitoringRegistry` dependency is kept in the endpoint signature because other
-            // code paths may still reference it — it's a no-op in this handler now.
-            _ = monitoringRegistry;
-
+            // No per-submission registration call here. Nodes that are not on the register's
+            // validator roster accept the transaction into their mempool for onward forwarding
+            // but do not produce dockets.
             return Results.Ok(new
             {
                 IsValid = true,

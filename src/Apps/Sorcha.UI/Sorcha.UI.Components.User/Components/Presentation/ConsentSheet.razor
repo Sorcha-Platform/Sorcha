@@ -1,0 +1,60 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Consent sheet (Feature 114, T097). The deliberate confirmation surface
+    per FR-015: required claims locked-on, optional claims toggleable, the
+    primary CTA explicitly labelled to convey intent.
+*@
+@using Sorcha.UI.Core.Models.Presentation
+
+<MudPaper Elevation="2" Class="pa-4">
+    <MudText Typo="Typo.subtitle1">@Request.Purpose</MudText>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3 d-block">
+        Audience: <code>@Request.ClientId</code>
+    </MudText>
+
+    <MudText Typo="Typo.body2" Class="mt-3 mb-1"><strong>Required (always shared):</strong></MudText>
+    @foreach (var name in Selected.SatisfiedRequired)
+    {
+        <MudCheckBox T="bool" Value="true" Disabled="true" Label="@name" />
+    }
+
+    @if (Selected.AvailableOptional.Count > 0)
+    {
+        <MudText Typo="Typo.body2" Class="mt-3 mb-1"><strong>Optional:</strong></MudText>
+        @foreach (var name in Selected.AvailableOptional)
+        {
+            <MudCheckBox T="bool" @bind-Value="OptionalToggles[name]" Label="@name" />
+        }
+    }
+
+    <MudButton Class="mt-4 mr-2" Color="Color.Primary" Variant="Variant.Filled"
+               OnClick="OnConfirm" Disabled="@Busy">
+        @(Busy ? "Sharing…" : "Hold to share")
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="OnCancel" Disabled="@Busy">Cancel</MudButton>
+</MudPaper>
+
+@code {
+    /// <summary>The credential the citizen chose, with the disclosure plan.</summary>
+    [Parameter, EditorRequired] public CredentialMatch Selected { get; set; } = default!;
+
+    /// <summary>The verifier's parsed request (purpose, audience, etc.).</summary>
+    [Parameter, EditorRequired] public ParsedPresentationRequest Request { get; set; } = default!;
+
+    /// <summary>
+    /// Two-way bound dictionary of optional claim names → opt-in flags.
+    /// Owner constructs the dictionary so Reset can clear it.
+    /// </summary>
+    [Parameter, EditorRequired] public Dictionary<string, bool> OptionalToggles { get; set; } = new();
+
+    /// <summary>True while the parent is in the middle of building / posting the vp_token.</summary>
+    [Parameter] public bool Busy { get; set; }
+
+    /// <summary>Invoked when the citizen confirms.</summary>
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    /// <summary>Invoked when the citizen cancels.</summary>
+    [Parameter] public EventCallback OnCancel { get; set; }
+}

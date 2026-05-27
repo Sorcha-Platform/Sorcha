@@ -336,6 +336,7 @@ public class WalletServiceClient : IWalletServiceClient
         bool skipRecipientStore = false,
         string? issuerOrgName = null,
         string? tenantId = null,
+        JsonElement? holderJwk = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -359,7 +360,8 @@ public class WalletServiceClient : IWalletServiceClient
                 statusListPurpose,
                 skipRecipientStore,
                 issuerOrgName,
-                tenantId
+                tenantId,
+                holderJwk
             };
 
             var response = await _httpClient.PostAsJsonAsync(
@@ -720,48 +722,59 @@ public class WalletServiceClient : IWalletServiceClient
 
     private sealed class CreateWalletResponse
     {
+        /// <summary>The wallet.</summary>
         [JsonPropertyName("wallet")]
         public WalletInfo? Wallet { get; set; }
     }
 
     private sealed class SystemWalletResponse
     {
+        /// <summary>Address value.</summary>
         [JsonPropertyName("address")]
         public string? Address { get; set; }
     }
 
     private sealed class SignRequest
     {
+        /// <summary>The transaction data.</summary>
         [JsonPropertyName("transactionData")]
         public string TransactionData { get; set; } = string.Empty;
 
+        /// <summary>The derivation path.</summary>
         [JsonPropertyName("derivationPath")]
         public string? DerivationPath { get; set; }
 
+        /// <summary>Indicates whether pre hashed.</summary>
         [JsonPropertyName("isPreHashed")]
         public bool IsPreHashed { get; set; }
     }
 
     private sealed class SignResponse
     {
+        /// <summary>Cryptographic signature over the payload.</summary>
         [JsonPropertyName("signature")]
         public string Signature { get; set; } = string.Empty;
 
+        /// <summary>The signed by.</summary>
         [JsonPropertyName("signedBy")]
         public string SignedBy { get; set; } = string.Empty;
 
+        /// <summary>Timestamp at which signed occurred (UTC).</summary>
         [JsonPropertyName("signedAt")]
         public DateTime SignedAt { get; set; }
 
+        /// <summary>Public key material.</summary>
         [JsonPropertyName("publicKey")]
         public string PublicKey { get; set; } = string.Empty;
 
+        /// <summary>Cryptographic algorithm identifier.</summary>
         [JsonPropertyName("algorithm")]
         public string? Algorithm { get; set; }
     }
 
     private sealed class VerifyResponse
     {
+        /// <summary>Indicates whether validation passed.</summary>
         [JsonPropertyName("isValid")]
         public bool IsValid { get; set; }
     }
@@ -812,12 +825,14 @@ public class WalletServiceClient : IWalletServiceClient
 
     private sealed class EncryptResponse
     {
+        /// <summary>The encrypted payload.</summary>
         [JsonPropertyName("encryptedPayload")]
         public string? EncryptedPayload { get; set; }
     }
 
     private sealed class DecryptResponse
     {
+        /// <summary>The decrypted payload.</summary>
         [JsonPropertyName("decryptedPayload")]
         public string? DecryptedPayload { get; set; }
     }

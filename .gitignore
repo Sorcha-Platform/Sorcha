@@ -50,6 +50,22 @@ bld/
 *.sln.docstates
 *.userprefs
 
+# Feature 122 — Sorcha.UI.Components.User project ends in ".User", which the
+# *.user rule above would otherwise hide. Un-ignore the source tree only;
+# bin/obj remain ignored via earlier rules.
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/*.cs
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/*.razor
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/*.razor.css
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/*.csproj
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/*.json
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/*.md
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/*.css
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/*.scss
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/_Imports.razor
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/**/_ViewImports.razor
+!src/Apps/Sorcha.UI/Sorcha.UI.Components.User/wwwroot/**
+
 # Rider
 .idea/
 *.sln.iml
@@ -233,6 +249,10 @@ walkthroughs/.secrets/
 !walkthroughs/.secrets/.gitkeep
 walkthroughs/**/state.json
 
+# Cross-node walkthrough run artefacts + ad-hoc compliance reports (local-only, never commit)
+walkthroughs/**/crossnode-state.json
+walkthroughs/COMPLIANCE-REPORT.md
+
 # Performance benchmark test results
 walkthroughs/PerformanceBenchmark/results/*.json
 walkthroughs/PerformanceBenchmark/results/*.md
@@ -253,3 +273,6 @@ walkthroughs/*/state.json
 .claude/scheduled_tasks.lock
 verify-feature-106.ps1
 walkthroughs/*/state.gateway.json
+
+# Spec 117 — Phase 2 baseline OpenAPI capture (T006), local-only review artefact
+specs/117-ai-discoverability/baseline-openapi.json

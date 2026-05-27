@@ -5,10 +5,17 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Sorcha.AddressLookup;
+using Sorcha.AtomicCache.Extensions;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Endpoints;
+using Sorcha.Tenant.Service.Hubs;
+using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Services;
 using Sorcha.ServiceClients.Extensions;
+using Sorcha.ServiceDefaults.Hubs;
+using Sorcha.ServiceDefaults.Storage;
 using Sorcha.Tenant.Service.Extensions;
+using Sorcha.Tenant.Service.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,7 +53,9 @@ builder.Services.AddTenantServices(builder.Configuration);
 builder.AddJwtAuthentication();
 
 // Configure JwtConfiguration for token issuance (used by TokenService)
-builder.Services.ConfigureJwtForTokenIssuance(builder.Configuration);
+builder.Services.ConfigureJwtForTokenIssuance(
+    builder.Configuration,
+    Sorcha.ServiceDefaults.Auth.SorchaIssuer.AllowsDevLocalFallback(builder.Environment));
 
 // Add authorization policies
 builder.Services.AddTenantAuthorization();
@@ -82,6 +91,30 @@ builder.Services.AddAntiforgery(options =>
 // Add health checks (PostgreSQL and Redis when configured)
 builder.Services.AddTenantHealthChecks(builder.Configuration);
 
+// Feature 118 — TenantHub for identity / membership / admin / inbox realtime events (US2).
+// Wires JWT auth + Redis backplane (ChannelPrefix=sorcha:signalr:tenant) +
+// reconnect-with-jitter + OpenTelemetry instrumentation. Inbox event methods
+// on ITenantHubClient land in Phase 5 (US3); the hub class is auth-only here
+// so US3 has the surface to emit on.
+builder.Services.AddSorchaHub<TenantHub, ITenantHubClient>(
+    builder.Configuration, "/hubs/tenant", "tenant");
+
+// Feature 118 / US3 — durable user inbox.
+// Storage layer is registered through IStorageRegistrationLog (Feature 113 audit
+// pattern). Tenant Service runs against Postgres in Production / Staging; the
+// audited interface (Sorcha.Tenant.Service.Storage.IInboxStore) is recorded as
+// persistent so storage-providers health and fail-fast enforcement apply.
+{
+    var storageLog = builder.Services.GetStorageRegistrationLog();
+    builder.Services.AddScoped<IInboxStore, EfCoreInboxStore>();
+    storageLog.RegisterPersistent(
+        typeof(IInboxStore).FullName!,
+        typeof(EfCoreInboxStore).FullName!,
+        backend: "postgres");
+}
+builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IInboxService,
+    Sorcha.Tenant.Service.Services.InboxService>();
+
 // Add database initializer for automatic migration and seeding
 // Creates default organization (sorcha.local) and admin user on startup
 builder.Services.AddDatabaseInitializer();
@@ -102,6 +135,13 @@ builder.Services.AddHostedService<Sorcha.Tenant.Service.Services.EventCleanupSer
 builder.Services.AddSingleton<Sorcha.Tenant.Service.Trust.ITrustProvider,
     Sorcha.Tenant.Service.Trust.InternalCaTrustProvider>();
 
+// Feature 135 (US2) — operator trust-list snapshots managed via the /api/v1/trust/trustlists admin
+// surface. In-memory, operator-pushed (re-pushable on restart), consulted by the `trustlist` trust
+// source; a live LOTL provider is a future impl behind the same ITrustListProvider seam.
+builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.OperatorSnapshotTrustListProvider>();
+builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider>(sp =>
+    sp.GetRequiredService<Sorcha.ServiceClients.Trust.OperatorSnapshotTrustListProvider>());
+
 // Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,
     Sorcha.Tenant.Service.Services.PersonaService>();
@@ -116,6 +156,24 @@ builder.Services.AddHttpClient<Sorcha.Tenant.Service.Services.IPersonaCryptoClie
         ?? "http://wallet";
     client.BaseAddress = new Uri(walletBase);
 });
+
+// Feature 126: enrolment-session service + atomic single-use JTI registry.
+// AddAtomicDistributedCache is idempotent across services (Feature 113 primitive).
+builder.Services.AddAtomicDistributedCache(builder.Configuration, "Tenant");
+builder.Services.AddSingleton<EnrolSessionMetrics>();
+builder.Services.AddScoped<IEnrolSessionService, EnrolSessionService>();
+
+// Feature 128: 6-digit pairing short codes wrapping standalone enrol-session
+// tokens. Used by the wallet PWA pairing-takeover sub-affordance and the
+// mobile-web install fallback path.
+builder.Services.AddScoped<IPairingShortCodeService, PairingShortCodeService>();
+
+// Feature 128 US2: "Email me a link" pairing-resumption token service.
+// 24-hour TTL, single-use via IAtomicDistributedCache (NonceStore pattern).
+builder.Services.AddScoped<IPairingResumptionTokenService, PairingResumptionTokenService>();
+
+builder.Services.Configure<ReturnToAllowlistOptions>(
+    builder.Configuration.GetSection(ReturnToAllowlistOptions.SectionName));
 
 // Feature 103 US3: address lookup service + providers. postcodes.io is
 // registered as the default-on provider (no key, no rate limit, MIT). OS
@@ -179,11 +237,14 @@ app.MapAuthEndpoints();
 app.MapPasskeyEndpoints();
 app.MapAuthChallengeEndpoints();
 app.MapAuthMethodsEndpoints();
+app.MapPasswordEndpoints();
 app.MapPublicPasskeyEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();
+app.MapPlatformUserDeviceEndpoints();
 app.MapPersonaEndpoints();
 app.MapAddressLookupEndpoints();
+app.MapOrgDidDocumentEndpoints();
 app.MapTotpEndpoints();
 app.MapIdpConfigurationEndpoints();
 app.MapOidcEndpoints();
@@ -203,7 +264,17 @@ app.MapEventEndpoints();
 app.MapRegisterSubscriptionEndpoints();
 app.MapRegisterInvitationEndpoints();
 app.MapTrustEndpoints();
+app.MapEnrolSessionEndpoints();
+app.MapPairingShortCodeEndpoints();
+app.MapPairingResumptionEndpoints();
 app.MapRazorPages();
+
+// Feature 118 — map TenantHub at /hubs/tenant (US2). Routed via API Gateway.
+app.MapSorchaHubs();
+
+// Feature 118 / US3 — durable user inbox endpoints.
+app.MapMeInboxEndpoints();
+app.MapInternalInboxEndpoints();
 
 // Health check is provided by MapDefaultEndpoints() which maps /health and /alive
 // The standard Aspire health endpoint returns plain text "Healthy" or "Unhealthy"

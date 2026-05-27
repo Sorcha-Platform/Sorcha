@@ -49,5 +49,38 @@ internal sealed class TestCitizenWalletDbContext : WalletDbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.PlatformUserId, e.PlatformUserDeviceId }).IsUnique();
         });
+
+        // Feature 114 / US4 — citizen holder-address index + credential event log
+        // + a minimal Credentials mapping so EfCoreCitizenCredentialEventStream's
+        // join to CredentialEntity works under the InMemory provider (jsonb /
+        // soft-delete from the production mapping is incompatible with InMemory).
+        modelBuilder.Entity<CitizenHolderIndex>(entity =>
+        {
+            entity.HasKey(e => e.WalletAddress);
+            entity.HasIndex(e => e.PlatformUserId);
+        });
+
+        modelBuilder.Entity<CitizenCredentialEventLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.PlatformUserId, e.Seq }).IsUnique();
+        });
+
+        modelBuilder.Entity<CredentialEntity>(entity =>
+        {
+            entity.HasKey(e => new { e.Id, e.WalletAddress });
+            entity.Property(e => e.Status).HasConversion<string>();
+        });
+
+        // Feature 114 / US5 PR3 — durable per-citizen presentation history. Surrogate
+        // Id PK + unique (PlatformUserId, EntryId) natural key; the production jsonb
+        // column type on DisclosedClaims is Npgsql-only, so the InMemory provider maps
+        // the string[] CLR property directly without it.
+        modelBuilder.Entity<CitizenPresentationRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.PlatformUserId, e.EntryId }).IsUnique();
+            entity.HasIndex(e => new { e.PlatformUserId, e.PresentedAt }).IsDescending(false, true);
+        });
     }
 }

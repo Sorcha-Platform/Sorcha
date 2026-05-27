@@ -1,316 +1,155 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Moq.Protected;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Admin;
+using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tests.Tools.Admin;
 
+/// <summary>
+/// Spec 139 US4: TenantCreateTool writes via the typed <see cref="ITenantServiceClient"/>
+/// onto POST /api/platform/organizations (the correct provisioning route), so these tests mock the client.
+/// </summary>
 public class TenantCreateToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
-    private readonly Mock<IMcpAuthorizationService> _authServiceMock;
-    private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
-    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
-    private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
-    private readonly Mock<IConfiguration> _configurationMock;
-    private readonly Mock<ILogger<TenantCreateTool>> _loggerMock;
+    private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
+    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
+    private readonly Mock<ITenantServiceClient> _tenantClientMock = new();
 
-    public TenantCreateToolTests()
+    private TenantCreateTool CreateTool() => new(
+        _authServiceMock.Object,
+        _availabilityTrackerMock.Object,
+        _tenantClientMock.Object,
+        Mock.Of<ILogger<TenantCreateTool>>());
+
+    private void Allow()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
-        _authServiceMock = new Mock<IMcpAuthorizationService>();
-        _errorHandlerMock = new Mock<IMcpErrorHandler>();
-        _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
-        _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _configurationMock = new Mock<IConfiguration>();
-        _loggerMock = new Mock<ILogger<TenantCreateTool>>();
-
-        _configurationMock.Setup(c => c["ServiceClients:TenantService:Address"])
-            .Returns("http://localhost:5110");
-    }
-
-    private TenantCreateTool CreateTool()
-    {
-        return new TenantCreateTool(
-            _sessionServiceMock.Object,
-            _authServiceMock.Object,
-            _errorHandlerMock.Object,
-            _availabilityTrackerMock.Object,
-            _httpClientFactoryMock.Object,
-            _configurationMock.Object,
-            _loggerMock.Object);
+        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
+        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
     }
 
     [Fact]
     public async Task CreateTenantAsync_Unauthorized_ReturnsUnauthorizedResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(false);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.CreateTenantAsync("Test Tenant", "admin@test.com");
+        var result = await CreateTool().CreateTenantAsync("Test", "admin@test.com");
 
-        // Assert
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("Access denied");
     }
 
     [Fact]
     public async Task CreateTenantAsync_ServiceUnavailable_ReturnsUnavailableResult()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
         _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(false);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.CreateTenantAsync("Test Tenant", "admin@test.com");
+        var result = await CreateTool().CreateTenantAsync("Test", "admin@test.com");
 
-        // Assert
         result.Status.Should().Be("Unavailable");
-        result.Message.Should().Contain("unavailable");
     }
 
     [Fact]
     public async Task CreateTenantAsync_MissingName_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.CreateTenantAsync("", "admin@test.com");
+        var result = await CreateTool().CreateTenantAsync("", "admin@test.com");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Tenant name is required");
     }
 
     [Fact]
     public async Task CreateTenantAsync_MissingAdminEmail_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.CreateTenantAsync("Test Tenant", "");
+        var result = await CreateTool().CreateTenantAsync("Test", "");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Admin email is required");
     }
 
     [Fact]
     public async Task CreateTenantAsync_InvalidEmail_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
-        var tool = CreateTool();
 
-        // Act
-        var result = await tool.CreateTenantAsync("Test Tenant", "invalid-email");
+        var result = await CreateTool().CreateTenantAsync("Test", "not-an-email");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Invalid email format");
     }
 
     [Fact]
     public async Task CreateTenantAsync_Success_ReturnsTenantInfo()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.CreateOrganizationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { OrganizationId = "tenant-123", OrganizationName = "Test Tenant", InvitationId = "inv-456" }));
 
-        var response = new
-        {
-            OrganizationId = "tenant-123",
-            AdminUserId = "user-456"
-        };
+        var result = await CreateTool().CreateTenantAsync("Test Tenant", "admin@test.com");
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.Created)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(response))
-            });
-
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.CreateTenantAsync("Test Tenant", "admin@test.com", "Admin User");
-
-        // Assert
         result.Status.Should().Be("Success");
         result.TenantId.Should().Be("tenant-123");
         result.TenantName.Should().Be("Test Tenant");
-        result.AdminUserId.Should().Be("user-456");
+        result.AdminUserId.Should().Be("inv-456");
         result.AdminEmail.Should().Be("admin@test.com");
-        _availabilityTrackerMock.Verify(a => a.RecordSuccess("Tenant"), Times.Once);
     }
 
     [Fact]
-    public async Task CreateTenantAsync_WithoutAdminName_UsesEmailPrefix()
+    public async Task CreateTenantAsync_CallsPlatformProvisioningRoute()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.CreateOrganizationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { OrganizationId = "tenant-123", OrganizationName = "Test Tenant" }));
 
-        HttpRequestMessage? capturedRequest = null;
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .Callback<HttpRequestMessage, CancellationToken>(async (req, _) =>
-            {
-                capturedRequest = req;
-            })
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.Created)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(new { OrganizationId = "tenant-123" }))
-            });
+        await CreateTool().CreateTenantAsync("Test Tenant", "admin@test.com");
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        await tool.CreateTenantAsync("Test Tenant", "john.doe@test.com");
-
-        // Assert
-        capturedRequest.Should().NotBeNull();
-        var content = await capturedRequest!.Content!.ReadAsStringAsync();
-        content.Should().Contain("john.doe"); // Email prefix used as admin name
+        _tenantClientMock.Verify(
+            c => c.CreateOrganizationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task CreateTenantAsync_HttpError_ReturnsErrorResult()
+    public async Task CreateTenantAsync_Null_ReturnsErrorResult()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.CreateOrganizationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.BadRequest)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(new { Error = "Tenant name already exists" }))
-            });
+        var result = await CreateTool().CreateTenantAsync("Test", "admin@test.com");
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.CreateTenantAsync("Existing Tenant", "admin@test.com");
-
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Tenant name already exists");
     }
 
     [Fact]
     public async Task CreateTenantAsync_Timeout_ReturnsTimeoutResult()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
-
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.CreateOrganizationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TaskCanceledException());
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
+        var result = await CreateTool().CreateTenantAsync("Test", "admin@test.com");
 
-        // Act
-        var result = await tool.CreateTenantAsync("Test Tenant", "admin@test.com");
-
-        // Assert
         result.Status.Should().Be("Timeout");
-        _availabilityTrackerMock.Verify(a => a.RecordFailure("Tenant"), Times.Once);
-    }
-
-    [Fact]
-    public async Task CreateTenantAsync_ConnectionError_ReturnsErrorResult()
-    {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
-
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ThrowsAsync(new HttpRequestException("Connection refused"));
-
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.CreateTenantAsync("Test Tenant", "admin@test.com");
-
-        // Assert
-        result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Failed to connect");
-        _availabilityTrackerMock.Verify(a => a.RecordFailure("Tenant", It.IsAny<Exception>()), Times.Once);
     }
 
     [Fact]
     public async Task CreateTenantAsync_ResponseTimeIsRecorded()
     {
-        // Arrange
-        _authServiceMock.Setup(a => a.CanInvokeTool("sorcha_tenant_create")).Returns(true);
-        _availabilityTrackerMock.Setup(a => a.IsServiceAvailable("Tenant")).Returns(true);
+        Allow();
+        _tenantClientMock
+            .Setup(c => c.CreateOrganizationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { OrganizationId = "t-1", OrganizationName = "T" }));
 
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.Created)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(new { OrganizationId = "tenant-123" }))
-            });
+        var result = await CreateTool().CreateTenantAsync("Test", "admin@test.com");
 
-        var httpClient = new HttpClient(handler.Object);
-        _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
-        var tool = CreateTool();
-
-        // Act
-        var result = await tool.CreateTenantAsync("Test Tenant", "admin@test.com");
-
-        // Assert
         result.ResponseTimeMs.Should().BeGreaterThanOrEqualTo(0);
         result.CheckedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
     }

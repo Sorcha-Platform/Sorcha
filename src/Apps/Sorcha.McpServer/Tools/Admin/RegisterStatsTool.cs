@@ -3,46 +3,37 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.McpServer.Tools.Admin;
 
 /// <summary>
-/// Administrator tool for querying register statistics.
+/// Administrator tool for querying register statistics. Reads via the typed
+/// <see cref="IRegisterServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the routes are contract-pinned, not hand-rolled.
 /// </summary>
 [McpServerToolType]
 public sealed class RegisterStatsTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IRegisterServiceClient _registerClient;
     private readonly ILogger<RegisterStatsTool> _logger;
-    private readonly string _registerServiceEndpoint;
 
     public RegisterStatsTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IRegisterServiceClient registerClient,
         ILogger<RegisterStatsTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _registerClient = registerClient;
         _logger = logger;
-
-        _registerServiceEndpoint = configuration["ServiceClients:RegisterService:Address"] ?? "http://localhost:5290";
     }
 
     /// <summary>
@@ -52,7 +43,7 @@ public sealed class RegisterStatsTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Register statistics including counts, transaction metrics, and activity summary.</returns>
     [McpServerTool(Name = "sorcha_register_stats")]
-    [Description("Query register statistics. Returns overall register count and list, or detailed transaction statistics for a specific register if registerId is provided.")]
+    [Description("Returns either platform-wide register inventory (count plus the ten most recently created registers) or, when registerId is provided, transaction-level statistics for that single register including total transactions, unique wallets, sender and recipient counts, payload totals, and earliest/latest transaction timestamps. Call this when you need ledger volume and activity figures for capacity planning, billing analysis, or sizing a tenant's footprint; prefer this over sorcha_validator_status when the question is about how much data a register holds rather than whether consensus is healthy, and call before drilling into sorcha_log_query so the log window can be aligned to the register's actual activity span.")]
     public async Task<RegisterStatsResult> GetRegisterStatsAsync(
         [Description("Optional register ID for detailed transaction statistics")] string? registerId = null,
         CancellationToken cancellationToken = default)
@@ -86,17 +77,14 @@ public sealed class RegisterStatsTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(10);
+            // Get overall statistics (count + recent registers) via the typed client.
+            var overallStats = await GetOverallStatsAsync(cancellationToken);
 
-            // Get overall statistics
-            var overallStats = await GetOverallStatsAsync(client, cancellationToken);
-
-            // If specific register requested, get detailed stats
+            // If specific register requested, get detailed transaction stats.
             RegisterTransactionStats? registerStats = null;
             if (!string.IsNullOrEmpty(registerId))
             {
-                registerStats = await GetRegisterTransactionStatsAsync(client, registerId, cancellationToken);
+                registerStats = await GetRegisterTransactionStatsAsync(registerId, cancellationToken);
             }
 
             stopwatch.Stop();
@@ -188,69 +176,30 @@ public sealed class RegisterStatsTool
     }
 
     private async Task<OverallRegisterStats?> GetOverallStatsAsync(
-        HttpClient client,
         CancellationToken cancellationToken)
     {
         try
         {
-            // Get register count
-            var countUrl = $"{_registerServiceEndpoint.TrimEnd('/')}/api/registers/stats/count";
-            var countResponse = await client.GetAsync(countUrl, cancellationToken);
+            // Platform-wide register count (Feature 131 anonymous stats endpoint).
+            var platformStats = await _registerClient.GetStatsAsync(null, cancellationToken);
 
-            int? registerCount = null;
-            if (countResponse.IsSuccessStatusCode)
-            {
-                var countContent = await countResponse.Content.ReadAsStringAsync(cancellationToken);
-                var countData = JsonSerializer.Deserialize<RegisterCountResponse>(countContent, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-                registerCount = countData?.Count;
-            }
-
-            // Get register list (limited view)
-            var listUrl = $"{_registerServiceEndpoint.TrimEnd('/')}/api/registers/";
-            var listResponse = await client.GetAsync(listUrl, cancellationToken);
-
-            List<RegisterSummary>? registers = null;
-            if (listResponse.IsSuccessStatusCode)
-            {
-                var listContent = await listResponse.Content.ReadAsStringAsync(cancellationToken);
-                var registerList = JsonSerializer.Deserialize<List<RegisterResponse>>(listContent, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                if (registerList != null)
-                {
-                    // Take top 10 registers by created date for summary
-                    registers = registerList
-                        .OrderByDescending(r => r.CreatedAt)
-                        .Take(10)
-                        .Select(r => new RegisterSummary
-                        {
-                            RegisterId = r.Id,
-                            Name = r.Name,
-                            Status = r.Status,
-                            TenantId = r.TenantId,
-                            Height = r.Height,
-                            CreatedAt = r.CreatedAt
-                        })
-                        .ToList();
-                }
-            }
-
-            // Return null if both requests failed
-            if (registerCount == null && registers == null)
-            {
-                _logger.LogDebug("Unable to retrieve any register statistics");
-                return null;
-            }
+            // Recent-registers summary (most recent first, top 10).
+            var recent = await _registerClient.GetRecentRegistersAsync(10, cancellationToken);
 
             return new OverallRegisterStats
             {
-                RegisterCount = registerCount ?? 0,
-                RecentRegisters = registers ?? []
+                RegisterCount = platformStats.RegisterCount,
+                RecentRegisters = recent
+                    .Select(r => new RegisterSummary
+                    {
+                        RegisterId = r.Id,
+                        Name = r.Name,
+                        Status = r.Status,
+                        TenantId = r.TenantId,
+                        Height = r.Height,
+                        CreatedAt = r.CreatedAt
+                    })
+                    .ToList()
             };
         }
         catch (Exception ex)
@@ -261,28 +210,12 @@ public sealed class RegisterStatsTool
     }
 
     private async Task<RegisterTransactionStats?> GetRegisterTransactionStatsAsync(
-        HttpClient client,
         string registerId,
         CancellationToken cancellationToken)
     {
         try
         {
-            var url = $"{_registerServiceEndpoint.TrimEnd('/')}/api/query/stats?registerId={Uri.EscapeDataString(registerId)}";
-            var response = await client.GetAsync(url, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Failed to get transaction stats for register {RegisterId}: HTTP {StatusCode}",
-                    registerId, response.StatusCode);
-                return null;
-            }
-
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var stats = JsonSerializer.Deserialize<TransactionStatsResponse>(content, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
+            var stats = await _registerClient.GetRegisterTransactionStatsAsync(registerId, cancellationToken);
             if (stats == null) return null;
 
             return new RegisterTransactionStats
@@ -302,33 +235,6 @@ public sealed class RegisterStatsTool
             _logger.LogWarning(ex, "Error fetching transaction stats for register {RegisterId}", registerId);
             return null;
         }
-    }
-
-    // Internal response models for deserialization
-    private sealed class RegisterCountResponse
-    {
-        public int Count { get; set; }
-    }
-
-    private sealed class RegisterResponse
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public string Status { get; set; } = string.Empty;
-        public string TenantId { get; set; } = string.Empty;
-        public long Height { get; set; }
-        public DateTimeOffset CreatedAt { get; set; }
-    }
-
-    private sealed class TransactionStatsResponse
-    {
-        public int TotalTransactions { get; set; }
-        public int UniqueWallets { get; set; }
-        public int UniqueSenders { get; set; }
-        public int UniqueRecipients { get; set; }
-        public long TotalPayloads { get; set; }
-        public DateTime? EarliestTransaction { get; set; }
-        public DateTime? LatestTransaction { get; set; }
     }
 }
 

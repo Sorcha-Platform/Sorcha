@@ -37,6 +37,7 @@ public sealed class PlatformUserDeviceServiceTests : IDisposable
         string thumbprint = Thumbprint,
         string label = "iPhone",
         string jti = "jti-1",
+        int statusListId = 0,
         int statusListIndex = 7,
         DateTimeOffset? expires = null)
         => _sut.RegisterAsync(
@@ -48,6 +49,7 @@ public sealed class PlatformUserDeviceServiceTests : IDisposable
             "Mozilla/5.0 ...",
             expires ?? DateTimeOffset.UtcNow.AddDays(365),
             jti,
+            statusListId,
             statusListIndex);
 
     [Fact]
@@ -85,6 +87,76 @@ public sealed class PlatformUserDeviceServiceTests : IDisposable
         second.DelegationExpiresAt.Should().BeCloseTo(newExpiry, TimeSpan.FromMilliseconds(1));
 
         (await _db.PlatformUserDevices.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_PersistsStatusListIdAndIndexAsAPair()
+    {
+        // Crossing list capacity rolls listId; revoke-by-deviceId must reach
+        // FlipAsync(orgId, listId, idx) so the (listId, idx) pair must persist.
+        // ListId 0 == default, so use a non-zero value to prove it's not lost.
+        var device = await RegisterAsync(statusListId: 2, statusListIndex: 14_523);
+
+        device.StatusListId.Should().Be(2);
+        device.StatusListIndex.Should().Be(14_523);
+
+        var reloaded = await _db.PlatformUserDevices.FirstAsync(d => d.Id == device.Id);
+        reloaded.StatusListId.Should().Be(2);
+        reloaded.StatusListIndex.Should().Be(14_523);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_DuplicateThumbprintWithRolledOverList_RefreshesStatusListId()
+    {
+        // Citizen renewed after the org's list rolled over — new (listId, idx) pair.
+        var first = await RegisterAsync(jti: "jti-original", statusListId: 0, statusListIndex: 7);
+
+        var second = await RegisterAsync(
+            jti: "jti-renewed",
+            statusListId: 1,
+            statusListIndex: 42);
+
+        second.Id.Should().Be(first.Id);
+        second.StatusListId.Should().Be(1);
+        second.StatusListIndex.Should().Be(42);
+    }
+
+    [Fact]
+    public async Task UpdateLabelAsync_OwnedDevice_UpdatesLabel()
+    {
+        var device = await RegisterAsync();
+        var updated = await _sut.UpdateLabelAsync(device.Id, _platformUserId, "Stuart's NEW phone");
+
+        updated.Should().NotBeNull();
+        updated!.Label.Should().Be("Stuart's NEW phone");
+    }
+
+    [Fact]
+    public async Task UpdateLabelAsync_OtherUsersDevice_ReturnsNullNoMutation()
+    {
+        var device = await RegisterAsync();
+        var updated = await _sut.UpdateLabelAsync(device.Id, Guid.NewGuid(), "hacker rename");
+
+        updated.Should().BeNull();
+        (await _db.PlatformUserDevices.FindAsync(device.Id))!.Label.Should().Be("iPhone");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task UpdateLabelAsync_BlankLabel_Throws(string label)
+    {
+        var device = await RegisterAsync();
+        var act = () => _sut.UpdateLabelAsync(device.Id, _platformUserId, label);
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task UpdateLabelAsync_LabelTooLong_Throws()
+    {
+        var device = await RegisterAsync();
+        var act = () => _sut.UpdateLabelAsync(device.Id, _platformUserId, new string('x', 121));
+        await act.Should().ThrowAsync<ArgumentException>();
     }
 
     [Fact]

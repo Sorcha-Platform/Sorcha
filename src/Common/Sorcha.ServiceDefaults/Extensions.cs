@@ -93,6 +93,20 @@ public static class Extensions
 
                 // Feature 115 — Tenant Service social-login refusal counter
                 metrics.AddMeter("Sorcha.Tenant");
+
+                // Feature 135 — unified credential trust decisions (outcome / source / format /
+                // assurance / failure reason; no subject data)
+                metrics.AddMeter("Sorcha.Trust");
+
+                // Feature 136 — tiered-audience identity (tokens minted by tier; tier requests refused)
+                metrics.AddMeter(Sorcha.ServiceDefaults.Auth.IdentityMetrics.MeterName);
+
+                // Feature 138 — federation trust-hardening rejection counters (FR-022).
+                // One meter per boundary owner; counters defined in each service's *TrustMetrics class.
+                metrics.AddMeter("Sorcha.Verifier");
+                metrics.AddMeter("Sorcha.Peer");
+                metrics.AddMeter("Sorcha.Validator");
+                metrics.AddMeter("Sorcha.Blueprint");
             })
             .WithTracing(tracing =>
             {
@@ -197,11 +211,13 @@ public static class Extensions
                 "connect-src 'self'; " +
                 "frame-ancestors 'none'";
 
-            // Permissions Policy - restrict browser features
+            // Permissions Policy — restrict by default. Camera allow-listed to
+            // `self` for the wallet PWA's QR scanner (Feature 114 T057); kept
+            // in sync with the UI-aware variant below.
             context.Response.Headers["Permissions-Policy"] =
                 "geolocation=(), " +
                 "microphone=(), " +
-                "camera=(), " +
+                "camera=(self), " +
                 "payment=(), " +
                 "usb=(), " +
                 "magnetometer=(), " +
@@ -306,11 +322,13 @@ public static class Extensions
                     "default-src 'none'; frame-ancestors 'none'";
             }
 
-            // Permissions Policy - restrict all browser features for APIs
+            // Permissions Policy — restrict by default. Camera is allow-listed to
+            // `self` for the wallet PWA's QR scanner (Feature 114 T057); only the
+            // /present page calls getUserMedia today.
             context.Response.Headers["Permissions-Policy"] =
                 "geolocation=(), " +
                 "microphone=(), " +
-                "camera=(), " +
+                "camera=(self), " +
                 "payment=(), " +
                 "usb=(), " +
                 "magnetometer=(), " +

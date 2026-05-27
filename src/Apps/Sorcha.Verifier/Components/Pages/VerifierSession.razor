@@ -1,0 +1,127 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Verifier session page (Feature 114, T092). Renders the QR for an open session
+    and polls /verify/r/{sessionId}/status until the citizen wallet POSTs an
+    outcome, then routes to /verify/{sessionId}/outcome.
+*@
+@page "/s/{SessionId}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
+@using System.Net.Http
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components
+@using Sorcha.Verifier.Endpoints
+@using Sorcha.Verifier.Services
+@inject IVerifierSessionStore Store
+@inject IPresentationRequestBuilder Builder
+@inject QrRenderer Qr
+@inject IHttpClientFactory HttpFactory
+@inject NavigationManager Nav
+
+<PageTitle>Verifier session</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    @if (_session is null)
+    {
+        <MudAlert Severity="Severity.Warning">
+            Session not found or expired. Start a new verification from the home page.
+        </MudAlert>
+        <MudButton Class="mt-4" Variant="Variant.Outlined" Href="/">Back</MudButton>
+    }
+    else
+    {
+        <MudText Typo="Typo.h5" Class="mb-2">@_session.Purpose</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Scan with the Sorcha wallet to share <strong>@string.Join(", ", _session.RequiredClaims)</strong>
+            from a <code>@_session.RequiredVct</code> credential.
+        </MudText>
+
+        @if (!string.IsNullOrEmpty(_qrDataUrl))
+        {
+            <MudPaper Elevation="2" Class="pa-4 d-flex flex-column align-center" Style="width: fit-content; margin: 0 auto;">
+                <img src="@_qrDataUrl" alt="OID4VP request QR"
+                     style="image-rendering: pixelated; max-width: 320px; width: 100%;" />
+                <MudText Typo="Typo.caption" Class="mt-2">Session @_session.SessionId</MudText>
+            </MudPaper>
+
+            <MudExpansionPanels Class="mt-4">
+                <MudExpansionPanel Text="Show deep link (debug)">
+                    <MudText Typo="Typo.body2" Style="word-break: break-all; font-family: monospace;">
+                        @_deepLink
+                    </MudText>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-4 d-block">
+            Waiting for citizen response… (auto-refresh every 2 s)
+        </MudText>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+
+    private Models.VerifierSession? _session;
+    private string? _deepLink;
+    private string? _qrDataUrl;
+    private CancellationTokenSource? _pollCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _session = Store.Get(SessionId);
+        if (_session is null) return;
+
+        // Re-derive the QR/deep-link payload by asking the builder for the cached link
+        // shape — easier than persisting the link in the session record.
+        // ORIGIN ONLY — the /verify gateway mount prefix is appended by
+        // ReconstructDeepLink. Nav.BaseUri includes the /verify base-href, so using it
+        // directly would double the prefix (…/verify/verify/r/{id}/response → 404).
+        var responseBaseUri = new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
+        // Reconstruct deep-link fragments from the existing session — avoids creating a new one.
+        _deepLink = ReconstructDeepLink(_session, responseBaseUri);
+        _qrDataUrl = Qr.RenderDataUrl(_deepLink);
+
+        _pollCts = new CancellationTokenSource();
+        _ = Task.Run(() => PollAsync(_pollCts.Token));
+        await Task.CompletedTask;
+    }
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        // Read the in-memory session store directly rather than HTTP-polling our own
+        // /status endpoint. The wallet's response POST updates the same singleton store,
+        // so this sees the outcome immediately — and it avoids a server-side fetch to the
+        // public gateway URL (https://localhost), which is unreachable from inside the
+        // verifier container (localhost:443 → connection refused). Issue #808.
+        while (!ct.IsCancellationRequested)
+        {
+            if (Store.Get(SessionId)?.Outcome is not null)
+            {
+                await InvokeAsync(() => Nav.NavigateTo($"s/{SessionId}/outcome"));
+                return;
+            }
+            try { await Task.Delay(TimeSpan.FromSeconds(2), ct); }
+            catch (TaskCanceledException) { return; }
+        }
+    }
+
+    private static string ReconstructDeepLink(Models.VerifierSession s, string responseBaseUri)
+    {
+        var pd = PresentationRequestBuilder.BuildPresentationDefinitionJson(
+            s.SessionId, s.RequiredVct, s.RequiredClaims, s.OptionalClaims, s.Purpose);
+        return "openid4vp://?" +
+            $"client_id={Uri.EscapeDataString(s.ClientId)}" +
+            "&response_mode=direct_post" +
+            $"&response_uri={Uri.EscapeDataString($"{responseBaseUri}/verify/r/{s.SessionId}/response")}" +
+            $"&nonce={Uri.EscapeDataString(s.Nonce)}" +
+            $"&presentation_definition={Uri.EscapeDataString(pd)}";
+    }
+
+    public void Dispose()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+    }
+}

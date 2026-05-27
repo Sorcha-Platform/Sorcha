@@ -4,45 +4,37 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Blueprint;
 
 namespace Sorcha.McpServer.Tools.Designer;
 
 /// <summary>
-/// Designer tool for listing blueprints with filtering and pagination.
+/// Designer tool for listing blueprints with filtering and pagination. Reads via the
+/// typed <see cref="IBlueprintServiceClient"/> (spec 139 US4) so the caller's bearer is
+/// forwarded and the route is contract-pinned, not hand-rolled.
 /// </summary>
 [McpServerToolType]
 public sealed class BlueprintListTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IBlueprintServiceClient _blueprintClient;
     private readonly ILogger<BlueprintListTool> _logger;
-    private readonly string _blueprintServiceEndpoint;
 
     public BlueprintListTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IBlueprintServiceClient blueprintClient,
         ILogger<BlueprintListTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _blueprintClient = blueprintClient;
         _logger = logger;
-
-        _blueprintServiceEndpoint = configuration["ServiceClients:BlueprintService:Address"] ?? "http://localhost:5000";
     }
 
     /// <summary>
@@ -55,7 +47,7 @@ public sealed class BlueprintListTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Paginated list of blueprint summaries.</returns>
     [McpServerTool(Name = "sorcha_blueprint_list")]
-    [Description("List blueprints with filtering and pagination. Returns blueprint summaries including ID, title, description, participant count, and action count. Supports search by title/description and status filtering.")]
+    [Description("Returns a paginated list of blueprint summaries (ID, title, description, participant count, action count) with optional filtering by status (Draft, Published, Archived) and free-text search across title and description. Call this when you need to discover blueprints by name or status without yet knowing their IDs; use sorcha_blueprint_get instead once you have a specific ID and want the full definition, and prefer this over sorcha_workflow_instances when you are looking for blueprint definitions rather than running workflow executions.")]
     public async Task<BlueprintListResult> ListBlueprintsAsync(
         [Description("Page number (1-based, default: 1)")] int page = 1,
         [Description("Items per page (default: 20, max: 100)")] int pageSize = 20,
@@ -97,10 +89,7 @@ public sealed class BlueprintListTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(10);
-
-            var pagedResult = await FetchBlueprintsAsync(client, page, pageSize, search, status, cancellationToken);
+            var pagedResult = await FetchBlueprintsAsync(page, pageSize, search, status, cancellationToken);
 
             stopwatch.Stop();
 
@@ -198,51 +187,29 @@ public sealed class BlueprintListTool
     }
 
     private async Task<PagedBlueprintResponse?> FetchBlueprintsAsync(
-        HttpClient client,
         int page,
         int pageSize,
         string? search,
         string? status,
         CancellationToken cancellationToken)
     {
+        // Typed client forwards the caller's bearer and pins the route (GET api/blueprints/).
+        var content = await _blueprintClient.ListBlueprintsAsync(page, pageSize, search, status, cancellationToken);
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return null;
+        }
+
         try
         {
-            var queryParams = new List<string>
-            {
-                $"page={page}",
-                $"pageSize={pageSize}"
-            };
-
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                queryParams.Add($"search={Uri.EscapeDataString(search)}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(status))
-            {
-                queryParams.Add($"status={Uri.EscapeDataString(status)}");
-            }
-
-            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/blueprints/?{string.Join("&", queryParams)}";
-            var response = await client.GetAsync(url, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Failed to fetch blueprints: HTTP {StatusCode}", response.StatusCode);
-                return null;
-            }
-
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = JsonSerializer.Deserialize<PagedBlueprintResponse>(content, new JsonSerializerOptions
+            return JsonSerializer.Deserialize<PagedBlueprintResponse>(content, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });
-
-            return result;
         }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Error fetching blueprints");
+            _logger.LogWarning(ex, "Error parsing blueprint list response");
             return null;
         }
     }

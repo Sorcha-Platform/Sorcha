@@ -39,7 +39,22 @@ public enum GovernanceOperationType
     /// <summary>
     /// Rotate a validator's signing key (mark old as Rotated, add new Active key)
     /// </summary>
-    RotateValidatorKey = 5
+    RotateValidatorKey = 5,
+
+    /// <summary>
+    /// Feature 120 US6 (VAL_CRED_GOV_001) — revoke an organisation's issuance key.
+    /// After quorum approval, the wallet service marks the named rotation as
+    /// <c>Revoked</c>, the published DID document drops it from
+    /// <c>assertionMethod</c>, and verifiers reject credentials signed by it.
+    /// </summary>
+    RevokeIssuanceKey = 6,
+
+    /// <summary>
+    /// Feature 120 US6 — rotate an organisation's issuance key. Marks the
+    /// existing Active key as <c>Rotated</c> and derives a new key at the next
+    /// rotation index.
+    /// </summary>
+    RotateIssuanceKey = 7
 }
 
 /// <summary>

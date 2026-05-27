@@ -18,12 +18,13 @@
 @using Sorcha.UI.Core.Services.Forms
 @using Sorcha.UI.Core.Services.Wallet
 @using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Services.Feedback
 @inject IWorkflowService WorkflowService
 @inject IBlueprintApiService BlueprintApiService
 @inject IWalletApiService WalletService
 @inject IWalletPreferenceService WalletPreferenceService
-@inject ActionsHubConnection ActionsHub
-@inject ISnackbar Snackbar
+@inject BlueprintHubConnection BlueprintHub
+@inject IInlineFeedback Feedback
 @inject IDialogService DialogService
 @inject ILogger<MyActions> Logger
 @inject IJSRuntime JSRuntime
@@ -240,7 +241,7 @@
     private List<SignalNotification> _recentNotifications = [];
     private List<KeyValuePair<string, List<PendingActionViewModel>>> _groupedActions = [];
     private ConnectionState _connectionState = new();
-    private ActionsHubConnection? _actionsHub = null;
+    private BlueprintHubConnection? _blueprintHub = null;
     private bool _loading = true;
     private bool _serviceError;
     private string _viewMode = "cards";
@@ -251,7 +252,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadActionsAsync();
-        await ConnectToActionsHubAsync();
+        await ConnectToBlueprintHubAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -291,33 +292,33 @@
             .ToList();
     }
 
-    private async Task ConnectToActionsHubAsync()
+    private async Task ConnectToBlueprintHubAsync()
     {
-        _actionsHub = ActionsHub;
+        _blueprintHub = BlueprintHub;
 
         // Subscribe to events
-        _actionsHub.OnConnectionStateChanged += HandleConnectionStateChanged;
-        _actionsHub.OnActionAvailable += HandleActionAvailable;
-        _actionsHub.OnActionRejected += HandleActionRejected;
-        _actionsHub.OnWorkflowCompleted += HandleWorkflowCompleted;
+        _blueprintHub.OnConnectionStateChanged += HandleConnectionStateChanged;
+        _blueprintHub.OnActionAvailable += HandleActionAvailable;
+        _blueprintHub.OnActionRejected += HandleActionRejected;
+        _blueprintHub.OnWorkflowCompleted += HandleWorkflowCompleted;
 
         // Sync current state
-        _connectionState = _actionsHub.ConnectionState;
+        _connectionState = _blueprintHub.ConnectionState;
 
         try
         {
-            await _actionsHub.StartAsync();
+            await _blueprintHub.StartAsync();
 
             // Subscribe to user's wallet addresses for targeted notifications
             var wallets = await WalletService.GetWalletsAsync();
             foreach (var wallet in wallets)
             {
-                await _actionsHub.SubscribeToWalletAsync(wallet.Address);
+                await _blueprintHub.SubscribeToWalletAsync(wallet.Address);
             }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Failed to connect to ActionsHub — page will use polling");
+            Logger.LogWarning(ex, "Failed to connect to BlueprintHub — page will use polling");
         }
     }
 
@@ -374,7 +375,7 @@
             catch (Exception ex)
             {
                 Logger.LogWarning(ex, "Failed to load schema for action {ActionId} on blueprint {BlueprintId}", action.ActionId, action.BlueprintId);
-                Snackbar.Add("Failed to load action form — please try again.", Severity.Error);
+                Feedback.ShowError("Failed to load action form — please try again.", autoDismissMs: 0);
                 return;
             }
         }
@@ -443,20 +444,20 @@
                     action.InstanceId, action.ActionId, "declined");
                 if (rejected)
                 {
-                    Snackbar.Add("Action declined", Severity.Info);
+                    Feedback.ShowInfo("Action declined");
                     _actions.Remove(action);
                     RebuildGroups();
                     StateHasChanged();
                 }
                 else
                 {
-                    Snackbar.Add("Failed to decline action. Please try again.", Severity.Error);
+                    Feedback.ShowError("Failed to decline action. Please try again.", autoDismissMs: 0);
                 }
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error rejecting action {ActionId}", action.ActionId);
-                Snackbar.Add("An error occurred while declining the action.", Severity.Error);
+                Feedback.ShowError("An error occurred while declining the action.", autoDismissMs: 0);
             }
             return;
         }
@@ -481,12 +482,12 @@
                     // Async encryption — show progress indicator
                     _activeEncryptionOperationId = submitResult.OperationId;
                     _activeEncryptionRequest = executeRequest;
-                    Snackbar.Add("Encryption started — tracking progress...", Severity.Info);
+                    Feedback.ShowInfo("Encryption started — tracking progress...");
                     StateHasChanged();
                 }
                 else if (submitResult != null)
                 {
-                    Snackbar.Add("Action submitted successfully", Severity.Success);
+                    Feedback.ShowSuccess("Action submitted successfully");
                     _actions.Remove(action);
                     RebuildGroups();
                     StateHasChanged();
@@ -525,29 +526,30 @@
                             "Credential Verification", requestParams, requestOptions);
                     }
 
-                    // TODO: When the Blueprint Service surfaces credential issuance data in the
-                    // ActionSubmissionResultViewModel (e.g. an IssuedCredential property), show
-                    // the IssuanceSummaryPanel dialog here:
-                    //
-                    // if (submitResult.IssuedCredential is not null)
-                    // {
-                    //     var summaryParams = new DialogParameters<IssuanceSummaryPanel>
-                    //     {
-                    //         { x => x.Summary, MapToIssuanceSummary(submitResult.IssuedCredential, action) }
-                    //     };
-                    //     var summaryOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
-                    //     await DialogService.ShowAsync<IssuanceSummaryPanel>("Credential Issued", summaryParams, summaryOptions);
-                    // }
+                    // Feature 062 follow-up — when the action minted a credential, show the
+                    // IssuanceSummaryPanel after any HAIP-side QR dialogs close. The server
+                    // populates submitResult.IssuedCredential from
+                    // ActionSubmissionResponse.IssuedCredential (Sorcha.Blueprint.Service).
+                    if (submitResult.IssuedCredential is not null)
+                    {
+                        var summaryParams = new DialogParameters<IssuanceSummaryPanel>
+                        {
+                            { x => x.Summary, MapToIssuanceSummary(submitResult.IssuedCredential) }
+                        };
+                        var summaryOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+                        await DialogService.ShowAsync<IssuanceSummaryPanel>(
+                            "Credential Issued", summaryParams, summaryOptions);
+                    }
                 }
                 else
                 {
-                    Snackbar.Add("Failed to submit action. Please try again.", Severity.Error);
+                    Feedback.ShowError("Failed to submit action. Please try again.", autoDismissMs: 0);
                 }
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error submitting action {ActionId}", action.ActionId);
-                Snackbar.Add("An error occurred while submitting the action.", Severity.Error);
+                Feedback.ShowError("An error occurred while submitting the action.", autoDismissMs: 0);
             }
         }
     }
@@ -556,7 +558,7 @@
     {
         _activeEncryptionOperationId = null;
         _activeEncryptionRequest = null;
-        Snackbar.Add("Encryption completed successfully!", Severity.Success);
+        Feedback.ShowSuccess("Encryption completed successfully!");
         await LoadActionsAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -564,7 +566,7 @@
     private Task HandleEncryptionFailed()
     {
         // Keep the progress indicator visible so user can see error and retry
-        Snackbar.Add("Encryption failed. See details above.", Severity.Error);
+        Feedback.ShowError("Encryption failed. See details above.", autoDismissMs: 0);
         return InvokeAsync(StateHasChanged);
     }
 
@@ -592,7 +594,7 @@
 
     private Task HandleActionRejected(SignalNotification signal)
     {
-        // Real-time signal delivered to ActivityLogPanel via EventsHub
+        // Real-time signal delivered via TenantHub inbox events
         return InvokeAsync(StateHasChanged);
     }
 
@@ -629,14 +631,37 @@
 
     public ValueTask DisposeAsync()
     {
-        if (_actionsHub != null)
+        if (_blueprintHub != null)
         {
-            _actionsHub.OnConnectionStateChanged -= HandleConnectionStateChanged;
-            _actionsHub.OnActionAvailable -= HandleActionAvailable;
-            _actionsHub.OnActionRejected -= HandleActionRejected;
-            _actionsHub.OnWorkflowCompleted -= HandleWorkflowCompleted;
+            _blueprintHub.OnConnectionStateChanged -= HandleConnectionStateChanged;
+            _blueprintHub.OnActionAvailable -= HandleActionAvailable;
+            _blueprintHub.OnActionRejected -= HandleActionRejected;
+            _blueprintHub.OnWorkflowCompleted -= HandleWorkflowCompleted;
         }
 
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>
+    /// Maps the server-supplied <see cref="IssuedCredentialInfo"/> to the dialog's
+    /// <see cref="IssuanceSummaryViewModel"/>. The server populates every human-readable
+    /// field (recipient name, issuing org, processed-by) using JWT claims +
+    /// participant-lookup; the UI is a pure pass-through.
+    /// </summary>
+    private static IssuanceSummaryViewModel MapToIssuanceSummary(IssuedCredentialInfo info) =>
+        new()
+        {
+            CredentialType = info.CredentialType,
+            IssuedToDid = info.IssuedToDid,
+            IssuedToName = info.IssuedToName,
+            SignedByOrg = info.SignedByOrg,
+            ProcessedByName = info.ProcessedByName,
+            ProcessedByRole = info.ProcessedByRole,
+            TotalClaims = info.TotalClaims,
+            DisclosableClaims = info.DisclosableClaims,
+            UsagePolicy = info.UsagePolicy,
+            ExpiresAt = info.ExpiresAt,
+            BlueprintName = info.BlueprintName,
+            ActionName = info.ActionName
+        };
 }

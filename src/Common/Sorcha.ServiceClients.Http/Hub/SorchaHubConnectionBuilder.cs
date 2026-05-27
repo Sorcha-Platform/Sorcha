@@ -8,13 +8,15 @@ namespace Sorcha.ServiceClients.Http.Hub;
 
 /// <summary>
 /// Shared SignalR hub connection builder with JWT auth and automatic reconnection.
-/// Used by both Sorcha.UI (web) and SorchaMobile (MAUI).
+/// Used by Sorcha.UI (web), SorchaMobile (MAUI), Sorcha.Agent, and Sorcha.Cli.
 /// </summary>
 public static class SorchaHubConnectionBuilder
 {
     /// <summary>
     /// Builds a HubConnection with JWT authentication and infinite reconnection
-    /// using exponential backoff (1s → 2s → 5s → 10s → 30s, then 30s indefinitely).
+    /// using exponential backoff with jitter (1s → 2s → 5s → 10s → 30s, then
+    /// 30s indefinitely; each delay is jittered ±20 % to avoid thundering-herd
+    /// reconnect after a deploy).
     /// </summary>
     /// <remarks>
     /// The connection retries indefinitely — it never gives up. This is critical for
@@ -22,7 +24,7 @@ public static class SorchaHubConnectionBuilder
     /// still handle the <see cref="HubConnection.Closed"/> event for non-retryable
     /// errors (e.g., auth failure, server rejection).
     /// </remarks>
-    /// <param name="hubUrl">Full URL to the SignalR hub (e.g., https://gateway.sorcha.dev/hubs/actions)</param>
+    /// <param name="hubUrl">Full URL to the SignalR hub (e.g., https://gateway.sorcha.dev/hubs/blueprint)</param>
     /// <param name="tokenProvider">Async function that returns the current JWT token</param>
     /// <param name="configureLogging">Optional logging configuration</param>
     public static HubConnection Build(
@@ -50,11 +52,19 @@ public static class SorchaHubConnectionBuilder
 
     /// <summary>
     /// Reconnection policy with exponential backoff that retries indefinitely.
-    /// Delays: 1s, 2s, 5s, 10s, then 30s forever.
+    /// Nominal delays: 1s, 2s, 5s, 10s, then 30s forever. Each delay is
+    /// jittered ±20 % uniformly to avoid synchronised reconnects across
+    /// many clients after a deploy. Floor at 100 ms.
     /// </summary>
-    private sealed class InfiniteRetryPolicy : IRetryPolicy
+    /// <remarks>
+    /// Per Feature 118 research R-003. Jitter algorithm follows AWS / Google SRE
+    /// guidance. Internal-visible to the test assembly via
+    /// <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute" />
+    /// for direct unit-test coverage.
+    /// </remarks>
+    internal sealed class InfiniteRetryPolicy : IRetryPolicy
     {
-        private static readonly TimeSpan[] Delays =
+        internal static readonly TimeSpan[] NominalDelays =
         [
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(2),
@@ -63,9 +73,37 @@ public static class SorchaHubConnectionBuilder
             TimeSpan.FromSeconds(30)
         ];
 
-        public TimeSpan? NextRetryDelay(RetryContext retryContext) =>
-            retryContext.PreviousRetryCount < Delays.Length
-                ? Delays[retryContext.PreviousRetryCount]
-                : Delays[^1]; // 30s indefinitely
+        internal const double JitterFraction = 0.20;
+        internal static readonly TimeSpan MinDelay = TimeSpan.FromMilliseconds(100);
+
+        private readonly Func<double> _randomNextDouble;
+
+        public InfiniteRetryPolicy()
+            : this(static () => Random.Shared.NextDouble())
+        {
+        }
+
+        // Constructor for deterministic unit testing.
+        internal InfiniteRetryPolicy(Func<double> randomNextDouble)
+        {
+            _randomNextDouble = randomNextDouble;
+        }
+
+        public TimeSpan? NextRetryDelay(RetryContext retryContext)
+        {
+            var nominal = retryContext.PreviousRetryCount < NominalDelays.Length
+                ? NominalDelays[retryContext.PreviousRetryCount]
+                : NominalDelays[^1];
+
+            return ApplyJitter(nominal, _randomNextDouble());
+        }
+
+        // Multiplier is in [1 - JitterFraction, 1 + JitterFraction].
+        internal static TimeSpan ApplyJitter(TimeSpan nominal, double random)
+        {
+            var multiplier = 1.0 + (random * 2.0 - 1.0) * JitterFraction;
+            var jittered = TimeSpan.FromMilliseconds(nominal.TotalMilliseconds * multiplier);
+            return jittered < MinDelay ? MinDelay : jittered;
+        }
     }
 }

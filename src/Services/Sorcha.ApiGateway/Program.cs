@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ApiGateway.Discoverability;
 using Sorcha.ApiGateway.Models;
 using Sorcha.ApiGateway.Services;
 
@@ -67,17 +68,42 @@ builder.Services.AddAuthorizationBuilder()
             policy.RequireAssertion(_ => true); // Allow anonymous
     });
 
-// Add OpenAPI documentation with standard Sorcha metadata
-builder.AddSorchaOpenApi("Sorcha API Gateway",
-    "Unified entry point for the Sorcha platform providing reverse proxy routing, aggregated health monitoring, and API documentation.");
+// Add OpenAPI documentation with standard Sorcha metadata.
+// The configureOptions callback registers OpenApiInfoTransformer (spec 117) which injects
+// info.x-mcp-server and info.x-standards from configuration onto the served document.
+builder.AddSorchaOpenApi(
+    "Sorcha API Gateway",
+    "Unified entry point for the Sorcha platform providing reverse proxy routing, aggregated health monitoring, and API documentation.",
+    options => options.AddDocumentTransformer<Sorcha.ApiGateway.Discoverability.OpenApiInfoTransformer>());
+
+// Spec 117 Phase 4 (US2 MCP discovery) — bind manifest options + tool-catalogue provider.
+builder.Services.Configure<Sorcha.ApiGateway.Discoverability.McpManifestOptions>(
+    builder.Configuration.GetSection(Sorcha.ApiGateway.Discoverability.McpManifestOptions.SectionName));
+builder.Services.AddSingleton<Sorcha.ApiGateway.Discoverability.ToolCatalogueProvider>();
 
 // Add CORS for frontend - production restriction handled at infrastructure level
 builder.AddSorchaCors();
+
+// Honour X-Forwarded-Proto / -For from the edge proxy (Caddy terminates TLS on n1 and forwards
+// HTTP, so without this Request.Scheme is "http" — making generated absolute URLs in robots.txt,
+// sitemap.xml and the OpenAPI/MCP manifests use http://). The gateway is only reachable via the
+// trusted edge proxy in every deployment, so the immediate hop's headers are trusted.
+builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor |
+        Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
 app.MapDefaultEndpoints();
+
+// Must run before any middleware that reads Request.Scheme (HTTPS enforcement, URL generation).
+app.UseForwardedHeaders();
 
 // Add Serilog HTTP request logging (OPS-001)
 app.UseSerilogLogging();
@@ -138,13 +164,56 @@ app.MapGet("/api/stats", async (HealthAggregationService healthService) =>
 // Dashboard Statistics Endpoint
 // ===========================
 
-app.MapGet("/api/dashboard", async (DashboardStatisticsService dashboardService) =>
+// Feature 131 / UX-005 — auth-gated, scope-aware dashboard endpoint.
+//
+// Default response is the caller's org-scoped four-card summary, sourced from
+// Tenant Service. SystemAdmin callers may request the legacy platform-wide
+// six-card view with ?scope=platform; other roles silently get the org shape.
+app.MapGet("/api/dashboard", async (
+    DashboardStatisticsService dashboardService,
+    HttpContext httpContext,
+    string? scope,
+    CancellationToken cancellationToken) =>
 {
-    var stats = await dashboardService.GetDashboardStatisticsAsync();
-    return Results.Ok(stats);
+    var principal = httpContext.User;
+    var isSystemAdmin = principal.IsInRole("SystemAdmin");
+    var wantsPlatform = string.Equals(scope, "platform", StringComparison.OrdinalIgnoreCase);
+
+    if (wantsPlatform && isSystemAdmin)
+    {
+        var platformStats = await dashboardService.GetDashboardStatisticsAsync(cancellationToken);
+        return Results.Ok(platformStats);
+    }
+
+    // Org scope path. Extract the caller's org id; fall back to a zeroed-org-scope
+    // shape if the claim is missing (shouldn't happen with the standard JWT shape).
+    var orgIdClaim = principal.FindFirst("org_id")?.Value;
+    if (!Guid.TryParse(orgIdClaim, out var orgId))
+    {
+        return Results.Ok(new DashboardStatistics
+        {
+            Scope = "org",
+            OrgId = null,
+            Timestamp = DateTimeOffset.UtcNow,
+            ActiveUsers = 0,
+            PendingInvitations = 0,
+            SubscribedRegisters = 0,
+            RecentTransactions = 0
+        });
+    }
+
+    // Forward the caller's bearer token so Tenant's RequireAuthenticated policy passes.
+    var authHeader = httpContext.Request.Headers.Authorization.ToString();
+    var bearer = authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+        ? authHeader["Bearer ".Length..]
+        : null;
+
+    var orgStats = await dashboardService.GetOrgSummaryAsync(orgId, bearer, cancellationToken);
+    return Results.Ok(orgStats);
 })
+.RequireAuthorization()
 .WithName("DashboardStatistics")
-.WithSummary("Get dashboard statistics from all backend services (blueprints, wallets, registers, etc.)")
+.WithSummary("Get dashboard statistics — org-scoped by default; SystemAdmin can pass ?scope=platform for the platform view.")
 .WithTags("Dashboard");
 
 // ===========================
@@ -527,6 +596,22 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
 
 // Gateway's own OpenAPI spec
 app.MapOpenApi();
+
+// Spec 117 (AI Discoverability) — well-known aliases of the OpenAPI document
+// at /.well-known/openapi.{json,yaml}. Anonymous, cacheable, served from the
+// in-process IOpenApiDocumentProvider so the document is identical to /openapi/v1.json.
+app.MapWellKnownOpenApiEndpoints();
+
+// Spec 117 Phase 4 (US2 MCP discovery).
+// /.well-known/mcp.json — anonymous, cacheable, FR-012/013/014/015/016/046.
+// /api/mcp/tools         — flat tool catalogue referenced by the manifest.
+app.MapMcpManifestEndpoint();
+app.MapMcpToolCatalogueEndpoint();
+
+// Spec 117 follow-up — root-level AI-discoverability surface: /llms.txt, /llms-full.txt
+// (canonical embedded files), /robots.txt + /sitemap.xml (per-host generated). These were
+// previously 404 at the domain root, where AI crawlers and the llms.txt convention probe.
+app.MapRootDiscoverabilityEndpoints();
 
 // Aggregated OpenAPI from all services
 app.MapGet("/openapi/aggregated.json", async (OpenApiAggregationService openApiService) =>

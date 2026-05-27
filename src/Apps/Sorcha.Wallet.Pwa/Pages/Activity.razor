@@ -1,0 +1,161 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Activity page (Feature 125, T086; extended Feature 114 US5). Renders the
+    TransactionHistoryFeed component from the shared library, merging three
+    sources chronologically:
+      - IVerificationHistoryStore — verifications the user PERFORMED (F125),
+        scoped to the active context.
+      - ICitizenWalletClient.ListPresentationsAsync — the citizen's cross-device
+        presentation history from the Wallet Service (F114 US5 PR3).
+      - IPresentationLog — presentations MADE on THIS device but not yet synced
+        to the server (instant feedback before the next sync).
+
+    Merge rule (design §5):
+      display = (server history) ∪ { local entries where !SyncedToServer }
+    Synced local entries are display-suppressed in favour of the server list, so
+    a server-authoritative delete removes an entry from every device's display and
+    a lingering synced local copy never resurrects it.
+
+    Presentation entries are tappable to delete (server-authoritative: removed
+    from history on all the citizen's devices; the verifier's own records are
+    unaffected).
+*@
+@page "/activity"
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@using MudBlazor
+@using Sorcha.UI.Components.User.Components.History
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Context
+@using Sorcha.ServiceClients.CitizenWallet
+@using Wire = Sorcha.CitizenWallet.Abstractions.Models
+@implements IAsyncDisposable
+@inject IVerificationHistoryStore VerificationHistory
+@inject IPresentationLog PresentationLog
+@inject ICitizenWalletClient WalletClient
+@inject IUserContext UserContext
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+
+<PageTitle>Activity · Sorcha Wallet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Activity</MudText>
+    @if (_loading)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" data-testid="activity-loading" />
+    }
+    else
+    {
+        <TransactionHistoryFeed Entries="@_entries" OnEntryActivated="@HandleEntryAsync" />
+    }
+</MudContainer>
+
+@code {
+    private const string PresentationIdPrefix = "pres:";
+
+    private IReadOnlyList<TransactionHistoryFeed.HistoryFeedEntry>? _entries;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        UserContext.OnContextChanged += HandleContextChangedAsync;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var verifications = await VerificationHistory.ListByContextAsync(UserContext.ActiveContextOrgId);
+            var presentationEntries = await BuildPresentationEntriesAsync();
+
+            var verificationEntries = verifications.Select(r =>
+                new TransactionHistoryFeed.HistoryFeedEntry(
+                    Id: r.Id.ToString("N"),
+                    Kind: TransactionHistoryFeed.HistoryFeedKind.Verification,
+                    Title: $"Verified {r.HolderDisplayName}",
+                    Subtitle: $"{r.IssuerOrgName} · {r.CredentialType} · {r.Outcome}",
+                    At: r.VerifiedAt));
+
+            _entries = verificationEntries
+                .Concat(presentationEntries)
+                .OrderByDescending(e => e.At)
+                .ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Fetches server history + the device-local log and applies the design §5 merge
+    /// rule via <see cref="PresentationActivityMerge"/>, mapping the result to feed
+    /// rows. Falls back to the local log alone on a transient server error so the
+    /// page still renders this device's history.
+    /// </summary>
+    private async Task<IEnumerable<TransactionHistoryFeed.HistoryFeedEntry>> BuildPresentationEntriesAsync()
+    {
+        IReadOnlyList<Wire.PresentationLogEntry> serverEntries;
+        try
+        {
+            serverEntries = await WalletClient.ListPresentationsAsync();
+        }
+        catch
+        {
+            serverEntries = Array.Empty<Wire.PresentationLogEntry>();
+        }
+
+        var localEntries = await PresentationLog.ListAsync();
+        var merged = PresentationActivityMerge.Build(serverEntries, localEntries);
+
+        return merged.Select(m => new TransactionHistoryFeed.HistoryFeedEntry(
+            Id: PresentationIdPrefix + m.Id.ToString("N"),
+            Kind: TransactionHistoryFeed.HistoryFeedKind.Presentation,
+            Title: m.Title,
+            Subtitle: m.Subtitle,
+            At: m.PresentedAt));
+    }
+
+    private async Task HandleContextChangedAsync(UserContextChangedEventArgs args)
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleEntryAsync(string entryId)
+    {
+        // Only presentation entries are deletable here — they're the citizen's own
+        // history. Verification entries (F125) tap into their own detail surface in
+        // a future PR.
+        if (!entryId.StartsWith(PresentationIdPrefix, StringComparison.Ordinal)) return;
+        if (!Guid.TryParseExact(entryId[PresentationIdPrefix.Length..], "N", out var id)) return;
+
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            PresentationActivityActions.RemoveConfirmTitle,
+            PresentationActivityActions.RemoveConfirmBody,
+            yesText: "Remove", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            await PresentationActivityActions.DeleteEverywhereAsync(WalletClient, PresentationLog, id);
+            await LoadAsync();
+            StateHasChanged();
+        }
+    }
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync()
+    {
+        UserContext.OnContextChanged -= HandleContextChangedAsync;
+        return ValueTask.CompletedTask;
+    }
+}

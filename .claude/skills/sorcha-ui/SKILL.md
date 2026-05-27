@@ -226,10 +226,92 @@ PageTest (Playwright NUnit)
 | Docker tests | `tests/Sorcha.UI.E2E.Tests/Docker/` |
 | MudBlazor helpers | `tests/Sorcha.UI.E2E.Tests/PageObjects/Shared/MudBlazorHelpers.cs` |
 
+## Host mounts & route prefixes
+
+Two Blazor hosts, two mount prefixes behind the API Gateway. There is **no `/admin` route** — the entire platform/admin/designer experience IS the `/app` SPA.
+
+| Mount | Host | Audience | Tier (spec 136) |
+|-------|------|----------|-----------------|
+| `/app/…` | `Sorcha.UI.Web` + `Sorcha.UI.Web.Client` (WASM SPA) | platform admin / org operator / designer **and** some citizen web surfaces (F125/F126, e.g. `/app/strathcarron/…`) | **Platform** |
+| `/wallet/…` | `Sorcha.Wallet.Pwa` (PWA) | citizen / wallet holder | **Consumer** |
+
+Practical consequences:
+- A new Razor page `@page "/foo"` in `Sorcha.UI.Web.Client` is reachable at `…/app/foo` (NOT `…/foo`); a PWA page is at `…/wallet/foo`. On n1 that's `https://n1.sorcha.dev/app/…` and `…/wallet/…`.
+- **Tier classification (F136)**: `RequestedTierResolver.ClassifyReturnTo` maps `/wallet`→Consumer, `/app`→Platform. Web login fails safe to Platform (`ClassifyReturnTo(returnTo, allowlist) ?? Tier.Platform`) because `/app` is the platform host; the consumer token comes from a `/wallet` returnTo or the enrol-redeem path. See the **jwt** skill → "Tiered audiences".
+
+## Citizen Wallet PWA — path-prefix gotchas
+
+The Citizen Wallet PWA (`Sorcha.Wallet.Pwa`) mounts at **`/wallet/`** behind the API Gateway via `PathRemovePrefix`. Two rules apply only here, not to the main `Sorcha.UI.Web` app:
+
+1. **All `NavigateTo` / `Href` paths must be base-relative**, not origin-absolute. `NavigateTo("enrol")` ✓ — `NavigateTo("/enrol")` 404s in production. Home is `NavigateTo("")`, not `NavigateTo("/")`. Full rationale in the **blazor** skill → "PWA navigation when mounted under a path prefix". Twelve broken nav buttons shipped through CI as PR #698; the fix scope was global across `MainLayout.razor`, `Index.razor`, `Enrol.razor`, `CredentialDetail.razor`.
+
+2. **`nginx.conf` cache rules must exclude `dotnet.js` and `blazor.webassembly.js`** from the `immutable` regex. Those two files are NOT fingerprinted but DO change every build — caching them as immutable for a year breaks return-visits after every redeploy. Pattern in the **blazor** skill → "nginx caching for Blazor WASM" plus PR #699. Regression guard: `tests/Sorcha.UI.E2E.Tests/Docker/CitizenWallet/CitizenWalletNginxCacheHeadersTests.cs`.
+
+PWA test coverage discipline (every nav element gets `data-testid` + click+URL test) is in the **playwright** skill. Issue #700 tracks the broader PWA test-coverage gap.
+
 ## See Also
 
 - [patterns](references/patterns.md) - Page implementation and test patterns
 - [workflows](references/workflows.md) - Development workflow and checklist
+
+## Audience-tag convention (Feature 123)
+
+`Sorcha.UI.Core` is partitioned by **audience** at the folder level — `Services/User/`, `Services/Admin/`, `Services/Shared/`, with the same three folders under `Models/`. When you add a new service interface or model type, the audience determines the folder.
+
+**Pick the audience by asking: "does an end user on a user-facing page need this?"**
+- Only end users → `Services/User/<Subject>/` or `Models/User/<Subject>/`
+- Only admin/designer → `Services/Admin/<Subject>/` or `Models/Admin/<Subject>/`
+- Both → `Services/Shared/<Subject>/` with a narrow `I<Subject>ReadService` interface (the Shared read interface does NOT inherit from the Admin interface — admin pages that need both inject both)
+
+**Namespaces stay at the subject level** — a file in `Models/User/Forms/` declares `namespace Sorcha.UI.Core.Models.Forms;`, not `…Models.User.Forms;`. The audience folder is filesystem metadata, not part of the type's address. This is what keeps consumer `using` directives stable across moves.
+
+**Bi-modal smell detector** — stop and refactor before any of these solidify:
+- An interface directly under `Services/` (not in an audience folder).
+- A plain `IFooService` whose methods mix "list things for the signed-in user" with "manage admin policy" — split it into two interfaces, same concrete class.
+- A DTO record defined inside a service-interface file (extract to `Services/Shared/<Subject>/<Dto>.cs`, keep the original namespace).
+- A user-facing component injecting `*AdminService`.
+- An admin page injecting a Shared read interface and transitively pulling admin-only types from its return values — the "Shared" interface isn't actually shared.
+
+Full convention + worked examples: `src/Apps/Sorcha.UI/Sorcha.UI.Core/README.md`. Motivating discovery (what bi-modal coupling did to Feature 122 Phase 2): `specs/122-shared-user-components/phase-2-discovery.md`.
+
+## Shared user-facing component library (Feature 122)
+
+User-facing components shared between `Sorcha.UI` (web) and `Sorcha.Wallet.Pwa` (PWA) live in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`. The PWA references `Sorcha.UI.Components.User` directly; `Sorcha.UI.Core` ProjectReferences it (transparent re-export to the six web host apps).
+
+**Placement rule when adding a new component:**
+- User-facing, possibly shared with PWA → `Sorcha.UI.Components.User/Components/<Subject>/`
+- Admin / designer / explorer only → `Sorcha.UI.Core/Components/<Subject>/`
+- User-facing models the PWA also needs → `Sorcha.UI.Components.User/Models/User/<Subject>/` (folder is metadata; namespace stays `Sorcha.UI.Core.Models.<Subject>` per the audience-tag convention above)
+
+Full placement matrix + worked examples: `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/README.md`. CI bundle-hygiene gate: `scripts/check-pwa-bundle.ps1` (wired into `nuget-ci.yml`) asserts forbidden assemblies absent + `Sorcha.UI.Components.User` present in the PWA bundle on every push.
+
+## Council application enrolment gate (Feature 126)
+
+Drop-in component `EnrolGateComponent` in `Sorcha.UI.Components.User/Components/EnrolGate/` (namespace `Sorcha.UI.Core.Components.EnrolGate`). Any council page that needs to onboard a citizen as a side-effect of an application form wraps the form in it:
+
+```razor
+<EnrolGateComponent CouncilName="Strathcarron Council"
+                    ServiceLabel="driving licence application"
+                    OnReady="@HandleCitizenReadyAsync">
+    <DrivingLicenceForm />
+</EnrolGateComponent>
+```
+
+The component owns:
+- Tier detection (parallel `/whoami` + `/me/devices` probes, 200 ms timeout each).
+- Surface branching — `PreflightSignupSurface` (Tier 3 / ColdStart) → `WalletPairingSurface` with `TierMode.MiniGate` (Tier 2) or `TierMode.PostSignup` (Tier 3 post-signup) → `ChildContent` (Tier 1 / FastPath).
+- Session-token mint + lifecycle: calls `POST /api/auth/enrol-session`, renders the returned QR via `HybridQrAffordance`, watches expiry via a `Task.Delay(ExpiresAt - now)` and flips to a regenerate affordance when the token times out without a pairing signal.
+- Cross-device coordination: subscribes to `IEnrolPairingSignal.OnDeviceEnrolled` (`TenantHubConnection.OnDeviceEnrolled` + 3-second `/me/devices` poll fallback) and fires `OnReady` once the citizen reaches FastPath.
+
+`HybridQrAffordance.Layout` (enum: `Auto` / `QrFirst` / `LinkFirst`) controls prominence. `Auto` (default) emits an `enrol-hybrid-qr--auto` CSS class so a `@media (max-width: 600px)` rule can swap ordering on mobile — no `IJSRuntime` probe needed.
+
+**PWA-side wire-up** lives in `Sorcha.Wallet.Pwa`:
+- `Pages/Enrol.razor` reads `?session=<token>` from the URL, calls `IEnrolSessionRedeemer.RedeemAsync`, renders `EnrolmentRedeemConfirmDialog` with the bound user's email + display name (the friend-scans-by-mistake mitigation), then on Confirm stores the access token via `IAccessTokenStore` and falls through to the existing F114 device-pairing stepper.
+- Cancel from the dialog routes to `Pages/CancelledEnrolment.razor` — no device registered.
+
+Test patterns (UI.Core.Tests):
+- `BunitContext` + `JSInterop.Mode = JSRuntimeMode.Loose` for any EnrolGate component that calls JS (clipboard, QR SVG render).
+- Stub HttpClient via a custom `HttpMessageHandler` for the gate's whoami / mint round-trips — `EnrolGateComponent.ResolveBoundPlatformUserIdAsync` will hang the test if the gateway URL doesn't resolve.
 
 ## Related Skills
 
@@ -253,3 +335,17 @@ PageTest (Playwright NUnit)
 - "MudBlazor card table dialog"
 - "MudBlazor form validation"
 - "Browser storage state authentication"
+
+## Anti-Pattern: Don't Use ISnackbar
+
+The Sorcha UI has retired MudBlazor's `Snackbar.Add(...)` toast surface from every user-facing page and PWA component (PRs #740-#755). New code MUST NOT inject `ISnackbar` — a CI gate at `scripts/check-no-snackbar.ps1` enforces the ratchet via `.snackbar-allowlist`.
+
+Use one of three replacement surfaces:
+
+- **`IInlineFeedback`** for actor's-own-action feedback in the current page (success / error / info / warning). API: `Feedback.ShowSuccess(msg, detailHref?, autoDismissMs?)` / `ShowError` / `ShowInfo` / `ShowWarning`. Default 4s auto-dismiss; pass `autoDismissMs: 0` for errors that need explicit acknowledgement. Namespace `Sorcha.UI.Core.Services.Feedback`. Renders via `InlineFeedbackHost` mounted in `MainLayout`. Do NOT call from inside a dialog body — the host mounts in the layout, not in dialog surfaces.
+- **Server-side inbox writer** for workflow / lifecycle / security events that should live in the durable Feature 118 bell drawer across sessions. Existing writers: `WalletWorkflowInboxWriter`, `WalletInboxWriter`, `CitizenDeviceInboxWriter`, `TenantSecurityInboxWriter`, plus the membership writer. Always `try` / `LogError` / swallow — a writer failure must NOT roll back the underlying admin operation.
+- **`CopyButton` primitive** for clipboard affordances. `<CopyButton Value="@x" Label="Copy" />` for labelled buttons, `<CopyButton Value="@x" Variant="CopyButtonVariant.IconButton" Label="Copy hash" />` for icon-only inside lists. Morphs to "Copied ✓" for ~2s on success.
+
+**Dialog content** rule: dialog success closes with `MudDialog.Close(DialogResult.Ok(...))` so the parent renders inline feedback; dialog errors render an inline `<MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">` at the top of `DialogContent`.
+
+Full architecture and migration history: `specs/118-notifications-architecture/MIGRATION.md` and Critical Pattern #12 in `CLAUDE.md`.

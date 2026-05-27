@@ -19,7 +19,7 @@ public static class DomainRestrictionEndpoints
     {
         var group = app.MapGroup("/api/organizations/{organizationId:guid}/domain-restrictions")
             .WithTags("Domain Restrictions")
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         group.MapGet("/", GetDomainRestrictions)
             .WithName("GetDomainRestrictions")

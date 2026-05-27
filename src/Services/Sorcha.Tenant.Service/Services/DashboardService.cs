@@ -2,7 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
+using Sorcha.ServiceClients.Register;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -16,10 +18,17 @@ namespace Sorcha.Tenant.Service.Services;
 public class DashboardService : IDashboardService
 {
     private readonly TenantDbContext _dbContext;
+    private readonly IRegisterServiceClient _registerClient;
+    private readonly ILogger<DashboardService> _logger;
 
-    public DashboardService(TenantDbContext dbContext)
+    public DashboardService(
+        TenantDbContext dbContext,
+        IRegisterServiceClient registerClient,
+        ILogger<DashboardService> logger)
     {
         _dbContext = dbContext;
+        _registerClient = registerClient;
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -88,6 +97,61 @@ public class DashboardService : IDashboardService
             RecentLogins = recentLogins,
             PendingInvitationCount = pendingInvitationCount,
             IdpStatus = idpStatus
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task<OrgSummaryResponse> GetOrgSummaryAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken = default)
+    {
+        // Active users in org.
+        var activeUsers = await _dbContext.UserIdentities
+            .Where(u => u.OrganizationId == organizationId && u.Status == IdentityStatus.Active)
+            .CountAsync(cancellationToken);
+
+        // Pending invitations (unexpired).
+        var now = DateTimeOffset.UtcNow;
+        var pendingInvitations = await _dbContext.OrgInvitations
+            .Where(i => i.OrganizationId == organizationId
+                     && i.Status == InvitationStatus.Pending
+                     && i.ExpiresAt > now)
+            .CountAsync(cancellationToken);
+
+        // Subscribed registers (Status=Active). Capture the ids so we can ask
+        // Register Service for the transaction sum in one round-trip.
+        var subscribedRegisterIds = await _dbContext.OrganizationRegisterSubscriptions
+            .Where(s => s.OrganizationId == organizationId && s.Status == SubscriptionStatus.Active)
+            .Select(s => s.RegisterId)
+            .ToListAsync(cancellationToken);
+
+        // Recent transactions across the org's subscribed registers. Best-effort —
+        // a Register Service outage downgrades to 0 with a warning rather than
+        // failing the whole summary (the other three numbers are still useful).
+        var recentTransactions = 0;
+        if (subscribedRegisterIds.Count > 0)
+        {
+            try
+            {
+                var stats = await _registerClient.GetStatsAsync(subscribedRegisterIds, cancellationToken);
+                recentTransactions = stats.TransactionCount;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Register stats fetch failed for org {OrgId}; recentTransactions defaults to 0",
+                    organizationId);
+            }
+        }
+
+        return new OrgSummaryResponse
+        {
+            OrgId = organizationId,
+            ActiveUsers = activeUsers,
+            PendingInvitations = pendingInvitations,
+            SubscribedRegisters = subscribedRegisterIds.Count,
+            RecentTransactions = recentTransactions,
+            Timestamp = DateTimeOffset.UtcNow
         };
     }
 }

@@ -3,47 +3,37 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tools.Admin;
 
 /// <summary>
-/// Admin tool for updating tenant settings.
+/// Admin tool for updating tenant settings. Writes via the typed <see cref="ITenantServiceClient"/>
+/// (spec 139 US4) so the caller's bearer is forwarded and the route is contract-pinned.
 /// </summary>
 [McpServerToolType]
 public sealed class TenantUpdateTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ITenantServiceClient _tenantClient;
     private readonly ILogger<TenantUpdateTool> _logger;
-    private readonly string _tenantServiceEndpoint;
 
     public TenantUpdateTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        ITenantServiceClient tenantClient,
         ILogger<TenantUpdateTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _tenantClient = tenantClient;
         _logger = logger;
-
-        _tenantServiceEndpoint = configuration["ServiceClients:TenantService:Address"] ?? "http://localhost:5110";
     }
 
     /// <summary>
@@ -55,7 +45,7 @@ public sealed class TenantUpdateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Update result.</returns>
     [McpServerTool(Name = "sorcha_tenant_update")]
-    [Description("Update a tenant's settings or status. Can rename or suspend/activate a tenant. Use with caution as suspending affects all users.")]
+    [Description("Mutates an existing tenant — renames it, or moves it between Active and Suspended — and returns the updated tenant record. Call this when you need to rebrand an organisation or to disable platform access for every user under that tenant in a single action; prefer this over sorcha_user_manage when the action should affect every user in the organisation rather than a single user, and prefer it over sorcha_token_revoke when the goal is durable suspension rather than a one-off forced re-authentication. Suspending propagates to all users under the tenant — verify the target with sorcha_tenant_list first.")]
     public async Task<TenantUpdateResult> UpdateTenantAsync(
         [Description("The tenant/organization ID to update")] string tenantId,
         [Description("New tenant name (optional)")] string? name = null,
@@ -128,57 +118,29 @@ public sealed class TenantUpdateTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var url = $"{_tenantServiceEndpoint.TrimEnd('/')}/api/organizations/{tenantId}";
-
             var updateData = new Dictionary<string, object>();
             if (!string.IsNullOrWhiteSpace(name))
                 updateData["name"] = name;
             if (!string.IsNullOrWhiteSpace(status))
                 updateData["status"] = status;
 
-            var requestBody = JsonSerializer.Serialize(updateData);
-            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-
-            var request = new HttpRequestMessage(HttpMethod.Patch, url) { Content = content };
-            var response = await client.SendAsync(request, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route (PUT api/organizations/{id}).
+            var responseContent = await _tenantClient.UpdateOrganizationAsync(
+                tenantId, JsonSerializer.Serialize(updateData), cancellationToken);
 
             stopwatch.Stop();
 
-            if (!response.IsSuccessStatusCode)
+            if (responseContent is null)
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Tenant update failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
                 _availabilityTracker.RecordSuccess("Tenant");
 
-                try
+                return new TenantUpdateResult
                 {
-                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-
-                    return new TenantUpdateResult
-                    {
-                        Status = "Error",
-                        Message = errorResponse?.Error ?? "Tenant update failed.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
-                catch (JsonException)
-                {
-                    return new TenantUpdateResult
-                    {
-                        Status = "Error",
-                        Message = $"Tenant update failed with status {(int)response.StatusCode}.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
+                    Status = "Error",
+                    Message = "Tenant update failed.",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+                };
             }
 
             _availabilityTracker.RecordSuccess("Tenant");
@@ -245,10 +207,6 @@ public sealed class TenantUpdateTool
         }
     }
 
-    private sealed class ErrorResponse
-    {
-        public string? Error { get; set; }
-    }
 }
 
 /// <summary>

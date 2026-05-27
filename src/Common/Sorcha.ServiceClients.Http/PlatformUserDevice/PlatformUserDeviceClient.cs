@@ -56,6 +56,7 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
         string userAgent,
         DateTimeOffset delegationExpiresAt,
         string delegationCredentialJti,
+        int statusListId,
         int statusListIndex,
         CancellationToken ct = default)
     {
@@ -72,6 +73,7 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
             userAgent,
             delegationExpiresAt,
             delegationCredentialJti,
+            statusListId,
             statusListIndex
         };
 
@@ -99,4 +101,52 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
 
         return await response.Content.ReadFromJsonAsync<PlatformUserDeviceLookupResult>(JsonOptions, ct);
     }
+
+    /// <inheritdoc />
+    public async Task<bool> RevokeAsync(
+        Guid deviceId, Guid platformUserId, CancellationToken ct = default)
+    {
+        await ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Tenant Service (PlatformUserDevice)", ct);
+
+        var response = await _httpClient.DeleteAsync(
+            $"api/internal/platform-user-devices/{deviceId}?platformUserId={platformUserId}", ct);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PlatformUserDeviceLookupResult>> ListAsync(
+        Guid platformUserId, CancellationToken ct = default)
+    {
+        await ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Tenant Service (PlatformUserDevice)", ct);
+
+        var response = await _httpClient.GetAsync(
+            $"api/internal/platform-user-devices?platformUserId={platformUserId}", ct);
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadFromJsonAsync<ListResponse>(JsonOptions, ct);
+        return body?.Devices ?? Array.Empty<PlatformUserDeviceLookupResult>();
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> UpdateLabelAsync(
+        Guid deviceId, Guid platformUserId, string label, CancellationToken ct = default)
+    {
+        await ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Tenant Service (PlatformUserDevice)", ct);
+
+        var response = await _httpClient.PutAsJsonAsync(
+            $"api/internal/platform-user-devices/{deviceId}/label?platformUserId={platformUserId}",
+            new { label }, JsonOptions, ct);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    private sealed record ListResponse(IReadOnlyList<PlatformUserDeviceLookupResult> Devices);
 }

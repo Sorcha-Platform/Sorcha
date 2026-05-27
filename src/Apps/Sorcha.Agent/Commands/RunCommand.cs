@@ -140,7 +140,7 @@ public class RunCommand : Command
 
             if (definition.Inbox.SignalR?.Enabled ?? false)
             {
-                var hubUrl = $"{definition.Connection.GatewayUrl.TrimEnd('/')}/actionshub";
+                var hubUrl = $"{definition.Connection.GatewayUrl.TrimEnd('/')}/hubs/blueprint";
                 var signalR = new SignalRInboxListener(
                     hubUrl,
                     definition.Connection.WalletAddress,

@@ -4,46 +4,37 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Blueprint;
 
 namespace Sorcha.McpServer.Tools.Designer;
 
 /// <summary>
-/// Designer tool for retrieving a blueprint by ID.
+/// Designer tool for retrieving a blueprint by ID. Reads via the typed
+/// <see cref="IBlueprintServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the route is contract-pinned, not hand-rolled.
 /// </summary>
 [McpServerToolType]
 public sealed class BlueprintGetTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IBlueprintServiceClient _blueprintClient;
     private readonly ILogger<BlueprintGetTool> _logger;
-    private readonly string _blueprintServiceEndpoint;
 
     public BlueprintGetTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IBlueprintServiceClient blueprintClient,
         ILogger<BlueprintGetTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _blueprintClient = blueprintClient;
         _logger = logger;
-
-        _blueprintServiceEndpoint = configuration["ServiceClients:BlueprintService:Address"] ?? "http://localhost:5000";
     }
 
     /// <summary>
@@ -53,7 +44,7 @@ public sealed class BlueprintGetTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The full blueprint details including participants, actions, and metadata.</returns>
     [McpServerTool(Name = "sorcha_blueprint_get")]
-    [Description("Get a blueprint by ID. Returns the full blueprint including title, description, participants, actions, data schemas, and metadata.")]
+    [Description("Retrieves a single blueprint by its ID and returns the full definition including title, description, participants, actions, action schemas, routing rules, and metadata. Call this when you have an exact blueprint ID and need the complete definition for inspection, simulation, or as input to a subsequent update; use sorcha_blueprint_list instead when you do not yet know the ID and need to search by title or status, and prefer sorcha_blueprint_diff over repeated gets when comparing two versions.")]
     public async Task<BlueprintGetResult> GetBlueprintAsync(
         [Description("The unique identifier of the blueprint to retrieve")] string blueprintId,
         CancellationToken cancellationToken = default)
@@ -97,10 +88,7 @@ public sealed class BlueprintGetTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(10);
-
-            var blueprint = await FetchBlueprintAsync(client, blueprintId, cancellationToken);
+            var blueprint = await FetchBlueprintAsync(blueprintId, cancellationToken);
 
             stopwatch.Stop();
 
@@ -181,28 +169,18 @@ public sealed class BlueprintGetTool
     }
 
     private async Task<BlueprintDetail?> FetchBlueprintAsync(
-        HttpClient client,
         string blueprintId,
         CancellationToken cancellationToken)
     {
         try
         {
-            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/blueprints/{Uri.EscapeDataString(blueprintId)}";
-            var response = await client.GetAsync(url, cancellationToken);
-
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            // Typed client forwards the caller's bearer and pins the route (GET api/blueprints/{id}).
+            var content = await _blueprintClient.GetBlueprintAsync(blueprintId, cancellationToken);
+            if (string.IsNullOrWhiteSpace(content))
             {
                 return null;
             }
 
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Failed to fetch blueprint {BlueprintId}: HTTP {StatusCode}",
-                    blueprintId, response.StatusCode);
-                return null;
-            }
-
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
             var dto = JsonSerializer.Deserialize<BlueprintDto>(content, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true

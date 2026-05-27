@@ -1,0 +1,30 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 126 / US4 — friend-scans-by-mistake landing. Reached when a
+    citizen cancels out of EnrolmentRedeemConfirmDialog because the bound
+    user's email isn't theirs. No device has been registered against the
+    bound account; the citizen can safely close the page.
+*@
+@page "/cancelled-enrolment"
+@layout MainLayout
+@inject NavigationManager Nav
+
+<PageTitle>Enrolment cancelled</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h5" Class="mb-3">That wasn't for you</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            No problem — we didn't register this device. The original code
+            stays unused, and the person who shared it can generate a fresh
+            one. You can safely close this page.
+        </MudText>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                   OnClick="@(() => Nav.NavigateTo(""))"
+                   data-testid="cancelled-back-to-wallet">
+            Back to wallet
+        </MudButton>
+    </MudPaper>
+</MudContainer>

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);NU1608;MUD0002;RZ10012</NoWarn>
+    <RootNamespace>Sorcha.UI.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.UI.Components.User.Tests" />
+    <InternalsVisibleTo Include="Sorcha.UI.Core" />
+    <InternalsVisibleTo Include="Sorcha.UI.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Blazored.LocalStorage" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.JSInterop" />
+    <PackageReference Include="MudBlazor" />
+    <PackageReference Include="QRCoder" />
+    <PackageReference Include="SimpleBase" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
+    <ProjectReference Include="..\..\..\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
+    <ProjectReference Include="..\..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
+    <ProjectReference Include="..\..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
+    <ProjectReference Include="..\..\..\Core\Sorcha.Blueprint.Schemas.Client\Sorcha.Blueprint.Schemas.Client.csproj" />
+  </ItemGroup>
+
+</Project>

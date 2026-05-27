@@ -3,60 +3,53 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Blueprint;
 
 namespace Sorcha.McpServer.Tools.Participant;
 
 /// <summary>
-/// Participant tool for submitting action data.
+/// Participant tool for submitting (executing) action data. Writes via the typed
+/// <see cref="IBlueprintServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the route is the real execute endpoint, not a hand-rolled (non-existent) submit path.
 /// </summary>
 [McpServerToolType]
 public sealed class ActionSubmitTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IBlueprintServiceClient _blueprintClient;
     private readonly ILogger<ActionSubmitTool> _logger;
-    private readonly string _blueprintServiceEndpoint;
 
     public ActionSubmitTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IBlueprintServiceClient blueprintClient,
         ILogger<ActionSubmitTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _blueprintClient = blueprintClient;
         _logger = logger;
-
-        _blueprintServiceEndpoint = configuration["ServiceClients:BlueprintService:Address"] ?? "http://localhost:5000";
     }
 
     /// <summary>
-    /// Submits data for an action, completing it and advancing the workflow.
+    /// Submits (executes) data for an action on a workflow instance, completing it and advancing the workflow.
     /// </summary>
-    /// <param name="actionInstanceId">The action instance ID.</param>
+    /// <param name="instanceId">The workflow instance ID the action belongs to.</param>
+    /// <param name="actionId">The action ID within the instance.</param>
     /// <param name="dataJson">The action data in JSON format.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Result of the submission.</returns>
     [McpServerTool(Name = "sorcha_action_submit")]
-    [Description("Submit data for an action to complete it and advance the workflow. The data must conform to the action's input schema.")]
+    [Description("Submit (execute) signed data for an action on a workflow instance, completing that action and advancing the multi-party workflow to its next step. Returns the resulting transaction id and any next actions triggered. Requires both the workflow instanceId and the actionId within it (use sorcha_inbox_list or sorcha_workflow_status to discover them). Call this when the agent has the participant's input ready and intends to commit it to the register; call sorcha_action_validate first when you only want to dry-run the data against the input schema, and use sorcha_inbox_list rather than this tool when discovering which actions are pending.")]
     public async Task<ActionSubmitResult> SubmitActionAsync(
-        [Description("The action instance ID")] string actionInstanceId,
+        [Description("The workflow instance ID the action belongs to")] string instanceId,
+        [Description("The action ID within the instance")] string actionId,
         [Description("The action data in JSON format")] string dataJson,
         CancellationToken cancellationToken = default)
     {
@@ -72,12 +65,22 @@ public sealed class ActionSubmitTool
         }
 
         // Validate inputs
-        if (string.IsNullOrWhiteSpace(actionInstanceId))
+        if (string.IsNullOrWhiteSpace(instanceId))
         {
             return new ActionSubmitResult
             {
                 Status = "Error",
-                Message = "Action instance ID is required.",
+                Message = "Workflow instance ID is required.",
+                CheckedAt = DateTimeOffset.UtcNow
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(actionId))
+        {
+            return new ActionSubmitResult
+            {
+                Status = "Error",
+                Message = "Action ID is required.",
                 CheckedAt = DateTimeOffset.UtcNow
             };
         }
@@ -127,69 +130,43 @@ public sealed class ActionSubmitTool
             };
         }
 
-        _logger.LogInformation("Submitting action {ActionInstanceId}", actionInstanceId);
+        _logger.LogInformation("Executing action {ActionId} on instance {InstanceId}", actionId, instanceId);
 
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(60);
-
-            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/actions/{actionInstanceId}/submit";
-
-            var content = new StringContent(dataJson, Encoding.UTF8, "application/json");
-            var response = await client.PostAsync(url, content, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the real route
+            // (POST api/instances/{instanceId}/actions/{actionId}/execute).
+            var responseContent = await _blueprintClient.ExecuteActionAsync(
+                instanceId, actionId, dataJson, cancellationToken);
 
             stopwatch.Stop();
 
-            if (!response.IsSuccessStatusCode)
+            if (string.IsNullOrWhiteSpace(responseContent))
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Action submit failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
                 _availabilityTracker.RecordSuccess("Blueprint");
 
-                try
+                return new ActionSubmitResult
                 {
-                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-
-                    return new ActionSubmitResult
-                    {
-                        Status = "Error",
-                        Message = errorResponse?.Error ?? "Action submission failed.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
-                        ValidationErrors = errorResponse?.ValidationErrors ?? []
-                    };
-                }
-                catch (JsonException)
-                {
-                    return new ActionSubmitResult
-                    {
-                        Status = "Error",
-                        Message = $"Action submission failed with status {(int)response.StatusCode}.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
+                    Status = "Error",
+                    Message = "Action submission failed.",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+                };
             }
 
             // Record success
             _availabilityTracker.RecordSuccess("Blueprint");
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             var result = JsonSerializer.Deserialize<SubmitResponse>(responseContent, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });
 
             _logger.LogInformation(
-                "Action {ActionInstanceId} submitted successfully in {ElapsedMs}ms",
-                actionInstanceId, stopwatch.ElapsedMilliseconds);
+                "Action {ActionId} on instance {InstanceId} executed successfully in {ElapsedMs}ms",
+                actionId, instanceId, stopwatch.ElapsedMilliseconds);
 
             return new ActionSubmitResult
             {
@@ -262,12 +239,6 @@ public sealed class ActionSubmitTool
         public int ActionId { get; set; }
         public string? Title { get; set; }
         public string? AssignedTo { get; set; }
-    }
-
-    private sealed class ErrorResponse
-    {
-        public string? Error { get; set; }
-        public List<string>? ValidationErrors { get; set; }
     }
 }
 

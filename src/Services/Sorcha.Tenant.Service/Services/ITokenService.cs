@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 
@@ -17,12 +18,18 @@ public interface ITokenService
     /// <param name="user">The user identity.</param>
     /// <param name="organization">The organization.</param>
     /// <param name="platformUserId">The platform user ID to include as a claim.</param>
+    /// <param name="tier">
+    /// The human trust tier to mint (spec 136). <see cref="Tier.Platform"/> (default) carries org
+    /// context + roles; <see cref="Tier.Consumer"/> omits them (inert on platform surfaces). Only
+    /// the two human tiers are valid here.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Token response with access and refresh tokens.</returns>
     Task<TokenResponse> GenerateUserTokenAsync(
         UserIdentity user,
         Organization organization,
         Guid platformUserId,
+        Tier tier = Tier.Platform,
         CancellationToken cancellationToken = default);
 
     /// <summary>

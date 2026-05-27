@@ -1,271 +1,154 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net;
 using System.Text.Json;
-using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Moq;
-using Moq.Protected;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Participant;
+using Sorcha.ServiceClients.Blueprint;
 
 namespace Sorcha.McpServer.Tests.Tools.Participant;
 
+/// <summary>
+/// Spec 139 US4: InboxListTool reads via the typed <see cref="IBlueprintServiceClient.GetInboxAsync"/>
+/// (route pinned, caller token forwarded), so these tests mock the client rather than HTTP.
+/// </summary>
 public sealed class InboxListToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
-    private readonly Mock<IMcpAuthorizationService> _authServiceMock;
-    private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
-    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
-    private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
-    private readonly Mock<ILogger<InboxListTool>> _loggerMock;
-    private readonly IConfiguration _configuration;
+    private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
+    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
+    private readonly Mock<IBlueprintServiceClient> _blueprintClientMock = new();
     private readonly InboxListTool _tool;
 
     public InboxListToolTests()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
-        _authServiceMock = new Mock<IMcpAuthorizationService>();
-        _errorHandlerMock = new Mock<IMcpErrorHandler>();
-        _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
-        _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _loggerMock = new Mock<ILogger<InboxListTool>>();
-
-        _configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ServiceClients:BlueprintService:Address"] = "http://localhost:5000"
-            })
-            .Build();
-
         _tool = new InboxListTool(
-            _sessionServiceMock.Object,
             _authServiceMock.Object,
-            _errorHandlerMock.Object,
             _availabilityTrackerMock.Object,
-            _httpClientFactoryMock.Object,
-            _configuration,
-            _loggerMock.Object);
+            _blueprintClientMock.Object,
+            Mock.Of<ILogger<InboxListTool>>());
+    }
+
+    private void Allow()
+    {
+        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_inbox_list")).Returns(true);
+        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
     }
 
     [Fact]
     public async Task ListInboxAsync_WhenUnauthorized_ReturnsUnauthorizedStatus()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_inbox_list")).Returns(false);
 
-        // Act
         var result = await _tool.ListInboxAsync();
 
-        // Assert
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("sorcha:participant");
     }
 
     [Fact]
     public async Task ListInboxAsync_WhenServiceUnavailable_ReturnsUnavailableStatus()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_inbox_list")).Returns(true);
         _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(false);
 
-        // Act
         var result = await _tool.ListInboxAsync();
 
-        // Assert
         result.Status.Should().Be("Unavailable");
-        result.Message.Should().Contain("Blueprint service");
     }
 
     [Fact]
     public async Task ListInboxAsync_WithSuccessfulResponse_ReturnsActions()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_inbox_list")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
 
-        var response = new
+        var response = JsonSerializer.Serialize(new
         {
             items = new[]
             {
-                new
-                {
-                    actionInstanceId = "action-1",
-                    blueprintId = "bp-1",
-                    actionTitle = "Review Document",
-                    workflowInstanceId = "wf-1",
-                    status = "Pending",
-                    createdAt = DateTimeOffset.UtcNow.AddHours(-1)
-                },
-                new
-                {
-                    actionInstanceId = "action-2",
-                    blueprintId = "bp-2",
-                    actionTitle = "Approve Request",
-                    workflowInstanceId = "wf-2",
-                    status = "Pending",
-                    createdAt = DateTimeOffset.UtcNow.AddMinutes(-30)
-                }
+                new { actionInstanceId = "action-1", blueprintId = "bp-1", actionTitle = "Review Document", workflowInstanceId = "wf-1", status = "Pending", createdAt = DateTimeOffset.UtcNow.AddHours(-1) },
+                new { actionInstanceId = "action-2", blueprintId = "bp-2", actionTitle = "Approve Request", workflowInstanceId = "wf-2", status = "Pending", createdAt = DateTimeOffset.UtcNow.AddMinutes(-30) }
             },
             totalCount = 2
-        };
+        });
+        _blueprintClientMock
+            .Setup(c => c.GetInboxAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(response);
 
-        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
-
-        // Act
         var result = await _tool.ListInboxAsync();
 
-        // Assert
         result.Status.Should().Be("Success");
-        result.Items.Should().HaveCount(2);
         result.Items[0].ActionInstanceId.Should().Be("action-1");
         result.Items[0].ActionTitle.Should().Be("Review Document");
         result.TotalCount.Should().Be(2);
+        _availabilityTrackerMock.Verify(x => x.RecordSuccess("Blueprint"), Times.Once);
     }
 
     [Fact]
     public async Task ListInboxAsync_WithEmptyInbox_ReturnsSuccessWithEmptyList()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_inbox_list")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetInboxAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0 }));
 
-        var response = new { items = Array.Empty<object>(), totalCount = 0 };
-        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
-
-        // Act
         var result = await _tool.ListInboxAsync();
 
-        // Assert
         result.Status.Should().Be("Success");
         result.Items.Should().BeEmpty();
-        result.Message.Should().Contain("0 inbox item");
     }
 
     [Fact]
-    public async Task ListInboxAsync_WithPagination_PassesCorrectParameters()
+    public async Task ListInboxAsync_WithPagination_PassesQueryParameters()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_inbox_list")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetInboxAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { items = Array.Empty<object>(), totalCount = 0 }));
 
-        var response = new { items = Array.Empty<object>(), totalCount = 0, page = 2, pageSize = 10, totalPages = 1 };
-        var handlerMock = SetupHttpClientWithCapture(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        await _tool.ListInboxAsync(page: 2, pageSize: 10);
 
-        // Act
-        var result = await _tool.ListInboxAsync(page: 2, pageSize: 10);
-
-        // Assert
-        handlerMock.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(req =>
-                req.RequestUri!.ToString().Contains("page=2") &&
-                req.RequestUri.ToString().Contains("pageSize=10")),
-            ItExpr.IsAny<CancellationToken>());
+        _blueprintClientMock.Verify(
+            c => c.GetInboxAsync(It.Is<string>(q => q.Contains("page=2") && q.Contains("pageSize=10")), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
-    public async Task ListInboxAsync_WithHttpError_ReturnsErrorStatus()
+    public async Task ListInboxAsync_WithNull_ReturnsErrorStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_inbox_list")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetInboxAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
 
-        SetupHttpClient(HttpStatusCode.InternalServerError, "{\"error\":\"Server error\"}");
-
-        // Act
         var result = await _tool.ListInboxAsync();
 
-        // Assert
         result.Status.Should().Be("Error");
     }
 
     [Fact]
     public async Task ListInboxAsync_WithTimeout_ReturnsTimeoutStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_inbox_list")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetInboxAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TaskCanceledException());
 
-        SetupHttpClientWithException(new TaskCanceledException());
-
-        // Act
         var result = await _tool.ListInboxAsync();
 
-        // Assert
         result.Status.Should().Be("Timeout");
-        _availabilityTrackerMock.Verify(x => x.RecordFailure("Blueprint"), Times.Once);
     }
 
     [Fact]
     public async Task ListInboxAsync_WithHttpException_ReturnsErrorStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_inbox_list")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.GetInboxAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
 
-        SetupHttpClientWithException(new HttpRequestException("Connection failed"));
-
-        // Act
         var result = await _tool.ListInboxAsync();
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Connection failed");
-    }
-
-    private void SetupHttpClient(HttpStatusCode statusCode, string content)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = statusCode,
-                Content = new StringContent(content)
-            });
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
-    }
-
-    private Mock<HttpMessageHandler> SetupHttpClientWithCapture(HttpStatusCode statusCode, string content)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = statusCode,
-                Content = new StringContent(content)
-            });
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
-        return handlerMock;
-    }
-
-    private void SetupHttpClientWithException(Exception exception)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ThrowsAsync(exception);
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
     }
 }

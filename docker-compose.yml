@@ -1,6 +1,23 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 
+# Sorcha service topology — spec 117 FR-034 (T093)
+#   gateway          :80    YARP API gateway, /.well-known/* + Scalar /openapi
+#   blueprint        :5000  Workflow management, SignalR notifications
+#   wallet           (int)  Crypto operations, HD wallets (BIP32/39/44)
+#   register         :5290  Distributed ledger, OData query surface
+#   tenant           :5110  Multi-tenant auth, JWT issuer, Participant Identity
+#   peer             :5002  P2P network, gRPC inter-peer transport
+#   validator        (int)  Consensus, chain integrity
+#   mcp-server       (int)  MCP tool surface (36 tools across 3 categories)
+#   postgres         :5432  Relational store (per-service databases)
+#   mongodb          :27017 Document store (Register transactions)
+#   redis            :6379  Cache + SignalR backplane
+#   aspire-dashboard :18888 OpenTelemetry visualisation UI
+# Public entry: http://localhost (gateway) — every other port is internal-only.
+# UI mounts:    http://localhost/app (Sorcha.UI), /wallet, /verify.
+# Verify install: curl -s http://localhost/api/health
+
 # OpenTelemetry configuration for sending traces/metrics to Aspire Dashboard
 # The OTLP endpoint points to the aspire-dashboard container's gRPC port
 x-otel-env: &otel-env
@@ -211,6 +228,13 @@ services:
       ServiceClients__ValidatorService__Address: http://validator-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__HaipService__Address: http://haip-service:8080
+      # Feature 137 (C4): Peer Service client config so F108 submission fan-out
+      # (ActionExecutionService -> IPeerServiceClient.DistributeTransactionAsync) reaches the
+      # peer service. The distribute REST call uses HttpAddress (HTTP/8080); Address is the
+      # gRPC port (5000). Without HttpAddress the HttpClient BaseAddress is unset and fan-out
+      # fails with "BaseAddress must be set".
+      ServiceClients__PeerService__Address: http://peer-service:5000
+      ServiceClients__PeerService__HttpAddress: http://peer-service:8080
       # Service-to-service auth for Wallet/Register Service calls during action execution
       ServiceAuth__ClientId: service-blueprint
       ServiceAuth__ClientSecret: blueprint-service-secret
@@ -281,7 +305,12 @@ services:
       # requires ALPN which requires TLS.
       ServiceClients__RegisterService__GrpcAddress: http://register-service:5001
       ServiceClients__BlueprintService__Address: http://blueprint-service:8080
-      OrgKeyProtection__EncryptionKey: "dGhpcy1pcy1hLTMyLWJ5dGUtdGVzdC1rZXkh"
+      # Dev-mode AES-256 key (32 bytes base64). The previous placeholder decoded to
+      # 27 bytes, which OrgKeyProtectionProvider's strict validator rejects. The key
+      # only matters when OrgKeyDerivationService actually fires (Feature 083 derived
+      # keys + Feature 120 issuance-key lazy derivation). Production deployments
+      # override this via secret.
+      OrgKeyProtection__EncryptionKey: "OVL5NaJzR/Hpy2H5YgjYBX51Sws+q8oQXDG234SYnQw="
       # Encryption Provider Configuration
       # LinuxSecretService with fallback to file-based key storage (Docker doesn't have D-Bus)
       EncryptionProvider__Type: LinuxSecretService
@@ -321,7 +350,11 @@ services:
     ports:
       - "${REGISTER_PORT:-5380}:8080"  # Exposed for walkthrough testing
     environment:
-      <<: [*otel-env, *jwt-env]
+      # *sorcha-connections supplies ConnectionStrings__Sorcha__{Postgres,Mongo,Redis}
+      # used by the Feature 118 SignalR backplane (AddSorchaHub) via the SorchaConnections
+      # cascade. The legacy ConnectionStrings__Redis below stays for the Aspire-named
+      # alias used by other code paths in Register Service.
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: register-service
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
@@ -410,6 +443,10 @@ services:
       ASPNETCORE_URLS: http://+:8080
       # Tenant service is the JWT authority - it issues tokens using the installation name
       JwtSettings__SigningKeySource: Configuration
+      # Dev/demo: allow a SystemAdmin to provision pre-verified org-scoped users (bypasses the
+      # email-verification loop). OFF by default in code; enabled here for local dev + walkthroughs.
+      # MUST stay false/unset in production. See OrgProvisioningService (spec 136 follow-up).
+      Platform__AllowAdminVerifiedUserCreation: "true"
       # Service-to-service auth for Wallet Service calls during wallet link verification
       ServiceAuth__ClientId: tenant-service
       ServiceAuth__ClientSecret: tenant-service-secret
@@ -481,6 +518,11 @@ services:
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
+      # Feature 108: the peer-service is the cross-node fan-out RECEIVER — when it accepts a
+      # forwarded submission for a register this node owns, it submits it to the local validator
+      # for sealing. Without this address the forward is rejected ("Validator Service address not
+      # configured") and the cross-node write hop never seals on the owner.
+      ServiceClients__ValidatorService__Address: http://validator-service:8080
       # Node identity and network configuration
       PeerService__NodeId: "${PEER_NODE_ID:-local-peer.sorcha.dev}"
       PeerService__PublicAddress: "${PEER_PUBLIC_ADDRESS:-}"
@@ -526,7 +568,13 @@ services:
       - "${VALIDATOR_HTTP_PORT:-5800}:8080"   # HTTP REST API and health checks
       - "${VALIDATOR_GRPC_PORT:-5801}:8081"   # gRPC endpoint
     environment:
-      <<: [*otel-env, *jwt-env]
+      # *sorcha-connections supplies ConnectionStrings__Sorcha__{Postgres,Mongo,Redis}
+      # for the cascade-aware resolver in VerifiedQueueExtensions / IRegisterRepository
+      # extensions. ConnectionStrings__Redis below stays for the Aspire-named
+      # AddRedisClient("redis") path until that's migrated. Required for
+      # IVerifiedTransactionQueue → RedisVerifiedTransactionQueue under Staging
+      # (Feature 113 storage audit / issue #498).
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: validator-service
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
@@ -620,38 +668,46 @@ services:
       - sorcha-network
 
   # Feature 114: Citizen wallet PWA (standalone Blazor WASM served via nginx)
-  sorcha-citizen-wallet:
+  sorcha-wallet-pwa:
     build:
       context: .
-      dockerfile: src/Apps/Sorcha.Citizen.Wallet/Dockerfile
-    image: sorchadev/citizen-wallet:latest
-    container_name: sorcha-citizen-wallet
+      dockerfile: src/Apps/Sorcha.Wallet.Pwa/Dockerfile
+    image: sorchadev/wallet-pwa:latest
+    container_name: sorcha-wallet-pwa
     restart: unless-stopped
     mem_limit: 128m
-    # Reachable internally via http://sorcha-citizen-wallet:8080 (gateway routes /wallet/*).
+    # Reachable internally via http://sorcha-wallet-pwa:8080 (gateway routes /wallet/*).
     # Optionally pin a host port for direct dev access.
     ports:
-      - "${CITIZEN_WALLET_PORT:-7400}:8080"
+      - "${WALLET_PWA_PORT:-7400}:8080"
     networks:
       - sorcha-network
     depends_on:
       - api-gateway
 
+  # Feature 127: Strathcarron Council sample portal — NOT part of the platform
+  # deliverable. Its service definition lives in
+  # samples/strathcarron-portal/docker-compose.yml as an opt-in overlay. Run
+  # with both compose files together:
+  #   docker compose -f docker-compose.yml \
+  #                  -f samples/strathcarron-portal/docker-compose.yml up -d
+  # See docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md.
+
   # Feature 114: Reference verifier (Blazor Server)
-  sorcha-citizen-verifier:
+  sorcha-verifier:
     build:
       context: .
-      dockerfile: src/Apps/Sorcha.Citizen.Verifier/Dockerfile
-    image: sorchadev/citizen-verifier:latest
-    container_name: sorcha-citizen-verifier
+      dockerfile: src/Apps/Sorcha.Verifier/Dockerfile
+    image: sorchadev/verifier:latest
+    container_name: sorcha-verifier
     restart: unless-stopped
     <<: *app-hardening
     mem_limit: 256m
     ports:
-      - "${CITIZEN_VERIFIER_PORT:-7401}:8080"
+      - "${VERIFIER_PORT:-7401}:8080"
     environment:
       <<: [*otel-env, *jwt-env]
-      OTEL_SERVICE_NAME: citizen-verifier
+      OTEL_SERVICE_NAME: verifier
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
       ApiGateway__BaseUrl: http://api-gateway:8080
@@ -672,12 +728,23 @@ services:
     mem_limit: 512m
     # No ports published - accessed via API Gateway
     environment:
-      <<: [*otel-env, *jwt-env]
+      # *sorcha-connections supplies ConnectionStrings__Sorcha__Redis for the
+      # IAtomicDistributedCache cascade — required if/when haip-service's
+      # ASPNETCORE_ENVIRONMENT is flipped to Staging (Feature 113 audit / issue #498).
+      <<: [*otel-env, *jwt-env, *sorcha-connections]
       OTEL_SERVICE_NAME: haip-service
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Redis: redis:6379
       Haip__IssuerUrl: http://127.0.0.1
+      # Service-to-service auth — used by PresentationCallbackRelay (Feature 111)
+      # to authenticate the callback into Blueprint Service. Seeded by
+      # Tenant Service DatabaseInitializer as HaipServicePrincipalId.
+      ServiceClients__BlueprintService__Address: http://blueprint-service:8080
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+      ServiceAuth__ClientId: service-haip
+      ServiceAuth__ClientSecret: haip-service-secret
+      ServiceAuth__Scopes: "blueprints:read"
     depends_on:
       redis:
         condition: service_healthy
@@ -786,6 +853,38 @@ services:
       - sorcha-network
     stdin_open: true  # Enable interactive stdin for MCP stdio transport
     tty: true         # Allocate a pseudo-TTY
+
+  # MCP server, Streamable HTTP transport (spec 139 US3). Always-on remote surface:
+  # the per-request Authorization bearer is validated against the installation issuer +
+  # tier audiences (JWT env below) before any tool dispatches. Exposed to agents through
+  # the gateway /mcp route. Backends are reached via the gateway so the platform authorizes
+  # the forwarded caller token authoritatively.
+  mcp-server-http:
+    build:
+      context: .
+      dockerfile: src/Apps/Sorcha.McpServer/Dockerfile
+    image: sorchadev/mcp-server:latest
+    container_name: sorcha-mcp-server-http
+    <<: *app-hardening
+    mem_limit: 512m
+    command: [ "--transport", "http" ]
+    environment:
+      <<: [ *otel-env, *jwt-env ]
+      OTEL_SERVICE_NAME: mcp-server-http
+      DOTNET_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      # Backend communication flows through the gateway so the forwarded caller token is
+      # authorized by the platform (not by anonymous service-to-service trust).
+      ServiceClients__BlueprintService__Address: http://api-gateway:8080
+      ServiceClients__WalletService__Address: http://api-gateway:8080
+      ServiceClients__RegisterService__Address: http://api-gateway:8080
+      ServiceClients__TenantService__Address: http://api-gateway:8080
+      ServiceClients__ValidatorService__Address: http://api-gateway:8080
+    depends_on:
+      - api-gateway
+      - aspire-dashboard
+    networks:
+      - sorcha-network
 
 networks:
   # Bridge network for all services

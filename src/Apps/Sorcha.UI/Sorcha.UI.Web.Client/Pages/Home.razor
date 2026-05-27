@@ -21,6 +21,7 @@
 @inject IWalletApiService WalletApi
 @inject ILocalizationService Loc
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 
 <PageTitle>@Loc.T("dashboard.pageTitle")</PageTitle>
 
@@ -41,131 +42,147 @@ else
 {
     <MudText Typo="Typo.h4" Class="mb-4">@Loc.T("dashboard.welcomeBack", _displayName)</MudText>
 
-    @* Stats Cards — platform-wide stats visible to admins and auditors *@
+    @* Feature 131 / UX-005 — stats cards visible to admins/auditors. Two
+       shapes discriminated by @_stats.Scope: "org" renders the 4 org-scoped
+       cards, "platform" renders the 6 platform-wide cards. The Org/Platform
+       toggle is only visible to SystemAdmin. *@
     <AuthorizeView Roles="Administrator,SystemAdmin,Auditor">
         <Authorized Context="statsContext">
-    <MudGrid Class="mb-6">
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Elevation="2">
-                <MudCardContent Class="d-flex flex-column align-center pa-4">
-                    <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" Size="Size.Large" Class="mb-2" />
-                    @if (_isLoading)
-                    {
-                        <MudSkeleton Width="40px" Height="32px" />
-                    }
-                    else if (!_stats.IsLoaded)
-                    {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.h5">@_stats.ActiveBlueprints</MudText>
-                    }
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.blueprints")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Elevation="2">
-                <MudCardContent Class="d-flex flex-column align-center pa-4">
-                    <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Color="Color.Secondary" Size="Size.Large" Class="mb-2" />
-                    @if (_isLoading)
-                    {
-                        <MudSkeleton Width="40px" Height="32px" />
-                    }
-                    else if (!_stats.IsLoaded)
-                    {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.h5">@_stats.TotalWallets</MudText>
-                    }
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.wallets")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Elevation="2">
-                <MudCardContent Class="d-flex flex-column align-center pa-4">
-                    <MudIcon Icon="@Icons.Material.Filled.Receipt" Color="Color.Info" Size="Size.Large" Class="mb-2" />
-                    @if (_isLoading)
-                    {
-                        <MudSkeleton Width="40px" Height="32px" />
-                    }
-                    else if (!_stats.IsLoaded)
-                    {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.h5">@_stats.RecentTransactions</MudText>
-                    }
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.transactions")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Elevation="2">
-                <MudCardContent Class="d-flex flex-column align-center pa-4">
-                    <MudIcon Icon="@Icons.Material.Filled.Hub" Color="Color.Success" Size="Size.Large" Class="mb-2" />
-                    @if (_isLoading)
-                    {
-                        <MudSkeleton Width="40px" Height="32px" />
-                    }
-                    else if (!_stats.IsLoaded)
-                    {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.h5">@_stats.ConnectedPeers</MudText>
-                    }
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.peers")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Elevation="2">
-                <MudCardContent Class="d-flex flex-column align-center pa-4">
-                    <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Warning" Size="Size.Large" Class="mb-2" />
-                    @if (_isLoading)
-                    {
-                        <MudSkeleton Width="40px" Height="32px" />
-                    }
-                    else if (!_stats.IsLoaded)
-                    {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.h5">@_stats.ActiveRegisters</MudText>
-                    }
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.registers")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Elevation="2">
-                <MudCardContent Class="d-flex flex-column align-center pa-4">
-                    <MudIcon Icon="@Icons.Material.Filled.Business" Color="Color.Dark" Size="Size.Large" Class="mb-2" />
-                    @if (_isLoading)
-                    {
-                        <MudSkeleton Width="40px" Height="32px" />
-                    }
-                    else if (!_stats.IsLoaded)
-                    {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.h5">@_stats.TotalOrganizations</MudText>
-                    }
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.organizations")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-    </MudGrid>
+    <AuthorizeView Roles="SystemAdmin" Context="scopeToggleContext">
+        <Authorized>
+            <MudStack Row="true" Justify="Justify.FlexEnd" Class="mb-2">
+                <MudButtonGroup Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                data-testid="dashboard-scope-toggle">
+                    <MudButton OnClick="@(() => SetScopeAsync("org"))"
+                               Color="@(_scope == "org" ? Color.Primary : Color.Default)"
+                               Variant="@(_scope == "org" ? Variant.Filled : Variant.Outlined)"
+                               data-testid="dashboard-scope-org">@Loc.T("dashboard.scope.org")</MudButton>
+                    <MudButton OnClick="@(() => SetScopeAsync("platform"))"
+                               Color="@(_scope == "platform" ? Color.Primary : Color.Default)"
+                               Variant="@(_scope == "platform" ? Variant.Filled : Variant.Outlined)"
+                               data-testid="dashboard-scope-platform">@Loc.T("dashboard.scope.platform")</MudButton>
+                </MudButtonGroup>
+            </MudStack>
+        </Authorized>
+    </AuthorizeView>
+
+    @if (_stats.Scope == "org")
+    {
+        <MudGrid Class="mb-6">
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" data-testid="dashboard-card-active-users">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Group" Color="Color.Primary" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else { <MudText Typo="Typo.h5">@(_stats.ActiveUsers ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.activeUsers")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" data-testid="dashboard-card-pending-invitations">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Email" Color="Color.Secondary" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else { <MudText Typo="Typo.h5">@(_stats.PendingInvitations ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.pendingInvitations")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" data-testid="dashboard-card-subscribed-registers">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Warning" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else { <MudText Typo="Typo.h5">@(_stats.SubscribedRegisters ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.subscribedRegisters")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" data-testid="dashboard-card-recent-transactions">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Receipt" Color="Color.Info" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else { <MudText Typo="Typo.h5">@(_stats.OrgRecentTransactions ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.recentTransactions")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
+    else
+    {
+        @* Platform-scope view — SystemAdmin only via the toggle above. *@
+        <MudGrid Class="mb-6">
+            <MudItem xs="12" sm="6" md="4" lg="2">
+                <MudCard Elevation="2" data-testid="dashboard-card-blueprints">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else if (!_stats.IsLoaded) { <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText> }
+                        else { <MudText Typo="Typo.h5">@(_stats.ActiveBlueprints ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.blueprints")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" lg="2">
+                <MudCard Elevation="2" data-testid="dashboard-card-wallets">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Color="Color.Secondary" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else if (!_stats.IsLoaded) { <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText> }
+                        else { <MudText Typo="Typo.h5">@(_stats.TotalWallets ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.wallets")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" lg="2">
+                <MudCard Elevation="2" data-testid="dashboard-card-platform-transactions">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Receipt" Color="Color.Info" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else if (!_stats.IsLoaded) { <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText> }
+                        else { <MudText Typo="Typo.h5">@(_stats.PlatformRecentTransactions ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.transactions")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" lg="2">
+                <MudCard Elevation="2" data-testid="dashboard-card-peers">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Hub" Color="Color.Success" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else if (!_stats.IsLoaded) { <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText> }
+                        else { <MudText Typo="Typo.h5">@(_stats.ConnectedPeers ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.peers")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" lg="2">
+                <MudCard Elevation="2" data-testid="dashboard-card-platform-registers">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Warning" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else if (!_stats.IsLoaded) { <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText> }
+                        else { <MudText Typo="Typo.h5">@(_stats.PlatformActiveRegisters ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.registers")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" lg="2">
+                <MudCard Elevation="2" data-testid="dashboard-card-organizations">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Business" Color="Color.Dark" Size="Size.Large" Class="mb-2" />
+                        @if (_isLoading) { <MudSkeleton Width="40px" Height="32px" /> }
+                        else if (!_stats.IsLoaded) { <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText> }
+                        else { <MudText Typo="Typo.h5">@(_stats.TotalOrganizations ?? 0)</MudText> }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.organizations")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
         </Authorized>
     </AuthorizeView>
 
@@ -241,7 +258,10 @@ else
     private bool _isRefreshing;
     private bool _hasDefaultWallet;
     private bool _canSeeAdminDashboard;
+    private bool _isSystemAdmin;
     private string _displayName = string.Empty;
+    private string _platformUserId = string.Empty;
+    private string _scope = "org"; // Feature 131 / UX-005 — default for everyone
     private System.Timers.Timer? _refreshTimer;
     private bool _disposed;
 
@@ -259,6 +279,15 @@ else
         _canSeeAdminDashboard = authState.User.IsInRole("Administrator")
                                 || authState.User.IsInRole("SystemAdmin")
                                 || authState.User.IsInRole("OrganizationAdmin");
+        _isSystemAdmin = authState.User.IsInRole("SystemAdmin");
+        _platformUserId = authState.User.FindFirst("platform_user_id")?.Value ?? string.Empty;
+
+        // Feature 131 — restore SystemAdmin's persisted scope choice. Other
+        // roles always stay on "org" (the only view they can read).
+        if (_isSystemAdmin)
+        {
+            await RestoreScopeFromLocalStorageAsync();
+        }
 
         var wallets = await WalletApi.GetWalletsAsync();
         var defaultWallet = await WalletPreferences.GetSmartDefaultAsync(wallets);
@@ -266,12 +295,49 @@ else
 
         if (_canSeeAdminDashboard)
         {
-            _stats = await DashboardService.GetDashboardStatsAsync();
+            _stats = await DashboardService.GetDashboardStatsAsync(_scope);
             await LoadAlertsAsync();
         }
         _isLoading = false;
 
         StartAutoRefresh();
+    }
+
+    private async Task RestoreScopeFromLocalStorageAsync()
+    {
+        if (string.IsNullOrEmpty(_platformUserId)) return;
+        try
+        {
+            var key = $"dashboard-scope-{_platformUserId}";
+            var stored = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", key);
+            if (string.Equals(stored, "platform", StringComparison.OrdinalIgnoreCase))
+            {
+                _scope = "platform";
+            }
+        }
+        catch
+        {
+            // Non-critical UI element — silent on storage failure.
+        }
+    }
+
+    private async Task SetScopeAsync(string scope)
+    {
+        if (_scope == scope) return;
+        _scope = scope;
+        if (_isSystemAdmin && !string.IsNullOrEmpty(_platformUserId))
+        {
+            try
+            {
+                var key = $"dashboard-scope-{_platformUserId}";
+                await JSRuntime.InvokeVoidAsync("localStorage.setItem", key, scope);
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+        await RefreshDashboardAsync();
     }
 
     private void StartAutoRefresh()
@@ -290,7 +356,7 @@ else
         _isRefreshing = true;
         StateHasChanged();
 
-        _stats = await DashboardService.GetDashboardStatsAsync();
+        _stats = await DashboardService.GetDashboardStatsAsync(_scope);
         await LoadAlertsAsync();
 
         _isRefreshing = false;

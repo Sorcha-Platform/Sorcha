@@ -4,24 +4,27 @@
 @using MudBlazor
 @using Sorcha.UI.Core.Services.Authentication
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Theme
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Models.Credentials
+@using Sorcha.UI.Core.Models.Registers
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ITokenRefreshService TokenRefreshService
-@inject IActivityLogService ActivityLogService
 @inject IThemeService ThemeService
 @inject IJSRuntime JSRuntime
-@inject EventsHubConnection EventsHub
-@inject ActionsHubConnection ActionsHub
-@inject ISnackbar Snackbar
+@inject BlueprintHubConnection BlueprintHub
+@inject TenantHubConnection TenantHub
+@inject IInboxApiService InboxApi
 @inject ILocalizationService Loc
-@inject IPendingActionService PendingActionService
 
-<MudThemeProvider Theme="_theme" IsDarkMode="@_isDarkMode" />
+<MudThemeProvider Theme="SorchaMudTheme.Default" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
-<MudSnackbarProvider />
+@* Snackbar Phase 6 (closer): MudSnackbarProvider unmounted. Every user
+   feedback path now goes through IInlineFeedback / inbox writers / CopyButton /
+   inline MudAlert. CI gate (scripts/check-no-snackbar.ps1) keeps regressions
+   out at source level. *@
 
 <CascadingAuthenticationState>
 <MudLayout>
@@ -32,18 +35,31 @@
         <AuthorizeView>
             <Authorized>
                 <OrgSwitcher />
-                <MudIconButton Icon="@Icons.Material.Filled.Inbox" Color="Color.Inherit" OnClick="@TogglePendingInbox" Title="Pending Actions">
-                    @if (_pendingActionCount > 0)
+                @* Feature 118 — durable inbox bell. Single notification surface
+                   after retirement of the legacy ActivityLogPanel + PendingActionInbox
+                   in PRs #538 / this PR. *@
+                <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="@ToggleInboxPanel" Title="Inbox"
+                               Class="@(_badgeWiggle ? "inbox-bell-wiggle" : null)">
+                    @if (_inboxUnreadCount > 0)
                     {
-                        <MudBadge Content="@_pendingActionCount" Color="Color.Warning" Overlap="true" />
+                        <MudBadge Content="@_inboxUnreadCount" Color="Color.Primary" Overlap="true" />
                     }
                 </MudIconButton>
-                <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="@ToggleActivityLog" Title="Activity Log">
-                    @if (_unreadCount > 0)
-                    {
-                        <MudBadge Content="@_unreadCount" Color="Color.Error" Overlap="true" />
-                    }
-                </MudIconButton>
+                @* Feature 118 T105 — inline reconnect affordance driven by the
+                   inbox connection state. No blocking toast. *@
+                @if (_inboxConnectionStatus is ConnectionStatus.Reconnecting or ConnectionStatus.Disconnected)
+                {
+                    <MudTooltip Text="@_reconnectTooltip" Placement="Placement.Bottom">
+                        <MudChip T="string"
+                                 Icon="@Icons.Material.Filled.SyncProblem"
+                                 Color="Color.Warning"
+                                 Size="Size.Small"
+                                 Variant="Variant.Text"
+                                 Class="ml-2">
+                            Reconnecting…
+                        </MudChip>
+                    </MudTooltip>
+                }
                 <UserProfileMenu />
             </Authorized>
             <NotAuthorized>
@@ -241,15 +257,28 @@
 
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-4" Style="padding-bottom: 40px;">
+            @* Feature 128 US2 (FR-024) — nag-banner for signed-in citizens
+               with zero paired devices. Self-gates on IHasPairedDeviceProbe;
+               dismissable per-session. *@
+            <AuthorizeView>
+                <Authorized>
+                    <Sorcha.UI.Core.Components.Pairing.PairingNagBanner />
+                </Authorized>
+            </AuthorizeView>
+            @* Phase 1 of the Snackbar retirement — inline feedback host
+               renders at the top of the content region. Stays empty (and
+               occupies no vertical space) until a page surfaces a message
+               via IInlineFeedback. *@
+            <Sorcha.UI.Core.Components.Feedback.InlineFeedbackHost />
             @Body
         </MudContainer>
     </MudMainContent>
     <StatusFooter />
-    <ActivityLogPanel @bind-IsOpen="_activityLogOpen" OnEventsRead="RefreshUnreadCount" />
     <OperationNotificationListener />
     <CryptoProgressPopover />
-    @* PendingActionToast removed — activity log panel now handles all notifications *@
-    <PendingActionInbox @bind-IsOpen="_pendingInboxOpen" />
+
+    @* Feature 118 — durable inbox UI. *@
+    <InboxPanel @bind-IsOpen="_inboxPanelOpen" />
 </MudLayout>
 
 </CascadingAuthenticationState>
@@ -257,10 +286,25 @@
 @code {
     private bool _drawerOpen = true;
     private bool _tokenRefreshStarted;
-    private bool _activityLogOpen;
-    private bool _pendingInboxOpen;
-    private int _unreadCount;
-    private int _pendingActionCount;
+    private bool _inboxPanelOpen;
+    private int _inboxUnreadCount;
+    private ConnectionStatus _inboxConnectionStatus = ConnectionStatus.Connecting;
+    private string _reconnectTooltip = "Reconnecting to the notification service…";
+
+    private void OnTenantHubConnectionChanged(ConnectionState state)
+    {
+        InvokeAsync(() =>
+        {
+            _inboxConnectionStatus = state.Status;
+            _reconnectTooltip = state.Status switch
+            {
+                ConnectionStatus.Reconnecting => $"Reconnecting to the notification service (attempt {state.ReconnectAttempts})…",
+                ConnectionStatus.Disconnected => "Notification service disconnected — retrying…",
+                _ => "Connected"
+            };
+            StateHasChanged();
+        });
+    }
     private int _pendingCredentialCount;
     private bool _isDarkMode;
 
@@ -285,20 +329,23 @@
             Loc.OnLanguageChanged += OnLanguageChanged;
             await Loc.InitializeAsync();
 
-            EventsHub.OnUnreadCountUpdated += OnUnreadCountUpdated;
-            EventsHub.OnPendingActionReceived += OnPendingActionReceived;
+            BlueprintHub.OnCredentialReceived += OnCredentialReceived;
+            BlueprintHub.OnPendingCredentialCountUpdated += OnPendingCredentialCountUpdated;
+
+            // Feature 118 — TenantHub is the authoritative source of the unread
+            // bell badge after retirement of the legacy ActivityLogPanel.
+            TenantHub.OnInboxUnreadCountUpdated += OnInboxUnreadCountUpdated;
+            // T105 — drive the inline "Reconnecting…" affordance off the inbox
+            // connection state.
+            TenantHub.OnConnectionStateChanged += OnTenantHubConnectionChanged;
             try
             {
-                await EventsHub.ConnectAsync();
-                await RefreshPendingActionCount();
+                await TenantHub.StartAsync();
             }
             catch (Exception)
             {
-                // Hub may be unavailable — SignalR will auto-reconnect
+                // Hub may be unavailable — auto-reconnect handles transient outages.
             }
-
-            ActionsHub.OnCredentialReceived += OnCredentialReceived;
-            ActionsHub.OnPendingCredentialCountUpdated += OnPendingCredentialCountUpdated;
 
             StateHasChanged();
         }
@@ -308,11 +355,11 @@
     {
         ThemeService.OnThemeChanged -= OnThemeChanged;
         Loc.OnLanguageChanged -= OnLanguageChanged;
-        EventsHub.OnUnreadCountUpdated -= OnUnreadCountUpdated;
-        EventsHub.OnPendingActionReceived -= OnPendingActionReceived;
-        ActionsHub.OnCredentialReceived -= OnCredentialReceived;
-        ActionsHub.OnPendingCredentialCountUpdated -= OnPendingCredentialCountUpdated;
-        await EventsHub.DisconnectAsync();
+        BlueprintHub.OnCredentialReceived -= OnCredentialReceived;
+        BlueprintHub.OnPendingCredentialCountUpdated -= OnPendingCredentialCountUpdated;
+        TenantHub.OnInboxUnreadCountUpdated -= OnInboxUnreadCountUpdated;
+        TenantHub.OnConnectionStateChanged -= OnTenantHubConnectionChanged;
+        await TenantHub.DisposeAsync();
         await TokenRefreshService.StopAsync();
     }
 
@@ -327,74 +374,57 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private const int IncrementByOneSignal = -1;
-
-    private void OnUnreadCountUpdated(int count)
+    /// <summary>
+    /// Feature 118 — TenantHub inbox unread-count handler. Authoritative source
+    /// for the bell badge after retirement of the legacy ActivityLogPanel.
+    /// </summary>
+    /// <remarks>
+    /// Phase 6 of the Snackbar retirement deletes PendingActionToast — the
+    /// CSS wiggle on the badge below replaces the popup as the "look, new
+    /// thing landed" cue.
+    /// </remarks>
+    private Task OnInboxUnreadCountUpdated(int unreadCount, DateTimeOffset occurredAt, string traceId)
     {
-        _unreadCount = count == IncrementByOneSignal ? _unreadCount + 1 : count;
+        if (unreadCount > _inboxUnreadCount)
+        {
+            _ = WiggleBadgeAsync();
+        }
+        _inboxUnreadCount = unreadCount;
         InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
     }
 
-    private readonly MudTheme _theme = new()
+    private bool _badgeWiggle;
+
+    private async Task WiggleBadgeAsync()
     {
-        PaletteLight = new PaletteLight()
-        {
-            Primary = "#667eea",
-            Secondary = "#764ba2",
-            AppbarBackground = "#667eea",
-        },
-        PaletteDark = new PaletteDark()
-        {
-            Primary = "#667eea",
-            Secondary = "#764ba2",
-            AppbarBackground = "#1e1e1e",
-            Surface = "#1e1e1e",
-            Background = "#121212",
-            DrawerBackground = "#1e1e1e",
-            TextPrimary = "#e0e0e0",
-            TextSecondary = "#b0b0b0",
-            LinesDefault = "#333333",
-        }
-    };
+        _badgeWiggle = true;
+        await InvokeAsync(StateHasChanged);
+        // Wiggle keyframe runs for ~700ms; clear the class shortly after so
+        // the next inbox event can re-trigger it.
+        await Task.Delay(800);
+        _badgeWiggle = false;
+        await InvokeAsync(StateHasChanged);
+    }
 
     private void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
     }
 
-    private void ToggleActivityLog()
+    private void ToggleInboxPanel()
     {
-        _activityLogOpen = !_activityLogOpen;
-    }
-
-    private async Task TogglePendingInbox()
-    {
-        _pendingInboxOpen = !_pendingInboxOpen;
-        if (_pendingInboxOpen)
-        {
-            // Reset badge when opening inbox — user is now viewing pending actions
-            _pendingActionCount = 0;
-        }
-        else
-        {
-            // Refresh count when closing inbox to get accurate server-side count
-            await RefreshPendingActionCount();
-        }
-    }
-
-    private void OnPendingActionReceived(Sorcha.UI.Core.Models.Actions.SignalNotification _)
-    {
-        _pendingActionCount++;
-        InvokeAsync(StateHasChanged);
+        _inboxPanelOpen = !_inboxPanelOpen;
     }
 
     private void OnCredentialReceived(CredentialNotification notification)
     {
-        InvokeAsync(() =>
-        {
-            Snackbar.Add($"New credential from {notification.IssuerName}: {notification.CredentialType}", Severity.Info);
-            StateHasChanged();
-        });
+        // Feature 118 T088 + Snackbar retirement Phase 4 — the hub signal
+        // carries opaque IDs only. WalletInboxWriter.WriteCredentialReceivedAsync
+        // produces the durable bell-drawer entry on the server side
+        // (Phase 2b); there's nothing for this layout handler to surface
+        // beyond keeping its own render fresh for the badge tick.
+        InvokeAsync(StateHasChanged);
     }
 
     private void OnPendingCredentialCountUpdated(int count)
@@ -406,25 +436,13 @@
         });
     }
 
-    private async Task RefreshPendingActionCount()
-    {
-        try
-        {
-            var response = await PendingActionService.GetPendingActionCountAsync();
-            _pendingActionCount = response.Count;
-            StateHasChanged();
-        }
-        catch (Exception)
-        {
-            // Non-critical UI element
-        }
-    }
-
     private async Task RefreshUnreadCount()
     {
         try
         {
-            _unreadCount = await ActivityLogService.GetUnreadCountAsync();
+            // Feature 118 — inbox-only unread count after retirement of the
+            // legacy ActivityLogPanel. The TenantHub event keeps it live.
+            _inboxUnreadCount = await InboxApi.GetUnreadCountAsync();
             StateHasChanged();
         }
         catch (Exception)

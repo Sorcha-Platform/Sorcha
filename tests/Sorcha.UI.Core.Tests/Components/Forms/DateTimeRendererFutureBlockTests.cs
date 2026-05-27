@@ -114,4 +114,21 @@ public class DateTimeRendererFutureBlockTests
             .Should().BeFalse();
         bound.Should().BeNull();
     }
+
+    // --- Caller-side typo → throws (Release WASM strips Debug.Assert; #339) ---
+
+    [Theory]
+    [InlineData("formatMin")]
+    [InlineData("FormatMaximum")]
+    [InlineData("")]
+    public void TryResolveBound_UnknownBoundName_ThrowsArgumentException(string boundName)
+    {
+        var schema = Schema("""{ "type": "string", "format": "date", "formatMaximum": "today" }""");
+
+        var act = () => DateTimeFieldBoundResolver.TryResolveBound(schema, boundName, FixedToday, out _);
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage($"Unknown boundName '{boundName}'*")
+            .And.ParamName.Should().Be("boundName");
+    }
 }

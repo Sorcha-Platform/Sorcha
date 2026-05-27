@@ -2,40 +2,78 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Threading.Channels;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Sorcha.Blueprint.Service.Hubs;
-using Sorcha.Blueprint.Service.Services.Interfaces;
 
 namespace Sorcha.Blueprint.Service.Tests.Integration;
 
 /// <summary>
 /// Integration tests for SignalR real-time notifications.
-/// Tests thin signal notification delivery via ActionsHub.
+/// Tests thin signal notification delivery via BlueprintHub.
 /// </summary>
 public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicationFactory>, IAsyncLifetime
 {
-    private readonly BlueprintServiceWebApplicationFactory _factory;
+    private readonly WebApplicationFactory<Program> _factory;
     private readonly List<HubConnection> _connections = new();
+    private static readonly object _factoryLock = new();
+    private static WebApplicationFactory<Program>? _hardenedFactory;
 
     public SignalRIntegrationTests(BlueprintServiceWebApplicationFactory factory)
     {
-        _factory = factory;
+        // BlueprintServiceWebApplicationFactory's host inherits the .NET default
+        // HostOptions.BackgroundServiceExceptionBehavior = StopHost. Several
+        // background services in Blueprint Service crash inside the test host
+        // (Mongo auth failures, Redis stream subscription, etc. — pre-existing
+        // and orthogonal to SignalR). The first such crash stops the host and
+        // disposes the shared TestServer, breaking every subsequent test.
+        // Wrap the IClassFixture-shared factory in one that flips the policy
+        // to Ignore so the host survives the noisy bg-service environment.
+        // The wrap is cached statically so all test instances in this class
+        // share a single hardened factory.
+        lock (_factoryLock)
+        {
+            _hardenedFactory ??= factory.WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureServices(services =>
+                {
+                    services.Configure<HostOptions>(opt =>
+                    {
+                        opt.BackgroundServiceExceptionBehavior =
+                            BackgroundServiceExceptionBehavior.Ignore;
+                    });
+                });
+            });
+        }
+        _factory = _hardenedFactory;
     }
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
     public async ValueTask DisposeAsync()
     {
-        // Clean up all connections
+        // Clean up all connections. We call StopAsync (so the server-side hub gets a
+        // clean disconnect signal) but deliberately skip DisposeAsync — disposing the
+        // HubConnection eventually disposes the underlying HttpMessageHandler chain,
+        // and on TestServer that tears down shared application state. The connections
+        // become unreachable when the test instance is collected, and the IClassFixture-
+        // scoped factory disposes everything at class teardown.
         foreach (var connection in _connections)
         {
-            if (connection.State == HubConnectionState.Connected)
+            try
             {
-                await connection.StopAsync();
+                if (connection.State == HubConnectionState.Connected)
+                {
+                    await connection.StopAsync();
+                }
             }
-            await connection.DisposeAsync();
+            catch
+            {
+                // Best-effort cleanup; never fail teardown.
+            }
         }
         _connections.Clear();
     }
@@ -169,27 +207,32 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xabcdef1234567890";
-        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
+        var receivedSignal = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionAvailable", signal =>
-        {
-            receivedSignal.Writer.TryWrite(signal);
-        });
+        connection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (instanceId, actionId, occurredAt, traceId) =>
+            {
+                receivedSignal.Writer.TryWrite(new CapturedActionSignal(instanceId, actionId, occurredAt, traceId));
+            });
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToWallet", walletAddress);
 
-        var notificationService = _factory.Services.GetRequiredService<INotificationService>();
+        // Broadcast directly through IHubContext to mirror NotificationService's
+        // wire shape without dragging in its inbox-writer dependency chain
+        // (which transitively requires ServiceAuth:* config not present in
+        // BlueprintServiceWebApplicationFactory). Group construction uses
+        // BlueprintHubGroups per Feature 118 — no inline interpolation.
+        var hub = _factory.Services.GetRequiredService<IHubContext<BlueprintHub, IBlueprintHubClient>>();
 
         // Act
-        await notificationService.NotifyActionAvailableAsync("instance-001", walletAddress);
+        await hub.Clients.Group(BlueprintHubGroups.Wallet(walletAddress))
+            .ActionAvailable("instance-001", string.Empty, DateTimeOffset.UtcNow, "test-trace");
 
         // Assert
         var received = await receivedSignal.Reader.ReadAsync(
             new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
 
-        received.Should().NotBeNull();
-        received.SignalType.Should().Be("action-available");
         received.InstanceId.Should().Be("instance-001");
     }
 
@@ -199,27 +242,27 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xrejected654321";
-        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
+        var receivedSignal = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionRejected", signal =>
-        {
-            receivedSignal.Writer.TryWrite(signal);
-        });
+        connection.On<string, string, DateTimeOffset, string>("ActionRejected",
+            (instanceId, actionId, occurredAt, traceId) =>
+            {
+                receivedSignal.Writer.TryWrite(new CapturedActionSignal(instanceId, actionId, occurredAt, traceId));
+            });
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToWallet", walletAddress);
 
-        var notificationService = _factory.Services.GetRequiredService<INotificationService>();
+        var hub = _factory.Services.GetRequiredService<IHubContext<BlueprintHub, IBlueprintHubClient>>();
 
         // Act
-        await notificationService.NotifyActionRejectedAsync("instance-003", walletAddress);
+        await hub.Clients.Group(BlueprintHubGroups.Wallet(walletAddress))
+            .ActionRejected("instance-003", string.Empty, DateTimeOffset.UtcNow, "test-trace");
 
         // Assert
         var received = await receivedSignal.Reader.ReadAsync(
             new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
 
-        received.Should().NotBeNull();
-        received.SignalType.Should().Be("action-rejected");
         received.InstanceId.Should().Be("instance-003");
     }
 
@@ -229,20 +272,22 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xunsubscribed999";
-        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
+        var receivedSignal = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionAvailable", signal =>
-        {
-            receivedSignal.Writer.TryWrite(signal);
-        });
+        connection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (instanceId, actionId, occurredAt, traceId) =>
+            {
+                receivedSignal.Writer.TryWrite(new CapturedActionSignal(instanceId, actionId, occurredAt, traceId));
+            });
 
         await connection.StartAsync();
         // Note: NOT subscribing to the wallet
 
-        var notificationService = _factory.Services.GetRequiredService<INotificationService>();
+        var hub = _factory.Services.GetRequiredService<IHubContext<BlueprintHub, IBlueprintHubClient>>();
 
         // Act
-        await notificationService.NotifyActionAvailableAsync("instance-nosub", walletAddress);
+        await hub.Clients.Group(BlueprintHubGroups.Wallet(walletAddress))
+            .ActionAvailable("instance-nosub", string.Empty, DateTimeOffset.UtcNow, "test-trace");
 
         // Assert - Should timeout because no notification received
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
@@ -266,21 +311,23 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xafterunsub888";
-        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
+        var receivedSignal = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionAvailable", signal =>
-        {
-            receivedSignal.Writer.TryWrite(signal);
-        });
+        connection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (instanceId, actionId, occurredAt, traceId) =>
+            {
+                receivedSignal.Writer.TryWrite(new CapturedActionSignal(instanceId, actionId, occurredAt, traceId));
+            });
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToWallet", walletAddress);
         await connection.InvokeAsync("UnsubscribeFromWallet", walletAddress);
 
-        var notificationService = _factory.Services.GetRequiredService<INotificationService>();
+        var hub = _factory.Services.GetRequiredService<IHubContext<BlueprintHub, IBlueprintHubClient>>();
 
         // Act
-        await notificationService.NotifyActionAvailableAsync("instance-unsub", walletAddress);
+        await hub.Clients.Group(BlueprintHubGroups.Wallet(walletAddress))
+            .ActionAvailable("instance-unsub", string.Empty, DateTimeOffset.UtcNow, "test-trace");
 
         // Assert - Should timeout
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
@@ -312,13 +359,16 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var connection2 = CreateHubConnection();
         var connection3 = CreateHubConnection();
 
-        var received1 = Channel.CreateUnbounded<SignalNotification>();
-        var received2 = Channel.CreateUnbounded<SignalNotification>();
-        var received3 = Channel.CreateUnbounded<SignalNotification>();
+        var received1 = Channel.CreateUnbounded<CapturedActionSignal>();
+        var received2 = Channel.CreateUnbounded<CapturedActionSignal>();
+        var received3 = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection1.On<SignalNotification>("ActionAvailable", n => received1.Writer.TryWrite(n));
-        connection2.On<SignalNotification>("ActionAvailable", n => received2.Writer.TryWrite(n));
-        connection3.On<SignalNotification>("ActionAvailable", n => received3.Writer.TryWrite(n));
+        connection1.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received1.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
+        connection2.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received2.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
+        connection3.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received3.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
 
         await connection1.StartAsync();
         await connection2.StartAsync();
@@ -328,10 +378,11 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         await connection2.InvokeAsync("SubscribeToWallet", walletAddress);
         await connection3.InvokeAsync("SubscribeToWallet", walletAddress);
 
-        var notificationService = _factory.Services.GetRequiredService<INotificationService>();
+        var hub = _factory.Services.GetRequiredService<IHubContext<BlueprintHub, IBlueprintHubClient>>();
 
         // Act
-        await notificationService.NotifyActionAvailableAsync("instance-multi", walletAddress);
+        await hub.Clients.Group(BlueprintHubGroups.Wallet(walletAddress))
+            .ActionAvailable("instance-multi", string.Empty, DateTimeOffset.UtcNow, "test-trace");
 
         // Assert - All three clients should receive
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -355,11 +406,13 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var connection1 = CreateHubConnection();
         var connection2 = CreateHubConnection();
 
-        var received1 = Channel.CreateUnbounded<SignalNotification>();
-        var received2 = Channel.CreateUnbounded<SignalNotification>();
+        var received1 = Channel.CreateUnbounded<CapturedActionSignal>();
+        var received2 = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection1.On<SignalNotification>("ActionAvailable", n => received1.Writer.TryWrite(n));
-        connection2.On<SignalNotification>("ActionAvailable", n => received2.Writer.TryWrite(n));
+        connection1.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received1.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
+        connection2.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => received2.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
 
         await connection1.StartAsync();
         await connection2.StartAsync();
@@ -367,10 +420,11 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         await connection1.InvokeAsync("SubscribeToWallet", wallet1);
         await connection2.InvokeAsync("SubscribeToWallet", wallet2);
 
-        var notificationService = _factory.Services.GetRequiredService<INotificationService>();
+        var hub = _factory.Services.GetRequiredService<IHubContext<BlueprintHub, IBlueprintHubClient>>();
 
         // Act — only wallet1 should receive
-        await notificationService.NotifyActionAvailableAsync("instance-specific", wallet1);
+        await hub.Clients.Group(BlueprintHubGroups.Wallet(wallet1))
+            .ActionAvailable("instance-specific", string.Empty, DateTimeOffset.UtcNow, "test-trace");
 
         // Assert
         var cts1 = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -404,45 +458,85 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var connection = CreateHubConnection();
         var walletAddress = "0xalltypes123";
 
-        var availableReceived = Channel.CreateUnbounded<SignalNotification>();
-        var rejectedReceived = Channel.CreateUnbounded<SignalNotification>();
+        var availableReceived = Channel.CreateUnbounded<CapturedActionSignal>();
+        var rejectedReceived = Channel.CreateUnbounded<CapturedActionSignal>();
 
-        connection.On<SignalNotification>("ActionAvailable", n => availableReceived.Writer.TryWrite(n));
-        connection.On<SignalNotification>("ActionRejected", n => rejectedReceived.Writer.TryWrite(n));
+        connection.On<string, string, DateTimeOffset, string>("ActionAvailable",
+            (i, a, o, t) => availableReceived.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
+        connection.On<string, string, DateTimeOffset, string>("ActionRejected",
+            (i, a, o, t) => rejectedReceived.Writer.TryWrite(new CapturedActionSignal(i, a, o, t)));
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToWallet", walletAddress);
 
-        var notificationService = _factory.Services.GetRequiredService<INotificationService>();
+        var hub = _factory.Services.GetRequiredService<IHubContext<BlueprintHub, IBlueprintHubClient>>();
 
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
-        // Act & Assert - ActionAvailable
-        await notificationService.NotifyActionAvailableAsync("instance-avail", walletAddress);
+        // Act & Assert - ActionAvailable (method name is the discriminator on the wire).
+        await hub.Clients.Group(BlueprintHubGroups.Wallet(walletAddress))
+            .ActionAvailable("instance-avail", string.Empty, DateTimeOffset.UtcNow, "test-trace");
         var available = await availableReceived.Reader.ReadAsync(cts.Token);
-        available.SignalType.Should().Be("action-available");
+        available.InstanceId.Should().Be("instance-avail");
 
         // Act & Assert - ActionRejected
-        await notificationService.NotifyActionRejectedAsync("instance-reject", walletAddress);
+        await hub.Clients.Group(BlueprintHubGroups.Wallet(walletAddress))
+            .ActionRejected("instance-reject", string.Empty, DateTimeOffset.UtcNow, "test-trace");
         var rejected = await rejectedReceived.Reader.ReadAsync(cts.Token);
-        rejected.SignalType.Should().Be("action-rejected");
+        rejected.InstanceId.Should().Be("instance-reject");
     }
 
     #endregion
 
     #region Helper Methods
 
+    /// <summary>
+    /// Test-only capture record for the multi-arg ActionAvailable / ActionRejected wire shape.
+    /// Mirrors the parameter list on <c>IBlueprintHubClient</c>.
+    /// </summary>
+    private sealed record CapturedActionSignal(
+        string InstanceId, string ActionId, DateTimeOffset OccurredAt, string TraceId);
+
     private HubConnection CreateHubConnection()
     {
+        // Feature 118 (PR #572) retired the legacy /actionshub alias; the canonical
+        // BlueprintHub route is now /hubs/blueprint. The hub is [Authorize]-gated —
+        // BlueprintServiceWebApplicationFactory's TestAuthenticationHandler authenticates
+        // every request with a service-token principal carrying an org_id claim, so the
+        // hub negotiate succeeds and SubscribeToWallet hits the service-token branch
+        // (no per-test access-token wiring required).
+        //
+        // SignalR's HubConnection disposes the HttpMessageHandler returned by the
+        // factory when the connection is disposed. TestServer.CreateHandler() returns
+        // a ClientHandler whose disposal tears down shared TestServer application state.
+        // Across the IClassFixture-scoped factory, the first connection's disposal
+        // would kill the server for every subsequent test. Wrap each handler in a
+        // pass-through DelegatingHandler whose Dispose is a no-op.
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{_factory.Server.BaseAddress}actionshub", options =>
+            .WithUrl($"{_factory.Server.BaseAddress}hubs/blueprint", options =>
             {
-                options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
+                options.HttpMessageHandlerFactory = _ =>
+                    new NonDisposingHandler(_factory.Server.CreateHandler());
             })
             .Build();
 
         _connections.Add(connection);
         return connection;
+    }
+
+    /// <summary>
+    /// DelegatingHandler that swallows disposal of its inner handler so the
+    /// shared TestServer (owned by the IClassFixture-scoped factory) survives
+    /// per-test HubConnection disposal.
+    /// </summary>
+    private sealed class NonDisposingHandler : DelegatingHandler
+    {
+        public NonDisposingHandler(HttpMessageHandler inner) : base(inner) { }
+
+        protected override void Dispose(bool disposing)
+        {
+            // Intentionally do not dispose the inner handler.
+        }
     }
 
     #endregion

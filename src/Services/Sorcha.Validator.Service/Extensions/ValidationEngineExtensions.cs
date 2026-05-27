@@ -29,6 +29,14 @@ public static class ValidationEngineExtensions
         services.Configure<ValidationEngineConfiguration>(
             configuration.GetSection(ValidationEngineConfiguration.SectionName));
 
+        // L1+L2 cache for VAL_CHAIN_PREDECESSOR_LOOKUP. Singleton so workflow-
+        // batch validations (which share the docket's chain prefix) hit the
+        // same cached entries; Redis L2 lets cross-validator nodes share too.
+        // Mirrors the BlueprintCache architecture.
+        services.Configure<ChainTransactionCacheConfiguration>(
+            configuration.GetSection(ChainTransactionCacheConfiguration.SectionName));
+        services.AddSingleton<IChainTransactionCache, ChainTransactionCache>();
+
         // Register wallet utilities for blueprint conformance validation
         services.AddSingleton<IWalletUtilities, WalletUtilities>();
 

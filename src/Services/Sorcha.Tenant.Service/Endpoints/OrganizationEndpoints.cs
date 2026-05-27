@@ -71,7 +71,7 @@ public static class OrganizationEndpoints
             .WithName("ListOrganizations")
             .WithSummary("List organizations")
             .WithDescription("Lists all organizations. Requires administrator role.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<OrganizationListResponse>()
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden);
@@ -103,7 +103,7 @@ public static class OrganizationEndpoints
             .WithName("UpdateOrganization")
             .WithSummary("Update an organization")
             .WithDescription("Updates an existing organization. Requires administrator role.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<OrganizationResponse>()
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status404NotFound)
@@ -114,7 +114,7 @@ public static class OrganizationEndpoints
             .WithName("DeactivateOrganization")
             .WithSummary("Deactivate an organization")
             .WithDescription("Soft deletes an organization. Data retained for 30 days. Requires administrator role.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status401Unauthorized)
@@ -133,7 +133,18 @@ public static class OrganizationEndpoints
             .WithName("AddUserToOrganization")
             .WithSummary("Add user to organization")
             .WithDescription("Adds a user to the organization. Requires administrator role.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
+            .Produces<UserResponse>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
+        group.MapPost("/{organizationId:guid}/users/provision", ProvisionOrgUser)
+            .WithName("ProvisionOrgUser")
+            .WithSummary("Provision an org-scoped password user")
+            .WithDescription("Creates a NEW single-org password user (no public account, no invitation) in the organization. The emailVerified bypass is gated by Platform:AllowAdminVerifiedUserCreation. Requires administrator role.")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<UserResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status404NotFound)
@@ -164,7 +175,7 @@ public static class OrganizationEndpoints
             .WithName("UpdateOrganizationUser")
             .WithSummary("Update organization user")
             .WithDescription("Updates a user in the organization. Requires administrator role.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces<UserResponse>()
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status404NotFound)
@@ -175,7 +186,7 @@ public static class OrganizationEndpoints
             .WithName("RemoveUserFromOrganization")
             .WithSummary("Remove user from organization")
             .WithDescription("Removes a user from the organization. Requires administrator role.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status401Unauthorized)
@@ -186,7 +197,7 @@ public static class OrganizationEndpoints
             .WithName("UnlockUser")
             .WithSummary("Unlock a locked user account")
             .WithDescription("Resets the failed login counter and removes lockout for a user account.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status401Unauthorized)
@@ -196,7 +207,7 @@ public static class OrganizationEndpoints
             .WithName("SuspendUser")
             .WithSummary("Suspend a user account")
             .WithDescription("Suspends a user account, preventing authentication. Active sessions are invalidated.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status401Unauthorized)
@@ -206,7 +217,7 @@ public static class OrganizationEndpoints
             .WithName("ReactivateUser")
             .WithSummary("Reactivate a suspended user account")
             .WithDescription("Reactivates a previously suspended user account.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status200OK)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound)
@@ -217,7 +228,7 @@ public static class OrganizationEndpoints
             .WithName("AdminVerifyEmail")
             .WithSummary("Admin override to mark user email as verified")
             .WithDescription("Allows an organisation administrator to mark a user's email as verified without requiring the email verification loop. Sets EmailVerified=true, clears verification token, records audit event.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound)
@@ -228,7 +239,7 @@ public static class OrganizationEndpoints
             .WithName("ChangeUserRole")
             .WithSummary("Change a user's role")
             .WithDescription("Changes a user's role. Cannot target SystemAdmin users or assign SystemAdmin role.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status404NotFound)
@@ -241,7 +252,7 @@ public static class OrganizationEndpoints
             .WithSummary("Configure organization recovery key pair")
             .WithDescription("Sets the organization's ED25519 recovery public key for wrapping wallet recovery keys. "
                 + "Requires Administrator role.")
-            .RequireAuthorization("RequireAdministrator")
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience")
             .Produces(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status409Conflict);
 
@@ -470,6 +481,7 @@ public static class OrganizationEndpoints
         ChangeUserRoleRequest request,
         IIdentityRepository identityRepository,
         TenantDbContext dbContext,
+        ITenantMembershipInboxWriter membershipInbox,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
@@ -517,6 +529,20 @@ public static class OrganizationEndpoints
             }
         });
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Feature 118 — drop a "your role in {org} changed" inbox entry for the affected user.
+        // Only fires when the target identity is linked to a PlatformUser (PlatformUserId != Empty).
+        // Writer is fail-safe (try/log/swallow internally) — an inbox failure must never
+        // roll back the just-committed role change.
+        if (targetUser.PlatformUserId != Guid.Empty)
+        {
+            await membershipInbox.WriteOrgMembershipRoleChangedAsync(
+                targetUser.PlatformUserId,
+                organizationId,
+                previousRole,
+                request.Role.ToString(),
+                cancellationToken).ConfigureAwait(false);
+        }
 
         return TypedResults.Ok();
     }
@@ -667,6 +693,39 @@ public static class OrganizationEndpoints
         try
         {
             var response = await organizationService.AddUserToOrganizationAsync(
+                organizationId, request, cancellationToken);
+            return TypedResults.Created(
+                $"/api/organizations/{organizationId}/users/{response.Id}", response);
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("not found"))
+        {
+            return TypedResults.NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [ex.ParamName ?? "request"] = [ex.Message]
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["email"] = [ex.Message]
+            });
+        }
+    }
+
+    private static async Task<Results<Created<UserResponse>, NotFound, ValidationProblem>> ProvisionOrgUser(
+        Guid organizationId,
+        ProvisionOrgUserRequest request,
+        IOrganizationService organizationService,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await organizationService.ProvisionOrgUserAsync(
                 organizationId, request, cancellationToken);
             return TypedResults.Created(
                 $"/api/organizations/{organizationId}/users/{response.Id}", response);

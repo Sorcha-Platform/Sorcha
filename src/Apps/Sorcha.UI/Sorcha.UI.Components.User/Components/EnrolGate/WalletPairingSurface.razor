@@ -1,0 +1,216 @@
+@namespace Sorcha.UI.Core.Components.EnrolGate
+@using System.Net.Http.Json
+@using Sorcha.UI.Core.Services.User.Enrolment
+@inject HttpClient Http
+@inject IEnrolPairingSignal PairingSignal
+@implements IAsyncDisposable
+
+@*
+    Feature 126 — Tier 2 (mini-gate) and Tier 3 (post-signup) shared
+    wallet-pairing surface. Calls POST /api/auth/enrol-session at init to
+    obtain the session token + QR URL; renders the hybrid affordance and
+    a status line that flips when DeviceEnrolled fires (or polling
+    surfaces an active device).
+*@
+
+<div class="enrol-pairing" data-testid="enrol-pairing">
+    @if (_minting)
+    {
+        <p class="enrol-pairing__status">Generating your one-time enrolment code…</p>
+    }
+    else if (_mintError is not null)
+    {
+        <p class="enrol-pairing__status enrol-pairing__status--error" data-testid="enrol-mint-error">
+            @_mintError
+        </p>
+        <button type="button" @onclick="MintAsync" class="enrol-pairing__retry">Try again</button>
+    }
+    else if (_minted is not null && _expired)
+    {
+        <p class="enrol-pairing__status enrol-pairing__status--expired" data-testid="enrol-pairing-expired">
+            QR expired — let's get you a new one.
+        </p>
+        <button type="button"
+                class="enrol-pairing__regenerate"
+                data-testid="enrol-regenerate"
+                @onclick="MintAsync">
+            Regenerate code
+        </button>
+    }
+    else if (_minted is not null)
+    {
+        <h2 class="enrol-pairing__heading">@HeadingText</h2>
+        <p class="enrol-pairing__subheading">@SubheadingText</p>
+
+        <HybridQrAffordance QrUrl="@_minted.QrUrl" ExpiresAt="@_minted.ExpiresAt" />
+
+        <p class="enrol-pairing__status" data-testid="enrol-pairing-status">@_statusText</p>
+
+        @if (_manualRecovery)
+        {
+            <button type="button"
+                    class="enrol-pairing__manual"
+                    data-testid="enrol-manual-recovery"
+                    @onclick="OnManualRecoveryClicked">
+                I've enrolled — continue
+            </button>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Bound platform user id — passed from the parent EnrolGateComponent
+    /// after the whoami probe. Required so the pairing signal subscribes
+    /// to the correct hub group.
+    /// </summary>
+    [Parameter, EditorRequired] public Guid PlatformUserId { get; set; }
+
+    /// <summary>
+    /// Tier-aware copy mode. <c>MiniGate</c> renders "Let's pair this
+    /// device with your wallet" — appropriate when the citizen already
+    /// has an account. <c>PostSignup</c> renders "Almost there — open
+    /// your wallet to receive your credential" for the cold-start path.
+    /// </summary>
+    [Parameter] public TierMode Mode { get; set; } = TierMode.PostSignup;
+
+    /// <summary>Fired when a wallet device for this user has been enrolled.</summary>
+    [Parameter] public EventCallback OnPaired { get; set; }
+
+    private MintEnrolSessionResponseShape? _minted;
+    private bool _minting = true;
+    private string? _mintError;
+    private string _statusText = "Waiting for your phone…";
+    private bool _manualRecovery;
+    private bool _expired;
+    private CancellationTokenSource? _expiryWatcher;
+
+    private string HeadingText => Mode == TierMode.MiniGate
+        ? "Let's pair this device with your wallet"
+        : "Almost there — open your wallet";
+
+    private string SubheadingText => Mode == TierMode.MiniGate
+        ? "Scan the code with your phone (or tap the link if you're on mobile)."
+        : "Scan the code with your phone to receive the credential we'll issue.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await MintAsync();
+        if (_minted is not null)
+        {
+            PairingSignal.OnDeviceEnrolled += HandleDeviceEnrolled;
+            PairingSignal.OnManualRecoveryRequired += HandleManualRecovery;
+            await PairingSignal.StartAsync(PlatformUserId, CancellationToken.None);
+        }
+    }
+
+    private async Task MintAsync()
+    {
+        _minting = true;
+        _mintError = null;
+        _manualRecovery = false;
+        _expired = false;
+        _expiryWatcher?.Cancel();
+        _expiryWatcher = new CancellationTokenSource();
+        StateHasChanged();
+
+        try
+        {
+            using var response = await Http.PostAsJsonAsync("/api/auth/enrol-session", new { });
+            if (!response.IsSuccessStatusCode)
+            {
+                _mintError = "Couldn't generate an enrolment code — try again or refresh the page.";
+                return;
+            }
+            _minted = await response.Content.ReadFromJsonAsync<MintEnrolSessionResponseShape>();
+            if (_minted is not null)
+            {
+                _ = WatchForExpiryAsync(_minted.ExpiresAt, _expiryWatcher.Token);
+            }
+        }
+        catch (Exception)
+        {
+            _mintError = "Couldn't reach Sorcha — check your connection.";
+        }
+        finally
+        {
+            _minting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task WatchForExpiryAsync(DateTimeOffset expiresAt, CancellationToken ct)
+    {
+        var delta = expiresAt - DateTimeOffset.UtcNow;
+        if (delta <= TimeSpan.Zero)
+        {
+            _expired = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(delta, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (ct.IsCancellationRequested) return;
+        if (_signalReceived) return;
+
+        _expired = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private bool _signalReceived;
+
+    private async Task HandleDeviceEnrolled(Guid deviceId)
+    {
+        _signalReceived = true;
+        _expiryWatcher?.Cancel();
+        _statusText = "Phone ready ✓ — continuing";
+        StateHasChanged();
+        if (OnPaired.HasDelegate)
+        {
+            await OnPaired.InvokeAsync();
+        }
+    }
+
+    private void HandleManualRecovery()
+    {
+        _manualRecovery = true;
+        _statusText = "Trouble hearing from your phone — tap below if you've enrolled, or refresh this page.";
+        StateHasChanged();
+    }
+
+    private async Task OnManualRecoveryClicked()
+    {
+        if (OnPaired.HasDelegate)
+        {
+            await OnPaired.InvokeAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        PairingSignal.OnDeviceEnrolled -= HandleDeviceEnrolled;
+        PairingSignal.OnManualRecoveryRequired -= HandleManualRecovery;
+        _expiryWatcher?.Cancel();
+        _expiryWatcher?.Dispose();
+        _expiryWatcher = null;
+        try { await PairingSignal.StopAsync(); } catch { /* tolerate dispose errors */ }
+    }
+
+    /// <summary>Local DTO mirroring <c>MintEnrolSessionResponse</c> on the Tenant Service.</summary>
+    public sealed record MintEnrolSessionResponseShape(string SessionToken, string QrUrl, DateTimeOffset ExpiresAt);
+
+    /// <summary>Tier-aware copy mode for the pairing surface.</summary>
+    public enum TierMode
+    {
+        MiniGate,
+        PostSignup,
+    }
+}

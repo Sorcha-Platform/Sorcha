@@ -18,25 +18,43 @@ namespace Sorcha.Validator.Service.Models;
 /// </remarks>
 public class ValidatorDocument
 {
+    /// <summary>Unique identifier for the resource.</summary>
     [BsonId]
     public string Id { get; set; } = string.Empty;
 
+    /// <summary>Identifier of the register.</summary>
     public string RegisterId { get; set; } = string.Empty;
+    /// <summary>Identifier of the validator.</summary>
     public string ValidatorId { get; set; } = string.Empty;
+    /// <summary>Public key material.</summary>
     public string PublicKey { get; set; } = string.Empty;
+    /// <summary>Cryptographic algorithm identifier.</summary>
     public string? Algorithm { get; set; }
+    /// <summary>The grpc endpoint.</summary>
     public string GrpcEndpoint { get; set; } = string.Empty;
+    /// <summary>Current status of the resource.</summary>
     public string Status { get; set; } = string.Empty;
+    /// <summary>Timestamp at which registered occurred (UTC).</summary>
     public DateTimeOffset RegisteredAt { get; set; }
+    /// <summary>Numeric value for order index.</summary>
     public int? OrderIndex { get; set; }
+    /// <summary>Identifier of the registration tx.</summary>
     public string? RegistrationTxId { get; set; }
+    /// <summary>Timestamp at which approved occurred (UTC).</summary>
     public DateTimeOffset? ApprovedAt { get; set; }
+    /// <summary>The approved by.</summary>
     public string? ApprovedBy { get; set; }
+    /// <summary>Timestamp at which suspended occurred (UTC).</summary>
     public DateTimeOffset? SuspendedAt { get; set; }
+    /// <summary>The suspended by.</summary>
     public string? SuspendedBy { get; set; }
+    /// <summary>Timestamp at which revoked occurred (UTC).</summary>
     public DateTimeOffset? RevokedAt { get; set; }
+    /// <summary>The revoked by.</summary>
     public string? RevokedBy { get; set; }
+    /// <summary>Timestamp at which last state change occurred (UTC).</summary>
     public DateTimeOffset LastStateChangeAt { get; set; }
+    /// <summary>Free-form metadata associated with the resource.</summary>
     public Dictionary<string, string>? Metadata { get; set; }
 
     public static ValidatorDocument FromValidatorInfo(string registerId, ValidatorInfo info) => new()

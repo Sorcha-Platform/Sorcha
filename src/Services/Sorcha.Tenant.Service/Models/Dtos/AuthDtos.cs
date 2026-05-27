@@ -25,6 +25,19 @@ public record LoginRequest
     /// If not provided, will look up by email domain or use default organization.
     /// </summary>
     public string? OrganizationSubdomain { get; init; }
+
+    /// <summary>
+    /// Optional explicit trust-tier hint (spec 136): <c>consumer</c> or <c>platform</c>.
+    /// Any other value is ignored. When absent, the tier is derived from <see cref="ReturnTo"/>.
+    /// </summary>
+    public string? Tier { get; init; }
+
+    /// <summary>
+    /// Optional post-authentication destination used to derive the trust tier (spec 136):
+    /// a <c>/wallet</c> path or an allow-listed consumer host ⇒ consumer; otherwise platform
+    /// (the <c>/app</c> SPA is the default platform host).
+    /// </summary>
+    public string? ReturnTo { get; init; }
 }
 
 /// <summary>
@@ -185,6 +198,18 @@ public record RevokeUserTokensRequest
 }
 
 /// <summary>
+/// Configured social providers available for sign-in. Drives the conditional
+/// "Continue with…" buttons on clients that cannot read service config directly
+/// (e.g. the citizen wallet PWA).
+/// </summary>
+public record SocialProvidersResponse
+{
+    /// <summary>Provider names (case as configured) with working credentials on this host.</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("providers")]
+    public required IReadOnlyList<string> Providers { get; init; }
+}
+
+/// <summary>
 /// Request to revoke all tokens for an organization.
 /// </summary>
 public record RevokeOrganizationTokensRequest
@@ -300,6 +325,13 @@ public record Verify2FaRequest
     /// </summary>
     [JsonPropertyName("is_backup_code")]
     public bool IsBackupCode { get; init; }
+
+    /// <summary>
+    /// Optional trust-tier hint (spec 136). Only <c>consumer</c> is honoured —
+    /// a safe downgrade for the wallet. Other values keep the platform default.
+    /// </summary>
+    [JsonPropertyName("tier")]
+    public string? Tier { get; init; }
 }
 
 /// <summary>

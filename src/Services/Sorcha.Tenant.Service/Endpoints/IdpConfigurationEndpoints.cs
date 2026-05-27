@@ -21,7 +21,7 @@ public static class IdpConfigurationEndpoints
     {
         var group = app.MapGroup("/api/organizations/{orgId:guid}/idp")
             .WithTags("Identity Provider Configuration")
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         group.MapGet("/", GetConfiguration)
             .WithName("GetIdpConfiguration")

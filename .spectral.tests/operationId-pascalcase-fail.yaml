@@ -1,0 +1,33 @@
+openapi: "3.1.0"
+info:
+  title: operationId pascalcase fail
+  version: "1.0.0"
+  description: Synthetic fixture; operationIds violate the PascalCase rule.
+  x-mcp-server: "https://example.com/.well-known/mcp.json"
+  x-standards: ["BIP32"]
+paths:
+  /widgets:
+    get:
+      operationId: get_widgets       # snake_case — should fail rule
+      summary: List widgets
+      description: Lists every widget.
+      tags: [widgets]
+      responses:
+        '200':
+          description: OK
+  /widgets/{id}:
+    delete:
+      operationId: deleteWidget      # camelCase — should fail rule
+      summary: Delete a widget
+      description: Removes a widget by id.
+      tags: [widgets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The widget identifier.
+      responses:
+        '204':
+          description: Deleted

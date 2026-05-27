@@ -28,6 +28,8 @@ public interface IOrgCertChainProvider
 /// the tenant root CA. The <see cref="AsJwsChain"/> helper returns both in
 /// the order the JWS spec expects (leaf first).
 /// </summary>
+/// <param name="OrgCertDer">Numeric value for org cert der.</param>
+/// <param name="RootCertDer">Numeric value for root cert der.</param>
 public sealed record OrgCertChain(byte[] OrgCertDer, byte[] RootCertDer)
 {
     /// <summary>

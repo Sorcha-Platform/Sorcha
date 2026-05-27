@@ -11,15 +11,25 @@ namespace Sorcha.Haip.Service.Models;
 /// </summary>
 public class PresentationRequest
 {
+    /// <summary>Unique identifier for the resource.</summary>
     public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>The nonce.</summary>
     public required string Nonce { get; set; }
+    /// <summary>Identifier of the client.</summary>
     public required string ClientId { get; set; }
+    /// <summary>The response uri.</summary>
     public required string ResponseUri { get; set; }
+    /// <summary>The credential type.</summary>
     public required string CredentialType { get; set; }
+    /// <summary>Collection of required claims associated with this resource.</summary>
     public List<string>? RequiredClaims { get; set; }
+    /// <summary>Collection of accepted issuers associated with this resource.</summary>
     public List<string>? AcceptedIssuers { get; set; }
+    /// <summary>Server timestamp when the record was created (UTC).</summary>
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    /// <summary>Timestamp at which the record expires (UTC).</summary>
     public DateTimeOffset ExpiresAt { get; set; }
+    /// <summary>Current state of the resource.</summary>
     public PresentationRequestState State { get; set; } = PresentationRequestState.Pending;
 
     /// <summary>
@@ -28,6 +38,7 @@ public class PresentationRequest
     /// </summary>
     public string StateToken { get; set; } = string.Empty;
 
+    /// <summary>The result.</summary>
     public VerificationResult? Result { get; set; }
 }
 
@@ -47,26 +58,43 @@ public enum PresentationRequestState
 /// </summary>
 public class VerificationResult
 {
+    /// <summary>Indicates whether validation passed.</summary>
     [JsonPropertyName("isValid")]
     public bool IsValid { get; set; }
 
     // TODO(098-#45): Key by input descriptor ID: Dictionary<string, Dictionary<string, object>>
+    /// <summary>Map of verified claims keyed by string.</summary>
     [JsonPropertyName("verifiedClaims")]
     public Dictionary<string, object> VerifiedClaims { get; set; } = new();
 
     // TODO(098-#44): Migrate to structured VerificationError with Kind, Description, InputDescriptorId
+    /// <summary>Collection of error details when the operation did not succeed.</summary>
     [JsonPropertyName("errors")]
     public List<string> Errors { get; set; } = new();
 
+    /// <summary>Flag indicating holder key verified.</summary>
     [JsonPropertyName("holderKeyVerified")]
     public bool HolderKeyVerified { get; set; }
 
+    /// <summary>Flag indicating x5c chain valid.</summary>
     [JsonPropertyName("x5cChainValid")]
     public bool? X5cChainValid { get; set; }
 
+    /// <summary>The status check result.</summary>
     [JsonPropertyName("statusCheckResult")]
     public string? StatusCheckResult { get; set; }
 
+    /// <summary>The issuer.</summary>
     [JsonPropertyName("issuer")]
     public string? Issuer { get; set; }
+
+    /// <summary>
+    /// Feature 135 (T033) — the pinnable trust evidence produced by the unified
+    /// <see cref="Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator"/>: which source vouched,
+    /// the assurance established, and the policy digest. Carried onto spec-079 verification
+    /// receipts so a decision can be re-checked offline (FR-014/FR-015). Null until the trust
+    /// evaluator has run.
+    /// </summary>
+    [JsonPropertyName("trustEvidence")]
+    public Sorcha.Blueprint.Engine.Credentials.TrustEvidence? TrustEvidence { get; set; }
 }

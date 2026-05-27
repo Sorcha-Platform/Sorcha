@@ -2,10 +2,11 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Models.Admin
 @inject IValidatorAdminService ValidatorService
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <MudText Typo="Typo.h6" Class="mb-2">
     <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="mr-1" />
@@ -107,8 +108,14 @@ else
         {
             var success = await ValidatorService.SuspendValidatorAsync(
                 item.RegisterId, item.ValidatorId, "admin", result.Data as string ?? "Suspended by admin");
-            Snackbar.Add(success ? "Validator suspended" : "Failed to suspend — may be the last active validator",
-                success ? Severity.Warning : Severity.Error);
+            if (success)
+            {
+                Feedback.ShowWarning("Validator suspended");
+            }
+            else
+            {
+                Feedback.ShowError("Failed to suspend — may be the last active validator", autoDismissMs: 0);
+            }
             if (success) await LoadValidatorsAsync();
         }
         finally
@@ -124,8 +131,14 @@ else
         {
             var success = await ValidatorService.ReactivateValidatorAsync(
                 item.RegisterId, item.ValidatorId, "admin");
-            Snackbar.Add(success ? "Validator reactivated" : "Failed to reactivate — validator may not be suspended",
-                success ? Severity.Success : Severity.Error);
+            if (success)
+            {
+                Feedback.ShowSuccess("Validator reactivated");
+            }
+            else
+            {
+                Feedback.ShowError("Failed to reactivate — validator may not be suspended", autoDismissMs: 0);
+            }
             if (success) await LoadValidatorsAsync();
         }
         finally
@@ -150,8 +163,14 @@ else
         {
             var success = await ValidatorService.RevokeValidatorAsync(
                 item.RegisterId, item.ValidatorId, "admin", result.Data as string ?? "Revoked by admin");
-            Snackbar.Add(success ? "Validator permanently revoked" : "Failed to revoke",
-                success ? Severity.Warning : Severity.Error);
+            if (success)
+            {
+                Feedback.ShowWarning("Validator permanently revoked");
+            }
+            else
+            {
+                Feedback.ShowError("Failed to revoke", autoDismissMs: 0);
+            }
             if (success) await LoadValidatorsAsync();
         }
         finally

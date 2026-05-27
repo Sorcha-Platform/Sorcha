@@ -46,7 +46,10 @@ public static class CredentialEndpoints
         CredentialOfferService offerService,
         IConfiguration configuration,
         ILoggerFactory loggerFactory,
-        CancellationToken ct)
+        Sorcha.ServiceClients.IssuanceKey.IIssuanceKeyClient issuanceKeyClient,
+        Sorcha.Blueprint.Engine.Credentials.MdocFormatHandler mdocHandler,
+        CancellationToken ct,
+        Sorcha.ServiceClients.Trust.IOrgCertChainProvider? orgCertChainProvider = null)
     {
         var logger = loggerFactory.CreateLogger("Sorcha.Haip.Service.Endpoints.CredentialEndpoints");
 
@@ -88,13 +91,16 @@ public static class CredentialEndpoints
             }, statusCode: StatusCodes.Status401Unauthorized);
         }
 
-        // Validate format
-        if (request.Format != "vc+sd-jwt")
+        // Validate format — must match the offer (feature 135: SD-JWT VC or mso_mdoc).
+        var expectedFormat = offer.Format == Sorcha.Blueprint.Models.Credentials.CredentialFormat.MsoMdoc
+            ? "mso_mdoc"
+            : "vc+sd-jwt";
+        if (request.Format != expectedFormat)
         {
             return Results.BadRequest(new
             {
                 error = "unsupported_credential_format",
-                error_description = $"Format '{request.Format}' is not supported. Use 'vc+sd-jwt'."
+                error_description = $"Format '{request.Format}' does not match the offered format '{expectedFormat}'."
             });
         }
 
@@ -306,6 +312,24 @@ public static class CredentialEndpoints
         var issuerUrl = configuration.GetValue<string>("Haip:IssuerUrl")
             ?? "https://sorcha.example/haip";
 
+        // Feature 120 T039 — ensure the org's VC issuance key + published DID
+        // document exist before signing. Lazy-derives on first issuance for
+        // the org (FR-004), idempotent on retries, non-throwing — falls back
+        // to ephemeral / config signing-key on any wallet failure.
+        if (Guid.TryParse(offer.TenantId, out var issuanceOrgId))
+        {
+            try
+            {
+                await issuanceKeyClient.EnsureAsync(issuanceOrgId, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Issuance key ensure failed for org {OrgId} during HAIP credential mint — DID document publish skipped",
+                    issuanceOrgId);
+            }
+        }
+
         // Use the offer resolved above — every branch below is guaranteed to have
         // a valid offer because the Bearer / lookup gates already rejected the
         // unauthenticated and expired-token cases.
@@ -317,21 +341,129 @@ public static class CredentialEndpoints
 
         try
         {
-            var credential = await minter.MintCredentialAsync(
-                issuerDid: issuerUrl,
-                holderJwk: holderJwk ?? default,
-                credentialType: credentialType,
-                claims: claims,
-                disclosablePaths: disclosablePaths,
-                signingKey: signingKey,
-                algorithm: signingAlgorithm,
-                expiresAt: DateTimeOffset.UtcNow.AddYears(1),
-                ct: ct);
+            string credential;
+
+            // Feature 135 (US3) — resolve the org cert chain for X.509-anchored issuance; fail closed
+            // when it can't be fetched (FR-020/022). Register-anchored issuance carries no chain.
+            IReadOnlyList<byte[]>? x5cChain = null;
+            var x509Anchor = offer.TrustAnchor is Sorcha.Blueprint.Models.Credentials.TrustAnchor.X509Tenant
+                or Sorcha.Blueprint.Models.Credentials.TrustAnchor.X509Lotl;
+            if (x509Anchor)
+            {
+                x5cChain = await ResolveOrgChainAsync(orgCertChainProvider, offer.TenantId, offer.IssuerWalletAddress, logger, ct);
+                if (x5cChain is null)
+                {
+                    logger.LogWarning("X.509-anchored issuance for {Type} has no resolvable cert chain — failing closed", credentialType);
+                    return Results.Json(new
+                    {
+                        error = "issuance_failed",
+                        error_description = "X.509 trust anchor requires a certificate chain, which could not be resolved."
+                    }, statusCode: StatusCodes.Status422UnprocessableEntity);
+                }
+            }
+
+            // Feature 135 (US3) — mso_mdoc issuance dispatch. The mdoc COSE_Sign1 needs the issuer
+            // key locally (the sign-on-behalf path can't produce a COSE signature) and a P-256 holder
+            // device key derived from the proof JWK.
+            if (offer.Format == Sorcha.Blueprint.Models.Credentials.CredentialFormat.MsoMdoc)
+            {
+                byte[] holderDeviceKeyCose;
+                try
+                {
+                    holderDeviceKeyCose = BuildEc2CoseKeyFromJwk(holderJwk.Value);
+                }
+                catch (NotSupportedException ex)
+                {
+                    return Results.BadRequest(new { error = "invalid_proof", error_description = ex.Message });
+                }
+
+                var mdocConfig = new Sorcha.Blueprint.Models.Credentials.CredentialIssuanceConfig
+                {
+                    CredentialType = credentialType,
+                    RecipientParticipantId = "holder",
+                    Format = Sorcha.Blueprint.Models.Credentials.CredentialFormat.MsoMdoc,
+                    TrustAnchor = offer.TrustAnchor
+                };
+
+                byte[] issuedMdoc;
+                try
+                {
+                    issuedMdoc = await mdocHandler.IssueAsync(
+                        mdocConfig, claims, signingKey, signingAlgorithm, holderDeviceKeyCose, x5cChain, ct);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.Json(new { error = "issuance_failed", error_description = ex.Message },
+                        statusCode: StatusCodes.Status422UnprocessableEntity);
+                }
+
+                var (mdocNonce, mdocNonceExpiresIn) = await nonceStore.CreateAsync(ct);
+                logger.LogInformation("Issued mso_mdoc credential, bytes={Length}", issuedMdoc.Length);
+                return Results.Ok(new
+                {
+                    format = "mso_mdoc",
+                    credential = Base64Url.EncodeToString(issuedMdoc),
+                    c_nonce = mdocNonce,
+                    c_nonce_expires_in = mdocNonceExpiresIn
+                });
+            }
+
+            // Feature 120 kid-swap (#605) — try wallet sign-on-behalf when the offer
+            // carries a TenantId for an org with an Active issuance key. The signed
+            // credential carries kid=did:sorcha:org:{addr}#vc-issuance-{n} so verifiers
+            // resolve to the published DID document rather than HAIP's local key.
+            Sorcha.ServiceClients.IssuanceKey.IssuanceSignResult? signResultProbe = null;
+            if (Guid.TryParse(offer.TenantId, out var orgIdForSign))
+            {
+                signResultProbe = await issuanceKeyClient.SignAsync(orgIdForSign, new byte[] { 0 }, ct);
+            }
+
+            if (signResultProbe is not null)
+            {
+                Func<byte[], CancellationToken, Task<byte[]>> externalSigner = async (data, signCt) =>
+                {
+                    var signed = await issuanceKeyClient.SignAsync(orgIdForSign, data, signCt);
+                    if (signed is null)
+                        throw new InvalidOperationException("Issuance sign-on-behalf returned null mid-mint");
+                    return signed.Signature;
+                };
+
+                credential = await minter.MintCredentialWithExternalSignerAsync(
+                    issuerDid: signResultProbe.IssuerDid,
+                    holderJwk: holderJwk ?? default,
+                    credentialType: credentialType,
+                    claims: claims,
+                    disclosablePaths: disclosablePaths,
+                    externalSigner: externalSigner,
+                    algorithm: signResultProbe.Algorithm,
+                    kid: signResultProbe.Kid,
+                    expiresAt: DateTimeOffset.UtcNow.AddYears(1),
+                    ct: ct,
+                    x5cChain: x5cChain);
+            }
+            else
+            {
+                credential = await minter.MintCredentialAsync(
+                    issuerDid: issuerUrl,
+                    holderJwk: holderJwk ?? default,
+                    credentialType: credentialType,
+                    claims: claims,
+                    disclosablePaths: disclosablePaths,
+                    signingKey: signingKey,
+                    algorithm: signingAlgorithm,
+                    expiresAt: DateTimeOffset.UtcNow.AddYears(1),
+                    ct: ct,
+                    x5cChain: x5cChain);
+            }
 
             // Inject issuer public key into JWS header for verifier key resolution.
-            // In production this would be an x5c chain; for dev/walkthrough mode we
-            // embed the issuer's public JWK so the verifier can self-resolve.
-            credential = InjectIssuerJwkInHeader(credential, signingKey, signingAlgorithm);
+            // Skipped on the sign-on-behalf path because kid already points to the
+            // published DID document VM — verifier resolves the key via DID resolution
+            // rather than reading it inline from the JWS header.
+            if (signResultProbe is null)
+            {
+                credential = InjectIssuerJwkInHeader(credential, signingKey, signingAlgorithm);
+            }
 
             // Generate a fresh c_nonce for the next request
             var (newNonce, nonceExpiresIn) = await nonceStore.CreateAsync(ct);
@@ -402,5 +534,63 @@ public static class CredentialEndpoints
         {
             return credential; // Return original on any failure
         }
+    }
+
+    /// <summary>
+    /// Feature 135 (US3) — resolves the leaf-first org cert chain for x5c-attach; returns null on any
+    /// provider failure or when no provider/tenant is available (the caller decides whether that is
+    /// fail-closed). Cancellation propagates.
+    /// </summary>
+    private static async Task<IReadOnlyList<byte[]>?> ResolveOrgChainAsync(
+        Sorcha.ServiceClients.Trust.IOrgCertChainProvider? provider,
+        string? tenantId,
+        string issuerWallet,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        if (provider is null || string.IsNullOrWhiteSpace(tenantId))
+            return null;
+        try
+        {
+            var chain = await provider.GetChainForAsync(tenantId, issuerWallet, ct);
+            return chain?.AsJwsChain();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Org cert chain fetch failed for tenant {TenantId} issuer {IssuerWallet}", tenantId, issuerWallet);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Feature 135 (US3) — builds an EC2/P-256 COSE_Key (kty=2, crv=1, x=-2, y=-3) for the mdoc MSO
+    /// device key from the holder's proof JWK. Throws <see cref="NotSupportedException"/> when the
+    /// JWK is not EC P-256 (mdoc holder binding is P-256 only).
+    /// </summary>
+    internal static byte[] BuildEc2CoseKeyFromJwk(System.Text.Json.JsonElement jwk)
+    {
+        var kty = jwk.TryGetProperty("kty", out var ktyEl) ? ktyEl.GetString() : null;
+        var crv = jwk.TryGetProperty("crv", out var crvEl) ? crvEl.GetString() : null;
+        if (kty != "EC" || crv != "P-256"
+            || !jwk.TryGetProperty("x", out var xEl) || !jwk.TryGetProperty("y", out var yEl))
+        {
+            throw new NotSupportedException("mso_mdoc requires an EC P-256 (ES256) holder key in the proof JWK.");
+        }
+
+        var x = System.Buffers.Text.Base64Url.DecodeFromChars(xEl.GetString()!);
+        var y = System.Buffers.Text.Base64Url.DecodeFromChars(yEl.GetString()!);
+        return Sorcha.Cryptography.Mdoc.Cbor.MdocCbor.Encode(w =>
+        {
+            w.WriteStartMap(4);
+            w.WriteInt32(1); w.WriteInt32(2);   // kty: EC2
+            w.WriteInt32(-1); w.WriteInt32(1);  // crv: P-256
+            w.WriteInt32(-2); w.WriteByteString(x);
+            w.WriteInt32(-3); w.WriteByteString(y);
+            w.WriteEndMap();
+        });
     }
 }

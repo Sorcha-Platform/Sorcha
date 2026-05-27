@@ -173,47 +173,46 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
     #region DELETE /api/totp Tests
 
     [Fact]
-    public async Task Disable_AfterSetup_ReturnsDisabledStatus()
+    public async Task Disable_AfterSetup_WithoutChallenge_Returns401()
     {
-        // Setup first
+        // Feature 116 US3 / FR-024: disable now requires a fresh re-authentication
+        // challenge in X-Auth-Challenge. Calls without the header are rejected
+        // by the RequireAuthChallenge filter before reaching the handler — the
+        // pre-FR-024 "OK + disabled" behaviour is gone by design.
         await _client.PostAsync("/api/totp/setup", null);
 
-        // Disable
         var response = await _client.DeleteAsync("/api/totp");
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var result = await response.Content.ReadFromJsonAsync<TotpStatusDto>();
-        result.Should().NotBeNull();
-        result!.IsEnabled.Should().BeFalse();
-        result.Message.Should().Contain("disabled");
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
-    public async Task Disable_WithoutSetup_ReturnsDisabledStatus()
+    public async Task Disable_WithoutChallenge_Returns401_RegardlessOfSetupState()
     {
-        // Disable with no existing config should still succeed
+        // Same gate fires whether or not TOTP is currently configured —
+        // the filter validates the challenge before the handler runs.
         var response = await _client.DeleteAsync("/api/totp");
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var result = await response.Content.ReadFromJsonAsync<TotpStatusDto>();
-        result.Should().NotBeNull();
-        result!.IsEnabled.Should().BeFalse();
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
-    public async Task Disable_AfterDisable_StatusShowsNotEnabled()
+    public async Task Disable_WithoutChallenge_DoesNotMutateStatus()
     {
-        // Setup and then disable
+        // Belt-and-braces check: the filter rejects the request before any
+        // mutation runs, so a setup-then-failed-disable leaves the user with
+        // their TOTP setup pending intact (not disabled).
         await _client.PostAsync("/api/totp/setup", null);
-        await _client.DeleteAsync("/api/totp");
+        var firstStatus = await _client.GetAsync("/api/totp/status");
+        var firstStatusBody = await firstStatus.Content.ReadFromJsonAsync<TotpStatusDto>();
 
-        // Verify status reflects disabled
-        var response = await _client.GetAsync("/api/totp/status");
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var disable = await _client.DeleteAsync("/api/totp");
+        disable.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
 
-        var result = await response.Content.ReadFromJsonAsync<TotpStatusDto>();
-        result!.IsEnabled.Should().BeFalse();
-        result.VerifiedAt.Should().BeNull();
+        var afterStatus = await _client.GetAsync("/api/totp/status");
+        var afterStatusBody = await afterStatus.Content.ReadFromJsonAsync<TotpStatusDto>();
+        afterStatusBody!.IsEnabled.Should().Be(firstStatusBody!.IsEnabled);
+        afterStatusBody.VerifiedAt.Should().Be(firstStatusBody.VerifiedAt);
     }
 
     [Fact]
@@ -349,11 +348,15 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
         var afterSetupResult = await statusAfterSetup.Content.ReadFromJsonAsync<TotpStatusDto>();
         afterSetupResult!.IsEnabled.Should().BeFalse();
 
-        // 4. Disable — removes config
+        // 4. Disable — Feature 116 US3 / FR-024: now requires X-Auth-Challenge.
+        //    No challenge supplied here → 401. Service-layer disable behaviour
+        //    is unchanged; the gate just lives in the filter now.
         var disableResponse = await _client.DeleteAsync("/api/totp");
-        disableResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        disableResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
 
-        // 5. Status after disable — not enabled
+        // 5. Status unchanged after blocked disable — still not enabled (it
+        //    never was, since we skipped the verify step), and importantly
+        //    not mutated by the rejected disable call.
         var statusAfterDisable = await _client.GetAsync("/api/totp/status");
         var afterDisableResult = await statusAfterDisable.Content.ReadFromJsonAsync<TotpStatusDto>();
         afterDisableResult!.IsEnabled.Should().BeFalse();

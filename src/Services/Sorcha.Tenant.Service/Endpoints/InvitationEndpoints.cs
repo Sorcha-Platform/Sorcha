@@ -24,7 +24,7 @@ public static class InvitationEndpoints
     {
         var group = app.MapGroup("/api/organizations/{organizationId:guid}/invitations")
             .WithTags("Invitations")
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         group.MapPost("/", CreateInvitation)
             .WithName("CreateInvitation")

@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -26,6 +27,8 @@ public class LoginModel : PageModel
     private readonly ILogger<LoginModel> _logger;
     private readonly DemoEnvironmentSettings _demoSettings;
     private readonly ISocialLoginService _socialLoginService;
+    private readonly ReturnToAllowlistOptions _returnToAllowlist;
+    private readonly IPlatformUserDeviceService _deviceService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LoginModel"/> class.
@@ -38,7 +41,9 @@ public class LoginModel : PageModel
         IOrganizationRepository organizationRepository,
         ILogger<LoginModel> logger,
         IOptions<DemoEnvironmentSettings> demoSettings,
-        ISocialLoginService socialLoginService)
+        ISocialLoginService socialLoginService,
+        IOptions<ReturnToAllowlistOptions> returnToAllowlist,
+        IPlatformUserDeviceService deviceService)
     {
         _loginService = loginService;
         _totpService = totpService;
@@ -48,6 +53,8 @@ public class LoginModel : PageModel
         _logger = logger;
         _demoSettings = demoSettings.Value;
         _socialLoginService = socialLoginService;
+        _returnToAllowlist = returnToAllowlist?.Value ?? new ReturnToAllowlistOptions();
+        _deviceService = deviceService;
     }
 
     /// <summary>Demo-environment banner flag — when true the page shows the warning notice.</summary>
@@ -167,7 +174,7 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        var result = await _loginService.LoginAsync(Email, Password, ct);
+        var result = await _loginService.LoginAsync(Email, Password, ResolveRequestedTier(), ct: ct);
 
         if (!result.Success && !result.TwoFactorRequired && !result.OrgSelectionRequired)
         {
@@ -198,7 +205,7 @@ public class LoginModel : PageModel
     private async Task<IActionResult> HandleOrgSelectionAsync(CancellationToken ct)
     {
         var result = await _loginService.CompleteOrgSelectionAsync(
-            PlatformLoginToken!, SelectedOrgId!.Value, ct);
+            PlatformLoginToken!, SelectedOrgId!.Value, ct: ct);
 
         if (!result.Success)
         {
@@ -280,16 +287,40 @@ public class LoginModel : PageModel
             targetUser = user;
         }
 
-        var tokens = await _tokenService.GenerateUserTokenAsync(targetUser, organization, targetUser.PlatformUserId, ct);
+        // Spec 136: 2FA completion mints the destination-derived tier, downgraded to entitlement
+        // (never an explicit request here, so a non-entitled preference simply falls to Consumer).
+        var mintTier = TierResolver.ResolvePreference(ResolveRequestedTier(), isExplicit: false, targetUser.Roles).Tier;
+        var tokens = await _tokenService.GenerateUserTokenAsync(targetUser, organization, targetUser.PlatformUserId, mintTier, ct);
         targetUser.LastLoginAt = DateTimeOffset.UtcNow;
         await _identityRepository.UpdateUserAsync(targetUser, ct);
 
         return RedirectToApp(tokens);
     }
 
+    /// <summary>
+    /// Resolves the trust tier to mint for this login (spec 136). A <c>/wallet</c> ReturnUrl (or an
+    /// allow-listed consumer host) ⇒ Consumer; otherwise Platform — the <c>/app</c> SPA is the
+    /// default platform host, so a missing/unclassifiable ReturnUrl fails safe to Platform.
+    /// </summary>
+    private Tier ResolveRequestedTier() =>
+        RequestedTierResolver.ClassifyReturnTo(ReturnUrl, _returnToAllowlist) ?? Tier.Platform;
+
     private IActionResult RedirectToApp(TokenResponse tokens)
     {
-        var returnUrl = IsValidReturnUrl(ReturnUrl) ? ReturnUrl : "";
+        // Feature 128 US2 — when the citizen has no paired device and no
+        // explicit ReturnUrl override, route them to /app/setup/add-device so
+        // the WASM client lands on the pairing handoff page (FR-020). The
+        // routing-gate contract is shared with the OIDC and Social callbacks
+        // via SetupAddDeviceRoutingGate; the /app/ prefix rationale lives
+        // there. Citizens who already have a paired device follow the
+        // existing ReturnUrl / "" behaviour unchanged (FR-026).
+        var returnUrl = IsValidReturnUrl(ReturnUrl, _returnToAllowlist) ? ReturnUrl : "";
+        if (string.IsNullOrEmpty(returnUrl)
+            && SetupAddDeviceRoutingGate.ShouldRoute(tokens.AccessToken, _deviceService, _logger))
+        {
+            returnUrl = SetupAddDeviceRoutingGate.SetupAddDevicePath;
+        }
+
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
                        $"&refresh={Uri.EscapeDataString(tokens.RefreshToken)}";
         if (!string.IsNullOrEmpty(returnUrl))
@@ -299,9 +330,21 @@ public class LoginModel : PageModel
         return Redirect($"/app/#{fragment}");
     }
 
-    private static bool IsValidReturnUrl(string? url)
+    /// <summary>
+    /// Validates the return URL — accepts (a) internal relative paths and (b)
+    /// absolute URLs whose host matches the Feature 126 return-to allowlist
+    /// (so council pages can carry the citizen back to e.g. strathcarron.gov
+    /// after F116 signup completes).
+    /// </summary>
+    internal static bool IsValidReturnUrl(string? url, ReturnToAllowlistOptions allowlist)
     {
         if (string.IsNullOrEmpty(url)) return false;
-        return url.StartsWith('/') && !url.StartsWith("//");
+
+        // Internal relative path — the existing behaviour. Reject "//host" as
+        // a protocol-relative URL footgun.
+        if (url.StartsWith('/') && !url.StartsWith("//")) return true;
+
+        // Absolute URL — must match the allowlist. Open redirects fail closed.
+        return allowlist.IsAllowed(url);
     }
 }

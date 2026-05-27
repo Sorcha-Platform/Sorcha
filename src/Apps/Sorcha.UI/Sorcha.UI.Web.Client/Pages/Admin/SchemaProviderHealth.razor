@@ -8,8 +8,9 @@
 @using MudBlazor
 @using Sorcha.UI.Core.Models.SchemaLibrary
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject ISchemaLibraryApiService SchemaLibraryApi
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>Schema Providers - Sorcha Platform</PageTitle>
 
@@ -134,7 +135,7 @@
         }
         catch (Exception)
         {
-            Snackbar.Add("Failed to load provider statuses", Severity.Error);
+            Feedback.ShowError("Failed to load provider statuses", autoDismissMs: 0);
         }
         finally
         {
@@ -151,16 +152,16 @@
             var triggered = await SchemaLibraryApi.RefreshProviderAsync(providerName);
             if (triggered)
             {
-                Snackbar.Add($"Refresh triggered for {providerName}. Status will update on next page load.", Severity.Success);
+                Feedback.ShowSuccess($"Refresh triggered for {providerName}. Status will update on next page load.");
             }
             else
             {
-                Snackbar.Add($"Refresh for {providerName} was rejected (may be in backoff)", Severity.Warning);
+                Feedback.ShowWarning($"Refresh for {providerName} was rejected (may be in backoff)");
             }
         }
         catch (Exception)
         {
-            Snackbar.Add($"Failed to refresh {providerName}", Severity.Error);
+            Feedback.ShowError($"Failed to refresh {providerName}", autoDismissMs: 0);
         }
         finally
         {

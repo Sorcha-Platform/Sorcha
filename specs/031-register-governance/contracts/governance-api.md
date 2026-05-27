@@ -170,6 +170,8 @@ The final action compiles the full roster and writes the Control transaction. Th
 
 ## DID Resolution — Internal Service Contract
 
+> **Historical (Feature 120 Phase 0, 2026-05-09):** This bespoke contract was retired. DID resolution now uses the W3C-shaped `IDidResolverRegistry` in `src/Common/Sorcha.ServiceClients.Http/Did/`, which returns a `DidDocument` rather than the bespoke `DIDResolutionResult`.
+
 ### IDIDResolver Interface
 
 ```

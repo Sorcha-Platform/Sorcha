@@ -197,8 +197,9 @@ public class DocketBuilderTests
     [Fact]
     public async Task BuildDocketAsync_WhenNeedsGenesisDocket_DoesNotBuildNormalDocket()
     {
-        // Arrange
+        // Arrange — genesis needed AND the genesis control tx is available to seal.
         var registerId = "register-1";
+        var transactions = new List<Transaction> { CreateTestTransaction("genesis-tx") };
         var genesisDocket = CreateTestDocket(0, null);
 
         _mockGenesisManager
@@ -207,7 +208,7 @@ public class DocketBuilderTests
 
         _mockVerifiedQueue
             .Setup(q => q.ClaimAsync(registerId, _buildConfig.MaxTransactionsPerDocket, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(WrapAsLeases(registerId, new List<Transaction>()));
+            .ReturnsAsync(WrapAsLeases(registerId, transactions));
 
         _mockGenesisManager
             .Setup(g => g.CreateGenesisDocketAsync(registerId, It.IsAny<List<Transaction>>(), It.IsAny<CancellationToken>()))
@@ -219,6 +220,43 @@ public class DocketBuilderTests
         // Assert
         _mockRegisterClient.Verify(
             r => r.ReadLatestDocketAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task BuildDocketAsync_NeedsGenesisButNoTransactions_ReturnsNullWithoutSealingEmptyGenesis()
+    {
+        // Arrange — genesis is needed, but the genesis control transaction has not yet
+        // been verified and queued (a race during bootstrap: a docket-build trigger fires
+        // before GenesisIngestionService's tx lands in the verified queue).
+        var registerId = "register-1";
+
+        _mockGenesisManager
+            .Setup(g => g.NeedsGenesisDocketAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        _mockVerifiedQueue
+            .Setup(q => q.ClaimAsync(registerId, _buildConfig.MaxTransactionsPerDocket, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(WrapAsLeases(registerId, new List<Transaction>()));
+
+        // Even if the genesis manager would happily build an empty docket, the builder
+        // must not call it with an empty transaction set.
+        _mockGenesisManager
+            .Setup(g => g.CreateGenesisDocketAsync(registerId, It.IsAny<List<Transaction>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateTestDocket(0, null));
+
+        // Act
+        var result = await _builder.BuildDocketAsync(registerId);
+
+        // Assert — the genesis docket (docket 0) MUST carry the genesis control transaction;
+        // it is the trust anchor a SyncOnly replica extracts to verify the chain. Sealing an
+        // empty docket 0 here would push the real genesis tx into docket 1 and break genesis
+        // replication (SystemRegisterSyncVerifier rejects docket 0 with transactionIds=0).
+        // The builder must defer until the genesis tx is queued.
+        result.Should().BeNull();
+
+        _mockGenesisManager.Verify(
+            g => g.CreateGenesisDocketAsync(It.IsAny<string>(), It.IsAny<List<Transaction>>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -347,7 +385,12 @@ public class DocketBuilderTests
         result.Should().NotBeNull();
 
         _mockWalletClient.Verify(
-            w => w.SignDataAsync(_validatorConfig.SystemWalletAddress!, It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            w => w.SignTransactionAsync(
+                _validatorConfig.SystemWalletAddress!,
+                It.IsAny<byte[]>(),
+                "sorcha:docket-signing",
+                true,
+                It.IsAny<CancellationToken>()),
             Times.Once);
 
         result!.ProposerSignature.PublicKey.Should().BeEquivalentTo(System.Text.Encoding.UTF8.GetBytes(_validatorConfig.SystemWalletAddress!));
@@ -684,9 +727,16 @@ public class DocketBuilderTests
     {
         // Since we're using real MerkleTree and DocketHasher instances,
         // we only need to mock the wallet client for signing
+        // SUT now calls SignTransactionAsync (with derivationPath + isPreHashed) instead of
+        // the old SignDataAsync — match the current contract.
         _mockWalletClient
-            .Setup(w => w.SignDataAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string walletAddress, string data, CancellationToken ct) => new WalletSignResult
+            .Setup(w => w.SignTransactionAsync(
+                It.IsAny<string>(),
+                It.IsAny<byte[]>(),
+                It.IsAny<string?>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string walletAddress, byte[] _, string? __, bool ___, CancellationToken ____) => new WalletSignResult
             {
                 Signature = System.Text.Encoding.UTF8.GetBytes(signature),
                 PublicKey = System.Text.Encoding.UTF8.GetBytes(string.IsNullOrEmpty(walletAddress) ? "test-wallet-address" : walletAddress),

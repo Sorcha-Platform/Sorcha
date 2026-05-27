@@ -99,6 +99,21 @@ public async Task RevokeTokenAsync(string jti, DateTimeOffset expiresAt)
 }
 ```
 
+### `IDistributedCache` is a *separate* registration from `IConnectionMultiplexer`
+
+`builder.AddRedisClient("redis")` wires up `IConnectionMultiplexer` and `IDatabase` — sufficient for direct StackExchange.Redis use. It does **NOT** register `Microsoft.Extensions.Caching.Distributed.IDistributedCache`. Code that depends on `IDistributedCache` will throw `InvalidOperationException: Unable to resolve service for type 'IDistributedCache'` at the first request — not at boot.
+
+Add the distributed-cache overlay explicitly, sharing the same connection name:
+
+```csharp
+builder.AddRedisClient("redis");
+builder.AddRedisDistributedCache("redis");  // adds IDistributedCache → Redis
+```
+
+Requires the `Aspire.StackExchange.Redis.DistributedCaching` package alongside the base `Aspire.StackExchange.Redis`.
+
+**Unit-test trap that masks this**: tests that construct the SUT directly with `new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()))` bypass the DI graph entirely. The test passes; the container fails at runtime. If a service under test depends on `IDistributedCache`, also add a thin DI-startup test (or an integration test against a `TestHost`) that asserts the registration exists — not just one that mocks past it. Feature 124 PR #697 was the cautionary tale: 6 unit tests with `MemoryDistributedCache` green, production 500'd on every endpoint call.
+
 ## See Also
 
 - [patterns](references/patterns.md) - Caching, resilience, key naming

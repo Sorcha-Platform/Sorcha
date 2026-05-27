@@ -20,6 +20,64 @@ Each participant runs as an independent `sorcha-agent` process. Actors are state
 
 **Always prefer the actor-based model for new walkthroughs.**
 
+## Cadence: gating script execution on docket-sealing (REQUIRED)
+
+Script-based walkthroughs race ahead of the validator's docket-build cycle. The `/actions/execute` HTTP response only means "tx accepted into mempool" — the tx is not yet sealed. If the next action submits during the validator's post-seal cleanup window, you can trigger the **docket-monitoring race** (P0 bug — see issue #787) that wedges the register permanently. **This is not theoretical** — it happened to ConstructionPermit on 2026-05-19 and required filing a P0 bug to fix at the validator level.
+
+Real-world actor flow doesn't race because each participant waits for SignalR notification of an inbound sealed transaction before responding. That natural latency (docket dwell + notification + actor cognition) gives the validator ~3-5 seconds between consecutive actions. Scripts do it in 50 ms.
+
+### The fix: `Wait-SorchaActorReady` and the `-WaitForSeal` switch
+
+The shared module provides a `Wait-SorchaActorReady` cmdlet and an opt-in `-WaitForSeal` switch on `Invoke-SorchaAction`. **Every walkthrough script that calls `Invoke-SorchaAction` MUST pass `-WaitForSeal`.** The CI gate doesn't enforce this (yet) but PR reviewers should.
+
+```powershell
+# Required shape for script-based walkthroughs:
+$response = Invoke-SorchaAction `
+    -BlueprintUrl $state.blueprintUrl `
+    -InstanceId $instanceId `
+    -ActionId "1" `
+    -BlueprintId $state.blueprintId `
+    -SenderWallet $wallet `
+    -RegisterId $state.registerId `
+    -Token $session.Token `
+    -PayloadData $payload `
+    -WaitForSeal            # <-- bridges script cadence to docket cadence
+```
+
+`Invoke-SorchaAction -WaitForSeal` polls the F079 lifecycle endpoint (`/api/registers/{registerId}/transactions/{txId}/status`) for the submitted tx until `Active` / `Revoked` / `Superseded`. Timeout 90s by default; override via `-WaitForSealTimeoutSeconds`. The lifecycle endpoint is auth-gated by `CanReadTransactions` — the helper passes the same `Authorization` header used for the submit.
+
+### Other modes
+
+`Wait-SorchaActorReady` supports four modes for the rest of the cadence gates that show up in walkthrough authoring:
+
+| Mode | What it gates on | Use when |
+|---|---|---|
+| `AfterSubmit` | tx sealed in a docket | After every `Invoke-SorchaAction` (use `-WaitForSeal` for the ergonomic form) |
+| `AwaitingInbox` | `instance.currentActionIds` contains the named action | Between actor switches in a script — the equivalent of an actor receiving a SignalR inbox notification |
+| `ParticipantSealed` | participant publish tx sealed | After `Publish-SorchaParticipant` in setup.ps1, before saving `state.json` |
+| `BlueprintSealed` | blueprint publish tx sealed | After `Publish-SorchaBlueprint` in setup.ps1, before saving `state.json` |
+
+### Don't save state.json until publishes seal
+
+A second class of failure (TradeFinance on 2026-05-19) was setup.ps1 saving `state.json` immediately after blueprint/participant publish HTTP responses — same issue, the tx hadn't sealed yet. `run.ps1` then starts instantly, tries to execute Action 1, the auth check looks up the participant record, gets a 404 because the tx hasn't sealed, and returns 403.
+
+**In setup.ps1**, after each `Publish-SorchaBlueprint` / `Publish-SorchaParticipant` call, capture the response's `transactionId` and wait for it:
+
+```powershell
+$publishResult = Publish-SorchaBlueprint ...
+if ($publishResult.transactionId) {
+    Wait-SorchaActorReady -Mode BlueprintSealed `
+        -TxId $publishResult.transactionId `
+        -RegisterId $registerId `
+        -Headers $session.Headers `
+        -GatewayUrl $sorchaEnv.GatewayUrl
+}
+```
+
+### Agents (Sorcha.Agent) don't need this
+
+The autonomous agent already gates on SignalR — its `SignalRInboxListener` subscribes to `BlueprintHub.ActionAvailable` and only acts when notified. **Do not retrofit `-WaitForSeal` into agent code paths.** This helper is for script-based walkthroughs only (the two execution models converge on the same cadence: agents do it via SignalR events, scripts do it via polling).
+
 ## Project Locations
 
 ```
@@ -88,6 +146,29 @@ Publish-SorchaBlueprint -TemplatePath "./my-template.json" -WalletMap $walletMap
 # Save state
 $state | ConvertTo-Json -Depth 10 | Set-Content "state.json"
 ```
+
+#### REQUIRED: provision org operators as org-scoped users — never public (no multi-org)
+
+**Org admins / operators (analysts, officers, issuers) MUST be created single-org.** Do NOT register them as public users. A public user (`Register-SorchaPublicUser`) who is then added to an org via `New-SorchaOrganization -AdminEmail <that email>` becomes **multi-org**, which forces org-selection on login and makes the **OAuth2 password grant return 401** (the grant has no org-selection step) — the #1 cause of walkthrough auth flakiness.
+
+Use the **sysadmin → org → org-scoped operator** hierarchy. `New-SorchaOrganization` with a *fresh* email + password provisions the operator directly in that org only (no public account, no invitation, no email loop):
+
+```powershell
+$admin = Connect-SorchaAdmin -TenantUrl $env.TenantUrl -Secrets $secrets   # bootstrap SystemAdmin
+
+# Org + its operator in one call. Operator exists ONLY in this org → single-org → OAuth grant works.
+$org = New-SorchaOrganization -TenantUrl $env.TenantUrl -Headers $admin.Headers `
+    -Name "Acme Verification Co." -Subdomain "acme-verif" `
+    -AdminEmail "ops@acme-verif.test" -AdminPassword $secrets.DefaultPassword `
+    -AdminDisplayName "Acme Ops" -AdminEmailVerified
+
+# Log in AS that operator (single-org → direct token, no org-selection):
+$ops = Connect-SorchaUser -TenantUrl $env.TenantUrl -Email "ops@acme-verif.test" -Password $secrets.DefaultPassword
+```
+
+- `-AdminEmailVerified` requires the installation to enable `Platform:AllowAdminVerifiedUserCreation` (dev + n1 set it; **production does not**). Without it, omit the switch and verify via the admin email-verify endpoint.
+- **ANTI-PATTERN (do not do this):** `Register-SorchaPublicUser ops@… ; New-SorchaOrganization -AdminEmail ops@…` → multi-org operator → 401 on the password grant.
+- **Citizens / public submitters are the deliberate exception** — they ARE public users (`Register-SorchaPublicUser`): a citizen belongs to the public org and is late-bound into the workflow. Only *org operators* use the org-scoped path.
 
 #### Foot-gun: do NOT include open participants in `$walletMap`
 
@@ -460,6 +541,8 @@ await orgCard.First.ClickAsync();
 | Walkthrough: org subdomain taken | Re-running setup without volume reset | Use `docker compose down -v` for clean slate, or use `-Force` flag |
 | Walkthrough: Action N fails 400 for the same participant on every scenario | Late-bound participant reuse hitting VAL_BP_002 via a broken Tier 3 chain lookup (incident 2026-04-20) | Check validator logs for "no prior in-instance binding". Confirm `GET /api/query/instance/{id}/transactions/{registerId}` returns 200 with a non-empty list. If empty, inspect MongoDB: `MetaData.InstanceId` must be non-null on sealed txs. See `n1-deploy` skill → "Validator-pipeline changes — end-to-end probe". |
 | Walkthrough: re-running after n1 reset but setup keeps state from last run | State files (state.json) persist between resets, pointing at deleted registers/users | Before re-running: `find walkthroughs -name state.json -delete`. The script's idempotency only works against state that still exists server-side. |
+| Walkthrough: Action N times out at 60s on `/actions/execute` with "Transaction not confirmed" | Script raced ahead of docket-seal; the previous action's tx is mid-cleanup at the validator and the new tx triggers the docket-monitoring race (P0 issue #787). Register is now wedged — restart won't help; new txs on this register never seal. | Pass `-WaitForSeal` on every `Invoke-SorchaAction` call (see "Cadence" section above). Existing wedged register needs the underlying validator bug fixed, or the register replaced (the wedge survives validator restart because the stuck tx is persisted in the mempool). |
+| Walkthrough: Action 1 returns 403 immediately (6 ms response) on a fresh setup, no rate-limit warning | setup.ps1 saved state.json before the participant/blueprint publish txs had sealed; run.ps1 starts instantly, auth check looks up the participant record, 404 upstream becomes 403 at auth layer | Add `Wait-SorchaActorReady -Mode BlueprintSealed` / `ParticipantSealed` in setup.ps1 after each publish, before writing state.json. |
 
 ## Running against n1 (ground-truth verification)
 

@@ -1,0 +1,86 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Active-context chip + bottom-sheet picker (Feature 125, T068). Renders
+    in the wallet's top app bar; tap to open the picker, select an
+    organisation, switch context. Non-interactive when the user has zero
+    additional memberships beyond Personal (set the mental model anyway).
+*@
+@namespace Sorcha.UI.Components.User.Components.Context
+
+<MudChip T="string"
+         Icon="@Icons.Material.Filled.SwapHoriz"
+         Color="Color.Primary"
+         Variant="Variant.Filled"
+         OnClick="@OnChipClicked"
+         Disabled="@(!CanSwitch)"
+         data-testid="context-chip">
+    @ActiveLabel
+</MudChip>
+
+@if (_pickerOpen)
+{
+    <MudDialog @bind-Visible="_pickerOpen" Options="DialogOptions" data-testid="context-picker">
+        <DialogContent>
+            <MudList T="Guid?" SelectedValue="@ActiveContextOrgId" SelectedValueChanged="@OnPicked">
+                <MudListItem T="Guid?" Value="@(default(Guid?))"
+                             Icon="@(ActiveContextOrgId is null ? Icons.Material.Filled.Check : Icons.Material.Filled.Person)"
+                             data-testid="context-picker-personal">
+                    Personal
+                </MudListItem>
+                @foreach (var org in Memberships)
+                {
+                    var id = org.OrganizationId;
+                    <MudListItem T="Guid?" Value="@((Guid?)id)"
+                                 Icon="@(ActiveContextOrgId == id ? Icons.Material.Filled.Check : Icons.Material.Filled.Business)"
+                                 data-testid="@($"context-picker-org-{id:N}")">
+                        @org.Name
+                    </MudListItem>
+                }
+            </MudList>
+        </DialogContent>
+    </MudDialog>
+}
+
+@code {
+    /// <summary>Display label for the active context (e.g. "Personal" or the org name).</summary>
+    [Parameter, EditorRequired] public string ActiveLabel { get; set; } = "Personal";
+
+    /// <summary>Active context organisation id; null = Personal.</summary>
+    [Parameter] public Guid? ActiveContextOrgId { get; set; }
+
+    /// <summary>Other memberships the user holds; rendered below Personal in the picker.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<ContextChipMembership> Memberships { get; set; } = Array.Empty<ContextChipMembership>();
+
+    /// <summary>Fires when the user picks a new context; null = Personal.</summary>
+    [Parameter] public EventCallback<Guid?> OnContextSelected { get; set; }
+
+    private bool _pickerOpen;
+    private bool CanSwitch => Memberships.Count > 0;
+
+    private static DialogOptions DialogOptions { get; } = new()
+    {
+        CloseButton = true,
+        BackdropClick = true,
+        Position = DialogPosition.BottomCenter,
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true
+    };
+
+    private void OnChipClicked()
+    {
+        if (CanSwitch) _pickerOpen = true;
+    }
+
+    private async Task OnPicked(Guid? orgId)
+    {
+        _pickerOpen = false;
+        if (orgId == ActiveContextOrgId) return;
+        if (OnContextSelected.HasDelegate)
+            await OnContextSelected.InvokeAsync(orgId);
+    }
+
+    /// <summary>One row in the picker; the chip switcher is presentation-only.</summary>
+    public sealed record ContextChipMembership(Guid OrganizationId, string Name);
+}

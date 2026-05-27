@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Snackbar retirement CI gate. Fails when any C# / Razor file under
+# src/Apps/Sorcha.UI* or src/Apps/Sorcha.Wallet.Pwa references the
+# MudBlazor Snackbar API outside the explicit allowlist
+# (.snackbar-allowlist). The allowlist is a ratchet — it may only shrink.
+#
+# See scripts/check-no-snackbar.ps1 and CLAUDE.md for the wider retirement plan.
+
+name: snackbar-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/Apps/Sorcha.UI/**"
+      - "src/Apps/Sorcha.Wallet.Pwa/**"
+      - ".snackbar-allowlist"
+      - "scripts/check-no-snackbar.ps1"
+      - ".github/workflows/snackbar-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  no-new-snackbar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Snackbar retirement gate
+        shell: pwsh
+        run: ./scripts/check-no-snackbar.ps1

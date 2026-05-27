@@ -377,7 +377,7 @@ Local email/password authentication with progressive lockout, token lifecycle ma
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/api/auth/login` | Anonymous | Login with email/password (returns JWT or 2FA challenge) |
-| POST | `/api/auth/verify-2fa` | Anonymous | Verify TOTP code to complete login (rate limited) |
+| POST | `/api/auth/verify-2fa` | Anonymous | Verify TOTP code to complete login (rate limited). Optional `tier` field: `"consumer"` forces Consumer-tier token (wallet sign-in, spec 136). |
 | POST | `/api/auth/register` | Anonymous | Self-register with email/password (public orgs only, NIST password policy) |
 | POST | `/api/auth/token/refresh` | Anonymous | Exchange refresh token for new access token |
 | POST | `/api/auth/token/revoke` | Authenticated | Revoke an access or refresh token |
@@ -443,17 +443,18 @@ FIDO2/WebAuthn passkey authentication for both organizational users (2FA) and pu
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/api/auth/passkey/assertion/options` | Anonymous | Get assertion options (discoverable credentials, no email needed) |
-| POST | `/api/auth/passkey/assertion/verify` | Anonymous | Verify assertion and issue tokens |
+| POST | `/api/auth/passkey/assertion/verify` | Anonymous | Verify assertion and issue tokens. Optional `tier` field: `"consumer"` forces Consumer-tier token (wallet sign-in, spec 136). |
 
 #### Public User Social Login
 
-**Base Path:** `/api/auth/public/social`
+**Base Path:** `/api/auth/social` (providers) and `/api/auth/public/social` (flows)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/auth/public/social/initiate` | Anonymous | Initiate OAuth flow for provider (Google, Microsoft, GitHub, Apple) |
+| GET  | `/api/auth/social/providers` | Anonymous | List configured social providers. Returns `{"providers":["google",…]}`. Drives conditional "Continue with…" buttons on the citizen wallet PWA sign-in screen. |
+| POST | `/api/auth/public/social/initiate` | Anonymous | Initiate OAuth flow for provider (Google, Microsoft, GitHub, Apple). Optional `surface` field: `"wallet"` routes the post-OAuth callback into the citizen wallet PWA (mints Consumer-tier, redirects to `/wallet/#token=…&refresh=…&expires_in=…`, login-only — unknown identity → `?authError=no_account`). Null/`"app"` keeps the default web flow. |
 | POST | `/api/auth/public/social/callback` | Anonymous | Handle OAuth callback (SPA flow), provision user under strict link policy, issue tokens. Returns 400 with refusal message when `email_verified=false` from provider or when target user is unverified. |
-| GET  | `/auth/social/callback` | Anonymous | Razor-page browser redirect URI for OAuth providers. Single canonical path per environment. Provider is recovered from cached state, NOT a query parameter. See `docs/guides/SOCIAL-LOGIN-SETUP.md`. |
+| GET  | `/auth/social/callback` | Anonymous | Razor-page browser redirect URI for OAuth providers. Single canonical path per environment. Provider is recovered from cached state, NOT a query parameter. See `docs/guides/SOCIAL-LOGIN-SETUP.md`. When `surface=wallet` was used, redirects to `/wallet/#token=…&refresh=…&expires_in=…` with a Consumer-tier token. |
 
 #### Public User Auth Method Management
 
@@ -884,6 +885,40 @@ Service-to-service only (`AuthorizationPolicies.RequireService`). Called by a re
 }
 ```
 
+#### `GET /api/presentations/{presentationRequestId}/disclosed-claims?token={ClaimsFetchToken}`
+
+**Feature 127** — council-page-facing endpoint that returns disclosed claims in plaintext for autofill after a successful Sorcha-wallet presentation. Token-authenticated, single-use, short-TTL. The token is minted by `PresentationLifecycleService.InitiateAsync` ONLY for consumers that produce council-page-readable claims (currently `"sorcha-wallet"`) and returned alongside the `presentationRequestId`. F111's existing `presentation-outcome` register transaction remains the authoritative record; this endpoint is the operational signal for the council page to read the claims without re-decrypting the register tx.
+
+**Auth model:** the council page is unauthenticated at the broader sense — the token IS the auth scope. The token is single-use (atomic `GETDEL` via Lua against `IClaimsFetchTokenStore`), bound to a single `presentationRequestId`, expires when the presentation validity window expires.
+
+**Response (success, claims ready):** `200 OK`
+```json
+{
+  "presentationRequestId": "8f6b94de-...",
+  "status": "success",
+  "claims": {
+    "givenName": "Sarah",
+    "familyName": "Example",
+    "dateOfBirth": "1968-04-12",
+    "homeAddress": "12 Brae Road, Strathcarron, IV54 8YQ"
+  },
+  "subjectDisplayName": "Sarah Example"
+}
+```
+
+**Response (outcome pending):** `200 OK` with `{ "presentationRequestId": "...", "status": "pending" }`. The token is consumed; the council page reuses the same token on retry only if it polled before the hub `PresentationOutcomeReady` signal arrived.
+
+**Error responses:**
+- `400 token-missing` — `?token=` not provided.
+- `401 token-invalid` — Token unknown, expired, or already used.
+- `401 token-mismatch` — Token doesn't bind to the path's `presentationRequestId`.
+- `404 presentation-not-found` — No `presentation-initiated` record (expired or never minted).
+- `410 outcome-decline` — Outcome was a decline; no claims to disclose.
+- `410 outcome-abandoned` — Attempt was abandoned.
+- `410 claims-expired` — Outcome was success but the disclosed-claims stash TTL elapsed.
+
+Full contract: `specs/127-credential-gated-service/contracts/disclosed-claims-endpoint.md`.
+
 ### Endpoints
 
 #### 1. Get All Blueprints
@@ -1243,6 +1278,100 @@ Downloads a decrypted file attachment from a stored data transaction. The wallet
 **Response:** `200 OK` — binary file stream with appropriate `Content-Type` and `Content-Disposition` headers.
 
 **Auth:** JWT Bearer required. The caller's wallet must be able to decrypt the field (owner or delegated ReadOnly+).
+
+#### 10. Pending Application Notice (Feature 124)
+
+A small, citizen-scoped surface that drives the Citizen Wallet PWA's waiting-state UX. The notice carries only a human-readable label — no credential content. Set by the walkthrough script (or a future application-submission flow) when a citizen submits a credential application; the PWA reads it on every Home render to decide whether to show the waiting card; cleared on credential delivery (or auto-expires after 24 hours).
+
+All three endpoints require the citizen-wallet audience JWT (`sorcha:citizen-wallet`) and are scoped to the caller's `PlatformUserId`. Rate-limited by `RateLimitPolicies.Strict`. Contract: [`specs/124-assured-identity-pwa/contracts/pending-application-notice.openapi.yaml`](../../specs/124-assured-identity-pwa/contracts/pending-application-notice.openapi.yaml).
+
+##### GET /api/v1/wallet/pending-applications
+
+Returns the active notice for the calling citizen, or `null` if none is set.
+
+**Response:** `200 OK`
+```json
+{ "notice": { "label": "Assured Identity", "setAt": "2026-05-14T09:41:22Z" } }
+```
+or
+```json
+{ "notice": null }
+```
+
+##### PUT /api/v1/wallet/pending-applications
+
+Set or replace the citizen's notice. Idempotent — re-setting with a new label replaces the prior one and resets the 24-hour TTL.
+
+**Request Body:**
+```json
+{ "label": "Assured Identity" }
+```
+
+**Validation:** label non-empty + non-whitespace + ≤ 80 characters.
+
+**Response:** `200 OK` with the same envelope shape as GET.
+
+##### DELETE /api/v1/wallet/pending-applications
+
+Clear the citizen's notice. Idempotent — returns `204 No Content` whether or not a notice was present.
+
+**Response:** `204 No Content`
+
+#### 10b. Holder Keys — cross-node delivery keys (Feature 137)
+
+Returns the signed-in citizen's **public** delivery keys so a blueprint `sorcha-holder-key` form field can auto-fill the cross-node submission. Consumer-tier (`RequireConsumerAudience`). Public material only — never a private key. Contract: [`specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml`](../../specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml).
+
+##### GET /api/v1/wallet/holder-keys
+
+Resolves the caller's slot-108 holder public JWK (for the SD-JWT `cnf` binding) and wallet encryption public key (for the on-register AEAD envelope) from the citizen JWT.
+
+**Response:** `200 OK`
+```json
+{
+  "holderJwk": { "kty": "EC", "crv": "P-256", "x": "…", "y": "…" },
+  "encryptionPublicKey": "<base64 wallet public key>",
+  "algorithm": "ED25519",
+  "walletAddress": "ws1q…"
+}
+```
+`401` — missing/invalid citizen token. `404` — no wallet resolvable for the caller (indistinguishable from non-existence).
+
+#### 11. Cross-Device Presentation History (Feature 114 US5)
+
+The citizen's durable, cross-device record of presentations they have made. Reported presentations (via `POST /api/v1/wallet/presentations/log`) are persisted to a per-citizen Wallet Service store so the same history appears on any device the citizen pairs. **There is no register/ledger write** — a free-standing offline presentation has no originating register; these are citizen-owned convenience records carrying disclosed claim **names only**, never values.
+
+Both endpoints require the citizen-wallet audience JWT (`sorcha:citizen-wallet`), are scoped to the caller's `PlatformUserId`, and are rate-limited by `RateLimitPolicies.Strict`. Contract: [`specs/134-presentation-history/contracts/presentation-history.openapi.yaml`](../../specs/134-presentation-history/contracts/presentation-history.openapi.yaml).
+
+##### GET /api/v1/wallet/presentations
+
+Returns every presentation the authenticated citizen has reported, from any of their devices, newest-first. Returns an empty list (never `404`) when there is no history. Backs the PWA Activity page's cross-device history.
+
+**Response:** `200 OK`
+```json
+{
+  "entries": [
+    {
+      "id": "8f2c…",
+      "credentialId": "1a9b…",
+      "verifierLabel": "Strathcarron Council",
+      "verifierDid": null,
+      "disclosedClaims": ["givenName", "familyName"],
+      "presentedAt": "2026-05-20T09:41:22Z",
+      "outcome": "Presented",
+      "registerId": null,
+      "actionTxId": null
+    }
+  ]
+}
+```
+
+`outcome` ∈ `Presented | DeclinedByCitizen | VerifierRejected | Acknowledged`. `registerId`/`actionTxId` are vestigial and always `null` for these citizen-owned records.
+
+##### DELETE /api/v1/wallet/presentations/{id}
+
+Server-authoritative delete: removes the entry from the citizen's history across all their devices. Idempotent. A delete targeting another citizen's entry, or a non-existent entry, returns `204` — indistinguishable from success, to avoid leaking existence. Does not affect the verifier's own records (there is no register/ledger record for these presentations).
+
+**Response:** `204 No Content`
 
 ---
 
@@ -2061,40 +2190,136 @@ Content-Type: application/json
 
 ## Real-time Notifications (SignalR)
 
-### Hub Endpoint: `/actionshub`
+### Hub topology (Feature 118)
 
-### Events
+Five canonical hubs — every notification hub other than ChatHub conforms to the thin-signal contract: events carry opaque IDs, timestamps, and a W3C trace token only. Clients pull full detail via the authenticated REST endpoint linked from the typed-client interface.
 
-#### 1. Subscribe to Actions
+| Hub | Route | Service | Purpose |
+|---|---|---|---|
+| BlueprintHub | `/hubs/blueprint` (alias `/actionshub`) | Blueprint | Action lifecycle, workflow completion, encryption progress |
+| WalletHub | `/hubs/wallet` | Wallet | Citizen-wallet device + credential events; future home for transaction-tick + org-credential events |
+| RegisterHub | `/hubs/register` | Register | Register lifecycle, docket sealing, sync-state changes |
+| TenantHub | `/hubs/tenant` | Tenant | User inbox events (entry added, unread count) |
+| ChatHub | `/hubs/chat` | Blueprint | AI Designer streaming RPC — exempt from thin-signal contract per FR-019 |
+
+Authentication: JWT Bearer via `?access_token=` query parameter (browsers can't set Authorization headers on WebSocket upgrades). The `platform_user_id` claim is required on every notification hub.
+
+### Subscribe to BlueprintHub
 
 ```javascript
 const connection = new signalR.HubConnectionBuilder()
-  .withUrl("http://localhost:5000/actionshub")
+  .withUrl(`/hubs/blueprint?access_token=${jwt}`)
   .build();
 
-// Subscribe to actions for specific wallet/register
-await connection.invoke("SubscribeToActions", "wallet-789", "register-101");
+await connection.invoke("SubscribeToWallet", "wallet-789");
 
-// Listen for action confirmed events
-connection.on("ActionConfirmed", (notification) => {
-  console.log("Action confirmed:", notification);
+connection.on("ActionAvailable", (instanceId, actionId, occurredAt, traceId) => {
+  // Fetch detail via GET /api/instances/{instanceId}/actions/{actionId}
 });
 ```
 
-#### 2. Notification Format
+See each `I*HubClient` interface in tree (`Sorcha.Blueprint.Service.Hubs.IBlueprintHubClient`, etc.) for the authoritative method list and REST detail-endpoint references.
 
-```javascript
+---
+
+## Inbox API
+
+The durable per-user inbox lives in the Tenant Service and is fed by every other service via the internal write endpoint. Real-time updates are delivered through TenantHub's `InboxEntryAdded` and `InboxUnreadCountUpdated` events.
+
+### Public surface (citizen JWT, base path `/api/me/inbox`)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/me/inbox` | List the authenticated user's inbox entries (paginated, optional `category` filter) |
+| GET | `/api/me/inbox/unread-count` | Authoritative unread count for the inbox bell |
+| GET | `/api/me/inbox/{id}` | Fetch a single entry's full content |
+| POST | `/api/me/inbox/{id}/read` | Mark an entry as read |
+| POST | `/api/me/inbox/{id}/dismiss` | Dismiss an entry |
+| POST | `/api/me/inbox/mark-all-read` | Bulk mark every unread entry as read |
+
+### Internal surface (service principal, `RequireService` policy)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/internal/inbox` | Bridge endpoint called by Blueprint / Wallet writers via `IPlatformInboxClient` to create entries on behalf of a target user. Idempotent on `(PlatformUserId, SourceEventId)`. |
+
+Categories today: `Action`, `Credential`, `Membership`, `Security`. Each writer constructs a deterministic `SourceEventId` (SHA-1 over the natural keys of the event) so retries fold into a single entry.
+
+---
+
+## Enrolment Session API (Feature 126)
+
+Backs the council-page cold-start onboarding gate. Two endpoints; full contract at `specs/126-enrol-inside-wizard/contracts/enrol-session.openapi.yaml`.
+
+### `POST /api/auth/enrol-session` — mint
+
+Authenticated. Mints a one-time enrolment session JWT bound to the calling user. Returns:
+
+```json
 {
-  "transactionHash": "0xabc123def456",
-  "walletAddress": "wallet-789",
-  "registerAddress": "register-101",
-  "blueprintId": "bp-123",
-  "actionId": "0",
-  "instanceId": "instance-abc",
-  "timestamp": "2025-11-17T16:00:00Z",
-  "message": "Transaction confirmed"
+  "sessionToken": "<JWT — scope: \"enrol\", exp = iat + 600>",
+  "qrUrl": "https://<council-origin>/wallet/enrol?session=<sessionToken>",
+  "expiresAt": "2026-05-15T12:30:00Z"
 }
 ```
+
+### `POST /api/auth/enrol-session/redeem` — redeem
+
+Anonymous (the session token is the credential). Validates signature + scope + expiry, atomically consumes the JTI, returns the bound user's identifying details:
+
+```json
+{
+  "accessToken": "<full citizen access token>",
+  "expiresIn": 3600,
+  "displayName": "Sarah Example",
+  "email": "sarah@example.test"
+}
+```
+
+Errors map 1:1 to status: `400` (malformed_token / invalid_signature / scope_mismatch), `409` (already_used), `410` (expired). Body shape: `{ "code": "<error_code>", "message": "<human readable>" }`.
+
+### Cross-device pairing signal
+
+`TenantHub.DeviceEnrolled(platformUserId, deviceId)` fires on every successful `PlatformUserDeviceService.RegisterAsync` (including idempotent re-register). Per-user group via `TenantHubGroups.User(platformUserId)`. Council pages subscribe via the existing `/hubs/tenant` connection.
+
+### Return-to allowlist
+
+`Auth:ReturnToAllowlist:Hosts` — entries are exact-host or `*.host` suffix. HTTPS only, with `http://localhost` accepted for dev. F116 signup / login pages consult this before honouring `?returnUrl=` against an external host.
+
+---
+
+## EUDI Credential Format & Unified Trust API (Feature 135)
+
+Adds the ISO `mso_mdoc` credential format beside SD-JWT VC and a single `ITrustEvaluator` consulted by every verification path. Most of the surface is internal (the trust evaluator + format handlers); two externally-visible touch-points:
+
+### OpenID4VP `direct_post` — now accepts `mso_mdoc` (HAIP Service)
+
+No new endpoint shape — `mso_mdoc` rides the existing OpenID4VP `direct_post` callback (specs 097/098). The authorization request advertises an mdoc credential via a DCQL query (`format: "mso_mdoc"`, `meta.doctype_value`), and the `vp_token` is a JSON object keyed by the DCQL query id with base64url-encoded CBOR `DeviceResponse` values:
+
+```jsonc
+vp_token = { "pid": ["<base64url(DeviceResponse CBOR)>"] }
+```
+
+The verifier base64url+CBOR-decodes the `DeviceResponse`, verifies `issuerAuth` (COSE_Sign1 over the tag-24 MSO; issuer key from the `x5chain` label-33 header), recomputes `valueDigests`, reconstructs the OpenID4VP `SessionTranscript` and verifies `DeviceAuth` (holder binding), checks the MSO status list, then routes the trust decision through `ITrustEvaluator`. SD-JWT VC `vp_token`s (compact `~`-delimited strings) keep their existing path. The same OpenID4VCI `/credential` issuance endpoint issues SD-JWT VC or `mso_mdoc` per the offer's `format` + `trustAnchor`.
+
+### Trust-list snapshot admin (Tenant Service) — `/api/v1/trust/trustlists`
+
+Operator-facing management of external trust-anchor snapshots consulted by the `trustlist` trust source. JWT admin-scoped, `RateLimitPolicies.Strict`, Scalar-documented.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| PUT | `/api/v1/trust/trustlists/{trustListId}` | Upload/replace a snapshot — `{ source, roots: [base64 DER], freshness }` → `{ trustListId, rootCount, source, createdAt, freshness }` |
+| GET | `/api/v1/trust/trustlists/{trustListId}` | Snapshot metadata (id, root count, source, freshness); 404 when unknown |
+| GET | `/api/v1/trust/trustlists` | List loaded snapshot ids + freshness |
+
+Snapshot `id` + `freshness` are copied into `TrustEvidence` on every decision that used the list. A live LOTL feed is a future provider behind the same `ITrustListProvider` seam.
+
+### Trust models (request bodies)
+
+- **`CredentialRequirement`** carries `format` (`sd-jwt-vc` | `mso_mdoc`) + `trustPolicy` (replaced the flat `acceptedIssuers`). **`CredentialIssuanceConfig`** carries `format` + `trustAnchor` (`register` | `x509-tenant` | `x509-lotl`).
+- **`TrustPolicy`** = `{ sources: [{ kind, confersAssurance?, allowedIssuers?, trustListId? }], combinator: anyOf|allOf, minAssuranceLevel: Low|Substantial|High }`.
+
+mdoc is ES256/P-256-only at the format layer (additive — Sorcha-native + PQC signing unchanged). Full design: `specs/135-eudi-credential-format-trust/` and the `sorcha-architecture` skill.
 
 ---
 

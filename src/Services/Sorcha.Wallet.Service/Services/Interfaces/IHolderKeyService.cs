@@ -54,4 +54,32 @@ public interface IHolderKeyService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>43-character base64url SHA-256 thumbprint.</returns>
     Task<string> GetHolderJwkThumbprintAsync(string walletAddress, CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 137 (cross-node submission, C3) — returns the citizen's public delivery keys so a
+    /// blueprint <c>sorcha-holder-key</c> form field can carry them into the submission. Combines
+    /// the slot-108 holder JWK (for the SD-JWT <c>cnf</c> binding) with the wallet's primary public
+    /// key + algorithm (for the on-register AEAD envelope). The encryption key is the wallet's own
+    /// signing public key — the encryption pipeline derives X25519 from it, so it is byte-identical
+    /// to the register-resolved recipient key. Public material only.
+    /// </summary>
+    /// <param name="walletAddress">Citizen's primary Sorcha wallet address.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The citizen's holder JWK, base64 encryption public key, and delivery algorithm.</returns>
+    /// <exception cref="KeyNotFoundException">Wallet does not exist or has no public key.</exception>
+    /// <exception cref="NotSupportedException">Wallet algorithm is not a supported delivery key type.</exception>
+    Task<CitizenHolderDeliveryKeys> GetDeliveryKeysAsync(string walletAddress, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Feature 137 — the citizen's public delivery keys for a cross-node credential round-trip.
+/// </summary>
+/// <param name="HolderJwk">Slot-108 holder public JWK for the SD-JWT <c>cnf</c> binding.</param>
+/// <param name="EncryptionPublicKey">Base64 wallet public key used to wrap the on-register AEAD envelope.</param>
+/// <param name="Algorithm">Delivery algorithm: <c>ED25519</c> or <c>NISTP256</c>.</param>
+/// <param name="WalletAddress">The citizen's resolved wallet address.</param>
+public sealed record CitizenHolderDeliveryKeys(
+    JsonElement HolderJwk,
+    string EncryptionPublicKey,
+    string Algorithm,
+    string WalletAddress);

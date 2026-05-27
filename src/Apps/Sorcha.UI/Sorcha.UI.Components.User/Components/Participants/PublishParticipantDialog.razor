@@ -1,0 +1,360 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Participants
+@using Sorcha.UI.Core.Models.Registers
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Participants
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Publish" Class="mr-2" />
+            Publish Participant to Register — Step @(_step + 1) of 3
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_step == 0)
+        {
+            @* Step 1: Select Register *@
+            <MudText Typo="Typo.subtitle1" Class="mb-3">Select a register to publish to</MudText>
+
+            @if (_loadingRegisters)
+            {
+                <MudProgressCircular Indeterminate="true" />
+            }
+            else if (_registers.Count == 0)
+            {
+                <MudAlert Severity="Severity.Warning">
+                    No registers available. A register must be created first.
+                </MudAlert>
+            }
+            else
+            {
+                <MudSelect T="string" @bind-Value="_selectedRegisterId" Label="Register"
+                           Variant="Variant.Outlined" Required="true"
+                           AnchorOrigin="Origin.BottomCenter">
+                    @foreach (var reg in _registers)
+                    {
+                        <MudSelectItem Value="@reg.Id">
+                            @reg.Name (@reg.Id[..Math.Min(8, reg.Id.Length)]...)
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        }
+        else if (_step == 1)
+        {
+            @* Step 2: Review & Select Addresses *@
+            <MudText Typo="Typo.subtitle1" Class="mb-3">Review participant and select wallet addresses</MudText>
+
+            <MudGrid Spacing="2" Class="mb-4">
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Participant</MudText>
+                    <MudText>@Participant.DisplayName</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Organization</MudText>
+                    <MudText>@Organization.Name</MudText>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Register</MudText>
+                    <MudText>@(_registers.FirstOrDefault(r => r.Id == _selectedRegisterId)?.Name ?? _selectedRegisterId)</MudText>
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Select wallet addresses to publish (at least 1 required)</MudText>
+
+            @foreach (var wallet in _activeWallets)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                    <MudCheckBox T="bool" Value="@_selectedAddresses.Contains(wallet.WalletAddress)"
+                                 ValueChanged="@(v => ToggleAddress(wallet.WalletAddress, v))" />
+                    <code>@TruncateAddress(wallet.WalletAddress)</code>
+                    <MudChip T="string" Size="Size.Small">@wallet.Algorithm</MudChip>
+                    @if (_primaryAddress == wallet.WalletAddress)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">Primary</MudChip>
+                    }
+                    else if (_selectedAddresses.Contains(wallet.WalletAddress))
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text"
+                                   OnClick="@(() => _primaryAddress = wallet.WalletAddress)">
+                            Set Primary
+                        </MudButton>
+                    }
+                </MudStack>
+            }
+
+            @if (_selectedAddresses.Count == 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                    Select at least one wallet address to publish.
+                </MudAlert>
+            }
+        }
+        else if (_step == 2)
+        {
+            @* Step 3: Select Signer & Confirm *@
+            <MudText Typo="Typo.subtitle1" Class="mb-3">Select signer and confirm</MudText>
+
+            <MudSelect T="string" @bind-Value="_signerAddress" Label="Signer Wallet"
+                       Variant="Variant.Outlined" Required="true"
+                       HelperText="Select which wallet signs this publish transaction"
+                       AnchorOrigin="Origin.BottomCenter">
+                @foreach (var addr in _selectedAddresses)
+                {
+                    <MudSelectItem Value="@addr">@TruncateAddress(addr)</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudPaper Class="pa-4 mt-4" Outlined="true">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Summary</MudText>
+                <MudSimpleTable Dense="true" Elevation="0">
+                    <tbody>
+                        <tr>
+                            <td><strong>Register</strong></td>
+                            <td>@(_registers.FirstOrDefault(r => r.Id == _selectedRegisterId)?.Name ?? _selectedRegisterId)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Participant</strong></td>
+                            <td>@Participant.DisplayName</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Organization</strong></td>
+                            <td>@Organization.Name</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Addresses</strong></td>
+                            <td>@_selectedAddresses.Count wallet(s)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Primary</strong></td>
+                            <td><code>@TruncateAddress(_primaryAddress)</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Signer</strong></td>
+                            <td><code>@TruncateAddress(_signerAddress)</code></td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        }
+        else if (_step == 3)
+        {
+            @* Success *@
+            <MudAlert Severity="Severity.Success" Class="mb-3">
+                Participant published successfully!
+            </MudAlert>
+
+            @if (_result != null)
+            {
+                <MudGrid Spacing="2">
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Transaction ID</MudText>
+                        <code style="word-break:break-all;">@_result.TransactionId</code>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Version</MudText>
+                        <MudText>@_result.Version</MudText>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">@_result.Status</MudChip>
+                    </MudItem>
+                </MudGrid>
+            }
+        }
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_errorMessage</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_step == 3)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Close">Done</MudButton>
+        }
+        else
+        {
+            <MudButton OnClick="Cancel">Cancel</MudButton>
+            @if (_step > 0)
+            {
+                <MudButton OnClick="PreviousStep">Back</MudButton>
+            }
+            <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                       OnClick="NextOrSubmit" Disabled="@(!CanProceed || _submitting)">
+                @if (_submitting)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                }
+                @(_step == 2 ? "Publish" : "Next")
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Inject] private IParticipantPublishingService PublishingService { get; set; } = default!;
+    [Inject] private IRegisterReadService RegisterService { get; set; } = default!;
+    [Inject] private IRegisterSubscriptionService SubscriptionService { get; set; } = default!;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public Guid OrganizationId { get; set; }
+    [Parameter] public Guid ParticipantId { get; set; }
+    [Parameter] public ParticipantDetailViewModel Participant { get; set; } = default!;
+    [Parameter] public OrganizationDto Organization { get; set; } = default!;
+
+    private int _step;
+    private bool _submitting;
+    private bool _loadingRegisters = true;
+    private string? _errorMessage;
+
+    private List<RegisterViewModel> _registers = [];
+    private string _selectedRegisterId = string.Empty;
+
+    private List<LinkedWalletViewModel> _activeWallets = [];
+    private HashSet<string> _selectedAddresses = [];
+    private string _primaryAddress = string.Empty;
+    private string _signerAddress = string.Empty;
+
+    private ParticipantPublishResultViewModel? _result;
+
+    private bool CanProceed => _step switch
+    {
+        0 => !string.IsNullOrEmpty(_selectedRegisterId),
+        1 => _selectedAddresses.Count > 0 && !string.IsNullOrEmpty(_primaryAddress),
+        2 => !string.IsNullOrEmpty(_signerAddress),
+        _ => false
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _activeWallets = Participant.LinkedWallets
+            .Where(w => w.Status == "Active")
+            .ToList();
+
+        // Auto-select all active wallets and set first as primary
+        foreach (var w in _activeWallets)
+        {
+            _selectedAddresses.Add(w.WalletAddress);
+        }
+        if (_activeWallets.Count > 0)
+        {
+            _primaryAddress = _activeWallets[0].WalletAddress;
+            _signerAddress = _activeWallets[0].WalletAddress;
+        }
+
+        await LoadRegistersAsync();
+    }
+
+    private async Task LoadRegistersAsync()
+    {
+        _loadingRegisters = true;
+        try
+        {
+            var subscriptions = await SubscriptionService.GetMySubscribedRegistersAsync();
+            var subscribedIds = subscriptions.Select(s => s.RegisterId).Where(id => !string.IsNullOrEmpty(id)).ToHashSet();
+            var allRegisters = await RegisterService.GetRegistersAsync();
+            _registers = allRegisters.Where(r => subscribedIds.Contains(r.Id)).ToList();
+        }
+        catch
+        {
+            _registers = [];
+        }
+        finally
+        {
+            _loadingRegisters = false;
+        }
+    }
+
+    private void ToggleAddress(string address, bool selected)
+    {
+        if (selected)
+        {
+            _selectedAddresses.Add(address);
+            if (string.IsNullOrEmpty(_primaryAddress))
+            {
+                _primaryAddress = address;
+            }
+        }
+        else
+        {
+            _selectedAddresses.Remove(address);
+            if (_primaryAddress == address)
+            {
+                _primaryAddress = _selectedAddresses.FirstOrDefault() ?? string.Empty;
+            }
+            if (_signerAddress == address)
+            {
+                _signerAddress = _selectedAddresses.FirstOrDefault() ?? string.Empty;
+            }
+        }
+    }
+
+    private async Task NextOrSubmit()
+    {
+        _errorMessage = null;
+
+        if (_step < 2)
+        {
+            _step++;
+        }
+        else
+        {
+            await SubmitAsync();
+        }
+    }
+
+    private void PreviousStep()
+    {
+        if (_step > 0) _step--;
+    }
+
+    private async Task SubmitAsync()
+    {
+        _submitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var request = new PublishParticipantViewModel
+            {
+                ParticipantId = ParticipantId,
+                RegisterId = _selectedRegisterId,
+                Addresses = _selectedAddresses.Select(addr => new PublishAddressViewModel
+                {
+                    WalletAddress = addr,
+                    Primary = addr == _primaryAddress
+                }).ToList(),
+                SignerWalletAddress = _signerAddress
+            };
+
+            _result = await PublishingService.PublishAsync(OrganizationId, request);
+            _step = 3;
+        }
+        catch (HttpRequestException ex)
+        {
+            _errorMessage = $"Publish failed: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+    private void Close() => MudDialog.Close(DialogResult.Ok(_result));
+
+    private static string TruncateAddress(string address)
+    {
+        if (string.IsNullOrEmpty(address) || address.Length <= 16) return address;
+        return $"{address[..8]}...{address[^8..]}";
+    }
+}

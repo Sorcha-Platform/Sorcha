@@ -252,22 +252,22 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 ### Server side — device list + revoke endpoints
 
-- [ ] T113 [US3] Create `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformUserDeviceEndpoints.cs` — `GET /api/v1/me/devices` (list) + `DELETE /api/v1/me/devices/{deviceId}` (revoke) per `contracts/openapi-tenant-service.yaml`. Cross-checks ownership; 404 if not the caller's device.
-- [ ] T114 [US3] Modify `src/Services/Sorcha.Tenant.Service/Services/Implementation/PlatformUserDeviceService.cs` to add `Task RevokeAsync(Guid platformUserId, Guid deviceId, CancellationToken ct)` — sets `Status=Revoked`, `RevokedAt=now`, `RevokedByPlatformUserId=caller`, then dispatches a service-to-service call to Wallet Service to flip the status-list bit.
-- [ ] T115 [P] [US3] Add WebApplicationFactory integration tests `tests/Sorcha.Tenant.Service.Tests/PlatformUserDevice/PlatformUserDeviceEndpointsTests.cs` — list + revoke happy paths, ownership 404, double-revoke idempotency, revocation propagation invocation.
-- [ ] T116 [US3] Modify `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` to add `DELETE /api/v1/wallet/devices/{deviceId}` — invokes `ICitizenStatusListPublisher.FlipAsync` + regenerates the signed list + publishes a `deviceRevoked` SignalR event via `WalletHub`.
-- [ ] T117 [P] [US3] Add WebApplicationFactory integration tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/DeviceRevokeEndpointTests.cs` — bit flips, list re-signs, SignalR group receives event.
-- [ ] T118 [US3] Modify `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` to add `GET /api/v1/wallet/devices` (list, mirror of Tenant's `/me/devices` — used by the wallet PWA itself which talks to the Wallet Service rather than Tenant) and `PUT /api/v1/wallet/devices/{deviceId}/label`.
+- [x] T113 [US3] Create `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformUserDeviceEndpoints.cs` — `GET /api/v1/me/devices` (list) + `DELETE /api/v1/me/devices/{deviceId}` (revoke) per `contracts/openapi-tenant-service.yaml`. Cross-checks ownership; 404 if not the caller's device.
+- [x] T114 [US3] Modify `src/Services/Sorcha.Tenant.Service/Services/Implementation/PlatformUserDeviceService.cs` to add `Task RevokeAsync(Guid platformUserId, Guid deviceId, CancellationToken ct)` — sets `Status=Revoked`, `RevokedAt=now`, `RevokedByPlatformUserId=caller`, then dispatches a service-to-service call to Wallet Service to flip the status-list bit. (PR1 ships local flip + idempotency; PR2 adds the S2S dispatch.)
+- [x] T115 [P] [US3] Add WebApplicationFactory integration tests `tests/Sorcha.Tenant.Service.Tests/PlatformUserDevice/PlatformUserDeviceEndpointsTests.cs` — list + revoke happy paths, ownership 404, double-revoke idempotency, revocation propagation invocation. (Lives in `Endpoints/` to match codebase convention; namespace clash with the entity prevented `PlatformUserDevice/` folder.)
+- [x] T116 [US3] Modify `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` to add `DELETE /api/v1/wallet/devices/{deviceId}` — invokes `ICitizenStatusListPublisher.FlipAsync` + regenerates the signed list + publishes a `deviceRevoked` SignalR event via `WalletHub`. (Composed via new `IDeviceRevocationService` shared with the `POST /api/internal/citizen-status-list/revoke` Tenant→Wallet S2S endpoint.)
+- [x] T117 [P] [US3] Add WebApplicationFactory integration tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/DeviceRevokeEndpointTests.cs` — bit flips, list re-signs, SignalR group receives event. (Covered via `CitizenWalletRevokeEndpointTests` reflection-based handler tests + `DeviceRevocationServiceTests` for the FlipAsync→SignalR ordering. Tenant `PlatformUserDeviceEndpointsTests` adds two new tests asserting Tenant→Wallet S2S dispatch with right args + 502 propagation when Wallet rejects.)
+- [x] T118 [US3] Modify `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` to add `GET /api/v1/wallet/devices` (list, mirror of Tenant's `/me/devices` — used by the wallet PWA itself which talks to the Wallet Service rather than Tenant) and `PUT /api/v1/wallet/devices/{deviceId}/label`. (Both proxy via new internal Tenant endpoints + extended `IPlatformUserDeviceClient.{ListAsync, UpdateLabelAsync}`.)
 - [ ] T119 [US3] Modify `src/Services/Sorcha.Wallet.Service/Hubs/WalletHub.cs` to add a typed event `DeviceRevoked(Guid deviceId)` published to the user's group. The wallet PWA listens and locks itself if its own device id matches.
 
 ### PWA — device manager page
 
-- [ ] T120 [US3] Create `src/Apps/Sorcha.Citizen.Wallet/Pages/Devices.razor` — `/wallet/devices` route, lists devices with label / platform / enrolledAt / status. Per-row actions: rename (calls `PUT /devices/{id}/label`), revoke (calls `DELETE /devices/{id}`, with confirm dialog).
+- [x] T120 [US3] Create `src/Apps/Sorcha.Citizen.Wallet/Pages/Devices.razor` — `/wallet/devices` route, lists devices with label / platform / enrolledAt / status. Per-row actions: rename (calls `PUT /devices/{id}/label`), revoke (calls `DELETE /devices/{id}`, with confirm dialog). (Replaces the placeholder; uses two new MudDialog modals — `RenameDeviceDialog`, `ConfirmRevokeDialog` — and extends `ICitizenWalletClient` with `ListDevicesAsync` / `RenameDeviceAsync` / `RevokeDeviceAsync`.)
 
 ### Sorcha.UI.Web — additive My Devices page
 
-- [ ] T121 [US3] Create `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor` — new additive page in the existing Sorcha.UI.Web (does NOT modify any existing page; FR-035 holds). Calls `GET /api/v1/me/devices`, surfaces the same list + revoke action. Linked from the existing MyProfile menu (one new menu entry).
-- [ ] T122 [P] [US3] Add E2E coverage for the additive MyDevices page in `tests/Sorcha.UI.E2E.Tests/Docker/MyDevicesTests.cs` (extends existing UI test pattern, not the wallet test pattern).
+- [x] T121 [US3] Create `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyDevices.razor` — new additive page in the existing Sorcha.UI.Web (does NOT modify any existing page; FR-035 holds). Calls `GET /api/v1/me/devices`, surfaces the same list + revoke action. Linked from the existing MyProfile menu (one new menu entry).
+- [x] T122 [P] [US3] Add E2E coverage for the additive MyDevices page in `tests/Sorcha.UI.E2E.Tests/Docker/MyDevicesTests.cs` (extends existing UI test pattern, not the wallet test pattern).
 
 **Checkpoint**: Recovery flow works end to end. Citizen can revoke from either wallet or main UI; lost device is rejected by verifier within the documented status-list refresh interval; new device enrols + recovers credentials with no re-issuance.
 
@@ -279,23 +279,24 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 **Independent Test**: With a wallet open and online, complete an issuance flow in the existing Sorcha web UI; the new credential appears in the wallet without explicit refresh within a short delay (< 5 seconds). Repeat with the wallet closed; the credential appears on next open.
 
-### Server side — push notification on issuance
+> **Superseded.** The original placeholder task list (T123–T131) was based on the
+> "build a new push pipeline" framing that pre-dated the audit of Feature 106's
+> `CredentialStore` / `InboundCredentialDetector` pipeline. The authoritative US4
+> task list now lives in [`us4-tasks.md`](us4-tasks.md), and the design rationale
+> in [`us4-plan.md`](us4-plan.md). The new shape reuses the SorchaLocalWallet
+> register-native delivery path end-to-end and adds only a citizen-side projection
+> + a hub emit; no new credential storage path. T123–T131 below are kept as
+> historical placeholders only and should not be implemented.
 
-- [ ] T123 [US4] Identify all current Sorcha credential-issuance code paths (Feature 097 OpenID4VCI issuer, Feature 107 Assured Identity issuance, Feature 103 Verified Citizen issuance, generic `Wallet.Service` issuance pipeline). Add a single notification call after each successful issuance: `await _walletHub.NotifyCredentialAvailable(platformUserId, credentialId, ct);`.
-- [ ] T124 [US4] Create `src/Services/Sorcha.Wallet.Service/Services/Interfaces/IWalletHubNotifier.cs` and implementation that wraps `IHubContext<WalletHub>` and broadcasts `CredentialAvailable(credentialId)` to the user's group (uses `IServiceScopeFactory` per CLAUDE.md singleton-DI guidance).
-- [ ] T125 [P] [US4] Add unit tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/WalletHubNotifierTests.cs` — group routing, fire-and-forget safety on disconnected groups.
-- [ ] T126 [P] [US4] Add integration test `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/SignalRPushIntegrationTests.cs` using a `TestServer`-hosted hub and a SignalR test client to confirm the push reaches a connected group member.
-
-### PWA — SignalR client + sync trigger
-
-- [ ] T127 [US4] Add `Microsoft.AspNetCore.SignalR.Client` PackageReference to `Sorcha.Citizen.Wallet.csproj`.
-- [ ] T128 [US4] Create `src/Apps/Sorcha.Citizen.Wallet/Services/IWalletHubClient.cs` and `Services/Implementation/WalletHubClient.cs` — connects to `/hubs/wallet` with the citizen JWT, subscribes to `CredentialAvailable` and `DeviceRevoked` events, exposes `IObservable<HubEvent>` for the app to consume.
-- [ ] T129 [US4] Wire `WalletHubClient` into `Home.razor` — on `CredentialAvailable`, invoke `ISyncService.SyncAsync()`; on `DeviceRevoked` matching the local device id, lock the wallet and route to a "this device was revoked" terminal screen.
-
-### Service worker — background sync (Chromium)
-
-- [ ] T130 [US4] Modify `src/Apps/Sorcha.Citizen.Wallet/wwwroot/service-worker.published.js` to register `periodicSync` events with tag `wallet-sync-tick` (1h interval where supported). Handler invokes a fetch to `/api/v1/wallet/sync` with the stored sync token and writes the response back into IndexedDB.
-- [ ] T131 [P] [US4] Document in `quickstart.md` Troubleshooting section that Safari/Firefox fall back to "sync runs on app open" (already in v1 quickstart; verify it remains accurate after this implementation).
+- [ ] ~~T123 [US4] Identify all current Sorcha credential-issuance code paths (Feature 097 OpenID4VCI issuer, Feature 107 Assured Identity issuance, Feature 103 Verified Citizen issuance, generic `Wallet.Service` issuance pipeline). Add a single notification call after each successful issuance: `await _walletHub.NotifyCredentialAvailable(platformUserId, credentialId, ct);`.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T124 [US4] Create `src/Services/Sorcha.Wallet.Service/Services/Interfaces/IWalletHubNotifier.cs` and implementation that wraps `IHubContext<WalletHub>` and broadcasts `CredentialAvailable(credentialId)` to the user's group (uses `IServiceScopeFactory` per CLAUDE.md singleton-DI guidance).~~ — superseded by `us4-tasks.md`
+- [ ] ~~T125 [P] [US4] Add unit tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/WalletHubNotifierTests.cs` — group routing, fire-and-forget safety on disconnected groups.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T126 [P] [US4] Add integration test `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/SignalRPushIntegrationTests.cs` using a `TestServer`-hosted hub and a SignalR test client to confirm the push reaches a connected group member.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T127 [US4] Add `Microsoft.AspNetCore.SignalR.Client` PackageReference to `Sorcha.Citizen.Wallet.csproj`.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T128 [US4] Create `src/Apps/Sorcha.Citizen.Wallet/Services/IWalletHubClient.cs` and `Services/Implementation/WalletHubClient.cs` — connects to `/hubs/wallet` with the citizen JWT, subscribes to `CredentialAvailable` and `DeviceRevoked` events, exposes `IObservable<HubEvent>` for the app to consume.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T129 [US4] Wire `WalletHubClient` into `Home.razor` — on `CredentialAvailable`, invoke `ISyncService.SyncAsync()`; on `DeviceRevoked` matching the local device id, lock the wallet and route to a "this device was revoked" terminal screen.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T130 [US4] Modify `src/Apps/Sorcha.Citizen.Wallet/wwwroot/service-worker.published.js` to register `periodicSync` events with tag `wallet-sync-tick` (1h interval where supported). Handler invokes a fetch to `/api/v1/wallet/sync` with the stored sync token and writes the response back into IndexedDB.~~ — superseded by `us4-tasks.md`
+- [ ] ~~T131 [P] [US4] Document in `quickstart.md` Troubleshooting section that Safari/Firefox fall back to "sync runs on app open" (already in v1 quickstart; verify it remains accurate after this implementation).~~ — superseded by `us4-tasks.md`
 
 **Checkpoint**: New credentials appear in the wallet without explicit refresh — within seconds when SignalR-connected, on next open otherwise. Wallet locks itself if the user revokes its own device from another surface.
 
@@ -307,29 +308,37 @@ This is a multi-app .NET 10 monorepo. New code lives in `src/Apps/Sorcha.Citizen
 
 **Independent Test**: Make 3 presentations (some online, some offline), open the wallet's Activity view, verify all 3 appear with correct credential / claims / verifier label / timestamp. After regaining network, confirm the same 3 entries are reported back to the platform's lifecycle records on the originating registers.
 
-### Server side — Blueprint Service offline consumer
+### Server side — Blueprint Service offline consumer — ⛔ SUPERSEDED BY FEATURE 134
 
-- [ ] T132 [US5] Create `src/Services/Sorcha.Blueprint.Service/Services/Implementation/OfflinePresentationConsumer.cs` implementing `IPresentationConsumer` per `contracts/presentation-lifecycle-offline-extension.md`. Writes `PresentationInitiated` + `PresentationOutcome` transactions on the originating register, preserving offline timestamps; tags `kind` with `-late` suffix when older than `AcceptOfflinePresentationsWithinSeconds`.
-- [ ] T133 [US5] Modify `src/Common/Sorcha.Blueprint.Models/PresentationConfig.cs` to add `public int AcceptOfflinePresentationsWithinSeconds { get; set; } = 600;` (additive — existing blueprints unchanged).
-- [ ] T134 [US5] Modify `src/Services/Sorcha.Blueprint.Service/Extensions/ServiceCollectionExtensions.cs` to register `OfflinePresentationConsumer` against the existing consumer registry under name `offline-oid4vp`.
-- [ ] T135 [P] [US5] Add unit tests `tests/Sorcha.Blueprint.Service.Tests/OfflinePresentation/OfflinePresentationConsumerTests.cs` — happy-path lifecycle write, late-arrival tagging, idempotency on duplicate `presentationLogEntryId`, decline outcome path.
+> **T132–T135 are superseded by `specs/134-presentation-history/` (F114 US5 PR3).** The
+> "offline `IPresentationConsumer` writes the register" model is structurally impossible
+> against the shipped F111/F127 lifecycle: consumers MUST NOT write the register, and a
+> free-standing offline presentation has no originating register, no `presentationRequestId`,
+> and no pending state to verify against. PR3 instead gives reported presentations a durable
+> per-citizen store in the **Wallet Service** (no Blueprint Service change, no register write).
+> See `docs/superpowers/specs/2026-05-20-f114-us5-offline-presentation-reconciliation-design.md`.
+
+- [~] T132 [US5] ~~OfflinePresentationConsumer~~ **DROPPED** — consumer model superseded by feature 134 (Wallet Service `ICitizenPresentationStore`).
+- [~] T133 [US5] ~~`PresentationConfig.AcceptOfflinePresentationsWithinSeconds` + `-late` tagging~~ **DROPPED** — no lifecycle events means no late-arrival tagging.
+- [~] T134 [US5] ~~Register `offline-oid4vp` consumer~~ **DROPPED** — no consumer to register.
+- [~] T135 [US5] ~~OfflinePresentationConsumerTests~~ **DROPPED** — replaced by feature 134's store/forwarder/endpoint tests.
 
 ### Server side — Wallet Service forwarding
 
-- [ ] T136 [US5] Create `src/Services/Sorcha.Wallet.Service/Services/Interfaces/ICitizenPresentationLogReporter.cs` and `Services/Implementation/CitizenPresentationLogReporter.cs` — receives reports from the wallet, forwards each entry to Blueprint Service via the existing service-to-service auth, performs Redis SET-NX dedupe under `sorcha:wallet:presentation-log-dedupe:{logEntryId}` with 24h TTL.
-- [ ] T137 [US5] Modify `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` to add `POST /api/v1/wallet/presentations/log` accepting `PresentationLogReportRequest`, returning 202 Accepted; dispatches to `ICitizenPresentationLogReporter` async via `IServiceScopeFactory`.
-- [ ] T138 [P] [US5] Add WebApplicationFactory integration tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/PresentationLogEndpointTests.cs` — accepts batch, dedupes duplicates, malformed entries return 400.
+- [x] T136 [US5] Create `src/Services/Sorcha.Wallet.Service/Services/Interfaces/ICitizenPresentationLogReporter.cs` and `Services/Implementation/CitizenPresentationLogReporter.cs` — receives reports from the wallet, performs Redis SET-NX dedupe under `sorcha:wallet:presentation-log-dedupe:{logEntryId}` with 24h TTL, then forwards each new entry via the `IPresentationLogForwarder` seam. PR2 forwarder (`LoggingPresentationLogForwarder`) is a logging no-op; the real Blueprint service-to-service write lands in PR3 once the offline `IPresentationConsumer` shape is reconciled against F127.
+- [x] T137 [US5] Modify `src/Services/Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` to add `POST /api/v1/wallet/presentations/log` accepting `PresentationLogReportRequest`, returning 202 Accepted; dispatches to `ICitizenPresentationLogReporter` async via `IServiceScopeFactory`.
+- [x] T138 [P] [US5] Add tests `tests/Sorcha.Wallet.Service.Tests/CitizenWallet/PresentationLogEndpointTests.cs` (reflection-based static-handler invocation per the established citizen-endpoint pattern — accepts batch → 202, validation failure → 400, missing claim → 401) plus `CitizenPresentationLogReporterTests.cs` (SET-NX dedupe: new → forward, duplicate → skip, mixed batch, key/TTL, Redis-down degrade-open).
 
 ### PWA — presentation log writer + sync queue
 
 - [ ] T139 [US5] Create `src/Apps/Sorcha.Citizen.Wallet/Services/IPresentationLog.cs` and `Services/Implementation/PresentationLog.cs` — appends entries to IndexedDB `credentials`-store-adjacent `presentationLog` table (data-model §B5 syncQueue + a separate `presentationLog` for human-visible entries; clarify in implementation), exposes `IReadOnlyList<PresentationLogEntry> GetRecent(int count)`, `Task DeleteAsync(Guid id)`.
 - [ ] T140 [US5] Modify `Present.razor` (T100) to call `IPresentationLog.AppendAsync(...)` after every successful presentation, and to enqueue a sync-queue entry for later upload.
-- [ ] T141 [US5] Modify `ISyncService` (T107) to drain the `presentationLog` sync queue on every successful sync — POST batch to `/api/v1/wallet/presentations/log`, mark entries as `syncedToServer=true` on 202.
+- [x] T141 [US5] Modify `ISyncService` (T107) to drain the `presentationLog` sync queue on every successful sync — POST batch to `/api/v1/wallet/presentations/log`, mark entries as `syncedToServer=true` on 202. (Project renamed `Sorcha.Citizen.Wallet` → `Sorcha.Wallet.Pwa` per F125.) Added `CredentialId` to the PWA-local `PresentationLogEntry` (populated in `Present.razor`) so the drain can map to the wire contract; entries without a credential id (pre-PR2) are skipped. `InMemoryPresentationLog.AppendAsync` now upserts by id to mirror IndexedDB `put`.
 
 ### PWA — Activity page
 
-- [ ] T142 [US5] Create `src/Apps/Sorcha.Citizen.Wallet/Pages/Activity.razor` — `/wallet/activity` route, lists local entries chronologically with credential / disclosed claims / verifier label / timestamp / sync status.
-- [ ] T143 [P] [US5] Per-row delete action with explicit messaging that platform-side records are unaffected (per FR-031 + spec User Story 5 acceptance scenario 3).
+- [x] T142 [US5] `src/Apps/Sorcha.Wallet.Pwa/Pages/Activity.razor` (project renamed per F125) — `/activity` route. **Extended by feature 134** to the cross-device surface: merges the Wallet Service's server-side presentation history with the device-local log per the design §5 rule (`display = server ∪ {local where !SyncedToServer}`), not local-only.
+- [x] T143 [US5] Per-row delete — **reframed by feature 134** to server-authoritative (FR-009): "removed from your history on all your devices; does not affect the verifier's own records." (The original "platform-side records are unaffected" wording referred to register/legal evidence, which these offline presentations don't produce.)
 
 **Checkpoint**: All 5 user stories functionally complete. Wallet is feature-complete for v1 scope.
 

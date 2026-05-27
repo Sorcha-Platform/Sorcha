@@ -4,10 +4,10 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
-using JsonLogic.Net;
+using System.Text.Json.Nodes;
+using Json.Logic;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
-using Newtonsoft.Json.Linq;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 
@@ -16,6 +16,14 @@ namespace Sorcha.McpServer.Tools.Designer;
 /// <summary>
 /// Designer tool for testing JSON Logic expressions.
 /// </summary>
+/// <remarks>
+/// Backed by the same json-everything <c>Json.Logic</c> engine that
+/// <c>Sorcha.Blueprint.Engine.Implementation.JsonLogicEvaluator</c> uses at
+/// runtime, so test results in the designer match what a deployed blueprint
+/// would compute. Prior implementation used the unrelated <c>JsonLogic.Net</c>
+/// package; consolidated on the json-everything family to remove a duplicate
+/// dependency and a Newtonsoft.Json bridge layer.
+/// </remarks>
 [McpServerToolType]
 public sealed class JsonLogicTestTool
 {
@@ -23,7 +31,6 @@ public sealed class JsonLogicTestTool
     private readonly IMcpAuthorizationService _authService;
     private readonly IMcpErrorHandler _errorHandler;
     private readonly ILogger<JsonLogicTestTool> _logger;
-    private readonly JsonLogicEvaluator _evaluator;
 
     public JsonLogicTestTool(
         IMcpSessionService sessionService,
@@ -35,7 +42,6 @@ public sealed class JsonLogicTestTool
         _authService = authService;
         _errorHandler = errorHandler;
         _logger = logger;
-        _evaluator = new JsonLogicEvaluator(EvaluateOperators.Default);
     }
 
     /// <summary>
@@ -46,13 +52,12 @@ public sealed class JsonLogicTestTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The evaluation result.</returns>
     [McpServerTool(Name = "sorcha_jsonlogic_test")]
-    [Description("Test a JSON Logic expression against sample data. Evaluates the rule and returns the result. Useful for testing routing conditions, calculations, and disclosure rules in blueprints.")]
+    [Description("Evaluates a standalone JSON Logic expression against a sample data document and returns the computed result, letting you verify routing predicates, calculation formulas, or disclosure conditions in isolation. Call this when iterating on a rule before pasting it into a blueprint, or when debugging why a rule produced an unexpected value; use sorcha_blueprint_simulate instead when you need the rule evaluated in the context of an actual action with its schema and routing, and prefer this over sorcha_blueprint_validate when the question is about logic rather than schema conformance.")]
     public Task<JsonLogicTestResult> TestJsonLogicAsync(
         [Description("The JSON Logic rule to test")] string ruleJson,
         [Description("The data to evaluate the rule against")] string dataJson,
         CancellationToken cancellationToken = default)
     {
-        // Authorization check
         if (!_authService.CanInvokeTool("sorcha_jsonlogic_test"))
         {
             return Task.FromResult(new JsonLogicTestResult
@@ -63,7 +68,6 @@ public sealed class JsonLogicTestTool
             });
         }
 
-        // Validate inputs
         if (string.IsNullOrWhiteSpace(ruleJson))
         {
             return Task.FromResult(new JsonLogicTestResult
@@ -90,13 +94,12 @@ public sealed class JsonLogicTestTool
 
         try
         {
-            // Parse rule using Newtonsoft.Json (required by JsonLogic.Net)
-            JToken rule;
+            Rule? rule;
             try
             {
-                rule = JToken.Parse(ruleJson);
+                rule = JsonSerializer.Deserialize<Rule>(ruleJson);
             }
-            catch (Newtonsoft.Json.JsonReaderException ex)
+            catch (JsonException ex)
             {
                 stopwatch.Stop();
                 return Task.FromResult(new JsonLogicTestResult
@@ -108,13 +111,24 @@ public sealed class JsonLogicTestTool
                 });
             }
 
-            // Parse data using Newtonsoft.Json
-            object? data;
+            if (rule is null)
+            {
+                stopwatch.Stop();
+                return Task.FromResult(new JsonLogicTestResult
+                {
+                    Status = "Error",
+                    Message = "Rule JSON deserialised to null.",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+                });
+            }
+
+            JsonNode? dataNode;
             try
             {
-                data = JToken.Parse(dataJson);
+                dataNode = JsonNode.Parse(dataJson);
             }
-            catch (Newtonsoft.Json.JsonReaderException ex)
+            catch (JsonException ex)
             {
                 stopwatch.Stop();
                 return Task.FromResult(new JsonLogicTestResult
@@ -126,73 +140,15 @@ public sealed class JsonLogicTestTool
                 });
             }
 
-            // Evaluate the rule
-            var result = _evaluator.Apply(rule, data);
+            var resultNode = rule.Apply(dataNode);
 
             stopwatch.Stop();
 
-            // Serialize result
-            var resultJson = result != null
-                ? Newtonsoft.Json.JsonConvert.SerializeObject(result, Newtonsoft.Json.Formatting.Indented)
-                : "null";
+            var resultJson = resultNode is null
+                ? "null"
+                : resultNode.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
-            // Determine result type - handle both native types and JToken types
-            string resultType;
-            bool isTruthy;
-
-            if (result == null)
-            {
-                resultType = "null";
-                isTruthy = false;
-            }
-            else if (result is JValue jValue)
-            {
-                resultType = jValue.Type switch
-                {
-                    JTokenType.Null => "null",
-                    JTokenType.Boolean => "boolean",
-                    JTokenType.String => "string",
-                    JTokenType.Integer or JTokenType.Float => "number",
-                    _ => "object"
-                };
-                isTruthy = jValue.Type switch
-                {
-                    JTokenType.Null => false,
-                    JTokenType.Boolean => jValue.Value<bool>(),
-                    JTokenType.Integer => jValue.Value<long>() != 0,
-                    JTokenType.Float => jValue.Value<double>() != 0,
-                    JTokenType.String => !string.IsNullOrEmpty(jValue.Value<string>()),
-                    _ => true
-                };
-            }
-            else if (result is JArray)
-            {
-                resultType = "array";
-                isTruthy = true;
-            }
-            else if (result is JObject)
-            {
-                resultType = "object";
-                isTruthy = true;
-            }
-            else
-            {
-                resultType = result switch
-                {
-                    bool => "boolean",
-                    string => "string",
-                    int or long or float or double or decimal => "number",
-                    System.Collections.IEnumerable => "array",
-                    _ => "object"
-                };
-                isTruthy = result switch
-                {
-                    false => false,
-                    0 => false,
-                    "" => false,
-                    _ => true
-                };
-            }
+            var (resultType, isTruthy) = ClassifyResult(resultNode);
 
             _logger.LogInformation(
                 "JSON Logic evaluation completed in {ElapsedMs}ms. Result type: {ResultType}",
@@ -221,6 +177,73 @@ public sealed class JsonLogicTestTool
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
             });
+        }
+    }
+
+    /// <summary>
+    /// Maps a <see cref="JsonNode"/> result to (resultType, isTruthy) using
+    /// the same truthiness rules JSON Logic itself applies: null/false/0/""
+    /// are falsy, empty arrays are falsy, everything else is truthy.
+    /// </summary>
+    /// <remarks>
+    /// Uses <see cref="JsonNode.GetValueKind"/> rather than a chain of
+    /// <c>TryGetValue&lt;T&gt;</c> calls because Json.Logic's arithmetic
+    /// operations can wrap results as <see cref="decimal"/> internally, and
+    /// the typed gets don't cross numeric-CLR-type boundaries — e.g. a
+    /// <c>JsonValue&lt;decimal&gt;(15m)</c> returns false for
+    /// <c>TryGetValue&lt;long&gt;</c>. <c>GetValueKind</c> classifies via the
+    /// underlying JSON shape and is stable across all numeric wrappings.
+    /// </remarks>
+    private static (string resultType, bool isTruthy) ClassifyResult(JsonNode? node)
+    {
+        if (node is null)
+        {
+            return ("null", false);
+        }
+
+        var kind = node.GetValueKind();
+        switch (kind)
+        {
+            case JsonValueKind.Null:
+                return ("null", false);
+            case JsonValueKind.True:
+                return ("boolean", true);
+            case JsonValueKind.False:
+                return ("boolean", false);
+            case JsonValueKind.String:
+                var s = node.GetValue<string>();
+                return ("string", !string.IsNullOrEmpty(s));
+            case JsonValueKind.Number:
+                // Json.Logic wraps numeric results as JsonValue<decimal/long/int/double>
+                // depending on the operator. Try each in turn — typed GetValue<T> on
+                // a JsonValue only succeeds when the requested T matches the underlying
+                // CLR type exactly, so a chain is the simplest robust path.
+                var value = node.AsValue();
+                if (value.TryGetValue<decimal>(out var dec))
+                {
+                    return ("number", dec != 0m);
+                }
+                if (value.TryGetValue<long>(out var lng))
+                {
+                    return ("number", lng != 0L);
+                }
+                if (value.TryGetValue<double>(out var dbl))
+                {
+                    return ("number", dbl != 0.0);
+                }
+                if (value.TryGetValue<int>(out var intv))
+                {
+                    return ("number", intv != 0);
+                }
+                // Last-resort round-trip via JSON text — handles any future numeric
+                // wrapping (BigInteger, etc.) without code change.
+                return ("number", node.ToJsonString() is not ("0" or "0.0"));
+            case JsonValueKind.Array:
+                return ("array", ((JsonArray)node).Count > 0);
+            case JsonValueKind.Object:
+                return ("object", true);
+            default:
+                return ("object", true);
         }
     }
 }

@@ -50,4 +50,56 @@ public interface ICitizenWalletClient
     /// </summary>
     Task<DelegationRenewalResponse?> RenewDelegationAsync(
         Guid deviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists the citizen's enrolled devices (active + revoked, ordered by
+    /// enrolment desc). Calls <c>GET /api/v1/wallet/devices</c>.
+    /// </summary>
+    Task<DeviceListResponse> ListDevicesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Renames a device. Calls <c>PUT /api/v1/wallet/devices/{id}/label</c>.
+    /// Returns <c>false</c> on 404 (unknown / not owned).
+    /// </summary>
+    Task<bool> RenameDeviceAsync(
+        Guid deviceId, string label, CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes a device. Calls <c>DELETE /api/v1/wallet/devices/{id}</c>.
+    /// Returns <c>false</c> on 404 (unknown / not owned).
+    /// </summary>
+    Task<bool> RevokeDeviceAsync(
+        Guid deviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reports a batch of locally-recorded presentations to the platform (US5).
+    /// Calls <c>POST /api/v1/wallet/presentations/log</c>. Returns <c>true</c> when
+    /// the server accepted the batch (202); duplicates are absorbed server-side by
+    /// per-entry id dedupe, so re-reporting is safe.
+    /// </summary>
+    Task<bool> ReportPresentationLogAsync(
+        PresentationLogReportRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists the citizen's cross-device presentation history, newest-first (US5 PR3).
+    /// Calls <c>GET /api/v1/wallet/presentations</c>. Returns an empty list (never
+    /// throws on empty history) when the citizen has reported nothing.
+    /// </summary>
+    Task<IReadOnlyList<PresentationLogEntry>> ListPresentationsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a presentation from the citizen's server-side history (US5 PR3).
+    /// Calls <c>DELETE /api/v1/wallet/presentations/{id}</c>. Server-authoritative —
+    /// the entry stays gone across all the citizen's devices. Idempotent; always
+    /// succeeds (cross-user / non-existent ids are indistinguishable 204s).
+    /// </summary>
+    Task DeletePresentationAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reads the citizen's current pending-application notice (Feature 124). Calls
+    /// <c>GET /api/v1/wallet/pending-applications</c>. The envelope is always returned;
+    /// a null <see cref="PendingApplicationResponse.Notice"/> means no application is
+    /// in flight. Scoped to the calling citizen by the platform via the forwarded JWT.
+    /// </summary>
+    Task<PendingApplicationResponse> GetPendingApplicationAsync(CancellationToken ct = default);
 }

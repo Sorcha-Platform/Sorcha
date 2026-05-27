@@ -19,6 +19,7 @@ public static class CryptographyServiceExtensions
     public static IServiceCollection AddSdJwtServices(this IServiceCollection services)
     {
         services.AddSingleton<ISdJwtService, SdJwtService>();
+        services.AddSingleton<ISdJwtSigner, SdJwtSigner>();
         return services;
     }
 }

@@ -41,6 +41,10 @@ public class TenantDbContext : DbContext
     public DbSet<OrganizationRegisterSubscription> OrganizationRegisterSubscriptions => Set<OrganizationRegisterSubscription>();
     public DbSet<RegisterInvitationRecord> RegisterInvitationRecords => Set<RegisterInvitationRecord>();
     public DbSet<InvitationNonce> InvitationNonces => Set<InvitationNonce>();
+    public DbSet<InboxEntry> InboxEntries => Set<InboxEntry>();
+
+    /// <summary>Feature 120 US2 — published per-org DID documents.</summary>
+    public DbSet<OrgDidDocument> OrgDidDocuments => Set<OrgDidDocument>();
 
     // Public schema entities for custom domain resolution
     public DbSet<CustomDomainMapping> CustomDomainMappings => Set<CustomDomainMapping>();
@@ -164,6 +168,115 @@ public class TenantDbContext : DbContext
 
         // Configure AuthChallengeToken entity (public schema) — Feature 116
         ConfigureAuthChallengeToken(modelBuilder);
+
+        // Configure InboxEntry entity (public schema) — Feature 118 / US3 (durable user inbox)
+        ConfigureInboxEntry(modelBuilder);
+
+        // Configure OrgDidDocument entity (public schema) — Feature 120 US2.
+        ConfigureOrgDidDocument(modelBuilder);
+    }
+
+    /// <summary>Feature 120 US2 — published per-org DID documents.</summary>
+    private void ConfigureOrgDidDocument(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<OrgDidDocument>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("OrgDidDocuments");
+            else
+                entity.ToTable("OrgDidDocuments", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.OrganizationId).IsRequired();
+            entity.Property(e => e.PrimaryDid).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.FederatedDid).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.DocumentJson).IsRequired().HasMaxLength(16384);
+            entity.Property(e => e.KeyVersionFingerprint).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.LastRegenerationReason).HasConversion<int>().IsRequired();
+            entity.Property(e => e.LastRegeneratedAt).IsRequired();
+            entity.Property(e => e.Version).IsRequired();
+
+            entity.HasIndex(e => e.OrganizationId).IsUnique()
+                .HasDatabaseName("IX_OrgDidDocuments_OrganizationId");
+            entity.HasIndex(e => e.PrimaryDid)
+                .HasDatabaseName("IX_OrgDidDocuments_PrimaryDid");
+            entity.HasIndex(e => e.FederatedDid)
+                .HasDatabaseName("IX_OrgDidDocuments_FederatedDid");
+        });
+    }
+
+    /// <summary>Feature 118 / US3 — durable per-user notification entries.</summary>
+    private void ConfigureInboxEntry(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<InboxEntry>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("InboxEntries");
+            else
+                entity.ToTable("InboxEntries", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Category)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(e => e.Severity)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(e => e.CorrelationKey)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.DetailHref)
+                .IsRequired()
+                .HasMaxLength(1024);
+
+            entity.Property(e => e.Title)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(e => e.Summary)
+                .HasMaxLength(1000);
+
+            entity.Property(e => e.IconKey)
+                .HasMaxLength(64);
+
+            entity.Property(e => e.OccurredAt).IsRequired();
+
+            // Idempotency on duplicate writer retries.
+            entity.HasIndex(e => new { e.PlatformUserId, e.SourceEventId })
+                .IsUnique()
+                .HasDatabaseName("IX_InboxEntries_PlatformUserId_SourceEventId");
+
+            // Primary list query.
+            entity.HasIndex(e => new { e.PlatformUserId, e.OccurredAt })
+                .HasDatabaseName("IX_InboxEntries_PlatformUserId_OccurredAt");
+
+            // Sibling-grouping lookup (30s correlation-key window).
+            entity.HasIndex(e => new { e.PlatformUserId, e.CorrelationKey, e.OccurredAt })
+                .HasDatabaseName("IX_InboxEntries_PlatformUserId_CorrelationKey_OccurredAt");
+
+            // Category filter.
+            entity.HasIndex(e => new { e.PlatformUserId, e.Category, e.OccurredAt })
+                .HasDatabaseName("IX_InboxEntries_PlatformUserId_Category_OccurredAt");
+
+            // Cascade delete with PlatformUser.
+            entity.HasOne<PlatformUser>()
+                .WithMany()
+                .HasForeignKey(e => e.PlatformUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     private void ConfigureOrganization(ModelBuilder modelBuilder)
@@ -968,7 +1081,14 @@ public class TenantDbContext : DbContext
             else
                 entity.ToTable("PlatformUserPersonas", "public");
 
-            entity.HasKey(e => e.PlatformUserId);
+            // Composite key (Feature 125) — one persona per (user, context).
+            // ContextOrgId == Guid.Empty represents the Personal context;
+            // non-empty values are an organisation id the user holds an
+            // OrgMembership for.
+            entity.HasKey(e => new { e.PlatformUserId, e.ContextOrgId });
+
+            entity.Property(e => e.ContextOrgId)
+                .IsRequired();
 
             entity.Property(e => e.CiphertextBlob)
                 .IsRequired();
@@ -990,12 +1110,14 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .IsRequired();
 
-            // One-to-one with PlatformUser. Cascade delete is load-bearing
-            // for FR-007a — the persona must be wiped atomically with the
-            // user account (GDPR right-to-erasure).
+            // Many-to-one with PlatformUser (Feature 125 changed from
+            // one-to-one when the per-context column was added). Cascade
+            // delete is load-bearing for FR-007a — every persona row across
+            // every context must be wiped atomically with the user account
+            // (GDPR right-to-erasure).
             entity.HasOne(e => e.PlatformUser)
-                .WithOne()
-                .HasForeignKey<PlatformUserPersona>(e => e.PlatformUserId)
+                .WithMany()
+                .HasForeignKey(e => e.PlatformUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

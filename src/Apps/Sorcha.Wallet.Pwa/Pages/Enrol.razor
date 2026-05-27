@@ -1,0 +1,313 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Enrolment wizard (Feature 114, T109 part 2). Multi-step ceremony for
+    a freshly-installed wallet:
+      (1) Welcome — explains what enrolment does, defers sign-in to Settings
+          if the user isn't signed in yet.
+      (2) Device label — citizen-editable, sensible default suggested.
+      (3) Confirmation — runs IEnrolmentService (generates device key,
+          calls /devices/enrol, persists delegation, pulls /credentials).
+      (4) Done — summarises outcome and routes to Home.
+*@
+@page "/enrol"
+@layout MainLayout
+@using Microsoft.JSInterop
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Enrolment
+@using Sorcha.Wallet.Pwa.Components
+@inject IAuthService Auth
+@inject IEnrolmentService Enrolment
+@inject IAccessTokenStore AccessTokenStore
+@inject IEnrolSessionRedeemer Redeemer
+@inject IJSRuntime Js
+@inject NavigationManager Nav
+@inject ILogger<Enrol> Logger
+
+<PageTitle>Enrol this device</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    @if (_redeemError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3" data-testid="enrol-redeem-error">
+            @_redeemError
+        </MudAlert>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   OnClick="@(() => Nav.NavigateTo(""))">
+            Back to wallet
+        </MudButton>
+    }
+    else if (_awaitingConfirm)
+    {
+        <EnrolmentRedeemConfirmDialog
+            DisplayName="@_redeemed?.DisplayName"
+            Email="@(_redeemed?.Email ?? string.Empty)"
+            OnConfirm="HandleConfirmAsync"
+            OnCancel="HandleCancelAsync" />
+    }
+    else
+    {
+    <MudText Typo="Typo.h5" Class="mb-3">Enrol this device</MudText>
+
+    <MudStepper @ref="_stepper" Linear="true" NonLinear="false">
+        <MudStep Title="Welcome">
+            <MudText Typo="Typo.body2" Class="mb-3">
+                Enrolling registers this browser as a wallet device under your
+                Sorcha account. We generate a non-extractable device key in the
+                browser, ask the server to bind a delegation credential to it,
+                and pull your existing credentials onto the device.
+            </MudText>
+            @if (_signedIn is null)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+            }
+            else if (_signedIn == false)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3">
+                    You need to sign in first.
+                    <MudLink Href="settings" data-testid="enrol-open-settings-link">Open Settings</MudLink> to sign in,
+                    then come back here.
+                </MudAlert>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
+                    Signed in as <strong>@_signedInEmail</strong>.
+                </MudAlert>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="@(() => _stepper!.NextStepAsync())">
+                    Continue
+                </MudButton>
+            }
+        </MudStep>
+
+        <MudStep Title="Name this device">
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                Pick a label so you can recognise this device later.
+            </MudText>
+            <MudTextField @bind-Value="_label" Label="Device label"
+                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                          MaxLength="120" Class="mb-3" />
+            <MudStack Row="true" Spacing="2">
+                <MudButton OnClick="@(() => _stepper!.PreviousStepAsync())">Back</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="@(() => _stepper!.NextStepAsync())"
+                           Disabled="@string.IsNullOrWhiteSpace(_label)">
+                    Continue
+                </MudButton>
+            </MudStack>
+        </MudStep>
+
+        <MudStep Title="Confirm">
+            <MudText Typo="Typo.body2" Class="mb-3">
+                Ready to enrol <strong>@_label</strong>. We'll generate the
+                device key, register it with the server, and pull your
+                credentials. This usually takes a few seconds.
+            </MudText>
+
+            @if (_running)
+            {
+                <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-3" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@_runningStep</MudText>
+            }
+            else if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+                <MudStack Row="true" Spacing="2">
+                    <MudButton OnClick="@(() => _stepper!.PreviousStepAsync())">Back</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               OnClick="EnrolAsync">Retry</MudButton>
+                </MudStack>
+            }
+            else
+            {
+                <MudStack Row="true" Spacing="2">
+                    <MudButton OnClick="@(() => _stepper!.PreviousStepAsync())">Back</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               OnClick="EnrolAsync">Enrol</MudButton>
+                </MudStack>
+            }
+        </MudStep>
+
+        <MudStep Title="Done">
+            @if (_result is not null)
+            {
+                @if (_result.CredentialsLoaded == 0)
+                {
+                    @* Feature 124 (US1, FR-001): forward-looking copy for first-time citizens
+                       so a freshly-enrolled wallet doesn't read as "something is missing". *@
+                    <MudAlert Severity="Severity.Success" Class="mb-3">
+                        Enrolled. Your wallet is ready — submit your council application
+                        to receive your first credential.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Success" Class="mb-3">
+                        Enrolled. Loaded <strong>@_result.CredentialsLoaded</strong> credential(s).
+                        Delegation valid until <strong>@_result.DelegationExpiresAt.ToLocalTime():f</strong>.
+                    </MudAlert>
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="@(() => Nav.NavigateTo(""))"
+                           data-testid="enrol-done-open-wallet-button">
+                    Open wallet
+                </MudButton>
+            }
+        </MudStep>
+    </MudStepper>
+    }
+</MudContainer>
+
+@code {
+    private MudStepper? _stepper;
+    private bool? _signedIn;
+    private string? _signedInEmail;
+    private string _label = "My Sorcha wallet";
+    private bool _running;
+    private string _runningStep = string.Empty;
+    private string? _error;
+    private EnrolmentResult? _result;
+
+    // Feature 126 — session-redeem flow state.
+    private bool _awaitingConfirm;
+    private EnrolRedeemResult? _redeemed;
+    private string? _redeemError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Feature 126: if the URL carries ?session=<token>, redeem it for a
+        // citizen access token before the normal enrolment flow proceeds.
+        // Surface the bound user's display name + email in a confirmation
+        // dialog before any device-pairing call runs — the friend-scans-by-
+        // mistake mitigation. Once confirmed, the redeemed access token is
+        // persisted via IAccessTokenStore and the existing stepper flow
+        // takes over with the citizen already signed in.
+        var sessionToken = TryReadSessionToken();
+        if (!string.IsNullOrEmpty(sessionToken))
+        {
+            var result = await Redeemer.RedeemAsync(sessionToken);
+            if (result.IsSuccess)
+            {
+                _redeemed = result;
+                _awaitingConfirm = true;
+                return;
+            }
+
+            _redeemError = result.ErrorCode switch
+            {
+                EnrolRedeemErrorCode.Expired => "This link has expired. Open the council page on your other device for a new code.",
+                EnrolRedeemErrorCode.AlreadyUsed => "This link has already been used. If you're trying to set up another device, generate a fresh code from the council page.",
+                EnrolRedeemErrorCode.Network => "Couldn't reach Sorcha. Check your connection and try again.",
+                _ => "This enrolment link couldn't be redeemed.",
+            };
+            return;
+        }
+
+        _signedInEmail = await Auth.GetSignedInEmailAsync();
+        _signedIn = _signedInEmail is not null;
+    }
+
+    private string? TryReadSessionToken()
+    {
+        var uri = new Uri(Nav.Uri);
+        if (string.IsNullOrEmpty(uri.Query)) return null;
+        var query = uri.Query.TrimStart('?');
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq < 0) continue;
+            var key = Uri.UnescapeDataString(part[..eq]);
+            if (string.Equals(key, "session", StringComparison.Ordinal))
+            {
+                return Uri.UnescapeDataString(part[(eq + 1)..]);
+            }
+        }
+        return null;
+    }
+
+    private async Task HandleConfirmAsync()
+    {
+        if (_redeemed is null || _redeemed.AccessToken is null)
+        {
+            return;
+        }
+
+        var expiresAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, _redeemed.ExpiresInSeconds));
+        await AccessTokenStore.SetAsync(new AccessTokenRecord(
+            _redeemed.AccessToken, expiresAt, _redeemed.Email));
+
+        // Drop the dialog and re-resolve signed-in state. The existing
+        // stepper renders the welcome step with the citizen now signed in.
+        _awaitingConfirm = false;
+        _signedInEmail = _redeemed.Email;
+        _signedIn = true;
+        StateHasChanged();
+    }
+
+    private void HandleCancelAsync()
+    {
+        // Friend-scans-by-mistake path: no device registered. Route to a
+        // landing that makes the "this wasn't for me" outcome clear.
+        Nav.NavigateTo("cancelled-enrolment");
+    }
+
+    private async Task EnrolAsync()
+    {
+        _error = null;
+        _running = true;
+        try
+        {
+            _runningStep = "Generating device key…";
+            StateHasChanged();
+            await Task.Yield();
+
+            var (platform, userAgent) = await ReadBrowserContextAsync();
+
+            _runningStep = "Registering device with server…";
+            StateHasChanged();
+            await Task.Yield();
+
+            _result = await Enrolment.EnrolAsync(_label, platform, userAgent);
+
+            _runningStep = "Done";
+            await _stepper!.NextStepAsync();
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = ex.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                ? "Session expired. Please sign in again from Settings."
+                : $"Server error: {ex.Message}";
+            Logger.LogError(ex, "Enrolment HTTP failure");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            Logger.LogError(ex, "Enrolment threw");
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private async Task<(string Platform, string UserAgent)> ReadBrowserContextAsync()
+    {
+        try
+        {
+            var ua = await Js.InvokeAsync<string>("eval", "navigator.userAgent || ''");
+            var platform = await Js.InvokeAsync<string>("eval",
+                "(navigator.userAgentData?.platform ?? navigator.platform ?? '') + ' / ' + " +
+                "(navigator.userAgentData?.brands?.map(b => b.brand + ' ' + b.version).join(' ') ?? '')");
+            return (Truncate(platform, 120), Truncate(ua, 512));
+        }
+        catch
+        {
+            return ("Unknown / Unknown", "Unknown");
+        }
+    }
+
+    private static string Truncate(string s, int max)
+        => string.IsNullOrEmpty(s) ? string.Empty : (s.Length <= max ? s : s[..max]);
+}

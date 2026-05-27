@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Extensions;
 using Sorcha.Tenant.Service.Models;
@@ -29,6 +30,8 @@ public class TokenService : ITokenService
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly SigningCredentials? _signingCredentials;
     private readonly TokenValidationParameters _validationParameters;
+    private readonly SorchaAudiences _audiences;
+    private readonly IdentityMetrics? _metrics;
 
     public TokenService(
         IOptions<JwtConfiguration> options,
@@ -36,9 +39,12 @@ public class TokenService : ITokenService
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         IParticipantRepository participantRepository,
-        ILogger<TokenService> logger)
+        ILogger<TokenService> logger,
+        IdentityMetrics? metrics = null)
     {
         _config = options?.Value ?? new JwtConfiguration();
+        _audiences = new SorchaAudiences(_config.InstallationName);
+        _metrics = metrics;
         _revocationService = revocationService ?? throw new ArgumentNullException(nameof(revocationService));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
@@ -78,40 +84,63 @@ public class TokenService : ITokenService
         UserIdentity user,
         Organization organization,
         Guid platformUserId,
+        Tier tier = Tier.Platform,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(organization);
 
+        if (tier is not (Tier.Consumer or Tier.Platform))
+        {
+            throw new ArgumentOutOfRangeException(nameof(tier), tier,
+                "Human access tokens are only minted at the Consumer or Platform tier (spec 136).");
+        }
+
         var accessTokenJti = Guid.NewGuid().ToString();
         var refreshTokenJti = Guid.NewGuid().ToString();
 
+        // Common claims for every human token.
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
             new(JwtRegisteredClaimNames.Jti, accessTokenJti),
             new("name", user.DisplayName),
-            new(TokenClaimConstants.OrgId, organization.Id.ToString()),
-            new("org_name", organization.Name),
             new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser),
             new("platform_user_id", platformUserId.ToString())
         };
 
-        // Add role claims
-        foreach (var role in user.Roles)
-        {
-            claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
-        }
+        // Both human tiers carry organisation context (org_id/org_name) — a citizen's home is the
+        // public org, and they need that context for their own org-scoped operations (provisioning
+        // their wallet, submitting an application as a public-org participant). The tier boundary is
+        // the AUDIENCE (a :consumer token is refused at platform surfaces) plus the absence of ROLES
+        // (no admin capability) — NOT the absence of org_id (spec 136 refinement of FR-013).
+        claims.Add(new Claim(TokenClaimConstants.OrgId, organization.Id.ToString()));
+        claims.Add(new Claim("org_name", organization.Name));
 
-        // Add wallet_address claim from user's first active linked wallet
-        await AddWalletAddressClaimAsync(claims, user.Id, organization.Id, cancellationToken);
+        // Roles + wallet binding are platform-only: they are the platform-privilege markers, so a
+        // consumer token carries neither and stays inert against admin/platform surfaces (FR-014).
+        if (tier == Tier.Platform)
+        {
+            foreach (var role in user.Roles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
+            }
+
+            await AddWalletAddressClaimAsync(claims, user.Id, organization.Id, cancellationToken);
+        }
 
         var accessTokenExpiry = DateTimeOffset.UtcNow.AddMinutes(_config.AccessTokenLifetimeMinutes);
         var refreshTokenExpiry = DateTimeOffset.UtcNow.AddHours(_config.RefreshTokenLifetimeHours);
 
-        var accessToken = GenerateToken(claims, accessTokenExpiry);
-        var refreshToken = GenerateRefreshToken(refreshTokenJti, user.Id.ToString(), organization.Id.ToString(), refreshTokenExpiry);
+        var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(tier));
+        _metrics?.TokenMinted(tier);
+        // The refresh token carries the tier (re-minted same tier, FR-012) and the org context for
+        // both human tiers (a consumer's home org is needed to re-mint its org-scoped consumer token).
+        var refreshToken = GenerateRefreshToken(
+            refreshTokenJti, user.Id.ToString(),
+            organization.Id.ToString(),
+            refreshTokenExpiry, platformUserId.ToString(), tier);
 
         // Track tokens for potential bulk revocation
         await _revocationService.TrackTokenAsync(
@@ -169,7 +198,8 @@ public class TokenService : ITokenService
 
         var accessTokenExpiry = DateTimeOffset.UtcNow.AddHours(_config.ServiceTokenLifetimeHours);
 
-        var accessToken = GenerateToken(claims, accessTokenExpiry);
+        var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(Tier.Service));
+        _metrics?.TokenMinted(Tier.Service);
 
         _logger.LogInformation(
             "Generated service token for {ServiceName} (client: {ClientId})",
@@ -248,7 +278,11 @@ public class TokenService : ITokenService
                 organization = await _organizationRepository.GetByIdAsync(orgGuid, cancellationToken);
             }
 
-            // Generate new access token with full claims rebuilt from current user state
+            // A refresh re-mints an access token of the SAME tier as the refresh token (spec 136,
+            // FR-012). The tier was stamped at issuance; absent (legacy tokens) defaults to platform.
+            var tier = ParseTierClaim(principal.FindFirst("tier")?.Value);
+
+            // Generate new access token with claims rebuilt from current user state
             var newAccessTokenJti = Guid.NewGuid().ToString();
             var accessTokenExpiry = DateTimeOffset.UtcNow.AddMinutes(_config.AccessTokenLifetimeMinutes);
 
@@ -261,7 +295,22 @@ public class TokenService : ITokenService
                 new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser)
             };
 
-            // Add org claims if available
+            // platform_user_id is carried on every human tier. For refresh tokens minted before this
+            // claim was persisted, fall back to the UserIdentity row (canonical source).
+            var platformUserId = principal.FindFirst("platform_user_id")?.Value;
+            if (string.IsNullOrEmpty(platformUserId) && user.PlatformUserId != Guid.Empty)
+            {
+                platformUserId = user.PlatformUserId.ToString();
+                _logger.LogDebug(
+                    "Refresh token for user {UserId} lacked platform_user_id claim; recovered from UserIdentity.PlatformUserId",
+                    user.Id);
+            }
+            if (!string.IsNullOrEmpty(platformUserId))
+            {
+                claims.Add(new Claim("platform_user_id", platformUserId));
+            }
+
+            // Org context (org_id/org_name) is re-minted for both human tiers (a consumer's home org).
             if (organization is not null)
             {
                 claims.Add(new Claim(TokenClaimConstants.OrgId, organization.Id.ToString()));
@@ -272,27 +321,23 @@ public class TokenService : ITokenService
                 claims.Add(new Claim(TokenClaimConstants.OrgId, orgId));
             }
 
-            // Add platform user ID if present in refresh token
-            var platformUserId = principal.FindFirst("platform_user_id")?.Value;
-            if (!string.IsNullOrEmpty(platformUserId))
+            // Roles + wallet binding are platform-only (the platform-privilege markers, FR-014).
+            if (tier == Tier.Platform)
             {
-                claims.Add(new Claim("platform_user_id", platformUserId));
+                foreach (var role in user.Roles)
+                {
+                    claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
+                }
+
+                var orgIdForWallet = organization?.Id ?? (Guid.TryParse(orgId, out var parsedOrgId) ? parsedOrgId : (Guid?)null);
+                if (orgIdForWallet.HasValue)
+                {
+                    await AddWalletAddressClaimAsync(claims, userGuid, orgIdForWallet.Value, cancellationToken);
+                }
             }
 
-            // Add current role claims from user record (critical: refresh tokens don't carry roles)
-            foreach (var role in user.Roles)
-            {
-                claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
-            }
-
-            // Add wallet_address claim from user's first active linked wallet
-            var orgIdForWallet = organization?.Id ?? (Guid.TryParse(orgId, out var parsedOrgId) ? parsedOrgId : (Guid?)null);
-            if (orgIdForWallet.HasValue)
-            {
-                await AddWalletAddressClaimAsync(claims, userGuid, orgIdForWallet.Value, cancellationToken);
-            }
-
-            var accessToken = GenerateToken(claims, accessTokenExpiry);
+            var accessToken = GenerateToken(claims, accessTokenExpiry, _audiences.For(tier));
+            _metrics?.TokenMinted(tier);
 
             // Track new access token
             await _revocationService.TrackTokenAsync(
@@ -438,7 +483,7 @@ public class TokenService : ITokenService
         _logger.LogInformation("Revoked all tokens for organization {OrgId}", organizationId);
     }
 
-    private string GenerateToken(IEnumerable<Claim> claims, DateTimeOffset expiry)
+    private string GenerateToken(IEnumerable<Claim> claims, DateTimeOffset expiry, string audience)
     {
         if (_signingCredentials == null)
         {
@@ -451,7 +496,7 @@ public class TokenService : ITokenService
             Expires = expiry.UtcDateTime,
             IssuedAt = DateTime.UtcNow,
             Issuer = _config.Issuer,
-            Audience = _config.Audiences.FirstOrDefault(),
+            Audience = audience,
             SigningCredentials = _signingCredentials
         };
 
@@ -459,7 +504,7 @@ public class TokenService : ITokenService
         return _tokenHandler.WriteToken(token);
     }
 
-    private string GenerateRefreshToken(string jti, string userId, string? orgId, DateTimeOffset expiry)
+    private string GenerateRefreshToken(string jti, string userId, string? orgId, DateTimeOffset expiry, string? platformUserId = null, Tier tier = Tier.Platform)
     {
         var claims = new List<Claim>
         {
@@ -473,8 +518,37 @@ public class TokenService : ITokenService
             claims.Add(new Claim(TokenClaimConstants.OrgId, orgId));
         }
 
-        return GenerateToken(claims, expiry);
+        // Persist platform_user_id on the refresh token so RefreshTokenAsync
+        // can re-emit it on the rebuilt access token. Without this, every
+        // refreshed access token drops the claim and all PlatformUser-scoped
+        // endpoints (inbox, /hubs/wallet, persona) start 401-ing within the
+        // access-token lifetime.
+        if (!string.IsNullOrEmpty(platformUserId))
+        {
+            claims.Add(new Claim("platform_user_id", platformUserId));
+        }
+
+        // Refresh tokens carry their tier so a refresh re-mints the same tier (spec 136, FR-012).
+        claims.Add(new Claim("tier", TierClaimValue(tier)));
+
+        return GenerateToken(claims, expiry, _audiences.For(tier));
     }
+
+    /// <summary>The <c>tier</c> refresh-token claim value for a human tier.</summary>
+    private static string TierClaimValue(Tier tier) => tier switch
+    {
+        Tier.Consumer => "consumer",
+        Tier.Platform => "platform",
+        _ => "platform",
+    };
+
+    /// <summary>Parses the <c>tier</c> refresh-token claim back to a human <see cref="Tier"/> (default Platform).</summary>
+    private static Tier ParseTierClaim(string? value) => value switch
+    {
+        "consumer" => Tier.Consumer,
+        "platform" => Tier.Platform,
+        _ => Tier.Platform,
+    };
 
     /// <summary>
     /// Looks up the user's first active linked wallet address and adds it as a JWT claim.

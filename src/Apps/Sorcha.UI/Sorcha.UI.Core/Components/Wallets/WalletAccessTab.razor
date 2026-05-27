@@ -3,8 +3,9 @@
 
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject IWalletAccessService AccessService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject IDialogService DialogService
 
 <MudPaper Elevation="0" Class="pa-4">
@@ -119,14 +120,14 @@
         var result = await AccessService.GrantAccessAsync(WalletAddress, _form);
         if (result != null)
         {
-            Snackbar.Add($"Access granted to {_form.Subject}", Severity.Success);
+            Feedback.ShowSuccess($"Access granted to {_form.Subject}");
             _form = new GrantAccessFormModel();
             _showGrantForm = false;
             await LoadGrantsAsync();
         }
         else
         {
-            Snackbar.Add("Failed to grant access. You may not have permission.", Severity.Error);
+            Feedback.ShowError("Failed to grant access. You may not have permission.", autoDismissMs: 0);
         }
     }
 
@@ -145,12 +146,12 @@
         var success = await AccessService.RevokeAccessAsync(WalletAddress, subject);
         if (success)
         {
-            Snackbar.Add($"Access revoked for {subject}", Severity.Success);
+            Feedback.ShowSuccess($"Access revoked for {subject}");
             await LoadGrantsAsync();
         }
         else
         {
-            Snackbar.Add("Failed to revoke access", Severity.Error);
+            Feedback.ShowError("Failed to revoke access", autoDismissMs: 0);
         }
     }
 

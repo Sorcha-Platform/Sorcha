@@ -32,12 +32,12 @@ public class RegisterEventBridgeService : BackgroundService
         _logger.LogInformation("RegisterEventBridgeService registering event subscriptions");
 
         await _subscriber.SubscribeAsync<RegisterCreatedEvent>(
-            "register:created",
+            RegisterEventChannels.RegisterCreated,
             async e =>
             {
                 _logger.LogDebug("Bridging RegisterCreated for {RegisterId} to group register:{GroupRegisterId}", e.RegisterId, e.RegisterId);
                 await _hubContext.Clients
-                    .Group($"register:{e.RegisterId}")
+                    .Group(RegisterHubGroups.Register(e.RegisterId))
                     .RegisterCreated(e.RegisterId, e.Name);
             },
             stoppingToken);
@@ -48,7 +48,7 @@ public class RegisterEventBridgeService : BackgroundService
             {
                 _logger.LogDebug("Bridging RegisterDeleted for {RegisterId} to group register:{GroupRegisterId}", e.RegisterId, e.RegisterId);
                 await _hubContext.Clients
-                    .Group($"register:{e.RegisterId}")
+                    .Group(RegisterHubGroups.Register(e.RegisterId))
                     .RegisterDeleted(e.RegisterId);
             },
             stoppingToken);
@@ -59,7 +59,7 @@ public class RegisterEventBridgeService : BackgroundService
             {
                 _logger.LogDebug("Bridging RegisterStatusChanged for {RegisterId} to group register:{GroupRegisterId}", e.RegisterId, e.RegisterId);
                 await _hubContext.Clients
-                    .Group($"register:{e.RegisterId}")
+                    .Group(RegisterHubGroups.Register(e.RegisterId))
                     .RegisterStatusChanged(e.RegisterId, e.NewStatus);
             },
             stoppingToken);
@@ -70,7 +70,7 @@ public class RegisterEventBridgeService : BackgroundService
             {
                 _logger.LogDebug("Bridging TransactionConfirmed for {RegisterId} to register:{RegisterId}", e.RegisterId, e.RegisterId);
                 await _hubContext.Clients
-                    .Group($"register:{e.RegisterId}")
+                    .Group(RegisterHubGroups.Register(e.RegisterId))
                     .TransactionConfirmed(e.RegisterId, e.TransactionId);
             },
             stoppingToken);
@@ -81,7 +81,7 @@ public class RegisterEventBridgeService : BackgroundService
             {
                 _logger.LogDebug("Bridging DocketSealed for {RegisterId} to register:{RegisterId}", e.RegisterId, e.RegisterId);
                 await _hubContext.Clients
-                    .Group($"register:{e.RegisterId}")
+                    .Group(RegisterHubGroups.Register(e.RegisterId))
                     .DocketSealed(e.RegisterId, e.DocketId, e.Hash);
             },
             stoppingToken);
@@ -92,7 +92,7 @@ public class RegisterEventBridgeService : BackgroundService
             {
                 _logger.LogDebug("Bridging RegisterHeightUpdated for {RegisterId} to register:{RegisterId}", e.RegisterId, e.RegisterId);
                 await _hubContext.Clients
-                    .Group($"register:{e.RegisterId}")
+                    .Group(RegisterHubGroups.Register(e.RegisterId))
                     .RegisterHeightUpdated(e.RegisterId, e.NewHeight);
             },
             stoppingToken);
@@ -101,9 +101,9 @@ public class RegisterEventBridgeService : BackgroundService
             "register:sync-state-changed",
             async e =>
             {
-                _logger.LogDebug("Bridging RegisterSyncStateChanged for {RegisterId} to group {GroupName}", e.RegisterId, $"register:{e.RegisterId}");
+                _logger.LogDebug("Bridging RegisterSyncStateChanged for {RegisterId} to group {GroupName}", e.RegisterId, RegisterHubGroups.Register(e.RegisterId));
                 await _hubContext.Clients
-                    .Group($"register:{e.RegisterId}")
+                    .Group(RegisterHubGroups.Register(e.RegisterId))
                     .RegisterSyncStateChanged(e.RegisterId, e.SyncState);
             },
             stoppingToken);
@@ -115,7 +115,7 @@ public class RegisterEventBridgeService : BackgroundService
                 _logger.LogDebug("Bridging ReceiptGenerated for {RegisterId} docket {DocketNumber} tx {TransactionId} to group register:{GroupRegisterId}",
                     e.RegisterId, e.DocketNumber, e.TransactionId, e.RegisterId);
                 await _hubContext.Clients
-                    .Group($"register:{e.RegisterId}")
+                    .Group(RegisterHubGroups.Register(e.RegisterId))
                     .TransactionReceipt(
                         e.TransactionId,
                         e.RegisterId,

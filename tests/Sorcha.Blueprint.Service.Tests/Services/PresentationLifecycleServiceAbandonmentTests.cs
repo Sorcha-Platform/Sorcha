@@ -9,6 +9,7 @@ using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.PresentationLifecycle.Abstractions;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
 
@@ -167,5 +168,75 @@ public class PresentationLifecycleServiceAbandonmentTests
 
         _validator.Verify(v => v.SubmitTransactionAsync(
             It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // -------------------------------------------------------------------------
+    // Feature 119 — seal-aware ordering (T023).
+    // -------------------------------------------------------------------------
+
+    private static PendingPresentation PendingWithInitiated(Guid id)
+        => Pending(id, recordAbandonment: true) with { InitiatedTransactionId = "tx-init-1" };
+
+    private PresentationLifecycleService MakeWithCoordinator(
+        Mock<IRegisterServiceClient> registerMock,
+        Mock<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator> coordMock)
+        => new(_builder, _wallet.Object, _validator.Object, _store.Object,
+            [new Mock<IPresentationConsumer>().Object],
+            Options.Create(new PresentationLifecycleOptions()),
+            new Mock<ILogger<PresentationLifecycleService>>().Object,
+            haipClient: null, metrics: null, clock: null,
+            serviceProvider: null,
+            registerClient: registerMock.Object,
+            sealCoordinator: coordMock.Object);
+
+    [Fact]
+    public async Task HandleAbandonmentAsync_PredecessorSealed_SubmitsInline_NoEnqueue()
+    {
+        var id = Guid.NewGuid();
+        _store.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(PendingWithInitiated(id));
+        _store.Setup(s => s.GetOutcomeSentinelAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var register = new Mock<IRegisterServiceClient>();
+        register.Setup(r => r.GetTransactionAsync("reg-1", "tx-init-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.TransactionModel { TxId = "tx-init-1", RegisterId = "reg-1" });
+        var coord = new Mock<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator>();
+
+        await MakeWithCoordinator(register, coord).HandleAbandonmentAsync(id, CancellationToken.None);
+
+        _validator.Verify(v => v.SubmitTransactionAsync(
+            It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()), Times.Once);
+        coord.Verify(c => c.EnqueueSubmissionAsync(It.IsAny<SealAwaitingSubmission>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleAbandonmentAsync_PredecessorPending_EnqueuesWithSiteAbandonment()
+    {
+        var id = Guid.NewGuid();
+        _store.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(PendingWithInitiated(id));
+        _store.Setup(s => s.GetOutcomeSentinelAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var register = new Mock<IRegisterServiceClient>();
+        register.Setup(r => r.GetTransactionAsync("reg-1", "tx-init-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Sorcha.Register.Models.TransactionModel?)null);   // pending
+
+        SealAwaitingSubmission? captured = null;
+        var coord = new Mock<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator>();
+        coord.Setup(c => c.EnqueueSubmissionAsync(It.IsAny<SealAwaitingSubmission>(), It.IsAny<CancellationToken>()))
+            .Callback<SealAwaitingSubmission, CancellationToken>((s, _) => captured = s)
+            .Returns(Task.CompletedTask);
+
+        await MakeWithCoordinator(register, coord).HandleAbandonmentAsync(id, CancellationToken.None);
+
+        _validator.Verify(v => v.SubmitTransactionAsync(
+            It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()), Times.Never);
+        captured.Should().NotBeNull();
+        captured!.Site.Should().Be(SealAwaitingSubmissionSite.Abandonment);
+        captured.PredecessorTxId.Should().Be("tx-init-1");
+        captured.TargetSentinelOnSuccess.Should().Be("abandoned");
     }
 }

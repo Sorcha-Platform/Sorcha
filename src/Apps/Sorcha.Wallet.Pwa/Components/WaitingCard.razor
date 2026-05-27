@@ -1,0 +1,25 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 124 (US2, FR-002). Pulsing skeleton card rendered on the wallet
+    Home when a pending-application notice is set for the signed-in citizen.
+    Plain HTML + CSS animation (no MudBlazor dialog chrome) — the design
+    intent is "calm placeholder where a credential will land", not a modal.
+*@
+
+<div class="sorcha-waiting-card" role="status" aria-live="polite"
+     aria-label="@($"{Label} application is being reviewed.")">
+    <MudText Typo="Typo.body1" Class="mb-3">
+        Your <strong>@Label</strong> application is being reviewed.
+        You'll see it here when it's ready.
+    </MudText>
+    <div class="sorcha-waiting-card__line sorcha-waiting-card__line--long"></div>
+    <div class="sorcha-waiting-card__line sorcha-waiting-card__line--mid"></div>
+    <div class="sorcha-waiting-card__line sorcha-waiting-card__line--short"></div>
+</div>
+
+@code {
+    /// <summary>Application label rendered inline in the waiting message.</summary>
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+}

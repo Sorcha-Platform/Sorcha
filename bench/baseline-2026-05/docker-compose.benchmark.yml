@@ -1,0 +1,18 @@
+# Benchmark overlay for the validator service. Apply with:
+#   docker compose -f docker-compose.yml -f bench/baseline-2026-05/docker-compose.benchmark.yml up -d
+#
+# Enables RuleTelemetry collection inside Sorcha.Validator.Service. The capture
+# harness (run-baseline.ps1) drives reset/flush via the new internal endpoints.
+#
+# DOTNET_DiagnosticPorts mounts a Unix-socket diagnostic endpoint at
+# /tmp/sorcha-validator-diag.sock so `dotnet-counters` on the host can attach
+# without rebuilding the image to install the tool inside.
+
+services:
+  validator-service:
+    environment:
+      Validator__Benchmark__Enabled: "true"
+      Validator__Benchmark__FlushIntervalSeconds: "0"
+      DOTNET_DiagnosticPorts: "/tmp/diag/sorcha-validator-diag.sock,suspend=false"
+    volumes:
+      - ./bench/baseline-2026-05/bench-diag:/tmp/diag

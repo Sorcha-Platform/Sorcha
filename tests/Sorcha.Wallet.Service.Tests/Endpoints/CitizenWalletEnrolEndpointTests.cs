@@ -9,11 +9,13 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.Wallet.Service.Endpoints;
+using Sorcha.Wallet.Service.Hubs;
 using Sorcha.Wallet.Service.Services.Interfaces;
 using Xunit;
 
@@ -36,9 +38,14 @@ public sealed class CitizenWalletEnrolEndpointTests
 
     private readonly Mock<IValidator<DeviceEnrolmentRequest>> _validator = new();
     private readonly Mock<IHolderKeyService> _holderKeys = new();
+    private readonly Mock<IHolderAddressLookup> _holderAddressLookup = new();
     private readonly Mock<IDeviceDelegationIssuer> _issuer = new();
     private readonly Mock<IOrgStatusSigningWalletResolver> _resolver = new();
     private readonly Mock<IPlatformUserDeviceClient> _deviceClient = new();
+    private readonly Mock<Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository> _walletRepository = new();
+    private readonly Mock<IHubContext<WalletHub>> _hub = new();
+    private readonly Mock<IHubClients> _hubClients = new();
+    private readonly Mock<IClientProxy> _hubGroup = new();
 
     public CitizenWalletEnrolEndpointTests()
     {
@@ -47,6 +54,11 @@ public sealed class CitizenWalletEnrolEndpointTests
 
         _resolver.Setup(r => r.ResolveAsync(OrgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(OrgWallet);
+
+        // Feature 128 — wire IHubContext so EnrolDevice can publish
+        // DeviceEnrolled on the citizen's WalletHub group.
+        _hub.Setup(h => h.Clients).Returns(_hubClients.Object);
+        _hubClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_hubGroup.Object);
     }
 
     private static DeviceEnrolmentRequest BuildRequest() => new()
@@ -108,6 +120,9 @@ public sealed class CitizenWalletEnrolEndpointTests
             _issuer.Object,
             _resolver.Object,
             _deviceClient.Object,
+            _holderAddressLookup.Object,
+            _walletRepository.Object,
+            _hub.Object,
             NullLogger<Program>.Instance,
             CancellationToken.None
         ]);
@@ -129,7 +144,7 @@ public sealed class CitizenWalletEnrolEndpointTests
                 PlatformUserId, "Stuart's iPhone 16",
                 It.IsAny<string>(), It.IsAny<string>(),
                 "iOS 19 / Safari 19", "Mozilla/5.0 ...",
-                delegation.ExpiresAt, "jti-abc", 7,
+                delegation.ExpiresAt, "jti-abc", 0, 7,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformUserDeviceRegistrationResult(deviceId, DateTimeOffset.UtcNow));
 
@@ -145,6 +160,15 @@ public sealed class CitizenWalletEnrolEndpointTests
         _issuer.Verify(i => i.IssueAsync(
             PlatformUserId, CitizenWallet, OrgId, OrgWallet,
             It.IsAny<EcP256PublicJwk>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        // Feature 128 FR-014 — DeviceEnrolled broadcast on the citizen's
+        // hub group so any open PWA instance dismisses its pairing takeover.
+        var expectedGroup = WalletHubGroups.CitizenWallet(PlatformUserId);
+        _hubClients.Verify(c => c.Group(expectedGroup), Times.Once);
+        _hubGroup.Verify(g => g.SendCoreAsync(
+            CitizenWalletEndpoints.DeviceEnrolledEvent,
+            It.Is<object?[]>(args => args.Length == 1 && (Guid)args[0]! == deviceId),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -202,7 +226,7 @@ public sealed class CitizenWalletEnrolEndpointTests
                 It.IsAny<Guid>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Tenant down"));
 

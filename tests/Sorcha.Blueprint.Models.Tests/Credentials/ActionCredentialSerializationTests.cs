@@ -27,7 +27,7 @@ public class ActionCredentialSerializationTests
                 new CredentialRequirement
                 {
                     Type = "IdentityAttestation",
-                    AcceptedIssuers = ["did:sorcha:issuer:gov"],
+                    TrustPolicy = TrustPolicyExtensions.FromLegacyIssuers(["did:sorcha:issuer:gov"]),
                     RequiredClaims =
                     [
                         new ClaimConstraint { ClaimName = "nationality" }
@@ -43,7 +43,7 @@ public class ActionCredentialSerializationTests
         doc.RootElement.TryGetProperty("credentialRequirements", out var reqs).Should().BeTrue();
         reqs.GetArrayLength().Should().Be(1);
         reqs[0].GetProperty("type").GetString().Should().Be("IdentityAttestation");
-        reqs[0].GetProperty("acceptedIssuers").GetArrayLength().Should().Be(1);
+        reqs[0].GetProperty("trustPolicy").GetProperty("sources")[0].GetProperty("allowedIssuers").GetArrayLength().Should().Be(1);
         reqs[0].GetProperty("requiredClaims")[0].GetProperty("claimName").GetString().Should().Be("nationality");
         reqs[0].GetProperty("revocationCheckPolicy").GetString().Should().Be("FailClosed");
     }
@@ -103,7 +103,9 @@ public class ActionCredentialSerializationTests
             "credentialRequirements": [
                 {
                     "type": "LicenseCredential",
-                    "acceptedIssuers": ["did:sorcha:issuer:gov"],
+                    "trustPolicy": {
+                        "sources": [ { "kind": "did-allowlist", "allowedIssuers": ["did:sorcha:issuer:gov"] } ]
+                    },
                     "requiredClaims": [
                         { "claimName": "licenseType", "expectedValue": "A" }
                     ],
@@ -120,7 +122,7 @@ public class ActionCredentialSerializationTests
         action!.CredentialRequirements.Should().HaveCount(1);
         var req = action.CredentialRequirements!.First();
         req.Type.Should().Be("LicenseCredential");
-        req.AcceptedIssuers.Should().ContainSingle("did:sorcha:issuer:gov");
+        req.TrustPolicy.AllowedIssuerDids().Should().ContainSingle().Which.Should().Be("did:sorcha:issuer:gov");
         req.RequiredClaims.Should().HaveCount(1);
         req.RequiredClaims!.First().ClaimName.Should().Be("licenseType");
         req.Description.Should().Be("Valid license required");

@@ -1,0 +1,132 @@
+name: AI Discoverability Check
+
+# Spec 117 (AI Discoverability) — gates merge on the integrity of the
+# machine-readable surface every AI agent will consume:
+#   - /.well-known/openapi.json  (spectral lint + swagger-cli validate)
+#   - /.well-known/mcp.json      (JSON-schema validation)
+#   - llms.txt + docs/llms-full.txt
+#   - STANDARDS.md
+#   - cross-references between all of the above
+#
+# Each individual sub-check is wired by its own task in the spec; this
+# workflow boots the gateway and runs scripts/check-discoverability.sh
+# which dispatches each sub-check. Sub-checks that have not yet landed
+# emit SKIP rather than FAIL, so the workflow is meaningful from day one
+# and progressively tightens as later phases of spec 117 ship.
+
+on:
+  # Run on every PR to master. The discoverability orchestrator is fast (~10s)
+  # and the check is now a required status on the master ruleset — a path filter
+  # would skip the workflow on unrelated PRs, leaving the required-check signal
+  # absent and blocking merge. Run unconditionally instead.
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+  schedule:
+    # T090 — nightly clean-VM run of the quickstart against ubuntu-latest with
+    # Docker Engine, asserting the verify-installation curl returns 200.
+    # Runs at 04:00 UTC; reports success / failure to the workflow run history.
+    - cron: '0 4 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Run discoverability checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dev dependencies
+        run: npm ci || npm install
+        # Provides @stoplight/spectral-cli and swagger-cli (T003 added them
+        # to package.json devDependencies).
+
+      - name: Make orchestrator executable
+        run: chmod +x scripts/check-discoverability.sh
+
+      # Future steps will boot the gateway (docker compose up -d) and wait for
+      # /api/health to return 200. Today the orchestrator's sub-checks emit
+      # SKIP for every endpoint-dependent check — see scripts/check-discoverability.sh.
+      # Phase 3 task T014 will add the docker-compose boot + health-wait once the
+      # well-known endpoints have a stable smoke-test URL in this workflow.
+
+      - name: Run discoverability orchestrator
+        env:
+          SORCHA_GATEWAY: http://localhost
+        run: ./scripts/check-discoverability.sh
+
+      - name: Comment on PR (failure only)
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: [
+                ':rotating_light: AI discoverability check failed.',
+                '',
+                `See [workflow run](${url}) for the failing sub-check and offending file/line.`,
+                '',
+                'Reference: spec [117 AI Discoverability](../tree/master/specs/117-ai-discoverability/spec.md), FR-044, NFR-007.'
+              ].join('\n')
+            });
+
+  # T090 — nightly clean-VM run of the quickstart. Boots the full stack on
+  # an ubuntu-latest runner (which ships with Docker Engine), runs the setup
+  # script, then asserts the verify-installation curl returns 200 with every
+  # service Healthy. Confirms the agent-runnable claim for SC-010.
+  quickstart-on-clean-vm:
+    name: Nightly clean-VM quickstart
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Confirm Docker Engine is available
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Run sorcha-setup.sh in quiet mode
+        run: |
+          chmod +x scripts/sorcha-setup.sh
+          ./scripts/sorcha-setup.sh --quiet
+
+      - name: Verify installation
+        run: |
+          set -euo pipefail
+          # Quickstart's documented verify-installation curl. Asserts HTTP 200
+          # AND that the body parses as JSON with status == Healthy.
+          response=$(curl -sf -w '\nHTTP_STATUS:%{http_code}' http://localhost/api/health)
+          status=$(echo "$response" | grep '^HTTP_STATUS:' | cut -d: -f2)
+          body=$(echo "$response" | sed '/^HTTP_STATUS:/d')
+          echo "Body:    $body"
+          echo "Status:  $status"
+          [ "$status" = "200" ] || { echo "Expected HTTP 200, got $status"; exit 1; }
+          echo "$body" | python -c 'import sys, json; d = json.load(sys.stdin); assert d.get("status") == "Healthy", d' || {
+            echo "Aggregated health response did not report Healthy"
+            exit 1
+          }
+
+      - name: Capture container logs on failure
+        if: failure()
+        run: docker compose logs --tail=200

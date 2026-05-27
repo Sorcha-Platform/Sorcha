@@ -8,8 +8,9 @@
 @using MudBlazor
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Services.Admin
+@using Sorcha.UI.Core.Services.Feedback
 @inject IEventAdminService EventAdminService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject IDialogService DialogService
 
 <PageTitle>Events - Sorcha Platform</PageTitle>
@@ -125,7 +126,7 @@
         }
         catch (Exception)
         {
-            Snackbar.Add("Failed to load events", Severity.Error);
+            Feedback.ShowError("Failed to load events", autoDismissMs: 0);
             return new TableData<SystemEventViewModel>
             {
                 TotalItems = 0,
@@ -174,7 +175,7 @@
             var success = await EventAdminService.DeleteEventAsync(evt.Id);
             if (success)
             {
-                Snackbar.Add("Event deleted", Severity.Success);
+                Feedback.ShowSuccess("Event deleted");
                 if (_table is not null)
                 {
                     await _table.ReloadServerData();
@@ -182,12 +183,12 @@
             }
             else
             {
-                Snackbar.Add("Failed to delete event", Severity.Error);
+                Feedback.ShowError("Failed to delete event", autoDismissMs: 0);
             }
         }
         catch (Exception)
         {
-            Snackbar.Add("Failed to delete event", Severity.Error);
+            Feedback.ShowError("Failed to delete event", autoDismissMs: 0);
         }
     }
 

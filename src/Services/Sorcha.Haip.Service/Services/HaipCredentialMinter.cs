@@ -52,7 +52,9 @@ public class HaipCredentialMinter
         byte[] signingKey,
         string algorithm,
         DateTimeOffset? expiresAt = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? kid = null,
+        IReadOnlyList<byte[]>? x5cChain = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issuerDid);
         ArgumentException.ThrowIfNullOrWhiteSpace(credentialType);
@@ -62,8 +64,8 @@ public class HaipCredentialMinter
         var subject = $"urn:credential:{credentialType}:{Guid.NewGuid():N}";
 
         _logger.LogInformation(
-            "Minting HAIP credential: type={Type}, issuer={Issuer}, disclosables={Count}",
-            credentialType, issuerDid, disclosablePaths?.Count() ?? 0);
+            "Minting HAIP credential: type={Type}, issuer={Issuer}, disclosables={Count}, x5c={X5c}",
+            credentialType, issuerDid, disclosablePaths?.Count() ?? 0, x5cChain is { Count: > 0 });
 
         var token = await _sdJwtService.CreateTokenAsync(
             claims,
@@ -74,10 +76,63 @@ public class HaipCredentialMinter
             algorithm,
             holderJwk,
             expiresAt,
-            ct);
+            ct,
+            x5cChain: x5cChain,
+            kid: kid);
 
         _logger.LogInformation(
             "Minted HAIP credential: {Disclosures} disclosures, token length {Length}",
+            token.Disclosures.Count, token.RawToken.Length);
+
+        return token.RawToken;
+    }
+
+    /// <summary>
+    /// External-signer overload (Feature 120 HAIP kid-swap) — delegates signing to a
+    /// caller-supplied callback that produces the signature without HAIP holding the
+    /// private key. Used to sign credentials with the org's issuance key via the
+    /// wallet service's sign-on-behalf endpoint.
+    /// </summary>
+    public async Task<string> MintCredentialWithExternalSignerAsync(
+        string issuerDid,
+        JsonElement holderJwk,
+        string credentialType,
+        Dictionary<string, object> claims,
+        IEnumerable<string>? disclosablePaths,
+        Func<byte[], CancellationToken, Task<byte[]>> externalSigner,
+        string algorithm,
+        string kid,
+        DateTimeOffset? expiresAt = null,
+        CancellationToken ct = default,
+        IReadOnlyList<byte[]>? x5cChain = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(issuerDid);
+        ArgumentException.ThrowIfNullOrWhiteSpace(credentialType);
+        ArgumentNullException.ThrowIfNull(claims);
+        ArgumentNullException.ThrowIfNull(externalSigner);
+        ArgumentException.ThrowIfNullOrWhiteSpace(kid);
+
+        var subject = $"urn:credential:{credentialType}:{Guid.NewGuid():N}";
+
+        _logger.LogInformation(
+            "Minting HAIP credential via sign-on-behalf: type={Type}, issuer={Issuer}, kid={Kid}, disclosables={Count}, x5c={X5c}",
+            credentialType, issuerDid, kid, disclosablePaths?.Count() ?? 0, x5cChain is { Count: > 0 });
+
+        var token = await _sdJwtService.CreateTokenAsync(
+            claims,
+            disclosablePaths,
+            issuerDid,
+            subject,
+            algorithm,
+            externalSigner,
+            holderJwk,
+            kid,
+            expiresAt,
+            ct,
+            x5cChain: x5cChain);
+
+        _logger.LogInformation(
+            "Minted HAIP credential (sign-on-behalf): {Disclosures} disclosures, token length {Length}",
             token.Disclosures.Count, token.RawToken.Length);
 
         return token.RawToken;

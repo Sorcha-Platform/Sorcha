@@ -1,0 +1,96 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+@implements IDisposable
+@inject IJSRuntime JS
+
+@if (string.IsNullOrEmpty(Value))
+{
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">—</MudText>
+}
+else if (Value.Length <= MaxLength)
+{
+    <MudText Typo="Typo.body2" Class="@Class" Style="@($"font-family: monospace; {Style}")">@Value</MudText>
+}
+else
+{
+    <MudTooltip Text="@_tooltipText" Arrow="true" Placement="Placement.Top">
+        <MudText Typo="Typo.body2"
+                 Class="@($"truncated-id {Class}")"
+                 Style="@($"font-family: monospace; cursor: pointer; {Style}")"
+                 @onclick="CopyToClipboard">@Truncate(Value)</MudText>
+    </MudTooltip>
+}
+
+@code {
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public int MaxLength { get; set; } = 12;
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public string? Style { get; set; }
+
+    private string Truncate(string value)
+    {
+        if (value.Length <= MaxLength) return value;
+
+        var prefix = value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? "0x" : "";
+        var start = prefix.Length > 0 ? value[..(prefix.Length + 6)] : value[..6];
+        var end = value[^6..];
+        return $"{start}...{end}";
+    }
+
+    // Tooltip morph is the inline feedback channel — no Snackbar / IInlineFeedback
+    // dependency since the trigger IS the tooltip target. Reverts after MorphMs.
+    private const int MorphMs = 1500;
+    private string _tooltipText => _showCopied ? "Copied ✓" : (Value ?? string.Empty);
+    private bool _showCopied;
+    private System.Timers.Timer? _resetTimer;
+    private bool _disposed;
+
+    private async Task CopyToClipboard()
+    {
+        if (string.IsNullOrEmpty(Value)) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Value);
+            ShowCopiedTooltip();
+        }
+        catch
+        {
+            // Silent fail — the truncated text fallback is to manually
+            // hover the tooltip and select the full value. No Snackbar.
+        }
+    }
+
+    private void ShowCopiedTooltip()
+    {
+        _showCopied = true;
+        StateHasChanged();
+        _resetTimer?.Stop();
+        _resetTimer?.Dispose();
+        _resetTimer = new System.Timers.Timer(MorphMs) { AutoReset = false };
+        _resetTimer.Elapsed += (_, _) =>
+        {
+            if (_disposed) return;
+            _showCopied = false;
+            InvokeAsync(StateHasChanged);
+        };
+        _resetTimer.Start();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _resetTimer?.Stop();
+        _resetTimer?.Dispose();
+        _resetTimer = null;
+    }
+}

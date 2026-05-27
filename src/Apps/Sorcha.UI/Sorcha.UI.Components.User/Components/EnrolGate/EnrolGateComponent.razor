@@ -1,0 +1,139 @@
+@namespace Sorcha.UI.Core.Components.EnrolGate
+@using Sorcha.UI.Core.Services.User.Enrolment
+@inject ITierProbeService TierProbe
+@inject HttpClient Http
+
+@*
+    Feature 126 — top-level enrolment gate component.
+
+    Probes citizen tier on init; renders the matching surface:
+      ColdStart → PreflightSignupSurface (signup; QR comes after)
+      MiniGate  → WalletPairingSurface (TierMode.MiniGate copy)
+      FastPath  → ChildContent (the application form)
+
+    After pairing completes in MiniGate / cold-start flows, re-probes
+    once; the council page advances when tier transitions to FastPath
+    and OnReady fires.
+*@
+
+@if (_isProbing)
+{
+    <p class="enrol-gate__probing" data-testid="enrol-gate-probing">Checking your account…</p>
+}
+else
+{
+    switch (_tier)
+    {
+        case CitizenTier.FastPath:
+            @ChildContent
+            break;
+
+        case CitizenTier.MiniGate:
+            <WalletPairingSurface PlatformUserId="@_platformUserId"
+                                  Mode="WalletPairingSurface.TierMode.MiniGate"
+                                  OnPaired="HandlePairedAsync" />
+            break;
+
+        case CitizenTier.ColdStart:
+            @if (!_postSignup)
+            {
+                <PreflightSignupSurface CouncilName="@CouncilName"
+                                        ServiceLabel="@ServiceLabel" />
+            }
+            else
+            {
+                <WalletPairingSurface PlatformUserId="@_platformUserId"
+                                      Mode="WalletPairingSurface.TierMode.PostSignup"
+                                      OnPaired="HandlePairedAsync" />
+            }
+            break;
+    }
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Display name for the council whose page is hosting the gate.</summary>
+    [Parameter] public string CouncilName { get; set; } = "this council";
+
+    /// <summary>
+    /// Friendly label for the service the citizen is applying for — fed
+    /// through to <see cref="PreflightSignupSurface"/>.
+    /// </summary>
+    [Parameter] public string ServiceLabel { get; set; } = "application";
+
+    /// <summary>
+    /// Fired once the citizen reaches <see cref="CitizenTier.FastPath"/>,
+    /// either at first probe or after pairing completes.
+    /// </summary>
+    [Parameter] public EventCallback<Guid?> OnReady { get; set; }
+
+    private bool _isProbing = true;
+    private CitizenTier _tier = CitizenTier.ColdStart;
+    private Guid _platformUserId = Guid.Empty;
+    private bool _postSignup;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ProbeAndPossiblyAdvanceAsync(initial: true);
+    }
+
+    private async Task HandlePairedAsync()
+    {
+        // Pairing-completion signal arrived. Re-probe to confirm the
+        // device is visible to the platform, then transition to
+        // FastPath on success.
+        await ProbeAndPossiblyAdvanceAsync(initial: false);
+    }
+
+    private async Task ProbeAndPossiblyAdvanceAsync(bool initial)
+    {
+        _isProbing = true;
+        StateHasChanged();
+        try
+        {
+            _tier = await TierProbe.ProbeAsync(CancellationToken.None);
+            if (_tier != CitizenTier.ColdStart)
+            {
+                _platformUserId = await ResolveBoundPlatformUserIdAsync();
+            }
+
+            // If we were in ColdStart and now the citizen is signed in,
+            // they've completed F116 signup and returned via ?returnUrl.
+            // Switch into the post-signup wallet-pairing branch.
+            if (!initial || _tier == CitizenTier.MiniGate)
+            {
+                _postSignup = _tier == CitizenTier.MiniGate || _tier == CitizenTier.FastPath;
+            }
+            else if (_tier != CitizenTier.ColdStart)
+            {
+                _postSignup = true;
+            }
+        }
+        finally
+        {
+            _isProbing = false;
+            StateHasChanged();
+        }
+
+        if (_tier == CitizenTier.FastPath && OnReady.HasDelegate)
+        {
+            await OnReady.InvokeAsync(_platformUserId == Guid.Empty ? null : _platformUserId);
+        }
+    }
+
+    private async Task<Guid> ResolveBoundPlatformUserIdAsync()
+    {
+        try
+        {
+            var whoami = await Http.GetFromJsonAsync<WhoamiShape>("/api/auth/whoami");
+            return whoami?.PlatformUserId ?? Guid.Empty;
+        }
+        catch
+        {
+            return Guid.Empty;
+        }
+    }
+
+    private sealed record WhoamiShape(Guid? PlatformUserId);
+}

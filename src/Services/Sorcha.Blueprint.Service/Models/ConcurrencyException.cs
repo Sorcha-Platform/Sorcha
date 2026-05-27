@@ -17,7 +17,10 @@ public class ConcurrencyException : InvalidOperationException
         ActualVersion = actualVersion;
     }
 
+    /// <summary>Identifier of the entity.</summary>
     public string EntityId { get; }
+    /// <summary>Numeric value for expected version.</summary>
     public int ExpectedVersion { get; }
+    /// <summary>Numeric value for actual version.</summary>
     public int ActualVersion { get; }
 }

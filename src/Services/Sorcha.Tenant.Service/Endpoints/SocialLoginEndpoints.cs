@@ -65,6 +65,15 @@ public static class SocialLoginEndpoints
         var group = app.MapGroup("/api/auth/social")
             .WithTags("Social Login");
 
+        group.MapGet("/providers", ListConfiguredProviders)
+            .WithName("ListSocialProviders")
+            .WithSummary("List configured social providers")
+            .WithDescription("Returns the social providers that have working credentials on this host. "
+                + "Anonymous — drives the conditional 'Continue with…' buttons on the wallet sign-in screen.")
+            .AllowAnonymous()
+            .RequireRateLimiting("platform-auth")
+            .Produces<SocialProvidersResponse>();
+
         group.MapPost("/initiate", InitiateSocialFlow)
             .WithName("InitiateSocialLogin")
             .WithSummary("Start social login or link flow")
@@ -114,6 +123,17 @@ public static class SocialLoginEndpoints
 
         return app;
     }
+
+    private static IResult ListConfiguredProviders(ISocialLoginService socialLoginService)
+        => ListConfiguredProvidersForTest(socialLoginService);
+
+    /// <summary>Test seam for <see cref="ListConfiguredProviders"/> (no HttpContext needed).</summary>
+    internal static Microsoft.AspNetCore.Http.HttpResults.Ok<SocialProvidersResponse> ListConfiguredProvidersForTest(
+        ISocialLoginService socialLoginService)
+        => TypedResults.Ok(new SocialProvidersResponse
+        {
+            Providers = socialLoginService.GetConfiguredProviderNames()
+        });
 
     /// <summary>
     /// POST /api/auth/social/initiate — start a social login or link flow.
@@ -180,6 +200,17 @@ public static class SocialLoginEndpoints
             }
         }
 
+        // Validate + normalise surface. null / missing = existing /app web flow.
+        // "wallet" routes the post-OAuth callback into the citizen wallet PWA.
+        var surface = string.IsNullOrWhiteSpace(request.Surface) ? null : request.Surface.Trim().ToLowerInvariant();
+        if (surface is not (null or "wallet" or "app"))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["surface"] = ["surface must be 'wallet' or 'app'"]
+            });
+        }
+
         // Resolve callback URL (config-first, falls back to Request scheme/host).
         // See ResolveCallbackUrl for why config-first is required behind a
         // TLS-terminating reverse proxy.
@@ -188,7 +219,7 @@ public static class SocialLoginEndpoints
         try
         {
             var result = await socialLoginService.GenerateAuthorizationUrlAsync(
-                request.Provider, redirectUri, intent.Value, targetPlatformUserId, ct);
+                request.Provider, redirectUri, intent.Value, targetPlatformUserId, surface, ct);
 
             logger.LogInformation(
                 "Social {Intent} flow initiated for provider {Provider}",
@@ -285,7 +316,7 @@ public static class SocialLoginEndpoints
         // been validated against the cached state and is the same value used for
         // metrics tagging and logging. Defence-in-depth: never reflect raw
         // request input back into a user-visible message.
-        var resolveResult = await platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, ct);
+        var resolveResult = await platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, allowCreate: true, ct);
         if (resolveResult.Refusal != SocialLoginRefusal.None)
         {
             var resolvedProvider = callbackResult.Provider;
@@ -358,7 +389,7 @@ public static class SocialLoginEndpoints
 
         // Issue JWT
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, publicOrg, platformUser.Id, ct);
+            userIdentity, publicOrg, platformUser.Id, cancellationToken: ct);
 
         logger.LogInformation(
             "Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",

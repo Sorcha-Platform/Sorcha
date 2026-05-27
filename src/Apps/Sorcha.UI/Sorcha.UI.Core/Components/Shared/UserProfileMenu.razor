@@ -49,6 +49,11 @@
     <MudMenuItem Icon="@Icons.Material.Filled.Person" OnClick="@(() => Navigation.NavigateTo("profile"))">
         My Profile
     </MudMenuItem>
+    <MudMenuItem Icon="@Icons.Material.Filled.Devices"
+                 OnClick="@(() => Navigation.NavigateTo("my-devices"))"
+                 data-testid="user-menu-my-devices">
+        My Devices
+    </MudMenuItem>
     <MudMenuItem Icon="@Icons.Material.Filled.Token" OnClick="OpenJwtViewer">
         View Token
     </MudMenuItem>

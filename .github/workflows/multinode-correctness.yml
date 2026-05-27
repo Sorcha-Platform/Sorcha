@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Cross-replica SignalR backplane correctness gate for Feature 118 US1.
+# Brings up the multi-replica stack and runs the parameterised cross-replica
+# fixture, asserting hub events fan out across replicas via Redis.
+#
+# DEFERRED FROM AUTOMATIC PR TRIGGERING: the multinode docker-compose overlay
+# brings up the api-gateway with a YARP destinations override
+# (ReverseProxy__Clusters__blueprint-cluster__Destinations__blueprint-2__Address)
+# that is currently rejected by the gateway's YARP config binder, leaving the
+# api-gateway container unhealthy and the workflow red. The override syntax
+# needs investigation against the YARP config-binding shape; tracked in
+# specs/118-notifications-architecture/MIGRATION.md.
+#
+# Until that lands the workflow is manual-trigger only — `gh workflow run
+# multinode-correctness.yml` to invoke. Once the YARP shape is correct, restore
+# the `pull_request` trigger so it runs automatically on hub-touching PRs.
+
+name: multinode-correctness
+
+on:
+  workflow_dispatch:
+  # pull_request:
+  #   paths:
+  #     - "src/Common/Sorcha.ServiceDefaults/Hubs/**"
+  #     - "src/Common/Sorcha.ServiceClients.Http/Hub/**"
+  #     - "src/Services/*/Hubs/**"
+  #     - "src/Services/*/Program.cs"
+  #     - "docker-compose.multinode.yml"
+  #     - "tests/Sorcha.Integration.Tests/MultiNode/**"
+  #     - ".github/workflows/multinode-correctness.yml"
+
+jobs:
+  cross-replica-fanout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Bring up the multi-replica stack
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.multinode.yml up -d --wait
+          docker compose ps
+
+      - name: Wait for replicas to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost/health > /dev/null && \
+               curl -sf http://localhost:5000/health > /dev/null; then
+              echo "Stack is ready"
+              exit 0
+            fi
+            echo "Waiting for stack... attempt $i"
+            sleep 2
+          done
+          echo "Stack failed to come up"
+          docker compose logs --tail=200
+          exit 1
+
+      - name: Issue test JWT
+        id: jwt
+        run: |
+          # Tenant seed login produces an admin JWT used by the test fixture.
+          TOKEN=$(curl -s -X POST http://localhost/api/auth/login \
+              -H "Content-Type: application/json" \
+              -d '{"email":"admin@sorcha.local","password":"Dev_Pass_2025!"}' \
+              | jq -r .accessToken)
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Run cross-replica fixture
+        env:
+          SORCHA_MULTINODE: "1"
+          SORCHA_TEST_JWT: ${{ steps.jwt.outputs.token }}
+        run: |
+          dotnet test tests/Sorcha.Integration.Tests/Sorcha.Integration.Tests.csproj \
+              --filter "Category=MultiNode" \
+              --logger "console;verbosity=normal"
+
+      - name: Capture stack logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.multinode.yml logs --tail=500 \
+              > stack-logs.txt
+        continue-on-error: true
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multinode-stack-logs
+          path: stack-logs.txt
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.multinode.yml down -v

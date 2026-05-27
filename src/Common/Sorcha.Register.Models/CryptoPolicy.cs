@@ -64,6 +64,25 @@ public class CryptoPolicy
     public string[] DeprecatedAlgorithms { get; set; } = [];
 
     /// <summary>
+    /// DevMode: when <c>true</c>, the register skips field-level payload encryption and stores
+    /// payloads as plaintext (still disclosure-filtered, still routed through JSON-Logic and
+    /// calculations). A development / debugging posture for verifying workflow logic without the
+    /// crypto layer; receivers read the plaintext directly without decrypting.
+    /// </summary>
+    /// <remarks>
+    /// This lives in <see cref="CryptoPolicy"/> — an encryption posture sibling of
+    /// <see cref="AcceptedEncryptionSchemes"/> — so it is baked into the immutable genesis and
+    /// replicates to every node, and so changes ride the existing crypto-policy update control
+    /// record (a SyncOnly replica reads it from the synced genesis / later control records and
+    /// respects the plaintext posture). The transition is <b>one-way</b>: a register may be
+    /// promoted DevMode→Normal (plaintext→encrypted) via a crypto-policy update, but never
+    /// Normal→DevMode — validators reject a policy update that re-enables DevMode. Default
+    /// <c>false</c> (encrypted / production). NEVER enable in production.
+    /// </remarks>
+    [JsonPropertyName("devMode")]
+    public bool DevMode { get; set; }
+
+    /// <summary>
     /// Creates the default crypto policy for new registers.
     /// Accepts all algorithms, requires none, permissive enforcement.
     /// </summary>

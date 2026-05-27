@@ -11,6 +11,7 @@
 @using Sorcha.UI.Core.Models.Wallet
 @using Sorcha.UI.Core.Models.Workflows
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Services.Forms
 @using Sorcha.UI.Core.Services.Wallet
 @inject NavigationStateService NavState
@@ -20,7 +21,7 @@
 @inject IWalletPreferenceService WalletPreferenceService
 @inject IEncryptionOperationTracker EncryptionTracker
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject NavigationManager Navigation
 @inject ILogger<NewSubmissionWorkspace> Logger
 
@@ -204,7 +205,7 @@
             var message = result.IsComplete
                 ? "Submission completed successfully!"
                 : $"Submission started — instance {result.InstanceId[..Math.Min(8, result.InstanceId.Length)]}...";
-            Snackbar.Add(message, Severity.Success);
+            Feedback.ShowSuccess(message);
 
             // HAIP external wallet interactions — show QR dialog before navigating away
             if (result.CredentialOffer is { } offer)

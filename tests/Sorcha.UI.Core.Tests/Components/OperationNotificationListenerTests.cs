@@ -18,13 +18,14 @@ using Xunit;
 namespace Sorcha.UI.Core.Tests.Components;
 
 /// <summary>
-/// Tests for the OperationNotificationListener Blazor component.
-/// Verifies EventsHub subscription, snackbar notifications, and dispose behavior.
+/// Tests for the OperationNotificationListener Blazor component (Feature 118 T114).
+/// Verifies WalletHub subscription on Complete + Failed events, snackbar
+/// notifications, and dispose behavior.
 /// </summary>
 public class OperationNotificationListenerTests : BunitContext
 {
     private readonly Mock<ISnackbar> _snackbarMock;
-    private readonly TestableEventsHubConnection _eventsHub;
+    private readonly TestableWalletHubConnection _walletHub;
 
     public OperationNotificationListenerTests()
     {
@@ -33,26 +34,27 @@ public class OperationNotificationListenerTests : BunitContext
 
         _snackbarMock = new Mock<ISnackbar>();
         _snackbarMock.Setup(s => s.Configuration).Returns(new SnackbarConfiguration());
-        _eventsHub = new TestableEventsHubConnection();
+        _walletHub = new TestableWalletHubConnection();
 
-        Services.AddSingleton<EventsHubConnection>(_eventsHub);
+        Services.AddSingleton<WalletHubConnection>(_walletHub);
         Services.AddSingleton<ISnackbar>(_snackbarMock.Object);
     }
 
     [Fact]
-    public void OnInitialized_SubscribesToEncryptionOperationCompletedEvent()
+    public void OnInitialized_SubscribesToEncryptionCompleteAndFailed()
     {
-        // Act
         var cut = Render<OperationNotificationListener>();
 
-        // Assert — component subscribed (handler count incremented)
-        _eventsHub.EncryptionOperationCompletedHandlerCount.Should().Be(1);
+        _walletHub.EncryptionCompleteHandlerCount.Should().Be(1);
+        _walletHub.EncryptionFailedHandlerCount.Should().Be(1);
     }
 
     [Fact]
-    public void OnEncryptionOperationCompleted_Success_ShowsSuccessSnackbar()
+    public async Task OnEncryptionComplete_DoesNotShowSnackbar()
     {
-        // Arrange
+        // Phase 5e (Snackbar retirement): encryption completion is now a
+        // durable inbox entry (Phase 2 writers) surfaced via the bell drawer.
+        // The hub handler is a no-op; no toast must fire.
         var cut = Render<OperationNotificationListener>();
         var signal = new EncryptionSignal
         {
@@ -62,109 +64,105 @@ public class OperationNotificationListenerTests : BunitContext
             Timestamp = DateTimeOffset.UtcNow
         };
 
-        // Act
-        _eventsHub.RaiseEncryptionOperationCompleted(signal);
+        await _walletHub.RaiseEncryptionCompleteAsync(signal);
 
-        // Assert
         _snackbarMock.Verify(s => s.Add(
-            It.Is<string>(msg => msg.Contains("Encryption complete")),
-            Severity.Success,
+            It.IsAny<string>(),
+            It.IsAny<Severity>(),
             It.IsAny<Action<SnackbarOptions>>(),
-            It.IsAny<string>()), Times.Once);
+            It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public void OnEncryptionOperationCompleted_Failure_ShowsErrorSnackbar()
+    public async Task OnEncryptionFailed_DoesNotShowSnackbar()
     {
-        // Arrange
+        // Phase 5e (Snackbar retirement): encryption failure is now a
+        // durable inbox entry (Phase 2 writers) surfaced via the bell drawer.
+        // The hub handler is a no-op; no toast must fire.
         var cut = Render<OperationNotificationListener>();
         var signal = new EncryptionSignal
         {
             OperationId = "op-fail",
-            PercentComplete = 30,
+            PercentComplete = 0,
             Status = "failed",
             Timestamp = DateTimeOffset.UtcNow
         };
 
-        // Act
-        _eventsHub.RaiseEncryptionOperationCompleted(signal);
+        await _walletHub.RaiseEncryptionFailedAsync(signal);
 
-        // Assert
         _snackbarMock.Verify(s => s.Add(
-            It.Is<string>(msg => msg.Contains("Encryption failed")),
-            Severity.Error,
+            It.IsAny<string>(),
+            It.IsAny<Severity>(),
             It.IsAny<Action<SnackbarOptions>>(),
-            It.IsAny<string>()), Times.Once);
+            It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public void Dispose_UnsubscribesFromEncryptionOperationCompletedEvent()
+    public void Dispose_UnsubscribesFromEncryptionEvents()
     {
-        // Arrange
         var cut = Render<OperationNotificationListener>();
-        _eventsHub.EncryptionOperationCompletedHandlerCount.Should().Be(1);
+        _walletHub.EncryptionCompleteHandlerCount.Should().Be(1);
+        _walletHub.EncryptionFailedHandlerCount.Should().Be(1);
 
-        // Act — Disposing the BunitContext triggers IDisposable.Dispose on all rendered components
         Dispose();
 
-        // Assert — handler was removed
-        _eventsHub.EncryptionOperationCompletedHandlerCount.Should().Be(0);
+        _walletHub.EncryptionCompleteHandlerCount.Should().Be(0);
+        _walletHub.EncryptionFailedHandlerCount.Should().Be(0);
     }
 
     [Fact]
     public void DefaultState_NoErrors()
     {
-        // Act
         var cut = Render<OperationNotificationListener>();
 
-        // Assert — no snackbar calls on initial render
         _snackbarMock.Verify(s => s.Add(
             It.IsAny<string>(),
             It.IsAny<Severity>(),
             It.IsAny<Action<SnackbarOptions>>(),
             It.IsAny<string>()), Times.Never);
 
-        // Assert — component renders without throwing
         cut.Markup.Should().BeEmpty("listener component should not render any visible UI");
     }
 
     /// <summary>
-    /// Testable subclass of EventsHubConnection that exposes event raising via reflection.
+    /// Testable subclass of WalletHubConnection that exposes event raising via reflection.
     /// </summary>
-    private sealed class TestableEventsHubConnection : EventsHubConnection
+    private sealed class TestableWalletHubConnection : WalletHubConnection
     {
-        public TestableEventsHubConnection()
+        public TestableWalletHubConnection()
             : base(
                 "https://localhost",
                 Mock.Of<IAuthenticationService>(),
                 Mock.Of<IConfigurationService>(),
-                NullLogger<EventsHubConnection>.Instance)
+                NullLogger<WalletHubConnection>.Instance)
         {
         }
 
-        /// <summary>
-        /// Gets the current number of subscribed handlers via reflection.
-        /// </summary>
-        public int EncryptionOperationCompletedHandlerCount => GetHandlerCount();
+        public int EncryptionCompleteHandlerCount => GetHandlerCount(nameof(OnEncryptionComplete));
+        public int EncryptionFailedHandlerCount => GetHandlerCount(nameof(OnEncryptionFailed));
 
-        private int GetHandlerCount()
+        public Task RaiseEncryptionCompleteAsync(EncryptionSignal signal) =>
+            InvokeAsync(nameof(OnEncryptionComplete), signal);
+
+        public Task RaiseEncryptionFailedAsync(EncryptionSignal signal) =>
+            InvokeAsync(nameof(OnEncryptionFailed), signal);
+
+        private int GetHandlerCount(string eventName)
         {
-            var eventField = typeof(EventsHubConnection)
-                .GetField(nameof(OnEncryptionOperationCompleted), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-            var handler = eventField?.GetValue(this) as Action<EncryptionSignal>;
-            if (handler == null) return 0;
-            return handler.GetInvocationList().Length;
+            var field = typeof(WalletHubConnection).GetField(eventName,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var handler = field?.GetValue(this) as Func<EncryptionSignal, Task>;
+            return handler?.GetInvocationList().Length ?? 0;
         }
 
-        /// <summary>
-        /// Raises the OnEncryptionOperationCompleted event on the base class via reflection.
-        /// </summary>
-        public void RaiseEncryptionOperationCompleted(EncryptionSignal signal)
+        private async Task InvokeAsync(string eventName, EncryptionSignal signal)
         {
-            var field = typeof(EventsHubConnection)
-                .GetField(nameof(OnEncryptionOperationCompleted), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-            var handler = field?.GetValue(this) as Action<EncryptionSignal>;
-            handler?.Invoke(signal);
+            var field = typeof(WalletHubConnection).GetField(eventName,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            if (field?.GetValue(this) is Func<EncryptionSignal, Task> handler)
+            {
+                await handler(signal);
+            }
         }
     }
 }

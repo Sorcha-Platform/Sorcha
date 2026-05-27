@@ -90,7 +90,8 @@ public class BlueprintRecoveryServiceTests
                         TransactionId = "tx-1",
                         PublishedBy = "user-1",
                         PublishedAt = DateTimeOffset.UtcNow,
-                        BlueprintJson = blueprintJson
+                        BlueprintJson = blueprintJson,
+                        ContentHash = BlueprintContentHash.Compute(blueprintJson)
                     }
                 ]
             });
@@ -174,7 +175,8 @@ public class BlueprintRecoveryServiceTests
                         BlueprintId = "bp-1",
                         TransactionId = "tx-1",
                         PublishedAt = DateTimeOffset.UtcNow,
-                        BlueprintJson = blueprintJson
+                        BlueprintJson = blueprintJson,
+                        ContentHash = BlueprintContentHash.Compute(blueprintJson)
                     }
                 ]
             });
@@ -207,6 +209,10 @@ public class BlueprintRecoveryServiceTests
     {
         var older = DateTimeOffset.UtcNow.AddHours(-2);
         var newer = DateTimeOffset.UtcNow;
+        // Serialize once — the blueprint model has per-instance default fields, so a fresh
+        // serialization would not match the sealed ContentHash computed from a different instance.
+        var dupJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-dup"));
+        var dupHash = BlueprintContentHash.Compute(dupJson);
 
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
@@ -225,14 +231,16 @@ public class BlueprintRecoveryServiceTests
                         BlueprintId = "bp-dup",
                         TransactionId = "tx-old",
                         PublishedAt = older,
-                        BlueprintJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-dup"))
+                        BlueprintJson = dupJson,
+                        ContentHash = dupHash
                     },
                     new PublishedBlueprintEntry
                     {
                         BlueprintId = "bp-dup",
                         TransactionId = "tx-new",
                         PublishedAt = newer,
-                        BlueprintJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-dup"))
+                        BlueprintJson = dupJson,
+                        ContentHash = dupHash
                     }
                 ]
             });
@@ -303,6 +311,9 @@ public class BlueprintRecoveryServiceTests
     [Fact]
     public async Task RunRecoveryAsync_InvalidBlueprintJson_SkipsAndContinues()
     {
+        var goodJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-good"));
+        var goodHash = BlueprintContentHash.Compute(goodJson);
+
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "R1", Height = 2 }]);
@@ -327,7 +338,8 @@ public class BlueprintRecoveryServiceTests
                         BlueprintId = "bp-good",
                         TransactionId = "tx-2",
                         PublishedAt = DateTimeOffset.UtcNow.AddMinutes(-1),
-                        BlueprintJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-good"))
+                        BlueprintJson = goodJson,
+                        ContentHash = goodHash
                     }
                 ]
             });
@@ -484,6 +496,75 @@ public class BlueprintRecoveryServiceTests
         _mockPublishedStore.Verify(
             s => s.AddAsync(It.IsAny<PublishedBlueprint>()),
             Times.Never);
+    }
+
+    #endregion
+
+    #region RecoverRegisterAsync — event-driven (Feature 137 / C2)
+
+    [Fact]
+    public async Task RecoverRegisterAsync_RecoversBlueprintsAndMarksOnline()
+    {
+        var blueprintJson = JsonSerializer.Serialize(CreateMinimalBlueprint("bp-1"));
+
+        // Note: NO GetInternalRegistersAsync setup — the event-driven path targets one register
+        // directly (a register that replicated after boot, possibly not yet in discovery).
+        _mockRegisterClient
+            .Setup(c => c.GetPublishedBlueprintsAsync("reg-new", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublishedBlueprintsResponse
+            {
+                RegisterId = "reg-new",
+                RegisterHeight = 9,
+                Blueprints =
+                [
+                    new PublishedBlueprintEntry
+                    {
+                        BlueprintId = "bp-1",
+                        TransactionId = "tx-1",
+                        PublishedAt = DateTimeOffset.UtcNow,
+                        BlueprintJson = blueprintJson,
+                        ContentHash = BlueprintContentHash.Compute(blueprintJson)
+                    }
+                ]
+            });
+
+        _mockPublishedStore
+            .Setup(s => s.GetVersionsAsync("bp-1"))
+            .ReturnsAsync(Enumerable.Empty<PublishedBlueprint>());
+        _mockPublishedStore
+            .Setup(s => s.AddAsync(It.IsAny<PublishedBlueprint>()))
+            .ReturnsAsync((PublishedBlueprint pb) => pb);
+
+        var service = CreateService();
+        await service.RecoverRegisterAsync("reg-new", "Newly Synced Register", CancellationToken.None);
+
+        _recoveryState.RegisterStates.Should().ContainKey("reg-new");
+        var state = _recoveryState.RegisterStates["reg-new"];
+        state.Status.Should().Be(RegisterHealthStatus.Online);
+        state.RegisterName.Should().Be("Newly Synced Register");
+        state.RecoveredBlueprintCount.Should().Be(1);
+
+        _mockPublishedStore.Verify(
+            s => s.AddAsync(It.Is<PublishedBlueprint>(pb => pb.BlueprintId == "bp-1" && pb.RegisterId == "reg-new")),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task RecoverRegisterAsync_ClientReturnsNull_MarksOffline()
+    {
+        _mockRegisterClient
+            .Setup(c => c.GetPublishedBlueprintsAsync("reg-down", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PublishedBlueprintsResponse?)null);
+
+        var service = CreateService();
+        await service.RecoverRegisterAsync("reg-down", registerName: null, CancellationToken.None);
+
+        var state = _recoveryState.RegisterStates["reg-down"];
+        state.Status.Should().Be(RegisterHealthStatus.Offline);
+        state.ConsecutiveFailures.Should().Be(1);
+        state.ErrorMessage.Should().NotBeNullOrEmpty();
+        // Falls back to registerId as the display name when none supplied.
+        state.RegisterName.Should().Be("reg-down");
     }
 
     #endregion

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sorcha Wallet</title>
+    <base href="/wallet/" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <link href="css/app.css" rel="stylesheet" />
+    <link href="css/welcome-takeover.css" rel="stylesheet" />
+    <!-- Blazor CSS-isolation bundle — without this, every component .razor.css
+         (incl. the Feature 141 wallet chrome + shared Sorcha.UI.Components.User
+         scoped styles) is never loaded and components render unstyled. -->
+    <link href="Sorcha.Wallet.Pwa.styles.css" rel="stylesheet" />
+</head>
+<body>
+    <div id="app">
+        <div style="font-family: system-ui, sans-serif; padding: 2rem; text-align: center;">
+            Loading Sorcha Wallet…
+        </div>
+    </div>
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+    <script src="js/webcrypto-bridge.js"></script>
+    <script src="js/xchacha-bridge.js"></script>
+    <script src="js/indexeddb-bridge.js"></script>
+    <script src="js/qr-scanner-bridge.js"></script>
+    <script src="js/auth-fragment.js"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script>
+        // Service worker registered separately by Blazor in Release builds.
+    </script>
+</body>
+</html>

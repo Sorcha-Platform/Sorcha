@@ -1,0 +1,167 @@
+openapi: 3.1.0
+info:
+  title: Enrolment Session API
+  version: "1.0.0"
+  description: |
+    Feature 126 — the two-endpoint server surface that backs the
+    council-page enrolment gate. Mint a one-time-use session token
+    bound to the signed-in citizen's account; redeem it from the
+    wallet device to acquire a full citizen access token for the
+    F114 device-pairing ceremony.
+
+    The token is a short-lived (≤10 min) JWT with `scope: "enrol"`,
+    signed by the existing Tenant Service signing key. Single-use is
+    enforced by atomic Redis `SET NX` on the JTI at redeem.
+
+    Security: the token is a bearer credential. The friend-scans-by-
+    mistake mitigation is a confirmation dialog on the wallet device
+    that displays the bound user's email + display name before any
+    device-pairing happens — see the response shape of the redeem
+    endpoint.
+
+servers:
+  - url: https://{host}/api
+    description: API gateway path
+    variables:
+      host:
+        default: localhost
+
+security:
+  - tenantUserJwt: []
+
+paths:
+  /auth/enrol-session:
+    post:
+      operationId: MintEnrolSession
+      summary: Mint a new one-time enrolment session token for the signed-in caller.
+      description: |
+        Requires the caller to be authenticated. Returns a JWT with
+        `scope: "enrol"`, a fully-formed QR URL embedding that token,
+        and the absolute expiry timestamp.
+      tags:
+        - EnrolSession
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+      responses:
+        "200":
+          description: New session minted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MintEnrolSessionResponse"
+        "401":
+          description: Caller is not authenticated.
+
+  /auth/enrol-session/redeem:
+    post:
+      operationId: RedeemEnrolSession
+      summary: Redeem a session token for a full citizen access token.
+      description: |
+        Called by the wallet device after the citizen has opened the
+        enrolment URL. Single-use. Returns the bound user's display
+        name and email for the wallet's confirmation dialog.
+      tags:
+        - EnrolSession
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedeemEnrolSessionRequest"
+      responses:
+        "200":
+          description: Token redeemed; full citizen access token returned along with the bound user's identifying details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedeemEnrolSessionResponse"
+        "400":
+          description: Malformed token, wrong scope, signature invalid, or token claims missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedeemEnrolSessionErrorBody"
+        "409":
+          description: Token has already been consumed (replay detected).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedeemEnrolSessionErrorBody"
+        "410":
+          description: Token expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedeemEnrolSessionErrorBody"
+
+components:
+  securitySchemes:
+    tenantUserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    MintEnrolSessionResponse:
+      type: object
+      required: [sessionToken, qrUrl, expiresAt]
+      properties:
+        sessionToken:
+          type: string
+          description: The signed JWT to be embedded in the QR URL. Single-use; ≤10 minute lifetime.
+        qrUrl:
+          type: string
+          format: uri
+          description: Template `{ConfiguredCouncilOrigin}/wallet/enrol?session={sessionToken}`.
+        expiresAt:
+          type: string
+          format: date-time
+          description: UTC absolute expiry of `sessionToken`.
+
+    RedeemEnrolSessionRequest:
+      type: object
+      required: [sessionToken]
+      properties:
+        sessionToken:
+          type: string
+
+    RedeemEnrolSessionResponse:
+      type: object
+      required: [accessToken, expiresIn, displayName, email]
+      properties:
+        accessToken:
+          type: string
+          description: Full citizen access token bound to the same `platformUserId` the session token carried.
+        expiresIn:
+          type: integer
+          description: Seconds until `accessToken` expires.
+        displayName:
+          type: string
+          description: Display name on the bound user's `PlatformUser`. Surfaced by the wallet PWA's confirmation dialog.
+          example: "Sarah Example"
+        email:
+          type: string
+          format: email
+          description: Email address on the bound user's `PlatformUser`.
+          example: "sarah@example.com"
+
+    RedeemEnrolSessionErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - malformed_token
+            - invalid_signature
+            - scope_mismatch
+            - already_used
+            - expired
+        message:
+          type: string

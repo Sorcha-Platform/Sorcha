@@ -9,10 +9,11 @@
 @using Microsoft.Extensions.Logging
 @using MudBlazor
 @using Sorcha.Tenant.Models.Persona
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Core.Services.Persona
 
 @inject IPersonaService PersonaService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject ILogger<MyProfile> Logger
 
 <PageTitle>My Profile</PageTitle>
@@ -427,7 +428,7 @@
         var code = _newNationality.Trim().ToUpperInvariant();
         if (code.Length != 2 || !code.All(char.IsLetter))
         {
-            Snackbar.Add("Nationality must be a 2-letter ISO 3166-1 alpha-2 code.", Severity.Warning);
+            Feedback.ShowWarning("Nationality must be a 2-letter ISO 3166-1 alpha-2 code.");
             return;
         }
         if (_nationalities.Contains(code))
@@ -481,7 +482,7 @@
             var updated = await PersonaService.UpdateAsync(payload);
             await PersonaService.SetAutofillEnabledAsync(_autofillEnabled);
             HydrateFromRead(updated);
-            Snackbar.Add("Profile saved.", Severity.Success);
+            Feedback.ShowSuccess("Profile saved.");
         }
         catch (PersonaValidationException ex)
         {
@@ -489,20 +490,19 @@
             {
                 foreach (var err in errors)
                 {
-                    Snackbar.Add($"{field}: {err}", Severity.Error);
+                    Feedback.ShowError($"{field}: {err}", autoDismissMs: 0);
                 }
             }
         }
         catch (PersonaWalletNotProvisionedException)
         {
-            Snackbar.Add(
-                "Your account doesn't have a wallet yet, so profile changes can't be saved. Set up a wallet first.",
-                Severity.Warning);
+            Feedback.ShowWarning(
+                "Your account doesn't have a wallet yet, so profile changes can't be saved. Set up a wallet first.");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to save persona");
-            Snackbar.Add("Couldn't save profile. Please try again.", Severity.Error);
+            Feedback.ShowError("Couldn't save profile. Please try again.", autoDismissMs: 0);
         }
         finally
         {
@@ -517,12 +517,12 @@
         {
             await PersonaService.DeleteAsync();
             HydrateFromRead(new PersonaReadModelV1());
-            Snackbar.Add("Profile deleted.", Severity.Info);
+            Feedback.ShowInfo("Profile deleted.");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to delete persona");
-            Snackbar.Add("Couldn't delete profile. Please try again.", Severity.Error);
+            Feedback.ShowError("Couldn't delete profile. Please try again.", autoDismissMs: 0);
         }
         finally
         {

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Moq;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
@@ -532,6 +534,179 @@ public class PublicKeyResolutionTests
     #endregion
 
     #region Helper Methods
+
+    #region Feature 137 — cross-node credential delivery-key precedence (FR-012 / SC-004)
+
+    [Fact]
+    public async Task SorchaLocalWallet_NoPublishedRecord_NoCarriedKey_FailsClosed_IssuesNoCredential()
+    {
+        // SC-004: when neither a published participant record nor carried keys resolve, the system
+        // issues ZERO credentials. With HolderKeySourceField set and no holderKeys in the payload,
+        // ExecuteAsync must fail closed before the Wallet Service is ever asked to mint.
+        var service = CreateService();
+        const string instanceId = "xnode-instance";
+        const string registerId = "register-x";
+        const string citizenWallet = "ws1qcitizen";
+
+        var blueprint = CreateSorchaLocalWalletBlueprint(citizenWallet);
+        var action = blueprint.Actions!.First(a => a.Id == 1);
+        var instance = CreateTestInstance(instanceId, blueprint.Id, registerId,
+            new Dictionary<string, string> { ["citizen"] = citizenWallet });
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+        SetupRoutingAndDisclosure(blueprint, action);
+        // Lets the starting-action prerequisite (blueprint-publish tx confirmation) pass so
+        // execution reaches the step-8c credential-issuance precedence check.
+        SetupFullTransactionFlow(instance);
+
+        // Register has no published key for the open-participant citizen.
+        _mockRegisterClient
+            .Setup(x => x.ResolvePublicKeyAsync(registerId, citizenWallet, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PublicKeyResolution?)null);
+
+        var request = new ActionSubmissionRequest
+        {
+            BlueprintId = blueprint.Id,
+            ActionId = "1",
+            SenderWallet = citizenWallet,
+            RegisterAddress = registerId,
+            PayloadData = new Dictionary<string, object> { ["field1"] = "value1" } // no holderKeys
+        };
+
+        var act = () => service.ExecuteAsync(instanceId, 1, request, "test-token");
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .Which.Message.Should().Contain("VAL_RUNTIME_CRED_004");
+
+        _mockWalletClient.Verify(x => x.IssueCredentialAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(),
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<List<string>?>(), It.IsAny<string?>(),
+            It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<CancellationToken>()),
+            Times.Never, "fail-closed must issue zero credentials (SC-004)");
+    }
+
+    [Fact]
+    public async Task SorchaLocalWallet_CarriedKeys_BindCnf_AndInjectDeliveryKey_WhenRegisterMisses()
+    {
+        // FR-012/FR-014: register misses → the carried holder JWK binds cnf and the carried
+        // encryption key is injected so the credential disclosure encrypts to the citizen.
+        var service = CreateService();
+        const string instanceId = "xnode-instance-2";
+        const string registerId = "register-x2";
+        const string citizenWallet = "ws1qcitizen2";
+
+        var encKeyBytes = new byte[32];
+        new Random(137).NextBytes(encKeyBytes);
+        var encKeyBase64 = Convert.ToBase64String(encKeyBytes);
+
+        var blueprint = CreateSorchaLocalWalletBlueprint(citizenWallet);
+        var action = blueprint.Actions!.First(a => a.Id == 1);
+        var instance = CreateTestInstance(instanceId, blueprint.Id, registerId,
+            new Dictionary<string, string> { ["citizen"] = citizenWallet });
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+        SetupRoutingAndDisclosure(blueprint, action);
+        SetupFullTransactionFlow(instance);
+
+        _mockRegisterClient
+            .Setup(x => x.ResolvePublicKeyAsync(registerId, citizenWallet, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PublicKeyResolution?)null);
+
+        JsonElement? capturedHolderJwk = null;
+        _mockWalletClient
+            .Setup(x => x.IssueCredentialAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<List<string>?>(), It.IsAny<string?>(),
+                It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<JsonElement?>(), It.IsAny<CancellationToken>()))
+            .Callback(new InvocationAction(inv => capturedHolderJwk = (JsonElement?)inv.Arguments[13]))
+            .ReturnsAsync(new CredentialIssuanceResult
+            {
+                CredentialId = "urn:uuid:cred-1",
+                Type = "AssuredIdentityCredential",
+                IssuerDid = citizenWallet,
+                SubjectDid = citizenWallet,
+                Claims = new Dictionary<string, object>(),
+                RawToken = "eyJ.tok.en",
+                IssuedAt = DateTimeOffset.UtcNow
+            });
+
+        DisclosureGroup[]? capturedGroups = null;
+        _mockEncryptionPipeline
+            .Setup(x => x.EncryptDisclosedPayloadsAsync(It.IsAny<DisclosureGroup[]>(), It.IsAny<CancellationToken>()))
+            .Callback<DisclosureGroup[], CancellationToken>((groups, _) => capturedGroups = groups)
+            .ReturnsAsync(EncryptionResult.Succeeded(CreateTestEncryptedGroups(citizenWallet)));
+
+        var request = new ActionSubmissionRequest
+        {
+            BlueprintId = blueprint.Id,
+            ActionId = "1",
+            SenderWallet = citizenWallet,
+            RegisterAddress = registerId,
+            PayloadData = new Dictionary<string, object>
+            {
+                ["field1"] = "value1",
+                ["holderKeys"] = new Dictionary<string, object>
+                {
+                    ["holderJwk"] = new Dictionary<string, object>
+                    {
+                        ["kty"] = "EC", ["crv"] = "P-256", ["x"] = "AAA", ["y"] = "BBB"
+                    },
+                    ["encryptionPublicKey"] = encKeyBase64,
+                    ["algorithm"] = "ED25519"
+                }
+            }
+        };
+
+        await service.ExecuteAsync(instanceId, 1, request, "test-token");
+
+        // cnf binding: the holder JWK was threaded to the Wallet Service issuance call.
+        capturedHolderJwk.Should().NotBeNull("the carried holder JWK must bind the credential cnf (FR-014)");
+        capturedHolderJwk!.Value.GetProperty("kty").GetString().Should().Be("EC");
+
+        // delivery key: the carried encryption key was injected so the recipient resolves externally.
+        capturedGroups.Should().NotBeNull();
+        var recipient = capturedGroups!.SelectMany(g => g.Recipients).FirstOrDefault(r => r.WalletAddress == citizenWallet);
+        recipient.Should().NotBeNull();
+        recipient!.Source.Should().Be(KeySource.External);
+        recipient.PublicKey.Should().BeEquivalentTo(encKeyBytes);
+    }
+
+    private static BlueprintModel CreateSorchaLocalWalletBlueprint(string citizenWallet)
+    {
+        return new BlueprintModel
+        {
+            Id = "blueprint-xnode",
+            Title = "Cross-node Assured Identity",
+            Participants =
+            [
+                // Open participant: walletAddress null in the published blueprint, late-bound at runtime.
+                new ParticipantModel { Id = "citizen", Name = "Citizen", WalletAddress = null }
+            ],
+            Actions =
+            [
+                new ActionModel
+                {
+                    Id = 1,
+                    Title = "Issue Assured Identity",
+                    Sender = "citizen",
+                    IsStartingAction = true,
+                    CredentialIssuanceConfig = new Sorcha.Blueprint.Models.Credentials.CredentialIssuanceConfig
+                    {
+                        CredentialType = "AssuredIdentityCredential",
+                        TargetAudience = Sorcha.Blueprint.Models.Credentials.TargetAudience.SorchaLocalWallet,
+                        RecipientParticipantId = "citizen",
+                        HolderKeySourceField = "/holderKeys/holderJwk",
+                        ClaimMappings = [new Sorcha.Blueprint.Models.Credentials.ClaimMapping { ClaimName = "field1", SourceField = "/field1" }]
+                    },
+                    Routes = [new RouteModel { NextActionIds = [] }]
+                }
+            ]
+        };
+    }
+
+    #endregion
 
     private void SetupCommonMocks(string instanceId, Instance instance, BlueprintModel blueprint, ActionModel action)
     {

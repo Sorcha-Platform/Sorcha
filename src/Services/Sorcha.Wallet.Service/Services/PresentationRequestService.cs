@@ -246,8 +246,13 @@ public class PresentationRequestService : IPresentationRequestService
     {
         var errors = new List<VerificationError>();
 
-        // 1. Look up credential
-        var credential = await _credentialStore.GetByIdAsync(credentialId, ct);
+        // 1. Look up credential — prefer wallet-scoped lookup when the presentation request
+        //    carries a TargetWalletAddress so we never accidentally verify the issuer's copy
+        //    instead of the holder's (Feature 106: same credential id can appear in both wallets).
+        var credential = request.TargetWalletAddress is not null
+            ? await _credentialStore.GetByIdForWalletAsync(credentialId, request.TargetWalletAddress, ct)
+            : await _credentialStore.GetByIdAsync(credentialId, ct);
+
         if (credential == null)
         {
             errors.Add(new VerificationError
@@ -355,16 +360,22 @@ public class PresentationRequestService : IPresentationRequestService
             });
         }
 
-        // 4. Issuer check
-        if (request.AcceptedIssuers is { Length: > 0 } &&
-            !request.AcceptedIssuers.Contains(credential.IssuerDid))
+        // 4. Issuer check — Feature 120 US5 honours DID alsoKnownAs equivalence
+        // when an IDidResolverRegistry is wired (production path); falls back to
+        // direct-string match when not (legacy / test composition).
+        if (request.AcceptedIssuers is { Length: > 0 })
         {
-            errors.Add(new VerificationError
+            var accepted = await Credentials.IssuerEquivalenceMatcher.IsAcceptedAsync(
+                credential.IssuerDid, request.AcceptedIssuers, _didRegistry);
+            if (!accepted)
             {
-                RequirementType = request.CredentialType,
-                FailureReason = "UntrustedIssuer",
-                Message = $"Issuer '{credential.IssuerDid}' not in accepted issuers list"
-            });
+                errors.Add(new VerificationError
+                {
+                    RequirementType = request.CredentialType,
+                    FailureReason = "UntrustedIssuer",
+                    Message = $"Issuer '{credential.IssuerDid}' not in accepted issuers list"
+                });
+            }
         }
 
         // 5. Status check (active)
@@ -559,18 +570,13 @@ public class PresentationRequestService : IPresentationRequestService
 
         if (!verification.IsValid)
         {
-            // Map verifier errors to a coarse failure reason. The substring is matched
-            // against an exact phrase that the current SdJwtService implementation emits
-            // (see Sorcha.Cryptography.SdJwt.SdJwtService.VerifyTokenAsync, the
-            // "Failed to parse disclosure" branch). This is brittle: a future SdJwt
-            // library wording change will silently re-bucket disclosure errors as
-            // SignatureInvalid. Tracked as a follow-up — proper fix is to add a typed
-            // ErrorKind enum or sentinel to SdJwtVerificationResult so this mapping
-            // does not depend on internal phrasing.
-            const string DisclosureErrorPhrase = "Failed to parse disclosure";
-
-            var hasDisclosureError = verification.Errors
-                .Any(e => e?.StartsWith(DisclosureErrorPhrase, StringComparison.Ordinal) == true);
+            // Map verifier errors to a coarse failure reason via the typed SdJwtErrorKind
+            // enum on SdJwtVerificationResult.ErrorDetails (issue #221 item 2). The previous
+            // implementation substring-matched the human-readable Errors strings against an
+            // exact phrase from SdJwtService — brittle to wording drift. The structural enum
+            // is stable across library refactors.
+            var hasDisclosureError = verification.ErrorDetails
+                .Any(e => e.Kind == SdJwtErrorKind.DisclosureIntegrityFailure);
 
             var failureReason = hasDisclosureError
                 ? "DisclosureIntegrityFailure"

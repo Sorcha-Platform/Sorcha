@@ -55,7 +55,9 @@ public class DomainRestrictionTests : IDisposable
             _identityRepoMock.Object,
             _dbContext,
             new Mock<IWalletServiceClient>().Object,
-            _loggerMock.Object);
+            Mock.Of<ITenantMembershipInboxWriter>(),
+            _loggerMock.Object,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
     }
 
     // ── GetDomainRestrictionsAsync ────────────────────────────

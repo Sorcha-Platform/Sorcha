@@ -1,0 +1,227 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Tenant Service — Inbox Endpoints (Feature 118)
+  version: 0.1.0
+  description: |
+    Inbox endpoints introduced by Feature 118. Public endpoints are scoped to the calling user via JWT.
+    The `/api/internal/inbox` endpoint is gated by the `RequireService` policy and is intended for service-principal
+    POSTs from emitters (Wallet, Blueprint, Tenant itself).
+servers:
+  - url: http://localhost
+    description: Local dev gateway
+  - url: https://n1.sorcha.dev
+    description: n1 deployment
+
+paths:
+
+  /api/me/inbox:
+    get:
+      operationId: ListMyInbox
+      summary: List the authenticated user's inbox entries.
+      description: Paginated, sorted newest first. Dismissed entries are excluded by default.
+      security:
+        - bearer: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: pageSize
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: category
+          schema:
+            type: string
+            enum: [Action, Credential, Membership, Security, System, Workflow, Custom]
+        - in: query
+          name: unreadOnly
+          schema: { type: boolean, default: false }
+        - in: query
+          name: includeDismissed
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, page, pageSize, totalCount]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: 'inbox-entry.schema.json'
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  totalCount: { type: integer }
+        "401":
+          description: Unauthenticated
+
+  /api/me/inbox/{id}:
+    get:
+      operationId: GetMyInboxEntry
+      summary: Fetch a single inbox entry.
+      security:
+        - bearer: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: 'inbox-entry.schema.json' }
+        "401":
+          description: Unauthenticated
+        "404":
+          description: Not found (or not owned by caller — indistinguishable to prevent enumeration)
+
+  /api/me/inbox/unread-count:
+    get:
+      operationId: GetMyInboxUnreadCount
+      summary: Atomic-read of the user's unread inbox count.
+      security:
+        - bearer: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unread]
+                properties:
+                  unread: { type: integer, minimum: 0 }
+
+  /api/me/inbox/{id}/read:
+    post:
+      operationId: MarkMyInboxEntryRead
+      summary: Mark an entry as read. Idempotent.
+      security:
+        - bearer: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Marked read (or already read — no body)
+        "404":
+          description: Not found
+
+  /api/me/inbox/{id}/dismiss:
+    post:
+      operationId: DismissMyInboxEntry
+      summary: Dismiss an entry. Idempotent.
+      security:
+        - bearer: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Dismissed (or already dismissed — no body)
+        "404":
+          description: Not found
+
+  /api/me/inbox/mark-all-read:
+    post:
+      operationId: MarkAllMyInboxEntriesRead
+      summary: Mark every unread entry for the user as read. Idempotent. Atomic with the unread-count index.
+      security:
+        - bearer: []
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [marked]
+                properties:
+                  marked: { type: integer, minimum: 0 }
+
+  /api/internal/inbox:
+    post:
+      operationId: WriteInboxEntry
+      summary: Service-principal write — emit an inbox entry on behalf of a user.
+      description: |
+        Idempotent on the (platformUserId, sourceEventId) unique index. A duplicate POST returns the original entry
+        with `idempotent: true` rather than failing.
+      security:
+        - service: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - platformUserId
+                - category
+                - severity
+                - correlationKey
+                - detailHref
+                - sourceEventId
+                - occurredAt
+                - title
+              properties:
+                platformUserId: { type: string, format: uuid }
+                category:
+                  type: string
+                  enum: [Action, Credential, Membership, Security, System, Workflow, Custom]
+                severity:
+                  type: string
+                  enum: [Info, Warning, ActionRequired, Critical]
+                correlationKey: { type: string, minLength: 1, maxLength: 256 }
+                detailHref: { type: string, minLength: 1, maxLength: 1024, pattern: "^/api/" }
+                sourceEventId: { type: string, format: uuid }
+                occurredAt: { type: string, format: date-time }
+                title: { type: string, minLength: 1, maxLength: 200 }
+                summary: { type: string, maxLength: 1000 }
+                iconKey: { type: string, maxLength: 64 }
+                channelHints:
+                  type: array
+                  items:
+                    type: string
+                    enum: [Inbox, Push, Email, Digest]
+                  uniqueItems: true
+      responses:
+        "201":
+          description: Created (first write)
+          content:
+            application/json:
+              schema: { $ref: 'inbox-entry.schema.json' }
+        "200":
+          description: Idempotent — entry already existed for this (platformUserId, sourceEventId)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: 'inbox-entry.schema.json'
+                  - type: object
+                    properties:
+                      idempotent: { type: boolean, const: true }
+        "400":
+          description: Validation error
+        "403":
+          description: Caller lacks RequireService policy
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    service:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Service-principal token issued by Tenant Service. RequireService policy.

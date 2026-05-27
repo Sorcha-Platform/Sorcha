@@ -24,6 +24,10 @@ public static class InMemoryDbContextFactory
 
         var options = new DbContextOptionsBuilder<TenantDbContext>()
             .UseInMemoryDatabase(databaseName)
+            // The in-memory provider has no transaction support; services that wrap writes in an
+            // execution-strategy transaction (e.g. OrgProvisioningService) would otherwise throw.
+            // Treat transactions as no-ops here — assertions verify the committed end state.
+            .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options;
 
         var context = new TenantDbContext(options, schema);

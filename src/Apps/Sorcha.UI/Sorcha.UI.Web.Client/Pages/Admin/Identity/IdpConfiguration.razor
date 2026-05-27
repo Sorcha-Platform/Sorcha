@@ -8,9 +8,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using Sorcha.UI.Core.Services.Identity
+@using Sorcha.UI.Core.Services.Feedback
 
 @inject IIdpConfigurationClientService IdpService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>IDP Configuration - Sorcha Platform</PageTitle>
 
@@ -168,7 +169,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to load IDP configurations: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to load IDP configurations: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -181,7 +182,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Discovery failed: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Discovery failed: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -197,21 +198,21 @@
                 ClientId = _newClientId,
                 ClientSecret = _newClientSecret
             });
-            Snackbar.Add("Identity provider added", Severity.Success);
+            Feedback.ShowSuccess("Identity provider added");
             _newPreset = "Custom"; _newDisplayName = ""; _newIssuer = ""; _newClientId = ""; _newClientSecret = "";
             _discoveryResult = null;
             await LoadIdpConfigsAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to add provider: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to add provider: {ex.Message}", autoDismissMs: 0);
         }
     }
 
     private async Task ToggleIdpAsync(Guid configId, bool enabled)
     {
         await IdpService.ToggleIdpAsync(_organizationId, configId, enabled);
-        Snackbar.Add(enabled ? "Provider enabled" : "Provider disabled", Severity.Info);
+        Feedback.ShowInfo(enabled ? "Provider enabled" : "Provider disabled");
         await LoadIdpConfigsAsync();
     }
 
@@ -219,15 +220,15 @@
     {
         var result = await IdpService.TestIdpConnectionAsync(_organizationId, configId);
         if (result.Success)
-            Snackbar.Add($"Connection successful ({result.ResponseTimeMs}ms)", Severity.Success);
+            Feedback.ShowSuccess($"Connection successful ({result.ResponseTimeMs}ms)");
         else
-            Snackbar.Add($"Connection failed: {result.Error}", Severity.Error);
+            Feedback.ShowError($"Connection failed: {result.Error}", autoDismissMs: 0);
     }
 
     private async Task DeleteIdpAsync(Guid configId)
     {
         await IdpService.DeleteIdpConfigurationAsync(_organizationId, configId);
-        Snackbar.Add("Provider deleted", Severity.Warning);
+        Feedback.ShowWarning("Provider deleted");
         await LoadIdpConfigsAsync();
     }
 }

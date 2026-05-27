@@ -2,9 +2,10 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @inject IOrganizationAdminService OrganizationService
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <MudStack Spacing="4">
     @if (!CompactMode)
@@ -163,7 +164,7 @@
         if (result is { Canceled: false, Data: OrganizationDto newOrg })
         {
             _organizations.Insert(0, newOrg);
-            Snackbar.Add($"Organization '{newOrg.Name}' created successfully.", Severity.Success);
+            Feedback.ShowSuccess($"Organization '{newOrg.Name}' created successfully.");
             StateHasChanged();
         }
     }
@@ -193,7 +194,7 @@
             {
                 _organizations[index] = updatedOrg;
             }
-            Snackbar.Add($"Organization '{updatedOrg.Name}' updated successfully.", Severity.Success);
+            Feedback.ShowSuccess($"Organization '{updatedOrg.Name}' updated successfully.");
             StateHasChanged();
         }
     }
@@ -218,13 +219,13 @@
                     {
                         _organizations[index] = organization with { Status = "Deleted" };
                     }
-                    Snackbar.Add($"Organization '{organization.Name}' deactivated.", Severity.Warning);
+                    Feedback.ShowWarning($"Organization '{organization.Name}' deactivated.");
                     StateHasChanged();
                 }
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Failed to deactivate: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Failed to deactivate: {ex.Message}", autoDismissMs: 0);
             }
         }
     }

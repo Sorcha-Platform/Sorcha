@@ -1,0 +1,36 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Applications list page (Feature 125, T054). Lists blueprint-driven
+    applications available to the active context. v1 ships an empty-
+    state with a CTA pointing at the council web shell — the application
+    catalogue API lands alongside this page in a follow-up. Once the
+    catalogue endpoint exists, the list rows are tappable into
+    Pages/ApplicationInstance for the SorchaFormRenderer-hosted form.
+*@
+@page "/applications"
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@using Sorcha.Wallet.Pwa.Services.Context
+@inject IUserContext UserContext
+@inject NavigationManager Nav
+
+<PageTitle>Applications · Sorcha Wallet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Applications</MudText>
+    <MudPaper Class="pa-4" Elevation="1" data-testid="applications-empty-state">
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body1">
+                Application listings will appear here.
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                For now, start a council application from your council's website. Your
+                wallet will pick it up once you submit and you'll see the in-progress
+                state on Home.
+            </MudText>
+        </MudStack>
+    </MudPaper>
+</MudContainer>

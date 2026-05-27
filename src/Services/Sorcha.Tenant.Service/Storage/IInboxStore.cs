@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using Sorcha.Tenant.Service.Models;
+
+namespace Sorcha.Tenant.Service.Storage;
+
+/// <summary>
+/// Storage abstraction over <see cref="InboxEntry"/> rows. Owns every read and
+/// write of inbox state; <c>InboxService</c> orchestrates idempotency, SignalR
+/// fan-out, and logging on top of this surface.
+/// </summary>
+/// <remarks>
+/// Audited under Feature 113 — Production / Staging refuse to start when this
+/// interface lands on an in-memory implementation. Tenant Service always has
+/// Postgres in those environments, so only <see cref="EfCoreInboxStore"/>
+/// ships today; tests use the InMemory EF provider via the same impl.
+/// </remarks>
+public interface IInboxStore
+{
+    /// <summary>
+    /// Adds the candidate entry, or returns the row that already matches the
+    /// (PlatformUserId, SourceEventId) idempotency key. Handles the
+    /// concurrent-write unique-index race transparently.
+    /// </summary>
+    Task<InboxAddResult> AddOrFindAsync(InboxEntry candidate, CancellationToken ct = default);
+
+    /// <summary>Returns a page of entries, newest first, with optional filters.</summary>
+    Task<InboxPageResult> GetPageAsync(
+        Guid platformUserId,
+        int page,
+        int pageSize,
+        InboxCategory? category,
+        bool unreadOnly,
+        bool includeDismissed,
+        CancellationToken ct = default);
+
+    /// <summary>Returns one entry, scoped to the owning user.</summary>
+    Task<InboxEntry?> GetByIdAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);
+
+    /// <summary>Returns the user's unread, non-dismissed count.</summary>
+    Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default);
+
+    /// <summary>Marks an entry read. Idempotent.</summary>
+    Task<InboxMarkReadResult> MarkReadAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);
+
+    /// <summary>Marks an entry dismissed. Idempotent.</summary>
+    Task<InboxDismissResult> DismissAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);
+
+    /// <summary>Marks every unread, non-dismissed entry for the user read. Returns the count affected.</summary>
+    Task<int> MarkAllReadAsync(Guid platformUserId, CancellationToken ct = default);
+}
+
+/// <summary>Outcome of <see cref="IInboxStore.AddOrFindAsync"/>.</summary>
+/// <param name="Entry">The persisted entry (newly added or pre-existing).</param>
+/// <param name="IsIdempotent"><c>true</c> when the candidate matched an existing row.</param>
+public sealed record InboxAddResult(InboxEntry Entry, bool IsIdempotent);
+
+/// <summary>Outcome of <see cref="IInboxStore.GetPageAsync"/>.</summary>
+public sealed record InboxPageResult(IReadOnlyList<InboxEntry> Entries, int TotalCount);
+
+/// <summary>Outcome of <see cref="IInboxStore.MarkReadAsync"/>.</summary>
+/// <param name="Found"><c>true</c> if the entry exists for the user.</param>
+/// <param name="StateChanged"><c>true</c> if this call transitioned ReadAt from null to a value.</param>
+public sealed record InboxMarkReadResult(bool Found, bool StateChanged);
+
+/// <summary>Outcome of <see cref="IInboxStore.DismissAsync"/>.</summary>
+/// <param name="Found"><c>true</c> if the entry exists for the user.</param>
+/// <param name="StateChanged"><c>true</c> if this call transitioned DismissedAt from null to a value.</param>
+/// <param name="WasUnread"><c>true</c> if the entry was unread (and not already dismissed) at the moment of dismissal.</param>
+public sealed record InboxDismissResult(bool Found, bool StateChanged, bool WasUnread);

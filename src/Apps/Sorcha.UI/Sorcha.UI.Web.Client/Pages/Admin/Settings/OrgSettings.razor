@@ -8,10 +8,11 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 
 @inject IOrganizationAdminService OrgService
 @inject IAuditService AuditService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>Organization Settings - Sorcha Platform</PageTitle>
 
@@ -151,7 +152,7 @@
     {
         if (_retentionMonths < 1 || _retentionMonths > 120)
         {
-            Snackbar.Add("Retention must be between 1 and 120 months", Severity.Warning);
+            Feedback.ShowWarning("Retention must be between 1 and 120 months");
             return;
         }
 
@@ -159,12 +160,18 @@
         try
         {
             var success = await AuditService.UpdateRetentionAsync(_organizationId, _retentionMonths);
-            Snackbar.Add(success ? "Retention updated" : "Failed to update retention",
-                success ? Severity.Success : Severity.Error);
+            if (success)
+            {
+                Feedback.ShowSuccess("Retention updated");
+            }
+            else
+            {
+                Feedback.ShowError("Failed to update retention", autoDismissMs: 0);
+            }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Error: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {

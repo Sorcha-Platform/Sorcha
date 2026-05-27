@@ -38,18 +38,18 @@ public class JwtSettings
     public string? InstallationName { get; set; }
 
     /// <summary>
-    /// JWT token issuer (iss claim).
-    /// If not explicitly set, derived from InstallationName as "http://{InstallationName}".
-    /// The tenant service is the authority that issues tokens with this issuer.
+    /// JWT token issuer (iss claim). Resolved via <see cref="Sorcha.ServiceDefaults.Auth.SorchaIssuer"/>:
+    /// explicit value, else <c>urn:sorcha:{InstallationName}</c>, else fail-closed (Development uses
+    /// <c>urn:sorcha:dev-local</c>). No shared default — see spec 136 (issuer hardening).
     /// </summary>
-    public string Issuer { get; set; } = "https://tenant.sorcha.io";
+    public string Issuer { get; set; } = string.Empty;
 
     /// <summary>
-    /// Valid audiences for tokens (aud claim).
-    /// If not explicitly set, derived from InstallationName as ["http://{InstallationName}"].
-    /// All services in an installation should accept tokens with this audience.
+    /// Valid audiences for tokens (aud claim) — the installation's four tier audiences
+    /// (<c>{installation}:consumer|platform|service|enrol-session</c>), derived from
+    /// <see cref="Sorcha.ServiceDefaults.Auth.SorchaAudiences"/>. Not hand-configured. Spec 136.
     /// </summary>
-    public string[] Audience { get; set; } = ["https://api.sorcha.io"];
+    public string[] Audience { get; set; } = [];
 
     /// <summary>
     /// Signing key for JWT tokens.
@@ -133,24 +133,18 @@ public static class JwtAuthenticationExtensions
         var issuerFromConfig = configuration["JwtSettings:Issuer"];
         var audienceFromConfig = configuration["JwtSettings:Audience:0"];
 
-        // Create JWT settings with installation name-based defaults if applicable
+        // Create JWT settings, then resolve issuer + tier audiences from the single source of
+        // truth (spec 136). Audiences are ALWAYS the installation's four tier audiences; the
+        // issuer is explicit, else urn:sorcha:{installation}, else fail-closed (dev-local in
+        // Development). audienceFromConfig is intentionally ignored — audiences are derived.
         var jwtSettings = configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
+        _ = audienceFromConfig; // no longer a configurable raw value; tier audiences are derived
 
-        // Override with installation name-based values if:
-        // 1. Installation name is provided
-        // 2. No explicit issuer or audience configuration exists
-        if (!string.IsNullOrWhiteSpace(installationName))
-        {
-            if (string.IsNullOrWhiteSpace(issuerFromConfig))
-            {
-                jwtSettings.Issuer = $"http://{installationName}";
-            }
-
-            if (string.IsNullOrWhiteSpace(audienceFromConfig))
-            {
-                jwtSettings.Audience = [$"http://{installationName}"];
-            }
-        }
+        var sorchaAudiences = new Sorcha.ServiceDefaults.Auth.SorchaAudiences(installationName);
+        jwtSettings.Audience = sorchaAudiences.All.ToArray();
+        jwtSettings.Issuer = Sorcha.ServiceDefaults.Auth.SorchaIssuer.Resolve(
+            issuerFromConfig, installationName,
+            Sorcha.ServiceDefaults.Auth.SorchaIssuer.AllowsDevLocalFallback(environment));
 
         // Get or generate signing key
         var signingKey = GetOrGenerateSigningKey(configuration, environment.IsDevelopment());
@@ -219,8 +213,7 @@ public static class JwtAuthenticationExtensions
                         var path = context.HttpContext.Request.Path;
                         if (!string.IsNullOrEmpty(accessToken) &&
                             (path.StartsWithSegments("/hubs") ||
-                             path.StartsWithSegments("/hub") ||
-                             path.StartsWithSegments("/actionshub")))
+                             path.StartsWithSegments("/hub")))
                         {
                             // Extract the token from query string for SignalR
                             context.Token = accessToken;
@@ -252,6 +245,25 @@ public static class JwtAuthenticationExtensions
 
                         var userId = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                         var orgId = context.Principal?.FindFirst("org_id")?.Value;
+
+                        // Defensive observability: every user-type token must carry
+                        // platform_user_id — it's the key for PlatformUser-scoped tables
+                        // (inbox, wallet hub groups, persona, etc). A missing claim
+                        // means callers will hit silent 401 storms on endpoints that
+                        // scope by that key. We've seen this happen when stale Docker
+                        // images get promoted to `latest` without rebuilding from the
+                        // current source. Surface it as a single warning at validation
+                        // time rather than a flood of 401s from downstream handlers.
+                        var tokenType = context.Principal?.FindFirst("token_type")?.Value;
+                        if (string.Equals(tokenType, "user", StringComparison.Ordinal)
+                            && string.IsNullOrEmpty(context.Principal?.FindFirst("platform_user_id")?.Value))
+                        {
+                            logger.LogWarning(
+                                "User-type JWT validated WITHOUT platform_user_id claim on {RequestPath} (sub: {Sub}, org: {OrgId}). " +
+                                "PlatformUser-scoped endpoints (inbox, /hubs/wallet, persona) will return 401. " +
+                                "This typically means the tenant-service image was built before the platform_user_id claim was added — rebuild and redeploy from current master.",
+                                context.HttpContext.Request.Path, userId, orgId);
+                        }
 
                         // Check token revocation if a revocation store is registered (FR-006)
                         var revocationStore = context.HttpContext.RequestServices

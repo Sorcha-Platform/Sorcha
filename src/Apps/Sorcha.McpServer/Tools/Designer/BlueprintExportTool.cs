@@ -4,47 +4,39 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Blueprint;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
 namespace Sorcha.McpServer.Tools.Designer;
 
 /// <summary>
-/// Designer tool for exporting blueprints to JSON or YAML format.
+/// Designer tool for exporting blueprints to JSON or YAML format. Reads via the typed
+/// <see cref="IBlueprintServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the route is contract-pinned, not hand-rolled.
 /// </summary>
 [McpServerToolType]
 public sealed class BlueprintExportTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IBlueprintServiceClient _blueprintClient;
     private readonly ILogger<BlueprintExportTool> _logger;
-    private readonly string _blueprintServiceEndpoint;
 
     public BlueprintExportTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IBlueprintServiceClient blueprintClient,
         ILogger<BlueprintExportTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _blueprintClient = blueprintClient;
         _logger = logger;
-
-        _blueprintServiceEndpoint = configuration["ServiceClients:BlueprintService:Address"] ?? "http://localhost:5000";
     }
 
     /// <summary>
@@ -55,7 +47,7 @@ public sealed class BlueprintExportTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The exported blueprint content.</returns>
     [McpServerTool(Name = "sorcha_blueprint_export")]
-    [Description("Export a blueprint to JSON or YAML format. Useful for backup, version control, or sharing blueprints between environments.")]
+    [Description("Exports a blueprint to a serialised JSON or YAML document suitable for committing to version control, backing up, or transferring to another environment. Call this when you need an offline, file-shaped representation of the blueprint; use sorcha_blueprint_get instead when you want the structured response object for programmatic inspection, and prefer this over manual reconstruction when round-tripping a blueprint between tenants or environments.")]
     public async Task<BlueprintExportResult> ExportBlueprintAsync(
         [Description("The ID of the blueprint to export")] string blueprintId,
         [Description("Export format: json or yaml (default: json)")] string format = "json",
@@ -112,53 +104,26 @@ public sealed class BlueprintExportTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/blueprints/{blueprintId}";
-
-            var response = await client.GetAsync(url, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route (GET api/blueprints/{id}).
+            var jsonContent = await _blueprintClient.GetBlueprintAsync(blueprintId, cancellationToken);
 
             stopwatch.Stop();
 
-            if (!response.IsSuccessStatusCode)
+            if (string.IsNullOrWhiteSpace(jsonContent))
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Blueprint export failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
                 _availabilityTracker.RecordSuccess("Blueprint");
 
-                try
+                return new BlueprintExportResult
                 {
-                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-
-                    return new BlueprintExportResult
-                    {
-                        Status = "Error",
-                        Message = errorResponse?.Error ?? "Blueprint not found.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
-                catch (JsonException)
-                {
-                    return new BlueprintExportResult
-                    {
-                        Status = "Error",
-                        Message = $"Blueprint export failed with status {(int)response.StatusCode}.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
+                    Status = "Error",
+                    Message = "Blueprint not found.",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+                };
             }
 
             // Record success
             _availabilityTracker.RecordSuccess("Blueprint");
-
-            var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);
 
             string exportedContent;
             if (normalizedFormat == "yaml")
@@ -247,10 +212,6 @@ public sealed class BlueprintExportTool
         }
     }
 
-    private sealed class ErrorResponse
-    {
-        public string? Error { get; set; }
-    }
 }
 
 /// <summary>

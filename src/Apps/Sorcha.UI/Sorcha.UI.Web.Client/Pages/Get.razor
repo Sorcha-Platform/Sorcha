@@ -1,0 +1,95 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 128 US4 — app-store cold landing.
+
+    Entry point for someone who discovered the Sorcha Wallet via an
+    app-store listing and has no prior context. Explains what Sorcha
+    is, offers a way to find services that use the platform, and
+    surfaces a sign-in CTA. Sign-in routes through Login.cshtml.cs's
+    F128 gate which lands a zero-device citizen on /setup/add-device.
+
+    Anonymous — does not require authentication. Reachable at
+    /get (and ultimately mapped from sorcha.dev/get via the existing
+    nginx + sorcha-ui-web routing — no infrastructure change needed).
+*@
+
+@page "/get"
+
+@* Uses the default MainLayout; the NotAuthorized branch of the
+   layout's AuthorizeView keeps the nav chrome minimal for cold
+   visitors. *@
+
+@inject NavigationManager Nav
+
+<PageTitle>Get started with Sorcha</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8" data-testid="get-landing">
+    <MudPaper Elevation="2" Class="pa-8">
+        <MudText Typo="Typo.h3" Class="mb-4" GutterBottom="true">
+            Welcome to Sorcha
+        </MudText>
+
+        <MudText Typo="Typo.body1" Class="mb-4">
+            Sorcha is a wallet for services that use the Sorcha platform.
+            Your credentials live on your phone — when a council, service,
+            or organisation issues you a credential, it arrives directly
+            in your wallet.
+        </MudText>
+
+        <MudText Typo="Typo.body1" Class="mb-6">
+            To get started, sign up at the council or service that asked
+            you to install the wallet, then come back here to sign in.
+        </MudText>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6" Class="mb-2">
+            Find services that use Sorcha
+        </MudText>
+        <MudList T="string" Class="mb-6">
+            <MudListItem T="string" Icon="@Icons.Material.Filled.AccountBalance"
+                         OnClick="@(() => Nav.NavigateTo("https://strathcarron.gov", forceLoad: true))"
+                         data-testid="get-landing-strathcarron">
+                Strathcarron Council
+            </MudListItem>
+        </MudList>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6" Class="mb-3">
+            Already have an account?
+        </MudText>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Size="Size.Large"
+                   FullWidth="true"
+                   StartIcon="@Icons.Material.Filled.Login"
+                   OnClick="@HandleSignIn"
+                   data-testid="get-landing-signin">
+            Sign in to Sorcha
+        </MudButton>
+    </MudPaper>
+
+    <MudText Typo="Typo.caption" Align="Align.Center" Class="mt-4 d-block mud-text-secondary">
+        Sorcha is a federated identity + credential platform.
+        Learn more at <MudLink Href="https://sorcha.dev">sorcha.dev</MudLink>.
+    </MudText>
+</MudContainer>
+
+@code {
+    private void HandleSignIn()
+    {
+        // F128 US4 — sign-in returnUrl pinned to the F128 handoff so a
+        // zero-device citizen lands on /setup/add-device after auth.
+        // The reason=cold-landing query lets downstream telemetry
+        // attribute the subsequent enrol-session mint to this route
+        // (route="cold-landing" — Login.cshtml.cs honours this
+        // attribution when it constructs the redirect; see the F128
+        // research R4 telemetry contract).
+        Nav.NavigateTo(
+            "/auth/login?returnUrl=%2Fsetup%2Fadd-device&reason=cold-landing",
+            forceLoad: true);
+    }
+}

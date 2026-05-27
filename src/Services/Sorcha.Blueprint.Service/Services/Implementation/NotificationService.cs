@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.ServiceDefaults.Hubs;
+using StackExchange.Redis;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -13,25 +17,41 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// All signals are delivered exclusively through wallet-scoped groups.
 /// Clients pull detailed data through authenticated REST endpoints.
 /// </summary>
+/// <remarks>
+/// Encryption events are published to the <see cref="EncryptionEventEnvelope.ChannelName"/>
+/// Redis channel rather than emitted directly on BlueprintHub. The
+/// encryption pipeline lives in Blueprint Service, but the wire-level home
+/// is WalletHub (in Wallet Service); the cross-service Redis bridge keeps
+/// emission and hub-host in the same process per FR-006.
+/// </remarks>
 public class NotificationService : INotificationService
 {
-    private readonly IHubContext<ActionsHub> _hubContext;
-    private readonly IHubContext<EventsHub> _eventsHubContext;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    private readonly IHubContext<BlueprintHub, IBlueprintHubClient> _hubContext;
+    private readonly IBlueprintInboxWriter _inboxWriter;
+    private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<NotificationService> _logger;
 
     /// <summary>Initialises a new instance of the <see cref="NotificationService"/> class.</summary>
     public NotificationService(
-        IHubContext<ActionsHub> hubContext,
-        IHubContext<EventsHub> eventsHubContext,
+        IHubContext<BlueprintHub, IBlueprintHubClient> hubContext,
+        IBlueprintInboxWriter inboxWriter,
+        IConnectionMultiplexer redis,
         ILogger<NotificationService> logger)
     {
         _hubContext = hubContext;
-        _eventsHubContext = eventsHubContext;
+        _inboxWriter = inboxWriter;
+        _redis = redis;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public async Task NotifyActionAvailableAsync(string instanceId, string? walletAddress, CancellationToken ct = default)
+    public async Task NotifyActionAvailableAsync(
+        string instanceId, string? walletAddress, string? actionId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(walletAddress))
         {
@@ -41,22 +61,32 @@ public class NotificationService : INotificationService
             return;
         }
 
-        var signal = new SignalNotification
-        {
-            SignalType = SignalTypes.ActionAvailable,
-            InstanceId = instanceId,
-            CorrelationId = Guid.NewGuid()
-        };
+        var resolvedActionId = actionId ?? string.Empty;
+        var occurredAt = DateTimeOffset.UtcNow;
+        var traceId = CurrentTraceId();
+        var groupName = BlueprintHubGroups.Wallet(walletAddress);
 
-        await SendToWalletAsync(walletAddress, "ActionAvailable", signal, ct);
+        await _hubContext.Clients.Group(groupName)
+            .ActionAvailable(instanceId, resolvedActionId, occurredAt, traceId);
+
+        // Phase 5 follow-up of Feature 118: also drop a durable inbox entry. The writer
+        // resolves wallet -> participant -> platform user and POSTs to Tenant. Failures
+        // are swallowed so an inbox-write outage cannot break SignalR delivery.
+        await _inboxWriter.WriteActionAvailableAsync(
+            walletAddress: walletAddress,
+            instanceId: instanceId,
+            actionId: !string.IsNullOrEmpty(resolvedActionId) ? resolvedActionId : instanceId,
+            actionTitle: null,
+            ct: ct).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "Sent signal {SignalType} to wallet {Wallet} for instance {InstanceId}",
-            signal.SignalType, walletAddress, instanceId);
+            "Sent ActionAvailable signal to wallet {Wallet} for instance {InstanceId}",
+            walletAddress, instanceId);
     }
 
     /// <inheritdoc />
-    public async Task NotifyActionRejectedAsync(string instanceId, string? walletAddress, CancellationToken ct = default)
+    public async Task NotifyActionRejectedAsync(
+        string instanceId, string? walletAddress, string? actionId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(walletAddress))
         {
@@ -66,29 +96,22 @@ public class NotificationService : INotificationService
             return;
         }
 
-        var signal = new SignalNotification
-        {
-            SignalType = SignalTypes.ActionRejected,
-            InstanceId = instanceId,
-            CorrelationId = Guid.NewGuid()
-        };
-
-        await SendToWalletAsync(walletAddress, "ActionRejected", signal, ct);
+        var resolvedActionId = actionId ?? string.Empty;
+        var groupName = BlueprintHubGroups.Wallet(walletAddress);
+        await _hubContext.Clients.Group(groupName)
+            .ActionRejected(instanceId, resolvedActionId, DateTimeOffset.UtcNow, CurrentTraceId());
 
         _logger.LogInformation(
-            "Sent signal {SignalType} to wallet {Wallet} for instance {InstanceId}",
-            signal.SignalType, walletAddress, instanceId);
+            "Sent ActionRejected signal to wallet {Wallet} for instance {InstanceId}",
+            walletAddress, instanceId);
     }
 
     /// <inheritdoc />
-    public async Task NotifyWorkflowCompletedAsync(string instanceId, IEnumerable<string> participantWalletAddresses, CancellationToken ct = default)
+    public async Task NotifyWorkflowCompletedAsync(
+        string instanceId, IEnumerable<string> participantWalletAddresses, CancellationToken ct = default)
     {
-        var signal = new SignalNotification
-        {
-            SignalType = SignalTypes.WorkflowCompleted,
-            InstanceId = instanceId,
-            CorrelationId = Guid.NewGuid()
-        };
+        var occurredAt = DateTimeOffset.UtcNow;
+        var traceId = CurrentTraceId();
 
         foreach (var walletAddress in participantWalletAddresses)
         {
@@ -97,7 +120,9 @@ public class NotificationService : INotificationService
 
             try
             {
-                await SendToWalletAsync(walletAddress, "WorkflowCompleted", signal, ct);
+                var groupName = BlueprintHubGroups.Wallet(walletAddress);
+                await _hubContext.Clients.Group(groupName)
+                    .WorkflowCompleted(instanceId, occurredAt, traceId);
             }
             catch (Exception ex)
             {
@@ -107,114 +132,57 @@ public class NotificationService : INotificationService
             }
         }
 
-        _logger.LogInformation(
-            "Sent signal {SignalType} for instance {InstanceId}",
-            signal.SignalType, instanceId);
+        _logger.LogInformation("Sent WorkflowCompleted signal for instance {InstanceId}", instanceId);
     }
 
     /// <inheritdoc />
-    public async Task NotifyEncryptionProgressAsync(string walletAddress, EncryptionSignal signal, CancellationToken ct = default)
-    {
-        try
-        {
-            await SendToWalletAsync(walletAddress, "EncryptionProgress", signal, ct);
-
-            _logger.LogDebug(
-                "Sent EncryptionProgress to wallet {Wallet}. Operation: {OperationId}, {Percent}%",
-                walletAddress, signal.OperationId, signal.PercentComplete);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionProgress to wallet {Wallet}",
-                walletAddress);
-        }
-    }
+    public Task NotifyEncryptionProgressAsync(
+        string walletAddress, EncryptionSignal signal, CancellationToken ct = default) =>
+        PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindProgress, ct);
 
     /// <inheritdoc />
-    public async Task NotifyEncryptionCompleteAsync(string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
-    {
-        try
-        {
-            await SendToWalletAsync(walletAddress, "EncryptionComplete", signal, ct);
-
-            _logger.LogInformation(
-                "Sent EncryptionComplete to wallet {Wallet}. Operation: {OperationId}",
-                walletAddress, signal.OperationId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionComplete to wallet {Wallet}",
-                walletAddress);
-        }
-
-        await SendEncryptionSignalToEventsHubAsync(userId, signal, ct);
-    }
+    public Task NotifyEncryptionCompleteAsync(
+        string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
+        => PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindComplete, ct);
 
     /// <inheritdoc />
-    public async Task NotifyEncryptionFailedAsync(string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
-    {
-        try
-        {
-            await SendToWalletAsync(walletAddress, "EncryptionFailed", signal, ct);
-
-            _logger.LogWarning(
-                "Sent EncryptionFailed to wallet {Wallet}. Operation: {OperationId}",
-                walletAddress, signal.OperationId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionFailed to wallet {Wallet}",
-                walletAddress);
-        }
-
-        await SendEncryptionSignalToEventsHubAsync(userId, signal, ct);
-    }
+    public Task NotifyEncryptionFailedAsync(
+        string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
+        => PublishEncryptionEventAsync(walletAddress, signal, EncryptionEventEnvelope.KindFailed, ct);
 
     /// <summary>
-    /// Sends an EncryptionSignal to the EventsHub for the specified user.
-    /// Isolated in its own try/catch so ActionsHub delivery is never affected.
+    /// Publishes an encryption event to Redis. <c>EncryptionEventBridge</c> in
+    /// Wallet Service consumes the channel and emits the signal on WalletHub.
     /// </summary>
-    private async Task SendEncryptionSignalToEventsHubAsync(
-        string? userId, EncryptionSignal signal, CancellationToken ct)
+    private async Task PublishEncryptionEventAsync(
+        string walletAddress, EncryptionSignal signal, string kind, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(userId))
-        {
-            _logger.LogDebug(
-                "No userId provided for EventsHub encryption signal. Operation: {OperationId}",
-                signal.OperationId);
-            return;
-        }
+        var envelope = new EncryptionEventEnvelope(
+            WalletAddress: walletAddress,
+            OperationId: signal.OperationId,
+            Kind: kind,
+            OccurredAt: DateTimeOffset.UtcNow,
+            TraceId: CurrentTraceId());
 
         try
         {
-            var userGroup = $"user:{userId}";
-            await _eventsHubContext.Clients
-                .Group(userGroup)
-                .SendAsync("EncryptionOperationCompleted", signal, ct);
+            var subscriber = _redis.GetSubscriber();
+            var json = JsonSerializer.Serialize(envelope, JsonOptions);
+            await subscriber.PublishAsync(
+                RedisChannel.Literal(EncryptionEventEnvelope.ChannelName), json);
 
-            _logger.LogInformation(
-                "Sent EncryptionSignal to EventsHub user:{UserId}. Operation: {OperationId}, Status: {Status}",
-                userId, signal.OperationId, signal.Status);
+            _logger.LogDebug(
+                "Published encryption {Kind} for wallet {Wallet}, operation {OperationId}",
+                kind, walletAddress, signal.OperationId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Failed to send EncryptionSignal to EventsHub for user {UserId}. Operation: {OperationId}",
-                userId, signal.OperationId);
+                "Failed to publish encryption {Kind} envelope for wallet {Wallet}, operation {OperationId}",
+                kind, walletAddress, signal.OperationId);
         }
     }
 
-    /// <summary>
-    /// Send a signal to a wallet group via ActionsHub.
-    /// </summary>
-    private async Task SendToWalletAsync(string walletAddress, string method, object signal, CancellationToken ct)
-    {
-        var groupName = $"wallet:{walletAddress}";
-        await _hubContext.Clients
-            .Group(groupName)
-            .SendAsync(method, signal, ct);
-    }
+    private static string CurrentTraceId() =>
+        Activity.Current?.TraceId.ToString() ?? string.Empty;
 }

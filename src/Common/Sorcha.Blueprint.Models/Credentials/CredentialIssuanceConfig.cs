@@ -90,6 +90,38 @@ public class CredentialIssuanceConfig
     [JsonPropertyName("targetAudience")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public TargetAudience TargetAudience { get; set; } = TargetAudience.SorchaInternal;
+
+    /// <summary>
+    /// Credential format to mint (feature 135). Default <see cref="CredentialFormat.SdJwtVc"/>.
+    /// </summary>
+    [JsonPropertyName("format")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public CredentialFormat Format { get; set; } = CredentialFormat.SdJwtVc;
+
+    /// <summary>
+    /// Trust anchor the issued credential is trusted under (feature 135). Default
+    /// <see cref="TrustAnchor.Register"/>. X.509 anchors attach the org certificate chain;
+    /// the register anchor relies on decentralised-identifier resolution.
+    /// </summary>
+    [JsonPropertyName("trustAnchor")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TrustAnchor TrustAnchor { get; set; } = TrustAnchor.Register;
+
+    /// <summary>
+    /// Feature 137 (cross-node submission). JSON Pointer into the reconstructed instance state
+    /// where the recipient's carried delivery keys live — written by a <c>sorcha-holder-key</c>
+    /// form field on a starting action (default <c>/holderKeys/holderJwk</c>; siblings
+    /// <c>/holderKeys/encryptionPublicKey</c> + <c>/holderKeys/algorithm</c> are derived from the
+    /// same parent object). When set, the issuer binds the credential to the carried holder JWK
+    /// (SD-JWT <c>cnf</c>) and, for an open-participant recipient with no published participant
+    /// record (cross-node late binding), wraps the on-register AEAD envelope to the carried
+    /// encryption key. Resolution precedence is published participant record → carried keys →
+    /// fail closed without issuing (FR-012). Null (the default) preserves the pre-137 behaviour:
+    /// no <c>cnf</c> binding and no carried-key fallback.
+    /// </summary>
+    [JsonPropertyName("holderKeySourceField")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? HolderKeySourceField { get; set; }
 }
 
 /// <summary>

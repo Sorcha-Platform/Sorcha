@@ -13,7 +13,8 @@ namespace Sorcha.Wallet.Service.Hubs;
 /// <remarks>
 /// Hub URL: <c>/hubs/wallet</c> (proxied through API Gateway from <c>/hubs/wallet</c>).
 /// Authentication: existing JWT via query string <c>?access_token={jwt}</c>; the JWT
-/// MUST carry the <c>sorcha:citizen-wallet</c> audience or the connection is closed.
+/// MUST carry an installation tier audience (a citizen connects with the consumer audience
+/// <c>{installation}:consumer</c>) or the connection is closed. Spec 136.
 ///
 /// On connect each client is added to a group keyed by the authenticated
 /// PlatformUser id, so server-side broadcasters (issuance pipelines, revocation
@@ -28,7 +29,7 @@ namespace Sorcha.Wallet.Service.Hubs;
 /// pull-on-open <c>/api/v1/wallet/sync</c> endpoint remains the source of truth.
 /// </remarks>
 [Authorize(AuthenticationSchemes = "Bearer")]
-public sealed class WalletHub : Hub
+public sealed class WalletHub : Hub<IWalletHubClient>
 {
     private readonly ILogger<WalletHub> _logger;
 

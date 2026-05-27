@@ -1,0 +1,112 @@
+{
+  "id": "strathcarron-driving-licence-v1",
+  "title": "Strathcarron Driving Licence",
+  "description": "Feature 126 cold-start demo blueprint. Citizens apply for a driving licence via the Strathcarron council page; the council issues an AssuredIdentityCredential that lands in the citizen's Sorcha Wallet via SorchaLocalWallet target audience. The credential is also the gating prerequisite for Spec 4 (F127) Blue Badge.",
+  "version": 1,
+  "category": "licensing",
+  "tags": ["strathcarron", "driving-licence", "sorcha-wallet", "assured-identity", "verifiable-credential", "feature-126"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "strathcarron-driving-licence",
+    "title": "Strathcarron Driving Licence",
+    "description": "Two-action workflow: open-participant citizen submits the driving-licence application, licensing officer mints the AssuredIdentityCredential into the citizen's Sorcha Wallet.",
+    "version": 1,
+    "metadata": {
+      "category": "Licensing & Permits",
+      "complexity": "Simple",
+      "actions": "2",
+      "features": "Open Participant, SorchaLocalWallet, Feature 126 cold-start gate",
+      "sector": "Local Government"
+    },
+    "participants": [
+      {
+        "id": "citizen",
+        "name": "Citizen",
+        "organisation": "Public",
+        "description": "Strathcarron resident applying for a driving licence. Late-bound at submission time via the F103 open-participant pattern."
+      },
+      {
+        "id": "licensing-officer",
+        "name": "Licensing Officer",
+        "organisation": "Strathcarron Council",
+        "description": "Reviews the application and issues the AssuredIdentityCredential."
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Submit Driving Licence Application",
+        "description": "Citizen fills the application form (full name, date of birth, home address). On submission, the council issues an AssuredIdentityCredential which is also the gating prerequisite for Spec 4 (Blue Badge).",
+        "sender": "citizen",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "fullName":    { "type": "string", "title": "Full name" },
+              "dateOfBirth": { "type": "string", "format": "date", "title": "Date of birth" },
+              "address":     { "type": "string", "title": "Home address" }
+            },
+            "required": ["fullName", "dateOfBirth", "address"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "citizen", "dataPointers": ["/*"] },
+          { "participantAddress": "licensing-officer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-issue",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Application submitted — proceed to licence issuance"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Issue Assured Identity",
+        "description": "Strathcarron Council mints an AssuredIdentityCredential bound to the applicant. Delivered to the citizen's Sorcha Wallet via SorchaLocalWallet. This credential is the gating prerequisite for any later council service that requires identity verification (e.g. Spec 4 Blue Badge).",
+        "sender": "licensing-officer",
+        "requiredPriorActions": [1],
+        "credentialIssuanceConfig": {
+          "credentialType": "AssuredIdentityCredential",
+          "targetAudience": "SorchaLocalWallet",
+          "recipientParticipantId": "citizen",
+          "claimMappings": [
+            { "claimName": "givenName",   "sourceField": "/givenName" },
+            { "claimName": "familyName",  "sourceField": "/familyName" },
+            { "claimName": "dateOfBirth", "sourceField": "/dateOfBirth" },
+            { "claimName": "homeAddress", "sourceField": "/homeAddress" }
+          ],
+          "disclosable": ["givenName", "familyName", "dateOfBirth", "homeAddress"]
+        },
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "givenName":   { "type": "string", "title": "Given name" },
+              "familyName":  { "type": "string", "title": "Family name" },
+              "dateOfBirth": { "type": "string", "format": "date", "title": "Date of birth" },
+              "homeAddress": { "type": "string", "title": "Home address" }
+            },
+            "required": ["givenName", "familyName", "dateOfBirth", "homeAddress"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "licensing-officer", "dataPointers": ["/*"] },
+          { "participantAddress": "citizen", "dataPointers": ["/givenName", "/familyName", "/dateOfBirth", "/homeAddress"] }
+        ],
+        "routes": [
+          {
+            "id": "issued-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Credential minted — workflow complete"
+          }
+        ]
+      }
+    ]
+  }
+}

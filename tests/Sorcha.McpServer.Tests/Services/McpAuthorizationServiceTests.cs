@@ -2,222 +2,158 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.Extensions.Logging;
+using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceDefaults.Auth;
 
 namespace Sorcha.McpServer.Tests.Services;
 
+/// <summary>
+/// Tier-aware authorization (spec 139): tier-primary, role-secondary, with cross-tier
+/// participation tools, service-tier rejection, and a non-empty consumer surface.
+/// </summary>
 public class McpAuthorizationServiceTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
-    private readonly Mock<ILogger<McpAuthorizationService>> _loggerMock;
+    private readonly Mock<ICallerContext> _callerMock;
     private readonly McpAuthorizationService _service;
 
     public McpAuthorizationServiceTests()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
-        _loggerMock = new Mock<ILogger<McpAuthorizationService>>();
-        _service = new McpAuthorizationService(_sessionServiceMock.Object, _loggerMock.Object);
+        _callerMock = new Mock<ICallerContext>();
+        _service = new McpAuthorizationService(_callerMock.Object, Mock.Of<ILogger<McpAuthorizationService>>());
     }
 
-    private void SetupSession(string[] roles, bool isExpired = false)
+    private void SetupCaller(Tier? tier, params string[] roles)
     {
-        var session = new McpSession
-        {
-            UserId = "test-user",
-            TenantId = "test-tenant",
-            Roles = roles,
-            ExpiresAt = DateTime.UtcNow.AddHours(1)
-        };
-
-        _sessionServiceMock.Setup(x => x.CurrentSession).Returns(session);
-        _sessionServiceMock.Setup(x => x.IsTokenExpired()).Returns(isExpired);
+        _callerMock.Setup(x => x.IsAuthenticated).Returns(true);
+        _callerMock.Setup(x => x.Tier).Returns(tier);
+        _callerMock.Setup(x => x.Roles).Returns(roles);
+        _callerMock.Setup(x => x.Subject).Returns("test-user");
     }
 
-    #region Admin Tools
+    #region Admin tools — platform tier + admin role
 
     [Theory]
     [InlineData("sorcha_health_check")]
-    [InlineData("sorcha_log_query")]
-    [InlineData("sorcha_metrics")]
-    [InlineData("sorcha_tenant_list")]
     [InlineData("sorcha_tenant_create")]
-    [InlineData("sorcha_tenant_update")]
-    [InlineData("sorcha_user_list")]
-    [InlineData("sorcha_user_manage")]
-    [InlineData("sorcha_peer_status")]
-    [InlineData("sorcha_validator_status")]
     [InlineData("sorcha_register_stats")]
-    [InlineData("sorcha_audit_query")]
     [InlineData("sorcha_token_revoke")]
-    public void CanInvokeTool_AdminTool_AdminRole_ReturnsTrue(string toolName)
+    public void CanInvokeTool_AdminTool_PlatformAdmin_ReturnsTrue(string toolName)
     {
-        // Arrange
-        SetupSession(["sorcha:admin"]);
-
-        // Act
-        var result = _service.CanInvokeTool(toolName);
-
-        // Assert
-        result.Should().BeTrue();
+        SetupCaller(Tier.Platform, "sorcha:admin");
+        _service.CanInvokeTool(toolName).Should().BeTrue();
     }
 
     [Theory]
     [InlineData("sorcha_health_check")]
-    [InlineData("sorcha_tenant_list")]
-    public void CanInvokeTool_AdminTool_DesignerRole_ReturnsFalse(string toolName)
+    [InlineData("sorcha_tenant_create")]
+    public void CanInvokeTool_AdminTool_PlatformDesigner_ReturnsFalse(string toolName)
     {
-        // Arrange
-        SetupSession(["sorcha:designer"]);
+        SetupCaller(Tier.Platform, "sorcha:designer");
+        _service.CanInvokeTool(toolName).Should().BeFalse();
+    }
 
-        // Act
-        var result = _service.CanInvokeTool(toolName);
-
-        // Assert
-        result.Should().BeFalse();
+    [Fact]
+    public void CanInvokeTool_AdminTool_Consumer_ReturnsFalse()
+    {
+        SetupCaller(Tier.Consumer);
+        _service.CanInvokeTool("sorcha_register_stats").Should().BeFalse();
     }
 
     #endregion
 
-    #region Designer Tools
+    #region Designer tools — platform tier + designer role
 
     [Theory]
-    [InlineData("sorcha_blueprint_list")]
-    [InlineData("sorcha_blueprint_get")]
     [InlineData("sorcha_blueprint_create")]
-    [InlineData("sorcha_blueprint_update")]
-    [InlineData("sorcha_blueprint_validate")]
-    [InlineData("sorcha_blueprint_simulate")]
-    [InlineData("sorcha_disclosure_analysis")]
-    [InlineData("sorcha_blueprint_diff")]
-    [InlineData("sorcha_blueprint_export")]
     [InlineData("sorcha_schema_validate")]
-    [InlineData("sorcha_schema_generate")]
-    [InlineData("sorcha_jsonlogic_test")]
     [InlineData("sorcha_workflow_instances")]
-    public void CanInvokeTool_DesignerTool_DesignerRole_ReturnsTrue(string toolName)
+    public void CanInvokeTool_DesignerTool_PlatformDesigner_ReturnsTrue(string toolName)
     {
-        // Arrange
-        SetupSession(["sorcha:designer"]);
-
-        // Act
-        var result = _service.CanInvokeTool(toolName);
-
-        // Assert
-        result.Should().BeTrue();
+        SetupCaller(Tier.Platform, "sorcha:designer");
+        _service.CanInvokeTool(toolName).Should().BeTrue();
     }
 
-    [Theory]
-    [InlineData("sorcha_blueprint_create")]
-    [InlineData("sorcha_blueprint_validate")]
-    public void CanInvokeTool_DesignerTool_ParticipantRole_ReturnsFalse(string toolName)
+    [Fact]
+    public void CanInvokeTool_DesignerTool_PlatformAdminWithoutDesigner_ReturnsFalse()
     {
-        // Arrange
-        SetupSession(["sorcha:participant"]);
+        SetupCaller(Tier.Platform, "sorcha:admin");
+        _service.CanInvokeTool("sorcha_blueprint_create").Should().BeFalse();
+    }
 
-        // Act
-        var result = _service.CanInvokeTool(toolName);
-
-        // Assert
-        result.Should().BeFalse();
+    [Fact]
+    public void CanInvokeTool_DesignerTool_Consumer_ReturnsFalse()
+    {
+        SetupCaller(Tier.Consumer);
+        _service.CanInvokeTool("sorcha_blueprint_create").Should().BeFalse();
     }
 
     #endregion
 
-    #region Participant Tools
+    #region Participation tools — cross-tier (consumer OR platform), no role
 
     [Theory]
     [InlineData("sorcha_inbox_list")]
-    [InlineData("sorcha_action_details")]
     [InlineData("sorcha_action_submit")]
-    [InlineData("sorcha_action_validate")]
-    [InlineData("sorcha_transaction_history")]
     [InlineData("sorcha_workflow_status")]
-    [InlineData("sorcha_disclosed_data")]
+    [InlineData("sorcha_transaction_history")]
     [InlineData("sorcha_wallet_info")]
-    [InlineData("sorcha_wallet_sign")]
-    [InlineData("sorcha_register_query")]
-    public void CanInvokeTool_ParticipantTool_ParticipantRole_ReturnsTrue(string toolName)
+    public void CanInvokeTool_ParticipationTool_Consumer_ReturnsTrue(string toolName)
     {
-        // Arrange
-        SetupSession(["sorcha:participant"]);
+        SetupCaller(Tier.Consumer);
+        _service.CanInvokeTool(toolName).Should().BeTrue();
+    }
 
-        // Act
-        var result = _service.CanInvokeTool(toolName);
-
-        // Assert
-        result.Should().BeTrue();
+    [Theory]
+    [InlineData("sorcha_inbox_list")]
+    [InlineData("sorcha_action_submit")]
+    public void CanInvokeTool_ParticipationTool_PlatformNoRole_ReturnsTrue(string toolName)
+    {
+        SetupCaller(Tier.Platform);
+        _service.CanInvokeTool(toolName).Should().BeTrue();
     }
 
     #endregion
 
-    #region Multiple Roles
+    #region Removed / service tier / edge cases
 
     [Fact]
-    public void CanInvokeTool_MultipleRoles_CanAccessAllRoleTools()
+    public void CanInvokeTool_WalletSign_Removed_ReturnsFalseForAllTiers()
     {
-        // Arrange
-        SetupSession(["sorcha:admin", "sorcha:designer", "sorcha:participant"]);
+        SetupCaller(Tier.Consumer);
+        _service.CanInvokeTool("sorcha_wallet_sign").Should().BeFalse();
 
-        // Act & Assert
-        _service.CanInvokeTool("sorcha_health_check").Should().BeTrue(); // admin
-        _service.CanInvokeTool("sorcha_blueprint_create").Should().BeTrue(); // designer
-        _service.CanInvokeTool("sorcha_inbox_list").Should().BeTrue(); // participant
-    }
-
-    #endregion
-
-    #region Edge Cases
-
-    [Fact]
-    public void CanInvokeTool_NoSession_ReturnsFalse()
-    {
-        // Arrange
-        _sessionServiceMock.Setup(x => x.CurrentSession).Returns((McpSession?)null);
-
-        // Act
-        var result = _service.CanInvokeTool("sorcha_health_check");
-
-        // Assert
-        result.Should().BeFalse();
+        SetupCaller(Tier.Platform, "sorcha:admin");
+        _service.CanInvokeTool("sorcha_wallet_sign").Should().BeFalse();
     }
 
     [Fact]
-    public void CanInvokeTool_ExpiredToken_ReturnsFalse()
+    public void CanInvokeTool_ServiceTier_ReturnsFalse()
     {
-        // Arrange
-        SetupSession(["sorcha:admin"], isExpired: true);
+        SetupCaller(Tier.Service, "sorcha:admin");
+        _service.CanInvokeTool("sorcha_register_stats").Should().BeFalse();
+        _service.CanInvokeTool("sorcha_inbox_list").Should().BeFalse();
+    }
 
-        // Act
-        var result = _service.CanInvokeTool("sorcha_health_check");
+    [Fact]
+    public void CanInvokeTool_NotAuthenticated_ReturnsFalse()
+    {
+        _callerMock.Setup(x => x.IsAuthenticated).Returns(false);
+        _service.CanInvokeTool("sorcha_inbox_list").Should().BeFalse();
+    }
 
-        // Assert
-        result.Should().BeFalse();
+    [Fact]
+    public void CanInvokeTool_UnrecognisedTier_ReturnsFalse()
+    {
+        SetupCaller(tier: null);
+        _service.CanInvokeTool("sorcha_inbox_list").Should().BeFalse();
     }
 
     [Fact]
     public void CanInvokeTool_UnknownTool_ReturnsFalse()
     {
-        // Arrange
-        SetupSession(["sorcha:admin"]);
-
-        // Act
-        var result = _service.CanInvokeTool("sorcha_unknown_tool");
-
-        // Assert
-        result.Should().BeFalse();
-    }
-
-    [Fact]
-    public void CanInvokeTool_NoRoles_ReturnsFalse()
-    {
-        // Arrange
-        SetupSession([]);
-
-        // Act
-        var result = _service.CanInvokeTool("sorcha_health_check");
-
-        // Assert
-        result.Should().BeFalse();
+        SetupCaller(Tier.Platform, "sorcha:admin");
+        _service.CanInvokeTool("sorcha_unknown_tool").Should().BeFalse();
     }
 
     #endregion
@@ -225,60 +161,42 @@ public class McpAuthorizationServiceTests
     #region GetAuthorizedTools
 
     [Fact]
-    public void GetAuthorizedTools_AdminRole_ReturnsAdminTools()
+    public void GetAuthorizedTools_PlatformAdmin_ReturnsAdminAndParticipationNotDesigner()
     {
-        // Arrange
-        SetupSession(["sorcha:admin"]);
-
-        // Act
+        SetupCaller(Tier.Platform, "sorcha:admin");
         var tools = _service.GetAuthorizedTools();
 
-        // Assert
-        tools.Should().Contain("sorcha_health_check");
-        tools.Should().Contain("sorcha_tenant_list");
-        tools.Should().NotContain("sorcha_blueprint_create");
-        tools.Should().NotContain("sorcha_inbox_list");
+        tools.Should().Contain("sorcha_health_check");        // admin
+        tools.Should().Contain("sorcha_inbox_list");          // participation (cross-tier)
+        tools.Should().NotContain("sorcha_blueprint_create"); // designer only
+        tools.Should().NotContain("sorcha_wallet_sign");      // removed
     }
 
     [Fact]
-    public void GetAuthorizedTools_MultipleRoles_ReturnsCombinedTools()
+    public void GetAuthorizedTools_Consumer_IsNonEmptyAndExcludesAdminDesigner()
     {
-        // Arrange
-        SetupSession(["sorcha:admin", "sorcha:designer"]);
-
-        // Act
+        SetupCaller(Tier.Consumer);
         var tools = _service.GetAuthorizedTools();
 
-        // Assert
-        tools.Should().Contain("sorcha_health_check"); // admin
-        tools.Should().Contain("sorcha_blueprint_create"); // designer
-        tools.Should().NotContain("sorcha_inbox_list"); // participant only
+        tools.Should().NotBeEmpty(); // F136 shut-out fixed
+        tools.Should().Contain("sorcha_inbox_list");
+        tools.Should().Contain("sorcha_wallet_info");
+        tools.Should().NotContain("sorcha_health_check");     // admin
+        tools.Should().NotContain("sorcha_blueprint_create"); // designer
     }
 
     [Fact]
-    public void GetAuthorizedTools_NoSession_ReturnsEmpty()
+    public void GetAuthorizedTools_ServiceTier_ReturnsEmpty()
     {
-        // Arrange
-        _sessionServiceMock.Setup(x => x.CurrentSession).Returns((McpSession?)null);
-
-        // Act
-        var tools = _service.GetAuthorizedTools();
-
-        // Assert
-        tools.Should().BeEmpty();
+        SetupCaller(Tier.Service, "sorcha:admin");
+        _service.GetAuthorizedTools().Should().BeEmpty();
     }
 
     [Fact]
-    public void GetAuthorizedTools_ExpiredToken_ReturnsEmpty()
+    public void GetAuthorizedTools_NotAuthenticated_ReturnsEmpty()
     {
-        // Arrange
-        SetupSession(["sorcha:admin"], isExpired: true);
-
-        // Act
-        var tools = _service.GetAuthorizedTools();
-
-        // Assert
-        tools.Should().BeEmpty();
+        _callerMock.Setup(x => x.IsAuthenticated).Returns(false);
+        _service.GetAuthorizedTools().Should().BeEmpty();
     }
 
     #endregion

@@ -30,25 +30,25 @@ public static class PlatformOrgEndpoints
             .WithDescription("Creates a private org and invites the specified admin by email. " +
                 "If the admin email matches an existing PlatformUser, they are added directly. " +
                 "Otherwise, a pending invitation is created. Requires SystemAdmin role.")
-            .RequireAuthorization("RequireSystemAdmin");
+            .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience");
 
         group.MapGet("/", ListOrganizations)
             .WithName("ListPlatformOrganizations")
             .WithSummary("List all organisations")
             .WithDescription("Returns paginated list of all orgs with metadata. System admin only.")
-            .RequireAuthorization("RequireSystemAdmin");
+            .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience");
 
         group.MapPut("/{orgId:guid}/status", UpdateOrganizationStatus)
             .WithName("UpdateOrganizationStatus")
             .WithSummary("Update organisation status")
             .WithDescription("Changes org status (Active/Suspended). Platform orgs cannot be suspended.")
-            .RequireAuthorization("RequireSystemAdmin");
+            .RequireAuthorization("RequireSystemAdmin", "RequirePlatformAudience");
 
         group.MapGet("/{orgId:guid}/users", GetOrganizationUsers)
             .WithName("GetOrganizationUsersPlatform")
             .WithSummary("View organisation user list")
             .WithDescription("Returns paginated user list for an org. Read-only audit view.")
-            .RequireAuthorization("RequirePlatformAuditor");
+            .RequireAuthorization("RequirePlatformAuditor", "RequirePlatformAudience");
 
         return app;
     }
@@ -77,7 +77,10 @@ public static class PlatformOrgEndpoints
             request.Description,
             request.AdminEmail,
             request.Role,
-            cancellationToken);
+            cancellationToken,
+            adminPassword: request.AdminPassword,
+            adminDisplayName: request.AdminDisplayName,
+            adminEmailVerified: request.AdminEmailVerified);
 
         if (!result.Success)
         {

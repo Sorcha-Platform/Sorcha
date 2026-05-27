@@ -204,6 +204,30 @@ public class FormSchemaServiceTests
     }
 
     [Fact]
+    public void AutoGenerateForm_ObjectWithSorchaHolderKeyFormat_DispatchesToHolderKey()
+    {
+        // Feature 137: an object field with format "sorcha-holder-key" routes to the
+        // HolderKey control (captured read-only by HolderKeyRenderer) and is NOT recursed
+        // into as a primitive group, even though it is type:object.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "email":      { "type": "string", "format": "email", "title": "Email" },
+                "holderKeys": { "type": "object", "format": "sorcha-holder-key", "x-holder-key": { "required": true } }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+
+        var holderKeys = form.Elements.FirstOrDefault(e => e.Scope == "/holderKeys");
+        holderKeys.Should().NotBeNull();
+        holderKeys!.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.HolderKey);
+        holderKeys.Elements.Should().BeEmpty(because: "a holder-key field is not recursed into");
+    }
+
+    [Fact]
     public void AutoGenerateForm_XAddressLookupFalse_RemainsTextLine()
     {
         // Explicit `x-address-lookup: false` should NOT dispatch to postcode lookup.

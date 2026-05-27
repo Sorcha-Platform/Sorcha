@@ -4,10 +4,13 @@
 namespace Sorcha.Tenant.Service.Models;
 
 /// <summary>
-/// Encrypted per-user persona blob. Exactly one row per
-/// <see cref="PlatformUser"/>. Created lazily on the first
-/// <c>PUT /me/persona</c>. Hard-deleted atomically with the owning
-/// <see cref="PlatformUser"/> via an EF cascade rule.
+/// Encrypted per-user persona blob. One row per
+/// (<see cref="PlatformUser"/>, <see cref="ContextOrgId"/>) pair — Feature 092
+/// gave the user a single persona; Feature 125 added per-context scoping so a
+/// citizen can hold one persona per organisational context (Personal +
+/// each org they hold an OrgMembership for). Created lazily on the first
+/// <c>PUT /me/persona?context=&lt;orgId&gt;</c>. Hard-deleted atomically with
+/// the owning <see cref="PlatformUser"/> via an EF cascade rule.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -23,13 +26,28 @@ namespace Sorcha.Tenant.Service.Models;
 /// column exists for forward compatibility with per-recipient key wrapping
 /// when wallet delegation (Power of Attorney) lands.
 /// </para>
+/// <para>
+/// <see cref="ContextOrgId"/> is the organisation the persona is scoped to.
+/// <see cref="Guid.Empty"/> represents the Personal context (the wire-side
+/// API uses null in the <c>?context=</c> query parameter for the same
+/// meaning). The encryption envelope is unchanged across contexts — the
+/// per-context scoping is row discrimination only, not key derivation.
+/// </para>
 /// </remarks>
 public class PlatformUserPersona
 {
     /// <summary>
-    /// Primary key and foreign key to <see cref="PlatformUser.Id"/>.
+    /// First half of the composite primary key — foreign key to
+    /// <see cref="PlatformUser.Id"/>.
     /// </summary>
     public Guid PlatformUserId { get; set; }
+
+    /// <summary>
+    /// Second half of the composite primary key — organisation scope for the
+    /// persona. <see cref="Guid.Empty"/> = Personal context (the API
+    /// represents this as null in the <c>?context=</c> query parameter).
+    /// </summary>
+    public Guid ContextOrgId { get; set; } = Guid.Empty;
 
     /// <summary>
     /// XChaCha20-Poly1305 ciphertext of the serialised

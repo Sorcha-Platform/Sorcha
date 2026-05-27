@@ -53,6 +53,12 @@ public sealed record McpSession
     public required IReadOnlyList<string> Roles { get; init; }
 
     /// <summary>
+    /// The caller's F136 trust tier, derived from the token audience (spec 139). Null when the
+    /// audience is not a recognised tier audience. Drives tier-based tool entitlement.
+    /// </summary>
+    public Sorcha.ServiceDefaults.Auth.Tier? Tier { get; init; }
+
+    /// <summary>
     /// The user's wallet address, if linked.
     /// </summary>
     public string? WalletAddress { get; init; }

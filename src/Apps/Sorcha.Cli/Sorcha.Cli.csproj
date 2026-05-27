@@ -73,6 +73,8 @@
     <ProjectReference Include="..\..\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
+    <!-- Feature 118 Phase 10 — SorchaHubConnectionBuilder for shared jittered reconnect on the events watcher. -->
+    <ProjectReference Include="..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
   </ItemGroup>
 
 </Project>

@@ -3,9 +3,11 @@
 
 using System.Threading.Channels;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Sorcha.Blueprint.Service.Models.Chat;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
@@ -18,25 +20,62 @@ namespace Sorcha.Blueprint.Service.Tests.Integration;
 /// </summary>
 public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicationFactory>, IAsyncLifetime
 {
-    private readonly BlueprintServiceWebApplicationFactory _factory;
+    private readonly WebApplicationFactory<Program> _factory;
     private readonly List<HubConnection> _connections = [];
+    private static readonly object _factoryLock = new();
+    private static WebApplicationFactory<Program>? _hardenedFactory;
 
     public ChatHubIntegrationTests(BlueprintServiceWebApplicationFactory factory)
     {
-        _factory = factory;
+        // Mirror the SignalRIntegrationTests fix (PR #589): the base factory
+        // inherits HostOptions.BackgroundServiceExceptionBehavior = StopHost.
+        // Several Blueprint Service background services crash inside the test
+        // host (Mongo auth failures, Redis stream subscription, etc. — pre-existing
+        // and orthogonal to ChatHub). The first crash stops the host and disposes
+        // the IClassFixture-shared TestServer, which surfaces here as 401 on hub
+        // negotiate (auth pipeline gone) and ObjectDisposedException for any test
+        // method ordered after the crash. Wrap the factory once to flip the
+        // policy to Ignore so the host survives the noisy bg-service environment.
+        lock (_factoryLock)
+        {
+            _hardenedFactory ??= factory.WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureServices(services =>
+                {
+                    services.Configure<HostOptions>(opt =>
+                    {
+                        opt.BackgroundServiceExceptionBehavior =
+                            BackgroundServiceExceptionBehavior.Ignore;
+                    });
+                });
+            });
+        }
+        _factory = _hardenedFactory;
     }
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
     public async ValueTask DisposeAsync()
     {
+        // Clean up all connections. We call StopAsync (so the server-side hub gets a
+        // clean disconnect signal) but deliberately skip DisposeAsync — disposing the
+        // HubConnection eventually disposes the underlying HttpMessageHandler chain,
+        // and on TestServer that tears down shared application state. The connections
+        // become unreachable when the test instance is collected, and the IClassFixture-
+        // scoped factory disposes everything at class teardown. Mirrors PR #589.
         foreach (var connection in _connections)
         {
-            if (connection.State == HubConnectionState.Connected)
+            try
             {
-                await connection.StopAsync();
+                if (connection.State == HubConnectionState.Connected)
+                {
+                    await connection.StopAsync();
+                }
             }
-            await connection.DisposeAsync();
+            catch
+            {
+                // Best-effort cleanup; never fail teardown.
+            }
         }
         _connections.Clear();
     }
@@ -179,7 +218,9 @@ public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var sessionId = await connection.InvokeAsync<string>("StartSession", (string?)null);
 
         // Act
-        var act = async () => await connection.InvokeAsync("SendMessage", sessionId, "");
+        // SUT signature: SendMessage(string sessionId, string message, IReadOnlyList<ChatAttachment>? attachments)
+        // SignalR ignores C# default values, so pass null explicitly.
+        var act = async () => await connection.InvokeAsync("SendMessage", sessionId, "", (object?)null);
 
         // Assert
         await act.Should().ThrowAsync<HubException>()
@@ -194,7 +235,7 @@ public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         await connection.StartAsync();
 
         // Act
-        var act = async () => await connection.InvokeAsync("SendMessage", "", "Hello");
+        var act = async () => await connection.InvokeAsync("SendMessage", "", "Hello", (object?)null);
 
         // Assert
         await act.Should().ThrowAsync<HubException>()
@@ -211,7 +252,7 @@ public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var longMessage = new string('x', 10001);
 
         // Act
-        var act = async () => await connection.InvokeAsync("SendMessage", sessionId, longMessage);
+        var act = async () => await connection.InvokeAsync("SendMessage", sessionId, longMessage, (object?)null);
 
         // Assert
         await act.Should().ThrowAsync<HubException>()
@@ -236,7 +277,7 @@ public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Act - Send a simple message (AI provider is mocked to return empty stream)
         try
         {
-            await connection.InvokeAsync("SendMessage", sessionId, "Create a simple blueprint");
+            await connection.InvokeAsync("SendMessage", sessionId, "Create a simple blueprint", (object?)null);
         }
         catch (HubException)
         {
@@ -391,15 +432,42 @@ public class ChatHubIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
     private HubConnection CreateChatHubConnection()
     {
+        // ChatHub is [Authorize]-gated (Feature 118 deliberate exception, mapped at
+        // /hubs/chat in Program.cs). BlueprintServiceWebApplicationFactory's
+        // TestAuthenticationHandler authenticates every request with a service-token
+        // principal, so negotiate succeeds without per-test access-token wiring.
+        //
+        // SignalR's HubConnection disposes the HttpMessageHandler returned by the
+        // factory when the connection is disposed. TestServer.CreateHandler() returns
+        // a ClientHandler whose disposal tears down shared TestServer application
+        // state. Across the IClassFixture-scoped factory, the first connection's
+        // disposal would kill the server for every subsequent test. Wrap each handler
+        // in a pass-through DelegatingHandler whose Dispose is a no-op. Mirrors PR #589.
         var connection = new HubConnectionBuilder()
             .WithUrl($"{_factory.Server.BaseAddress}hubs/chat", options =>
             {
-                options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
+                options.HttpMessageHandlerFactory = _ =>
+                    new NonDisposingHandler(_factory.Server.CreateHandler());
             })
             .Build();
 
         _connections.Add(connection);
         return connection;
+    }
+
+    /// <summary>
+    /// DelegatingHandler that swallows disposal of its inner handler so the
+    /// shared TestServer (owned by the IClassFixture-scoped factory) survives
+    /// per-test HubConnection disposal. Mirrors PR #589.
+    /// </summary>
+    private sealed class NonDisposingHandler : DelegatingHandler
+    {
+        public NonDisposingHandler(HttpMessageHandler inner) : base(inner) { }
+
+        protected override void Dispose(bool disposing)
+        {
+            // Intentionally do not dispose the inner handler.
+        }
     }
 
     #endregion

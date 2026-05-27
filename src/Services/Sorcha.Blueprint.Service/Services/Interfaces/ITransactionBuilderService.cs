@@ -658,6 +658,17 @@ public class BuiltTransaction
         if (Metadata.TryGetValue(Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.ConsumerName, out var consumer) && consumer is not null)
             submissionMetadata[Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.ConsumerName] = consumer.ToString()!;
 
+        // Feature 137 (C5) — propagate the Blueprint Service's resolved next-action id onto
+        // the submission so DocketBuildTriggerService.ResolveNextActionId can project it onto
+        // the sealed TransactionMetaData.NextActionId. The cross-node InstanceMirrorReconstructor
+        // reads that value to seed a mirror's CurrentActionIds; without it the analyst on the
+        // owner node has a mirror with no current action ("Action N is not a current action").
+        // submissionMetadata is a whitelist — the key MUST be copied explicitly here or it is
+        // silently dropped (it was, end-to-end, until this fix). ActionExecutionService and
+        // EncryptionBackgroundService both set Metadata["nextActionId"] before calling this.
+        if (Metadata.TryGetValue("nextActionId", out var nextActionId) && nextActionId is not null)
+            submissionMetadata["nextActionId"] = nextActionId.ToString()!;
+
         return new TransactionSubmission
         {
             TransactionId = TxId,
@@ -695,32 +706,13 @@ public class BuiltTransaction
         _ => "Action"
     };
 
-    /// <summary>
-    /// Converts to a TransactionModel for submission to the Register Service
-    /// </summary>
-    public Sorcha.Register.Models.TransactionModel ToTransactionModel()
-    {
-        var metaData = new Sorcha.Register.Models.TransactionMetaData
-        {
-            BlueprintId = Metadata.GetValueOrDefault("blueprintId")?.ToString(),
-            InstanceId = Metadata.GetValueOrDefault("instanceId")?.ToString()
-        };
-
-        if (Metadata.TryGetValue("actionId", out var actionIdObj) && actionIdObj is int actionId)
-        {
-            metaData.ActionId = (uint)actionId;
-        }
-
-        return new Sorcha.Register.Models.TransactionModel
-        {
-            TxId = TxId,
-            RegisterId = RegisterId,
-            SenderWallet = SenderWallet,
-            Signature = Signature != null ? Base64Url.EncodeToString(Signature) : string.Empty,
-            MetaData = metaData,
-            PayloadCount = 0,
-            Payloads = Array.Empty<Sorcha.Register.Models.PayloadModel>(),
-            TimeStamp = DateTime.UtcNow
-        };
-    }
+    // ToTransactionModel() removed in post-Feature-119 cleanup. The method had no
+    // production callers — write-path persistence is owned by the Validator Service
+    // (see Sorcha.Validator.Service/Services/DocketBuildTriggerService.cs around
+    // line 587 where TransactionMetaData is constructed inline from the submission
+    // DTO). Three Feature 119 implementation attempts modified this dead method
+    // believing it was on the production write path; the walkthrough kept failing
+    // until the asymmetry was traced. The reverse mapping (persisted document ->
+    // API response model) lives at Sorcha.Register.Storage.MongoDB/Mappers/
+    // MongoDocumentMapper.ToTransactionModel(MongoTransactionDocument).
 }

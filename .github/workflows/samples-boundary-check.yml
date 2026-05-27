@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Feature 127 / boundary doc 2026-05-15 — CI gate enforcing the
+# platform-vs-consumer boundary. samples/**/*.csproj may
+# ProjectReference src/Apps/Sorcha.UI/ only via
+# Sorcha.UI.Components.User; every other reference into the platform's
+# UI tree is internal-only and forbidden.
+
+name: samples-boundary-check
+
+on:
+  pull_request:
+    paths:
+      - "samples/**/*.csproj"
+      - "scripts/check-samples-references.ps1"
+      - ".github/workflows/samples-boundary-check.yml"
+  workflow_dispatch:
+
+jobs:
+  no-forbidden-references:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run samples boundary gate
+        shell: pwsh
+        run: ./scripts/check-samples-references.ps1

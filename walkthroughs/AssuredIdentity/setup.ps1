@@ -3,16 +3,27 @@
 # Copyright (c) 2026 Sorcha Contributors
 #
 # AssuredIdentity — Setup
-# Feature 107. Creates the Acme Verification Co. issuing organisation,
-# provisions its trust anchor + HAIP issuer enrolment, creates the citizen
-# public-org account, and publishes the AssuredIdentity blueprint.
+# Feature 107 + Feature 124. Creates the Acme Verification Co. issuing
+# organisation, provisions its trust anchor + HAIP issuer enrolment,
+# creates the citizen public-org account, and publishes the AssuredIdentity
+# blueprint (now configured to deliver into the Sorcha Wallet (PWA) via
+# SorchaLocalWallet target audience).
+#
+# After setup, sign the citizen into the wallet host once on the demo
+# device: open http://localhost/wallet/, tap Settings, sign in with the
+# citizen credentials printed at the end of this script.
+#
 # Idempotent — safe to run multiple times.
 
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
     [switch]$SkipHealthCheck,
-    [switch]$Force
+    [switch]$Force,
+    # DevMode register (plaintext payloads, disclosure-filtered) — the default for the
+    # citizen-late-bound credential demo. Pass -DevMode:$false for a Normal (encrypted)
+    # register to exercise the production field-encryption + cross-node decrypt path.
+    [bool]$DevMode = $true
 )
 
 $ErrorActionPreference = "Stop"
@@ -142,31 +153,42 @@ $null = Register-SorchaParticipant `
 Write-WtInfo "Verification analyst participant registered"
 
 # ============================================================================
-# Step 5b: Citizen — Login, Wallet, Participant
+# Step 5b: Citizen — Login, Wallet, Participant (best-effort, late-bound)
 # ============================================================================
-Write-WtStep "Step 5b: Citizen — Login, Wallet, Participant"
+# Spec 136: a public-org citizen now receives a CONSUMER-tier token (no org_id),
+# so the org-style wallet API (CanManageWallets requires org_id) correctly refuses
+# it (403). The citizen is an OPEN, late-bound participant (NOT in the wallet map at
+# publish, Step 8), so a pre-provisioned scripted-citizen wallet is not needed to
+# stand the service up — a real citizen provisions their wallet via the PWA enrol
+# flow. This block is therefore best-effort: warn and continue on failure.
+Write-WtStep "Step 5b: Citizen — Login, Wallet, Participant (best-effort)"
 
-$citizenSession = Connect-SorchaUser `
-    -TenantUrl $sorchaEnv.TenantUrl `
-    -Email $citizenEmail `
-    -Password $citizenPassword `
-    -OrganizationId $publicOrgId
+$citizenWallet = $null
+try {
+    $citizenSession = Connect-SorchaUser `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -Email $citizenEmail `
+        -Password $citizenPassword `
+        -OrganizationId $publicOrgId
 
-$citizenWallet = New-SorchaWallet `
-    -WalletUrl $sorchaEnv.WalletUrl `
-    -Name "Citizen Application Wallet" `
-    -Headers $citizenSession.Headers `
-    -FetchPublicKey
-Write-WtSuccess "Citizen wallet: $($citizenWallet.Address)"
+    $citizenWallet = New-SorchaWallet `
+        -WalletUrl $sorchaEnv.WalletUrl `
+        -Name "Citizen Application Wallet" `
+        -Headers $citizenSession.Headers `
+        -FetchPublicKey
+    Write-WtSuccess "Citizen wallet: $($citizenWallet.Address)"
 
-$null = Register-SorchaParticipant `
-    -TenantUrl $sorchaEnv.TenantUrl `
-    -WalletUrl $sorchaEnv.WalletUrl `
-    -OrganizationId $publicOrgId `
-    -WalletAddress $citizenWallet.Address `
-    -DisplayName "Alex MacLeod" `
-    -Headers $citizenSession.Headers
-Write-WtInfo "Citizen participant registered in public org"
+    $null = Register-SorchaParticipant `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -WalletUrl $sorchaEnv.WalletUrl `
+        -OrganizationId $publicOrgId `
+        -WalletAddress $citizenWallet.Address `
+        -DisplayName "Alex MacLeod" `
+        -Headers $citizenSession.Headers
+    Write-WtInfo "Citizen participant registered in public org"
+} catch {
+    Write-WtWarn "Scripted-citizen wallet provisioning skipped (spec 136: consumer token has no org_id; citizen is late-bound and provisions via the PWA enrol flow): $($_.Exception.Message)"
+}
 
 # ============================================================================
 # Step 6: Provision Trust Anchor + Enrol as HAIP Issuer
@@ -199,20 +221,26 @@ try {
 # ============================================================================
 Write-WtStep "Step 7: Create Register"
 
-# DevMode — citizen is late-bound and never published to the register, so
-# Action 2's credential delivery uses the plaintext path. Same security
-# posture as HaipVerifiedCitizen (the source this walkthrough replaces).
+# DevMode (default) — citizen is late-bound and never published to the register, so
+# Action 2's credential delivery uses the plaintext path. Same security posture as
+# HaipVerifiedCitizen (the source this walkthrough replaces). Pass -DevMode:$false for
+# a Normal (encrypted) register that exercises the production field-encryption + the
+# cross-node disclosure-group decrypt path.
+Write-WtInfo "Register CryptoPolicy: $(if ($DevMode) { 'DevMode (plaintext)' } else { 'Normal (encrypted)' })"
+# Mode-suffix the name so DevMode and Normal registers are distinct (New-SorchaRegister
+# reuses by name) — lets the Normal (encrypted) path be tested without disturbing the DevMode one.
+$registerName = if ($DevMode) { "Assured Identity Register" } else { "Assured Identity Register (Normal)" }
 $register = New-SorchaRegister `
     -RegisterUrl $sorchaEnv.RegisterUrl `
     -WalletUrl $sorchaEnv.WalletUrl `
-    -Name "Assured Identity Register" `
+    -Name $registerName `
     -Description "Register for Feature 107 Assured Identity workflows" `
     -TenantId $verificationOrgId `
     -OwnerUserId $verificationSession.UserId `
     -OwnerWalletAddress $verificationWallet.Address `
     -Headers $verificationSession.Headers `
     -TenantUrl $sorchaEnv.TenantUrl `
-    -DevMode
+    -DevMode:$DevMode
 Write-WtSuccess "Register: $($register.RegisterId)"
 
 try {
@@ -391,7 +419,9 @@ $state = @{
     citizenWalletAddress      = $citizenWallet.Address
     registerId                = $register.RegisterId
     blueprintId               = $blueprint.BlueprintId
-    walletDir                 = (Join-Path $scriptDir "wallet")
+    # walletDir removed in Feature 124 — credential delivery now lands in the
+    # Sorcha Wallet (PWA) (SorchaLocalWallet target audience), not in a
+    # filesystem wallet on the operator host.
     # PR 2 additions — licensing org, licensing wallet, Driving Licence blueprint id.
     licensingOrgId            = $licensingOrgId
     licensingWalletAddress    = $licensingWallet.Address
@@ -436,4 +466,19 @@ $state = @{
 
 $state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile
 Write-WtSuccess "State saved to $stateFile"
+
+# Feature 124 — surface the citizen credentials so the operator can sign
+# the demo citizen into the PWA host before running phase 1.
+Write-Host ""
+Write-WtInfo "Next step: sign the citizen into the wallet host."
+Write-WtInfo "  URL:       http://localhost/wallet/ (or your gateway equivalent)"
+Write-WtInfo "  Settings → Sign in"
+Write-WtInfo "  Email:     $citizenEmail"
+Write-WtInfo "  Password:  $citizenPassword"
+Write-Host ""
+Write-WtInfo "Then enrol the device on the wallet PWA. In two terminals:"
+Write-WtInfo "  T1> pwsh walkthroughs/AssuredIdentity/run-agents.ps1"
+Write-WtInfo "  T2> pwsh walkthroughs/AssuredIdentity/run-phase1-identity.ps1"
+Write-Host ""
+
 Write-WtBanner "AssuredIdentity — Setup Complete"

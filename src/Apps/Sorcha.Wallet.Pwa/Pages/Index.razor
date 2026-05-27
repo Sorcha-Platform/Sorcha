@@ -1,0 +1,581 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Wallet home (Feature 114, T110 placeholder + demo-seed). v1 MVP: lists
+    cached credentials, exposes a Present button, and a "Load demo credential"
+    button that calls the verifier's /verify/demo/mint endpoint to seed the
+    cache without the full enrolment + issuance pipelines (which land with US2).
+*@
+@page "/"
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Text.Json
+@using Sorcha.UI.Components.User.Components.Context
+@using Sorcha.UI.Components.User.Components.Home
+@using Sorcha.UI.Core.Components.Wallet
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Context
+@using Sorcha.Wallet.Pwa.Services.Presentation
+@inject ICredentialCache Credentials
+@inject IDelegationStore Delegation
+@inject IDeviceKeyService DeviceKey
+@inject ISyncService Sync
+@inject IDelegationRenewalClient Renewal
+@inject IServerClockObserver ServerClock
+@inject CitizenWalletHubConnection Hub
+@inject HttpClient Http
+@inject IPendingApplicationClient PendingApplications
+@inject IWalletFlagsStore WalletFlags
+@inject IUserContext UserContext
+@inject NavigationManager Nav
+@inject ILogger<Index> Logger
+@implements IAsyncDisposable
+
+<PageTitle>Sorcha Wallet</PageTitle>
+
+@* Feature 124 (US3/US4/US5, FR-004 to FR-007). The welcome takeover sits
+   *outside* MudContainer so its full-screen overlay covers Home cleanly.
+   Eligibility check: a credential is visible AND WelcomedAt is null AND
+   the takeover hasn't been dismissed in this render cycle. *@
+@if (_showWelcomeTakeover && _credentials is { Count: > 0 })
+{
+    <WelcomeTakeover Credential="@_credentials[0]"
+                     OnDismiss="HandleWelcomeDismissedAsync" />
+}
+
+@{
+    var dark = Shell?.IsDark ?? false;
+    var hasCreds = _credentials is { Count: > 0 };
+    var credCount = _credentials?.Count ?? 0;
+}
+
+@* Feature 141 — gradient hero. On Home it owns the header row (org switcher +
+   inbox bell + scan), folded out of the app bar via the cascaded shell. *@
+<WalletHero Mode="@(hasCreds ? WalletHeroMode.Active : WalletHeroMode.Empty)"
+            CredentialCount="@credCount"
+            Dark="@dark">
+    <HeaderContent>
+        @if (Shell is not null)
+        {
+            <ContextChipSwitcher ActiveLabel="@Shell.ActiveLabel"
+                                 ActiveContextOrgId="@Shell.ActiveContextOrgId"
+                                 Memberships="@Shell.ChipMemberships"
+                                 OnContextSelected="@Shell.OnContextSelectedAsync" />
+        }
+        <div class="wallet-hero-actions">
+            <MudIconButton Icon="@Icons.Material.Filled.Notifications"
+                           Color="Color.Inherit"
+                           OnClick="@(() => Shell?.OpenInbox())"
+                           data-testid="topbar-inbox-button"
+                           aria-label="Inbox">
+                @if ((Shell?.InboxUnreadCount ?? 0) > 0)
+                {
+                    <MudBadge Content="@(Shell!.InboxUnreadCount)" Color="Color.Error" Overlap="true"
+                              data-testid="topbar-inbox-badge" />
+                }
+            </MudIconButton>
+            <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner"
+                           Color="Color.Inherit"
+                           OnClick="@(() => Nav.NavigateTo("present"))"
+                           data-testid="topbar-present-button"
+                           aria-label="Present a credential" />
+        </div>
+    </HeaderContent>
+</WalletHero>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="pt-2">
+    @{
+        var skewMinutes = (int)Math.Abs(ServerClock.GetSkew().TotalMinutes);
+    }
+    @if (skewMinutes >= 60)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">
+            Your device clock is off by ~@skewMinutes minutes. Presentations will be
+            rejected by verifiers. Fix your device clock, then refresh.
+        </MudAlert>
+    }
+    else if (skewMinutes >= 5)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-3">
+            Your device clock is ~@skewMinutes minutes off the server. Verifiers may
+            reject offline presentations until you correct it.
+        </MudAlert>
+    }
+
+    @* Credential surface: empty → ghost card stack (Enrol tap-target) or the
+       F124 waiting card; populated → the existing credential cards (unchanged —
+       the fanned/accented populated stack is deferred to a later pass). *@
+    @if (_credentials is null)
+    {
+        <div class="d-flex justify-center pa-6">
+            <MudProgressCircular Indeterminate="true" Size="Size.Small" data-testid="credentials-loading" />
+        </div>
+    }
+    else if (_credentials.Count == 0)
+    {
+        @if (_pendingNotice is not null)
+        {
+            <WaitingCard Label="@_pendingNotice.Label" data-testid="home-waiting-state" />
+        }
+        else
+        {
+            <div data-testid="home-empty-state">
+                <WalletCardStack Dark="@dark"
+                                 TestId="enrol-device-button"
+                                 OnAddCredential="@(() => Nav.NavigateTo("enrol"))" />
+            </div>
+        }
+    }
+    else
+    {
+        <div data-testid="credentials-list">
+            @foreach (var c in _credentials)
+            {
+                <MudCard Class="mb-3" Style="cursor:pointer;"
+                         @onclick="@(() => Nav.NavigateTo($"credentials/{c.Id}"))"
+                         data-testid="@($"credential-card-{c.Id}")">
+                    <MudCardContent>
+                        <MudText Typo="Typo.subtitle1">@(c.DisplayLabel ?? c.Vct)</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@c.Vct</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                            Claims: @string.Join(", ", c.AvailableClaimNames)
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </div>
+    }
+
+    @* Feature 141 — the big Present / Verify action pair. Present is disabled
+       (and non-actioning) until at least one credential exists. *@
+    <div class="wallet-action-pair">
+        <BigActionButton Kind="BigActionKind.Primary"
+                         Icon="@Icons.Material.Filled.QrCode2"
+                         Title="Present"
+                         Subtitle="@(hasCreds ? "Share a card" : "No cards yet")"
+                         Disabled="@(!hasCreds)"
+                         Dark="@dark"
+                         TestId="home-present-button"
+                         OnActivated="HandlePresentRequestedAsync" />
+        <BigActionButton Kind="BigActionKind.Ghost"
+                         Icon="@Icons.Material.Filled.VerifiedUser"
+                         Title="Verify"
+                         Subtitle="Scan someone"
+                         Dark="@dark"
+                         TestId="home-verify-button"
+                         OnActivated="OpenVerifyAsync" />
+    </div>
+
+    @* Feature 125 / PR-B — Needs-attention band. Hides entirely when no items. *@
+    <NeedsAttentionBand Items="@_needsAttentionItems"
+                       OnItemActivated="@HandleNeedsAttentionActivatedAsync" />
+
+    @* Feature 125 / PR-B — Recent activity feed. Hides when no events. *@
+    <RecentActivityFeed Events="@_recentActivityEntries"
+                       OnSeeAll="@(() => Nav.NavigateTo("activity"))" />
+
+    @* Feature 125 / PR-B — Sync + demo controls. *@
+    <MudStack Row="true" Spacing="2" Class="mt-4">
+        <MudButton Color="Color.Tertiary" Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Sync"
+                   OnClick="@(() => SyncNowAsync(false))" Disabled="@_syncing">
+            @(_syncing ? "Syncing…" : "Sync now")
+        </MudButton>
+        <MudButton Color="Color.Secondary" Variant="Variant.Text"
+                   OnClick="LoadDemoAsync" Disabled="@_seeding">
+            @(_seeding ? "Loading…" : "Load demo credential")
+        </MudButton>
+    </MudStack>
+
+    @* Feature 125 / PR-B — Peek footer for other-context content. *@
+    <ContextPeekFooter OtherCount="@_otherContextCount"
+                      OtherContextName="@_otherContextName"
+                      OnSwitchRequested="@HandlePeekSwitchRequestedAsync" />
+
+    @if (!string.IsNullOrEmpty(_syncStatus))
+    {
+        <MudAlert Severity="@_syncSeverity" Dense="true" Class="mt-3" data-testid="sync-banner">@_syncStatus</MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_seedError))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_seedError</MudAlert>
+    }
+</MudContainer>
+
+@code {
+    // Feature 141 — the wallet shell (MainLayout) cascades itself so the hero
+    // can reuse the org switcher, inbox bell + unread count, and dark-mode flag
+    // the layout owns, without duplicating the F118 inbox wiring.
+    [CascadingParameter] public MainLayout? Shell { get; set; }
+
+    private IReadOnlyList<CachedCredential>? _credentials;
+    private PendingApplicationView? _pendingNotice;
+    private bool _seeding;
+    private bool _syncing;
+    private string? _seedError;
+    private string? _syncStatus;
+    private Severity _syncSeverity = Severity.Info;
+
+    // Feature 125 / PR-B — Home band state. NeedsAttention is derived from
+    // the pending-application notice today; RecentActivity + ContextPeek
+    // wire to real data sources in PR-E + later PRs. For PR-B these stay
+    // empty so the bands hide gracefully.
+    private IReadOnlyList<NeedsAttentionBand.NeedsAttentionItem> _needsAttentionItems =
+        Array.Empty<NeedsAttentionBand.NeedsAttentionItem>();
+    private IReadOnlyList<RecentActivityFeed.RecentActivityEntry> _recentActivityEntries =
+        Array.Empty<RecentActivityFeed.RecentActivityEntry>();
+    private int _otherContextCount;
+    private string? _otherContextName;
+
+    // Feature 124 (US3/US4/US5). The takeover fires exactly once per wallet
+    // per device. _flagsLoaded gates eligibility until the IndexedDB flags
+    // record has been read, so we don't accidentally render the takeover
+    // *before* discovering the citizen already dismissed it on this device.
+    private WalletFlagsRecord? _flags;
+    private bool _flagsLoaded;
+    private bool _showWelcomeTakeover;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load wallet flags before evaluating any eligibility — we must NOT
+        // show the takeover before the per-device WelcomedAt has been read.
+        _flags = await WalletFlags.GetAsync();
+        _flagsLoaded = true;
+
+        _credentials = await Credentials.ListAsync();
+        await RefreshPendingNoticeAsync();
+
+        // Feature 124 (US4 cold-open). If credentials already exist in cache
+        // and the citizen has never been welcomed on this device, fire the
+        // takeover on first paint — before any further user action.
+        EvaluateTakeoverEligibility();
+
+        // Fire-and-forget background sync — refreshes the cache from server without
+        // blocking first paint. UI updates via StateHasChanged when sync completes.
+        _ = SyncNowAsync(silentSuccess: true);
+        // Fire-and-forget delegation renewal check — silent unless renewal happens.
+        _ = RenewIfDueAsync();
+
+        // Feature 114 / US4 — subscribe to push notifications and reconnect the
+        // hub. On CredentialAvailable we re-run sync; the wallet stays the source
+        // of truth, the push just shrinks the latency from "next foreground open"
+        // to "within seconds of issuance".
+        Hub.OnCredentialAvailable += OnHubCredentialAvailable;
+        Hub.OnDeviceRevoked += OnHubDeviceRevoked;
+        _ = Hub.StartAsync();
+
+        // Feature 125 / PR-B — subscribe to context-switch events so Home
+        // refreshes whenever the user picks a different organisation.
+        UserContext.OnContextChanged += HandleContextChangedAsync;
+        RecomputeNeedsAttention();
+    }
+
+    private async Task HandleContextChangedAsync(UserContextChangedEventArgs args)
+    {
+        Logger.LogInformation("Context switch {From} → {To}; refreshing Home.",
+            args.FromContextOrgId, args.ToContextOrgId);
+        await InvokeAsync(async () =>
+        {
+            _credentials = null;
+            StateHasChanged();
+            _credentials = await Credentials.ListAsync();
+            await RefreshPendingNoticeAsync();
+            RecomputeNeedsAttention();
+            // Drop any pending takeover when switching context — the welcome
+            // ceremony belongs to the user's first credential in the wallet,
+            // not to a context switch.
+            _showWelcomeTakeover = false;
+            StateHasChanged();
+        });
+        // Background refresh of credentials in the new context.
+        _ = SyncNowAsync(silentSuccess: true);
+    }
+
+    private void RecomputeNeedsAttention()
+    {
+        // PR-B v1: surface the pending-application notice as a needs-
+        // attention row when present. PR-D (US2) adds in-flight application
+        // tracking; PR-E (US4) adds expiring-credential + revocation rows.
+        if (_pendingNotice is not null)
+        {
+            _needsAttentionItems = new[]
+            {
+                new NeedsAttentionBand.NeedsAttentionItem(
+                    Id: "pending-application",
+                    Kind: NeedsAttentionBand.NeedsAttentionKind.PendingApplication,
+                    Title: _pendingNotice.Label,
+                    SubTitle: "Application in review")
+            };
+        }
+        else
+        {
+            _needsAttentionItems = Array.Empty<NeedsAttentionBand.NeedsAttentionItem>();
+        }
+    }
+
+    private Task OpenVerifyAsync()
+    {
+        Nav.NavigateTo("verify");
+        return Task.CompletedTask;
+    }
+
+    private Task HandlePresentRequestedAsync()
+    {
+        if (_credentials is null || _credentials.Count == 0)
+        {
+            // No credentials in this context — nothing to present. PR-F's
+            // EmptyStateWithCta on the Credentials band points users to
+            // the application catalogue; nothing for the hero to do here.
+            return Task.CompletedTask;
+        }
+        // PR-C wires picker UX for multi-credential cases. PR-B navigates to
+        // the existing Present page which already handles selection.
+        Nav.NavigateTo("present");
+        return Task.CompletedTask;
+    }
+
+    private Task HandleNeedsAttentionActivatedAsync(string itemId)
+    {
+        // PR-B v1: pending-application items have no navigation target yet.
+        // PR-D opens the in-flight application detail page when the user
+        // taps a pending-application row.
+        Logger.LogInformation("Needs-attention item activated: {Id}", itemId);
+        return Task.CompletedTask;
+    }
+
+    private Task HandlePeekSwitchRequestedAsync()
+    {
+        // PR-B v1: footer is wired but other-context content count is 0
+        // until PR-E wires the cross-context lookup. When non-zero, this
+        // re-opens the chip switcher.
+        return Task.CompletedTask;
+    }
+
+    private void OnHubCredentialAvailable(string credentialId)
+    {
+        Logger.LogInformation("Hub push: credential {CredentialId} — triggering sync", credentialId);
+        _ = InvokeAsync(async () =>
+        {
+            await SyncNowAsync(silentSuccess: true);
+            // Feature 124 (US3, R-011 belt-and-braces). SyncNowAsync already
+            // calls EvaluateTakeoverEligibility on its happy path, but the
+            // explicit check here defends against the case where sync was
+            // a no-op (credential pushed by hub already cached) and the
+            // foreground branch should still raise the welcome.
+            EvaluateTakeoverEligibility();
+        });
+    }
+
+    private void OnHubDeviceRevoked(Guid deviceId)
+    {
+        Logger.LogInformation("Hub push: device {DeviceId} revoked — triggering renewal check", deviceId);
+        _ = InvokeAsync(async () =>
+        {
+            await RenewIfDueAsync();
+        });
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        Hub.OnCredentialAvailable -= OnHubCredentialAvailable;
+        Hub.OnDeviceRevoked -= OnHubDeviceRevoked;
+        UserContext.OnContextChanged -= HandleContextChangedAsync;
+        // The hub itself is a Singleton owned by the DI container; we only
+        // detach our handlers here. The container disposes the connection on
+        // application shutdown.
+        await Task.CompletedTask;
+    }
+
+    private async Task RenewIfDueAsync()
+    {
+        try
+        {
+            var outcome = await Renewal.RenewIfDueAsync();
+            if (outcome == DelegationRenewalOutcome.Renewed)
+            {
+                _syncSeverity = Severity.Info;
+                _syncStatus = "Device delegation renewed.";
+                StateHasChanged();
+            }
+            else if (outcome == DelegationRenewalOutcome.DeviceNotFound)
+            {
+                _syncSeverity = Severity.Warning;
+                _syncStatus = "This device was revoked on another device. Re-enrol to continue.";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Background delegation renewal failed");
+        }
+    }
+
+    /// <summary>
+    /// Feature 124 (US3/US4/US5, FR-004 to FR-007). Decides whether the
+    /// welcome takeover should be visible right now. Idempotent — once the
+    /// citizen dismisses it and <see cref="WalletFlagsRecord.WelcomedAt"/> is
+    /// persisted, this method becomes a no-op on this device for the lifetime
+    /// of the wallet's IndexedDB (the per-device invariant from FR-006). The
+    /// check is intentionally cheap so we can call it from multiple sites
+    /// (init, hub push, sync completion) per R-011 belt-and-braces ordering.
+    /// </summary>
+    private void EvaluateTakeoverEligibility()
+    {
+        // Gate until the per-device flags record has been loaded so we never
+        // raise the takeover before discovering a prior dismissal (US5 / FR-006).
+        if (!_flagsLoaded) return;
+
+        var shouldShow = _flags?.WelcomedAt is null
+                         && _credentials is { Count: > 0 };
+
+        if (shouldShow && !_showWelcomeTakeover)
+        {
+            _showWelcomeTakeover = true;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Feature 124 (US3 dismissal / US5 invariant). Persists the WelcomedAt
+    /// timestamp via <see cref="IWalletFlagsStore"/> so the takeover never
+    /// fires again on this device, and hides the overlay.
+    /// </summary>
+    private async Task HandleWelcomeDismissedAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _flags = new WalletFlagsRecord(WelcomedAt: now);
+        try
+        {
+            await WalletFlags.SetAsync(_flags);
+        }
+        catch (Exception ex)
+        {
+            // Persisting the dismissal record is best-effort. If it fails, the
+            // takeover will re-fire next open (acceptable per the edge-case
+            // table in the spec — "wallet local-data clear ≡ new wallet").
+            Logger.LogWarning(ex, "Failed to persist WalletFlags.WelcomedAt");
+        }
+        _showWelcomeTakeover = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Feature 124 (US2). Re-reads the citizen's pending-application notice on
+    /// every Home render trigger. Silently swallows transport errors — the
+    /// notice is purely a UX hint, not a correctness primitive.
+    /// </summary>
+    private async Task RefreshPendingNoticeAsync()
+    {
+        try
+        {
+            _pendingNotice = await PendingApplications.GetAsync();
+        }
+        catch (Exception ex)
+        {
+            // Notice fetch is best-effort; never block Home on it.
+            Logger.LogDebug(ex, "Pending-application notice fetch failed");
+            _pendingNotice = null;
+        }
+    }
+
+    private async Task SyncNowAsync(bool silentSuccess = false)
+    {
+        if (_syncing) return;
+        _syncing = true;
+        _syncStatus = null;
+        try
+        {
+            var outcome = await Sync.SyncAsync();
+            _credentials = await Credentials.ListAsync();
+
+            // Feature 124 (US2, FR-003): the waiting state drops as soon as a
+            // credential is visible. Server-side clearing is the walkthrough
+            // script's job; the wallet's UX rule is "credentials present →
+            // no waiting card".
+            if (_credentials.Count > 0)
+            {
+                _pendingNotice = null;
+            }
+            else
+            {
+                await RefreshPendingNoticeAsync();
+            }
+
+            // Feature 124 (US3 foreground / US4 cold-open). The eligibility
+            // check runs on every successful sync completion. It's
+            // idempotent — once the citizen dismisses the takeover and
+            // WelcomedAt is set, this is a no-op (US5 invariant, FR-006).
+            EvaluateTakeoverEligibility();
+            _syncSeverity = Severity.Success;
+            _syncStatus = outcome.Mode == SyncMode.FullSnapshot
+                ? $"Synced — pulled full snapshot ({outcome.Added} credential(s))."
+                : $"Synced — {outcome.Added} added, {outcome.Revoked} revoked, {outcome.Replaced} replaced.";
+            if (silentSuccess && outcome.Added == 0 && outcome.Revoked == 0 && outcome.Replaced == 0)
+            {
+                _syncStatus = null; // first-load no-op shouldn't pop a banner
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _syncSeverity = Severity.Warning;
+            _syncStatus = ex.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                ? "Sync needs sign-in. Enrolment wizard arrives with US2."
+                : $"Sync failed: {ex.Message}";
+            Logger.LogWarning(ex, "Wallet sync failed");
+        }
+        catch (Exception ex)
+        {
+            _syncSeverity = Severity.Error;
+            _syncStatus = $"Sync error: {ex.Message}";
+            Logger.LogError(ex, "Wallet sync threw");
+        }
+        finally
+        {
+            _syncing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadDemoAsync()
+    {
+        _seedError = null;
+        _seeding = true;
+        try
+        {
+            var deviceJwk = await DeviceKey.GetPublicJwkAsync();
+            var mintUri = new Uri(new Uri(Nav.BaseUri), "../verify/demo/mint");
+            var resp = await Http.PostAsJsonAsync(mintUri, new { deviceJwk });
+            resp.EnsureSuccessStatusCode();
+            var minted = await resp.Content.ReadFromJsonAsync<DemoMintShape>();
+            if (minted is null) throw new InvalidOperationException("Empty mint response.");
+
+            await Credentials.UpsertAsync(new CachedCredential
+            {
+                Id = minted.CredentialId,
+                Vct = minted.Vct,
+                RawSdJwt = minted.RawSdJwt,
+                AvailableClaimNames = minted.AvailableClaimNames,
+                DisplayLabel = minted.DisplayLabel,
+                IssuerDid = "did:sorcha:org:demo",
+            });
+            await Delegation.SetAsync(minted.DelegationJwt);
+            _credentials = await Credentials.ListAsync();
+        }
+        catch (Exception ex) { _seedError = ex.Message; }
+        finally { _seeding = false; }
+    }
+
+    private sealed record DemoMintShape(
+        Guid CredentialId,
+        string Vct,
+        string DisplayLabel,
+        string RawSdJwt,
+        IReadOnlyList<string> AvailableClaimNames,
+        string DelegationJwt,
+        JsonElement HolderPublicJwk);
+}

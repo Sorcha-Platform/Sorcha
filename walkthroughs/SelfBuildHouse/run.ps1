@@ -155,7 +155,8 @@ function Invoke-BlueprintScenario {
                     -ActionId $actionIdStr -BlueprintId $BlueprintId `
                     -SenderWallet $senderWallet -RegisterId $RegisterId `
                     -Token $senderToken `
-                    -Reject -RejectionReason $RejectionReason
+                    -Reject -RejectionReason $RejectionReason `
+                    -WaitForSeal
                 Write-WtWarn "    Action $actionIdStr ($sender) -> REJECTED"
             } else {
                 $presentations = @()
@@ -169,7 +170,8 @@ function Invoke-BlueprintScenario {
                     -ActionId $actionIdStr -BlueprintId $BlueprintId `
                     -SenderWallet $senderWallet -RegisterId $RegisterId `
                     -Token $senderToken -PayloadData $payloadData `
-                    -CredentialPresentations $presentations
+                    -CredentialPresentations $presentations `
+                    -WaitForSeal
 
                 Write-WtSuccess "    Action $actionIdStr ($sender) -> OK"
 

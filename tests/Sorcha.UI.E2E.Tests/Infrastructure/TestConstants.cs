@@ -28,6 +28,11 @@ public static class TestConstants
     // All UI pages are served under /app
     public const string AppBase = "/app";
 
+    // Citizen Wallet PWA (Feature 114) — mounted at /wallet/ via gateway path-rewrite.
+    // The PWA's own routes are root-relative inside that mount (`@page "/"` → /wallet/).
+    public const string CitizenWalletBase = "/wallet/";
+    public const string CitizenWalletAudience = "sorcha:citizen-wallet";
+
     // Test credentials (overridable via environment variables)
     public const string DefaultTestEmail = "admin@sorcha.local";
     public const string DefaultTestPassword = "Dev_Pass_2025!";
@@ -157,5 +162,6 @@ public static class TestConstants
         public const string NotificationSettings = $"{AppBase}/settings/notifications";
         public const string Credentials = $"{AppBase}/credentials";
         public const string Help = $"{AppBase}/help";
+        public const string MyDevices = $"{AppBase}/my-devices";
     }
 }

@@ -7,6 +7,8 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -14,6 +16,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Sorcha.Register.Core.Events;
 using Sorcha.Register.Models;
+using Sorcha.Register.Service.Hubs;
 using Sorcha.Register.Service.Services;
 using Sorcha.Register.Storage.InMemory;
 using Sorcha.ServiceClients.Peer;
@@ -113,6 +116,19 @@ public class RegisterServiceWebApplicationFactory : WebApplicationFactory<Progra
             var mockPeerClient = new Mock<IPeerServiceClient>();
             ReplaceService<IPeerServiceClient>(services,
                 _ => mockPeerClient.Object);
+
+            // Replace SignalR's Redis-backed HubLifetimeManager with the in-memory
+            // DefaultHubLifetimeManager so RegisterEventBridgeService.PublishAsync
+            // doesn't try to connect to a real Redis at runtime. The production
+            // pipeline registers RedisHubLifetimeManager<RegisterHub> via
+            // AddStackExchangeRedis — the IConnectionMultiplexer mock above doesn't
+            // help because SignalR keeps its own multiplexer inside RedisOptions.
+            // Tests against the in-memory backplane still receive hub events within
+            // a single host (sufficient for the SignalRHubTests in this project).
+            // Cross-replica fan-out tests live in Sorcha.Integration.Tests/MultiNode
+            // and gate on SORCHA_MULTINODE=1, so they're unaffected by this override.
+            services.RemoveAll(typeof(HubLifetimeManager<RegisterHub>));
+            services.AddSingleton<HubLifetimeManager<RegisterHub>, DefaultHubLifetimeManager<RegisterHub>>();
         });
     }
 
@@ -157,7 +173,7 @@ internal class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptio
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, "test-user"),
             new Claim(ClaimTypes.Name, "Test User"),
@@ -165,6 +181,16 @@ internal class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptio
             new Claim("org_id", "test-org-001"),
             new Claim("token_type", "service")
         };
+
+        // Spec 136: inject the installation tier audiences so the extended RequireService (and any
+        // tier-gated endpoint) accepts this test principal. Resolved from the host's SorchaAudiences.
+        var audiences = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetService<Sorcha.ServiceDefaults.Auth.SorchaAudiences>(Context.RequestServices)
+            ?? new Sorcha.ServiceDefaults.Auth.SorchaAudiences(installationName: null);
+        foreach (var aud in audiences.All)
+        {
+            claims.Add(new Claim("aud", aud));
+        }
 
         var identity = new ClaimsIdentity(claims, "TestScheme");
         var principal = new ClaimsPrincipal(identity);

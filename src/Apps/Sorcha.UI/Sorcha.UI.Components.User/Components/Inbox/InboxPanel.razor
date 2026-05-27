@@ -1,0 +1,278 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@implements IDisposable
+@inject IInboxApiService InboxApi
+@inject TenantHubConnection TenantHub
+@inject NavigationManager Navigation
+@inject ILogger<InboxPanel> Logger
+@using Microsoft.Extensions.Logging
+@using Sorcha.UI.Core.Services
+@using MudBlazor
+
+@*
+    Feature 118 / US3 — durable inbox UI panel.
+
+    Renders a drawer of inbox entries fetched from /api/me/inbox.
+    Refreshes on TenantHub.OnInboxEntryAdded — server-driven realtime.
+    Per-entry "Mark read" and "Dismiss" actions hit the public REST endpoints.
+    Click navigates to the entry's DetailHref so users can act on the item.
+
+    Coexists alongside the legacy PendingActionInbox drawer; both are mountable
+    from MainLayout. Future Phase-10 work consolidates them.
+*@
+
+<MudDrawer @bind-Open="IsOpen" Anchor="Anchor.End" Elevation="4" Width="420px" Variant="@DrawerVariant.Temporary">
+    <MudDrawerHeader>
+        <MudText Typo="Typo.h6">Inbox</MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.MarkEmailRead"
+                       Size="Size.Small"
+                       Title="Mark all read"
+                       Disabled="@(_loading || !_entries.Any(e => e.ReadAt is null))"
+                       OnClick="MarkAllReadAsync" />
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                       Size="Size.Small"
+                       Title="Refresh"
+                       OnClick="LoadAsync" />
+        <MudIconButton Icon="@Icons.Material.Filled.Close"
+                       Size="Size.Small"
+                       OnClick="@(() => IsOpen = false)" />
+    </MudDrawerHeader>
+
+    <MudChipSet T="string"
+                SelectedValue="@_selectedCategory"
+                SelectedValueChanged="OnCategoryChanged"
+                SelectionMode="SelectionMode.SingleSelection"
+                CheckMark="false"
+                Class="px-3 pb-2">
+        <MudChip T="string" Value="@(string.Empty)" Color="Color.Default" Size="Size.Small">All</MudChip>
+        @foreach (var category in CategoryFilters)
+        {
+            <MudChip T="string" Value="@category" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">
+                @category
+            </MudChip>
+        }
+    </MudChipSet>
+
+    @if (_loading && _entries.Count == 0)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (_entries.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="ma-4">Your inbox is empty.</MudAlert>
+    }
+    else
+    {
+        <MudList T="InboxEntryDto" Class="pa-0">
+            @foreach (var entry in _entries)
+            {
+                var isUnread = entry.ReadAt is null;
+                <MudListItem T="InboxEntryDto"
+                             Style="@(isUnread ? "background-color: rgba(102,126,234,0.06);" : "")">
+                    <div class="d-flex flex-column gap-1" @onclick="() => OnEntryClickedAsync(entry)">
+                        <div class="d-flex align-center gap-2">
+                            <MudIcon Icon="@IconForCategory(entry.Category)"
+                                     Color="@SeverityColor(entry.Severity)"
+                                     Size="Size.Small" />
+                            <MudText Typo="Typo.body2">
+                                <strong>@entry.Title</strong>
+                            </MudText>
+                            @if (isUnread)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">New</MudChip>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(entry.Summary))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@entry.Summary</MudText>
+                        }
+                        <MudText Typo="Typo.caption">@FormatTimestamp(entry.OccurredAt)</MudText>
+                    </div>
+                    <div class="d-flex justify-end gap-1 mt-1" @onclick:stopPropagation="true">
+                        @if (isUnread)
+                        {
+                            <MudButton Size="Size.Small"
+                                       Variant="Variant.Text"
+                                       OnClick="() => MarkReadAsync(entry)">
+                                Mark read
+                            </MudButton>
+                        }
+                        <MudButton Size="Size.Small"
+                                   Variant="Variant.Text"
+                                   Color="Color.Secondary"
+                                   OnClick="() => DismissAsync(entry)">
+                            Dismiss
+                        </MudButton>
+                    </div>
+                </MudListItem>
+                <MudDivider />
+            }
+        </MudList>
+    }
+</MudDrawer>
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+    private readonly List<InboxEntryDto> _entries = new();
+    private bool _loading;
+    private bool _disposed;
+    private bool _wasOpen;
+    private string _selectedCategory = string.Empty;
+
+    private static readonly string[] CategoryFilters =
+    {
+        "Action",
+        "Credential",
+        "Membership",
+        "Security",
+        "System",
+        "Workflow",
+    };
+
+    protected override void OnInitialized()
+    {
+        // No cold-open LoadAsync — the drawer is closed at app start, so any
+        // fetch here is wasted, and on the PWA it races the bearer token read
+        // from IndexedDB and produces a noisy 401. OnParametersSetAsync below
+        // fetches when the user actually opens the drawer.
+        TenantHub.OnInboxEntryAdded += OnInboxEntryAddedAsync;
+    }
+
+    // Fetch when the drawer opens. Entries written before TenantHub connected
+    // are never replayed via OnInboxEntryAdded, so without this the panel
+    // shows stale-empty until the user hits Refresh.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && !_wasOpen)
+        {
+            _wasOpen = true;
+            await LoadAsync();
+        }
+        else if (!IsOpen && _wasOpen)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private async Task OnCategoryChanged(string? category)
+    {
+        _selectedCategory = category ?? string.Empty;
+        await LoadAsync();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        TenantHub.OnInboxEntryAdded -= OnInboxEntryAddedAsync;
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var category = string.IsNullOrEmpty(_selectedCategory) ? null : _selectedCategory;
+            var page = await InboxApi.ListAsync(page: 1, pageSize: 50, category: category);
+            _entries.Clear();
+            if (page is not null)
+            {
+                _entries.AddRange(page.Entries);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "InboxPanel — failed to load inbox");
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnInboxEntryAddedAsync(string entryId, DateTimeOffset occurredAt, string traceId)
+    {
+        // Realtime hub event — refresh page 1 to pick up the new entry.
+        // Cheaper than a full reload when entries arrive in bursts thanks to
+        // server-side correlation grouping; the inbox list naturally re-orders.
+        await LoadAsync();
+    }
+
+    private async Task OnEntryClickedAsync(InboxEntryDto entry)
+    {
+        // Click flow — mark read first (idempotent), then navigate to detail.
+        if (entry.ReadAt is null)
+        {
+            await MarkReadAsync(entry);
+        }
+        if (!string.IsNullOrWhiteSpace(entry.DetailHref))
+        {
+            Navigation.NavigateTo(entry.DetailHref);
+        }
+    }
+
+    private async Task MarkReadAsync(InboxEntryDto entry)
+    {
+        var ok = await InboxApi.MarkReadAsync(entry.Id);
+        if (ok)
+        {
+            // Optimistic in-place mutation so the panel stays responsive.
+            var idx = _entries.FindIndex(e => e.Id == entry.Id);
+            if (idx >= 0)
+            {
+                _entries[idx] = entry with { ReadAt = DateTimeOffset.UtcNow };
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task DismissAsync(InboxEntryDto entry)
+    {
+        var ok = await InboxApi.DismissAsync(entry.Id);
+        if (ok)
+        {
+            _entries.RemoveAll(e => e.Id == entry.Id);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        await InboxApi.MarkAllReadAsync();
+        await LoadAsync();
+    }
+
+    private static string IconForCategory(string category) => category switch
+    {
+        "Action" => Icons.Material.Filled.AssignmentTurnedIn,
+        "Credential" => Icons.Material.Filled.VerifiedUser,
+        "Membership" => Icons.Material.Filled.GroupAdd,
+        "Security" => Icons.Material.Filled.Security,
+        "System" => Icons.Material.Filled.Campaign,
+        "Workflow" => Icons.Material.Filled.AccountTree,
+        _ => Icons.Material.Filled.Notifications,
+    };
+
+    private static Color SeverityColor(string severity) => severity switch
+    {
+        "Critical" => Color.Error,
+        "ActionRequired" => Color.Warning,
+        "Warning" => Color.Warning,
+        _ => Color.Default,
+    };
+
+    private static string FormatTimestamp(DateTimeOffset occurredAt)
+    {
+        var age = DateTimeOffset.UtcNow - occurredAt;
+        if (age.TotalSeconds < 60) return "just now";
+        if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
+        if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
+        if (age.TotalDays < 7) return $"{(int)age.TotalDays}d ago";
+        return occurredAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+    }
+}

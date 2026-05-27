@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -195,7 +196,7 @@ public class LoginServiceTests : IDisposable
             JoinedAt = DateTimeOffset.UtcNow
         });
         _tokenService.Setup(t => t.GenerateUserTokenAsync(
-                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedTokens);
 
         var service = CreateService();
@@ -213,6 +214,85 @@ public class LoginServiceTests : IDisposable
 
         _revocationService.Verify(r => r.ResetFailedAuthAttemptsAsync("user@test.com", It.IsAny<CancellationToken>()), Times.Once);
         _identityRepo.Verify(r => r.UpdateUserAsync(It.Is<UserIdentity>(u => u.LastLoginAt != null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // --- Spec 136 / US5: tier follows the person (entitlement) ---
+
+    private void ArrangeLoginFor(PlatformUser platformUser, Organization org)
+    {
+        SetupNoRateLimit();
+        SetupNo2Fa();
+        SetupPasswordSuccess();
+        SetupPlatformUserLookup(platformUser);
+        SetupOrgMemberships(platformUser.Id, new PlatformUserOrgMembership
+        {
+            PlatformUserId = platformUser.Id,
+            OrganizationId = org.Id,
+            Role = "Consumer",
+            JoinedAt = DateTimeOffset.UtcNow
+        });
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenResponse { AccessToken = "a", RefreshToken = "r" });
+    }
+
+    private void VerifyMinted(Tier tier) =>
+        _tokenService.Verify(t => t.GenerateUserTokenAsync(
+            It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), tier, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+    [Fact]
+    public async Task LoginAsync_ConsumerPreference_MintsConsumer()
+    {
+        var (platformUser, org, _) = SeedFullUser();
+        ArrangeLoginFor(platformUser, org);
+
+        await CreateService().LoginAsync("user@test.com", "correct-password", Tier.Consumer);
+
+        VerifyMinted(Tier.Consumer);
+    }
+
+    [Fact]
+    public async Task LoginAsync_PlatformPreference_ConsumerOnlyUser_DowngradesToConsumer()
+    {
+        // A citizen landing on /app (preference Platform, NOT explicit) downgrades to Consumer —
+        // they keep working rather than being locked out. The tier follows the person.
+        var (platformUser, org, _) = SeedFullUser(); // identity has only UserRole.Consumer
+        ArrangeLoginFor(platformUser, org);
+
+        await CreateService().LoginAsync("user@test.com", "correct-password", Tier.Platform);
+
+        VerifyMinted(Tier.Consumer);
+    }
+
+    [Fact]
+    public async Task LoginAsync_PlatformPreference_AdminUser_MintsPlatform()
+    {
+        var (platformUser, org, identity) = SeedFullUser();
+        identity.Roles = [UserRole.Administrator];
+        _dbContext.SaveChanges();
+        ArrangeLoginFor(platformUser, org);
+
+        await CreateService().LoginAsync("user@test.com", "correct-password", Tier.Platform);
+
+        VerifyMinted(Tier.Platform);
+    }
+
+    [Fact]
+    public async Task LoginAsync_ExplicitPlatform_ConsumerOnlyUser_Refused()
+    {
+        // FR-008: a deliberate over-request is refused, never silently downgraded.
+        var (platformUser, org, _) = SeedFullUser(); // Consumer-only
+        ArrangeLoginFor(platformUser, org);
+
+        var result = await CreateService().LoginAsync(
+            "user@test.com", "correct-password", Tier.Platform, tierExplicit: true);
+
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be(LoginErrorCode.TierNotEntitled);
+        _tokenService.Verify(t => t.GenerateUserTokenAsync(
+            It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()),
+            Times.Never, "an over-requested platform token must not be minted");
     }
 
     [Fact]
@@ -240,7 +320,7 @@ public class LoginServiceTests : IDisposable
         });
         _tokenService
             .Setup(t => t.GenerateUserTokenAsync(
-                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TokenResponse { AccessToken = "a", RefreshToken = "r" });
 
         var service = CreateService();
@@ -282,7 +362,7 @@ public class LoginServiceTests : IDisposable
         });
         _tokenService
             .Setup(t => t.GenerateUserTokenAsync(
-                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TokenResponse { AccessToken = "a", RefreshToken = "r" });
 
         var service = CreateService();
@@ -483,7 +563,7 @@ public class LoginServiceTests : IDisposable
         result.Tokens.Should().BeNull();
 
         _tokenService.Verify(t => t.GenerateUserTokenAsync(
-            It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -660,7 +740,7 @@ public class LoginServiceTests : IDisposable
             .ReturnsAsync(new PasswordAuthResult(true));
         _platformUserService.Setup(p => p.GetOrgMembershipsAsync(platformUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { membership });
-        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, platformUserId, It.IsAny<CancellationToken>()))
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, platformUserId, It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TokenResponse { AccessToken = "org-token", RefreshToken = "org-refresh" });
 
         var service = CreateService();
@@ -737,7 +817,7 @@ public class LoginServiceTests : IDisposable
         _orgRepo.Setup(r => r.GetByIdAsync(org.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
         _tokenService.Setup(t => t.GenerateUserTokenAsync(
-                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedTokens);
 
         var service = CreateService();

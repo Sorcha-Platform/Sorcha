@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+
+# Strathcarron Council sample portal — opt-in overlay onto the platform stack.
+#
+# This compose file is intentionally OUTSIDE the root docker-compose.yml so the
+# platform deliverable doesn't ship a consumer-side sample. The portal speaks
+# to Sorcha only via the public API gateway and is a reference for what a
+# third-party council deployment would look like.
+#
+# See docs/superpowers/specs/2026-05-15-platform-consumer-boundary-design.md.
+#
+# Recommended invocation — merge with the root stack so the network is shared:
+#   docker compose -f docker-compose.yml \
+#                  -f samples/strathcarron-portal/docker-compose.yml up -d
+#
+# Override the host port via STRATHCARRON_PORTAL_PORT (defaults to 5400).
+
+services:
+  strathcarron-portal:
+    build:
+      # Build context is the repo root so the Dockerfile can reach shared csproj
+      # references under src/Apps/Sorcha.UI/. Relative to this file.
+      context: ../..
+      dockerfile: samples/strathcarron-portal/Dockerfile
+    image: sorchadev/sample-strathcarron-portal:latest
+    container_name: sorcha-sample-strathcarron-portal
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "${STRATHCARRON_PORTAL_PORT:-5400}:80"
+    networks:
+      - sorcha-network
+    depends_on:
+      - api-gateway

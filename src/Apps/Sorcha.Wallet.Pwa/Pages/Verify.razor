@@ -1,0 +1,61 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Doorstep verification page (Feature 125, T040). Full-page host for
+    VerifyFlow. After every verification the live result is persisted
+    to the per-device verification history store so the citizen can
+    review past doorstep checks from Activity.
+*@
+@page "/verify"
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@using Sorcha.UI.Components.User.Components.Verify
+@using Sorcha.UI.Components.User.Models.Verification
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Context
+@inject IVerificationHistoryStore History
+@inject IUserContext UserContext
+@inject ILogger<Verify> Logger
+
+<PageTitle>Verify a credential · Sorcha Wallet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <VerifyFlow OnVerified="@PersistVerificationAsync" />
+</MudContainer>
+
+@code {
+    private async Task PersistVerificationAsync(VerificationResult result)
+    {
+        var historyOutcome = result.Outcome switch
+        {
+            Sorcha.UI.Components.User.Models.Verification.VerifyOutcome.Pass => Services.VerifyOutcome.Pass,
+            Sorcha.UI.Components.User.Models.Verification.VerifyOutcome.Warn => Services.VerifyOutcome.Warn,
+            _ => Services.VerifyOutcome.Fail
+        };
+
+        var record = new VerificationRecord(
+            Id: Guid.NewGuid(),
+            VerifiedAt: result.VerifiedAt,
+            ContextOrgId: UserContext.ActiveContextOrgId,
+            HolderDisplayName: result.HolderDisplayName,
+            IssuerOrgName: result.IssuerOrgName,
+            CredentialType: result.CredentialType,
+            Outcome: historyOutcome,
+            TrustPanelJson: result.TrustPanelJson);
+
+        try
+        {
+            await History.AddAsync(record);
+            Logger.LogInformation(
+                "Verification recorded: {Outcome} · {Holder} · {Issuer} · {Vct}",
+                record.Outcome, record.HolderDisplayName, record.IssuerOrgName, record.CredentialType);
+        }
+        catch (Exception ex)
+        {
+            // Persist failures are not fatal — the trust panel still rendered.
+            Logger.LogWarning(ex, "Failed to persist verification history record {Id}.", record.Id);
+        }
+    }
+}

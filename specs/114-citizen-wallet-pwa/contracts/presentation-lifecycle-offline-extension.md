@@ -1,5 +1,16 @@
 # Presentation Lifecycle — Offline-Mode Extension
 
+> ⛔ **SUPERSEDED by `specs/134-presentation-history/`** (F114 US5 PR3, 2026-05-20).
+> This contract's "offline `IPresentationConsumer` writes the register" model is
+> structurally impossible against the shipped F111/F127 lifecycle: `IPresentationConsumer`
+> implementations MUST NOT write the register, the lifecycle is server-initiated (no
+> `InitiateAsync`/pending-state exists for a free-standing offline presentation), and such a
+> presentation has no originating register at all. PR3 instead persists reported
+> presentations to a durable per-citizen store in the **Wallet Service** — no Blueprint
+> Service change, no `IPresentationConsumer`, no register/ledger write. Preserved here for
+> the audit trail only. See
+> `docs/superpowers/specs/2026-05-20-f114-us5-offline-presentation-reconciliation-design.md`.
+
 **Feature**: 114-citizen-wallet-pwa
 **Extends**: Feature 111 (Timebound Presentation Lifecycle)
 **File scope**: Contract changes — new IPresentationConsumer + new config field. No changes to lifecycle event schema or write path.

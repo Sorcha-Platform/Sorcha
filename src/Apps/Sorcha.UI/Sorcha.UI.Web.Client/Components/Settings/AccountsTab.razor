@@ -5,10 +5,11 @@
 
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Web.Client.Components.Settings.AuthMethods
 @inject IAuthMethodsClientService AuthMethodsClient
 @inject ILocalizationService Loc
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <MudText Typo="Typo.h6" Class="mb-1">
     @Loc.T("settings.accounts.title")
@@ -57,9 +58,11 @@ else
         </div>
     </MudPaper>
 
-    <PasswordSection Password="_methods.Password" />
-    <SocialLinksSection Socials="_methods.Socials" />
-    <PasskeysSection Passkeys="_methods.Passkeys" />
+    <PasswordSection Password="_methods.Password"
+                     IsBootstrap="@(!_methods.Password.IsSet && _methods.Socials.Count == 0 && !_methods.Passkeys.Any(p => string.Equals(p.Status, "Active", StringComparison.OrdinalIgnoreCase)))"
+                     OnChanged="LoadAsync" />
+    <SocialLinksSection Socials="_methods.Socials" OnChanged="LoadAsync" />
+    <PasskeysSection Passkeys="_methods.Passkeys" OnChanged="LoadAsync" />
 }
 
 @code {
@@ -80,7 +83,7 @@ else
             _methods = await AuthMethodsClient.GetAuthMethodsAsync();
             if (_methods is null)
             {
-                Snackbar.Add(Loc.T("settings.accounts.loadFailed"), Severity.Error);
+                Feedback.ShowError(Loc.T("settings.accounts.loadFailed"), autoDismissMs: 0);
             }
         }
         finally

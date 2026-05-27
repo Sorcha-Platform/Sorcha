@@ -241,7 +241,7 @@ public static class PublicPasskeyEndpoints
 
             // Issue JWT
             var tokenResponse = await tokenService.GenerateUserTokenAsync(
-                userIdentity, publicOrg, platformUser.Id, ct);
+                userIdentity, publicOrg, platformUser.Id, cancellationToken: ct);
 
             logger.LogInformation(
                 "Public passkey registration completed for PlatformUser {PlatformUserId}",
@@ -379,9 +379,13 @@ public static class PublicPasskeyEndpoints
                     statusCode: StatusCodes.Status500InternalServerError);
             }
 
-            // Issue JWT
+            // Issue JWT. The wallet requests tier:"consumer" (a safe downgrade);
+            // any other value keeps the platform default — no escalation here.
+            var mintTier = string.Equals(request.Tier, "consumer", StringComparison.OrdinalIgnoreCase)
+                ? Sorcha.ServiceDefaults.Auth.Tier.Consumer
+                : Sorcha.ServiceDefaults.Auth.Tier.Platform;
             var tokenResponse = await tokenService.GenerateUserTokenAsync(
-                userIdentity, publicOrg, platformUser.Id, ct);
+                userIdentity, publicOrg, platformUser.Id, mintTier, ct);
 
             logger.LogInformation(
                 "Public passkey sign-in completed for PlatformUser {PlatformUserId}",

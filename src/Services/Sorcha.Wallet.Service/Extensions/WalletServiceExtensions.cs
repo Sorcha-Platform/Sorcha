@@ -79,6 +79,21 @@ public static class WalletServiceExtensions
         services.AddScoped<Credentials.ICredentialStore, Credentials.CredentialStore>();
         services.AddScoped<Credentials.CredentialMatcher>();
 
+        // Feature 120 US2 — per-org issuance key service + cross-service DID-doc client.
+        services.AddScoped<Services.Interfaces.IIssuanceKeyService,
+            Services.Implementation.IssuanceKeyService>();
+        services.AddHttpClient<Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient,
+            Sorcha.ServiceClients.OrgDidDocument.OrgDidDocumentClient>(client =>
+            {
+                // Default port 8080 — every Sorcha service listens internally on 8080
+                // (see ASPNETCORE_URLS in docker-compose.yml). The :80 default earlier
+                // resulted in 'Connection refused (tenant-service:80)' on real wires.
+                client.BaseAddress = new Uri(
+                    configuration["ServiceClients:TenantService:Address"]
+                    ?? configuration["ServiceClients:Tenant:BaseAddress"]
+                    ?? "http://tenant-service:8080");
+            });
+
         return services;
     }
 

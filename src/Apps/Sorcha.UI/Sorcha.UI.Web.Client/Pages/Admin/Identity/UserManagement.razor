@@ -8,9 +8,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 
 @inject IOrganizationAdminService OrgService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <PageTitle>User Management - Sorcha Platform</PageTitle>
 
@@ -205,12 +206,12 @@
         {
             await OrgService.UpdateOrganizationUserAsync(_organizationId, user.Id,
                 new UpdateUserDto { Roles = [nextRole] });
-            Snackbar.Add($"Role changed to {nextRole}", Severity.Success);
+            Feedback.ShowSuccess($"Role changed to {nextRole}");
             await ReloadUsersAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to change role: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to change role: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -220,12 +221,12 @@
         {
             await OrgService.UpdateOrganizationUserAsync(_organizationId, user.Id,
                 new UpdateUserDto { Status = "Suspended" });
-            Snackbar.Add("User suspended", Severity.Success);
+            Feedback.ShowSuccess("User suspended");
             await ReloadUsersAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to suspend user: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to suspend user: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -235,12 +236,12 @@
         {
             await OrgService.UpdateOrganizationUserAsync(_organizationId, user.Id,
                 new UpdateUserDto { Status = "Active" });
-            Snackbar.Add("User reactivated", Severity.Success);
+            Feedback.ShowSuccess("User reactivated");
             await ReloadUsersAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to reactivate user: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to reactivate user: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -250,12 +251,12 @@
         {
             await OrgService.UpdateOrganizationUserAsync(_organizationId, user.Id,
                 new UpdateUserDto { Status = "Active" });
-            Snackbar.Add("User unlocked", Severity.Success);
+            Feedback.ShowSuccess("User unlocked");
             await ReloadUsersAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to unlock user: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to unlock user: {ex.Message}", autoDismissMs: 0);
         }
     }
 

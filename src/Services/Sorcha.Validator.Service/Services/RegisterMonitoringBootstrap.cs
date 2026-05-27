@@ -126,6 +126,19 @@ public sealed class RegisterMonitoringBootstrap : BackgroundService
             var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
 
             var rosterRegisters = await registerClient.GetMyValidatedRegistersAsync(key, ct);
+
+            // null = the lookup itself failed (HTTP error, network exception). DO NOT prune —
+            // a single transient failure used to wedge every monitored register because we
+            // treated "lookup failed" the same as "validator is on no rosters" (issue #787).
+            // Skip this cycle; the next safety poll will retry.
+            if (rosterRegisters is null)
+            {
+                _logger.LogWarning(
+                    "Monitoring reconcile skipped — roster lookup returned no authoritative result. " +
+                    "Keeping current monitoring set untouched until the next safety poll.");
+                return false;
+            }
+
             var desired = new HashSet<string>(rosterRegisters, StringComparer.Ordinal);
             var current = _registry.GetAll().ToHashSet(StringComparer.Ordinal);
 
@@ -138,8 +151,25 @@ public sealed class RegisterMonitoringBootstrap : BackgroundService
                     add);
             }
 
+            // Defence-in-depth: if a roster lookup succeeded but returned a suspiciously small
+            // set relative to what we're currently monitoring, refuse to mass-prune in a single
+            // cycle. A genuine roster shrinkage from N registers to 0 should be vanishingly
+            // rare; far more likely is that the register-service returned a partial result
+            // during a deploy / restart / index rebuild. If that's a real change the next
+            // safety poll will confirm it and prune.
+            var toRemove = current.Except(desired).ToList();
+            if (toRemove.Count > 0 && current.Count >= 3 && toRemove.Count == current.Count)
+            {
+                _logger.LogWarning(
+                    "Monitoring reconcile would prune ALL {Count} currently-monitored registers " +
+                    "in a single cycle. Refusing as a safety threshold — this is almost certainly " +
+                    "a partial roster lookup, not a real roster wipe. Will re-check on next safety poll.",
+                    current.Count);
+                return false;
+            }
+
             // Remove no-longer-rostered (drain-on-remove semantics live in ValidationEngineService).
-            foreach (var remove in current.Except(desired))
+            foreach (var remove in toRemove)
             {
                 _registry.UnregisterFromMonitoring(remove);
                 _logger.LogInformation(

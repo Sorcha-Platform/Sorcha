@@ -25,12 +25,15 @@ public class DashboardStatisticsService
     }
 
     /// <summary>
-    /// Gets aggregated dashboard statistics from all services
+    /// Gets aggregated platform-wide dashboard statistics by fanning out to every backend
+    /// <c>/api/stats</c>. Used by the SystemAdmin-only platform view of <c>/api/dashboard</c>.
     /// </summary>
     public async Task<DashboardStatistics> GetDashboardStatisticsAsync(CancellationToken cancellationToken = default)
     {
         var stats = new DashboardStatistics
         {
+            Scope = "platform",
+            OrgId = null,
             Timestamp = DateTimeOffset.UtcNow
         };
 
@@ -42,6 +45,69 @@ public class DashboardStatisticsService
             GetTenantStatisticsAsync(stats, cancellationToken),
             GetPeerStatisticsAsync(stats, cancellationToken)
         );
+
+        return stats;
+    }
+
+    /// <summary>
+    /// Feature 131 / UX-005 — fetches the compact org-scoped summary from Tenant Service.
+    /// Forwards the caller's bearer token so Tenant's <c>RequireAuthenticated</c> policy is
+    /// satisfied.
+    /// </summary>
+    /// <param name="orgId">Organisation id whose summary is requested.</param>
+    /// <param name="bearerToken">Caller's JWT (without the "Bearer " prefix).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Stats wrapped with <c>Scope = "org"</c>; on failure, returns a zeroed shape.</returns>
+    public async Task<DashboardStatistics> GetOrgSummaryAsync(
+        Guid orgId,
+        string? bearerToken,
+        CancellationToken cancellationToken = default)
+    {
+        var stats = new DashboardStatistics
+        {
+            Scope = "org",
+            OrgId = orgId,
+            Timestamp = DateTimeOffset.UtcNow,
+            // Zero defaults; overwritten on success below.
+            ActiveUsers = 0,
+            PendingInvitations = 0,
+            SubscribedRegisters = 0,
+            RecentTransactions = 0
+        };
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("TenantService");
+            client.Timeout = TimeSpan.FromSeconds(5);
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"/api/organizations/{orgId}/dashboard-summary");
+            if (!string.IsNullOrEmpty(bearerToken))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
+            }
+
+            var response = await client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Tenant dashboard-summary returned {StatusCode} for org {OrgId}",
+                    response.StatusCode, orgId);
+                return stats;
+            }
+
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(content);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("activeUsers", out var au)) stats.ActiveUsers = au.GetInt32();
+            if (root.TryGetProperty("pendingInvitations", out var pi)) stats.PendingInvitations = pi.GetInt32();
+            if (root.TryGetProperty("subscribedRegisters", out var sr)) stats.SubscribedRegisters = sr.GetInt32();
+            if (root.TryGetProperty("recentTransactions", out var rt)) stats.RecentTransactions = rt.GetInt32();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch org-summary for {OrgId}", orgId);
+        }
 
         return stats;
     }
@@ -196,17 +262,34 @@ public class DashboardStatisticsService
 }
 
 /// <summary>
-/// Dashboard statistics model
+/// Dashboard statistics model. Feature 131 / UX-005 adds a <see cref="Scope"/> discriminator
+/// and org-only fields; platform-only fields stay populated only in the platform shape.
+/// Nullable fields are serialised as <c>null</c> when not in scope; the client treats null as
+/// "card not present in this view".
 /// </summary>
 public class DashboardStatistics
 {
+    /// <summary>"org" | "platform" — distinguishes the two response shapes.</summary>
+    public string Scope { get; set; } = "platform";
+
+    /// <summary>Organization id (only set when <see cref="Scope"/> = "org").</summary>
+    public Guid? OrgId { get; set; }
+
     public DateTimeOffset Timestamp { get; set; }
-    public int TotalBlueprints { get; set; }
-    public int TotalBlueprintInstances { get; set; }
-    public int ActiveBlueprintInstances { get; set; }
-    public int TotalWallets { get; set; }
-    public int TotalRegisters { get; set; }
-    public int TotalTransactions { get; set; }
-    public int TotalTenants { get; set; }
-    public int ConnectedPeers { get; set; }
+
+    // Platform-scope fields. Nullable so the JSON omits them in org responses.
+    public int? TotalBlueprints { get; set; }
+    public int? TotalBlueprintInstances { get; set; }
+    public int? ActiveBlueprintInstances { get; set; }
+    public int? TotalWallets { get; set; }
+    public int? TotalRegisters { get; set; }
+    public int? TotalTransactions { get; set; }
+    public int? TotalTenants { get; set; }
+    public int? ConnectedPeers { get; set; }
+
+    // Org-scope fields. Nullable so the JSON omits them in platform responses.
+    public int? ActiveUsers { get; set; }
+    public int? PendingInvitations { get; set; }
+    public int? SubscribedRegisters { get; set; }
+    public int? RecentTransactions { get; set; }
 }

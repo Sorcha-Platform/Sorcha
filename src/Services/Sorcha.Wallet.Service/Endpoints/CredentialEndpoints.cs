@@ -141,7 +141,42 @@ public static class CredentialEndpoints
             .Produces<IssuedCredentialResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            .WithOpenApi(operation =>
+            {
+                // Spec 117 FR-006 — credential issuance MUST carry at least one example for
+                // request and response. Payload modelled on the trade-finance walkthrough's
+                // VerifiedInvoiceCredential issued by the audited supplier wallet.
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "credentialType": "VerifiedInvoiceCredential",
+                      "claims": {
+                        "invoiceNumber": "INV-2026-00482",
+                        "issuedTo": "did:sorcha:org:sorcha1buyer012345...",
+                        "amount": 47500.00,
+                        "currency": "EUR",
+                        "dueDate": "2026-06-15",
+                        "purchaseOrderRef": "PO-ACME-9921"
+                      },
+                      "recipientWallet": "sorcha1recipient67890abcdef...",
+                      "expiryDuration": "P90D",
+                      "disclosableClaims": ["invoiceNumber", "amount", "currency", "dueDate"]
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "200", """
+                    {
+                      "id": "urn:uuid:8e2c1b94-7a31-4f12-9bb8-a3e2f5c14a99",
+                      "type": "VerifiedInvoiceCredential",
+                      "issuerDid": "did:sorcha:org:sorcha1supplier789ghi012...",
+                      "subjectDid": "did:sorcha:org:sorcha1buyer012345...",
+                      "issuedAt": "2026-05-02T11:30:00Z",
+                      "expiresAt": "2026-07-31T11:30:00Z",
+                      "rawToken": "eyJhbGciOiJFZERTQSIsInR5cCI6InZjK3NkLWp3dCJ9.eyJpc3MiOiJkaWQ6c29yY2hhOm9yZzpzb3JjaGExc3VwcGxpZXI3ODlnaGkwMTIuLi4iLCJpYXQiOjE3NjI4MzQwMDAsImV4cCI6MTc3MDYxMDAwMCwidmN0IjoiVmVyaWZpZWRJbnZvaWNlQ3JlZGVudGlhbCIsImNuZiI6e319.SIGNATURE",
+                      "status": "Active"
+                    }
+                    """);
+                return operation;
+            });
 
         return app;
     }
@@ -240,7 +275,8 @@ public static class CredentialEndpoints
         CancellationToken cancellationToken = default)
     {
         var credentials = await store.GetByWalletAsync(walletAddress, cancellationToken);
-        var matches = matcher.Match(requirements, credentials);
+        // Feature 120 US5 — async path honours DID alsoKnownAs equivalence.
+        var matches = await matcher.MatchAsync(requirements, credentials, cancellationToken);
 
         var response = matches.Select(kvp => new
         {
@@ -258,14 +294,33 @@ public static class CredentialEndpoints
         string walletAddress,
         string credentialId,
         ICredentialStore store,
+        Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
         CancellationToken cancellationToken = default)
     {
-        var credential = await store.GetByIdForWalletAsync(credentialId, walletAddress, cancellationToken);
+        // Phase 2b of the Snackbar retirement — capture the credential Type
+        // BEFORE the delete runs so the inbox entry can show the human-readable
+        // credential type. The store-side delete removes the row so a post-delete
+        // fetch would 404.
+        var snapshotForInbox = await store.GetByIdForWalletAsync(credentialId, walletAddress, cancellationToken);
 
-        if (credential == null)
+        // Wallet-scoped delete — credential IDs are not globally unique (Feature 106).
+        // DeleteAsync(credentialId, walletAddress) performs the composite-key lookup and
+        // delete atomically, removing the TOCTOU window of the former pre-check + delete pair.
+        var deleted = await store.DeleteAsync(credentialId, walletAddress, cancellationToken);
+        if (!deleted)
+        {
             return Results.NotFound();
+        }
 
-        await store.DeleteAsync(credentialId, cancellationToken);
+        if (snapshotForInbox is not null)
+        {
+            await inboxWriter.WriteCredentialDeletedAsync(
+                walletAddress: walletAddress,
+                credentialId: credentialId,
+                credentialType: snapshotForInbox.Type,
+                ct: cancellationToken).ConfigureAwait(false);
+        }
+
         return Results.NoContent();
     }
 
@@ -355,7 +410,7 @@ public static class CredentialEndpoints
             return Results.NotFound();
 
         var previousStatus = credential.Status;
-        var updated = await store.UpdateStatusAsync(credentialId, targetStatus, cancellationToken);
+        var updated = await store.UpdateStatusAsync(credentialId, walletAddress, targetStatus, cancellationToken);
 
         if (!updated)
             return Results.BadRequest(new { error = $"Invalid status transition from {previousStatus} to {targetStatus}" });
@@ -385,9 +440,8 @@ public static class CredentialEndpoints
         string credentialId,
         [FromBody] UpdateStatusRequest request,
         ICredentialStore store,
-        IConnectionMultiplexer redis,
-        IWalletRepository walletRepository,
         ILoggerFactory loggerFactory,
+        Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
         CancellationToken cancellationToken = default)
     {
         var logger = loggerFactory.CreateLogger("Sorcha.Wallet.Service.Endpoints.PatchCredentialStatus");
@@ -438,62 +492,26 @@ public static class CredentialEndpoints
         if (updated is null)
             return Results.NotFound();
 
-        // Resolve the owning user id so the SignalR bridge can route to the right group.
-        // Best-effort — event publishing is non-fatal. If the wallet record is missing
-        // (shouldn't happen since PatchStatusAsync just succeeded) we skip the publish
-        // rather than fail the PATCH.
-        string? userId = null;
-        try
-        {
-            var wallet = await walletRepository.GetByAddressAsync(walletAddress, cancellationToken: cancellationToken);
-            userId = wallet?.Owner;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex,
-                "Failed to resolve wallet owner for {WalletAddress} while publishing CredentialStatusChangedEvent",
-                walletAddress);
-        }
+        // Modern path (Feature 118): WalletHub emits CredentialStatusChanged
+        // directly; the legacy wallet:credential-status Redis bridge that fed
+        // EventsHub was retired in T121. No publish here.
+        _ = previousStatus; // reserved for future inbox-write enrichment if needed
 
-        try
+        // Phase 2b of the Snackbar retirement — fire a durable inbox entry
+        // on holder decline. Accept doesn't produce a new entry because the
+        // existing "credential received" entry already covers the issuance;
+        // accept is a holder-side state change, not a new event.
+        if (targetStatus == CredentialStatus.Declined)
         {
-            var evt = new CredentialStatusChangedEvent
-            {
-                WalletAddress = walletAddress,
-                CredentialId = credentialId,
-                CredentialType = updated.Type,
-                PreviousStatus = previousStatus.ToString(),
-                NewStatus = updated.Status.ToString(),
-                ChangedAt = DateTimeOffset.UtcNow,
-                UserId = userId,
-            };
-
-            var subscriber = redis.GetSubscriber();
-            var json = JsonSerializer.Serialize(evt, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            });
-            await subscriber.PublishAsync(
-                RedisChannel.Literal(Feature106CredentialStatusChannel),
-                json);
-        }
-        catch (Exception ex)
-        {
-            // Publishing is best-effort — the authoritative state is already persisted.
-            logger.LogWarning(ex,
-                "Failed to publish CredentialStatusChangedEvent for credential {CredentialId}",
-                credentialId);
+            await inboxWriter.WriteCredentialDeclinedAsync(
+                walletAddress: walletAddress,
+                credentialId: credentialId,
+                credentialType: updated.Type,
+                ct: cancellationToken).ConfigureAwait(false);
         }
 
         return Results.Ok(updated);
     }
-
-    /// <summary>
-    /// Redis pub/sub channel for Feature 106 credential status transitions.
-    /// Consumed by <c>EventsHubNotificationBridge</c> in Blueprint Service and
-    /// forwarded to the holder's SignalR group as <c>CredentialStatusChanged</c>.
-    /// </summary>
-    public const string Feature106CredentialStatusChannel = "wallet:credential-status";
 
     private static async Task<IResult> IssueCredential(
         string walletAddress,
@@ -503,6 +521,8 @@ public static class CredentialEndpoints
         ISdJwtService sdJwtService,
         ICredentialStore store,
         ILoggerFactory loggerFactory,
+        Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter inboxWriter,
+        Sorcha.Wallet.Service.Services.Interfaces.IIssuanceKeyService? issuanceKeyService = null,
         IOrgCertChainProvider? orgCertChainProvider = null,
         CancellationToken cancellationToken = default)
     {
@@ -518,11 +538,16 @@ public static class CredentialEndpoints
         // Anything baked into a signed credential is unfixable — the signature covers
         // it and the credential is permanently broken if a value is malformed.
         if (!string.IsNullOrWhiteSpace(request.StatusListUrl)
-            && !Uri.TryCreate(request.StatusListUrl, UriKind.Absolute, out _))
+            && (!Uri.TryCreate(request.StatusListUrl, UriKind.Absolute, out var statusListUri)
+                || statusListUri.Scheme != Uri.UriSchemeHttps))
         {
+            // Spec 093 data-model: statusListCredential MUST be an absolute HTTPS
+            // URL resolvable by external parties. The value is signed into the
+            // credential, so a non-HTTPS URL is permanently broken for any
+            // wallet that enforces HTTPS-only (the standard case in production).
             return Results.BadRequest(new
             {
-                error = "statusListUrl must be an absolute URI when supplied"
+                error = "statusListUrl must be an absolute HTTPS URL when supplied"
             });
         }
 
@@ -548,9 +573,44 @@ public static class CredentialEndpoints
 
         var logger = loggerFactory.CreateLogger("Sorcha.Wallet.Service.Endpoints.CredentialEndpoints");
 
-        // 2. Decrypt the wallet's private key
-        var privateKey = await keyManagement.DecryptPrivateKeyAsync(
-            wallet.EncryptedPrivateKey, wallet.EncryptionKeyId);
+        // Feature 120 T039 — ensure the org's VC issuance key + published DID
+        // document exist before signing (FR-004 "no later than first issuance").
+        // Then attempt to swap to the issuance key for signing (kid-swap, #604):
+        // when the org has an Active issuance key, the credential is signed with
+        // it and the JWS kid header carries did:sorcha:org:{addr}#vc-issuance-{n}
+        // so verifiers resolve to the published DID document.
+        Sorcha.Wallet.Service.Services.Interfaces.IssuanceSigningMaterial? issuanceMaterial = null;
+        if (issuanceKeyService is not null
+            && Guid.TryParse(request.TenantId, out var issuanceOrgId))
+        {
+            try
+            {
+                _ = await issuanceKeyService.GetOrDeriveAsync(issuanceOrgId, cancellationToken);
+                issuanceMaterial = await issuanceKeyService
+                    .GetActiveSigningMaterialAsync(issuanceOrgId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Issuance key path failed for org {OrgId} — falling through to wallet-key signing",
+                    issuanceOrgId);
+            }
+        }
+
+        // 2. Decrypt the wallet's private key (only used when issuance-key swap is unavailable).
+        var privateKey = issuanceMaterial?.PrivateKey
+            ?? await keyManagement.DecryptPrivateKeyAsync(
+                wallet.EncryptedPrivateKey, wallet.EncryptionKeyId);
+        var signingAlgorithm = issuanceMaterial?.Algorithm ?? wallet.Algorithm;
+        var signingIssuer = issuanceMaterial?.IssuerDid ?? walletAddress;
+        var signingKid = issuanceMaterial?.Kid;
+
+        if (issuanceMaterial is not null)
+        {
+            logger.LogInformation(
+                "Feature 120 kid-swap: signing credential with org issuance key kid={Kid} for org {OrgId}",
+                signingKid, issuanceMaterial.OrganizationId);
+        }
 
         // 3. Calculate expiry
         var issuedAt = DateTimeOffset.UtcNow;
@@ -621,16 +681,33 @@ public static class CredentialEndpoints
             logger,
             cancellationToken);
 
-        var token = await sdJwtService.CreateTokenAsync(
-            claims,
-            request.DisclosableClaims,
-            walletAddress,
-            request.RecipientWallet,
-            privateKey,
-            wallet.Algorithm,
-            expiresAt,
-            cancellationToken,
-            x5cChain);
+        // Feature 137 — when the caller supplies the recipient's holder JWK, bind the
+        // credential to it via the SD-JWT cnf claim (key confirmation). Absent → unbound
+        // credential (pre-137 behaviour). cnf is always non-disclosable.
+        var token = request.HolderJwk.HasValue
+            ? await sdJwtService.CreateTokenAsync(
+                claims,
+                request.DisclosableClaims,
+                issuer: signingIssuer,
+                subject: request.RecipientWallet,
+                signingKey: privateKey,
+                algorithm: signingAlgorithm,
+                holderJwk: request.HolderJwk.Value,
+                expiresAt: expiresAt,
+                cancellationToken: cancellationToken,
+                x5cChain: x5cChain,
+                kid: signingKid)
+            : await sdJwtService.CreateTokenAsync(
+                claims,
+                request.DisclosableClaims,
+                issuer: signingIssuer,
+                subject: request.RecipientWallet,
+                signingKey: privateKey,
+                algorithm: signingAlgorithm,
+                expiresAt: expiresAt,
+                cancellationToken: cancellationToken,
+                x5cChain: x5cChain,
+                kid: signingKid);
 
         // 5. Generate credential ID
         var credentialId = $"urn:uuid:{Guid.NewGuid()}";
@@ -704,6 +781,16 @@ public static class CredentialEndpoints
         logger.LogInformation(
             "Issued credential {CredentialId} of type {Type} from {Issuer} to {Recipient}",
             credentialId, request.CredentialType, walletAddress, request.RecipientWallet);
+
+        // Feature 118 / US3 follow-up #2: drop a durable inbox entry on the
+        // recipient's user. Fail-safe: any write error is swallowed by the
+        // writer so credential issuance is unaffected.
+        await inboxWriter.WriteCredentialReceivedAsync(
+            recipientWalletAddress: request.RecipientWallet,
+            credentialId: credentialId,
+            credentialType: request.CredentialType,
+            issuerOrgName: request.IssuerOrgName,
+            ct: cancellationToken).ConfigureAwait(false);
 
         return Results.Ok(new IssuedCredentialResponse
         {
@@ -803,6 +890,15 @@ public class IssueCredentialRequest
     /// existing Sorcha-internal default).
     /// </summary>
     public string? TenantId { get; init; }
+
+    /// <summary>
+    /// Feature 137 — recipient holder's public JWK (slot 108) for the SD-JWT
+    /// <c>cnf</c> (key confirmation) binding. When supplied, the issued credential
+    /// is cryptographically bound to the holder key so only the holder can present
+    /// it. Null leaves the credential unbound (the pre-137 behaviour). Public
+    /// material only — never a private key.
+    /// </summary>
+    public JsonElement? HolderJwk { get; init; }
 }
 
 /// <summary>

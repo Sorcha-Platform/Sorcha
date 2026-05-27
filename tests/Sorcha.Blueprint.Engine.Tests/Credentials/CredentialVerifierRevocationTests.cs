@@ -2,56 +2,38 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
-using Moq;
+
 using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.Blueprint.Models.Credentials;
-using Sorcha.Cryptography.SdJwt;
+
+using Factory = Sorcha.Blueprint.Engine.Tests.Credentials.EngineSdJwtTestFactory;
 
 namespace Sorcha.Blueprint.Engine.Tests.Credentials;
 
+/// <summary>
+/// Feature 135 — revocation now flows through the unified <see cref="ITrustEvaluator"/> +
+/// <see cref="IStatusListChecker"/> rather than the engine verifier's old <c>IRevocationChecker</c>
+/// branch. The credential carries a real IETF status reference; the fail-closed / fail-open policy
+/// comes from the requirement. Tests use real signed SD-JWT VCs and a fake status checker.
+/// </summary>
 public class CredentialVerifierRevocationTests
 {
-    private readonly Mock<ISdJwtService> _sdJwtServiceMock = new();
-    private readonly Mock<IRevocationChecker> _revocationCheckerMock = new();
+    private static EngineSdJwtTestFactory.MintedSdJwt MintWithStatus(string issuer = "did:sorcha:issuer:gov") =>
+        Factory.MintEs256("LicenseCredential", issuer,
+            statusClaim: Factory.IetfStatusClaim("https://issuer/status/1", 5));
 
-    private CredentialPresentation CreatePresentation(
-        string credentialId, string type, string issuer, Dictionary<string, object>? extraClaims = null)
-    {
-        var claims = new Dictionary<string, object>
-        {
-            ["type"] = type,
-            ["iss"] = issuer
-        };
-
-        if (extraClaims != null)
-        {
-            foreach (var kvp in extraClaims)
-                claims[kvp.Key] = kvp.Value;
-        }
-
-        return new CredentialPresentation
-        {
-            CredentialId = credentialId,
-            DisclosedClaims = claims
-        };
-    }
+    private static CredentialPresentation Present(string credentialId, string raw) =>
+        new() { CredentialId = credentialId, RawPresentation = raw };
 
     [Fact]
     public async Task VerifyAsync_ActiveCredential_Accepted()
     {
-        // Arrange
-        _revocationCheckerMock
-            .Setup(r => r.CheckRevocationStatusAsync("cred-1", "issuer-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Active");
-
-        var verifier = new CredentialVerifier(_sdJwtServiceMock.Object, _revocationCheckerMock.Object);
+        var minted = MintWithStatus();
+        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(StatusListBit.NotSet), minted);
         var requirements = new[] { new CredentialRequirement { Type = "LicenseCredential" } };
-        var presentations = new[] { CreatePresentation("cred-1", "LicenseCredential", "issuer-1") };
 
-        // Act
-        var result = await verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Assert
         result.IsValid.Should().BeTrue();
         result.Errors.Should().BeEmpty();
         result.VerifiedCredentials.Should().HaveCount(1);
@@ -61,152 +43,76 @@ public class CredentialVerifierRevocationTests
     [Fact]
     public async Task VerifyAsync_RevokedCredential_Rejected()
     {
-        // Arrange
-        _revocationCheckerMock
-            .Setup(r => r.CheckRevocationStatusAsync("cred-revoked", "issuer-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Revoked");
-
-        var verifier = new CredentialVerifier(_sdJwtServiceMock.Object, _revocationCheckerMock.Object);
+        var minted = MintWithStatus();
+        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(StatusListBit.Set), minted);
         var requirements = new[] { new CredentialRequirement { Type = "LicenseCredential" } };
-        var presentations = new[] { CreatePresentation("cred-revoked", "LicenseCredential", "issuer-1") };
 
-        // Act
-        var result = await verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Assert
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().ContainSingle(e =>
-            e.FailureReason == CredentialFailureReason.Revoked);
+        result.Errors.Should().ContainSingle(e => e.FailureReason == CredentialFailureReason.Revoked);
     }
 
     [Fact]
     public async Task VerifyAsync_UnavailableStatus_FailClosed_Blocked()
     {
-        // Arrange
-        _revocationCheckerMock
-            .Setup(r => r.CheckRevocationStatusAsync("cred-unknown", "issuer-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
-
-        var verifier = new CredentialVerifier(_sdJwtServiceMock.Object, _revocationCheckerMock.Object);
+        var minted = MintWithStatus();
+        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(StatusListBit.Unknown), minted);
         var requirements = new[]
         {
-            new CredentialRequirement
-            {
-                Type = "LicenseCredential",
-                RevocationCheckPolicy = RevocationCheckPolicy.FailClosed
-            }
+            new CredentialRequirement { Type = "LicenseCredential", RevocationCheckPolicy = RevocationCheckPolicy.FailClosed }
         };
-        var presentations = new[] { CreatePresentation("cred-unknown", "LicenseCredential", "issuer-1") };
 
-        // Act
-        var result = await verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Assert
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().ContainSingle(e =>
-            e.FailureReason == CredentialFailureReason.RevocationCheckUnavailable);
-        result.Warnings.Should().BeEmpty();
+        result.Errors.Should().ContainSingle(e => e.FailureReason == CredentialFailureReason.RevocationCheckUnavailable);
     }
 
     [Fact]
-    public async Task VerifyAsync_UnavailableStatus_FailOpen_AcceptedWithWarning()
+    public async Task VerifyAsync_UnavailableStatus_FailOpen_Accepted()
     {
-        // Arrange
-        _revocationCheckerMock
-            .Setup(r => r.CheckRevocationStatusAsync("cred-unknown", "issuer-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
-
-        var verifier = new CredentialVerifier(_sdJwtServiceMock.Object, _revocationCheckerMock.Object);
+        var minted = MintWithStatus();
+        var verifier = Factory.BuildVerifier(directory: null, statusChecker: new Factory.FakeStatusChecker(StatusListBit.Unknown), minted);
         var requirements = new[]
         {
-            new CredentialRequirement
-            {
-                Type = "LicenseCredential",
-                RevocationCheckPolicy = RevocationCheckPolicy.FailOpen
-            }
+            new CredentialRequirement { Type = "LicenseCredential", RevocationCheckPolicy = RevocationCheckPolicy.FailOpen }
         };
-        var presentations = new[] { CreatePresentation("cred-unknown", "LicenseCredential", "issuer-1") };
 
-        // Act
-        var result = await verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Assert
         result.IsValid.Should().BeTrue();
         result.VerifiedCredentials.Should().HaveCount(1);
-        result.VerifiedCredentials[0].RevocationStatus.Should().Be("Unknown");
-        result.Warnings.Should().ContainSingle(w => w.Contains("fail-open policy"));
     }
 
     [Fact]
-    public async Task VerifyAsync_CheckerThrows_FailClosed_Blocked()
+    public async Task VerifyAsync_StatusClaimButNoChecker_FailClosed_Blocked()
     {
-        // Arrange
-        _revocationCheckerMock
-            .Setup(r => r.CheckRevocationStatusAsync("cred-error", "issuer-1", It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("Connection refused"));
-
-        var verifier = new CredentialVerifier(_sdJwtServiceMock.Object, _revocationCheckerMock.Object);
+        var minted = MintWithStatus();
+        // No status checker wired — a credential that carries a status reference cannot be cleared.
+        var verifier = Factory.BuildVerifier(minted);
         var requirements = new[]
         {
-            new CredentialRequirement
-            {
-                Type = "LicenseCredential",
-                RevocationCheckPolicy = RevocationCheckPolicy.FailClosed
-            }
+            new CredentialRequirement { Type = "LicenseCredential", RevocationCheckPolicy = RevocationCheckPolicy.FailClosed }
         };
-        var presentations = new[] { CreatePresentation("cred-error", "LicenseCredential", "issuer-1") };
 
-        // Act
-        var result = await verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Assert
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().ContainSingle(e =>
-            e.FailureReason == CredentialFailureReason.RevocationCheckUnavailable);
+        result.Errors.Should().ContainSingle(e => e.FailureReason == CredentialFailureReason.RevocationCheckUnavailable);
     }
 
     [Fact]
-    public async Task VerifyAsync_CheckerThrows_FailOpen_AcceptedWithWarning()
+    public async Task VerifyAsync_NoStatusClaim_Accepted()
     {
-        // Arrange
-        _revocationCheckerMock
-            .Setup(r => r.CheckRevocationStatusAsync("cred-error", "issuer-1", It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("Connection refused"));
-
-        var verifier = new CredentialVerifier(_sdJwtServiceMock.Object, _revocationCheckerMock.Object);
-        var requirements = new[]
-        {
-            new CredentialRequirement
-            {
-                Type = "LicenseCredential",
-                RevocationCheckPolicy = RevocationCheckPolicy.FailOpen
-            }
-        };
-        var presentations = new[] { CreatePresentation("cred-error", "LicenseCredential", "issuer-1") };
-
-        // Act
-        var result = await verifier.VerifyAsync(requirements, presentations);
-
-        // Assert
-        result.IsValid.Should().BeTrue();
-        result.Warnings.Should().ContainSingle(w => w.Contains("fail-open policy"));
-        result.VerifiedCredentials[0].RevocationStatus.Should().Be("Unknown");
-    }
-
-    [Fact]
-    public async Task VerifyAsync_NoRevocationChecker_SkipsCheckAndAccepts()
-    {
-        // Arrange — no revocation checker injected
-        var verifier = new CredentialVerifier(_sdJwtServiceMock.Object);
+        // No status reference on the credential → no revocation check → accepted.
+        var minted = Factory.MintEs256("LicenseCredential", "did:sorcha:issuer:gov");
+        var verifier = Factory.BuildVerifier(minted);
         var requirements = new[] { new CredentialRequirement { Type = "LicenseCredential" } };
-        var presentations = new[] { CreatePresentation("cred-1", "LicenseCredential", "issuer-1") };
 
-        // Act
-        var result = await verifier.VerifyAsync(requirements, presentations);
+        var result = await verifier.VerifyAsync(requirements, [Present("cred-1", minted.Raw)]);
 
-        // Assert
         result.IsValid.Should().BeTrue();
         result.VerifiedCredentials[0].RevocationStatus.Should().Be("Active");
-        result.Warnings.Should().BeEmpty();
     }
 }

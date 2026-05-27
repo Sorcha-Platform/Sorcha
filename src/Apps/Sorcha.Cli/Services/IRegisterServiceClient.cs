@@ -3,6 +3,7 @@
 
 using Refit;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.LocalRelationship;
 
 namespace Sorcha.Cli.Services;
 
@@ -88,12 +89,41 @@ public interface IRegisterServiceClient
         [Header("Authorization")] string authorization);
 
     /// <summary>
-    /// Gets the status of a transaction.
+    /// Gets the lifecycle status of a transaction (active / revoked / superseded).
     /// </summary>
     [Get("/api/registers/{registerId}/transactions/{transactionId}/status")]
-    Task<SubmitTransactionResponse> GetTransactionStatusAsync(
+    Task<TransactionStatusResponse> GetTransactionStatusAsync(
         string registerId,
         string transactionId,
+        [Header("Authorization")] string authorization);
+
+    // --- Trust Hardening (Feature 079) ---
+
+    /// <summary>
+    /// Generates a Merkle inclusion proof for a sealed transaction.
+    /// </summary>
+    [Get("/api/registers/{registerId}/transactions/{txId}/inclusion-proof")]
+    Task<MerkleInclusionProof> GetInclusionProofAsync(
+        string registerId,
+        string txId,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Verifies a standalone Merkle inclusion proof (anonymous endpoint).
+    /// </summary>
+    [Post("/api/registers/{registerId}/inclusion-proofs/verify")]
+    Task<VerifyProofResult> VerifyInclusionProofAsync(
+        string registerId,
+        [Body] VerifyMerkleInclusionProofRequest request,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Submits a revocation for an existing transaction.
+    /// </summary>
+    [Post("/api/registers/{registerId}/transactions/revoke")]
+    Task<RevokeTransactionResult> RevokeTransactionAsync(
+        string registerId,
+        [Body] RevokeTransactionRequest request,
         [Header("Authorization")] string authorization);
 
     // --- Dockets ---
@@ -202,6 +232,26 @@ public interface IRegisterServiceClient
     [Get("/api/system-register/blueprints")]
     Task<HttpResponseMessage> GetSystemRegisterBlueprintsAsync([Query] int? page, [Query] int? pageSize, [Header("Authorization")] string authorization);
 
+    // --- Sync Diagnostics (Feature 108) ---
+
+    /// <summary>
+    /// Gets the local node's derived relationship (role set) for a register.
+    /// </summary>
+    [Get("/api/registers/{registerId}/local-relationship")]
+    Task<RegisterLocalRelationship> GetLocalRelationshipAsync(string registerId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets a register's sync state (indeterminate / syncing / caught up / error).
+    /// </summary>
+    [Get("/api/registers/{registerId}/sync-state")]
+    Task<RegisterSyncStateView> GetSyncStateAsync(string registerId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets recovery sync health across all registers hosted by the node.
+    /// </summary>
+    [Get("/health/sync")]
+    Task<SyncHealthResponse> GetSyncHealthAsync([Header("Authorization")] string authorization);
+
 }
 
 // --- Request/Response DTOs ---
@@ -279,5 +329,73 @@ public class PolicyUpdateRequest
     public int? SignatureThreshold { get; set; }
     public string? RegistrationMode { get; set; }
     public string? TransitionMode { get; set; }
+}
+
+/// <summary>
+/// Request to verify a standalone Merkle inclusion proof.
+/// Mirrors the Register Service's VerifyMerkleInclusionProofRequest.
+/// </summary>
+public class VerifyMerkleInclusionProofRequest
+{
+    public string TransactionHash { get; set; } = string.Empty;
+    public string MerkleRoot { get; set; } = string.Empty;
+    public IReadOnlyList<MerkleProofStep> ProofPath { get; set; } = new List<MerkleProofStep>();
+}
+
+/// <summary>
+/// Result of verifying a Merkle inclusion proof.
+/// </summary>
+public class VerifyProofResult
+{
+    public bool IsValid { get; set; }
+    public string ComputedRoot { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Request to revoke a transaction. The reason is sent as a string and parsed
+/// server-side against the RevocationReason enum.
+/// </summary>
+public class RevokeTransactionRequest
+{
+    public string OriginalTxId { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public string? SupersededByTxId { get; set; }
+    public Dictionary<string, string>? Metadata { get; set; }
+    public string? SignerWalletAddress { get; set; }
+}
+
+/// <summary>
+/// Accepted-revocation result returned by the revoke endpoint.
+/// </summary>
+public class RevokeTransactionResult
+{
+    public string RevocationTxId { get; set; } = string.Empty;
+    public string OriginalTxId { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Recovery sync health across all registers on the node (GET /health/sync).
+/// </summary>
+public class SyncHealthResponse
+{
+    public string Status { get; set; } = string.Empty;
+    public List<RegisterSyncStatus> Registers { get; set; } = new();
+    public DateTimeOffset CheckedAt { get; set; }
+}
+
+/// <summary>
+/// Per-register recovery sync status row.
+/// </summary>
+public class RegisterSyncStatus
+{
+    public string RegisterId { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public long CurrentDocket { get; set; }
+    public long TargetDocket { get; set; }
+    public int ProgressPercent { get; set; }
+    public long DocketsProcessed { get; set; }
+    public string? LastError { get; set; }
+    public bool IsStale { get; set; }
 }
 

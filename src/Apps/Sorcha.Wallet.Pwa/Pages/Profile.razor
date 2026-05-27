@@ -1,0 +1,34 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Profile page (Feature 125, T097). v1 stub linking the wallet's
+    profile-management surface to the web shell's MyProfile experience
+    (Feature 092). The library-side MyProfile migration is a substantial
+    refactor punted to a follow-up PR; this page sets the right route
+    (/profile) so MainLayout's Settings hub deep-link works.
+*@
+@page "/profile"
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@using Sorcha.Wallet.Pwa.Services.Context
+@inject IUserContext UserContext
+
+<PageTitle>Profile · Sorcha Wallet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Profile</MudText>
+    <MudPaper Class="pa-4" Elevation="1" data-testid="profile-placeholder">
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body1">
+                Per-context profile editing arrives soon.
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                You're currently in the
+                <strong>@(UserContext.ActiveContextOrgId is null ? "Personal" : "active organisation")</strong>
+                context. Each context can hold its own contact details for form autofill.
+            </MudText>
+        </MudStack>
+    </MudPaper>
+</MudContainer>

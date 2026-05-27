@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Http;
 using Polly;
 using Polly.Extensions.Http;
@@ -13,12 +14,15 @@ using Sorcha.Blueprint.Service.Extensions;
 using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.JsonLd;
+using Microsoft.AspNetCore.SignalR;
+using Sorcha.ServiceDefaults.Hubs;
 using Sorcha.ServiceDefaults;
 using Sorcha.ServiceDefaults.Storage;
 using Sorcha.Blueprint.Service.Services;
 using Sorcha.Blueprint.Schemas.Services;
 using Sorcha.Cryptography.Core;
 using Sorcha.ServiceClients.Extensions;
+using Sorcha.Register.Storage.Redis;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -141,9 +145,36 @@ builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.ISchemaValidator, 
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IJsonLogicEvaluator, Sorcha.Blueprint.Engine.Implementation.JsonLogicEvaluator>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IDisclosureProcessor, Sorcha.Blueprint.Engine.Implementation.DisclosureProcessor>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IRoutingEngine, Sorcha.Blueprint.Engine.Implementation.RoutingEngine>();
-builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ICredentialVerifier, Sorcha.Blueprint.Engine.Credentials.CredentialVerifier>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ICredentialIssuer, Sorcha.Blueprint.Engine.Credentials.CredentialIssuer>();
 builder.Services.AddHttpClient<Sorcha.Blueprint.Engine.Credentials.IRevocationChecker, Sorcha.Blueprint.Engine.Credentials.BitstringStatusListChecker>();
+
+// Feature 135 — unified credential trust. The CredentialVerifier now dispatches to a
+// per-format ICredentialFormatHandler that verifies the signature for real and routes the
+// trust decision through the single ITrustEvaluator (no SignatureValid=false shortcut).
+// Network trust sources live behind engine-local seams with service-layer adapters here,
+// keeping Sorcha.Blueprint.Engine WASM-friendly.
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory,
+    Sorcha.Blueprint.Service.Credentials.DidIssuerDirectory>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IIssuerKeyResolver,
+    Sorcha.Blueprint.Service.Credentials.DidX5cIssuerKeyResolver>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.RegisterTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.Sources.DidAllowlistTrustSourceResolver(
+        sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IIssuerDirectory>()));
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustResolverRegistry>(sp =>
+    new Sorcha.Blueprint.Engine.Credentials.TrustResolverRegistry(
+        sp.GetServices<Sorcha.Blueprint.Engine.Credentials.ITrustSourceResolver>()));
+// BitstringStatusListChecker implements both IRevocationChecker and IStatusListChecker.
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.IStatusListChecker>(sp =>
+    (Sorcha.Blueprint.Engine.Credentials.IStatusListChecker)sp.GetRequiredService<Sorcha.Blueprint.Engine.Credentials.IRevocationChecker>());
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ITrustEvaluator,
+    Sorcha.Blueprint.Engine.Credentials.TrustEvaluator>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ICredentialFormatHandler,
+    Sorcha.Blueprint.Engine.Credentials.SdJwtVcFormatHandler>();
+builder.Services.AddScoped<Sorcha.Blueprint.Engine.Credentials.ICredentialVerifier,
+    Sorcha.Blueprint.Engine.Credentials.CredentialVerifier>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IActionProcessor, Sorcha.Blueprint.Engine.Implementation.ActionProcessor>();
 builder.Services.AddScoped<Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine, Sorcha.Blueprint.Engine.Implementation.ExecutionEngine>();
 
@@ -205,6 +236,10 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionE
 // Feature 111: Timebound Presentation Lifecycle — Redis-backed transient state and rate limiting.
 builder.Services.Configure<Sorcha.Blueprint.Service.Configuration.PresentationLifecycleOptions>(
     builder.Configuration.GetSection("PresentationLifecycle"));
+
+// Multi-node audit CRITICAL #3 — fail-closed wallet ownership validation.
+builder.Services.Configure<Sorcha.Blueprint.Service.Configuration.WalletOwnershipSettings>(
+    builder.Configuration.GetSection(Sorcha.Blueprint.Service.Configuration.WalletOwnershipSettings.SectionName));
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IPendingPresentationStore,
     Sorcha.Blueprint.Service.Storage.Presentations.RedisPendingPresentationStore>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IPresentationRateLimiter,
@@ -214,7 +249,126 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IPresent
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Infrastructure.IClock,
     Sorcha.Blueprint.Service.Services.Infrastructure.SystemClock>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.PresentationLifecycleMetrics>();
+
+// Feature 111 — IPresentationConsumer registrations dispatched by name from
+// PresentationLifecycleService. Consumers run in-process here in Blueprint
+// Service because the lifecycle dispatcher resolves them from the local DI
+// container; they cannot live in their originating service's process.
+builder.Services.AddSingleton<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
+    Sorcha.Blueprint.Service.Services.Implementation.HaipPresentationConsumer>();
+
+// Feature 127 — Sorcha.Verifier.Engine dependencies the SorchaWalletPresentationConsumer
+// consumes. Production issuer-key resolution lands here (F120 → Blueprint Service):
+// the council-page credential gate verifies citizen-presented credentials against
+// the issuer's published DID document via DidResolverBackedIssuerKeyResolver, with
+// the JWK-registry resolver as a fallback for dev/demo flows that mint per-test
+// issuer keys without publishing a DID document. Verifier-DID resolution (the
+// client_id placeholder in SorchaWalletPresentationConsumer.BuildInitiationAsync)
+// is separate and still lands in Spec 5.
+builder.Services.AddHttpClient<Sorcha.Verifier.Engine.IStatusListCache,
+    Sorcha.Verifier.Engine.StatusListCache>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+
+// Feature 138 US1 — the council-gate verifier authenticates status lists against the issuer's
+// sealed-state key and fails closed. Metrics record rejections (FR-022); the configured clock skew
+// bounds freshness tolerance. The StatusListCache auto-injects the metrics via ActivatorUtilities.
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.FederationVerifierMetrics>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.FederationBlueprintMetrics>();
+var f138ClockSkew = TimeSpan.FromSeconds(
+    builder.Configuration.GetValue<int?>("Verifier:ClockSkewSeconds") ?? 60);
+var f138KbJwtMaxLifetime = TimeSpan.FromSeconds(
+    builder.Configuration.GetValue<int?>("Verifier:KbJwtMaxLifetimeSeconds") ?? 120);
+
+// Feature 120 — DID resolver infrastructure (cache, OTel meters, registry, did:sorcha
+// + did:web + did:key built-ins). Idempotent; safe even if a transitive dependency
+// has already registered the same components.
+Sorcha.ServiceClients.Http.Extensions.HttpServiceCollectionExtensions
+    .AddDidResolvers(builder.Services, builder.Configuration);
+
+// DidResolverBackedIssuerKeyResolver consumes the scoped IDidResolverRegistry, so it (and the
+// composite resolver + validator that depend on it) MUST be scoped — registering them as singletons
+// is a captive dependency that production DI validation (ValidateOnBuild) rejects at startup. Mirrors
+// the reference verifier's wiring (Sorcha.Verifier/Extensions/ServiceCollectionExtensions.cs, fixed in
+// #810). JwkRegistryIssuerKeyResolver holds no scoped dependency, so it stays a singleton.
+builder.Services.AddSingleton<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>();
+builder.Services.AddScoped<Sorcha.Verifier.Engine.DidResolverBackedIssuerKeyResolver>();
+builder.Services.AddScoped<Sorcha.Verifier.Engine.IIssuerKeyResolver>(sp =>
+    new Sorcha.Verifier.Engine.CompositeIssuerKeyResolver(
+    [
+        sp.GetRequiredService<Sorcha.Verifier.Engine.DidResolverBackedIssuerKeyResolver>(),
+        sp.GetRequiredService<Sorcha.Verifier.Engine.JwkRegistryIssuerKeyResolver>()
+    ]));
+builder.Services.AddScoped<Sorcha.Verifier.Engine.IVerifiablePresentationValidator>(sp =>
+    new Sorcha.Verifier.Engine.VerifiablePresentationValidator(
+        sp.GetRequiredService<Sorcha.Verifier.Engine.IStatusListCache>(),
+        sp.GetRequiredService<Sorcha.Verifier.Engine.IIssuerKeyResolver>(),
+        sp.GetRequiredService<TimeProvider>(),
+        sp.GetRequiredService<ILogger<Sorcha.Verifier.Engine.VerifiablePresentationValidator>>(),
+        requireIssuerSignature: builder.Configuration.GetValue<bool?>("IssuerSignature:Required") ?? true,
+        metrics: sp.GetService<Sorcha.Verifier.Engine.FederationVerifierMetrics>(),
+        clockSkew: f138ClockSkew,
+        kbJwtMaxLifetime: f138KbJwtMaxLifetime));
+
+// Feature 127 — Sorcha-wallet consumer. Verifies SD-JWT presentations posted
+// by the citizen's Sorcha wallet via Sorcha.Verifier.Engine. The first
+// non-HAIP IPresentationConsumer, implementing the new BuildInitiationAsync
+// extension on the consumer contract.
+// Scoped — it consumes the scoped IVerifiablePresentationValidator. The Scoped
+// PresentationLifecycleService resolves the IPresentationConsumer collection, so a scoped
+// consumer is valid alongside the singleton HaipPresentationConsumer above.
+builder.Services.AddScoped<Sorcha.PresentationLifecycle.Abstractions.IPresentationConsumer,
+    Sorcha.Blueprint.Service.Services.Implementation.SorchaWalletPresentationConsumer>();
+
+// Spec 5 — verifier-DID resolution. The lifecycle service resolves the council
+// org's canonical DID (blueprint.OrganizationId → GET /orgs/{id}/did.json) so the
+// OID4VP client_id carries a real verifier identity instead of did:sorcha:org:UNKNOWN.
+// Same Tenant base-address pattern as Wallet Service's F120 registration.
+builder.Services.AddHttpClient<Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient,
+    Sorcha.ServiceClients.OrgDidDocument.OrgDidDocumentClient>(client =>
+    {
+        client.BaseAddress = new Uri(
+            builder.Configuration["ServiceClients:TenantService:Address"]
+            ?? builder.Configuration["ServiceClients:Tenant:BaseAddress"]
+            ?? "http://tenant-service:8080");
+    });
+
+// Feature 127 — single-use ClaimsFetchToken store. Minted by InitiateAsync
+// (for Sorcha-wallet only); consumed atomically by the disclosed-claims
+// endpoint. Backed by Redis via the existing IConnectionMultiplexer the
+// F111 stores already share.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IClaimsFetchTokenStore,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisClaimsFetchTokenStore>();
+
+// Feature 127 — short-TTL plaintext stash of disclosed claims, written
+// alongside the outcome tx for the disclosed-claims endpoint to read.
+// Avoids re-decrypting the register tx on every council-page fetch.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IDisclosedClaimsStore,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisDisclosedClaimsStore>();
+
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.AbandonmentSweeper>();
+
+// Feature 119 — seal-aware ordering for chain-pointer-bearing presentation lifecycle
+// transactions. Singleton coordinator + BackgroundService subscriber on the existing
+// transaction:confirmed Redis Streams channel. See:
+//   docs/superpowers/specs/2026-05-08-feature-111-chain-races-design.md
+//   specs/119-presentation-seal-ordering/spec.md
+// CRITICAL: Blueprint Service MUST consume register events under its OWN consumer
+// group. Redis Streams consumer groups are competing-consumer: every service that
+// joins the same group name on a stream shares the messages (each delivered to ONE
+// member). The shared default "register-service" made Blueprint's reconstructor /
+// presentation-seal subscriber COMPETE with the Register Service's own SignalR
+// bridge on docket:confirmed + transaction:confirmed — so a docket:confirmed event
+// landed on the reconstructor only ~half the time and cross-node instance mirrors
+// were never materialised. A distinct group gives Blueprint its own copy of every
+// event (Validator Service already does this with "validator-service").
+builder.Services.AddRedisEventStreams(config =>
+{
+    builder.Configuration.GetSection("EventStreams:Redis").Bind(config);
+    config.ConsumerGroup = "blueprint-service";
+});
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator,
+    Sorcha.Blueprint.Service.Services.Implementation.RedisPresentationSealCoordinator>();
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.PresentationSealSubscriber>();
 
 // Feature 103 US1: Redis read-through cache for per-instance participant bindings.
 // Hot-path lookup for Instance.ParticipantWallets during action execution.
@@ -238,9 +392,6 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.ISchemaRefResolv
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
     Sorcha.Blueprint.Service.Services.Implementation.TransactionRetrievalService>();
 
-// Feature 047: Redis pub/sub → SignalR EventsHub bridge for inbound action notifications (US2)
-builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EventsHubNotificationBridge>();
-
 // Feature 106 Wave D — cross-node instance mirror reconstructor
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.InstanceMirrorReconstructorMetrics>();
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.InstanceMirrorReconstructor>();
@@ -250,12 +401,21 @@ builder.Services.Configure<Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOpt
     builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions.SectionName));
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.OrphanChunkCleanupService>();
 
-// Add SignalR (Sprint 5)
-// TODO: Add Redis backplane when Microsoft.AspNetCore.SignalR.StackExchangeRedis package is added
-builder.Services.AddSignalR(options =>
+// Feature 118 — multi-node hub fan-out via Redis backplane (US1).
+// AddSorchaHub wires JWT auth + Redis backplane (ChannelPrefix=sorcha:signalr:blueprint)
+// + reconnect-with-jitter + OpenTelemetry instrumentation, identically across services.
+// ChatHub is the deliberate exception (FR-005, FR-019) — RPC-streaming wire shape;
+// it does not register through AddSorchaHub but still inherits the backplane because
+// AddStackExchangeRedis applies to every hub in the service.
+builder.Services.AddSorchaHub<BlueprintHub, IBlueprintHubClient>(
+    builder.Configuration, "/hubs/blueprint", "blueprint");
+
+// AI tool execution can take 30-60+ seconds per turn with multiple continuation rounds.
+// Default 30s client timeout causes disconnects during long AI processing. The settings
+// here apply to ChatHub specifically, but HubOptions are global so notification hubs
+// inherit them too — that's fine, longer timeouts are conservative.
+builder.Services.Configure<HubOptions>(options =>
 {
-    // AI tool execution can take 30-60+ seconds per turn with multiple continuation rounds.
-    // Default 30s client timeout causes disconnects during long AI processing.
     options.ClientTimeoutInterval = TimeSpan.FromMinutes(3);
     options.KeepAliveInterval = TimeSpan.FromSeconds(15);
 });
@@ -263,6 +423,11 @@ builder.Services.AddSignalR(options =>
 // Add Notification service (Sprint 5)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.INotificationService,
     Sorcha.Blueprint.Service.Services.Implementation.NotificationService>();
+
+// Feature 118 / US3 follow-up — wire BlueprintInboxWriter so action-available
+// notifications also produce durable inbox entries via Tenant Service.
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Implementation.IBlueprintInboxWriter,
+    Sorcha.Blueprint.Service.Services.Implementation.BlueprintInboxWriter>();
 
 // Add AI-assisted Blueprint Chat services (Sprint 8)
 builder.Services.AddChatServices(builder.Configuration);
@@ -439,10 +604,11 @@ app.UseRateLimiting();
 // Add Delegation Token Middleware (Sprint 6 - Orchestration)
 app.UseMiddleware<Sorcha.Blueprint.Service.Middleware.DelegationTokenMiddleware>();
 
-// Map SignalR hubs (Sprint 5, Sprint 8)
-app.MapHub<Sorcha.Blueprint.Service.Hubs.ActionsHub>("/actionshub").RequireAuthorization();
+// Map SignalR hubs.
+// BlueprintHub mapped via MapSorchaHubs from the AddSorchaHub registry above.
+// ChatHub is the deliberate exception (FR-005, FR-019), mapped explicitly.
+app.MapSorchaHubs();
 app.MapHub<Sorcha.Blueprint.Service.Hubs.ChatHub>("/hubs/chat").RequireAuthorization();
-app.MapHub<Sorcha.Blueprint.Service.Hubs.EventsHub>("/hubs/events").RequireAuthorization();
 
 // Map Operations endpoints (045 Phase 7 - async encryption status)
 app.MapOperationsEndpoints();
@@ -1166,6 +1332,13 @@ actionsGroup.MapPost("/", async (
             TxId = txHashHex,
             RegisterId = request.RegisterAddress,
             SenderWallet = request.SenderWallet,
+            // RecipientsWallets parity with the action-executor path so the Register
+            // Service's InboundTransactionRouter can notify recipients on seal. The
+            // encryptedPayloads dictionary is keyed by recipient wallet address, so
+            // its keys ARE the recipients list. The action-executor path populates
+            // this via BuiltTransaction.RecipientsWallets; this legacy /api/actions
+            // POST entry point was dropping it.
+            RecipientsWallets = encryptedPayloads.Keys.ToList(),
             TimeStamp = DateTime.UtcNow,
             PrevTxId = previousTxId ?? string.Empty,
             MetaData = transaction.Metadata != null ?
@@ -1718,52 +1891,104 @@ instancesGroup.MapPost("/", async (
     CreateInstanceRequest request,
     Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
     IBlueprintStore blueprintStore,
+    IPublishedBlueprintStore publishedBlueprintStore,
     Sorcha.ServiceClients.Register.IRegisterServiceClient registerClient) =>
 {
     try
     {
-        // Validate blueprint exists
+        // Resolve the blueprint. The draft/editable store only exists on the node that
+        // authored the blueprint; a replica (Feature 137 / C1) holds it solely in the
+        // published (replicated) store. Try the draft store first, then fall back to the
+        // latest published version so instance creation works on a node that does not own
+        // the register.
         var blueprint = await blueprintStore.GetAsync(request.BlueprintId);
+        var resolvedVersion = 1;
         if (blueprint == null)
         {
-            return Results.BadRequest(new { error = "Blueprint not found" });
+            var publishedVersions = await publishedBlueprintStore.GetVersionsAsync(request.BlueprintId);
+            var latest = PublishedBlueprintSelector.SelectLatest(publishedVersions);
+            if (latest != null)
+            {
+                blueprint = latest.Blueprint;
+                resolvedVersion = latest.Version;
+            }
         }
 
-        // Ensure the blueprint publish transaction exists on the register.
-        // Action 0 chains from this TX, so it must be created before any actions execute.
-        // The Register Service endpoint is idempotent — safe to call on every instance creation.
+        if (blueprint == null)
+        {
+            // Not in either store. On a replica this usually means the register's blueprints
+            // have not finished replicating yet (event-driven recovery is in flight), so
+            // surface a typed, retryable state rather than a bare 400 "not found".
+            return Results.Json(
+                new
+                {
+                    error = "blueprint_not_available",
+                    blueprintId = request.BlueprintId,
+                    registerId = request.RegisterId,
+                    message = "Blueprint is not available on this node yet. If the register was recently synced, retry shortly."
+                },
+                statusCode: StatusCodes.Status409Conflict);
+        }
+
+        // Ensure the blueprint publish transaction exists on the register. Action 0 chains
+        // from this TX, so it must exist before any actions execute. Feature 137 (C1): ONLY
+        // the register owner publishes — a replica must never (re)publish onto a register it
+        // does not own (the publish tx already arrived via replication). The Register Service
+        // endpoint is idempotent, so the owner can safely call it on every instance creation.
+        var isOwner = false;
         try
         {
-            var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint, new System.Text.Json.JsonSerializerOptions
-            {
-                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-                WriteIndented = false
-            });
-
-            var published = await registerClient.PublishBlueprintToRegisterAsync(
-                request.RegisterId,
-                request.BlueprintId,
-                blueprintJson,
-                request.TenantId ?? "system");
-
-            if (!published)
-            {
-                logger.LogWarning(
-                    "Failed to publish blueprint {BlueprintId} to register {RegisterId} during instance creation",
-                    request.BlueprintId, request.RegisterId);
-            }
-            else
-            {
-                logger.LogInformation(
-                    "Blueprint {BlueprintId} published to register {RegisterId} for instance creation",
-                    request.BlueprintId, request.RegisterId);
-            }
+            var relationship = await registerClient.GetLocalRelationshipAsync(request.RegisterId);
+            isOwner = relationship?.IsOwner == true;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex,
-                "Non-fatal: Could not publish blueprint {BlueprintId} to register {RegisterId}",
-                request.BlueprintId, request.RegisterId);
+                "Could not resolve local relationship for register {RegisterId}; treating as non-owner (skipping publish)",
+                request.RegisterId);
+        }
+
+        if (isOwner)
+        {
+            try
+            {
+                var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+                    WriteIndented = false
+                });
+
+                var published = await registerClient.PublishBlueprintToRegisterAsync(
+                    request.RegisterId,
+                    request.BlueprintId,
+                    blueprintJson,
+                    request.TenantId ?? "system");
+
+                if (!published)
+                {
+                    logger.LogWarning(
+                        "Failed to publish blueprint {BlueprintId} to register {RegisterId} during instance creation",
+                        request.BlueprintId, request.RegisterId);
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Blueprint {BlueprintId} published to register {RegisterId} for instance creation",
+                        request.BlueprintId, request.RegisterId);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Non-fatal: Could not publish blueprint {BlueprintId} to register {RegisterId}",
+                    request.BlueprintId, request.RegisterId);
+            }
+        }
+        else
+        {
+            logger.LogDebug(
+                "Skipping blueprint publish for register {RegisterId}: this node is not the owner (replica path)",
+                request.RegisterId);
         }
 
         // Find starting actions
@@ -1792,7 +2017,7 @@ instancesGroup.MapPost("/", async (
         {
             Id = Guid.NewGuid().ToString(),
             BlueprintId = request.BlueprintId,
-            BlueprintVersion = 1, // TODO: Get actual published version
+            BlueprintVersion = resolvedVersion,
             RegisterId = request.RegisterId,
             CurrentActionIds = startingActions,
             ParticipantWallets = participantWallets,
@@ -2969,6 +3194,40 @@ public class PublishService(
                                 $"is marked 'x-credential-offer: true' but does not declare 'credential_offer_uri' in its required list. " +
                                 $"The credential claim card cannot render without the offer URI — add it to required to fail fast at publish time.");
                         }
+                    }
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // Malformed schema — other rules will surface this
+                }
+            }
+        }
+
+        // Rule 7d (Feature 107, Issue #337): x-review.layout typo detection.
+        //
+        //   WARN_BP_REVIEW_001 — non-blocking warning. SchemaLayoutParser silently falls
+        //                        back to id-card when an x-review.layout value isn't in
+        //                        the known set. Without this rule a blueprint author who
+        //                        types "hologram" instead of "id-card" gets no signal
+        //                        that their declaration was ignored.
+        //
+        // Implementation calls SchemaLayoutParser.EnumerateUnknownReviewLayouts so the
+        // canonical layout-name set lives in exactly one place.
+        foreach (var action in blueprint.Actions)
+        {
+            if (action.DataSchemas is null) continue;
+            foreach (var schemaDoc in action.DataSchemas)
+            {
+                try
+                {
+                    foreach (var unknownLayout in
+                        Sorcha.Blueprint.Models.SchemaLayoutParser.EnumerateUnknownReviewLayouts(schemaDoc.RootElement))
+                    {
+                        warnings.Add(
+                            $"[{Sorcha.Blueprint.Models.ValidationWarningCodes.ReviewLayoutUnknown}] " +
+                            $"Action {action.Id} ('{action.Title}'): x-review.layout value '{unknownLayout}' " +
+                            $"is not a recognised variant. Renderer falls back to 'id-card'. " +
+                            $"Known variants: {string.Join(", ", Sorcha.Blueprint.Models.SchemaLayoutParser.KnownReviewLayoutVariants)}.");
                     }
                 }
                 catch (System.Text.Json.JsonException)

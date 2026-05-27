@@ -1,0 +1,73 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+   Feature 141 — wallet Home hero. Gradient bleed + clip-path + grid texture
+   from design/wallet.jsx BoldScreen. */
+
+.wallet-hero {
+    position: relative;
+    color: #fff;
+    /* Pull the following content up under the clipped lower edge so the card
+       stack / first card overlaps the hero (handoff: body marginTop -8). */
+    margin-bottom: -8px;
+    padding-bottom: 8px;
+}
+
+.wallet-hero__bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, #667eea 0%, #764ba2 70%, #3d2c6b 100%);
+    clip-path: polygon(0 0, 100% 0, 100% 78%, 0 100%);
+    z-index: 0;
+}
+
+.wallet-hero--dark .wallet-hero__bg {
+    background: linear-gradient(160deg, #667eea 0%, #764ba2 70%, #1a0d2e 100%);
+}
+
+.wallet-hero__grid {
+    position: absolute;
+    inset: 0;
+    opacity: .08;
+    pointer-events: none;
+}
+
+.wallet-hero__content {
+    position: relative;
+    z-index: 1;
+    padding: 8px 16px 26px;
+}
+
+.wallet-hero__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 40px;
+}
+
+.wallet-hero__copy {
+    padding: 12px 4px 0;
+}
+
+.wallet-hero__eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    opacity: .75;
+}
+
+.wallet-hero__headline {
+    margin: 6px 0 0;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+}
+
+.wallet-hero__subtitle {
+    margin: 6px 0 0;
+    font-size: 13px;
+    opacity: .82;
+    line-height: 1.4;
+}

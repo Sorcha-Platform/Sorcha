@@ -1,237 +1,181 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net;
-using System.Text.Json;
-using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Moq;
-using Moq.Protected;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Participant;
+using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
+using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.McpServer.Tests.Tools.Participant;
 
+/// <summary>
+/// Spec 139 US4: TransactionHistoryTool reads via the typed <see cref="IRegisterServiceClient"/>
+/// (routes pinned, caller token forwarded), so these tests mock the client rather than HTTP.
+/// </summary>
 public sealed class TransactionHistoryToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
-    private readonly Mock<IMcpAuthorizationService> _authServiceMock;
-    private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
-    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
-    private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
-    private readonly Mock<ILogger<TransactionHistoryTool>> _loggerMock;
-    private readonly IConfiguration _configuration;
-    private readonly TransactionHistoryTool _tool;
+    private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
+    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
+    private readonly Mock<IRegisterServiceClient> _registerClientMock = new();
 
-    public TransactionHistoryToolTests()
+    private TransactionHistoryTool CreateTool() => new(
+        _authServiceMock.Object,
+        _availabilityTrackerMock.Object,
+        _registerClientMock.Object,
+        Mock.Of<ILogger<TransactionHistoryTool>>());
+
+    private void Allow()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
-        _authServiceMock = new Mock<IMcpAuthorizationService>();
-        _errorHandlerMock = new Mock<IMcpErrorHandler>();
-        _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
-        _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _loggerMock = new Mock<ILogger<TransactionHistoryTool>>();
-
-        _configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ServiceClients:RegisterService:Address"] = "http://localhost:5290"
-            })
-            .Build();
-
-        _tool = new TransactionHistoryTool(
-            _sessionServiceMock.Object,
-            _authServiceMock.Object,
-            _errorHandlerMock.Object,
-            _availabilityTrackerMock.Object,
-            _httpClientFactoryMock.Object,
-            _configuration,
-            _loggerMock.Object);
+        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
+        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
     }
+
+    private static TransactionModel Tx(string txId, string register, string? instance, uint? action, string sender) => new()
+    {
+        TxId = txId,
+        RegisterId = register,
+        SenderWallet = sender,
+        Signature = "sig...",
+        TimeStamp = DateTime.UtcNow,
+        MetaData = new TransactionMetaData
+        {
+            TransactionType = TransactionType.Action,
+            InstanceId = instance,
+            ActionId = action
+        }
+    };
 
     [Fact]
     public async Task GetTransactionHistoryAsync_WhenUnauthorized_ReturnsUnauthorizedStatus()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(false);
 
-        // Act
-        var result = await _tool.GetTransactionHistoryAsync();
+        var result = await CreateTool().GetTransactionHistoryAsync("reg-1");
 
-        // Assert
         result.Status.Should().Be("Unauthorized");
         result.Message.Should().Contain("sorcha:participant");
     }
 
     [Fact]
+    public async Task GetTransactionHistoryAsync_EmptyRegisterId_ReturnsErrorStatus()
+    {
+        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
+
+        var result = await CreateTool().GetTransactionHistoryAsync("");
+
+        result.Status.Should().Be("Error");
+        result.Message.Should().Contain("required");
+    }
+
+    [Fact]
     public async Task GetTransactionHistoryAsync_WhenServiceUnavailable_ReturnsUnavailableStatus()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
         _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(false);
 
-        // Act
-        var result = await _tool.GetTransactionHistoryAsync();
+        var result = await CreateTool().GetTransactionHistoryAsync("reg-1");
 
-        // Assert
         result.Status.Should().Be("Unavailable");
         result.Message.Should().Contain("Register service");
     }
 
     [Fact]
-    public async Task GetTransactionHistoryAsync_WithSuccessfulResponse_ReturnsTransactions()
+    public async Task GetTransactionHistoryAsync_RegisterWide_ReturnsPagedTransactions()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        var response = new
-        {
-            items = new[]
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync("register-123", 1, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionPage
             {
-                new
-                {
-                    transactionId = "tx-1",
-                    registerId = "register-123",
-                    workflowInstanceId = "wf-1",
-                    actionId = 1,
-                    transactionType = "Action",
-                    submitter = "addr-1",
-                    timestamp = DateTimeOffset.UtcNow.AddHours(-2),
-                    signature = "sig1..."
-                },
-                new
-                {
-                    transactionId = "tx-2",
-                    registerId = "register-123",
-                    workflowInstanceId = "wf-1",
-                    actionId = 2,
-                    transactionType = "Action",
-                    submitter = "addr-2",
-                    timestamp = DateTimeOffset.UtcNow.AddHours(-1),
-                    signature = "sig2..."
-                }
-            },
-            totalCount = 2,
-            page = 1,
-            pageSize = 20,
-            totalPages = 1
-        };
+                Page = 1,
+                PageSize = 20,
+                Total = 2,
+                Transactions =
+                [
+                    Tx("tx-1", "register-123", "wf-1", 1, "addr-1"),
+                    Tx("tx-2", "register-123", "wf-1", 2, "addr-2")
+                ]
+            });
 
-        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        var result = await CreateTool().GetTransactionHistoryAsync("register-123");
 
-        // Act
-        var result = await _tool.GetTransactionHistoryAsync();
-
-        // Assert
         result.Status.Should().Be("Success");
         result.Transactions.Should().HaveCount(2);
         result.Transactions[0].TransactionId.Should().Be("tx-1");
         result.Transactions[0].TransactionType.Should().Be("Action");
+        result.Transactions[0].WorkflowInstanceId.Should().Be("wf-1");
+        result.Transactions[0].ActionId.Should().Be(1);
+        result.Transactions[0].Submitter.Should().Be("addr-1");
         result.TotalCount.Should().Be(2);
+        _availabilityTrackerMock.Verify(x => x.RecordSuccess("Register"), Times.Once);
     }
 
     [Fact]
-    public async Task GetTransactionHistoryAsync_WithEmptyHistory_ReturnsSuccessWithEmptyList()
+    public async Task GetTransactionHistoryAsync_EmptyHistory_ReturnsSuccessWithEmptyList()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        var response = new { items = Array.Empty<object>(), totalCount = 0, page = 1, pageSize = 20, totalPages = 0 };
-        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync("register-123", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionPage { Page = 1, PageSize = 20, Total = 0, Transactions = [] });
 
-        // Act
-        var result = await _tool.GetTransactionHistoryAsync();
+        var result = await CreateTool().GetTransactionHistoryAsync("register-123");
 
-        // Assert
         result.Status.Should().Be("Success");
         result.Transactions.Should().BeEmpty();
         result.Message.Should().Contain("0 transaction");
     }
 
     [Fact]
-    public async Task GetTransactionHistoryAsync_WithWorkflowFilter_PassesCorrectParameter()
+    public async Task GetTransactionHistoryAsync_WithWorkflowFilter_UsesInstanceRead()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        var response = new { items = Array.Empty<object>(), totalCount = 0, page = 1, pageSize = 20, totalPages = 0 };
-        var handlerMock = SetupHttpClientWithCapture(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        _registerClientMock
+            .Setup(c => c.GetTransactionsByInstanceIdAsync("reg-1", "wf-456", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Tx("tx-1", "reg-1", "wf-456", 1, "addr-1")]);
 
-        // Act
-        await _tool.GetTransactionHistoryAsync(workflowInstanceId: "wf-456");
+        var result = await CreateTool().GetTransactionHistoryAsync("reg-1", workflowInstanceId: "wf-456");
 
-        // Assert
-        handlerMock.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(req =>
-                req.RequestUri!.ToString().Contains("workflowInstanceId=wf-456")),
-            ItExpr.IsAny<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task GetTransactionHistoryAsync_WithRegisterFilter_PassesCorrectParameter()
-    {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
-
-        var response = new { items = Array.Empty<object>(), totalCount = 0, page = 1, pageSize = 20, totalPages = 0 };
-        var handlerMock = SetupHttpClientWithCapture(HttpStatusCode.OK, JsonSerializer.Serialize(response));
-
-        // Act
-        await _tool.GetTransactionHistoryAsync(registerId: "reg-789");
-
-        // Assert
-        handlerMock.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(req =>
-                req.RequestUri!.ToString().Contains("registerId=reg-789")),
-            ItExpr.IsAny<CancellationToken>());
+        result.Status.Should().Be("Success");
+        result.Transactions.Should().HaveCount(1);
+        result.Transactions[0].WorkflowInstanceId.Should().Be("wf-456");
+        _registerClientMock.Verify(
+            c => c.GetTransactionsByInstanceIdAsync("reg-1", "wf-456", It.IsAny<CancellationToken>()), Times.Once);
+        _registerClientMock.Verify(
+            c => c.GetTransactionsAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task GetTransactionHistoryAsync_WithPagination_PassesCorrectParameters()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        var response = new { items = Array.Empty<object>(), totalCount = 0, page = 3, pageSize = 25, totalPages = 0 };
-        var handlerMock = SetupHttpClientWithCapture(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync("reg-1", 3, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionPage { Page = 3, PageSize = 25, Total = 0, Transactions = [] });
 
-        // Act
-        await _tool.GetTransactionHistoryAsync(page: 3, pageSize: 25);
+        await CreateTool().GetTransactionHistoryAsync("reg-1", page: 3, pageSize: 25);
 
-        // Assert
-        handlerMock.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(req =>
-                req.RequestUri!.ToString().Contains("page=3") &&
-                req.RequestUri.ToString().Contains("pageSize=25")),
-            ItExpr.IsAny<CancellationToken>());
+        _registerClientMock.Verify(
+            c => c.GetTransactionsAsync("reg-1", 3, 25, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task GetTransactionHistoryAsync_WithTimeout_ReturnsTimeoutStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        SetupHttpClientWithException(new TaskCanceledException());
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TaskCanceledException());
 
-        // Act
-        var result = await _tool.GetTransactionHistoryAsync();
+        var result = await CreateTool().GetTransactionHistoryAsync("reg-1");
 
-        // Assert
         result.Status.Should().Be("Timeout");
         _availabilityTrackerMock.Verify(x => x.RecordFailure("Register"), Times.Once);
     }
@@ -239,68 +183,15 @@ public sealed class TransactionHistoryToolTests
     [Fact]
     public async Task GetTransactionHistoryAsync_WithHttpException_ReturnsErrorStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_transaction_history")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Register")).Returns(true);
+        Allow();
 
-        SetupHttpClientWithException(new HttpRequestException("Connection refused"));
+        _registerClientMock
+            .Setup(c => c.GetTransactionsAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
 
-        // Act
-        var result = await _tool.GetTransactionHistoryAsync();
+        var result = await CreateTool().GetTransactionHistoryAsync("reg-1");
 
-        // Assert
         result.Status.Should().Be("Error");
         result.Message.Should().Contain("Connection refused");
-    }
-
-    private void SetupHttpClient(HttpStatusCode statusCode, string content)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = statusCode,
-                Content = new StringContent(content)
-            });
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
-    }
-
-    private Mock<HttpMessageHandler> SetupHttpClientWithCapture(HttpStatusCode statusCode, string content)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = statusCode,
-                Content = new StringContent(content)
-            });
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
-        return handlerMock;
-    }
-
-    private void SetupHttpClientWithException(Exception exception)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ThrowsAsync(exception);
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
     }
 }

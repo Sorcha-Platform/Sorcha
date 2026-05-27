@@ -1408,28 +1408,43 @@ public class RegisterServiceClient : IRegisterServiceClient
 
     private record WriteDocketRequest
     {
+        /// <summary>Identifier of the docket.</summary>
         public required string DocketId { get; init; }
+        /// <summary>Numeric value for docket number.</summary>
         public required long DocketNumber { get; init; }
+        /// <summary>The previous hash.</summary>
         public string? PreviousHash { get; init; }
+        /// <summary>The docket hash.</summary>
         public required string DocketHash { get; init; }
+        /// <summary>Server timestamp when the record was created (UTC).</summary>
         public required DateTimeOffset CreatedAt { get; init; }
+        /// <summary>Collection of transaction ids associated with this resource.</summary>
         public required List<string> TransactionIds { get; init; }
+        /// <summary>Identifier of the proposer validator.</summary>
         public required string ProposerValidatorId { get; init; }
+        /// <summary>The merkle root.</summary>
         public required string MerkleRoot { get; init; }
+        /// <summary>Collection of transactions associated with this resource.</summary>
         public List<Sorcha.Register.Models.TransactionModel>? Transactions { get; init; }
     }
 
     private record CreateRegisterRequest
     {
+        /// <summary>Human-readable name.</summary>
         public required string Name { get; init; }
+        /// <summary>Flag indicating advertise.</summary>
         public bool Advertise { get; init; } = false;
+        /// <summary>Indicates whether full replica.</summary>
         public bool IsFullReplica { get; init; } = true;
     }
 
     private record PublishBlueprintRequest
     {
+        /// <summary>Identifier of the blueprint.</summary>
         public required string BlueprintId { get; init; }
+        /// <summary>The blueprint json.</summary>
         public required string BlueprintJson { get; init; }
+        /// <summary>The published by.</summary>
         public required string PublishedBy { get; init; }
     }
 
@@ -1571,21 +1586,33 @@ public class RegisterServiceClient : IRegisterServiceClient
 
     private record PrevTxIdQueryResponse
     {
+        /// <summary>Collection of items in the result set.</summary>
         public List<TransactionModel> Items { get; init; } = [];
+        /// <summary>One-based page number for paginated results.</summary>
         public int Page { get; init; }
+        /// <summary>Number of items per page.</summary>
         public int PageSize { get; init; }
+        /// <summary>Total number of items available.</summary>
         public int TotalCount { get; init; }
+        /// <summary>Numeric value for total pages.</summary>
         public int TotalPages { get; init; }
     }
 
     private record DocketResponse
     {
+        /// <summary>Unique identifier for the resource.</summary>
         public ulong Id { get; init; }
+        /// <summary>Identifier of the register.</summary>
         public string RegisterId { get; init; } = string.Empty;
+        /// <summary>The previous hash.</summary>
         public string PreviousHash { get; init; } = string.Empty;
+        /// <summary>Cryptographic hash of the payload.</summary>
         public string Hash { get; init; } = string.Empty;
+        /// <summary>Collection of transaction ids associated with this resource.</summary>
         public List<string> TransactionIds { get; init; } = [];
+        /// <summary>Timestamp associated with this record (UTC).</summary>
         public DateTimeOffset TimeStamp { get; init; }
+        /// <summary>The votes.</summary>
         public string? Votes { get; init; }
     }
 
@@ -1720,7 +1747,7 @@ public class RegisterServiceClient : IRegisterServiceClient
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<string>> GetMyValidatedRegistersAsync(
+    public async Task<IReadOnlyList<string>?> GetMyValidatedRegistersAsync(
         byte[] validatorPublicKey,
         CancellationToken cancellationToken = default)
     {
@@ -1738,20 +1765,281 @@ public class RegisterServiceClient : IRegisterServiceClient
             var response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                // Return null (NOT empty) — empty means "validator is on no rosters" and would
+                // cause RegisterMonitoringBootstrap to prune every monitored register. A
+                // transient HTTP failure must NOT trigger a prune. See issue #787 for the
+                // original wedge incident.
                 _logger.LogWarning(
                     "GetMyValidatedRegistersAsync failed: {StatusCode}", response.StatusCode);
-                return Array.Empty<string>();
+                return null;
             }
 
             var payload = await response.Content.ReadFromJsonAsync<MyValidatedRegistersResponse>(JsonOptions, cancellationToken);
-            return payload?.RegisterIds ?? Array.Empty<string>();
+            // A successful response with a null/missing RegisterIds field is treated as an empty
+            // set (validator legitimately on no rosters), not a failure.
+            return (IReadOnlyList<string>)(payload?.RegisterIds ?? Array.Empty<string>());
         }
         catch (Exception ex)
         {
+            // Return null on any exception — same rationale as the HTTP-failure branch above.
             _logger.LogError(ex, "Failed to enumerate validated registers for local validator key");
-            return Array.Empty<string>();
+            return null;
         }
     }
 
     private sealed record MyValidatedRegistersResponse(IReadOnlyList<string> RegisterIds);
+
+    /// <inheritdoc />
+    public async Task<RegisterStatsResponse> GetStatsAsync(
+        IReadOnlyList<string>? registerIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Feature 131 — anonymous endpoint (no SetAuthHeaderAsync). When
+            // registerIds is non-empty, append as a comma-separated query string;
+            // entries are URL-encoded individually to defend against odd id chars.
+            var url = "api/stats";
+            if (registerIds is { Count: > 0 })
+            {
+                var joined = string.Join(",", registerIds.Select(Uri.EscapeDataString));
+                url = $"{url}?registerIds={joined}";
+            }
+
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetStatsAsync failed: {StatusCode}", response.StatusCode);
+                return new RegisterStatsResponse();
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<RegisterStatsResponse>(
+                JsonOptions, cancellationToken);
+            return payload ?? new RegisterStatsResponse();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch register statistics");
+            return new RegisterStatsResponse();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<RegisterTransactionStatistics?> GetRegisterTransactionStatsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/query/stats?registerId={Uri.EscapeDataString(registerId)}",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetRegisterTransactionStatsAsync failed for {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RegisterTransactionStatistics>(
+                JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch transaction statistics for register {RegisterId}", registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RegisterSummaryInfo>> GetRecentRegistersAsync(
+        int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync("api/registers/", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("GetRecentRegistersAsync failed: {StatusCode}", response.StatusCode);
+                return [];
+            }
+
+            var registers = await response.Content.ReadFromJsonAsync<List<RegisterSummaryInfo>>(
+                JsonOptions, cancellationToken);
+
+            if (registers == null)
+            {
+                return [];
+            }
+
+            return registers
+                .OrderByDescending(r => r.CreatedAt)
+                .Take(limit < 1 ? 10 : limit)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch recent registers");
+            return [];
+        }
+    }
+
+    // =========================================================================
+    // Feature 079 — Transaction verification + lifecycle (Feature 140 MCP surface)
+    // =========================================================================
+
+    /// <inheritdoc />
+    public async Task<TransactionStatusResponse?> GetTransactionStatusAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/transactions/{Uri.EscapeDataString(transactionId)}/status",
+                cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetTransactionStatusAsync failed for {TransactionId} on register {RegisterId}: {StatusCode}",
+                    transactionId, registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<TransactionStatusResponse>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get transaction status for {TransactionId} on register {RegisterId}",
+                transactionId, registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<MerkleInclusionProof?> GetInclusionProofAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/transactions/{Uri.EscapeDataString(transactionId)}/inclusion-proof",
+                cancellationToken);
+
+            // 404 (no such tx) and 409 (not sealed yet) both map to "no proof available".
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Conflict)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetInclusionProofAsync failed for {TransactionId} on register {RegisterId}: {StatusCode}",
+                    transactionId, registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<MerkleInclusionProof>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get inclusion proof for {TransactionId} on register {RegisterId}",
+                transactionId, registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<VerificationBundle?> GetVerificationBundleAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/transactions/{Uri.EscapeDataString(transactionId)}/verification-bundle",
+                cancellationToken);
+
+            // 404 (no such tx) and 409 (not sealed yet) both map to "no bundle available".
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Conflict)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetVerificationBundleAsync failed for {TransactionId} on register {RegisterId}: {StatusCode}",
+                    transactionId, registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<VerificationBundle>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get verification bundle for {TransactionId} on register {RegisterId}",
+                transactionId, registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<RevokeTransactionResult?> RevokeTransactionAsync(
+        string registerId,
+        RevokeTransactionClientRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.PostAsJsonAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/transactions/revoke",
+                request,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "RevokeTransactionAsync failed for {TransactionId} on register {RegisterId}: {StatusCode} - {Error}",
+                    request.OriginalTxId, registerId, response.StatusCode, error);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RevokeTransactionResult>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to revoke transaction {TransactionId} on register {RegisterId}",
+                request.OriginalTxId, registerId);
+            return null;
+        }
+    }
 }

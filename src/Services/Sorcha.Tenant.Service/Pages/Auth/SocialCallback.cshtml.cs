@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
+using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -28,6 +29,7 @@ public class SocialCallbackModel : PageModel
     private readonly IWelcomeEmailDispatcher _welcomeDispatcher;
     private readonly TenantDbContext _db;
     private readonly ILogger<SocialCallbackModel> _logger;
+    private readonly IPlatformUserDeviceService _deviceService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SocialCallbackModel"/> class.
@@ -40,7 +42,8 @@ public class SocialCallbackModel : PageModel
         ITokenService tokenService,
         IWelcomeEmailDispatcher welcomeDispatcher,
         TenantDbContext db,
-        ILogger<SocialCallbackModel> logger)
+        ILogger<SocialCallbackModel> logger,
+        IPlatformUserDeviceService deviceService)
     {
         _socialLoginService = socialLoginService;
         _platformUserService = platformUserService;
@@ -50,6 +53,7 @@ public class SocialCallbackModel : PageModel
         _welcomeDispatcher = welcomeDispatcher;
         _db = db;
         _logger = logger;
+        _deviceService = deviceService;
     }
 
     /// <summary>
@@ -102,6 +106,7 @@ public class SocialCallbackModel : PageModel
         // returns the resolved provider on the result.
         var callbackResult = await _socialLoginService.ExchangeCodeAsync(string.Empty, code, state, ct);
         var provider = callbackResult.Provider;
+        var isWallet = IsWalletSurface(callbackResult.Surface);
 
         if (!callbackResult.Success || string.IsNullOrEmpty(callbackResult.Subject))
         {
@@ -120,8 +125,9 @@ public class SocialCallbackModel : PageModel
             return Page();
         }
 
-        // Resolve or create PlatformUser under the strict link policy
-        var resolveResult = await _platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, ct);
+        // Resolve or create PlatformUser under the strict link policy.
+        // Wallet surface is login-only — do not create new accounts via social sign-in.
+        var resolveResult = await _platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, allowCreate: !isWallet, ct);
 
         // Refusal handling (feature 115 FR-016, FR-018)
         if (resolveResult.Refusal != SocialLoginRefusal.None)
@@ -142,6 +148,11 @@ public class SocialCallbackModel : PageModel
                 provider, resolveResult.Refusal, emailTag);
 
             SocialLoginMetrics.RecordRefusal(provider, resolveResult.Refusal);
+            if (isWallet)
+            {
+                var errorCode = resolveResult.Refusal == SocialLoginRefusal.NoExistingAccount ? "no_account" : "refused";
+                return Redirect(BuildWalletSignInError(errorCode));
+            }
             return Page();
         }
 
@@ -190,7 +201,10 @@ public class SocialCallbackModel : PageModel
             return Page();
         }
 
-        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, ct);
+        var mintTier = isWallet
+            ? Tier.Consumer
+            : Tier.Platform;
+        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, mintTier, ct);
 
         _logger.LogInformation("Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",
             platformUser.Id, provider, isNew);
@@ -200,9 +214,26 @@ public class SocialCallbackModel : PageModel
         // Idempotent + non-throwing by design.
         await _welcomeDispatcher.SendIfPendingAsync(platformUser, ct);
 
-        // Redirect to app with token in fragment
+        if (isWallet)
+        {
+            // Wallet PWA: hand tokens back via the /wallet fragment. No SetupAddDevice
+            // returnUrl here — that route lives in the /app web client, not the PWA;
+            // the PWA handles "no device yet" with its own PairingTakeover overlay
+            // (a /setup/add-device returnUrl would 404 in the wallet).
+            return Redirect(BuildWalletRedirect(tokens.AccessToken, tokens.RefreshToken, tokens.ExpiresIn, returnUrl: null));
+        }
+
+        // Redirect to app with token in fragment.
+        // Feature 128 US2 — same FR-020 routing-gate contract as Login.cshtml.cs.
+        // Social flow has no user-provided ReturnUrl, so the gate is the only
+        // decision point. The /app/ prefix is load-bearing — see
+        // SetupAddDeviceRoutingGate XML doc.
         var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
                        $"&refresh={Uri.EscapeDataString(tokens.RefreshToken)}";
+        if (await SetupAddDeviceRoutingGate.ShouldRouteAsync(tokens.AccessToken, _deviceService, _logger, ct))
+        {
+            fragment += $"&returnUrl={Uri.EscapeDataString(SetupAddDeviceRoutingGate.SetupAddDevicePath)}";
+        }
         return Redirect($"/app/#{fragment}");
     }
 
@@ -225,4 +256,27 @@ public class SocialCallbackModel : PageModel
             System.Text.Encoding.UTF8.GetBytes(email.ToLowerInvariant()));
         return Convert.ToHexString(bytes.AsSpan(0, 4)).ToLowerInvariant();
     }
+
+    /// <summary>True when the social flow originated from the citizen wallet PWA.</summary>
+    internal static bool IsWalletSurface(string? surface)
+        => string.Equals(surface, "wallet", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Builds the wallet fragment-return URL. The PWA's auth-fragment.js reads
+    /// token/refresh/expires_in from the hash on load. Base-relative /wallet/ —
+    /// the PWA is mounted under that prefix at the gateway.
+    /// </summary>
+    internal static string BuildWalletRedirect(string accessToken, string refreshToken, int expiresIn, string? returnUrl)
+    {
+        var fragment = $"token={Uri.EscapeDataString(accessToken)}" +
+                       $"&refresh={Uri.EscapeDataString(refreshToken)}" +
+                       $"&expires_in={expiresIn}";
+        if (!string.IsNullOrEmpty(returnUrl))
+            fragment += $"&returnUrl={Uri.EscapeDataString(returnUrl)}";
+        return $"/wallet/#{fragment}";
+    }
+
+    /// <summary>Routes a wallet-surface failure/refusal back to the PWA sign-in screen.</summary>
+    internal static string BuildWalletSignInError(string code)
+        => $"/wallet/signin?authError={Uri.EscapeDataString(code)}";
 }

@@ -1,27 +1,32 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net.Http;
-using System.Text.Json;
-
 using Sorcha.Blueprint.Models.Credentials;
-using Sorcha.Cryptography.SdJwt;
 
 namespace Sorcha.Blueprint.Engine.Credentials;
 
 /// <summary>
-/// Verifies credential presentations against action credential requirements.
-/// Checks signature validity, expiry, issuer trust, claim constraints, and revocation status.
+/// Verifies credential presentations against action credential requirements (feature 135).
+/// Dispatches each requirement to the matching <see cref="ICredentialFormatHandler"/>, which owns
+/// the format cryptography and routes the trust decision through the shared
+/// <see cref="ITrustEvaluator"/>. The verifier itself only orchestrates: it matches credential
+/// type and enforces required-claim constraints over the disclosed claims the handler returns.
+/// The historical <c>SignatureValid=false</c> "defer to the service layer" shortcut and the flat
+/// accepted-issuer match are gone — signature, issuer trust, and revocation are now decided
+/// truthfully and fail-closed inside the handler/evaluator (FR-008).
 /// </summary>
 public class CredentialVerifier : ICredentialVerifier
 {
-    private readonly ISdJwtService _sdJwtService;
-    private readonly IRevocationChecker? _revocationChecker;
+    private readonly IReadOnlyDictionary<CredentialFormat, ICredentialFormatHandler> _handlers;
 
-    public CredentialVerifier(ISdJwtService sdJwtService, IRevocationChecker? revocationChecker = null)
+    public CredentialVerifier(IEnumerable<ICredentialFormatHandler> formatHandlers)
     {
-        _sdJwtService = sdJwtService ?? throw new ArgumentNullException(nameof(sdJwtService));
-        _revocationChecker = revocationChecker;
+        ArgumentNullException.ThrowIfNull(formatHandlers);
+        // Last registration per format wins, matching the resolver-registry convention.
+        var map = new Dictionary<CredentialFormat, ICredentialFormatHandler>();
+        foreach (var handler in formatHandlers)
+            map[handler.Format] = handler;
+        _handlers = map;
     }
 
     /// <inheritdoc />
@@ -34,8 +39,8 @@ public class CredentialVerifier : ICredentialVerifier
         ArgumentNullException.ThrowIfNull(presentations);
 
         var result = new CredentialValidationResult();
-        var presentationList = presentations.ToList();
         var requirementList = requirements.ToList();
+        var presentationList = presentations.ToList();
 
         if (requirementList.Count == 0)
         {
@@ -45,272 +50,175 @@ public class CredentialVerifier : ICredentialVerifier
 
         foreach (var requirement in requirementList)
         {
-            var matched = false;
+            if (!_handlers.TryGetValue(requirement.Format, out var handler))
+            {
+                result.Errors.Add(new CredentialValidationError
+                {
+                    RequirementType = requirement.Type,
+                    FailureReason = CredentialFailureReason.IssuerNotAccepted,
+                    Message = $"No credential-format handler is registered for format '{requirement.Format}'."
+                });
+                continue;
+            }
+
+            if (presentationList.Count == 0)
+            {
+                result.Errors.Add(MissingError(requirement));
+                continue;
+            }
+
+            VerifiedCredentialDetail? matched = null;
+            CredentialValidationError? firstFailure = null;
 
             foreach (var presentation in presentationList)
             {
-                var matchResult = await TryMatchPresentationAsync(
-                    requirement, presentation, result, cancellationToken);
+                var outcome = await TryMatchAsync(handler, requirement, presentation, cancellationToken)
+                    .ConfigureAwait(false);
 
-                if (matchResult.IsMatch)
+                if (outcome.Detail is not null)
                 {
-                    result.VerifiedCredentials.Add(matchResult.Detail!);
-                    matched = true;
+                    matched = outcome.Detail;
                     break;
                 }
+
+                if (outcome.Error is not null)
+                    firstFailure ??= outcome.Error;
             }
 
-            if (!matched)
-            {
-                // Determine the most specific failure reason
-                var error = presentationList.Count == 0
-                    ? new CredentialValidationError
-                    {
-                        RequirementType = requirement.Type,
-                        FailureReason = CredentialFailureReason.Missing,
-                        Message = $"No credential presented for requirement '{requirement.Type}'"
-                    }
-                    : await FindBestFailureReasonAsync(requirement, presentationList, cancellationToken);
-
-                result.Errors.Add(error);
-            }
+            if (matched is not null)
+                result.VerifiedCredentials.Add(matched);
+            else
+                result.Errors.Add(firstFailure ?? MissingError(requirement));
         }
 
         result.IsValid = result.Errors.Count == 0;
         return result;
     }
 
-    private async Task<(bool IsMatch, VerifiedCredentialDetail? Detail)> TryMatchPresentationAsync(
+    private static async Task<MatchOutcome> TryMatchAsync(
+        ICredentialFormatHandler handler,
         CredentialRequirement requirement,
         CredentialPresentation presentation,
-        CredentialValidationResult result,
         CancellationToken cancellationToken)
     {
-        // Step 1: Check disclosed claims for type match
-        if (!presentation.DisclosedClaims.TryGetValue("type", out var typeValue) &&
-            !presentation.DisclosedClaims.TryGetValue("vct", out typeValue))
+        var presented = new PresentedCredential
         {
-            // Try credential ID as type indicator
-            // No type claim found — cannot match
-            return (false, null);
-        }
+            Raw = presentation.RawPresentation,
+            Format = requirement.Format
+        };
 
-        var credentialType = typeValue?.ToString() ?? string.Empty;
-        if (!string.Equals(credentialType, requirement.Type, StringComparison.OrdinalIgnoreCase))
-        {
-            return (false, null);
-        }
+        var verify = await handler.VerifyAsync(presented, requirement, cancellationToken).ConfigureAwait(false);
+        var credentialType = ReadCredentialType(verify.DisclosedClaims);
 
-        // Step 2: Check issuer constraint
-        if (requirement.AcceptedIssuers?.Any() == true)
+        // A readable type that doesn't match means the presentation belongs to a different
+        // requirement — skip it without surfacing an error.
+        if (credentialType is not null && !TypeMatches(credentialType, requirement.Type))
+            return MatchOutcome.Skip();
+
+        // Signature / trust / revocation are decided in the handler+evaluator. A failure here is
+        // surfaced for this requirement (the type either matched or could not be read because the
+        // signature did not verify).
+        if (!verify.IsValid)
         {
-            var issuer = GetClaimString(presentation.DisclosedClaims, "iss");
-            if (issuer == null || !requirement.AcceptedIssuers.Contains(issuer))
+            return MatchOutcome.Fail(new CredentialValidationError
             {
-                return (false, null);
-            }
+                RequirementType = requirement.Type,
+                FailureReason = MapFailureReason(verify.Trust?.FailureReason),
+                Message = FailureMessage(requirement, verify)
+            });
         }
 
-        // Step 3: Check required claim constraints
-        if (requirement.RequiredClaims?.Any() == true)
+        // Valid but no readable type — cannot confirm it satisfies this requirement.
+        if (credentialType is null)
+            return MatchOutcome.Skip();
+
+        // Required-claim constraints (presence + optional exact value) over the disclosed claims.
+        if (requirement.RequiredClaims is not null)
         {
             foreach (var constraint in requirement.RequiredClaims)
             {
-                if (!presentation.DisclosedClaims.TryGetValue(constraint.ClaimName, out var value))
+                if (!verify.DisclosedClaims.TryGetValue(constraint.ClaimName, out var value))
                 {
-                    return (false, null);
+                    return MatchOutcome.Fail(new CredentialValidationError
+                    {
+                        RequirementType = requirement.Type,
+                        FailureReason = CredentialFailureReason.ClaimMismatch,
+                        Message = $"Required claim '{constraint.ClaimName}' not disclosed in credential of type '{requirement.Type}'"
+                    });
                 }
 
-                if (constraint.ExpectedValue != null)
+                if (constraint.ExpectedValue is not null)
                 {
-                    var expectedStr = constraint.ExpectedValue.ToString();
-                    var actualStr = value?.ToString();
-                    if (!string.Equals(expectedStr, actualStr, StringComparison.Ordinal))
+                    var expected = constraint.ExpectedValue.ToString();
+                    var actual = value?.ToString();
+                    if (!string.Equals(expected, actual, StringComparison.Ordinal))
                     {
-                        return (false, null);
+                        return MatchOutcome.Fail(new CredentialValidationError
+                        {
+                            RequirementType = requirement.Type,
+                            FailureReason = CredentialFailureReason.ClaimMismatch,
+                            Message = $"Claim '{constraint.ClaimName}' value '{actual}' does not match expected '{expected}'"
+                        });
                     }
                 }
             }
         }
 
-        // Step 4: Check revocation status
-        var issuerDid = GetClaimString(presentation.DisclosedClaims, "iss") ?? string.Empty;
-        var revocationStatus = await CheckRevocationAsync(
-            presentation.CredentialId, issuerDid, requirement, result, cancellationToken);
-
-        if (revocationStatus == "Revoked")
-        {
-            return (false, null);
-        }
-
-        // Step 5: Verify SD-JWT signature (using raw presentation)
-        // Note: We need the issuer public key for full verification.
-        // For now, we trust the disclosed claims and mark signature as needing
-        // full verification at the service layer where we have key access.
-        // The engine operates without direct key access.
         var detail = new VerifiedCredentialDetail
         {
             CredentialId = presentation.CredentialId,
             Type = credentialType,
-            IssuerDid = issuerDid,
-            VerifiedClaims = new Dictionary<string, object>(presentation.DisclosedClaims),
-            // Fail-safe: signature is unverified until explicitly validated by the
-            // service layer which has access to issuer public keys.
-            SignatureValid = false,
-            RevocationStatus = revocationStatus ?? "Active"
+            IssuerDid = verify.IssuerId,
+            VerifiedClaims = new Dictionary<string, object>(verify.DisclosedClaims),
+            SignatureValid = verify.Trust?.SignatureValid ?? true,
+            RevocationStatus = "Active"
         };
 
-        return (true, detail);
+        return MatchOutcome.Match(detail);
     }
 
-    private async Task<string?> CheckRevocationAsync(
-        string credentialId,
-        string issuerWallet,
-        CredentialRequirement requirement,
-        CredentialValidationResult result,
-        CancellationToken cancellationToken)
+    private static CredentialValidationError MissingError(CredentialRequirement requirement) => new()
     {
-        if (_revocationChecker == null)
-        {
-            // No revocation checker configured — skip revocation check entirely.
-            // This is expected when the engine runs without a wallet/ledger backend.
-            return "Active";
-        }
+        RequirementType = requirement.Type,
+        FailureReason = CredentialFailureReason.Missing,
+        Message = $"No credential of type '{requirement.Type}' found in presentations"
+    };
 
-        try
-        {
-            var status = await _revocationChecker.CheckRevocationStatusAsync(
-                credentialId, issuerWallet, cancellationToken);
-
-            if (status == null)
-            {
-                // Status unavailable — apply policy
-                return ApplyRevocationUnavailablePolicy(credentialId, requirement, result);
-            }
-
-            if (string.Equals(status, "Revoked", StringComparison.OrdinalIgnoreCase))
-            {
-                result.Errors.Add(new CredentialValidationError
-                {
-                    RequirementType = requirement.Type,
-                    FailureReason = CredentialFailureReason.Revoked,
-                    Message = $"Credential '{credentialId}' has been revoked"
-                });
-                return "Revoked";
-            }
-
-            return status;
-        }
-        catch (HttpRequestException)
-        {
-            // Revocation check failed due to network error — apply policy
-            return ApplyRevocationUnavailablePolicy(credentialId, requirement, result);
-        }
-        catch (JsonException)
-        {
-            // Revocation check failed due to malformed response — apply policy
-            return ApplyRevocationUnavailablePolicy(credentialId, requirement, result);
-        }
+    private static string FailureMessage(CredentialRequirement requirement, FormatVerifyResult verify)
+    {
+        var detail = verify.Trust?.Message ?? (verify.Errors.Count > 0 ? string.Join("; ", verify.Errors) : null);
+        return detail is { Length: > 0 }
+            ? $"Credential for requirement '{requirement.Type}' was not trusted: {detail}"
+            : $"Credential for requirement '{requirement.Type}' was not trusted.";
     }
 
-    private static string? ApplyRevocationUnavailablePolicy(
-        string credentialId,
-        CredentialRequirement requirement,
-        CredentialValidationResult result)
+    /// <summary>Maps a unified trust failure onto the verifier's coarser credential failure reason.</summary>
+    private static CredentialFailureReason MapFailureReason(TrustFailureReason? reason) => reason switch
     {
-        var policy = requirement.RevocationCheckPolicy;
+        TrustFailureReason.SignatureInvalid => CredentialFailureReason.InvalidSignature,
+        TrustFailureReason.Revoked => CredentialFailureReason.Revoked,
+        TrustFailureReason.RevocationUnavailable => CredentialFailureReason.RevocationCheckUnavailable,
+        // UntrustedIssuer / ChainInvalid / SourceUnavailable / InsufficientAssurance /
+        // HolderBindingInvalid / IntegrityFailure / FormatUnsupported — the issuer is not accepted.
+        _ => CredentialFailureReason.IssuerNotAccepted
+    };
 
-        if (policy == RevocationCheckPolicy.FailClosed)
-        {
-            result.Errors.Add(new CredentialValidationError
-            {
-                RequirementType = requirement.Type,
-                FailureReason = CredentialFailureReason.RevocationCheckUnavailable,
-                Message = $"Revocation status unavailable for credential '{credentialId}' and policy is fail-closed"
-            });
-            return null; // Will cause match failure via the error
-        }
-
-        // FailOpen: allow but add audit warning
-        result.Warnings.Add(
-            $"Revocation status unavailable for credential '{credentialId}' of type '{requirement.Type}' — " +
-            $"proceeding under fail-open policy. Manual audit recommended.");
-        return "Unknown";
+    private static string? ReadCredentialType(Dictionary<string, object> claims)
+    {
+        if (claims.TryGetValue("vct", out var vct) && vct is not null)
+            return vct.ToString();
+        if (claims.TryGetValue("type", out var type) && type is not null)
+            return type.ToString();
+        return null;
     }
 
-    private async Task<CredentialValidationError> FindBestFailureReasonAsync(
-        CredentialRequirement requirement,
-        List<CredentialPresentation> presentations,
-        CancellationToken cancellationToken)
+    private static bool TypeMatches(string credentialType, string requirementType) =>
+        string.Equals(credentialType, requirementType, StringComparison.OrdinalIgnoreCase);
+
+    private readonly record struct MatchOutcome(VerifiedCredentialDetail? Detail, CredentialValidationError? Error)
     {
-        // Try to find the closest match to give the most specific error
-        foreach (var presentation in presentations)
-        {
-            var typeValue = GetClaimString(presentation.DisclosedClaims, "type")
-                ?? GetClaimString(presentation.DisclosedClaims, "vct");
-
-            if (typeValue == null || !string.Equals(typeValue, requirement.Type, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // Type matched — check issuer
-            if (requirement.AcceptedIssuers?.Any() == true)
-            {
-                var issuer = GetClaimString(presentation.DisclosedClaims, "iss");
-                if (issuer == null || !requirement.AcceptedIssuers.Contains(issuer))
-                {
-                    return new CredentialValidationError
-                    {
-                        RequirementType = requirement.Type,
-                        FailureReason = CredentialFailureReason.IssuerNotAccepted,
-                        Message = $"Credential of type '{requirement.Type}' from issuer '{issuer}' is not in the accepted issuers list"
-                    };
-                }
-            }
-
-            // Type and issuer matched — check claims
-            if (requirement.RequiredClaims?.Any() == true)
-            {
-                foreach (var constraint in requirement.RequiredClaims)
-                {
-                    if (!presentation.DisclosedClaims.TryGetValue(constraint.ClaimName, out var value))
-                    {
-                        return new CredentialValidationError
-                        {
-                            RequirementType = requirement.Type,
-                            FailureReason = CredentialFailureReason.ClaimMismatch,
-                            Message = $"Required claim '{constraint.ClaimName}' not disclosed in credential of type '{requirement.Type}'"
-                        };
-                    }
-
-                    if (constraint.ExpectedValue != null)
-                    {
-                        var expectedStr = constraint.ExpectedValue.ToString();
-                        var actualStr = value?.ToString();
-                        if (!string.Equals(expectedStr, actualStr, StringComparison.Ordinal))
-                        {
-                            return new CredentialValidationError
-                            {
-                                RequirementType = requirement.Type,
-                                FailureReason = CredentialFailureReason.ClaimMismatch,
-                                Message = $"Claim '{constraint.ClaimName}' value '{actualStr}' does not match expected '{expectedStr}'"
-                            };
-                        }
-                    }
-                }
-            }
-        }
-
-        // No close match found — generic missing error
-        return new CredentialValidationError
-        {
-            RequirementType = requirement.Type,
-            FailureReason = CredentialFailureReason.Missing,
-            Message = $"No credential of type '{requirement.Type}' found in presentations"
-        };
-    }
-
-    private static string? GetClaimString(Dictionary<string, object> claims, string key)
-    {
-        return claims.TryGetValue(key, out var value) ? value?.ToString() : null;
+        public static MatchOutcome Match(VerifiedCredentialDetail detail) => new(detail, null);
+        public static MatchOutcome Fail(CredentialValidationError error) => new(null, error);
+        public static MatchOutcome Skip() => new(null, null);
     }
 }

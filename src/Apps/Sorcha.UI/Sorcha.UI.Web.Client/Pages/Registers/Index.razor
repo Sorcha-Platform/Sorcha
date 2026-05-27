@@ -9,14 +9,15 @@
 @using Sorcha.UI.Core.Components.Registers
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 @implements IAsyncDisposable
 
-@inject IRegisterService RegisterService
+@inject IRegisterReadService RegisterService
 @inject IRegisterSubscriptionService SubscriptionService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject RegisterHubConnection HubConnection
 
 @* Filter state for client-side filtering *@
@@ -499,7 +500,7 @@
     {
         await LoadRegistersAsync();
         StateHasChanged();
-        Snackbar.Add("Successfully subscribed to register.", Severity.Success);
+        Feedback.ShowSuccess("Successfully subscribed to register.");
     }
 
     private async Task ConfirmUnsubscribe(RegisterViewModel register)
@@ -515,12 +516,12 @@
             var success = await SubscriptionService.UnsubscribeAsync(_orgId, register.Id);
             if (success)
             {
-                Snackbar.Add($"Unsubscribed from \"{register.Name}\".", Severity.Success);
+                Feedback.ShowSuccess($"Unsubscribed from \"{register.Name}\".");
                 await LoadRegistersAsync();
             }
             else
             {
-                Snackbar.Add("Failed to unsubscribe. Please try again.", Severity.Error);
+                Feedback.ShowError("Failed to unsubscribe. Please try again.", autoDismissMs: 0);
             }
         }
     }

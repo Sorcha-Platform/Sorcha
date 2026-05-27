@@ -18,6 +18,7 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 public class ActionResolverService : IActionResolverService
 {
     private readonly IBlueprintStore _blueprintStore;
+    private readonly IPublishedBlueprintStore _publishedBlueprintStore;
     private readonly IDistributedCache _cache;
     private readonly ILogger<ActionResolverService> _logger;
     private const int CacheTtlMinutes = 10;
@@ -31,10 +32,12 @@ public class ActionResolverService : IActionResolverService
     /// <summary>Initialises a new instance of the <see cref="ActionResolverService"/> class.</summary>
     public ActionResolverService(
         IBlueprintStore blueprintStore,
+        IPublishedBlueprintStore publishedBlueprintStore,
         IDistributedCache cache,
         ILogger<ActionResolverService> logger)
     {
         _blueprintStore = blueprintStore ?? throw new ArgumentNullException(nameof(blueprintStore));
+        _publishedBlueprintStore = publishedBlueprintStore ?? throw new ArgumentNullException(nameof(publishedBlueprintStore));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -63,8 +66,19 @@ public class ActionResolverService : IActionResolverService
             return cached;
         }
 
-        // Get from store
+        // Get from the draft/editable store. The draft store only exists on the node that
+        // authored the blueprint; a replica (Feature 137 / C1) holds it solely in the
+        // replicated published store. Fall back to the latest published version so action
+        // execution works on a node that does not own the register — mirroring the published-
+        // store-aware CreateInstance path (Program.cs) so a replica-origin submission can be
+        // validated + signed + fanned out to the owner.
         var blueprint = await _blueprintStore.GetAsync(blueprintId);
+        if (blueprint == null)
+        {
+            var publishedVersions = await _publishedBlueprintStore.GetVersionsAsync(blueprintId);
+            blueprint = PublishedBlueprintSelector.SelectLatest(publishedVersions)?.Blueprint;
+        }
+
         if (blueprint == null)
         {
             _logger.LogWarning("Blueprint {BlueprintId} not found", blueprintId);

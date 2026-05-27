@@ -60,7 +60,7 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
             services.AddSingleton<IOutputCacheStore, NoOpOutputCacheStore>();
 
             // Remove Redis connection multiplexer and replace with mock
-            // (required by EventsHubNotificationBridge and other Redis-dependent services)
+            // (required by SignalR backplane wiring and other Redis-dependent services)
             services.RemoveAll<IConnectionMultiplexer>();
             var mockMultiplexer = new Mock<IConnectionMultiplexer>();
             var mockSubscriber = new Mock<ISubscriber>();
@@ -71,6 +71,14 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
             // and add mock implementations
             RemoveHttpClientServices(services);
             AddMockHttpClients(services);
+
+            // Surface HubException messages from server to client during integration tests so
+            // assertions like `.WithMessage("*empty*")` can match. Production keeps the default
+            // (false) — see Program.cs AddSignalR — to avoid leaking server-side error detail.
+            services.Configure<Microsoft.AspNetCore.SignalR.HubOptions>(opt =>
+            {
+                opt.EnableDetailedErrors = true;
+            });
 
             // Remove existing authentication to replace with test authentication
             services.RemoveAll<IConfigureOptions<AuthenticationOptions>>();
@@ -450,7 +458,7 @@ internal class TestAuthenticationHandler : AuthenticationHandler<AuthenticationS
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, "00000000-0000-0000-0000-000000000123"),
             new Claim(ClaimTypes.Name, "Test User"),
@@ -460,6 +468,15 @@ internal class TestAuthenticationHandler : AuthenticationHandler<AuthenticationS
             new Claim("can_publish_blueprint", "true"),
             new Claim("token_type", "service")
         };
+
+        // Spec 136: inject all four installation tier audiences (resolved from the host's configured
+        // SorchaAudiences) so tier-gated endpoints — including the extended RequireService — accept this test principal.
+        var audiences = Context.RequestServices.GetService<Sorcha.ServiceDefaults.Auth.SorchaAudiences>()
+            ?? new Sorcha.ServiceDefaults.Auth.SorchaAudiences(installationName: null);
+        foreach (var aud in audiences.All)
+        {
+            claims.Add(new Claim("aud", aud));
+        }
 
         var identity = new ClaimsIdentity(claims, "TestScheme");
         var principal = new ClaimsPrincipal(identity);

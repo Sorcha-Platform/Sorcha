@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Domain.Entities;
+using Sorcha.Wallet.Service.Services.Interfaces;
 
 namespace Sorcha.Wallet.Service.Credentials;
 
@@ -23,11 +24,17 @@ public class CredentialStore : ICredentialStore
     };
 
     private readonly WalletDbContext _db;
+    private readonly ICitizenInboxProjector _citizenProjector;
     private readonly ILogger<CredentialStore> _logger;
 
-    public CredentialStore(WalletDbContext db, ILogger<CredentialStore> logger)
+    /// <summary>Initialises a new instance.</summary>
+    public CredentialStore(
+        WalletDbContext db,
+        ICitizenInboxProjector citizenProjector,
+        ILogger<CredentialStore> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        _citizenProjector = citizenProjector ?? throw new ArgumentNullException(nameof(citizenProjector));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -48,14 +55,30 @@ public class CredentialStore : ICredentialStore
     /// <inheritdoc />
     public async Task<CredentialEntity?> GetByIdAsync(string credentialId, CancellationToken ct = default)
     {
-        var credential = await _db.Credentials
-            .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
+        var matches = await _db.Credentials
+            .Where(c => c.Id == credentialId)
+            .ToListAsync(ct);
 
-        if (credential != null)
+        if (matches.Count == 0)
+            return null;
+
+        // Feature 106: issuer and recipient can each hold a row with the same credential id
+        // on single-node deployments. When that happens, prefer the Active copy so verification
+        // sees a valid credential rather than the recipient's PendingAcceptance row. Callers
+        // that know the wallet address should use GetByIdForWalletAsync instead.
+        if (matches.Count > 1)
         {
-            await ExpireStaleCredentialsAsync([credential], ct);
+            _logger.LogWarning(
+                "GetByIdAsync: {Count} rows share credential id {CredentialId} across multiple wallets — " +
+                "use GetByIdForWalletAsync when wallet context is available",
+                matches.Count, credentialId);
         }
 
+        var credential = matches.Count == 1
+            ? matches[0]
+            : matches.FirstOrDefault(c => c.Status == CredentialStatus.Active) ?? matches[0];
+
+        await ExpireStaleCredentialsAsync([credential], ct);
         return credential;
     }
 
@@ -111,10 +134,12 @@ public class CredentialStore : ICredentialStore
     }
 
     /// <inheritdoc />
-    public async Task<bool> DeleteAsync(string credentialId, CancellationToken ct = default)
+    public async Task<bool> DeleteAsync(string credentialId, string walletAddress, CancellationToken ct = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(walletAddress);
+
         var credential = await _db.Credentials
-            .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
+            .FirstOrDefaultAsync(c => c.Id == credentialId && c.WalletAddress == walletAddress, ct);
 
         if (credential == null)
             return false;
@@ -125,18 +150,22 @@ public class CredentialStore : ICredentialStore
     }
 
     /// <inheritdoc />
-    public async Task<bool> UpdateStatusAsync(string credentialId, CredentialStatus status, CancellationToken ct = default)
+    public async Task<bool> UpdateStatusAsync(
+        string credentialId, string walletAddress, CredentialStatus status, CancellationToken ct = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(walletAddress);
+
         var credential = await _db.Credentials
-            .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
+            .FirstOrDefaultAsync(c => c.Id == credentialId && c.WalletAddress == walletAddress, ct);
 
         if (credential == null)
             return false;
 
         if (!IsValidTransition(credential.Status, status))
         {
-            _logger.LogWarning("Invalid status transition for {CredentialId}: {CurrentStatus} -> {TargetStatus}",
-                credentialId, credential.Status, status);
+            _logger.LogWarning(
+                "Invalid status transition for {CredentialId} wallet {WalletAddress}: {CurrentStatus} -> {TargetStatus}",
+                credentialId, walletAddress, credential.Status, status);
             return false;
         }
 
@@ -144,8 +173,14 @@ public class CredentialStore : ICredentialStore
         credential.Status = status;
         await _db.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Credential status changed: {CredentialId} {PreviousStatus} -> {NewStatus}",
-            credentialId, previousStatus, status);
+        _logger.LogInformation(
+            "Credential status changed: {CredentialId} wallet {WalletAddress} {PreviousStatus} -> {NewStatus}",
+            credentialId, walletAddress, previousStatus, status);
+
+        // Feature 114 US4 — project status change onto citizen sync surface (no-op
+        // when the recipient is not a citizen-PWA holder).
+        await _citizenProjector.OnCredentialStatusChangedAsync(credential, previousStatus, ct);
+
         return true;
     }
 
@@ -189,6 +224,10 @@ public class CredentialStore : ICredentialStore
             "Credential {CredentialId} status patched: {PreviousStatus} → {NewStatus}",
             credentialId, previousStatus, newStatus);
 
+        // Feature 114 US4 — project status change onto citizen sync surface (no-op
+        // when the recipient is not a citizen-PWA holder).
+        await _citizenProjector.OnCredentialStatusChangedAsync(credential, previousStatus, ct);
+
         return credential;
     }
 
@@ -225,8 +264,23 @@ public class CredentialStore : ICredentialStore
     /// <inheritdoc />
     public async Task<bool> RecordPresentationAsync(string credentialId, CancellationToken ct = default)
     {
-        var credential = await _db.Credentials
-            .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
+        var matches = await _db.Credentials
+            .Where(c => c.Id == credentialId)
+            .ToListAsync(ct);
+
+        // Feature 106: when issuer and recipient hold the same credential id, prefer the
+        // Active copy so usage is recorded against a valid row. Log so operators are aware.
+        if (matches.Count > 1)
+        {
+            _logger.LogWarning(
+                "RecordPresentationAsync: {Count} rows share credential id {CredentialId} — " +
+                "operating on first Active copy; use wallet-scoped access when wallet context is available",
+                matches.Count, credentialId);
+        }
+
+        var credential = matches.Count == 1
+            ? matches[0]
+            : matches.FirstOrDefault(c => c.Status == CredentialStatus.Active);
 
         if (credential == null || credential.Status != CredentialStatus.Active)
             return false;

@@ -135,9 +135,6 @@
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = null!;
 
-    [Inject]
-    private ISnackbar Snackbar { get; set; } = null!;
-
     [Parameter]
     public ConditionModel Model { get; set; } = new();
 
@@ -246,7 +243,6 @@
     {
         if (!ValidateCondition())
         {
-            Snackbar.Add(_validationError ?? "Validation failed", Severity.Warning);
             StateHasChanged();
             return;
         }

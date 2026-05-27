@@ -6,8 +6,11 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Sorcha.Wallet.Service.Extensions;
 using Sorcha.Wallet.Service.Endpoints;
 using Sorcha.Wallet.Service.GrpcServices;
+using Sorcha.Wallet.Service.Hubs;
 using Sorcha.Wallet.Service.Services;
 using Sorcha.ServiceClients.Extensions;
+using Sorcha.ServiceDefaults.Hubs;
+using Sorcha.ServiceDefaults.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -58,6 +61,21 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationDeliveryService,
     Sorcha.Wallet.Service.Services.Implementation.NotificationDeliveryService>();
 
+// Feature 118 / US3 follow-up #2 — wire WalletInboxWriter so credential issuance
+// also produces durable inbox entries via Tenant Service.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.IWalletInboxWriter,
+    Sorcha.Wallet.Service.Services.Implementation.WalletInboxWriter>();
+
+// Phase 2 of the Snackbar retirement — wallet-lifecycle events (created,
+// recovered, deleted, address registered) also drop durable inbox entries.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter,
+    Sorcha.Wallet.Service.Services.Implementation.WalletWorkflowInboxWriter>();
+
+// Phase 2c of the Snackbar retirement — citizen-wallet device revocation
+// drops a Category=Security inbox entry on the owning citizen.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Implementation.ICitizenDeviceInboxWriter,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenDeviceInboxWriter>();
+
 // Singleton TrustServiceClient — 5-min cert cache must survive across requests,
 // so the HttpClient is captured once. PooledConnectionLifetime caps connection
 // age at 2 min so DNS / mTLS rotation lands via connection recycling.
@@ -94,6 +112,10 @@ builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Implementation.Inbo
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IInboundCredentialDetector,
     Sorcha.Wallet.Service.Services.Implementation.InboundCredentialDetector>();
 
+// Multi-node audit CRITICAL #2: Inbound credential status change handler
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IInboundCredentialStatusHandler,
+    Sorcha.Wallet.Service.Services.Implementation.InboundCredentialStatusHandler>();
+
 // Feature 047: Digest notification batching (US5)
 builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.Implementation.NotificationDigestWorker>();
 
@@ -101,6 +123,11 @@ builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.Implementation.
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ITransactionLifecycleService,
     Sorcha.Wallet.Service.Services.Implementation.TransactionLifecycleService>();
 builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.Implementation.TransactionLifecycleEventBridge>();
+
+// Feature 118 — bridge encryption-pipeline events from Blueprint Service
+// (Redis publisher) onto the wallet-domain hub. Required for WalletHub to
+// host the encryption surface without moving the pipeline itself.
+builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.EncryptionEventBridge>();
 
 // Feature 083: Org key derivation services
 builder.Services.AddSingleton<Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProtectionProvider,
@@ -141,13 +168,23 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IOrgStatusS
 builder.Services.AddHostedService<
     Sorcha.Wallet.Service.Services.Implementation.CitizenStatusListPublisherService>();
 
-// Feature 114: Citizen wallet sync surface (T103). EmptyCitizenCredentialEventStream is a
-// placeholder until the citizen-credential issuance pipeline lands (US4 / Phase 6); the sync
-// surface, sync-token round-trip, and 410 stale-cursor path are still exercised end-to-end.
-builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizenCredentialEventStream,
-    Sorcha.Wallet.Service.Services.Implementation.EmptyCitizenCredentialEventStream>();
-builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizenSyncService,
+// Feature 114 / US4: Citizen wallet sync surface. Reads the citizen-scoped
+// CitizenCredentialEventLog written by CitizenInboxProjector when an inbound
+// credential lands in CredentialStore against a known citizen holder address.
+// Replaces the v1 EmptyCitizenCredentialEventStream placeholder.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenCredentialEventStream,
+    Sorcha.Wallet.Service.Services.Implementation.EfCoreCitizenCredentialEventStream>();
+// Scoped (was Singleton) because it now consumes the Scoped EfCoreCitizenCredentialEventStream.
+// CitizenSyncService is stateless apart from its signing key, so per-request creation is cheap.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenSyncService,
     Sorcha.Wallet.Service.Services.Implementation.CitizenSyncService>();
+
+// Feature 114 / US4: Holder-address index + citizen-inbox projector. Both
+// scoped because they consume WalletDbContext.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderAddressLookup,
+    Sorcha.Wallet.Service.Services.Implementation.EfCoreHolderAddressLookup>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenInboxProjector,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenInboxProjector>();
 
 // Feature 114: Delegation renewal (T106). Composes Tenant Service device lookup
 // + IDeviceDelegationIssuer + IOrgStatusSigningWalletResolver behind one
@@ -155,12 +192,72 @@ builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizen
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDelegationRenewalService,
     Sorcha.Wallet.Service.Services.Implementation.DelegationRenewalService>();
 
+// Feature 114 (US3): citizen device revocation. Shared between the public
+// PWA-facing DELETE endpoint and the internal Tenant→Wallet S2S endpoint.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IDeviceRevocationService,
+    Sorcha.Wallet.Service.Services.Implementation.DeviceRevocationService>();
+
+// Feature 114 (US5): citizen presentation-log reporting. The reporter dedupes
+// each reported entry (Redis SET-NX, 24h) and forwards new ones via the forwarder
+// seam (PR2). PR3 forwards into the durable per-citizen presentation store so the
+// citizen's history follows them across devices — no Blueprint Service, no register
+// write (a free-standing offline presentation has no originating register).
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenPresentationLogReporter,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenPresentationLogReporter>();
+// Scoped (was Singleton in PR2): the forwarder now consumes the scoped store /
+// WalletDbContext. The reporter is resolved inside a fresh DI scope on the report
+// path, so a scoped forwarder + scoped store stay within that scope.
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IPresentationLogForwarder,
+    Sorcha.Wallet.Service.Services.Implementation.CitizenPresentationStoreForwarder>();
+
+// Feature 114 (US5 PR3): durable per-citizen presentation history store. Registered
+// via IStorageRegistrationLog (RegisterPersistent with Postgres, RegisterInMemory
+// fallback) but deliberately NOT on the F113 fail-fast audited list — convenience
+// data, so an in-memory backend warns rather than gating startup.
+{
+    var presentationStoreLog = builder.Services.GetStorageRegistrationLog();
+    var presentationStoreInterface =
+        typeof(Sorcha.Wallet.Service.Services.Interfaces.ICitizenPresentationStore).FullName!;
+    var hasWalletPostgres =
+        !string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:Wallet:Postgres"])
+        || !string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:Sorcha:Postgres"]);
+
+    if (hasWalletPostgres)
+    {
+        builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenPresentationStore,
+            Sorcha.Wallet.Service.Services.Implementation.EfCoreCitizenPresentationStore>();
+        presentationStoreLog.RegisterPersistent(
+            presentationStoreInterface,
+            typeof(Sorcha.Wallet.Service.Services.Implementation.EfCoreCitizenPresentationStore).FullName!,
+            "postgres");
+    }
+    else
+    {
+        builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.ICitizenPresentationStore,
+            Sorcha.Wallet.Service.Services.Implementation.InMemoryCitizenPresentationStore>();
+        presentationStoreLog.RegisterInMemory(
+            presentationStoreInterface,
+            typeof(Sorcha.Wallet.Service.Services.Implementation.InMemoryCitizenPresentationStore).FullName!,
+            "no Postgres connection string in ConnectionStrings:Wallet:Postgres or ConnectionStrings:Sorcha:Postgres");
+    }
+}
+
 // Feature 114: FluentValidation for citizen wallet request DTOs
 builder.Services.AddValidatorsFromAssemblyContaining<
     Sorcha.CitizenWallet.Abstractions.Validators.DeviceEnrolmentRequestValidator>();
 
-// Feature 114: SignalR for citizen wallet push notifications
-builder.Services.AddSignalR();
+// Feature 124: pending-application notice store + validators in the Wallet
+// Service assembly (SetPendingApplicationRequestValidator).
+builder.Services.AddValidatorsFromAssemblyContaining<
+    Sorcha.Wallet.Service.Validators.SetPendingApplicationRequestValidator>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IPendingApplicationStore,
+    Sorcha.Wallet.Service.Services.Implementation.RedisPendingApplicationStore>();
+
+// Feature 118 — multi-node hub fan-out via Redis backplane (US1).
+// Wires JWT auth + Redis backplane (ChannelPrefix=sorcha:signalr:wallet) +
+// reconnect-with-jitter + OpenTelemetry instrumentation.
+builder.Services.AddSorchaHub<WalletHub, IWalletHubClient>(
+    builder.Configuration, "/hubs/wallet", "wallet");
 
 // File reassembly service (US2 — File Download)
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IFileReassemblyService,
@@ -168,6 +265,12 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IFileReasse
 
 // Add Redis for notification rate limiting and pub/sub
 builder.AddRedisClient("redis");
+
+// Feature 124 — IDistributedCache backing for RedisPendingApplicationStore.
+// Re-uses the same "redis" connection registered above; Aspire wires the
+// StackExchange.Redis distributed-cache implementation on top of the
+// existing IConnectionMultiplexer.
+builder.AddRedisDistributedCache("redis");
 
 // Add service clients for inter-service communication
 builder.Services.AddServiceClients(builder.Configuration);
@@ -233,6 +336,7 @@ app.MapDelegationEndpoints();
 app.MapCredentialEndpoints();
 app.MapPresentationEndpoints();
 app.MapOrgKeyEndpoints();
+app.MapIssuanceKeyEndpoints();
 app.MapFileDownloadEndpoints();
 app.MapPersonaCryptoEndpoints();
 
@@ -241,9 +345,14 @@ app.MapCitizenStatusListEndpoints();
 
 // Feature 114: Citizen wallet PWA endpoints (device enrolment, sync, etc.)
 app.MapCitizenWalletEndpoints();
+app.MapCitizenStatusListInternalEndpoints();
+
+// Feature 124: Pending-application notice endpoints (Set / Get / Clear)
+app.MapPendingApplicationEndpoints();
 
 // Feature 114: Citizen wallet SignalR hub. Routed via API Gateway as `/hubs/wallet`.
-app.MapHub<Sorcha.Wallet.Service.Hubs.WalletHub>("/hubs/wallet");
+// Mapped via MapSorchaHubs from the AddSorchaHub registry (Feature 118 US1).
+app.MapSorchaHubs();
 
 // ===========================
 // Statistics Endpoint (public, no auth)

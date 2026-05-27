@@ -78,7 +78,7 @@ public static class SchemaEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict)
             .Produces(StatusCodes.Status503ServiceUnavailable)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         // POST /api/v1/schemas - Create custom schema
         schemaGroup.MapPost("/", CreateSchema)
@@ -147,7 +147,7 @@ public static class SchemaEndpoints
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict)
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
     }
 
     /// <summary>

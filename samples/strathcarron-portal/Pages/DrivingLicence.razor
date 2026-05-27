@@ -1,0 +1,42 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Strathcarron Council driving-licence application page. Originally
+    introduced in F126 PR-A (T032) as an in-tree stand-in inside
+    Sorcha.UI.Web.Client; relocated here in F127 PR-A per the
+    platform-vs-consumer boundary contract (see samples/README.md).
+
+    The page composes Sorcha's F126 EnrolGateComponent — a third-party
+    council that wants the same cold-start onboarding gate writes the
+    same composition tree against the published Sorcha.UI.Components.User
+    library.
+*@
+@page "/services/driving-licence"
+
+<PageTitle>Strathcarron Council — Driving Licence Application</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-2">Apply for a driving licence</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        Strathcarron Council — sample application
+    </MudText>
+
+    <EnrolGateComponent CouncilName="Strathcarron Council"
+                        ServiceLabel="driving licence application"
+                        OnReady="HandleCitizenReadyAsync">
+        @* ChildContent renders only once the citizen has a paired wallet
+           device (Tier 1 / FastPath). *@
+        <DrivingLicenceForm />
+    </EnrolGateComponent>
+</MudContainer>
+
+@code {
+    private Guid? _platformUserId;
+
+    private Task HandleCitizenReadyAsync(Guid? platformUserId)
+    {
+        _platformUserId = platformUserId;
+        return Task.CompletedTask;
+    }
+}

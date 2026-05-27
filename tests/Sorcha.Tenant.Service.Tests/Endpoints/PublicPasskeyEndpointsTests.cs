@@ -278,6 +278,27 @@ public class PublicPasskeyEndpointsTests : IClassFixture<TenantServiceWebApplica
 
     #endregion
 
+    #region Consumer-Tier Hint Tests
+
+    [Fact]
+    public void AssertionVerifyRequest_ParsesConsumerTierHint()
+    {
+        // The wallet sends tier:"consumer" (a safe downgrade);
+        // non-"consumer" values fall back to the platform default so this
+        // anonymous endpoint can never escalate.
+        Sorcha.ServiceDefaults.Auth.Tier Resolve(string? hint) =>
+            string.Equals(hint, "consumer", StringComparison.OrdinalIgnoreCase)
+                ? Sorcha.ServiceDefaults.Auth.Tier.Consumer
+                : Sorcha.ServiceDefaults.Auth.Tier.Platform;
+
+        Resolve("consumer").Should().Be(Sorcha.ServiceDefaults.Auth.Tier.Consumer);
+        Resolve("CONSUMER").Should().Be(Sorcha.ServiceDefaults.Auth.Tier.Consumer);
+        Resolve("platform").Should().Be(Sorcha.ServiceDefaults.Auth.Tier.Platform);
+        Resolve(null).Should().Be(Sorcha.ServiceDefaults.Auth.Tier.Platform);
+    }
+
+    #endregion
+
     #region Public Org Disabled Tests
 
     [Fact]

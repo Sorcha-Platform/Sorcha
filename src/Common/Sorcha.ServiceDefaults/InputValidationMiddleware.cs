@@ -254,7 +254,7 @@ public partial class InputValidationMiddleware
     private static partial Regex CreateSqlInjectionRegex();
 
     [GeneratedRegex(
-        @"<\s*script[^>]*>|<\s*/\s*script\s*>|javascript\s*:|on\w+\s*=|<\s*img[^>]+onerror|<\s*svg[^>]+onload|<\s*iframe|<\s*object|<\s*embed|<\s*link[^>]+href\s*=\s*['""]?javascript|expression\s*\(|vbscript\s*:",
+        @"<\s*script[^>]*>|<\s*/\s*script\s*>|javascript\s*:|\bon\w+\s*=|<\s*img[^>]+onerror|<\s*svg[^>]+onload|<\s*iframe|<\s*object|<\s*embed|<\s*link[^>]+href\s*=\s*['""]?javascript|expression\s*\(|vbscript\s*:",
         RegexOptions.Compiled | RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000)]
     private static partial Regex CreateXssRegex();

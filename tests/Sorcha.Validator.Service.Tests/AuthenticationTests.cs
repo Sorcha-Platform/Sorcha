@@ -60,8 +60,10 @@ public class AuthenticationTests
     [Fact]
     public async Task RequireService_WithServiceToken_Succeeds()
     {
+        // Spec 136: RequireService now also requires the installation's :service audience (default "sorcha").
         var principal = CreatePrincipal(
-            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService),
+            new Claim("aud", "sorcha:service"));
         var result = await _authorizationService.AuthorizeAsync(principal, "RequireService");
         result.Succeeded.Should().BeTrue();
     }
@@ -118,8 +120,10 @@ public class AuthenticationTests
     [Fact]
     public async Task CanWriteDockets_WithServiceToken_Succeeds()
     {
+        // Spec 136: CanWriteDockets mirrors the extended RequireService (:service audience required).
         var principal = CreatePrincipal(
-            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+            new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService),
+            new Claim("aud", "sorcha:service"));
         var result = await _authorizationService.AuthorizeAsync(principal, "CanWriteDockets");
         result.Succeeded.Should().BeTrue();
     }

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sorcha.dev/schemas/118/inbox-entry.schema.json",
+  "title": "InboxEntry",
+  "description": "Wire shape of an inbox entry returned by Sorcha Tenant Service.",
+  "type": "object",
+  "required": [
+    "id",
+    "platformUserId",
+    "category",
+    "severity",
+    "correlationKey",
+    "detailHref",
+    "sourceEventId",
+    "occurredAt",
+    "title",
+    "channelHints"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "platformUserId": { "type": "string", "format": "uuid" },
+    "category": {
+      "type": "string",
+      "enum": ["Action", "Credential", "Membership", "Security", "System", "Workflow", "Custom"]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["Info", "Warning", "ActionRequired", "Critical"]
+    },
+    "correlationKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Format {kind}:{primary-id}[:{secondary-id}...]. Examples: tx:bech32_addr:00000000-0000-0000-0000-000000000001, membership:00000000-0000-0000-0000-000000000002."
+    },
+    "detailHref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^/api/",
+      "description": "Relative authenticated REST endpoint that returns the full render-ready content of this entry."
+    },
+    "sourceEventId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Writer-supplied GUID. Forms the (PlatformUserId, SourceEventId) idempotency key."
+    },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "readAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "dismissedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "summary": {
+      "type": ["string", "null"],
+      "maxLength": 1000
+    },
+    "iconKey": {
+      "type": ["string", "null"],
+      "maxLength": 64
+    },
+    "channelHints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["Inbox", "Push", "Email", "Digest"]
+      },
+      "uniqueItems": true,
+      "description": "Channels the writer or default policy hints should apply for this entry. Final delivered set is the intersection with user preferences (phase 5)."
+    },
+    "writerServiceId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Optional audit field — which service emitted this entry."
+    }
+  }
+}

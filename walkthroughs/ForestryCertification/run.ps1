@@ -78,7 +78,8 @@ $null = Invoke-SorchaAction `
     -SenderWallet $state.wallets.salesMgr `
     -RegisterId $state.registerId `
     -Token $salesSession.Token `
-    -PayloadData $action1Payload
+    -PayloadData $action1Payload `
+    -WaitForSeal
 Write-WtSuccess "Action 1 submitted (batch $($action1Payload.batchId))"
 
 # ============================================================================
@@ -96,7 +97,8 @@ $action2Response = Invoke-SorchaAction `
     -SenderWallet $state.wallets.auditor `
     -RegisterId $state.registerId `
     -Token $auditorSession.Token `
-    -PayloadData $action2Payload
+    -PayloadData $action2Payload `
+    -WaitForSeal
 
 if ($ShowJson) { $action2Response | ConvertTo-Json -Depth 5 | Write-Host }
 

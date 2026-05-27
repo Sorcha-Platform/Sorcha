@@ -1,0 +1,17 @@
+openapi: "3.1.0"
+info:
+  title: no marketing adjectives fail
+  version: "1.0.0"
+  description: This is a revolutionary, world-class, industry-leading platform with cutting-edge features.
+  x-mcp-server: "https://example.com/.well-known/mcp.json"
+  x-standards: ["BIP32"]
+paths:
+  /widgets:
+    get:
+      operationId: WidgetList
+      summary: Best-in-class widget listing
+      description: A seamless, game-changing, next-generation way to list widgets.
+      tags: [widgets]
+      responses:
+        '200':
+          description: OK

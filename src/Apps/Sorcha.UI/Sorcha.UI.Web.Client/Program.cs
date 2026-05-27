@@ -8,10 +8,20 @@ using MudBlazor.Services;
 using Sorcha.Blueprint.Schemas.Client;
 using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
+using Sorcha.UI.Core.Services.User.Enrolment;
 using Sorcha.UI.Web.Client;
 using Sorcha.UI.Web.Client.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
+
+// AuthorizeView role-mismatch evaluations log at Info per render — every
+// admin/designer nav block on MainLayout produces a "Authorization failed"
+// line for every non-matching role. For a Consumer that's ~100 lines per
+// page load. Silence the category; legitimate auth failures still surface
+// as HTTP 401s in the network log.
+builder.Logging.AddFilter(
+    "Microsoft.AspNetCore.Authorization.DefaultAuthorizationService",
+    LogLevel.Warning);
 
 // Register root components for standalone WASM
 builder.RootComponents.Add<Routes>("#app");
@@ -65,6 +75,36 @@ builder.Services.AddScoped<SchemaLibraryService>(sp =>
 
     return schemaLibrary;
 });
+
+// Feature 126 — council enrolment gate services. ITierProbeService hits the
+// API gateway directly via a typed HttpClient; IEnrolPairingSignal layers
+// SignalR (via TenantHubConnection) with a 3-s /me/devices poll as fallback.
+builder.Services.AddHttpClient<ITierProbeService, HttpTierProbeService>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+builder.Services.AddHttpClient<IEnrolPairingSignal, EnrolPairingSignal>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+
+// Feature 128 — shared has-any-device probe. Drives the PairingNagBanner
+// on every MainLayout render for signed-in citizens with zero paired
+// devices (FR-024). The same probe is also registered in the PWA
+// (Sorcha.Wallet.Pwa) where it drives the takeover trigger (sub-PR A3).
+builder.Services.AddHttpClient<Sorcha.UI.Core.Services.User.Devices.IHasPairedDeviceProbe,
+                               Sorcha.UI.Core.Services.User.Devices.HasPairedDeviceProbe>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+});
+
+// Feature 128 US3 — PWA-installability probe used by PairingHandoffSurface
+// to switch between the QR variant and the install-flavoured variant.
+// Singleton so the cached verdict survives across surface re-renders.
+builder.Services.AddSingleton<Sorcha.UI.Core.Services.User.Pairing.IPwaInstallabilityProbe,
+                              Sorcha.UI.Core.Services.User.Pairing.PwaInstallabilityProbe>();
+
+builder.Services.AddSingleton(TimeProvider.System);
 
 var host = builder.Build();
 

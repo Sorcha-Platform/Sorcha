@@ -34,6 +34,7 @@ public class TotpService : ITotpService
 
     private readonly TenantDbContext _db;
     private readonly IIdentityRepository _identityRepository;
+    private readonly ITenantSecurityInboxWriter _securityInbox;
     private readonly ILogger<TotpService> _logger;
 
     /// <summary>
@@ -45,10 +46,12 @@ public class TotpService : ITotpService
     public TotpService(
         TenantDbContext db,
         IIdentityRepository identityRepository,
+        ITenantSecurityInboxWriter securityInbox,
         ILogger<TotpService> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
+        _securityInbox = securityInbox ?? throw new ArgumentNullException(nameof(securityInbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -148,6 +151,10 @@ public class TotpService : ITotpService
         await UpdateUserPreferencesTwoFactor(userId, true, cancellationToken);
 
         _logger.LogInformation("TOTP enabled for user {UserId}", userId);
+
+        // Feature 118 — emit a Category=Security inbox entry. Fail-safe.
+        await _securityInbox.WriteTwoFactorEnabledAsync(userId, cancellationToken);
+
         return true;
     }
 
@@ -206,6 +213,10 @@ public class TotpService : ITotpService
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Backup code consumed for user {UserId} (index {Index})", userId, matchIndex);
+
+        // Feature 118 — backup-code consumption is an account-takeover signal worth surfacing. Fail-safe.
+        await _securityInbox.WriteBackupCodeUsedAsync(userId, cancellationToken);
+
         return true;
     }
 
@@ -224,6 +235,9 @@ public class TotpService : ITotpService
             await UpdateUserPreferencesTwoFactor(userId, false, cancellationToken);
 
             _logger.LogInformation("TOTP disabled for user {UserId}", userId);
+
+            // Feature 118 — emit a Category=Security inbox entry. Fail-safe.
+            await _securityInbox.WriteTwoFactorDisabledAsync(userId, cancellationToken);
         }
     }
 

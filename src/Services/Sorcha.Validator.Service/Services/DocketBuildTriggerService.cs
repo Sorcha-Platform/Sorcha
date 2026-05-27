@@ -506,6 +506,18 @@ public class DocketBuildTriggerService : BackgroundService
     }
 
     /// <summary>
+    /// Feature 137 (C5): resolves the next-action id carried in a transaction's submission
+    /// metadata (key <c>nextActionId</c>) for projection onto <see cref="TransactionMetaData.NextActionId"/>.
+    /// Returns null when absent or unparseable. The cross-node InstanceMirrorReconstructor reads the
+    /// projected value to seed a mirror's CurrentActionIds. Extracted as an internal static so the
+    /// parse/key contract can be unit-tested without the full docket-write flow.
+    /// </summary>
+    internal static uint? ResolveNextActionId(IReadOnlyDictionary<string, string> metadata)
+        => metadata.TryGetValue("nextActionId", out var raw) && uint.TryParse(raw, out var value)
+            ? value
+            : null;
+
+    /// <summary>
     /// Writes docket and transactions to Register Service after successful build
     /// </summary>
     private async Task WriteDocketAndTransactionsAsync(
@@ -584,6 +596,12 @@ public class DocketBuildTriggerService : BackgroundService
                             }
                         },
                         RecipientsWallets = t.RecipientsWallets ?? new List<string>(),
+                        // AUTHORITATIVE WRITE-PATH PROJECTION (post-Feature 119 note):
+                        // This block is the single source of truth for what TransactionMetaData
+                        // gets persisted to MongoDB. Blueprint Service's BuiltTransaction does
+                        // NOT have an equivalent ToTransactionModel() method any more — three
+                        // Feature 119 attempts modified that dead method and confirmed it was
+                        // never on the write path. ALL persisted-metadata changes go here.
                         MetaData = new Sorcha.Register.Models.TransactionMetaData
                         {
                             RegisterId = t.RegisterId,
@@ -599,6 +617,13 @@ public class DocketBuildTriggerService : BackgroundService
                                          && !string.IsNullOrWhiteSpace(iid)
                                 ? iid
                                 : null,
+                            // Feature 137 (C5): carry the Blueprint Service's resolved next
+                            // action through to the sealed tx so a cross-node InstanceMirror-
+                            // Reconstructor can seed CurrentActionIds without re-running routing.
+                            // The Blueprint Service evaluates conditional routes against the
+                            // payload (the validator only knows the static route graph), so the
+                            // authoritative next action must originate from the submission.
+                            NextActionId = ResolveNextActionId(t.Metadata),
                         }
                     };
                 }).ToList(),

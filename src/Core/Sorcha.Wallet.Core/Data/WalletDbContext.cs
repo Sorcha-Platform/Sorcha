@@ -85,6 +85,26 @@ public class WalletDbContext : DbContext
     public DbSet<CitizenWalletSyncCursor> CitizenWalletSyncCursors => Set<CitizenWalletSyncCursor>();
 
     /// <summary>
+    /// Reverse map from citizen holder wallet address to PlatformUser (Feature 114, US4).
+    /// </summary>
+    public DbSet<CitizenHolderIndex> CitizenHolderIndex => Set<CitizenHolderIndex>();
+
+    /// <summary>
+    /// Append-only credential-lifecycle event log per citizen (Feature 114, US4).
+    /// </summary>
+    public DbSet<CitizenCredentialEventLog> CitizenCredentialEventLog => Set<CitizenCredentialEventLog>();
+
+    /// <summary>
+    /// Per-organisation VC issuance key lifecycle state (Feature 120 US2, data-model §4).
+    /// </summary>
+    public DbSet<IssuanceKeyState> IssuanceKeyStates => Set<IssuanceKeyState>();
+
+    /// <summary>
+    /// Durable per-citizen presentation history for cross-device Activity (Feature 114, US5 PR3).
+    /// </summary>
+    public DbSet<CitizenPresentationRecord> CitizenPresentationRecords => Set<CitizenPresentationRecord>();
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="WalletDbContext"/> class.
     /// </summary>
     /// <param name="options">The database context options configured with PostgreSQL connection string.</param>
@@ -125,6 +145,78 @@ public class WalletDbContext : DbContext
         ConfigureSigningSession(modelBuilder);
         ConfigureCitizenDeviceStatusList(modelBuilder);
         ConfigureCitizenWalletSyncCursor(modelBuilder);
+        ConfigureCitizenHolderIndex(modelBuilder);
+        ConfigureCitizenCredentialEventLog(modelBuilder);
+        ConfigureIssuanceKeyState(modelBuilder);
+        ConfigureCitizenPresentationRecord(modelBuilder);
+    }
+
+    // Feature 114 US5 PR3: durable per-citizen presentation history. Surrogate Id PK
+    // (convention-discoverable so test DbContexts that override OnModelCreating stay
+    // keyed); the unique (PlatformUserId, EntryId) index is the natural key that makes
+    // the forward upsert idempotent and scopes reads/deletes to the owner;
+    // (PlatformUserId, PresentedAt desc) serves the newest-first list. DisclosedClaims
+    // is jsonb (names only — never values).
+    private static void ConfigureCitizenPresentationRecord(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CitizenPresentationRecord>(entity =>
+        {
+            entity.ToTable("CitizenPresentationRecords");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.PlatformUserId).IsRequired();
+            entity.Property(e => e.EntryId).IsRequired();
+            entity.Property(e => e.CredentialId).IsRequired();
+            entity.Property(e => e.Outcome).IsRequired();
+            entity.Property(e => e.PresentedAt).IsRequired();
+            entity.Property(e => e.ReportedAt).IsRequired();
+
+            entity.Property(e => e.VerifierLabel).HasMaxLength(200);
+            entity.Property(e => e.VerifierDid).HasMaxLength(200);
+
+            entity.Property(e => e.DisclosedClaims)
+                .HasColumnType("jsonb")
+                .IsRequired();
+
+            entity.HasIndex(e => new { e.PlatformUserId, e.EntryId })
+                .IsUnique()
+                .HasDatabaseName("IX_CitizenPresentationRecords_User_Entry");
+
+            entity.HasIndex(e => new { e.PlatformUserId, e.PresentedAt })
+                .IsDescending(false, true)
+                .HasDatabaseName("IX_CitizenPresentationRecords_User_PresentedAt");
+        });
+    }
+
+    private static void ConfigureIssuanceKeyState(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<IssuanceKeyState>(entity =>
+        {
+            entity.ToTable("IssuanceKeyStates");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.OrganizationId).IsRequired();
+            entity.Property(e => e.Slot).IsRequired();
+            entity.Property(e => e.RotationIndex).IsRequired();
+            entity.Property(e => e.Status).HasConversion<int>().IsRequired();
+            entity.Property(e => e.PublicKey).IsRequired();
+            entity.Property(e => e.Algorithm).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Thumbprint).IsRequired().HasMaxLength(43);
+            entity.Property(e => e.DerivedAt).IsRequired();
+            entity.Property(e => e.RevocationReason).HasMaxLength(500);
+
+            // FR-016 — at most one Active key per (Org, Slot).
+            entity.HasIndex(e => new { e.OrganizationId, e.Slot })
+                .HasFilter("\"Status\" = 0")
+                .IsUnique()
+                .HasDatabaseName("IX_IssuanceKeyStates_Org_Slot_Active");
+
+            // FR-011 — RotationIndex unique per Org.
+            entity.HasIndex(e => new { e.OrganizationId, e.RotationIndex })
+                .IsUnique()
+                .HasDatabaseName("IX_IssuanceKeyStates_Org_Rotation");
+        });
     }
 
     private static void ConfigureWallet(ModelBuilder modelBuilder)
@@ -930,6 +1022,62 @@ public class WalletDbContext : DbContext
             entity.HasIndex(e => new { e.PlatformUserId, e.PlatformUserDeviceId })
                 .IsUnique()
                 .HasDatabaseName("IX_CitizenWalletSyncCursors_User_Device");
+        });
+    }
+
+    // Feature 114 US4: reverse index from citizen holder wallet address → PlatformUser.
+    // Populated on first holder-key derivation; consumed by IHolderAddressLookup.
+    private static void ConfigureCitizenHolderIndex(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CitizenHolderIndex>(entity =>
+        {
+            entity.ToTable("CitizenHolderIndex");
+
+            // WalletAddress is the natural PK — one holder address ↔ one citizen.
+            entity.HasKey(e => e.WalletAddress);
+
+            entity.Property(e => e.WalletAddress)
+                .HasColumnType("text")
+                .IsRequired();
+
+            entity.Property(e => e.PlatformUserId).IsRequired();
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => e.PlatformUserId)
+                .HasDatabaseName("IX_CitizenHolderIndex_PlatformUserId");
+        });
+    }
+
+    // Feature 114 US4: append-only credential-lifecycle event log per citizen.
+    // Backs ICitizenCredentialEventStream; (PlatformUserId, Seq) supports the
+    // delta-read query the sync service issues on every wallet open.
+    private static void ConfigureCitizenCredentialEventLog(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CitizenCredentialEventLog>(entity =>
+        {
+            entity.ToTable("CitizenCredentialEventLog");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.PlatformUserId).IsRequired();
+            entity.Property(e => e.Seq).IsRequired();
+            entity.Property(e => e.Kind).IsRequired();
+
+            entity.Property(e => e.CredentialId)
+                .HasMaxLength(500)
+                .IsRequired();
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            // Hot-path read index — citizens always query "events strictly newer than Seq".
+            entity.HasIndex(e => new { e.PlatformUserId, e.Seq })
+                .IsUnique()
+                .HasDatabaseName("IX_CitizenCredentialEventLog_User_Seq");
         });
     }
 }

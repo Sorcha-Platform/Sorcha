@@ -17,6 +17,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Moq" />
     <PackageReference Include="xunit.v3" />
@@ -35,6 +36,12 @@
     <ProjectReference Include="..\..\src\Core\Sorcha.Blueprint.Engine\Sorcha.Blueprint.Engine.csproj" />
     <ProjectReference Include="..\..\src\Core\Sorcha.Blueprint.Fluent\Sorcha.Blueprint.Fluent.csproj" />
     <ProjectReference Include="..\..\src\Core\Sorcha.Blueprint.Schemas.Client\Sorcha.Blueprint.Schemas.Client.csproj" />
+    <!-- Feature 118 — load every hub-hosting service so reflection can walk
+         the typed-client interfaces in ThinSignalContractTests. -->
+    <ProjectReference Include="..\..\src\Services\Sorcha.Blueprint.Service\Sorcha.Blueprint.Service.csproj" />
+    <ProjectReference Include="..\..\src\Services\Sorcha.Tenant.Service\Sorcha.Tenant.Service.csproj" />
+    <ProjectReference Include="..\..\src\Services\Sorcha.Wallet.Service\Sorcha.Wallet.Service.csproj" />
+    <ProjectReference Include="..\..\src\Services\Sorcha.Register.Service\Sorcha.Register.Service.csproj" />
   </ItemGroup>
 
 </Project>

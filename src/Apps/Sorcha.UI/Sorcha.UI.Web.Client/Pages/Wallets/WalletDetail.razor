@@ -3,14 +3,15 @@
 @attribute [Authorize]
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Components.Wallet
+@using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.UI.Core.Components.Forms
 @implements IAsyncDisposable
 @inject IWalletApiService WalletService
 @inject ITransactionService TransactionService
-@inject RegisterHubConnection HubConnection
+@inject WalletHubConnection HubConnection
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject IDialogService DialogService
-@inject IJSRuntime JS
 
 <PageTitle>Wallet Details - Sorcha Platform</PageTitle>
 
@@ -46,7 +47,7 @@
                             <MudText Typo="Typo.body2" Color="Color.Secondary" Style="font-family: monospace;">
                                 @TruncateAddress(wallet.Address)
                             </MudText>
-                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="CopyWalletAddress" />
+                            <CopyButton Value="@wallet.Address" Variant="CopyButtonVariant.IconButton" Label="Copy address" />
                         </div>
                     </div>
                 </div>
@@ -80,7 +81,7 @@
                                         <td>
                                             <div class="d-flex align-center">
                                                 <code style="font-size: 0.85rem; word-break: break-all;">@wallet.Address</code>
-                                                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="CopyWalletAddress" />
+                                                <CopyButton Value="@wallet.Address" Variant="CopyButtonVariant.IconButton" Label="Copy address" />
                                             </div>
                                         </td>
                                     </tr>
@@ -112,7 +113,7 @@
                             <MudText Typo="Typo.h6" Class="mb-3">Public Key</MudText>
                             <div class="d-flex align-center mb-3">
                                 <code style="font-size: 0.75rem; word-break: break-all; max-height: 100px; overflow-y: auto; display: block; background: var(--mud-palette-background); padding: 8px; border-radius: 4px; flex-grow: 1;">@wallet.PublicKey</code>
-                                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="CopyPublicKey" />
+                                <CopyButton Value="@wallet.PublicKey" Variant="CopyButtonVariant.IconButton" Label="Copy public key" />
                             </div>
                             <MudDivider Class="my-3" />
                             <MudText Typo="Typo.h6" Class="mb-3">Timestamps</MudText>
@@ -189,7 +190,7 @@
                                 <MudTd DataLabel="Address">
                                     <div class="d-flex align-center">
                                         <code style="font-size: 0.8rem;">@TruncateAddress(context.Address)</code>
-                                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => CopyAddressToClipboard(context.Address))" />
+                                        <CopyButton Value="@context.Address" Variant="CopyButtonVariant.IconButton" Label="Copy address" />
                                     </div>
                                 </MudTd>
                                 <MudTd DataLabel="Path"><code>@context.DerivationPath</code></MudTd>
@@ -205,7 +206,7 @@
                                     }
                                 </MudTd>
                                 <MudTd DataLabel="Actions">
-                                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => CopyAddressToClipboard(context.Address))" />
+                                    <CopyButton Value="@context.Address" Variant="CopyButtonVariant.IconButton" Label="Copy address" />
                                 </MudTd>
                             </RowTemplate>
                             <PagerContent>
@@ -303,7 +304,7 @@
                                 <MudText Typo="Typo.caption"><strong>Signature (Base64)</strong></MudText>
                                 <div class="d-flex align-center mb-2">
                                     <code style="font-size: 0.7rem; word-break: break-all; background: var(--mud-palette-surface); padding: 8px; border-radius: 4px; flex-grow: 1; max-height: 80px; overflow-y: auto;">@signatureResult.Signature</code>
-                                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="CopySignature" />
+                                    <CopyButton Value="@signatureResult.Signature" Variant="CopyButtonVariant.IconButton" Label="Copy signature" />
                                 </div>
 
                                 @if (!string.IsNullOrEmpty(signatureResult.PublicKey))
@@ -311,7 +312,7 @@
                                     <MudText Typo="Typo.caption"><strong>Public Key Used</strong></MudText>
                                     <div class="d-flex align-center mb-2">
                                         <code style="font-size: 0.7rem; word-break: break-all; background: var(--mud-palette-surface); padding: 8px; border-radius: 4px; flex-grow: 1; max-height: 60px; overflow-y: auto;">@signatureResult.PublicKey</code>
-                                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="CopySignaturePublicKey" />
+                                        <CopyButton Value="@signatureResult.PublicKey" Variant="CopyButtonVariant.IconButton" Label="Copy public key" />
                                     </div>
                                 }
 
@@ -544,7 +545,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to load wallet: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to load wallet: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -562,7 +563,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to load addresses: {ex.Message}", Severity.Warning);
+            Feedback.ShowWarning($"Failed to load addresses: {ex.Message}");
         }
         finally
         {
@@ -612,11 +613,11 @@
             };
 
             signatureResult = await WalletService.SignDataAsync(Address, request);
-            Snackbar.Add("Data signed successfully!", Severity.Success);
+            Feedback.ShowSuccess("Data signed successfully!");
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to sign data: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to sign data: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -650,13 +651,13 @@
         try
         {
             await WalletService.RegisterAddressAsync(Address, registerRequest);
-            Snackbar.Add("Address registered successfully!", Severity.Success);
+            Feedback.ShowSuccess("Address registered successfully!");
             CloseRegisterAddressDialog();
             await LoadAddressesAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to register address: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to register address: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -689,54 +690,18 @@
             var success = await WalletService.DeleteWalletAsync(Address);
             if (success)
             {
-                Snackbar.Add($"Wallet deleted successfully", Severity.Success);
+                Feedback.ShowSuccess("Wallet deleted successfully");
                 Navigation.NavigateTo("wallets");
             }
             else
             {
-                Snackbar.Add("Wallet not found", Severity.Warning);
+                Feedback.ShowWarning("Wallet not found");
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to delete wallet: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Failed to delete wallet: {ex.Message}", autoDismissMs: 0);
         }
-    }
-
-    // Copy helper methods - avoid lambda with string literals in Razor attributes
-    private async Task CopyWalletAddress()
-    {
-        if (wallet != null)
-            await CopyToClipboard(wallet.Address, "Address");
-    }
-
-    private async Task CopyPublicKey()
-    {
-        if (wallet != null)
-            await CopyToClipboard(wallet.PublicKey, "Public key");
-    }
-
-    private async Task CopySignature()
-    {
-        if (signatureResult != null)
-            await CopyToClipboard(signatureResult.Signature, "Signature");
-    }
-
-    private async Task CopySignaturePublicKey()
-    {
-        if (signatureResult?.PublicKey != null)
-            await CopyToClipboard(signatureResult.PublicKey, "Public key");
-    }
-
-    private async Task CopyAddressToClipboard(string address)
-    {
-        await CopyToClipboard(address, "Address");
-    }
-
-    private async Task CopyToClipboard(string text, string label)
-    {
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
-        Snackbar.Add($"{label} copied to clipboard", Severity.Info);
     }
 
     private static string TruncateAddress(string address)
@@ -784,9 +749,14 @@
     }
 
     /// <summary>
-    /// Handles real-time receipt notifications via SignalR and updates the transaction list.
+    /// Handles real-time receipt notifications via SignalR and updates the
+    /// transaction list. Feature 118 T111 — switched from RegisterHub to
+    /// WalletHub; the thin signal carries (walletAddress, transactionId,
+    /// receiptId) only. The receipted-at timestamp is set from local UTC
+    /// since the event fired in real time; consumers needing authoritative
+    /// docket/sealing detail call the receipt endpoint directly.
     /// </summary>
-    private async Task HandleTransactionReceipted(string txId, string registerId, long docketNumber, string receiptId, DateTimeOffset sealedAt)
+    private void HandleTransactionReceipted(string walletAddress, string txId, string receiptId)
     {
         var match = transactions.FirstOrDefault(t => t.Transaction.TxId == txId);
         if (match is not null)
@@ -795,11 +765,11 @@
             var updatedTx = match.Transaction with
             {
                 ReceiptId = receiptId,
-                ReceiptedAt = sealedAt.UtcDateTime,
+                ReceiptedAt = DateTime.UtcNow,
                 State = "Receipted"
             };
             transactions[index] = match with { Transaction = updatedTx };
-            await InvokeAsync(StateHasChanged);
+            InvokeAsync(StateHasChanged);
         }
     }
 

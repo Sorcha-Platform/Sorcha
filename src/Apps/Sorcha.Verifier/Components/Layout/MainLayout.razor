@@ -1,0 +1,20 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+*@
+@inherits LayoutComponentBase
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+@* Snackbar Phase 6 (closer): MudSnackbarProvider unmounted across the
+   platform. See Sorcha.UI.Web.Client MainLayout for rationale. *@
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudText Typo="Typo.h6">Sorcha Reference Verifier</MudText>
+    </MudAppBar>
+    <MudMainContent>
+        @Body
+    </MudMainContent>
+</MudLayout>

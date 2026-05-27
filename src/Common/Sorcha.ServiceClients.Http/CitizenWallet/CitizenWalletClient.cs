@@ -17,8 +17,8 @@ namespace Sorcha.ServiceClients.CitizenWallet;
 /// </summary>
 /// <remarks>
 /// This client does NOT inject a service principal token — citizen-wallet
-/// endpoints require a citizen JWT (audience <c>sorcha:citizen-wallet</c>) that
-/// the PWA acquires through the existing Sorcha auth flow. Caller is responsible
+/// endpoints require a citizen JWT (the consumer-tier audience <c>{installation}:consumer</c>,
+/// spec 136) that the PWA acquires through the existing Sorcha auth flow. Caller is responsible
 /// for setting <see cref="HttpClient.DefaultRequestHeaders"/>.Authorization or
 /// using a <see cref="DelegatingHandler"/> that does so.
 /// </remarks>
@@ -106,5 +106,79 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
 
         return await response.Content.ReadFromJsonAsync<DelegationRenewalResponse>(JsonOptions, ct)
             ?? throw new InvalidOperationException("Wallet Service returned an empty body for /devices/renew-delegation.");
+    }
+
+    /// <inheritdoc />
+    public async Task<DeviceListResponse> ListDevicesAsync(CancellationToken ct = default)
+    {
+        var response = await _httpClient.GetAsync("api/v1/wallet/devices", ct);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<DeviceListResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Wallet Service returned an empty body for /devices.");
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> RenameDeviceAsync(
+        Guid deviceId, string label, CancellationToken ct = default)
+    {
+        var response = await _httpClient.PutAsJsonAsync(
+            $"api/v1/wallet/devices/{deviceId}/label",
+            new DeviceLabelUpdateRequest { Label = label },
+            JsonOptions, ct);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> RevokeDeviceAsync(
+        Guid deviceId, CancellationToken ct = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/v1/wallet/devices/{deviceId}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ReportPresentationLogAsync(
+        PresentationLogReportRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var response = await _httpClient.PostAsJsonAsync(
+            "api/v1/wallet/presentations/log", request, JsonOptions, ct);
+        response.EnsureSuccessStatusCode();
+        return response.StatusCode == System.Net.HttpStatusCode.Accepted;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PresentationLogEntry>> ListPresentationsAsync(CancellationToken ct = default)
+    {
+        var response = await _httpClient.GetAsync("api/v1/wallet/presentations", ct);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<PresentationHistoryResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Wallet Service returned an empty body for /presentations.");
+        return result.Entries;
+    }
+
+    /// <inheritdoc />
+    public async Task DeletePresentationAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/v1/wallet/presentations/{id}", ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <inheritdoc />
+    public async Task<PendingApplicationResponse> GetPendingApplicationAsync(CancellationToken ct = default)
+    {
+        var response = await _httpClient.GetAsync("api/v1/wallet/pending-applications", ct);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<PendingApplicationResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException("Wallet Service returned an empty body for /pending-applications.");
     }
 }

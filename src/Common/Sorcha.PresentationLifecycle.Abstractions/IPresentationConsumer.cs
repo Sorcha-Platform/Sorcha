@@ -45,4 +45,32 @@ public interface IPresentationConsumer
         PresentationInitiationContext context,
         object verifierPayload,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Build the wallet-facing artifact (OID4VP request URI + optional alternative
+    /// URIs) for a new presentation attempt. Called by the lifecycle service's
+    /// <c>InitiateAsync</c> after the <c>presentation-initiated</c> transaction
+    /// is written. The descriptor is returned to the calling page so it can
+    /// render the hybrid universal QR / tap-link affordance.
+    /// </summary>
+    /// <remarks>
+    /// <para>Default implementation throws <see cref="NotSupportedException"/>.
+    /// Consumers using the HAIP-style hardcoded initiation path don't need to
+    /// override — the lifecycle service falls back to its legacy path when this
+    /// method throws. New consumers (Feature 127 introduces the first non-HAIP
+    /// consumer, <c>"sorcha-wallet"</c>) override this method to opt into the
+    /// generic initiation dispatch.</para>
+    /// <para>Idempotency is not required at the consumer level. The lifecycle
+    /// service guarantees one call per <c>presentationRequestId</c>.</para>
+    /// <para>Side effects MUST be none — the method is pure. Writing register
+    /// transactions, stashing pending state, and minting claims-fetch tokens
+    /// are the lifecycle service's responsibility.</para>
+    /// </remarks>
+    Task<ConsumerInitiationDescriptor> BuildInitiationAsync(
+        PresentationInitiationContext context,
+        CancellationToken cancellationToken)
+        => throw new NotSupportedException(
+            $"Consumer '{ConsumerName}' does not implement BuildInitiationAsync. " +
+            "If this is a new non-HAIP consumer, override the method; if HAIP, " +
+            "the lifecycle service uses its existing hardcoded initiation path.");
 }

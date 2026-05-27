@@ -30,6 +30,7 @@ public class DatabaseInitializer
     public static readonly Guid PeerServicePrincipalId = new("00000000-0000-0000-0002-000000000004");
     public static readonly Guid ValidatorServicePrincipalId = new("00000000-0000-0000-0002-000000000005");
     public static readonly Guid TenantServicePrincipalId = new("00000000-0000-0000-0002-000000000006");
+    public static readonly Guid HaipServicePrincipalId = new("00000000-0000-0000-0002-000000000007");
 
     // Default credentials (can be overridden via configuration)
     public const string DefaultAdminEmail = "admin@sorcha.local";
@@ -437,6 +438,17 @@ public class DatabaseInitializer
                 // persona feature (092). Only the Tenant Service is issued
                 // this scope.
                 new[] { "wallets:read", "wallets:sign", "wallets:verify", "persona:crypto" }
+            ),
+            (
+                HaipServicePrincipalId,
+                "HAIP Service",
+                "service-haip",
+                "haip-service-secret",
+                // HAIP Service uses its service token to call Blueprint Service's
+                // presentation-callback endpoint (Feature 111). RequireService
+                // policy only checks the token_type=service claim, so the scope
+                // list is informational here. blueprints:read kept narrow.
+                new[] { "blueprints:read" }
             )
         };
 

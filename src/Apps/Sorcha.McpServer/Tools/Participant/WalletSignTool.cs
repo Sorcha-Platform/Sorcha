@@ -15,8 +15,15 @@ namespace Sorcha.McpServer.Tools.Participant;
 
 /// <summary>
 /// Participant tool for signing data with the wallet.
+/// <para>
+/// Spec 139 T029: this tool is intentionally <b>not</b> decorated with
+/// <c>[McpServerToolType]</c>, so the assembly tool scan does not discover or register it and
+/// it is fully absent from the served MCP surface (and from the advertised manifest catalogue).
+/// Direct signing is a high-risk operation that returns in a dedicated, security-reviewed wave;
+/// it was already excluded from <see cref="Services.ToolEntitlements"/> (US2). The class is kept
+/// intact (compiles, unit-tested) so that wave can re-enable it by restoring the attribute.
+/// </para>
 /// </summary>
-[McpServerToolType]
 public sealed class WalletSignTool
 {
     private readonly IMcpSessionService _sessionService;
@@ -54,7 +61,7 @@ public sealed class WalletSignTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The signature.</returns>
     [McpServerTool(Name = "sorcha_wallet_sign")]
-    [Description("Sign data with your wallet. Creates a cryptographic signature that proves you authorized the data. Used for action submissions and identity verification.")]
+    [Description("Produce a cryptographic signature over the supplied bytes or JSON using the participant's wallet key at the chosen address index, returning the signature plus the public key needed to verify it. The signature is what makes a participant's act non-repudiable on the Sorcha register. Call this when an agent needs a detached signature for an out-of-band proof, identity challenge, or pre-built submission envelope; prefer sorcha_action_submit rather than this tool when the goal is to complete a normal action — submit signs implicitly as part of the workflow and avoids manual signature handling.")]
     public async Task<WalletSignResult> SignDataAsync(
         [Description("The data to sign (message or JSON)")] string dataToSign,
         [Description("Address index to use for signing (default: 0 for primary)")] int addressIndex = 0,

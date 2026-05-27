@@ -4,45 +4,37 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Blueprint;
 
 namespace Sorcha.McpServer.Tools.Designer;
 
 /// <summary>
-/// Designer tool for listing workflow instances.
+/// Designer tool for listing workflow instances. Reads via the typed
+/// <see cref="IBlueprintServiceClient"/> (spec 139 US4) so the caller's bearer is forwarded
+/// and the route is contract-pinned, not hand-rolled.
 /// </summary>
 [McpServerToolType]
 public sealed class WorkflowInstancesTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IBlueprintServiceClient _blueprintClient;
     private readonly ILogger<WorkflowInstancesTool> _logger;
-    private readonly string _blueprintServiceEndpoint;
 
     public WorkflowInstancesTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        IBlueprintServiceClient blueprintClient,
         ILogger<WorkflowInstancesTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _blueprintClient = blueprintClient;
         _logger = logger;
-
-        _blueprintServiceEndpoint = configuration["ServiceClients:BlueprintService:Address"] ?? "http://localhost:5000";
     }
 
     /// <summary>
@@ -55,7 +47,7 @@ public sealed class WorkflowInstancesTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of workflow instances.</returns>
     [McpServerTool(Name = "sorcha_workflow_instances")]
-    [Description("List workflow instances (running or completed workflows). Filter by blueprint ID and status. Useful for monitoring workflow execution and debugging issues.")]
+    [Description("Returns a paginated list of workflow instances — concrete executions of a blueprint, each with their own state, current action, and participants — filterable by blueprint ID and lifecycle status (Active, Completed, Suspended). Call this when monitoring running workflows, locating a specific instance for debugging, or auditing recently completed workflows for a given blueprint; use sorcha_blueprint_list instead when you need blueprint definitions rather than running executions, and prefer this over sorcha_blueprint_get when the question is about runtime activity rather than design-time structure.")]
     public async Task<WorkflowInstancesResult> ListWorkflowInstancesAsync(
         [Description("Blueprint ID to filter instances (optional)")] string? blueprintId = null,
         [Description("Status filter: Active, Completed, or Suspended (optional)")] string? status = null,
@@ -113,9 +105,6 @@ public sealed class WorkflowInstancesTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
             // Build query string
             var queryParams = new List<string>
             {
@@ -133,50 +122,28 @@ public sealed class WorkflowInstancesTool
                 queryParams.Add($"status={Uri.EscapeDataString(status)}");
             }
 
-            var url = $"{_blueprintServiceEndpoint.TrimEnd('/')}/api/workflows?{string.Join("&", queryParams)}";
-
-            var response = await client.GetAsync(url, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the route (GET api/workflows).
+            var responseContent = await _blueprintClient.GetWorkflowInstancesAsync(
+                string.Join("&", queryParams), cancellationToken);
 
             stopwatch.Stop();
 
-            if (!response.IsSuccessStatusCode)
+            if (string.IsNullOrWhiteSpace(responseContent))
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Workflow instances request failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
                 _availabilityTracker.RecordSuccess("Blueprint");
 
-                try
+                return new WorkflowInstancesResult
                 {
-                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-
-                    return new WorkflowInstancesResult
-                    {
-                        Status = "Error",
-                        Message = errorResponse?.Error ?? "Failed to list workflow instances.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
-                catch (JsonException)
-                {
-                    return new WorkflowInstancesResult
-                    {
-                        Status = "Error",
-                        Message = $"Request failed with status {(int)response.StatusCode}.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
+                    Status = "Error",
+                    Message = "Failed to list workflow instances.",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+                };
             }
 
             // Record success
             _availabilityTracker.RecordSuccess("Blueprint");
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             var result = JsonSerializer.Deserialize<WorkflowListResponse>(responseContent, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
@@ -291,10 +258,6 @@ public sealed class WorkflowInstancesTool
         public DateTimeOffset? LastActivityAt { get; set; }
     }
 
-    private sealed class ErrorResponse
-    {
-        public string? Error { get; set; }
-    }
 }
 
 /// <summary>

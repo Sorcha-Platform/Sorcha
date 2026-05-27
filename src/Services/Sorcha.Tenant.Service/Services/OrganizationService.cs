@@ -21,7 +21,9 @@ public partial class OrganizationService : IOrganizationService
     private readonly IIdentityRepository _identityRepository;
     private readonly TenantDbContext _dbContext;
     private readonly IWalletServiceClient _walletClient;
+    private readonly ITenantMembershipInboxWriter _membershipInbox;
     private readonly ILogger<OrganizationService> _logger;
+    private readonly bool _allowAdminVerifiedUserCreation;
 
     // Reserved subdomains that cannot be used
     private static readonly HashSet<string> ReservedSubdomains = new(StringComparer.OrdinalIgnoreCase)
@@ -38,13 +40,20 @@ public partial class OrganizationService : IOrganizationService
         IIdentityRepository identityRepository,
         TenantDbContext dbContext,
         IWalletServiceClient walletClient,
-        ILogger<OrganizationService> logger)
+        ITenantMembershipInboxWriter membershipInbox,
+        ILogger<OrganizationService> logger,
+        Microsoft.Extensions.Configuration.IConfiguration configuration)
     {
         _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
+        _membershipInbox = membershipInbox ?? throw new ArgumentNullException(nameof(membershipInbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        // Same deployment-level gate as OrgProvisioningService: emailVerified bypass is off by
+        // default (incl. production). See Platform:AllowAdminVerifiedUserCreation (spec 136 follow-up).
+        _allowAdminVerifiedUserCreation =
+            configuration?.GetValue("Platform:AllowAdminVerifiedUserCreation", false) ?? false;
     }
 
     /// <inheritdoc />
@@ -269,21 +278,103 @@ public partial class OrganizationService : IOrganizationService
 
             if (existingMembership == null)
             {
+                var newMembershipRole = request.Roles.Any(r => r == UserRole.Administrator)
+                    ? UserRole.Administrator.ToString() : UserRole.Consumer.ToString();
                 _dbContext.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
                 {
                     PlatformUserId = platformUser.Id,
                     OrganizationId = organizationId,
-                    Role = request.Roles.Any(r => r == UserRole.Administrator)
-                        ? UserRole.Administrator.ToString() : UserRole.Consumer.ToString(),
+                    Role = newMembershipRole,
                     JoinedAt = DateTimeOffset.UtcNow
                 });
                 await _dbContext.SaveChangesAsync(cancellationToken);
+
+                // Feature 118 — drop a "welcome to {org}" inbox entry once the membership
+                // is committed. Writer is fail-safe (try/log/swallow internally).
+                await _membershipInbox.WriteOrgMembershipAddedAsync(
+                    platformUser.Id, organizationId, newMembershipRole, cancellationToken).ConfigureAwait(false);
             }
         }
 
         _logger.LogInformation(
             "Added user {UserId} ({Email}) to organization {OrganizationId} (PlatformUser: {HasPlatformUser})",
             created.Id, created.Email, organizationId, platformUser != null);
+
+        return UserResponse.FromEntity(created, platformUser);
+    }
+
+    /// <inheritdoc />
+    public async Task<UserResponse> ProvisionOrgUserAsync(
+        Guid organizationId,
+        ProvisionOrgUserRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var organization = await _organizationRepository.GetByIdAsync(organizationId, cancellationToken)
+            ?? throw new ArgumentException($"Organization {organizationId} not found", nameof(organizationId));
+
+        // Verified bypass gate (off by default, incl. production) — spec 136 follow-up.
+        if (request.EmailVerified && !_allowAdminVerifiedUserCreation)
+        {
+            throw new InvalidOperationException(
+                "Creating pre-verified users is not enabled on this installation (Platform:AllowAdminVerifiedUserCreation).");
+        }
+
+        // This provisions a NEW org-scoped user. If a PlatformUser already exists for the email,
+        // refuse — adding an existing (possibly public) user here would create the very multi-org
+        // situation this endpoint exists to avoid. Use AddUserToOrganization for existing users.
+        var existingPlatform = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.Email.ToLower() == request.Email.ToLower(), cancellationToken);
+        if (existingPlatform is not null)
+        {
+            throw new InvalidOperationException(
+                $"A platform user with email {request.Email} already exists; provision creates a NEW org-scoped user.");
+        }
+
+        var platformUser = new PlatformUser
+        {
+            Email = request.Email,
+            DisplayName = request.DisplayName,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            EmailVerified = request.EmailVerified,
+            EmailVerifiedAt = request.EmailVerified ? DateTimeOffset.UtcNow : null,
+            Status = PlatformUserStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _dbContext.PlatformUsers.Add(platformUser);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var user = new UserIdentity
+        {
+            OrganizationId = organizationId,
+            PlatformUserId = platformUser.Id,
+            Email = request.Email,
+            DisplayName = request.DisplayName,
+            Roles = request.Roles is { Length: > 0 } ? request.Roles : new[] { UserRole.Consumer },
+            Status = IdentityStatus.Active,
+            ProvisionedVia = ProvisioningMethod.AdminCreated,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var created = await _identityRepository.CreateUserAsync(user, cancellationToken);
+
+        var membershipRole = user.Roles.Any(r => r == UserRole.Administrator)
+            ? UserRole.Administrator.ToString() : UserRole.Consumer.ToString();
+        _dbContext.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
+        {
+            PlatformUserId = platformUser.Id,
+            OrganizationId = organizationId,
+            Role = membershipRole,
+            JoinedAt = DateTimeOffset.UtcNow
+        });
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _membershipInbox.WriteOrgMembershipAddedAsync(
+            platformUser.Id, organizationId, membershipRole, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Provisioned org-scoped user {UserId} ({Email}) in organization {OrganizationId} (verified={Verified})",
+            created.Id, created.Email, organizationId, request.EmailVerified);
 
         return UserResponse.FromEntity(created, platformUser);
     }

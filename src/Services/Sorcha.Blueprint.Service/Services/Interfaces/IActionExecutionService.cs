@@ -59,4 +59,41 @@ public interface IActionExecutionService
         string delegationToken,
         ClaimsPrincipal? caller = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Feature 111 / FR-015 — completes an action that was suspended by a HAIP
+    /// presentation requirement, after the verifier callback has written a
+    /// success-kind <c>presentation-outcome</c> transaction. Drives the same
+    /// post-validator routing + notification path as <see cref="ExecuteAsync"/>:
+    /// evaluates routes against the saved draft payload, applies the resulting
+    /// state changes to the instance, and notifies participants of the next
+    /// action.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Called by <c>PresentationLifecycleService.HandleOutcomeAsync</c> on the
+    /// success path. Skipping decline / abandonment paths is deliberate — those
+    /// terminate or reroute via the lifecycle service's own logic, not this
+    /// router.
+    /// </para>
+    /// <para>
+    /// State reconstruction from prior encrypted transactions is intentionally
+    /// not invoked here: the caller is a service principal without a delegation
+    /// token, so decrypting prior payloads is not possible. Routing decisions
+    /// in the linear AssuredIdentity flow do not need that data; blueprints
+    /// that route on JSON-Logic predicates over decrypted prior payloads will
+    /// need a richer integration point in a follow-up.
+    /// </para>
+    /// </remarks>
+    /// <param name="instanceId">The workflow instance ID.</param>
+    /// <param name="completedActionId">The action ID being completed (the one that was awaiting presentation).</param>
+    /// <param name="outcomeTransactionId">The TxID of the just-confirmed presentation-outcome (success) transaction.</param>
+    /// <param name="draftPayload">The submitter's payload captured at <c>InitiateAsync</c> time, or null.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task CompleteAfterPresentationAsync(
+        string instanceId,
+        int completedActionId,
+        string outcomeTransactionId,
+        IReadOnlyDictionary<string, object>? draftPayload,
+        CancellationToken cancellationToken = default);
 }

@@ -29,6 +29,368 @@ public class WalletCommand : Command
         Subcommands.Add(new WalletSignCommand(clientFactory, authService, configService));
         Subcommands.Add(new WalletAccessCommand(clientFactory, authService, configService));
         Subcommands.Add(new WalletCreateBatchCommand(clientFactory, authService, configService));
+        Subcommands.Add(new WalletOrgKeyCommand(clientFactory, authService, configService));
+    }
+}
+
+/// <summary>
+/// Organisation HD key derivation commands (Feature 083).
+/// </summary>
+public class WalletOrgKeyCommand : Command
+{
+    public WalletOrgKeyCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("org-key", "Provision and manage organisation HD keys\n\nExamples:\n  sorcha wallet org-key provision <orgId>\n  sorcha wallet org-key derive <orgId> --user-id alice --usage Identity")
+    {
+        Subcommands.Add(new WalletOrgKeyProvisionCommand(clientFactory, authService, configService));
+        Subcommands.Add(new WalletOrgKeyDeriveCommand(clientFactory, authService, configService));
+        Subcommands.Add(new WalletOrgKeyRotateCommand(clientFactory, authService, configService));
+        Subcommands.Add(new WalletOrgKeyRevokeCommand(clientFactory, authService, configService));
+    }
+}
+
+/// <summary>
+/// Provisions an organisation master key (mnemonic shown exactly once).
+/// </summary>
+public class WalletOrgKeyProvisionCommand : Command
+{
+    private readonly Argument<string> _orgIdArgument;
+    private readonly Option<string> _algorithmOption;
+
+    public WalletOrgKeyProvisionCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("provision", "Provision an organisation master key (returns the mnemonic once)")
+    {
+        _orgIdArgument = new Argument<string>("orgId") { Description = "Organisation ID" };
+        _algorithmOption = new Option<string>("--algorithm", "-a")
+        {
+            Description = "Signing algorithm (default ED25519)",
+            DefaultValueFactory = _ => "ED25519"
+        };
+        Arguments.Add(_orgIdArgument);
+        Options.Add(_algorithmOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var orgId = parseResult.GetValue(_orgIdArgument)!;
+            var algorithm = parseResult.GetValue(_algorithmOption)!;
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to provision an org master key.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateWalletServiceClientAsync(profileName);
+                var request = new ProvisionOrgMasterKeyRequest { Algorithm = algorithm };
+                var response = await client.ProvisionOrgMasterKeyAsync(orgId, request, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Org master key provisioned for '{response.OrganizationId}'.");
+                Console.WriteLine($"  Algorithm:        {response.Algorithm}");
+                Console.WriteLine($"  Master public key: {response.MasterPublicKey}");
+                Console.WriteLine();
+                ConsoleHelper.WriteWarning("RECOVERY MNEMONIC — shown once, NOT stored anywhere. Back it up now:");
+                Console.WriteLine();
+                Console.WriteLine($"  {response.Mnemonic}");
+                Console.WriteLine();
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+            {
+                ConsoleHelper.WriteError($"Organisation '{orgId}' already has a master key provisioned.");
+                return ExitCodes.GeneralError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
+                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("You do not have permission to provision org keys.");
+                return ExitCodes.AuthorizationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null) ConsoleHelper.WriteError($"Details: {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to provision org master key: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Derives a per-user key from an organisation master key.
+/// </summary>
+public class WalletOrgKeyDeriveCommand : Command
+{
+    private readonly Argument<string> _orgIdArgument;
+    private readonly Option<string> _userIdOption;
+    private readonly Option<uint> _departmentOption;
+    private readonly Option<string> _usageOption;
+
+    public WalletOrgKeyDeriveCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("derive", "Derive a per-user key from an organisation master key")
+    {
+        _orgIdArgument = new Argument<string>("orgId") { Description = "Organisation ID" };
+        _userIdOption = new Option<string>("--user-id", "-u") { Description = "User subject identifier", Required = true };
+        _departmentOption = new Option<uint>("--department", "-d")
+        {
+            Description = "Department index in the derivation hierarchy (default 0)",
+            DefaultValueFactory = _ => 0u
+        };
+        _usageOption = new Option<string>("--usage")
+        {
+            Description = "Key usage: Identity, VCIssuance, Governance, Communications, ServiceAuth",
+            Required = true
+        };
+        Arguments.Add(_orgIdArgument);
+        Options.Add(_userIdOption);
+        Options.Add(_departmentOption);
+        Options.Add(_usageOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var orgId = parseResult.GetValue(_orgIdArgument)!;
+            var userId = parseResult.GetValue(_userIdOption)!;
+            var department = parseResult.GetValue(_departmentOption);
+            var usage = parseResult.GetValue(_usageOption)!;
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to derive an org key.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateWalletServiceClientAsync(profileName);
+                var request = new DeriveOrgKeyRequest { UserId = userId, DepartmentId = department, KeyUsage = usage };
+                var response = await client.DeriveOrgKeyAsync(orgId, request, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess("Derived key:");
+                Console.WriteLine($"  Derived key ID:  {response.DerivedKeyId}");
+                Console.WriteLine($"  Wallet address:  {response.WalletAddress}");
+                Console.WriteLine($"  Derivation path: {response.DerivationPath}");
+                Console.WriteLine($"  Key usage:       {response.KeyUsage}");
+                Console.WriteLine($"  Key index:       {response.KeyIndex}");
+                Console.WriteLine($"  Status:          {response.Status}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Organisation '{orgId}' has no master key. Run 'wallet org-key provision {orgId}' first.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
+                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null) ConsoleHelper.WriteError($"Details: {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to derive org key: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Rotates a derived organisation key.
+/// </summary>
+public class WalletOrgKeyRotateCommand : Command
+{
+    private readonly Argument<string> _orgIdArgument;
+    private readonly Argument<Guid> _keyIdArgument;
+
+    public WalletOrgKeyRotateCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("rotate", "Rotate a derived organisation key (old key becomes decrypt-only)")
+    {
+        _orgIdArgument = new Argument<string>("orgId") { Description = "Organisation ID" };
+        _keyIdArgument = new Argument<Guid>("derivedKeyId") { Description = "Derived key ID to rotate" };
+        Arguments.Add(_orgIdArgument);
+        Arguments.Add(_keyIdArgument);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var orgId = parseResult.GetValue(_orgIdArgument)!;
+            var keyId = parseResult.GetValue(_keyIdArgument);
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to rotate an org key.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateWalletServiceClientAsync(profileName);
+                var response = await client.RotateOrgKeyAsync(orgId, keyId, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess("Key rotated:");
+                Console.WriteLine($"  New derived key ID: {response.DerivedKeyId}");
+                Console.WriteLine($"  Wallet address:     {response.WalletAddress}");
+                Console.WriteLine($"  Key index:          {response.KeyIndex}");
+                Console.WriteLine($"  Status:             {response.Status}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Derived key '{keyId}' not found for organisation '{orgId}'.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
+                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null) ConsoleHelper.WriteError($"Details: {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to rotate org key: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Revokes a derived organisation key.
+/// </summary>
+public class WalletOrgKeyRevokeCommand : Command
+{
+    private readonly Argument<string> _orgIdArgument;
+    private readonly Argument<Guid> _keyIdArgument;
+
+    public WalletOrgKeyRevokeCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("revoke", "Revoke a derived organisation key (locks the wallet)")
+    {
+        _orgIdArgument = new Argument<string>("orgId") { Description = "Organisation ID" };
+        _keyIdArgument = new Argument<Guid>("derivedKeyId") { Description = "Derived key ID to revoke" };
+        Arguments.Add(_orgIdArgument);
+        Arguments.Add(_keyIdArgument);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var orgId = parseResult.GetValue(_orgIdArgument)!;
+            var keyId = parseResult.GetValue(_keyIdArgument);
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("You must be authenticated to revoke an org key.");
+                    ConsoleHelper.WriteInfo("Run 'sorcha auth login' to authenticate.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateWalletServiceClientAsync(profileName);
+                var response = await client.RevokeOrgKeyAsync(orgId, keyId, $"Bearer {token}");
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Key '{response.DerivedKeyId}' revoked.");
+                Console.WriteLine($"  Status:                {response.Status}");
+                Console.WriteLine($"  Wallet locked:         {response.WalletLocked}");
+                Console.WriteLine($"  DID revocation event:  {response.DidRevocationPublished}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Derived key '{keyId}' not found for organisation '{orgId}'.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Your access token may have expired.");
+                ConsoleHelper.WriteInfo("Run 'sorcha auth login' to re-authenticate.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API Error: {ex.Message}");
+                if (ex.Content != null) ConsoleHelper.WriteError($"Details: {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to revoke org key: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
     }
 }
 

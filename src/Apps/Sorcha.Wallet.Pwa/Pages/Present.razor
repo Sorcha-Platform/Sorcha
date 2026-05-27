@@ -1,0 +1,319 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Citizen wallet present page (Feature 114, T096-T100, T057). Two intake
+    paths into the AwaitingDeepLink phase: paste an openid4vp:// link, or
+    scan a QR code with the device camera (T057 — nimiq/qr-scanner via
+    qr-scanner-bridge.js). On scan/paste, parse → match → consent →
+    POST vp_token to the verifier's response_uri.
+*@
+@page "/present"
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@implements IAsyncDisposable
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Text.Json
+@using Microsoft.JSInterop
+@using Sorcha.Wallet.Pwa.Components
+@using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Presentation
+@inject IPresentationEngine Engine
+@inject ICredentialCache Credentials
+@inject IDeviceKeyService DeviceKey
+@inject IDelegationStore Delegation
+@inject IStatusListService StatusList
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject IPresentationLog PresentationLog
+
+<PageTitle>Present a credential</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Present a credential</MudText>
+
+    @if (_phase == Phase.AwaitingDeepLink)
+    {
+        <MudPaper Elevation="1" Class="pa-4">
+            @if (_scanning)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    Point your camera at the verifier's QR code.
+                </MudText>
+                <video id="@VideoElementId" playsinline muted autoplay
+                       style="width:100%; max-width:480px; border-radius:8px; background:#000;"></video>
+                <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="CancelScanAsync">
+                    Cancel
+                </MudButton>
+                @if (!string.IsNullOrEmpty(_scanError))
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mt-3">@_scanError</MudAlert>
+                }
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    Scan the verifier's QR code, or paste the <code>openid4vp://</code> link.
+                </MudText>
+                <MudButton StartIcon="@Icons.Material.Filled.QrCodeScanner"
+                           Variant="Variant.Filled" Color="Color.Primary"
+                           Class="mb-3"
+                           OnClick="StartScanAsync">
+                    Scan QR code
+                </MudButton>
+                <MudTextField @bind-Value="_deepLink"
+                              Label="Or paste verifier deep link"
+                              Lines="3" Variant="Variant.Outlined" />
+                <MudButton Class="mt-3" Variant="Variant.Outlined"
+                           Disabled="@string.IsNullOrWhiteSpace(_deepLink)"
+                           OnClick="ParseAsync">
+                    Continue
+                </MudButton>
+            }
+        </MudPaper>
+    }
+    else if (_phase == Phase.NoMatch)
+    {
+        <NoMatchingCredentialDialog RequiredVct="@_request?.RequiredVct"
+                                    OnCancel="Reset" />
+    }
+    else if (_phase == Phase.PickCredential && _matches is not null)
+    {
+        <CredentialPickerDialog Matches="_matches"
+                                OnChosen="OnCredentialChosen"
+                                OnCancel="Reset" />
+    }
+    else if (_phase == Phase.Consent && _selected is not null && _request is not null)
+    {
+        <ConsentSheet Selected="_selected"
+                      Request="_request"
+                      OptionalToggles="_optionalToggles"
+                      Busy="_busy"
+                      OnConfirm="ConfirmAsync"
+                      OnCancel="Reset" />
+    }
+    else if (_phase == Phase.Done)
+    {
+        <MudAlert Severity="@(_responseStatus == "ok" ? Severity.Success : Severity.Error)" Class="mb-3">
+            @_responseMessage
+        </MudAlert>
+        <MudButton Variant="Variant.Outlined" OnClick="Reset">Done</MudButton>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+</MudContainer>
+
+@code {
+    private const string VideoElementId = "sorcha-qr-scan-video";
+
+    private enum Phase { AwaitingDeepLink, NoMatch, PickCredential, Consent, Done }
+
+    private Phase _phase = Phase.AwaitingDeepLink;
+    private string _deepLink = string.Empty;
+    private string? _error;
+    private bool _busy;
+    private ParsedPresentationRequest? _request;
+    private IReadOnlyList<CredentialMatch>? _matches;
+    private CredentialMatch? _selected;
+    private Dictionary<string, bool> _optionalToggles = new();
+    private string _responseStatus = string.Empty;
+    private string _responseMessage = string.Empty;
+
+    // T057 — QR scanner state.
+    private bool _scanning;
+    private string? _scanError;
+
+    private async Task ParseAsync()
+    {
+        _error = null;
+        try
+        {
+            _request = Engine.Parse(_deepLink.Trim());
+            var creds = await Credentials.ListAsync();
+            _matches = Engine.Match(_request, creds);
+            if (_matches.Count == 0) { _phase = Phase.NoMatch; return; }
+            if (_matches.Count == 1)
+            {
+                _selected = _matches[0];
+                EnterConsent();
+                return;
+            }
+            _phase = Phase.PickCredential;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void OnCredentialChosen(CredentialMatch? match)
+    {
+        if (match is null) return;
+        _selected = match;
+        EnterConsent();
+    }
+
+    private void EnterConsent()
+    {
+        _optionalToggles = (_selected?.AvailableOptional ?? Array.Empty<string>())
+            .ToDictionary(n => n, _ => false);
+        _phase = Phase.Consent;
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_selected is null || _request is null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var approved = _selected.SatisfiedRequired
+                .Concat(_optionalToggles.Where(kv => kv.Value).Select(kv => kv.Key))
+                .ToList();
+
+            var deviceJwk = await DeviceKey.GetPublicJwkAsync();
+            var vp = await Engine.BuildVpTokenAsync(
+                _selected, approved, _request, deviceJwk, DeviceKey.SignAsync);
+
+            var delegationJwt = await Delegation.GetCurrentAsync();
+            var body = new { vpToken = vp, delegation = delegationJwt };
+            var resp = await Http.PostAsJsonAsync(_request.ResponseUri, body);
+            if (resp.IsSuccessStatusCode)
+            {
+                _responseStatus = "ok";
+                _responseMessage = "Verifier accepted the presentation.";
+            }
+            else
+            {
+                _responseStatus = "fail";
+                _responseMessage = $"Verifier returned {(int)resp.StatusCode} {resp.StatusCode}.";
+            }
+
+            // US5 — record the presentation in the local activity log. Best-effort:
+            // a logging failure must not change the presentation outcome the user sees.
+            await TryLogPresentationAsync(approved, resp.IsSuccessStatusCode);
+
+            _phase = Phase.Done;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task TryLogPresentationAsync(IReadOnlyList<string> disclosedClaims, bool accepted)
+    {
+        if (_selected is null || _request is null) return;
+        try
+        {
+            var entry = new PresentationLogEntry(
+                Id: Guid.NewGuid(),
+                PresentedAt: DateTimeOffset.UtcNow,
+                CredentialType: _selected.Credential.Vct,
+                CredentialLabel: _selected.Credential.DisplayLabel,
+                VerifierLabel: string.IsNullOrWhiteSpace(_request.Purpose)
+                    ? _request.ClientId
+                    : _request.Purpose!,
+                DisclosedClaims: disclosedClaims,
+                Outcome: accepted ? PresentationLogOutcome.Sent : PresentationLogOutcome.Rejected,
+                CredentialId: _selected.Credential.Id);
+            await PresentationLog.AppendAsync(entry);
+        }
+        catch
+        {
+            // Activity log is a convenience surface; never let it break the flow.
+        }
+    }
+
+    private void Reset()
+    {
+        _phase = Phase.AwaitingDeepLink;
+        _deepLink = string.Empty;
+        _request = null;
+        _matches = null;
+        _selected = null;
+        _optionalToggles = new();
+        _error = null;
+        _responseMessage = string.Empty;
+        _responseStatus = string.Empty;
+        _scanError = null;
+    }
+
+    // ------- T057 QR scanner ------------------------------------------
+
+    private async Task StartScanAsync()
+    {
+        _scanError = null;
+        _error = null;
+
+        bool supported;
+        try
+        {
+            supported = await JS.InvokeAsync<bool>("SorchaQrScanner.isSupported");
+        }
+        catch
+        {
+            supported = false;
+        }
+        if (!supported)
+        {
+            _scanError = "This browser doesn't expose a camera API. Paste the link instead.";
+            return;
+        }
+
+        _scanning = true;
+        StateHasChanged();
+        // Wait one render so the <video> element exists before we attach the scanner.
+        await Task.Yield();
+
+        try
+        {
+            var detected = await JS.InvokeAsync<string>("SorchaQrScanner.start", VideoElementId);
+            _scanning = false;
+            if (string.IsNullOrWhiteSpace(detected))
+            {
+                _scanError = "Couldn't read that QR code. Try again.";
+                StateHasChanged();
+                return;
+            }
+            _deepLink = detected;
+            StateHasChanged();
+            await ParseAsync();
+        }
+        catch (JSException jsex) when (jsex.Message.Contains("cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            _scanning = false;
+            StateHasChanged();
+        }
+        catch (JSException jsex)
+        {
+            _scanning = false;
+            _scanError = jsex.Message.Contains("NotAllowedError", StringComparison.OrdinalIgnoreCase)
+                ? "Camera permission was denied. You can paste the link instead."
+                : jsex.Message.Contains("NotFoundError", StringComparison.OrdinalIgnoreCase)
+                    ? "No camera was found on this device. Paste the link instead."
+                    : "Couldn't start the scanner. Paste the link instead.";
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _scanning = false;
+            _scanError = ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CancelScanAsync()
+    {
+        try { await JS.InvokeVoidAsync("SorchaQrScanner.stop"); } catch { /* ignore */ }
+        _scanning = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_scanning)
+        {
+            try { await JS.InvokeVoidAsync("SorchaQrScanner.stop"); } catch { /* ignore */ }
+        }
+    }
+}

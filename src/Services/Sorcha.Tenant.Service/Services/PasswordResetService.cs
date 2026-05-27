@@ -27,6 +27,7 @@ public class PasswordResetService : IPasswordResetService
     private readonly TenantDbContext _dbContext;
     private readonly IPasswordPolicyService _passwordPolicyService;
     private readonly ITransactionalEmailService _transactional;
+    private readonly ITenantSecurityInboxWriter _securityInbox;
     private readonly ILogger<PasswordResetService> _logger;
 
     /// <summary>
@@ -36,11 +37,13 @@ public class PasswordResetService : IPasswordResetService
         TenantDbContext dbContext,
         IPasswordPolicyService passwordPolicyService,
         ITransactionalEmailService transactional,
+        ITenantSecurityInboxWriter securityInbox,
         ILogger<PasswordResetService> logger)
     {
         _dbContext = dbContext;
         _passwordPolicyService = passwordPolicyService;
         _transactional = transactional;
+        _securityInbox = securityInbox;
         _logger = logger;
     }
 
@@ -165,6 +168,9 @@ public class PasswordResetService : IPasswordResetService
 
         _logger.LogInformation("Password successfully reset for PlatformUser {Email} (PlatformUserId: {PlatformUserId})",
             platformUser.Email, platformUser.Id);
+
+        // Feature 118 — emit a Category=Security inbox entry. Fail-safe.
+        await _securityInbox.WritePasswordResetAsync(platformUser.Id, ct);
 
         return new PasswordResetResult(true);
     }

@@ -78,13 +78,17 @@ dotnet restore && dotnet build && dotnet test
 
 **Designer UI:** `/designer/blueprint` is the canonical route (replaces legacy `/designer` and `/designer/chat`).
 
+**Sorcha.UI.Core audience convention (Feature 123):** user-facing and admin-facing code in `Sorcha.UI.Core` is partitioned at folder level into `Services/User/`, `Services/Admin/`, `Services/Shared/` (and the same pattern under `Models/`). Folders carry the audience; namespaces stay at the subject level so consumer `using` directives are stable across moves. See `src/Apps/Sorcha.UI/Sorcha.UI.Core/README.md` for the full convention and bi-modal smell detector.
+
+**Shared user-facing component library (Feature 122):** user-facing components shared between `Sorcha.UI` (web) and `Sorcha.Wallet.Pwa` (PWA) live in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User`. Admin / designer / explorer components remain in `Sorcha.UI.Core`. The PWA references `Sorcha.UI.Components.User` directly; `Sorcha.UI.Core` re-exports via ProjectReference so web hosts pick the same components up transparently. See `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/README.md` for placement rules.
+
 Full project tree: `docs/reference/project-structure.md`. Architecture diagrams: `docs/reference/architecture.md`.
 
 ---
 
 ## Feature API References
 
-Feature-specific endpoint tables, domain models, and cross-cutting patterns for Participant Identity, Register Invitations, Trust Hardening (079), Stored Data / file attachments (085), Validator Roster (086), Org Key Derivation (083), Platform Org Topology, Consumer Persona (092), System Register Genesis (099), Open Participants / late binding (103), `x-review` / credential id-cards (107), ownership-agnostic submission / derived relationship (108), Timebound Presentation Lifecycle (111), the transactional email architecture (112 — facade / template renderer / branding resolver / welcome dispatcher, see Tenant Service README), and the Citizen Wallet PWA server-side surface (114 — holder/device delegation, status-list publisher + worker, enrolment endpoint, Tenant device registry) are consolidated in the **`sorcha-architecture`** skill (`.claude/skills/sorcha-architecture/SKILL.md`). Load it when touching any of those features — it carries what used to live inline here.
+Feature-specific endpoint tables, domain models, and cross-cutting patterns for Participant Identity, Register Invitations, Trust Hardening (079), Stored Data / file attachments (085), Validator Roster (086), Org Key Derivation (083), Platform Org Topology, Consumer Persona (092), System Register Genesis (099), Open Participants / late binding (103), `x-review` / credential id-cards (107), ownership-agnostic submission / derived relationship (108), Timebound Presentation Lifecycle (111), the transactional email architecture (112 — facade / template renderer / branding resolver / welcome dispatcher, see Tenant Service README), the Citizen Wallet PWA server-side surface (114 — holder/device delegation, status-list publisher + worker, enrolment endpoint, Tenant device registry), the F126 council-page enrolment gate (`EnrolGateComponent` + `IEnrolPairingSignal`), the F127 credential gate (`SorchaWalletPresentationConsumer` + `CredentialGateComponent` + claims-fetch endpoint — extends F111's lifecycle with the first non-HAIP consumer), and the F128 cold-start onboarding surface (enrol-session `mode` discriminator, pairing short-code transport, has-any-device aggregate, `IHasPairedDeviceProbe`, `PairingTakeover`, `PairingHandoffSurface`, `PairingNagBanner`, pairing-resumption email) are consolidated in the **`sorcha-architecture`** skill (`.claude/skills/sorcha-architecture/SKILL.md`). Load it when touching any of those features — it carries what used to live inline here.
 
 Full REST/gRPC reference: `docs/reference/API-DOCUMENTATION.md`.
 
@@ -271,6 +275,65 @@ Six interfaces are **audited** — they fail-fast at host startup in `Production
 Operators who need to run a Production-flagged container against an ephemeral environment (CI smoke tests, debugging) can set `Storage:AllowInMemoryInProduction=true` to bypass fail-fast. The bypass logs at `LogCritical`.
 
 Health check `storage-providers` reports `Degraded` when any audited interface is on an in-memory backend. OpenTelemetry instruments on the `Sorcha.Storage` meter — `sorcha_storage_provider_info` and `sorcha_storage_fallback_active` — surface the same state for dashboards and alerting.
+
+The audited list also covers the SignalR backplane (Feature 118 — synthetic interface name `Sorcha.ServiceDefaults.Hubs.SignalRBackplane`). Production / Staging refuse to start when a hub-hosting service has no Redis backplane — silent multi-replica fan-out misses are a correctness bug, not a degraded mode.
+
+### 11. Notification Hubs (Feature 118)
+
+Every Sorcha notification hub (TenantHub, BlueprintHub, WalletHub, RegisterHub) registers through `services.AddSorchaHub<THub, TClient>(IConfiguration, routePath, serviceShortName)` from `Sorcha.ServiceDefaults.Hubs`. ChatHub is the deliberate exception — RPC-streaming wire shape, documented inline.
+
+```csharp
+using Sorcha.ServiceDefaults.Hubs;
+
+builder.Services.AddSorchaHub<BlueprintHub, IBlueprintHubClient>(
+    builder.Configuration, "/hubs/blueprint", "blueprint");
+// ...
+app.MapSorchaHubs();   // maps every AddSorchaHub registration
+```
+
+The extension wires SignalR + Redis backplane (`ChannelPrefix = sorcha:signalr:{serviceShortName}` so cross-service backplane traffic is isolated) + reconnect-with-jitter + the storage-providers audit. The Redis connection comes from the SorchaConnections cascade (`ConnectionStrings:{Service}:Redis` → `ConnectionStrings:Sorcha:Redis`).
+
+Group strings are constructed only via `*HubGroups` builder classes alongside each hub (e.g., `BlueprintHubGroups.Wallet(addr)`) — no inline `$"wallet:{addr}"` interpolation in service code. CI grep gate enforces this (Phase 7 / US5).
+
+Hub events follow the **thin-signal contract** — opaque IDs and timestamps only, no domain payload. Each event method on the typed-client interface carries an XML doc `<see cref="..."/>` linking to the authenticated REST detail endpoint. ChatHub is exempt (it streams content by design).
+
+Full architecture: `specs/118-notifications-architecture/spec.md`. Design rationale: `docs/superpowers/specs/2026-05-05-notifications-architecture-design.md`.
+
+### 12. Notification Routing (Snackbar retirement)
+
+**Do NOT inject `ISnackbar` in new user-facing code.** The Sorcha UI has retired MudBlazor's `Snackbar.Add(...)` toast surface from every user-facing page and PWA component (PRs #740-#755). The remaining `MudSnackbarProvider` mount stays only for in-flight admin / designer pages still on the allowlist.
+
+**The three surfaces, by intent:**
+
+| Surface | Use when | Where |
+|---------|----------|-------|
+| `IInlineFeedback` | Actor's own-action feedback in the current page (success / error / info / warning). Default 4s auto-dismiss; pass `autoDismissMs: 0` for errors the user must acknowledge. | `Sorcha.UI.Core.Services.Feedback.IInlineFeedback` (scoped in Web, singleton in PWA). Renders via `InlineFeedbackHost.razor` mounted at the top of the content region. |
+| Server-side inbox writer | Workflow / lifecycle / security event that should appear in the durable bell drawer across sessions. Always wrap the writer call in `try` / `LogError` / swallow — a writer failure must NOT roll back the underlying operation. | `WalletWorkflowInboxWriter`, `WalletInboxWriter`, `CitizenDeviceInboxWriter`, `TenantSecurityInboxWriter`, plus `WriteOrgMembership*` on the membership writer. Bell drawer is Feature 118 / `MainLayout.razor`. |
+| `CopyButton` primitive | "Copy this value to clipboard" affordances. Use `Variant.Button` for labelled buttons, `Variant.IconButton` for icon-only triggers inside lists / detail views. The button morphs to "Copied ✓" for ~2s on success and reverts. | `Sorcha.UI.Core.Components.Forms.CopyButton` (in `Sorcha.UI.Components.User`). |
+
+**Dialog content** is its own micro-rule: dialog success closes the dialog with `MudDialog.Close(DialogResult.Ok(...))` and the parent surfaces inline feedback; dialog errors render an inline `<MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">…</MudAlert>` inside the `DialogContent` body. Do NOT call `IInlineFeedback` from inside a dialog — `InlineFeedbackHost` mounts in the layout, not inside dialog surfaces.
+
+A CI gate at `scripts/check-no-snackbar.ps1` enforces the ratchet via `.snackbar-allowlist`. The allowlist may only shrink — any new `Snackbar.Add(` or `ISnackbar` reference outside the allowed paths fails the build.
+
+Full architecture: `specs/118-notifications-architecture/MIGRATION.md`.
+
+### 13. Tiered JWT audiences + issuer hardening (Feature 136)
+
+The JWT `aud` claim is the **trust-tier boundary**. Every token carries an installation-namespaced, tier-scoped audience — `{installation}:consumer | platform | service | enrol-session` — from the single source of truth `SorchaAudiences` (`Sorcha.ServiceDefaults.Auth`). **Never hand-build an audience string** — use `new SorchaAudiences(installationName).For(Tier.X)` / `.All`. `InstallationName` (default `sorcha`, set per deploy via `JwtSettings:InstallationName`) drives both the audience namespace and the issuer.
+
+**Authenticate-broad / authorize-narrow.** Bearer validation accepts any of the installation's four tier audiences (`ValidAudiences = SorchaAudiences.All`), rejecting cross-installation tokens. The tier is enforced **per endpoint** by policies registered in `AddSorchaAuthorizationPolicies` (every service calls it):
+
+```csharp
+group.MapGroup("/api/v1/wallet").RequireAuthorization("RequireConsumerAudience");   // citizen surface
+adminGroup.RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");   // tier gate AND role gate
+internalGroup.RequireAuthorization("RequireService");   // token_type==service AND aud==:service
+```
+
+- **`RequireConsumerAudience`** — consumer/wallet surfaces. **`RequirePlatformAudience`** — admin/org/designer; **compose it on top of the role policy** (it doesn't replace `RequireAdministrator`). **`RequireService`** — `/api/internal/*` (now also asserts the `:service` audience). Genuinely cross-tier endpoints (e.g. `/me/inbox`) stay plain `.RequireAuthorization()` — there is no "any-human" tier, so don't force-classify them.
+- **The tier follows the person, not the UI host.** A citizen is `:consumer` on both `/app` (web) and `/wallet` (PWA); an admin is `:platform` in org context. Login derives the tier from `returnTo` (`/wallet`⇒consumer, `/app`⇒platform) as a *preference* that **downgrades to entitlement** (a citizen on `/app` → consumer); an explicit `tier=platform` request by a non-entitled user is **refused (403)**. A consumer token **carries `org_id` (its home/public org)** so the citizen can do their own org-scoped operations (wallet, application submission); it **omits roles + wallet binding** — the tier boundary is the audience + the absence of roles, not the absence of org context.
+- **Issuer**: no shared default — `SorchaIssuer.Resolve` gives `urn:sorcha:{installation}`, fail-closed in Production/Staging if unconfigured. Mint and validate MUST resolve issuer + audiences through the same `SorchaIssuer`/`SorchaAudiences` or tokens self-reject.
+
+Full reference: the **`jwt` skill** ("Tiered audiences + issuer hardening"). Metrics: `sorcha_token_minted_total{tier}` + `sorcha_tier_request_rejected_total{requested,reason}` on the `Sorcha.Identity` meter.
 
 ---
 

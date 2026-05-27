@@ -388,6 +388,18 @@ public class WalletManager : IWalletService
             var (encryptedKey, keyId) = await _keyManagement.EncryptPrivateKeyAsync(
                 primaryPrivateKey, string.Empty);
 
+            // Encrypt the BIP39 PBKDF2 seed so sign-with-derivationPath can
+            // derive purpose keys (e.g. sorcha:docket-signing →
+            // m/44'/0'/0'/0/102) directly off the master ExtKey, without
+            // the double-HMAC chain that wraps the BIP44 0/0/0/0 leaf as a
+            // fresh seed. See issue #471.
+            //
+            // Re-uses the same encryption key as EncryptedPrivateKey above
+            // so a single rotation covers both fields.
+            var bip39Seed = mnemonic.DeriveBip39Seed(passphrase);
+            var (encryptedMasterSeed, _) = await _keyManagement.EncryptPrivateKeyAsync(
+                bip39Seed, keyId);
+
             // Create wallet entity
             var wallet = new WalletEntity
             {
@@ -395,6 +407,10 @@ public class WalletManager : IWalletService
                 PublicKey = Convert.ToBase64String(primaryPublicKey),
                 EncryptedPrivateKey = encryptedKey,
                 EncryptionKeyId = keyId,
+                EncryptedMasterKeyBlob = encryptedMasterSeed,
+                // RecoveryEnabled stays false — this blob is the wallet-service-
+                // managed master seed for direct derivation, NOT the
+                // Feature 060 recovery-key-encrypted blob.
                 Algorithm = algorithm,
                 Owner = owner,
                 Tenant = tenant,
@@ -753,11 +769,6 @@ public class WalletManager : IWalletService
             }
             else
             {
-                // Local: decrypt private key and sign locally
-                var masterKey = await _keyManagement.DecryptPrivateKeyAsync(
-                    wallet.EncryptedPrivateKey,
-                    wallet.EncryptionKeyId);
-
                 byte[] signingKey;
 
                 // If derivation path provided, derive child key
@@ -769,25 +780,74 @@ public class WalletManager : IWalletService
                         : derivationPath;
 
                     var parsedPath = new DerivationPath(resolvedPath);
-                    var (derivedPrivateKey, derivedPublicKey) = await _keyManagement.DeriveKeyAtPathAsync(
-                        masterKey,
-                        parsedPath,
-                        wallet.Algorithm);
+
+                    // Prefer the direct-master derivation path (issue #471) when
+                    // the wallet carries a wallet-service-managed master seed blob.
+                    // RecoveryEnabled=true means the blob is the Feature 060
+                    // recovery-key-encrypted blob (not decryptable by us routinely)
+                    // — fall back to the legacy double-HMAC chain in that case.
+                    var useDirectMaster =
+                        !wallet.RecoveryEnabled
+                        && !string.IsNullOrEmpty(wallet.EncryptedMasterKeyBlob);
+
+                    byte[] derivedPrivateKey;
+                    byte[] derivedPublicKey;
+
+                    if (useDirectMaster)
+                    {
+                        // Direct chain: encrypted blob → BIP39 PBKDF2 seed →
+                        // ExtKey.CreateFromSeed(seed) → Derive(path). One HMAC,
+                        // matches a from-mnemonic BIP32 derivation.
+                        var bip39Seed = await _keyManagement.DecryptPrivateKeyAsync(
+                            wallet.EncryptedMasterKeyBlob!,
+                            wallet.EncryptionKeyId);
+
+                        (derivedPrivateKey, derivedPublicKey) =
+                            await _keyManagement.DeriveKeyAtPathAsync(
+                                bip39Seed,
+                                parsedPath,
+                                wallet.Algorithm);
+
+                        _logger.LogInformation(
+                            "Signing transaction for wallet {Address} with direct-master derivation at path {Path} (resolved: {ResolvedPath})",
+                            walletAddress, derivationPath, resolvedPath);
+                    }
+                    else
+                    {
+                        // Legacy chain: decrypt the BIP44 0/0/0/0 leaf, re-wrap
+                        // it as a fresh seed (extra HMAC), derive from there.
+                        // Preserved for pre-#471 wallets whose blob is null and
+                        // for Feature 060 wallets where the blob is unreadable.
+                        var leafKey = await _keyManagement.DecryptPrivateKeyAsync(
+                            wallet.EncryptedPrivateKey,
+                            wallet.EncryptionKeyId);
+
+                        (derivedPrivateKey, derivedPublicKey) =
+                            await _keyManagement.DeriveKeyAtPathAsync(
+                                leafKey,
+                                parsedPath,
+                                wallet.Algorithm);
+
+                        _logger.LogInformation(
+                            "Signing transaction for wallet {Address} with legacy-leaf derivation at path {Path} (resolved: {ResolvedPath})",
+                            walletAddress, derivationPath, resolvedPath);
+                    }
 
                     signingKey = derivedPrivateKey;
                     publicKey = derivedPublicKey;
-
-                    _logger.LogInformation(
-                        "Signing transaction for wallet {Address} with derived key at path {Path} (resolved: {ResolvedPath})",
-                        walletAddress, derivationPath, resolvedPath);
                 }
                 else
                 {
-                    signingKey = masterKey;
+                    // No derivation path — sign with the primary leaf private key
+                    // (matches wallet.Address). This branch is unaffected by #471
+                    // — wallet addresses must stay stable across the chain change.
+                    signingKey = await _keyManagement.DecryptPrivateKeyAsync(
+                        wallet.EncryptedPrivateKey,
+                        wallet.EncryptionKeyId);
                     publicKey = Convert.FromBase64String(wallet.PublicKey!);
 
                     _logger.LogInformation(
-                        "Signing transaction for wallet {Address} with master key",
+                        "Signing transaction for wallet {Address} with primary key",
                         walletAddress);
                 }
 

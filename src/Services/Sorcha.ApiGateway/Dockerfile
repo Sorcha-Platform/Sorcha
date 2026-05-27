@@ -20,6 +20,12 @@ RUN dotnet restore "src/Services/Sorcha.ApiGateway/Sorcha.ApiGateway.csproj"
 # Copy source code
 COPY src/ ./src/
 
+# AI-discoverability (spec 117): the gateway embeds the canonical root llms.txt + docs/llms-full.txt
+# (see Sorcha.ApiGateway.csproj <EmbeddedResource>) to serve them at /llms.txt and /llms-full.txt.
+# They live outside src/, so copy them into the build context before the build resolves the embed.
+COPY llms.txt ./llms.txt
+COPY docs/llms-full.txt ./docs/llms-full.txt
+
 # Build the application
 WORKDIR "/src/src/Services/Sorcha.ApiGateway"
 RUN dotnet build "Sorcha.ApiGateway.csproj" -c Release -o /app/build

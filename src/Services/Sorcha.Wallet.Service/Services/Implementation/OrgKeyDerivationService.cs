@@ -200,9 +200,16 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
                 CustodyMode = CustodyMode.Custodial
             };
 
-            // Create derived key record
+            // Create derived key record. Assign Id explicitly — the Postgres column has
+            // `defaultValueSql: gen_random_uuid()` which only fires at INSERT time, so the
+            // in-memory `Id` would otherwise be Guid.Empty when we wire the FK below.
+            // Without an explicit Id, EF inserts the Wallet first with DerivedKeyRecordId =
+            // '00000000-...' and Postgres rejects it as FK_Wallets_DerivedKeyRecords_DerivedKeyRecordId.
+            // Dormant pre-Feature 120 (no production flow exercised this path); surfaced
+            // when Feature 120's IIssuanceKeyService.GetOrDeriveAsync started invoking it.
             var derivedKeyRecord = new DerivedKeyRecord
             {
+                Id = Guid.NewGuid(),
                 OrgMasterKeyId = masterKey.Id,
                 OrganizationId = organizationId,
                 UserId = userId,
@@ -215,11 +222,13 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
                 CustodyMode = CustodyMode.Custodial
             };
 
-            _db.Wallets.Add(wallet);
-            _db.DerivedKeyRecords.Add(derivedKeyRecord);
-
-            // Link wallet to derived key record via FK
+            // Link wallet to derived key record via FK BEFORE adding to context — required
+            // so EF's insert-order resolver sees the dependency and inserts DerivedKeyRecord
+            // before Wallet.
             wallet.DerivedKeyRecordId = derivedKeyRecord.Id;
+
+            _db.DerivedKeyRecords.Add(derivedKeyRecord);
+            _db.Wallets.Add(wallet);
 
             await _db.SaveChangesAsync(ct);
 

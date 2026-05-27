@@ -424,17 +424,37 @@ public class RelayCommunicationService
     /// </summary>
     private string? GetSeedNodeAddress()
     {
+        // Source the address from the SAME seed-endpoint configuration the connection pool uses to
+        // reach the seed (PeerConnectionPool.BootstrapFromSeedNodesAsync → seed.GrpcChannelAddress),
+        // so the reverse stream dials the identical scheme + gRPC port (e.g. https://host:50051).
+        // The previous implementation reconstructed the address from the PeerNode list, which had
+        // dropped the seed's TLS flag AND its gRPC port — it prepended "https://" but no port, so the
+        // stream hit the seed's web vhost (:443) where PeerCommunication/Stream 404s. That marked the
+        // seed "not alive" and silently disabled cross-node transaction fan-out.
+        var seed = _configuration.SeedNodes?.SeedNodes?
+            .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Hostname));
+        if (seed is not null)
+        {
+            return seed.GrpcChannelAddress;
+        }
+
+        // Legacy fallback: a seed peer discovered into the peer list (carries no TLS flag — assume
+        // plaintext h2c with the explicit gRPC port, matching the other outbound peer paths).
         foreach (var peer in _peerListManager.GetAllPeers())
         {
             if (peer.IsSeedNode && !string.IsNullOrEmpty(peer.Address))
             {
-                var scheme = peer.Address.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                    ? "" : "https://";
-                return $"{scheme}{peer.Address}";
+                if (peer.Address.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                {
+                    return peer.Address;
+                }
+                return peer.Port > 0
+                    ? $"http://{peer.Address}:{peer.Port}"
+                    : $"http://{peer.Address}";
             }
         }
 
-        // Fall back to seed channel from connection pool to get the address
+        // Last resort: the active seed channel from the connection pool.
         var seedChannel = GetSeedChannel();
         return seedChannel?.Target;
     }

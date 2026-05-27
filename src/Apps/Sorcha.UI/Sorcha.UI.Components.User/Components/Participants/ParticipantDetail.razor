@@ -1,0 +1,254 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Participants
+@using Sorcha.UI.Core.Services.Participants
+@using Sorcha.UI.Core.Services.Feedback
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_participant == null)
+{
+    <MudAlert Severity="Severity.Warning">Participant not found.</MudAlert>
+}
+else
+{
+    <MudCard>
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h5">@_participant.DisplayName</MudText>
+                <MudChip T="string" Color="@GetStatusColor(_participant.Status)" Size="Size.Small">
+                    @_participant.Status
+                </MudChip>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                @if (ShowActions)
+                {
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert">
+                        @if (_participant.Status == "Active")
+                        {
+                            <MudMenuItem OnClick="@OnSuspend">Suspend</MudMenuItem>
+                        }
+                        @if (_participant.Status != "Active")
+                        {
+                            <MudMenuItem OnClick="@OnReactivate">Reactivate</MudMenuItem>
+                        }
+                        <MudMenuItem OnClick="@(() => OnEditClick.InvokeAsync(_participant))">Edit</MudMenuItem>
+                        <MudMenuItem OnClick="@OnDeactivate" Class="mud-error-text">Deactivate</MudMenuItem>
+                    </MudMenu>
+                }
+            </CardHeaderActions>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Default">Email</MudText>
+                    <MudText>@_participant.Email</MudText>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Default">User ID</MudText>
+                    <MudText>@_participant.UserId</MudText>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Default">Organization ID</MudText>
+                    <MudText>@_participant.OrganizationId</MudText>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Default">Created</MudText>
+                    <MudText>@_participant.CreatedAt.LocalDateTime</MudText>
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.h6" Class="mb-3">Linked Wallets</MudText>
+
+            @if (_participant.LinkedWallets.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info">No wallet addresses linked.</MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>Algorithm</th>
+                            <th>Status</th>
+                            <th>Linked</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var wallet in _participant.LinkedWallets)
+                        {
+                            <tr>
+                                <td><code>@TruncateAddress(wallet.WalletAddress)</code></td>
+                                <td>@wallet.Algorithm</td>
+                                <td>
+                                    <MudChip T="string" Color="@GetWalletStatusColor(wallet.Status)" Size="Size.Small">
+                                        @wallet.Status
+                                    </MudChip>
+                                </td>
+                                <td>@wallet.LinkedAt.LocalDateTime.ToShortDateString()</td>
+                                <td>
+                                    @if (wallet.Status == "Active" && ShowActions)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.LinkOff" Size="Size.Small"
+                                                       OnClick="@(() => OnRevokeWallet(wallet.Id))" title="Revoke" />
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+
+            @if (ShowActions)
+            {
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined"
+                               OnClick="@(() => OnLinkWalletClick.InvokeAsync(_participant))">
+                        <MudIcon Icon="@Icons.Material.Filled.Link" Class="mr-2" />
+                        Link Wallet
+                    </MudButton>
+                    @if (_participant.LinkedWallets.Any(w => w.Status == "Active") && OnPublishClick.HasDelegate)
+                    {
+                        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                                   OnClick="@(() => OnPublishClick.InvokeAsync(_participant))">
+                            <MudIcon Icon="@Icons.Material.Filled.Publish" Class="mr-2" />
+                            Publish to Register
+                        </MudButton>
+                    }
+                </MudStack>
+            }
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    [Inject] private IParticipantApiService ParticipantService { get; set; } = default!;
+    [Inject] private IInlineFeedback Feedback { get; set; } = default!;
+
+    [Parameter] public Guid OrganizationId { get; set; }
+    [Parameter] public Guid ParticipantId { get; set; }
+    [Parameter] public bool ShowActions { get; set; } = true;
+    [Parameter] public EventCallback<ParticipantDetailViewModel> OnEditClick { get; set; }
+    [Parameter] public EventCallback<ParticipantDetailViewModel> OnLinkWalletClick { get; set; }
+    [Parameter] public EventCallback<ParticipantDetailViewModel> OnPublishClick { get; set; }
+    [Parameter] public EventCallback OnParticipantChanged { get; set; }
+
+    private ParticipantDetailViewModel? _participant;
+    private bool _loading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadParticipantAsync();
+    }
+
+    private async Task LoadParticipantAsync()
+    {
+        _loading = true;
+        try
+        {
+            _participant = await ParticipantService.GetParticipantAsync(OrganizationId, ParticipantId);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnSuspend()
+    {
+        var success = await ParticipantService.SuspendParticipantAsync(OrganizationId, ParticipantId);
+        if (success)
+        {
+            Feedback.ShowSuccess("Participant suspended");
+            await LoadParticipantAsync();
+            await OnParticipantChanged.InvokeAsync();
+        }
+        else
+        {
+            Feedback.ShowError("Failed to suspend participant", autoDismissMs: 0);
+        }
+    }
+
+    private async Task OnReactivate()
+    {
+        var success = await ParticipantService.ReactivateParticipantAsync(OrganizationId, ParticipantId);
+        if (success)
+        {
+            Feedback.ShowSuccess("Participant reactivated");
+            await LoadParticipantAsync();
+            await OnParticipantChanged.InvokeAsync();
+        }
+        else
+        {
+            Feedback.ShowError("Failed to reactivate participant", autoDismissMs: 0);
+        }
+    }
+
+    private async Task OnDeactivate()
+    {
+        var success = await ParticipantService.DeactivateParticipantAsync(OrganizationId, ParticipantId);
+        if (success)
+        {
+            Feedback.ShowSuccess("Participant deactivated");
+            await OnParticipantChanged.InvokeAsync();
+        }
+        else
+        {
+            Feedback.ShowError("Failed to deactivate participant", autoDismissMs: 0);
+        }
+    }
+
+    private async Task OnRevokeWallet(Guid linkId)
+    {
+        var success = await ParticipantService.RevokeWalletLinkAsync(OrganizationId, ParticipantId, linkId);
+        if (success)
+        {
+            Feedback.ShowSuccess("Wallet link revoked");
+            await LoadParticipantAsync();
+        }
+        else
+        {
+            Feedback.ShowError("Failed to revoke wallet link", autoDismissMs: 0);
+        }
+    }
+
+    private static Color GetStatusColor(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "active" => Color.Success,
+            "suspended" => Color.Warning,
+            "inactive" => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private static Color GetWalletStatusColor(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "active" => Color.Success,
+            "revoked" => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private static string TruncateAddress(string address)
+    {
+        if (string.IsNullOrEmpty(address) || address.Length <= 16)
+            return address;
+        return $"{address[..8]}...{address[^8..]}";
+    }
+
+    public async Task RefreshAsync()
+    {
+        await LoadParticipantAsync();
+    }
+}

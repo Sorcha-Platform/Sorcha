@@ -222,11 +222,31 @@ public static class WalletEndpoints
         walletGroup.MapPost("/{address}/sign", SignTransaction)
             .WithName("SignTransaction")
             .WithSummary("Sign a transaction")
-            .WithDescription("Sign transaction data with the wallet's private key")
+            .WithDescription("Sign transaction data with the wallet's private key. Returns a base64 signature plus the algorithm identifier so a verifier can pick the correct verify path.")
             .Produces<SignTransactionResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            .WithOpenApi(operation =>
+            {
+                // Spec 117 FR-006 — wallet signing MUST carry at least one example for
+                // request and response. Payload modelled on a typical action-payload
+                // signature submitted to a register.
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "transactionData": "eyJhY3Rpb25JZCI6Imluc3RhbmNlOjQ3OS9hY3Rpb246c3VibWl0LWludm9pY2UiLCJyZWdpc3RlcklkIjoidHJhZGUtZmluYW5jZS1uMSIsInBheWxvYWQiOnsidmVyaWZpZWRJbnZvaWNlVmNJZCI6InVybjp1dWlkOjhlMmMxYjk0LTdhMzEtNGYxMi05YmI4LWEzZTJmNWMxNGE5OSJ9LCJ0aW1lc3RhbXAiOiIyMDI2LTA1LTAyVDExOjMyOjAwWiJ9",
+                      "isPreHashed": false
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "200", """
+                    {
+                      "signature": "g0Y8N+lQbZ3wF8fTjP9c5sJrK4mE2nU1vR7QwI3xY6sBxA8Q9aL2hM5fZpW1dC4JtR8eX0gN3vP7sJrK9oF=",
+                      "algorithm": "ED25519",
+                      "publicKeyBase64": "u9gN3vP7sJrK9oF8sJrK4mE2nU1vR7QwI3xY6sBxA8Q="
+                    }
+                    """);
+                return operation;
+            });
 
         // POST /api/v1/wallets/{address}/decrypt - Decrypt payload
         walletGroup.MapPost("/{address}/decrypt", DecryptPayload)
@@ -476,6 +496,25 @@ public static class WalletEndpoints
                 }
             });
 
+            // Phase 2 of the Snackbar retirement — drop a durable "wallet created"
+            // inbox entry for the owner. Fire-and-forget; the writer itself
+            // catches transport errors so this is a hard no-op on failure.
+            var ownerUserIdentityIdForInbox = Guid.TryParse(owner, out var ownerIdGuid) ? ownerIdGuid : Guid.Empty;
+            var walletNameForInbox = request.Name ?? string.Empty;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await using var scope = serviceScopeFactory.CreateAsyncScope();
+                    var writer = scope.ServiceProvider.GetRequiredService<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter>();
+                    await writer.WriteWalletCreatedAsync(walletAddress, walletNameForInbox, ownerUserIdentityIdForInbox, CancellationToken.None);
+                }
+                catch (Exception inboxEx)
+                {
+                    Console.Error.WriteLine($"Inbox-write failed for wallet-created {walletAddress}: {inboxEx.Message}");
+                }
+            });
+
             return Results.Created($"/api/v1/wallets/{wallet.Address}", response);
         }
         catch (ArgumentException ex)
@@ -504,6 +543,7 @@ public static class WalletEndpoints
     private static async Task<IResult> RecoverWallet(
         [FromBody] RecoverWalletRequest request,
         WalletManager walletManager,
+        IServiceScopeFactory serviceScopeFactory,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
@@ -527,6 +567,26 @@ public static class WalletEndpoints
                 tenant,
                 request.Passphrase,
                 cancellationToken);
+
+            // Phase 2 of the Snackbar retirement — drop a durable "wallet
+            // recovered" inbox entry for the owner. Fire-and-forget; the writer
+            // catches transport errors so recovery never fails because of inbox.
+            var ownerUserIdentityIdForInbox = Guid.TryParse(owner, out var ownerIdGuid) ? ownerIdGuid : Guid.Empty;
+            var walletAddressForInbox = wallet.Address;
+            var walletNameForInbox = request.Name ?? string.Empty;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await using var scope = serviceScopeFactory.CreateAsyncScope();
+                    var writer = scope.ServiceProvider.GetRequiredService<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter>();
+                    await writer.WriteWalletRecoveredAsync(walletAddressForInbox, walletNameForInbox, ownerUserIdentityIdForInbox, CancellationToken.None);
+                }
+                catch (Exception inboxEx)
+                {
+                    Console.Error.WriteLine($"Inbox-write failed for wallet-recovered {walletAddressForInbox}: {inboxEx.Message}");
+                }
+            });
 
             return Results.Ok(wallet.ToDto());
         }
@@ -681,12 +741,39 @@ public static class WalletEndpoints
     private static async Task<IResult> DeleteWallet(
         string address,
         WalletManager walletManager,
+        IServiceScopeFactory serviceScopeFactory,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            // Phase 2 of the Snackbar retirement — capture owner + name BEFORE
+            // delete so the inbox entry carries the human-readable wallet name
+            // that the soft-deleted row may no longer expose to other queries.
+            var snapshotForInbox = await walletManager.GetWalletAsync(address, cancellationToken);
+
             await walletManager.DeleteWalletAsync(address, cancellationToken);
+
+            if (snapshotForInbox is not null)
+            {
+                var ownerUserIdentityIdForInbox = Guid.TryParse(snapshotForInbox.Owner, out var ownerIdGuid)
+                    ? ownerIdGuid : Guid.Empty;
+                var walletNameForInbox = snapshotForInbox.Name ?? string.Empty;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await using var scope = serviceScopeFactory.CreateAsyncScope();
+                        var writer = scope.ServiceProvider.GetRequiredService<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter>();
+                        await writer.WriteWalletDeletedAsync(address, walletNameForInbox, ownerUserIdentityIdForInbox, CancellationToken.None);
+                    }
+                    catch (Exception inboxEx)
+                    {
+                        Console.Error.WriteLine($"Inbox-write failed for wallet-deleted {address}: {inboxEx.Message}");
+                    }
+                });
+            }
+
             return Results.NoContent();
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
@@ -1075,6 +1162,33 @@ public static class WalletEndpoints
                 catch (Exception bloomEx)
                 {
                     Console.Error.WriteLine($"Bloom fan-out failed for derived address {derivedAddr}: {bloomEx.Message}");
+                }
+            });
+
+            // Phase 2 of the Snackbar retirement — drop a durable "new derived
+            // address" inbox entry for the owning user. Look up the parent
+            // wallet to resolve the owner; the endpoint has no HttpContext.
+            // Fire-and-forget; the writer catches transport errors so the
+            // address registration is never affected by an inbox failure.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await using var scope = serviceScopeFactory.CreateAsyncScope();
+                    var manager = scope.ServiceProvider.GetRequiredService<WalletManager>();
+                    var parent = await manager.GetWalletAsync(address, CancellationToken.None);
+                    if (parent is null) return;
+
+                    var ownerUserIdentityId = Guid.TryParse(parent.Owner, out var ownerIdGuid)
+                        ? ownerIdGuid : Guid.Empty;
+                    if (ownerUserIdentityId == Guid.Empty) return;
+
+                    var writer = scope.ServiceProvider.GetRequiredService<Sorcha.Wallet.Service.Services.Implementation.IWalletWorkflowInboxWriter>();
+                    await writer.WriteAddressRegisteredAsync(address, derivedAddr, ownerUserIdentityId, CancellationToken.None);
+                }
+                catch (Exception inboxEx)
+                {
+                    Console.Error.WriteLine($"Inbox-write failed for address-registered {derivedAddr}: {inboxEx.Message}");
                 }
             });
 

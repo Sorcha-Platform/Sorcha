@@ -511,9 +511,210 @@ public interface IRegisterServiceClient
     /// monitoring enrolment. The public key is passed via the <c>X-Validator-Public-Key</c> header
     /// by the client implementation.
     /// </summary>
-    Task<IReadOnlyList<string>> GetMyValidatedRegistersAsync(
+    /// <returns>
+    /// The list of register IDs (possibly empty if the validator is not on any roster), OR
+    /// <c>null</c> if the lookup itself failed (HTTP error, network exception, etc.).
+    /// Callers MUST distinguish: empty list = "validator is on no rosters, prune anything we
+    /// currently monitor"; null = "lookup failed, don't change anything". Conflating the two
+    /// triggers issue #787 (the validator wedges every monitored register on a single transient
+    /// failure of the lookup endpoint).
+    /// </returns>
+    Task<IReadOnlyList<string>?> GetMyValidatedRegistersAsync(
         byte[] validatorPublicKey,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetch register-service statistics. Optional <paramref name="registerIds"/> scopes the counts
+    /// to the listed registers (used by Tenant Service to build org-scoped dashboard stats).
+    /// </summary>
+    /// <param name="registerIds">Optional register-id filter; null/empty returns platform-wide counts.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Register count + transaction count, scoped per the filter.</returns>
+    Task<RegisterStatsResponse> GetStatsAsync(
+        IReadOnlyList<string>? registerIds = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches per-register transaction statistics (unique wallets/senders/recipients, payload totals,
+    /// earliest/latest transaction timestamps) via <c>GET /api/query/stats?registerId=</c>.
+    /// </summary>
+    /// <param name="registerId">Register ID to compute statistics for.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The register's transaction statistics, or null if the register was not found / the call failed.</returns>
+    Task<RegisterTransactionStatistics?> GetRegisterTransactionStatsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches a summary list of registers (most-recently created first), used for inventory dashboards.
+    /// Calls <c>GET /api/registers/</c> and orders/truncates client-side.
+    /// </summary>
+    /// <param name="limit">Maximum number of registers to return (most recent first).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The most-recently created registers, or an empty list on failure.</returns>
+    Task<IReadOnlyList<RegisterSummaryInfo>> GetRecentRegistersAsync(
+        int limit = 10,
+        CancellationToken cancellationToken = default);
+
+    // =========================================================================
+    // Feature 079 — Transaction verification + lifecycle (Feature 140 MCP surface)
+    // =========================================================================
+
+    /// <summary>
+    /// Gets the lifecycle status of a transaction (active / revoked / superseded) via
+    /// <c>GET /api/registers/{registerId}/transactions/{txId}/status</c>. The status is derived
+    /// server-side by checking for revocation transactions that reference the target.
+    /// </summary>
+    /// <param name="registerId">Register containing the transaction.</param>
+    /// <param name="transactionId">Transaction ID to query.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The lifecycle status, or null if the transaction was not found / the call failed.</returns>
+    Task<TransactionStatusResponse?> GetTransactionStatusAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a Merkle inclusion proof for a sealed transaction via
+    /// <c>GET /api/registers/{registerId}/transactions/{txId}/inclusion-proof</c>.
+    /// </summary>
+    /// <param name="registerId">Register containing the transaction.</param>
+    /// <param name="transactionId">Transaction ID to prove inclusion of.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The inclusion proof, or null if the transaction was not found, not yet sealed, or the call failed.</returns>
+    Task<MerkleInclusionProof?> GetInclusionProofAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a portable offline verification bundle for a sealed transaction via
+    /// <c>GET /api/registers/{registerId}/transactions/{txId}/verification-bundle</c>.
+    /// </summary>
+    /// <param name="registerId">Register containing the transaction.</param>
+    /// <param name="transactionId">Transaction ID to export a bundle for.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The verification bundle, or null if the transaction was not found, not yet sealed, or the call failed.</returns>
+    Task<VerificationBundle?> GetVerificationBundleAsync(
+        string registerId,
+        string transactionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Submits a transaction revocation via
+    /// <c>POST /api/registers/{registerId}/transactions/revoke</c>. Creates a new revocation
+    /// transaction that marks the target transaction as revoked or superseded.
+    /// </summary>
+    /// <param name="registerId">Register containing the target transaction.</param>
+    /// <param name="request">Revocation request (target tx id, reason, optional superseding tx and metadata).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The revocation result (revocation tx id + accepted flag), or null on failure.</returns>
+    Task<RevokeTransactionResult?> RevokeTransactionAsync(
+        string registerId,
+        RevokeTransactionClientRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Request to revoke a transaction (Feature 079 / Feature 140 MCP surface). Mirrors the
+/// Register Service's <c>RevokeTransactionRequest</c> body shape.
+/// </summary>
+public sealed record RevokeTransactionClientRequest
+{
+    /// <summary>Transaction ID to revoke.</summary>
+    public required string OriginalTxId { get; init; }
+
+    /// <summary>
+    /// Revocation reason. One of: Superseded, Erroneous, Compromised, Expired, Withdrawn, Regulatory.
+    /// </summary>
+    public required string Reason { get; init; }
+
+    /// <summary>Replacement transaction ID (required when <see cref="Reason"/> is Superseded).</summary>
+    public string? SupersededByTxId { get; init; }
+
+    /// <summary>Additional context metadata (max 10 entries).</summary>
+    public Dictionary<string, string>? Metadata { get; init; }
+
+    /// <summary>Wallet address of the signer submitting the revocation.</summary>
+    public string? SignerWalletAddress { get; init; }
+}
+
+/// <summary>
+/// Result of a transaction revocation submission.
+/// </summary>
+public sealed record RevokeTransactionResult
+{
+    /// <summary>ID of the newly-created revocation transaction.</summary>
+    public string RevocationTxId { get; init; } = string.Empty;
+
+    /// <summary>The original transaction ID that was revoked.</summary>
+    public string OriginalTxId { get; init; } = string.Empty;
+
+    /// <summary>Server-reported status string (e.g. "submitted").</summary>
+    public string Status { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Per-register transaction statistics returned by <c>GET /api/query/stats</c>.
+/// </summary>
+public class RegisterTransactionStatistics
+{
+    /// <summary>Total number of transactions in the register.</summary>
+    public int TotalTransactions { get; set; }
+
+    /// <summary>Number of unique wallets involved (senders + recipients).</summary>
+    public int UniqueWallets { get; set; }
+
+    /// <summary>Number of unique sender addresses.</summary>
+    public int UniqueSenders { get; set; }
+
+    /// <summary>Number of unique recipient addresses.</summary>
+    public int UniqueRecipients { get; set; }
+
+    /// <summary>Total number of payloads across all transactions.</summary>
+    public long TotalPayloads { get; set; }
+
+    /// <summary>Timestamp of the earliest transaction, if any.</summary>
+    public DateTime? EarliestTransaction { get; set; }
+
+    /// <summary>Timestamp of the most recent transaction, if any.</summary>
+    public DateTime? LatestTransaction { get; set; }
+}
+
+/// <summary>
+/// Summary information about a register for inventory listings.
+/// </summary>
+public class RegisterSummaryInfo
+{
+    /// <summary>Register unique identifier.</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Register display name.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Current status (Active, Inactive, etc.).</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>Owning tenant identifier.</summary>
+    public string TenantId { get; set; } = string.Empty;
+
+    /// <summary>Current chain height (number of dockets).</summary>
+    public long Height { get; set; }
+
+    /// <summary>When the register was created.</summary>
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Register-service statistics payload.
+/// </summary>
+public class RegisterStatsResponse
+{
+    /// <summary>Count of registers (platform-wide or, when filtered, the listed register count).</summary>
+    public int RegisterCount { get; set; }
+
+    /// <summary>Sum of transaction counts across the in-scope registers.</summary>
+    public int TransactionCount { get; set; }
 }
 
 /// <summary>
@@ -556,14 +757,23 @@ public class TransactionPage
 /// </remarks>
 public class DocketModel
 {
+    /// <summary>Identifier of the docket.</summary>
     public required string DocketId { get; init; }
+    /// <summary>Identifier of the register.</summary>
     public required string RegisterId { get; init; }
+    /// <summary>Numeric value for docket number.</summary>
     public required long DocketNumber { get; init; }
+    /// <summary>The previous hash.</summary>
     public string? PreviousHash { get; init; }
+    /// <summary>The docket hash.</summary>
     public required string DocketHash { get; init; }
+    /// <summary>Server timestamp when the record was created (UTC).</summary>
     public required DateTimeOffset CreatedAt { get; init; }
+    /// <summary>Collection of transactions associated with this resource.</summary>
     public required List<TransactionModel> Transactions { get; init; }
+    /// <summary>Identifier of the proposer validator.</summary>
     public required string ProposerValidatorId { get; init; }
+    /// <summary>The merkle root.</summary>
     public required string MerkleRoot { get; init; }
 }
 
@@ -572,10 +782,15 @@ public class DocketModel
 /// </summary>
 public class GovernanceRosterResponse
 {
+    /// <summary>Identifier of the register.</summary>
     public string RegisterId { get; set; } = string.Empty;
+    /// <summary>Collection of members associated with this resource.</summary>
     public List<RosterMember> Members { get; set; } = [];
+    /// <summary>Numeric value for member count.</summary>
     public int MemberCount { get; set; }
+    /// <summary>Numeric value for control transaction count.</summary>
     public int ControlTransactionCount { get; set; }
+    /// <summary>Identifier of the last control tx.</summary>
     public string? LastControlTxId { get; set; }
 }
 
@@ -584,9 +799,13 @@ public class GovernanceRosterResponse
 /// </summary>
 public class RosterMember
 {
+    /// <summary>The subject.</summary>
     public string Subject { get; set; } = string.Empty;
+    /// <summary>The role.</summary>
     public string Role { get; set; } = string.Empty;
+    /// <summary>Cryptographic algorithm identifier.</summary>
     public string Algorithm { get; set; } = string.Empty;
+    /// <summary>Timestamp at which granted occurred (UTC).</summary>
     public DateTimeOffset GrantedAt { get; set; }
 }
 
@@ -678,9 +897,13 @@ public class PolicyVersionEntry
 /// </summary>
 public class InternalRegisterInfo
 {
+    /// <summary>Unique identifier for the resource.</summary>
     public string Id { get; set; } = string.Empty;
+    /// <summary>Human-readable name.</summary>
     public string Name { get; set; } = string.Empty;
+    /// <summary>Numeric value for height.</summary>
     public long Height { get; set; }
+    /// <summary>Current status of the resource.</summary>
     public string Status { get; set; } = string.Empty;
 }
 
@@ -689,9 +912,13 @@ public class InternalRegisterInfo
 /// </summary>
 public class PublishedBlueprintsResponse
 {
+    /// <summary>Identifier of the register.</summary>
     public string RegisterId { get; set; } = string.Empty;
+    /// <summary>Collection of blueprints associated with this resource.</summary>
     public List<PublishedBlueprintEntry> Blueprints { get; set; } = [];
+    /// <summary>Numeric value for register height.</summary>
     public long RegisterHeight { get; set; }
+    /// <summary>Timestamp at which queried occurred (UTC).</summary>
     public DateTimeOffset QueriedAt { get; set; }
 }
 
@@ -700,9 +927,22 @@ public class PublishedBlueprintsResponse
 /// </summary>
 public class PublishedBlueprintEntry
 {
+    /// <summary>Identifier of the blueprint.</summary>
     public string BlueprintId { get; set; } = string.Empty;
+    /// <summary>Identifier of the transaction.</summary>
     public string TransactionId { get; set; } = string.Empty;
+    /// <summary>The published by.</summary>
     public string PublishedBy { get; set; } = string.Empty;
+    /// <summary>Timestamp at which published occurred (UTC).</summary>
     public DateTimeOffset PublishedAt { get; set; }
+    /// <summary>The blueprint json.</summary>
     public string BlueprintJson { get; set; } = string.Empty;
+    /// <summary>
+    /// Feature 138 US4 — the canonical SHA-256 (lowercase hex) of the blueprint JSON, sealed in the
+    /// publish control transaction. A recovering node recomputes the canonical hash of
+    /// <see cref="BlueprintJson"/> and rejects the entry if it does not match this digest (tampered)
+    /// or if this digest is absent (no verifiable provenance). Computed by
+    /// <see cref="BlueprintContentHash.Compute(string)"/>.
+    /// </summary>
+    public string ContentHash { get; set; } = string.Empty;
 }

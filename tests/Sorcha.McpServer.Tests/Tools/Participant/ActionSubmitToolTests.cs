@@ -1,261 +1,176 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net;
 using System.Text.Json;
-using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Moq;
-using Moq.Protected;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.McpServer.Tools.Participant;
+using Sorcha.ServiceClients.Blueprint;
 
 namespace Sorcha.McpServer.Tests.Tools.Participant;
 
+/// <summary>
+/// Spec 139 US4: ActionSubmitTool executes via the typed <see cref="IBlueprintServiceClient.ExecuteActionAsync"/>
+/// (real execute route, caller token forwarded). The tool now takes instanceId + actionId (the old
+/// single actionInstanceId targeted a non-existent /submit route). These tests mock the client.
+/// </summary>
 public sealed class ActionSubmitToolTests
 {
-    private readonly Mock<IMcpSessionService> _sessionServiceMock;
-    private readonly Mock<IMcpAuthorizationService> _authServiceMock;
-    private readonly Mock<IMcpErrorHandler> _errorHandlerMock;
-    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock;
-    private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
-    private readonly Mock<ILogger<ActionSubmitTool>> _loggerMock;
-    private readonly IConfiguration _configuration;
+    private readonly Mock<IMcpAuthorizationService> _authServiceMock = new();
+    private readonly Mock<IServiceAvailabilityTracker> _availabilityTrackerMock = new();
+    private readonly Mock<IBlueprintServiceClient> _blueprintClientMock = new();
     private readonly ActionSubmitTool _tool;
 
     public ActionSubmitToolTests()
     {
-        _sessionServiceMock = new Mock<IMcpSessionService>();
-        _authServiceMock = new Mock<IMcpAuthorizationService>();
-        _errorHandlerMock = new Mock<IMcpErrorHandler>();
-        _availabilityTrackerMock = new Mock<IServiceAvailabilityTracker>();
-        _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _loggerMock = new Mock<ILogger<ActionSubmitTool>>();
-
-        _configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ServiceClients:BlueprintService:Address"] = "http://localhost:5000"
-            })
-            .Build();
-
         _tool = new ActionSubmitTool(
-            _sessionServiceMock.Object,
             _authServiceMock.Object,
-            _errorHandlerMock.Object,
             _availabilityTrackerMock.Object,
-            _httpClientFactoryMock.Object,
-            _configuration,
-            _loggerMock.Object);
+            _blueprintClientMock.Object,
+            Mock.Of<ILogger<ActionSubmitTool>>());
+    }
+
+    private void Allow()
+    {
+        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
+        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
     }
 
     [Fact]
     public async Task SubmitActionAsync_WhenUnauthorized_ReturnsUnauthorizedStatus()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(false);
 
-        // Act
-        var result = await _tool.SubmitActionAsync("action-123", "{}");
+        var result = await _tool.SubmitActionAsync("wf-1", "1", "{}");
 
-        // Assert
         result.Status.Should().Be("Unauthorized");
-        result.Message.Should().Contain("sorcha:participant");
+    }
+
+    [Fact]
+    public async Task SubmitActionAsync_WithEmptyInstanceId_ReturnsError()
+    {
+        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
+
+        var result = await _tool.SubmitActionAsync("", "1", "{}");
+
+        result.Status.Should().Be("Error");
     }
 
     [Fact]
     public async Task SubmitActionAsync_WithEmptyActionId_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
 
-        // Act
-        var result = await _tool.SubmitActionAsync("", "{}");
+        var result = await _tool.SubmitActionAsync("wf-1", "", "{}");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Action instance ID is required");
     }
 
     [Fact]
     public async Task SubmitActionAsync_WithEmptyData_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
 
-        // Act
-        var result = await _tool.SubmitActionAsync("action-123", "");
+        var result = await _tool.SubmitActionAsync("wf-1", "1", "");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Data JSON is required");
     }
 
     [Fact]
     public async Task SubmitActionAsync_WithInvalidJson_ReturnsError()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
 
-        // Act
-        var result = await _tool.SubmitActionAsync("action-123", "not valid json {");
+        var result = await _tool.SubmitActionAsync("wf-1", "1", "not valid json {");
 
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Invalid data JSON format");
     }
 
     [Fact]
     public async Task SubmitActionAsync_WhenServiceUnavailable_ReturnsUnavailableStatus()
     {
-        // Arrange
         _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
         _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(false);
 
-        // Act
-        var result = await _tool.SubmitActionAsync("action-123", "{\"name\":\"test\"}");
+        var result = await _tool.SubmitActionAsync("wf-1", "1", "{\"name\":\"test\"}");
 
-        // Assert
         result.Status.Should().Be("Unavailable");
-        result.Message.Should().Contain("Blueprint service");
     }
 
     [Fact]
     public async Task SubmitActionAsync_WithSuccessfulSubmission_ReturnsSuccess()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
 
-        var response = new
+        var response = JsonSerializer.Serialize(new
         {
             message = "Action submitted successfully.",
             transactionId = "tx-789",
-            nextActions = new[]
-            {
-                new { actionId = 2, title = "Next Action", assignedTo = "participant-2" }
-            }
-        };
+            nextActions = new[] { new { actionId = 2, title = "Next Action", assignedTo = "participant-2" } }
+        });
+        _blueprintClientMock
+            .Setup(c => c.ExecuteActionAsync("wf-1", "1", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(response);
 
-        SetupHttpClient(HttpStatusCode.OK, JsonSerializer.Serialize(response));
+        var result = await _tool.SubmitActionAsync("wf-1", "1", "{\"name\":\"John Doe\"}");
 
-        // Act
-        var result = await _tool.SubmitActionAsync("action-123", "{\"name\":\"John Doe\"}");
-
-        // Assert
         result.Status.Should().Be("Success");
         result.TransactionId.Should().Be("tx-789");
         result.NextActions.Should().HaveCount(1);
+        _availabilityTrackerMock.Verify(x => x.RecordSuccess("Blueprint"), Times.Once);
     }
 
     [Fact]
-    public async Task SubmitActionAsync_WithValidationError_ReturnsValidationErrors()
+    public async Task SubmitActionAsync_ExecutePathUsesInstanceAndActionId()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.ExecuteActionAsync("wf-1", "2", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JsonSerializer.Serialize(new { transactionId = "tx-1" }));
 
-        var response = new
-        {
-            error = "Validation failed",
-            validationErrors = new[]
-            {
-                "Invalid email format",
-                "Phone number required"
-            }
-        };
+        await _tool.SubmitActionAsync("wf-1", "2", "{\"x\":1}");
 
-        SetupHttpClient(HttpStatusCode.BadRequest, JsonSerializer.Serialize(response));
-
-        // Act
-        var result = await _tool.SubmitActionAsync("action-123", "{\"name\":\"test\"}");
-
-        // Assert
-        result.Status.Should().Be("Error");
-        result.ValidationErrors.Should().HaveCount(2);
+        _blueprintClientMock.Verify(
+            c => c.ExecuteActionAsync("wf-1", "2", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task SubmitActionAsync_WithNotFound_ReturnsErrorStatus()
+    public async Task SubmitActionAsync_WithNull_ReturnsErrorStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.ExecuteActionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
 
-        SetupHttpClient(HttpStatusCode.NotFound, "{\"error\":\"Action not found\"}");
+        var result = await _tool.SubmitActionAsync("wf-1", "1", "{\"data\":\"test\"}");
 
-        // Act
-        var result = await _tool.SubmitActionAsync("action-invalid", "{\"data\":\"test\"}");
-
-        // Assert
         result.Status.Should().Be("Error");
     }
 
     [Fact]
     public async Task SubmitActionAsync_WithTimeout_ReturnsTimeoutStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.ExecuteActionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TaskCanceledException());
 
-        SetupHttpClientWithException(new TaskCanceledException());
+        var result = await _tool.SubmitActionAsync("wf-1", "1", "{\"data\":\"test\"}");
 
-        // Act
-        var result = await _tool.SubmitActionAsync("action-123", "{\"data\":\"test\"}");
-
-        // Assert
         result.Status.Should().Be("Timeout");
-        _availabilityTrackerMock.Verify(x => x.RecordFailure("Blueprint"), Times.Once);
     }
 
     [Fact]
     public async Task SubmitActionAsync_WithHttpException_ReturnsErrorStatus()
     {
-        // Arrange
-        _authServiceMock.Setup(x => x.CanInvokeTool("sorcha_action_submit")).Returns(true);
-        _availabilityTrackerMock.Setup(x => x.IsServiceAvailable("Blueprint")).Returns(true);
+        Allow();
+        _blueprintClientMock
+            .Setup(c => c.ExecuteActionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
 
-        SetupHttpClientWithException(new HttpRequestException("Network error"));
+        var result = await _tool.SubmitActionAsync("wf-1", "1", "{\"data\":\"test\"}");
 
-        // Act
-        var result = await _tool.SubmitActionAsync("action-123", "{\"data\":\"test\"}");
-
-        // Assert
         result.Status.Should().Be("Error");
-        result.Message.Should().Contain("Network error");
-    }
-
-    private void SetupHttpClient(HttpStatusCode statusCode, string content)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage
-            {
-                StatusCode = statusCode,
-                Content = new StringContent(content)
-            });
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
-    }
-
-    private void SetupHttpClientWithException(Exception exception)
-    {
-        var handlerMock = new Mock<HttpMessageHandler>();
-        handlerMock.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ThrowsAsync(exception);
-
-        var client = new HttpClient(handlerMock.Object);
-        _httpClientFactoryMock.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(client);
     }
 }

@@ -12,14 +12,16 @@
 @using Sorcha.UI.Core.Services.Admin
 @using Sorcha.UI.Core.Services.Configuration
 @using Sorcha.UI.Core.Components.Configuration
+@using Sorcha.UI.Core.Services.Feedback
 @using Sorcha.UI.Web.Client.Components.Settings
 @inject IUserPreferencesService PreferencesService
 @inject IConfigurationService ConfigService
 @inject ITotpClientService TotpService
+@inject IAuthMethodsClientService AuthMethodsClient
 @inject IPushNotificationService PushService
 @inject IJSRuntime JSRuntime
 @inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 @inject NavigationManager Navigation
 @inject ILocalizationService Loc
 @inject IThemeService ThemeService
@@ -121,6 +123,15 @@
 
             <!-- Security Tab -->
             <MudTabPanel Text="@Loc.T("settings.security")" Icon="@Icons.Material.Filled.Security">
+
+                @* Feature 116 US3 — password lifecycle mounted above 2FA. *@
+                <Sorcha.UI.Web.Client.Components.Settings.AuthMethods.PasswordSection
+                    Password="_authMethods?.Password"
+                    IsBootstrap="@IsBootstrapAuth"
+                    OnChanged="LoadAuthMethodsAsync" />
+
+                <MudDivider Class="my-4" />
+
                 <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.twoFactor.title")</MudText>
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
                     @Loc.T("settings.twoFactor.description")
@@ -553,6 +564,16 @@
     private bool _loading = true;
     private string _buildNumber = $"{DateTime.Now:yyyyMMdd}.{DateTime.Now:HHmm}";
 
+    // Feature 116 US3 — auth-methods aggregate for the Security tab's
+    // PasswordSection. Lives alongside _preferences to keep the same
+    // tab-mounted lifecycle.
+    private AuthMethodsResponse? _authMethods;
+    private bool IsBootstrapAuth =>
+        _authMethods is not null
+        && !_authMethods.Password.IsSet
+        && _authMethods.Socials.Count == 0
+        && !_authMethods.Passkeys.Any(p => string.Equals(p.Status, "Active", StringComparison.OrdinalIgnoreCase));
+
     // Feature 092 / US4 — Notifications tab index (Appearance=0, Language=1,
     // Security=2, Notifications=3) so the /settings/notifications deep link
     // and avatar-menu shortcut both land on the right tab.
@@ -600,7 +621,11 @@
             }
         }
 
-        await Task.WhenAll(LoadPreferencesAsync(), LoadProfilesAsync(), LoadPushStatusAsync());
+        await Task.WhenAll(
+            LoadPreferencesAsync(),
+            LoadProfilesAsync(),
+            LoadPushStatusAsync(),
+            LoadAuthMethodsAsync());
     }
 
     private async Task LoadPushStatusAsync()
@@ -627,7 +652,7 @@
                 {
                     _pushPermissionDenied = true;
                     _pushEnabled = false;
-                    Snackbar.Add("Browser notifications permission denied", Severity.Warning);
+                    Feedback.ShowWarning("Browser notifications permission denied");
                     return;
                 }
                 _pushPermissionDenied = false;
@@ -640,12 +665,14 @@
                 };
                 var success = await PushService.SubscribeAsync(request);
                 _pushEnabled = success;
-                Snackbar.Add(success ? "Push notifications enabled" : "Failed to enable push notifications",
-                    success ? Severity.Success : Severity.Error);
+                if (success)
+                    Feedback.ShowSuccess("Push notifications enabled");
+                else
+                    Feedback.ShowError("Failed to enable push notifications", autoDismissMs: 0);
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Push error: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Push error: {ex.Message}", autoDismissMs: 0);
             }
         }
         else
@@ -654,12 +681,14 @@
             {
                 var success = await PushService.UnsubscribeAsync("browser-push-endpoint");
                 _pushEnabled = !success ? _pushEnabled : false;
-                Snackbar.Add(success ? "Push notifications disabled" : "Failed to disable push notifications",
-                    success ? Severity.Success : Severity.Error);
+                if (success)
+                    Feedback.ShowSuccess("Push notifications disabled");
+                else
+                    Feedback.ShowError("Failed to disable push notifications", autoDismissMs: 0);
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Push error: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"Push error: {ex.Message}", autoDismissMs: 0);
             }
         }
     }
@@ -682,8 +711,21 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
+    }
+
+    private async Task LoadAuthMethodsAsync()
+    {
+        try
+        {
+            _authMethods = await AuthMethodsClient.GetAuthMethodsAsync();
+        }
+        catch
+        {
+            _authMethods = null;
+        }
+        StateHasChanged();
     }
 
     private async Task OnThemeChanged(string theme)
@@ -697,7 +739,7 @@
             "Dark" => "settings.theme.dark",
             _ => "settings.theme.system"
         };
-        Snackbar.Add($"{Loc.T("settings.theme")}: {Loc.T(themeKey)}", Severity.Success);
+        Feedback.ShowSuccess($"{Loc.T("settings.theme")}: {Loc.T(themeKey)}");
     }
 
     private async Task OnTimeFormatChanged(string format)
@@ -705,7 +747,7 @@
         _preferences.TimeFormat = format;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { TimeFormat = format });
         var formatKey = format == "UTC" ? "settings.timeFormat.utc" : "settings.timeFormat.local";
-        Snackbar.Add($"{Loc.T("settings.timeFormat")}: {Loc.T(formatKey)}", Severity.Success);
+        Feedback.ShowSuccess($"{Loc.T("settings.timeFormat")}: {Loc.T(formatKey)}");
     }
 
     private async Task OnLanguageChanged(string languageCode)
@@ -713,28 +755,28 @@
         _preferences.Language = languageCode;
         await Loc.SetLanguageAsync(languageCode);
         var langName = _supportedLanguages.FirstOrDefault(l => l.Code == languageCode).Name ?? languageCode;
-        Snackbar.Add($"{Loc.T("settings.language")}: {langName}", Severity.Success);
+        Feedback.ShowSuccess($"{Loc.T("settings.language")}: {langName}");
     }
 
     private async Task OnNotificationsChanged(bool enabled)
     {
         _preferences.NotificationsEnabled = enabled;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationsEnabled = enabled });
-        Snackbar.Add(enabled ? Loc.T("settings.notifications.enabledSuccess") : Loc.T("settings.notifications.disabledSuccess"), Severity.Success);
+        Feedback.ShowSuccess(enabled ? Loc.T("settings.notifications.enabledSuccess") : Loc.T("settings.notifications.disabledSuccess"));
     }
 
     private async Task OnNotificationMethodChanged(string method)
     {
         _preferences.NotificationMethod = method;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationMethod = method });
-        Snackbar.Add(Loc.T("settings.notifications.saved"), Severity.Success);
+        Feedback.ShowSuccess(Loc.T("settings.notifications.saved"));
     }
 
     private async Task OnNotificationFrequencyChanged(string frequency)
     {
         _preferences.NotificationFrequency = frequency;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationFrequency = frequency });
-        Snackbar.Add(Loc.T("settings.notifications.saved"), Severity.Success);
+        Feedback.ShowSuccess(Loc.T("settings.notifications.saved"));
     }
 
     private async Task SavePreferencesAsync(UpdateUserPreferencesRequest request)
@@ -745,7 +787,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -763,12 +805,12 @@
             }
             else
             {
-                Snackbar.Add(Loc.T("settings.twoFactor.setupFailed"), Severity.Error);
+                Feedback.ShowError(Loc.T("settings.twoFactor.setupFailed"), autoDismissMs: 0);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -785,50 +827,53 @@
                 _preferences.TwoFactorEnabled = true;
                 _showTotpSetup = false;
                 _totpVerificationCode = string.Empty;
-                Snackbar.Add(Loc.T("settings.twoFactor.enabledSuccess"), Severity.Success);
+                Feedback.ShowSuccess(Loc.T("settings.twoFactor.enabledSuccess"));
             }
             else
             {
-                Snackbar.Add(Loc.T("settings.twoFactor.invalidCode"), Severity.Error);
+                Feedback.ShowError(Loc.T("settings.twoFactor.invalidCode"), autoDismissMs: 0);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
     private async Task DisableTwoFactor()
     {
-        var confirmed = await DialogService.ShowMessageBoxAsync(
-            Loc.T("settings.twoFactor.disableTitle"),
-            Loc.T("settings.twoFactor.disableConfirm"),
-            yesText: Loc.T("settings.twoFactor.disable"),
-            cancelText: Loc.T("common.cancel"));
-
-        if (confirmed == true)
+        // Feature 116 T068 — the /api/totp DELETE endpoint now requires a fresh
+        // re-authentication challenge with Scope=Disable2Fa. AuthChallengeDialog
+        // doubles as the confirmation surface (replaces the old ShowMessageBoxAsync).
+        var parameters = new MudBlazor.DialogParameters { ["Scope"] = ScopedOperation.Disable2Fa };
+        var dialog = await DialogService.ShowAsync<Sorcha.UI.Web.Client.Components.Settings.AuthMethods.AuthChallengeDialog>(
+            Loc.T("settings.twoFactor.disableTitle"), parameters);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false, Data: string token })
         {
-            try
+            return;
+        }
+
+        try
+        {
+            var disabled = await TotpService.DisableTotpAsync(token);
+            if (disabled)
             {
-                var disabled = await TotpService.DisableTotpAsync();
-                if (disabled)
-                {
-                    _preferences.TwoFactorEnabled = false;
-                    _showTotpSetup = false;
-                    _totpSecret = string.Empty;
-                    _totpQrUri = string.Empty;
-                    _totpBackupCodes.Clear();
-                    Snackbar.Add(Loc.T("settings.twoFactor.disabledSuccess"), Severity.Info);
-                }
-                else
-                {
-                    Snackbar.Add(Loc.T("settings.twoFactor.disableFailed"), Severity.Error);
-                }
+                _preferences.TwoFactorEnabled = false;
+                _showTotpSetup = false;
+                _totpSecret = string.Empty;
+                _totpQrUri = string.Empty;
+                _totpBackupCodes.Clear();
+                Feedback.ShowInfo(Loc.T("settings.twoFactor.disabledSuccess"));
             }
-            catch (Exception ex)
+            else
             {
-                Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+                Feedback.ShowError(Loc.T("settings.twoFactor.disableFailed"), autoDismissMs: 0);
             }
+        }
+        catch (Exception ex)
+        {
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -843,7 +888,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {
@@ -862,11 +907,11 @@
                 ApiConfiguration.ConfigureFromProfile(profile);
             }
             await LoadProfilesAsync();
-            Snackbar.Add(Loc.T("settings.connections.activatedSuccess", profileName), Severity.Success);
+            Feedback.ShowSuccess(Loc.T("settings.connections.activatedSuccess", profileName));
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
         }
     }
 
@@ -934,16 +979,16 @@
                 if (deleted)
                 {
                     await LoadProfilesAsync();
-                    Snackbar.Add(Loc.T("settings.connections.deletedSuccess", profile.Name), Severity.Info);
+                    Feedback.ShowInfo(Loc.T("settings.connections.deletedSuccess", profile.Name));
                 }
                 else
                 {
-                    Snackbar.Add(Loc.T("settings.connections.cannotDelete"), Severity.Warning);
+                    Feedback.ShowWarning(Loc.T("settings.connections.cannotDelete"));
                 }
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+                Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
             }
         }
     }

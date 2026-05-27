@@ -35,4 +35,12 @@ public class ConsensusConfiguration
     /// require multi-validator consensus — this flag is ignored unless ASPNETCORE_ENVIRONMENT=Development.
     /// </summary>
     public bool SingleValidatorAutoApprove { get; set; } = true;
+
+    /// <summary>
+    /// Accept-to-seal deadline, in seconds, before a validator that accepted work but did not
+    /// seal it is treated as withholding and ejected via a sealed
+    /// <c>control.validator.liveness-violation</c> (Feature 138 US3, FR-013). Mirrors the
+    /// register policy's <c>DocketTimeoutSeconds</c>; default 30s.
+    /// </summary>
+    public int LivenessTimeoutSeconds { get; set; } = 30;
 }

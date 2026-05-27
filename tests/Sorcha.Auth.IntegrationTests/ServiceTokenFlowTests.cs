@@ -30,7 +30,9 @@ public class ServiceTokenFlowTests : IAsyncLifetime
 {
     private const string TestSigningKey = "test-signing-key-for-integration-tests-minimum-32-characters-long-enough";
     private const string TestIssuer = "https://test.sorcha.io";
-    private const string TestAudience = "https://test-api.sorcha.io";
+    // Spec 136: validation derives tier audiences from the installation (default "sorcha"),
+    // ignoring any configured raw audience. Service tokens carry the service-tier audience.
+    private const string TestAudience = "sorcha:service";
 
     private WebApplication _targetApp = null!;
     private HttpClient _targetClient = null!;

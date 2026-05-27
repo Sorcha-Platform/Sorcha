@@ -35,6 +35,10 @@
     <ProjectReference Include="..\..\Common\Sorcha.Storage.Abstractions\Sorcha.Storage.Abstractions.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Storage.InMemory\Sorcha.Storage.InMemory.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.PresentationLifecycle.Abstractions\Sorcha.PresentationLifecycle.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Verifier.Engine\Sorcha.Verifier.Engine.csproj" />
+    <ProjectReference Include="..\..\Core\Sorcha.Register.Core\Sorcha.Register.Core.csproj" />
+    <ProjectReference Include="..\..\Core\Sorcha.Register.Storage.Redis\Sorcha.Register.Storage.Redis.csproj" />
+    <ProjectReference Include="..\..\Core\Sorcha.Register.Storage.InMemory\Sorcha.Register.Storage.InMemory.csproj" />
   </ItemGroup>
 
 </Project>

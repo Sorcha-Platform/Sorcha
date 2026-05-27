@@ -20,12 +20,18 @@ sorcha
 │   ├── create             # Create new register (two-phase)
 │   ├── update             # Update register metadata
 │   ├── delete             # Delete register
-│   └── stats              # Get register statistics
+│   ├── stats              # Get register statistics
+│   ├── relationship       # This node's derived role set for a register (Feature 108)
+│   ├── sync-state         # A register's sync state (indeterminate/syncing/caught-up/error)
+│   └── sync-health        # Recovery sync health across all registers on this node
 ├── tx                     # Transaction commands
 │   ├── list               # List transactions in register
 │   ├── get                # Get transaction by ID
 │   ├── submit             # Submit new transaction
-│   └── status             # Check transaction status
+│   ├── status             # Check transaction lifecycle status (active/revoked/superseded)
+│   ├── proof              # Generate a Merkle inclusion proof (--out to save)
+│   ├── verify-proof       # Verify a saved inclusion proof (offline-capable)
+│   └── revoke             # Revoke a transaction with a recorded reason
 ├── docket                 # Docket (block) inspection
 │   ├── list               # List dockets in register
 │   ├── get                # Get docket by ID
@@ -212,3 +218,80 @@ var userId = jwtToken.Claims.FirstOrDefault(c => c.Type == "sub")?.Value
     ?? jwtToken.Claims.FirstOrDefault(c => c.Type == "userId")?.Value
     ?? throw new InvalidOperationException("Could not extract user ID from token");
 ```
+
+## Organisation Key Derivation (Feature 133 / 083)
+
+```bash
+sorcha wallet org-key provision <orgId> [--algorithm ED25519]   # mnemonic shown ONCE
+sorcha wallet org-key derive <orgId> --user-id <id> [--department N] --usage Identity
+sorcha wallet org-key rotate <orgId> <derivedKeyId>
+sorcha wallet org-key revoke <orgId> <derivedKeyId>
+```
+
+`--usage` values: `Identity`, `VCIssuance`, `Governance`, `Communications`, `ServiceAuth`.
+
+**Reuse note (deviation from the literal plan)**: the org-key *response* DTOs are reused from
+`Sorcha.ServiceClients.Wallet` (`OrgMasterKeyProvisionResponse`, `DerivedKeyResponse`,
+`RevokeKeyResponse`) — no duplication. But the calls go through the CLI's own bearer-auth
+`IWalletServiceClient`, NOT the shared `WalletServiceClient`, because the shared client
+authenticates as a service principal (`IServiceAuthClient` client-credentials), which would put
+org-key commands on a different auth principal than every other CLI command. `provision` surfaces
+the mnemonic once and never persists it.
+
+## Validator Roster Governance (Feature 133 / 086)
+
+Extends `validator` (which already had approve/reject via `consent`) with the full roster lifecycle.
+These hit `/api/validators/...` (distinct from the existing `/api/admin/validators/...` surface).
+
+```bash
+sorcha validator register --register-id <id> --validator-id <vid> --public-key <pk> --grpc-endpoint <url>
+sorcha validator count --register-id <id>
+sorcha validator audit --register-id <id> [--validator-id <vid>] [--limit N] [--offset N]
+sorcha validator suspend    --register-id <id> --validator-id <vid> --reason "<text>"
+sorcha validator reactivate --register-id <id> --validator-id <vid> [--notes "<text>"]
+sorcha validator revoke     --register-id <id> --validator-id <vid> --reason "<text>"
+sorcha validator sequence --register-id <id> --wallet <addr>
+```
+
+`suspend` and `revoke` are destructive and require an explicit `--validator-id` and `--reason`.
+
+## Register Sync Diagnostics (Feature 133 / 108)
+
+```bash
+sorcha register relationship --id <registerId>   # owner / validator / subscriber role set
+sorcha register sync-state   --id <registerId>   # Indeterminate / Syncing / CaughtUp / Error + heights
+sorcha register sync-health                       # all registers on this node (table)
+```
+
+All read-only. `relationship` and `sync-state` reuse the shared `Sorcha.Register.Models.LocalRelationship`
+record types (the Register Refit client's JsonStringEnumConverter handles their flag/enum fields).
+
+## Trust-Hardening Transaction Commands (Feature 133 / 079)
+
+These commands wrap the Register Service's trust-hardening surface. They reuse the shared
+`Sorcha.Register.Models` types (`MerkleInclusionProof`, `TransactionStatusResponse`,
+`RevocationReason`) rather than redefining them — the Register Refit client is built with a
+`JsonStringEnumConverter` so the platform's string-serialized enums deserialize correctly.
+
+```bash
+# Generate a Merkle inclusion proof and save it for offline verification
+sorcha tx proof --register-id <id> --tx-id <txId> --out proof.json
+
+# Verify a saved proof (the verify endpoint is anonymous / offline-capable)
+sorcha tx verify-proof --register-id <id> --file proof.json
+
+# Revoke a transaction with a reason (Superseded requires --superseded-by)
+sorcha tx revoke --register-id <id> --tx-id <txId> --reason Erroneous
+sorcha tx revoke --register-id <id> --tx-id <txId> --reason Superseded --superseded-by <newTxId>
+
+# Report lifecycle status — Active / Revoked / Superseded (NOT submission progress)
+sorcha tx status --register-id <id> --tx-id <txId>
+```
+
+**`tx status` correctness note**: this command targets `GET …/transactions/{txId}/status`, which
+returns the *lifecycle* status (`Active` / `Revoked` / `Superseded`), not submission progress.
+Earlier the command deserialized that response into the submission-ack shape and always reported
+"Unknown status"; it now uses `TransactionStatusResponse` and reports the lifecycle state plus any
+revocation/superseding transaction pointers.
+
+Valid `--reason` values: `Superseded`, `Erroneous`, `Compromised`, `Expired`, `Withdrawn`, `Regulatory`.

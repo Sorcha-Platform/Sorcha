@@ -9,11 +9,12 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Sorcha.Blueprint.Service.Models;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.Register.Core.Events;
+using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Wallet;
-
-using StackExchange.Redis;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -48,59 +49,52 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// </remarks>
 public sealed class InstanceMirrorReconstructor : BackgroundService
 {
-    private const string DocketConfirmedChannel = "docket:confirmed";
-
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IConnectionMultiplexer? _redis;
+    private readonly IEventSubscriber? _subscriber;
     private readonly InstanceMirrorReconstructorMetrics _metrics;
     private readonly ILogger<InstanceMirrorReconstructor> _logger;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
 
     public InstanceMirrorReconstructor(
         IServiceScopeFactory scopeFactory,
         InstanceMirrorReconstructorMetrics metrics,
         ILogger<InstanceMirrorReconstructor> logger,
-        IConnectionMultiplexer? redis = null)
+        IEventSubscriber? subscriber = null)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _redis = redis;
+        _subscriber = subscriber;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (_redis is null)
+        if (_subscriber is null)
         {
             _logger.LogWarning(
-                "InstanceMirrorReconstructor: Redis not available — cross-node instance mirroring is disabled. " +
-                "Feature 106 MyActions queries from a holder node will return empty until Redis is reachable.");
+                "InstanceMirrorReconstructor: event subscriber not available — cross-node instance mirroring is disabled. " +
+                "Feature 106 MyActions queries from a holder node will return empty until the event bus is reachable.");
             return;
         }
 
         _logger.LogInformation(
             "InstanceMirrorReconstructor starting — subscribing to {Channel}",
-            DocketConfirmedChannel);
+            RegisterEventChannels.DocketConfirmed);
 
         try
         {
-            var subscriber = _redis.GetSubscriber();
-            await subscriber.SubscribeAsync(
-                RedisChannel.Literal(DocketConfirmedChannel),
-                async (_, message) =>
+            // Subscribe via the Redis Streams IEventSubscriber — the SAME mechanism the Register
+            // Service publishes through (RedisStreamEventPublisher.StreamAddAsync). The previous raw
+            // _redis.GetSubscriber() pub/sub never received these events (the publisher uses Streams,
+            // not pub/sub channels), so the owner node never materialised a mirror for a replica-
+            // originated instance and the analyst had nothing to act on. Mirrors the working
+            // PresentationSealSubscriber pattern.
+            await _subscriber.SubscribeAsync<DocketConfirmedEvent>(
+                RegisterEventChannels.DocketConfirmed,
+                async evt =>
                 {
                     try
                     {
-                        await HandleDocketConfirmedAsync(message!, stoppingToken);
-                    }
-                    catch (JsonException ex)
-                    {
-                        _logger.LogWarning(ex,
-                            "InstanceMirrorReconstructor: malformed docket:confirmed event");
+                        await HandleDocketConfirmedAsync(evt, stoppingToken);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
@@ -108,10 +102,11 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
                             "InstanceMirrorReconstructor: unexpected error processing docket:confirmed");
                         _metrics.RecordErrored();
                     }
-                });
+                },
+                stoppingToken);
 
             _logger.LogInformation(
-                "InstanceMirrorReconstructor subscribed to {Channel}", DocketConfirmedChannel);
+                "InstanceMirrorReconstructor subscribed to {Channel}", RegisterEventChannels.DocketConfirmed);
 
             await Task.Delay(Timeout.Infinite, stoppingToken);
         }
@@ -125,12 +120,11 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         }
     }
 
-    private async Task HandleDocketConfirmedAsync(string message, CancellationToken ct)
+    private async Task HandleDocketConfirmedAsync(DocketConfirmedEvent evt, CancellationToken ct)
     {
         _metrics.RecordDocketObserved();
         var sw = Stopwatch.StartNew();
 
-        var evt = JsonSerializer.Deserialize<DocketConfirmedEvent>(message, JsonOptions);
         if (evt?.TransactionIds is null || evt.TransactionIds.Count == 0)
             return;
 
@@ -138,6 +132,9 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
         var walletClient = scope.ServiceProvider.GetRequiredService<IWalletServiceClient>();
         var instanceStore = scope.ServiceProvider.GetRequiredService<IInstanceStore>();
+        // Feature 137 — resolve the blueprint so the mirror's ParticipantWallets can be
+        // keyed by participant id (e.g. "citizen") rather than self-keyed by wallet address.
+        var actionResolver = scope.ServiceProvider.GetRequiredService<IActionResolverService>();
 
         foreach (var txId in evt.TransactionIds)
         {
@@ -146,7 +143,7 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
 
             try
             {
-                await InspectTransactionAsync(evt.RegisterId, txId, registerClient, walletClient, instanceStore, ct);
+                await InspectTransactionAsync(evt.RegisterId, txId, registerClient, walletClient, instanceStore, actionResolver, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -167,6 +164,7 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         IRegisterServiceClient registerClient,
         IWalletServiceClient walletClient,
         IInstanceStore instanceStore,
+        IActionResolverService actionResolver,
         CancellationToken ct)
     {
         var tx = await registerClient.GetTransactionAsync(registerId, txId, ct);
@@ -244,23 +242,49 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
             return;
         }
 
-        // Build (or refresh) the mirror row. The ParticipantWallets map is keyed by
-        // participant id, but from the tx alone we don't know the mapping — seed
-        // with the wallet addresses keyed by themselves so GetPendingActionsByWalletAsync
-        // can still match them. A richer blueprint-aware reconstruction can be
-        // bolted on later without changing the persistence shape.
+        // Feature 137 (option (b) from the former TODO) — resolve the blueprint on this
+        // node and map participant ids → wallets so the mirror's ParticipantWallets is
+        // STRUCTURALLY VALID, not just self-keyed by wallet address. Credential issuance
+        // on the owner node resolves the recipient by participant id
+        // (CredentialIssuanceConfig.RecipientParticipantId, e.g. "citizen"); a self-keyed
+        // mirror fails VAL_RUNTIME_CRED_001 even though the recipient wallet is known.
         //
-        // ⚠️ TODO(feature-106-follow-up): self-keying breaks role-based routing on
-        // the mirror. Any action dispatch that resolves by participant id instead
-        // of wallet address will fail to find the participant. Two options:
-        //   (a) thread participant ids through TransactionMetaData at write time
-        //       and read them here for a structurally valid mirror, or
-        //   (b) fetch the blueprint on this node and walk its participants to
-        //       reverse-map wallet → participant id when the blueprint has
-        //       pre-bound wallets.
-        // Acceptable for MVP because MyCredentials PENDING tab and the
-        // GetPendingActionsByWalletAsync query both match on wallet address
-        // directly. Tracked as a known gap in specs/106-register-native-credentials.
+        // The sender of THIS action binds its participant (action 1 sender = "citizen").
+        // The next action's sender binds the (single) recipient when known (next action
+        // sender = "verification-analyst"). Mappings accumulate across dockets, so by the
+        // time the analyst approves action 2 the mirror already carries "citizen" from
+        // action 1. Best-effort: on any resolution failure we fall back to self-keying.
+        var participantBindings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var bp = await actionResolver.GetBlueprintAsync(blueprintId, ct);
+            if (bp is not null)
+            {
+                if (tx.MetaData?.ActionId is uint senderActionId && !string.IsNullOrEmpty(tx.SenderWallet))
+                {
+                    var senderAction = actionResolver.GetActionDefinition(bp, senderActionId.ToString());
+                    if (senderAction is not null && !string.IsNullOrEmpty(senderAction.Sender))
+                        participantBindings[senderAction.Sender] = tx.SenderWallet;
+                }
+
+                if (tx.MetaData?.NextActionId is uint nextActionId)
+                {
+                    var nextActionDef = actionResolver.GetActionDefinition(bp, nextActionId.ToString());
+                    // The recipient (next actor) is every candidate that is not the sender.
+                    var recipientWallet = candidateWallets.FirstOrDefault(
+                        w => !string.Equals(w, tx.SenderWallet, StringComparison.OrdinalIgnoreCase));
+                    if (nextActionDef is not null && !string.IsNullOrEmpty(nextActionDef.Sender) && recipientWallet is not null)
+                        participantBindings[nextActionDef.Sender] = recipientWallet;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex,
+                "InstanceMirrorReconstructor: blueprint-aware participant resolution failed for {BlueprintId}; falling back to self-keying",
+                blueprintId);
+        }
+
         var nextAction = tx.MetaData?.NextActionId;
         var mirror = new Instance
         {
@@ -280,8 +304,15 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
             IsReadOnlyMirror = true,
         };
 
-        // Merge newly-discovered local wallets into the participant map keyed by
-        // the wallet address (self-keyed) so the pending-actions query matches.
+        // Merge blueprint-resolved participant→wallet bindings (keyed by participant id).
+        // These are the authoritative entries credential issuance + role routing rely on.
+        foreach (var binding in participantBindings)
+        {
+            mirror.ParticipantWallets[binding.Key] = binding.Value;
+        }
+
+        // Fallback: self-key any local wallet we could not map to a participant id so the
+        // wallet-address-matching GetPendingActionsByWalletAsync query still resolves it.
         foreach (var wallet in localWallets)
         {
             if (!mirror.ParticipantWallets.ContainsValue(wallet))
@@ -309,16 +340,4 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Shape of the <c>docket:confirmed</c> event payload published by
-    /// Register Service. Field names match
-    /// <see cref="TransactionLifecycleEventBridge"/> in Wallet Service.
-    /// </summary>
-    private sealed record DocketConfirmedEvent
-    {
-        public string RegisterId { get; init; } = string.Empty;
-        public ulong DocketId { get; init; }
-        public List<string> TransactionIds { get; init; } = [];
-        public string Hash { get; init; } = string.Empty;
-    }
 }

@@ -297,13 +297,19 @@ function Initialize-SorchaEnvironment {
     }
 
     if (-not $SkipHealthCheck) {
-        # Check Docker
-        Write-WtInfo "Checking Docker availability..."
-        $dockerInfo = docker info 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "Docker is not running. Start Docker Desktop and run: docker-compose up -d"
+        # Check Docker — only for local profiles. Remote profiles (n1) target a
+        # hosted environment where the local Docker daemon is irrelevant.
+        if ($Profile -ne 'n1') {
+            Write-WtInfo "Checking Docker availability..."
+            $dockerInfo = docker info 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "Docker is not running. Start Docker Desktop and run: docker-compose up -d"
+            }
+            Write-WtSuccess "Docker is running"
         }
-        Write-WtSuccess "Docker is running"
+        else {
+            Write-WtInfo "Profile = n1 — skipping local Docker check"
+        }
 
         # Check API Gateway health
         Write-WtInfo "Checking API Gateway health..."
@@ -655,6 +661,51 @@ function Get-OrCreateUser {
 }
 
 # ============================================================================
+# New-SorchaOrgUser — provision an org-scoped password user (spec 136)
+# ============================================================================
+
+function New-SorchaOrgUser {
+    <#
+    .SYNOPSIS
+        Provision a NEW org-scoped password user directly into an org via
+        POST /organizations/{orgId}/users/provision — single-org (no public account, no
+        invitation, no email loop). Use for org OPERATORS (analysts, officers, issuers) so they
+        are single-org and avoid the multi-org OAuth-grant 401. Citizens use Register-SorchaPublicUser.
+    .NOTES
+        -EmailVerified requires the installation to enable Platform:AllowAdminVerifiedUserCreation
+        (dev + n1 enable it; production does not).
+    .RETURNS
+        Hashtable with UserId, Email.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$DisplayName,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [string[]]$Roles = @("Consumer"),
+        [switch]$EmailVerified
+    )
+
+    $body = @{
+        email         = $Email
+        displayName   = $DisplayName
+        password      = $Password
+        roles         = $Roles
+        emailVerified = [bool]$EmailVerified
+    }
+
+    $response = Invoke-SorchaApi -Method POST `
+        -Uri "$TenantUrl/organizations/$OrganizationId/users/provision" `
+        -Body $body `
+        -Headers $Headers
+
+    Write-WtSuccess "Org-scoped user provisioned: $DisplayName (ID: $($response.id))"
+    return @{ UserId = $response.id; Email = $Email }
+}
+
+# ============================================================================
 # Register-SorchaPublicUser — Self-register a user on the public org
 # ============================================================================
 
@@ -755,9 +806,22 @@ function Confirm-SorchaUserEmail {
 function New-SorchaWallet {
     <#
     .SYNOPSIS
-        Create a new ED25519 wallet.
+        Get-or-create an ED25519 wallet for the calling user, idempotent by name.
+
+    .DESCRIPTION
+        Lists the caller's wallets and reuses any wallet whose Name matches
+        $Name. Creates a new wallet only if no match exists. This means
+        walkthroughs can compose — running ForestryCertification then
+        TradeFinance for the same sales-mgr@highland-timber user produces
+        ONE wallet across both walkthroughs, and the DPP credential issued
+        by Forestry is visible to TradeFinance's Invoice-Finance phase.
+
+        Mnemonic is returned only when the wallet is freshly created — on
+        reuse it's null (the seed was shown to the user at creation time;
+        the system does not store it).
+
     .RETURNS
-        Hashtable with Address, Mnemonic, PublicKey (PublicKey populated if -FetchPublicKey).
+        Hashtable with Address, Mnemonic, PublicKey, Reused.
     #>
     param(
         [Parameter(Mandatory)][string]$WalletUrl,
@@ -767,6 +831,49 @@ function New-SorchaWallet {
         [int]$WordCount = 12,
         [switch]$FetchPublicKey
     )
+
+    # Look for an existing wallet with this name owned by the caller.
+    try {
+        $existing = Invoke-SorchaApi -Method GET `
+            -Uri "$WalletUrl/v1/wallets/" `
+            -Headers $Headers
+
+        $match = $null
+        if ($existing) {
+            $match = @($existing) | Where-Object { $_.name -eq $Name } | Select-Object -First 1
+        }
+
+        if ($match) {
+            Write-WtInfo "Wallet '$Name' already exists: $($match.address) — reusing"
+
+            $publicKey = $match.publicKey
+            # Older wallet records may not include publicKey on list — fall back
+            # to a probe sign so callers get a non-null value.
+            if (-not $publicKey -and $FetchPublicKey) {
+                $probeBody = @{
+                    transactionData = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("key-probe"))
+                    isPreHashed     = $false
+                }
+                $signResponse = Invoke-SorchaApi -Method POST `
+                    -Uri "$WalletUrl/v1/wallets/$($match.address)/sign" `
+                    -Body $probeBody `
+                    -Headers $Headers
+                $publicKey = $signResponse.publicKey
+            }
+
+            return @{
+                Address   = $match.address
+                Mnemonic  = $null
+                PublicKey = $publicKey
+                Reused    = $true
+            }
+        }
+    } catch {
+        # Lookup failed — fall through to create. Don't fail the whole call on
+        # a transient list error; New-SorchaWallet should always end with a
+        # usable wallet.
+        Write-WtWarn "Wallet lookup failed before create: $($_.Exception.Message) — proceeding to create"
+    }
 
     $walletBody = @{
         name      = $Name
@@ -789,6 +896,7 @@ function New-SorchaWallet {
         Address   = $address
         Mnemonic  = $mnemonic
         PublicKey = $null
+        Reused    = $false
     }
 
     # Optionally fetch public key by signing a probe message
@@ -981,6 +1089,23 @@ function Publish-SorchaParticipant {
             -Headers $Headers
 
         Write-WtSuccess "Participant '$ParticipantName' published (TX: $($response.transactionId))"
+
+        # Wait for the publish tx to seal before returning. Setup scripts that
+        # immediately start run.ps1 will otherwise hit a 403 on Action 1 — the
+        # auth check looks up the participant record, gets a 404 because the
+        # publish tx hasn't sealed yet, and the auth layer wraps that as 403.
+        # Setup is single-threaded and not a hot path; the few-seconds wait
+        # for seal is harmless and prevents a real race-condition failure.
+        if ($response.transactionId) {
+            $gatewayUrl = $TenantUrl -replace '/api$', ''
+            Wait-SorchaActorReady -Mode ParticipantSealed `
+                -TxId $response.transactionId `
+                -RegisterId $RegisterId `
+                -Headers $Headers `
+                -GatewayUrl $gatewayUrl `
+                -TimeoutSeconds 90
+        }
+
         return $response
     } catch {
         $statusCode = $null
@@ -1246,7 +1371,13 @@ function Publish-SorchaBlueprint {
     }
 
     $templateJson = Get-Content -Path $TemplatePath -Raw | ConvertFrom-Json -Depth 30
-    $blueprint = $templateJson.template
+    # Templates may be wrapped (`{ "template": {...} }`) or flat (the
+    # blueprint object at the top level). Tolerate both.
+    if ($templateJson.PSObject.Properties.Name -contains "template" -and $null -ne $templateJson.template) {
+        $blueprint = $templateJson.template
+    } else {
+        $blueprint = $templateJson
+    }
 
     # Feature 103: identify open starting-action senders. The publish-time
     # guardrail (VAL_BP_010) rejects any blueprint where an open starting
@@ -1274,9 +1405,11 @@ function Publish-SorchaBlueprint {
         }
     }
 
-    # Generate unique ID
+    # Generate unique ID. Use Add-Member -Force so this is robust whether
+    # the template carries a placeholder `id` or omits it entirely (most
+    # templates do — the id is generated here per-publish).
     $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-    $blueprint.id = "$IdPrefix-$timestamp"
+    $blueprint | Add-Member -NotePropertyName "id" -NotePropertyValue "$IdPrefix-$timestamp" -Force
 
     # Create blueprint
     Write-WtInfo "Creating blueprint..."
@@ -1313,10 +1446,27 @@ function Publish-SorchaBlueprint {
 
     Write-WtSuccess "Blueprint published: $blueprintId"
 
+    # Wait for the publish tx to seal before returning, when we know the
+    # register and have a transaction id on the response. Setup scripts that
+    # immediately start run.ps1 would otherwise race the validator — the
+    # action engine would look up the blueprint and find a not-yet-sealed
+    # record. Setup is single-threaded and not a hot path; a few-seconds
+    # wait per publish is harmless.
+    if ($RegisterId -and $publishResponse.transactionId) {
+        $gatewayUrl = $BlueprintUrl -replace '/api$', ''
+        Wait-SorchaActorReady -Mode BlueprintSealed `
+            -TxId $publishResponse.transactionId `
+            -RegisterId $RegisterId `
+            -Headers $Headers `
+            -GatewayUrl $gatewayUrl `
+            -TimeoutSeconds 90
+    }
+
     return @{
-        BlueprintId = $blueprintId
-        Title       = $createResponse.title
-        Warnings    = $warnings
+        BlueprintId   = $blueprintId
+        Title         = $createResponse.title
+        Warnings      = $warnings
+        TransactionId = $publishResponse.transactionId
     }
 }
 
@@ -1362,7 +1512,15 @@ function Invoke-SorchaAction {
         [hashtable]$PayloadData = @{},
         [array]$CredentialPresentations = @(),
         [switch]$Reject,
-        [string]$RejectionReason = ""
+        [string]$RejectionReason = "",
+        # Wait for the submitted tx to seal before returning. This is the
+        # actor-cadence bridge: real participants see SignalR-notified
+        # inbound transactions, scripts see immediate HTTP responses; without
+        # this gate the next action can submit during the validator's post-
+        # seal cleanup and trigger the docket-monitoring race. Default off
+        # for back-compat; new scripts should always set it.
+        [switch]$WaitForSeal,
+        [int]$WaitForSealTimeoutSeconds = 90
     )
 
     $executeHeaders = @{
@@ -1383,6 +1541,17 @@ function Invoke-SorchaAction {
             -Headers $executeHeaders
 
         Write-WtSuccess "Action $ActionId REJECTED"
+
+        if ($WaitForSeal -and $response.transactionId) {
+            $gatewayUrl = $BlueprintUrl -replace '/api$', ''
+            Wait-SorchaActorReady -Mode AfterSubmit `
+                -TxId $response.transactionId `
+                -RegisterId $RegisterId `
+                -Headers $executeHeaders `
+                -GatewayUrl $gatewayUrl `
+                -TimeoutSeconds $WaitForSealTimeoutSeconds
+        }
+
         return $response
     } else {
         $actionBody = @{
@@ -1405,6 +1574,17 @@ function Invoke-SorchaAction {
 
         $nextAction = if ($response.nextAction) { $response.nextAction } else { "complete" }
         Write-WtSuccess "Action $ActionId executed (next: $nextAction)"
+
+        if ($WaitForSeal -and $response.transactionId) {
+            $gatewayUrl = $BlueprintUrl -replace '/api$', ''
+            Wait-SorchaActorReady -Mode AfterSubmit `
+                -TxId $response.transactionId `
+                -RegisterId $RegisterId `
+                -Headers $executeHeaders `
+                -GatewayUrl $gatewayUrl `
+                -TimeoutSeconds $WaitForSealTimeoutSeconds
+        }
+
         return $response
     }
 }
@@ -1527,7 +1707,14 @@ function New-SorchaOrganization {
         [Parameter(Mandatory)][string]$Subdomain,
         [Parameter(Mandatory)][string]$AdminEmail,
         [Parameter(Mandatory)][hashtable]$Headers,
-        [string]$Description = ""
+        [string]$Description = "",
+        # When set (with a NEW AdminEmail), the admin is provisioned directly as an org-scoped
+        # password user (single-org — no public account, no invitation). Spec 136 follow-up.
+        [string]$AdminPassword,
+        [string]$AdminDisplayName,
+        # Mark the provisioned admin verified (bypasses the email loop). Requires the installation
+        # to enable Platform:AllowAdminVerifiedUserCreation (dev/n1 do; production does not).
+        [switch]$AdminEmailVerified
     )
 
     $body = @{
@@ -1535,6 +1722,11 @@ function New-SorchaOrganization {
         subdomain   = $Subdomain
         adminEmail  = $AdminEmail
         description = $Description
+    }
+    if ($AdminPassword) {
+        $body.adminPassword = $AdminPassword
+        $body.adminEmailVerified = [bool]$AdminEmailVerified
+        if ($AdminDisplayName) { $body.adminDisplayName = $AdminDisplayName }
     }
 
     try {
@@ -1880,5 +2072,247 @@ function Switch-SorchaOrganization {
         OrganizationId = $jwt.org_id
         WalletAddress  = $jwt.wallet_address
         Headers        = @{ Authorization = "Bearer $token" }
+    }
+}
+
+# ============================================================================
+# Set-SorchaCitizenPendingApplication / Clear-SorchaCitizenPendingApplication
+# Feature 124 — drives the wallet PWA's waiting-state UX from the walkthrough.
+# ============================================================================
+
+function Set-SorchaCitizenPendingApplication {
+    <#
+    .SYNOPSIS
+        Set the citizen's pending-application notice on the Wallet Service.
+    .DESCRIPTION
+        Calls PUT /api/v1/wallet/pending-applications with the supplied label.
+        Idempotent — calling with a new label replaces the prior one and
+        resets the TTL. The PWA reads this notice on every Home render to
+        decide whether to show the waiting-card.
+    .PARAMETER WalletUrl
+        The wallet service base URL (e.g. http://localhost/api).
+    .PARAMETER Label
+        Human-readable application label (1..80 chars). Plain text — no
+        credential content.
+    .PARAMETER Headers
+        Citizen-scope authorization headers (Bearer JWT carrying
+        platform_user_id claim).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+
+    $body = @{ label = $Label }
+    $response = Invoke-SorchaApi -Method PUT `
+        -Uri "$WalletUrl/v1/wallet/pending-applications" `
+        -Body $body `
+        -Headers $Headers
+    Write-WtInfo "Pending-application notice set: $Label"
+    return $response.notice
+}
+
+function Clear-SorchaCitizenPendingApplication {
+    <#
+    .SYNOPSIS
+        Clear the citizen's pending-application notice.
+    .DESCRIPTION
+        Calls DELETE /api/v1/wallet/pending-applications. Idempotent —
+        returns 204 whether or not a notice was present. The PWA drops
+        the waiting-card within one second of next Home render.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+
+    # Use RawResponse so we don't try to parse a 204 No Content body.
+    $null = Invoke-SorchaApi -Method DELETE `
+        -Uri "$WalletUrl/v1/wallet/pending-applications" `
+        -Headers $Headers `
+        -RawResponse
+    Write-WtInfo "Pending-application notice cleared"
+}
+
+# ============================================================================
+# Wait-SorchaActorReady — Bridge script cadence and docket-sealing cadence
+# ============================================================================
+
+function Wait-SorchaActorReady {
+    <#
+    .SYNOPSIS
+        Pauses a walkthrough script until the platform is in a state where the
+        next step can proceed safely.
+
+    .DESCRIPTION
+        Walkthroughs that submit actions back-to-back can race ahead of the
+        validator's docket-build cycle. In real-world actor flows each
+        participant waits for a SignalR notification that an inbound
+        transaction has sealed before proceeding, adding several seconds of
+        natural latency between consecutive actions. Scripts move in
+        milliseconds and exercise concurrency bugs (notably: stuck
+        transactions when a credential-issuance tx arrives during the
+        validator's post-seal cleanup window).
+
+        Four modes covering the cases where script cadence needs to gate
+        on platform state:
+
+          AfterSubmit         my outgoing tx is sealed (status = Active /
+                              Revoked / Superseded)
+          AwaitingInbox       the named action is ready for the named actor
+                              (the script equivalent of an inbox
+                              notification — polls instance.currentActionIds)
+          ParticipantSealed   a participant publish tx is sealed
+          BlueprintSealed     a blueprint publish tx is sealed
+
+        AfterSubmit / ParticipantSealed / BlueprintSealed share the polling
+        shape against /api/registers/{registerId}/transactions/{txId}/status
+        (Feature 079 lifecycle endpoint, anonymous). AwaitingInbox polls
+        /api/instances/{instanceId} for currentActionIds containment
+        (authenticated).
+
+        For agents (Sorcha.Agent), the same conceptual surface is provided
+        by their SignalR inbox listeners. Agents do not need this helper.
+
+    .PARAMETER Mode
+        Which condition to wait for.
+
+    .PARAMETER TxId
+        Transaction ID. Required for AfterSubmit / ParticipantSealed /
+        BlueprintSealed.
+
+    .PARAMETER RegisterId
+        Register where the transaction seals. Required for all sealed-* modes
+        and for AwaitingInbox.
+
+    .PARAMETER InstanceId
+        Workflow instance ID. Required for AwaitingInbox.
+
+    .PARAMETER ActionId
+        Action ID to wait for. Required for AwaitingInbox.
+
+    .PARAMETER Headers
+        Auth headers for API calls. Required for all four modes — the F079
+        lifecycle status endpoint is gated by the CanReadTransactions policy,
+        and the instance GET is also authenticated.
+
+    .PARAMETER GatewayUrl
+        Base URL of the API gateway (e.g., http://localhost or
+        https://n1.sorcha.dev).
+
+    .PARAMETER TimeoutSeconds
+        Maximum seconds to wait. Default 90. Throws on timeout.
+
+    .PARAMETER IntervalSeconds
+        Poll interval. Default 1s.
+
+    .EXAMPLE
+        $resp = Invoke-SorchaAction ...
+        Wait-SorchaActorReady -Mode AfterSubmit -TxId $resp.transactionId `
+            -RegisterId $registerId -GatewayUrl $env.GatewayUrl
+
+    .EXAMPLE
+        # Between actor switches in a script:
+        Wait-SorchaActorReady -Mode AwaitingInbox -InstanceId $inst `
+            -ActionId 6 -RegisterId $registerId -Headers $planningHeaders `
+            -GatewayUrl $env.GatewayUrl
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('AfterSubmit', 'AwaitingInbox', 'ParticipantSealed', 'BlueprintSealed')]
+        [string]$Mode,
+
+        [string]$TxId,
+        [string]$RegisterId,
+        [string]$InstanceId,
+        [int]$ActionId,
+        [hashtable]$Headers,
+
+        [Parameter(Mandatory)]
+        [string]$GatewayUrl,
+
+        [int]$TimeoutSeconds = 90,
+        [int]$IntervalSeconds = 1
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $start = Get-Date
+    $attempt = 0
+
+    $sealedModes = @('AfterSubmit', 'ParticipantSealed', 'BlueprintSealed')
+    if ($sealedModes -contains $Mode) {
+        if (-not $TxId)       { throw "Wait-SorchaActorReady[$Mode]: -TxId is required" }
+        if (-not $RegisterId) { throw "Wait-SorchaActorReady[$Mode]: -RegisterId is required" }
+        if (-not $Headers)    { throw "Wait-SorchaActorReady[$Mode]: -Headers is required (lifecycle endpoint is auth-gated by CanReadTransactions policy)" }
+
+        $url = "$GatewayUrl/api/registers/$RegisterId/transactions/$TxId/status"
+        $shortTx = if ($TxId.Length -ge 10) { $TxId.Substring(0, 10) } else { $TxId }
+
+        while ((Get-Date) -lt $deadline) {
+            $attempt++
+            try {
+                $r = Invoke-WebRequest -Uri $url -Method GET -Headers $Headers -SkipCertificateCheck -ErrorAction Stop
+                if ($r.StatusCode -eq 200) {
+                    $body = $r.Content | ConvertFrom-Json
+                    # TransactionLifecycleStatus serializes as int (Active=0,
+                    # Revoked=1, Superseded=2) on n1; accept both numeric and
+                    # string forms for resilience.
+                    $statusLabel = switch ($body.status) {
+                        0 { 'Active' }
+                        1 { 'Revoked' }
+                        2 { 'Superseded' }
+                        default { "$($body.status)" }
+                    }
+                    if ($statusLabel -in @('Active', 'Revoked', 'Superseded')) {
+                        $elapsed = ((Get-Date) - $start).TotalSeconds
+                        Write-WtInfo ("  Wait[$Mode] tx=$shortTx... -> $statusLabel in {0:N1}s ($attempt polls)" -f $elapsed)
+                        return
+                    }
+                }
+            }
+            catch {
+                # 404 expected during pre-seal window — keep polling silently.
+                $status = $null
+                if ($_.Exception.PSObject.Properties.Name -contains 'Response' -and $_.Exception.Response) {
+                    $status = $_.Exception.Response.StatusCode.value__
+                }
+                if ($status -and $status -ne 404) {
+                    Write-WtWarn "  Wait[$Mode] poll error ($status): $($_.Exception.Message)"
+                }
+            }
+            Start-Sleep -Seconds $IntervalSeconds
+        }
+        throw "Wait-SorchaActorReady[$Mode] timed out after ${TimeoutSeconds}s — tx $TxId on register $RegisterId never reached a sealed status"
+    }
+
+    if ($Mode -eq 'AwaitingInbox') {
+        if (-not $InstanceId) { throw "Wait-SorchaActorReady[AwaitingInbox]: -InstanceId is required" }
+        if (-not $PSBoundParameters.ContainsKey('ActionId')) {
+            throw "Wait-SorchaActorReady[AwaitingInbox]: -ActionId is required"
+        }
+        if (-not $Headers) { throw "Wait-SorchaActorReady[AwaitingInbox]: -Headers is required (the instance GET is authenticated)" }
+
+        $url = "$GatewayUrl/api/instances/$InstanceId"
+
+        while ((Get-Date) -lt $deadline) {
+            $attempt++
+            try {
+                $r = Invoke-WebRequest -Uri $url -Method GET -Headers $Headers -SkipCertificateCheck -ErrorAction Stop
+                if ($r.StatusCode -eq 200) {
+                    $inst = $r.Content | ConvertFrom-Json
+                    if ($inst.currentActionIds -contains $ActionId) {
+                        $elapsed = ((Get-Date) - $start).TotalSeconds
+                        Write-WtInfo ("  Wait[Inbox] action $ActionId ready on instance $InstanceId in {0:N1}s ($attempt polls)" -f $elapsed)
+                        return
+                    }
+                }
+            }
+            catch {
+                Write-WtWarn "  Wait[Inbox] poll error: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds $IntervalSeconds
+        }
+        throw "Wait-SorchaActorReady[AwaitingInbox] timed out after ${TimeoutSeconds}s — action $ActionId never became ready on instance $InstanceId"
     }
 }

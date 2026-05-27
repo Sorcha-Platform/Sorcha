@@ -29,7 +29,7 @@ public class RegisterSyncBackgroundServiceTests : IDisposable
             NodeId = "test-node",
             RegisterSync = new RegisterSyncConfiguration
             {
-                PeriodicSyncIntervalMinutes = 1,
+                PeriodicSyncIntervalSeconds = 60,
                 MaxRetryAttempts = 3
             },
             PeerDiscovery = new PeerDiscoveryConfiguration(),
@@ -212,6 +212,43 @@ public class RegisterSyncBackgroundServiceTests : IDisposable
         semaphore.Release();
     }
 
+    // --- #473: Subscribing → Syncing transition must re-fire the immediate-sync
+    // signal so PullFullReplicaAsync runs in the same iteration burst, not after
+    // a full PeriodicSyncIntervalMinutes (default 5 min) wait. ---
+
+    [Fact]
+    public async Task SubscribeToRegisterAsync_SetsImmediateSyncSignal()
+    {
+        // Drain anything left over from the test fixture.
+        _service.ConsumeImmediateSyncSignal();
+
+        await _service.SubscribeToRegisterAsync("reg-1", ReplicationMode.FullReplica);
+
+        _service.ConsumeImmediateSyncSignal()
+            .Should().BeTrue("subscribe must wake the sync loop");
+    }
+
+    [Fact]
+    public async Task ProcessSubscriptionsAsync_SubscribingToSyncing_ResignalsImmediateSync()
+    {
+        await _service.SubscribeToRegisterAsync("reg-1", ReplicationMode.FullReplica);
+
+        // Drain the signal that SubscribeToRegisterAsync sets, so we measure
+        // only what ProcessSubscriptionsAsync re-fires.
+        _service.ConsumeImmediateSyncSignal().Should().BeTrue();
+
+        await _service.ProcessSubscriptionsAsync(CancellationToken.None);
+
+        _service.GetSubscription("reg-1")!.SyncState
+            .Should().Be(RegisterSyncState.Syncing,
+                "FullReplica.Subscribing transitions to Syncing");
+        _service.ConsumeImmediateSyncSignal()
+            .Should().BeTrue(
+                "the Subscribing→Syncing transition must re-fire the signal " +
+                "so the next iteration runs PullFullReplicaAsync immediately " +
+                "rather than waiting for the periodic timer (#473)");
+    }
+
     public void Dispose()
     {
         _service.Dispose();
@@ -233,7 +270,7 @@ public class RegisterSyncBackgroundServiceRelayTests : IAsyncDisposable
             NodeId = "test-node",
             RegisterSync = new RegisterSyncConfiguration
             {
-                PeriodicSyncIntervalMinutes = 1,
+                PeriodicSyncIntervalSeconds = 60,
                 MaxRetryAttempts = 3,
                 RelayPollIntervalSeconds = 10
             },
@@ -349,7 +386,7 @@ public class RegisterSyncBackgroundServiceWithDbTests : IDisposable
             NodeId = "test-node",
             RegisterSync = new RegisterSyncConfiguration
             {
-                PeriodicSyncIntervalMinutes = 1,
+                PeriodicSyncIntervalSeconds = 60,
                 MaxRetryAttempts = 3
             },
             PeerDiscovery = new PeerDiscoveryConfiguration(),

@@ -45,7 +45,7 @@ public static class ServiceAuthEndpoints
         // Service principal management (admin only)
         var adminGroup = app.MapGroup("/api/service-principals")
             .WithTags("Service Principals")
-            .RequireAuthorization("RequireAdministrator");
+            .RequireAuthorization("RequireAdministrator", "RequirePlatformAudience");
 
         adminGroup.MapPost("/", RegisterServicePrincipal)
             .WithName("RegisterServicePrincipal")
@@ -223,7 +223,7 @@ public static class ServiceAuthEndpoints
 
         try
         {
-            var result = await loginService.LoginAsync(username, password, cancellationToken);
+            var result = await loginService.LoginAsync(username, password, ct: cancellationToken);
 
             if (!result.Success || result.Tokens is null)
             {

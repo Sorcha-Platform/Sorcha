@@ -187,6 +187,49 @@ public static class SchemaLayoutParser
             ["receipt"] = XReviewLayoutVariant.Receipt
         };
 
+    /// <summary>
+    /// Recognised <c>x-review.layout</c> values, case-insensitive. Exposed so the
+    /// blueprint validator can detect and warn on typos (<c>WARN_BP_REVIEW_001</c>)
+    /// without duplicating the canonical map.
+    /// </summary>
+    public static IReadOnlyCollection<string> KnownReviewLayoutVariants => LayoutVariantMap.Keys;
+
+    /// <summary>
+    /// Walks every <c>x-pages[].x-review.layout</c> on an action schema and yields
+    /// each <em>present-but-unrecognised</em> layout value. Used by the blueprint
+    /// validator to emit <c>WARN_BP_REVIEW_001</c> at publish time for any typo'd
+    /// layout — without this signal, an author who writes <c>"hologram"</c> gets a
+    /// silent fall-back to <c>id-card</c> and never learns their declaration was ignored.
+    /// </summary>
+    /// <remarks>
+    /// Yields the offending raw string per occurrence (so two pages each declaring
+    /// <c>"hologram"</c> yield two values). Absent <c>layout</c> properties are not
+    /// reported — only present values that fail the membership check on
+    /// <see cref="KnownReviewLayoutVariants"/>.
+    /// </remarks>
+    public static IEnumerable<string> EnumerateUnknownReviewLayouts(JsonElement actionSchema)
+    {
+        if (actionSchema.ValueKind != JsonValueKind.Object) yield break;
+        if (!actionSchema.TryGetProperty("x-pages", out var pagesEl) ||
+            pagesEl.ValueKind != JsonValueKind.Array) yield break;
+
+        foreach (var pageEl in pagesEl.EnumerateArray())
+        {
+            if (pageEl.ValueKind != JsonValueKind.Object) continue;
+            if (!pageEl.TryGetProperty("x-review", out var reviewEl) ||
+                reviewEl.ValueKind != JsonValueKind.Object) continue;
+            if (!reviewEl.TryGetProperty("layout", out var layoutEl) ||
+                layoutEl.ValueKind != JsonValueKind.String) continue;
+
+            var raw = layoutEl.GetString();
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            if (!LayoutVariantMap.ContainsKey(raw))
+            {
+                yield return raw;
+            }
+        }
+    }
+
     private static readonly Dictionary<string, XReviewColourTheme> ColourThemeMap =
         new(StringComparer.OrdinalIgnoreCase)
         {

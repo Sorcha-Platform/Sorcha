@@ -1,0 +1,86 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 128 US2 (FR-024) — persistent dismissable banner.
+
+    Renders above the Sorcha Web main content when the signed-in citizen
+    has zero paired devices. Citizen can dismiss for the session (the
+    flag is local-only — not persisted server-side so a fresh browser
+    surfaces the banner again as a safety net). CTA navigates to
+    /setup/add-device which hosts the handoff page from sub-PR B1.
+
+    Hidden once IHasPairedDeviceProbe reports HasAnyDevice == true,
+    which flips when the citizen completes pairing on any device (local
+    or remote via the F128 hub event, sub-PR A3).
+*@
+
+@using Microsoft.Extensions.Logging
+@using Sorcha.UI.Core.Services.User.Devices
+@inject IHasPairedDeviceProbe Probe
+@inject NavigationManager Nav
+@inject ILogger<PairingNagBanner> Logger
+@implements IDisposable
+
+@if (_visible)
+{
+    <MudAlert Severity="Severity.Info"
+              ShowCloseIcon="true"
+              CloseIconClicked="HandleDismiss"
+              Class="mb-3"
+              data-testid="pairing-nag-banner">
+        <div class="d-flex align-center" style="gap: 12px;">
+            <span style="flex: 1;">
+                You haven't paired a phone yet — your Sorcha credentials
+                live on your phone, so set one up to start receiving them.
+            </span>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="HandleSetUpNow"
+                       data-testid="pairing-nag-banner-cta">
+                Pair my phone
+            </MudButton>
+        </div>
+    </MudAlert>
+}
+
+@code {
+    private bool _dismissed;
+    private bool _visible;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Probe.Changed += HandleProbeChanged;
+        await Probe.EnsureLoadedAsync();
+        UpdateVisibility();
+    }
+
+    private void HandleProbeChanged()
+    {
+        UpdateVisibility();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateVisibility()
+    {
+        // Show only when the probe has resolved AND reports no paired device
+        // AND the citizen hasn't dismissed this session.
+        _visible = !_dismissed && Probe.HasAnyDevice == false;
+    }
+
+    private void HandleDismiss()
+    {
+        _dismissed = true;
+        _visible = false;
+    }
+
+    private void HandleSetUpNow()
+    {
+        Nav.NavigateTo("setup/add-device");
+    }
+
+    public void Dispose()
+    {
+        Probe.Changed -= HandleProbeChanged;
+    }
+}

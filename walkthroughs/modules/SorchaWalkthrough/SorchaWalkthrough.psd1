@@ -43,6 +43,10 @@
 
         # Utilities
         'ConvertFrom-HexToBase64'
+
+        # Feature 124 — citizen pending-application notice helpers
+        'Set-SorchaCitizenPendingApplication'
+        'Clear-SorchaCitizenPendingApplication'
     )
 
     CmdletsToExport   = @()

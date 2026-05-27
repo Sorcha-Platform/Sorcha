@@ -1,0 +1,120 @@
+@namespace Sorcha.UI.Core.Components.EnrolGate
+@using Sorcha.UI.Core.Services
+@inject IQrPresentationService QrService
+@inject IJSRuntime JSRuntime
+
+@*
+    Feature 126 — three equivalent resolutions of the enrolment URL:
+    QR (scan from another device), tap-able link (same-device mobile),
+    copy-link (accessibility / "I'll set this up later" fallback).
+
+    Layout parameter controls prominence (T061-T062):
+      Auto      — CSS-driven, tap-link dominates on viewports <= 600 px,
+                  QR dominates above (matches FR-008).
+      QrFirst   — explicit desktop layout: QR first, tap-link below.
+      LinkFirst — explicit mobile layout: tap-link first, QR collapsed
+                  behind a "Show QR code" expander.
+*@
+
+<div class="enrol-hybrid-qr enrol-hybrid-qr--@LayoutClass" data-testid="enrol-hybrid-qr">
+    @if (!string.IsNullOrEmpty(QrUrl))
+    {
+        @if (Layout == HybridQrLayout.LinkFirst)
+        {
+            <p class="enrol-hybrid-qr__tap enrol-hybrid-qr__tap--primary">
+                <a href="@QrUrl" class="enrol-hybrid-qr__link" data-testid="enrol-tap-link">
+                    Open on this device
+                </a>
+            </p>
+            <details class="enrol-hybrid-qr__qr-expander" data-testid="enrol-qr-expander">
+                <summary>Show QR code</summary>
+                <div class="enrol-hybrid-qr__qr" aria-label="Enrolment QR code">
+                    @((MarkupString)_qrSvg)
+                </div>
+            </details>
+        }
+        else
+        {
+            <div class="enrol-hybrid-qr__qr" aria-label="Enrolment QR code">
+                @((MarkupString)_qrSvg)
+            </div>
+
+            <p class="enrol-hybrid-qr__tap">
+                <a href="@QrUrl" class="enrol-hybrid-qr__link" data-testid="enrol-tap-link">
+                    Open on this device
+                </a>
+            </p>
+        }
+
+        <button type="button"
+                class="enrol-hybrid-qr__copy"
+                data-testid="enrol-copy-link"
+                @onclick="CopyToClipboardAsync">
+            @(_copied ? "Copied ✓" : "Copy link")
+        </button>
+    }
+</div>
+
+@code {
+    /// <summary>The fully-formed enrolment URL embedding the session token.</summary>
+    [Parameter, EditorRequired] public string QrUrl { get; set; } = "";
+
+    /// <summary>Absolute expiry of the embedded session token — surfaced for diagnostics; not rendered.</summary>
+    [Parameter] public DateTimeOffset ExpiresAt { get; set; }
+
+    /// <summary>QR image side length in pixels per module. 6 = ~250 px QR for a standard URL.</summary>
+    [Parameter] public int PixelsPerModule { get; set; } = 6;
+
+    /// <summary>
+    /// Prominence preset. <see cref="HybridQrLayout.Auto"/> uses a CSS
+    /// media query so the tap-link dominates on viewports ≤ 600 px and the
+    /// QR dominates above. Explicit values override the auto-detection.
+    /// </summary>
+    [Parameter] public HybridQrLayout Layout { get; set; } = HybridQrLayout.Auto;
+
+    private string LayoutClass => Layout switch
+    {
+        HybridQrLayout.QrFirst => "qr-first",
+        HybridQrLayout.LinkFirst => "link-first",
+        _ => "auto",
+    };
+
+    private string _qrSvg = "";
+    private bool _copied;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(QrUrl))
+        {
+            _qrSvg = QrService.GenerateSvgFromUri(QrUrl, PixelsPerModule);
+        }
+    }
+
+    private async Task CopyToClipboardAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", QrUrl);
+            _copied = true;
+            StateHasChanged();
+        }
+        catch
+        {
+            // Clipboard API may be unavailable (insecure context, denied
+            // permission) — silently skip rather than crash the UI. The
+            // copy-link button remains visible so the user can long-press
+            // and copy manually.
+        }
+    }
+
+    /// <summary>Prominence preset for <see cref="HybridQrAffordance"/>.</summary>
+    public enum HybridQrLayout
+    {
+        /// <summary>CSS-driven: tap-link first on narrow viewports, QR first on wide. Default.</summary>
+        Auto,
+        /// <summary>QR dominant; tap-link below. Standard desktop layout.</summary>
+        QrFirst,
+        /// <summary>Tap-link dominant; QR collapsed behind an expander. Same-device mobile (T061).</summary>
+        LinkFirst,
+    }
+}

@@ -4,40 +4,51 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.SignalR.Client;
 using Sorcha.Cli.Models;
+using Sorcha.ServiceClients.Http.Hub;
 
 namespace Sorcha.Cli.Services;
 
 /// <summary>
 /// SignalR client wrapper for streaming real-time events from the Sorcha platform.
-/// Connects to register and blueprint event hubs on the API Gateway.
+/// Connects to register and blueprint hubs on the API Gateway via the shared
+/// <see cref="SorchaHubConnectionBuilder"/> (jittered infinite reconnect, JWT auth).
 /// </summary>
+/// <remarks>
+/// Feature 118 — connects to RegisterHub and BlueprintHub at their canonical
+/// routes (<c>/hubs/register</c> and <c>/hubs/blueprint</c>) using
+/// <c>SorchaHubConnectionBuilder</c> so the CLI shares the platform
+/// reconnect-with-jitter policy.
+/// </remarks>
 public class EventStreamService : IAsyncDisposable
 {
     private readonly string _gatewayUrl;
     private readonly string? _accessToken;
     private readonly Channel<EventStreamMessage> _channel;
     private HubConnection? _registerHubConnection;
-    private HubConnection? _eventsHubConnection;
+    private HubConnection? _blueprintHubConnection;
     private readonly List<IDisposable> _subscriptions = new();
     private int _closedHubCount;
+    private const int ConnectedHubCount = 2;
 
-    /// <summary>
-    /// Known event types that the service subscribes to.
-    /// </summary>
+    /// <summary>RegisterHub events the CLI surfaces to the watcher.</summary>
     private static readonly string[] RegisterEventTypes =
     [
         "TransactionConfirmed",
         "DocketSealed",
-        "RegisterStatusChanged"
+        "RegisterStatusChanged",
+        "RegisterCreated",
+        "RegisterDeleted",
+        "RegisterHeightUpdated",
+        "RegisterSyncStateChanged",
+        "TransactionReceipt"
     ];
 
-    /// <summary>
-    /// Known blueprint/action event types.
-    /// </summary>
+    /// <summary>BlueprintHub events the CLI surfaces to the watcher.</summary>
     private static readonly string[] BlueprintEventTypes =
     [
-        "BlueprintPublished",
-        "ActionCompleted"
+        "ActionAvailable",
+        "ActionRejected",
+        "WorkflowCompleted"
     ];
 
     /// <summary>
@@ -64,13 +75,13 @@ public class EventStreamService : IAsyncDisposable
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         _registerHubConnection = BuildHubConnection($"{_gatewayUrl}/hubs/register");
-        _eventsHubConnection = BuildHubConnection($"{_gatewayUrl}/hubs/events");
+        _blueprintHubConnection = BuildHubConnection($"{_gatewayUrl}/hubs/blueprint");
 
         RegisterEventHandlers(_registerHubConnection, RegisterEventTypes);
-        RegisterEventHandlers(_eventsHubConnection, BlueprintEventTypes);
+        RegisterEventHandlers(_blueprintHubConnection, BlueprintEventTypes);
 
         await _registerHubConnection.StartAsync(cancellationToken);
-        await _eventsHubConnection.StartAsync(cancellationToken);
+        await _blueprintHubConnection.StartAsync(cancellationToken);
     }
 
     /// <summary>
@@ -122,35 +133,21 @@ public class EventStreamService : IAsyncDisposable
             await _registerHubConnection.DisposeAsync();
         }
 
-        if (_eventsHubConnection is not null)
+        if (_blueprintHubConnection is not null)
         {
-            await _eventsHubConnection.DisposeAsync();
+            await _blueprintHubConnection.DisposeAsync();
         }
     }
 
     /// <summary>
-    /// Builds a hub connection with authentication and automatic reconnect.
+    /// Builds a hub connection via <see cref="SorchaHubConnectionBuilder"/> —
+    /// shared jittered infinite-reconnect policy + JWT bearer.
     /// </summary>
     private HubConnection BuildHubConnection(string url)
     {
-        var builder = new HubConnectionBuilder()
-            .WithUrl(url, options =>
-            {
-                if (!string.IsNullOrEmpty(_accessToken))
-                {
-                    options.AccessTokenProvider = () => Task.FromResult<string?>(_accessToken);
-                }
-            })
-            .WithAutomaticReconnect(new[]
-            {
-                TimeSpan.FromSeconds(1),
-                TimeSpan.FromSeconds(2),
-                TimeSpan.FromSeconds(4),
-                TimeSpan.FromSeconds(8),
-                TimeSpan.FromSeconds(16)
-            });
-
-        var connection = builder.Build();
+        var connection = SorchaHubConnectionBuilder.Build(
+            url,
+            tokenProvider: () => Task.FromResult<string?>(_accessToken));
 
         connection.Reconnecting += error =>
         {
@@ -171,8 +168,8 @@ public class EventStreamService : IAsyncDisposable
                 Console.Error.WriteLine($"Connection closed with error: {error.Message}");
             }
 
-            // Only complete the channel when both hubs have closed
-            if (Interlocked.Increment(ref _closedHubCount) >= 2)
+            // Only complete the channel when both hubs have closed.
+            if (Interlocked.Increment(ref _closedHubCount) >= ConnectedHubCount)
             {
                 _channel.Writer.TryComplete();
             }

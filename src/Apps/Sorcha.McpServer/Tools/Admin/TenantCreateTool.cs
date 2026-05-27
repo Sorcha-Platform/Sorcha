@@ -3,47 +3,37 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceClients.Tenant;
 
 namespace Sorcha.McpServer.Tools.Admin;
 
 /// <summary>
-/// Admin tool for creating tenants.
+/// Admin tool for creating tenants. Writes via the typed <see cref="ITenantServiceClient"/>
+/// onto the correct platform-admin provisioning route (POST /api/platform/organizations) — spec 139 US4.
 /// </summary>
 [McpServerToolType]
 public sealed class TenantCreateTool
 {
-    private readonly IMcpSessionService _sessionService;
     private readonly IMcpAuthorizationService _authService;
-    private readonly IMcpErrorHandler _errorHandler;
     private readonly IServiceAvailabilityTracker _availabilityTracker;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ITenantServiceClient _tenantClient;
     private readonly ILogger<TenantCreateTool> _logger;
-    private readonly string _tenantServiceEndpoint;
 
     public TenantCreateTool(
-        IMcpSessionService sessionService,
         IMcpAuthorizationService authService,
-        IMcpErrorHandler errorHandler,
         IServiceAvailabilityTracker availabilityTracker,
-        IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
+        ITenantServiceClient tenantClient,
         ILogger<TenantCreateTool> logger)
     {
-        _sessionService = sessionService;
         _authService = authService;
-        _errorHandler = errorHandler;
         _availabilityTracker = availabilityTracker;
-        _httpClientFactory = httpClientFactory;
+        _tenantClient = tenantClient;
         _logger = logger;
-
-        _tenantServiceEndpoint = configuration["ServiceClients:TenantService:Address"] ?? "http://localhost:5110";
     }
 
     /// <summary>
@@ -55,7 +45,7 @@ public sealed class TenantCreateTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Creation result with the new tenant ID.</returns>
     [McpServerTool(Name = "sorcha_tenant_create")]
-    [Description("Create a new tenant/organization. Sets up the tenant with an initial admin user. Use this to onboard new organizations.")]
+    [Description("Provisions a new tenant (organisation boundary) and creates an initial admin user identified by the supplied email, returning the new tenant ID and the created admin user record. Call this when onboarding a new organisation that does not yet exist on the platform; prefer this over sorcha_tenant_update when no tenant record exists at all, and call before sorcha_user_manage or sorcha_user_list (those tools require an existing tenant ID), and confirm absence first with sorcha_tenant_list to avoid creating a duplicate organisation.")]
     public async Task<TenantCreateResult> CreateTenantAsync(
         [Description("The tenant/organization name")] string name,
         [Description("Email address for the initial admin user")] string adminEmail,
@@ -122,60 +112,35 @@ public sealed class TenantCreateTool
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var url = $"{_tenantServiceEndpoint.TrimEnd('/')}/api/organizations";
-
+            // Build the platform-admin provisioning request body (AdminCreateOrganizationRequest shape).
             var requestBody = JsonSerializer.Serialize(new
             {
                 name,
                 adminEmail,
-                adminName = adminName ?? adminEmail.Split('@')[0]
+                adminDisplayName = adminName ?? adminEmail.Split('@')[0]
             });
 
-            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-            var response = await client.PostAsync(url, content, cancellationToken);
+            // Typed client forwards the caller's bearer and pins the correct route
+            // (POST api/platform/organizations).
+            var responseContent = await _tenantClient.CreateOrganizationAsync(requestBody, cancellationToken);
 
             stopwatch.Stop();
 
-            if (!response.IsSuccessStatusCode)
+            if (string.IsNullOrWhiteSpace(responseContent))
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Tenant creation failed: HTTP {StatusCode} - {Error}", response.StatusCode, errorContent);
-
                 _availabilityTracker.RecordSuccess("Tenant");
 
-                try
+                return new TenantCreateResult
                 {
-                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-
-                    return new TenantCreateResult
-                    {
-                        Status = "Error",
-                        Message = errorResponse?.Error ?? "Tenant creation failed.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
-                catch (JsonException)
-                {
-                    return new TenantCreateResult
-                    {
-                        Status = "Error",
-                        Message = $"Tenant creation failed with status {(int)response.StatusCode}.",
-                        CheckedAt = DateTimeOffset.UtcNow,
-                        ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
-                    };
-                }
+                    Status = "Error",
+                    Message = "Tenant creation failed.",
+                    CheckedAt = DateTimeOffset.UtcNow,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+                };
             }
 
             _availabilityTracker.RecordSuccess("Tenant");
 
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             var result = JsonSerializer.Deserialize<CreateResponse>(responseContent, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
@@ -203,8 +168,8 @@ public sealed class TenantCreateTool
                 CheckedAt = DateTimeOffset.UtcNow,
                 ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                 TenantId = result.OrganizationId ?? "",
-                TenantName = name,
-                AdminUserId = result.AdminUserId,
+                TenantName = result.OrganizationName ?? name,
+                AdminUserId = result.InvitationId,
                 AdminEmail = adminEmail
             };
         }
@@ -251,16 +216,12 @@ public sealed class TenantCreateTool
         }
     }
 
-    // Internal response models
+    // Internal response model (AdminCreateOrganizationResponse shape)
     private sealed class CreateResponse
     {
         public string? OrganizationId { get; set; }
-        public string? AdminUserId { get; set; }
-    }
-
-    private sealed class ErrorResponse
-    {
-        public string? Error { get; set; }
+        public string? OrganizationName { get; set; }
+        public string? InvitationId { get; set; }
     }
 }
 

@@ -4,9 +4,10 @@
 @using MudBlazor.Utilities
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
 
 @inject IOrganizationAdminService OrganizationService
-@inject ISnackbar Snackbar
+@inject IInlineFeedback Feedback
 
 <MudStack Spacing="4" Class="mt-2">
     @* Security Policies *@
@@ -195,16 +196,16 @@
             var result = await OrganizationService.UpdateOrganizationAsync(Organization.Id, request);
             if (result != null)
             {
-                Snackbar.Add("Branding saved successfully", Severity.Success);
+                Feedback.ShowSuccess("Branding saved successfully");
             }
             else
             {
-                Snackbar.Add("Failed to save branding", Severity.Error);
+                Feedback.ShowError("Failed to save branding", autoDismissMs: 0);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error saving branding: {ex.Message}", Severity.Error);
+            Feedback.ShowError($"Error saving branding: {ex.Message}", autoDismissMs: 0);
         }
         finally
         {

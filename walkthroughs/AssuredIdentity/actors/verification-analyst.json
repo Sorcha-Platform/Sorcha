@@ -4,7 +4,7 @@
     "description": "Feature 107 PR 3 — unattended Acme Verification Co. verification analyst. Picks up pending identity applications from its inbox and auto-approves them, producing the AssuredIdentityCredential offer that the citizen claims. A human opening the analyst UI during the pending window still sees the standard approve/reject review screen (FR-030); the agent simply gets there first. External-validator-API and AI-mode variants are a shape-stable extension per FR-029."
   },
   "connection": {
-    "gatewayUrl": "http://localhost",
+    "gatewayUrl": "{{gatewayUrl}}",
     "registerId": "{{registerId}}",
     "credentials": {
       "email": "{{roles.verificationAnalyst.email}}",
@@ -20,6 +20,10 @@
   "mode": "rules",
   "rules": [
     {
+      // The two 'decision' fields below are intentional and map to different layers:
+      //   - rule.decision ('approve')      → agent's verdict on the inbox item
+      //   - rule.payload.decision ('approved') → blueprint action's own field
+      // Do not collapse.
       "actionName": "Verify Assured Identity Application",
       "decision": "approve",
       "payload": {
