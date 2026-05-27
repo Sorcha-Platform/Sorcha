@@ -141,7 +141,7 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
 
         // Create a fresh sandbox instance.
         var instance = await CreateSandboxInstanceAsync(
-            sp, blueprint, blueprintId, sandboxRegisterId, organizationId, cancellationToken);
+            sp, blueprint, blueprintId, sandboxRegisterId, organizationId, session.RoleWallets, cancellationToken);
         session.InstanceId = instance.Id;
 
         // Build the ordered walk-through steps from the blueprint actions in flow order.
@@ -459,6 +459,7 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
         string blueprintId,
         string sandboxRegisterId,
         string organizationId,
+        IReadOnlyDictionary<string, string> roleWallets,
         CancellationToken cancellationToken)
     {
         var instanceStore = sp.GetRequiredService<IInstanceStore>();
@@ -472,6 +473,25 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             startingActions = [blueprint.Actions.First().Id];
         }
 
+        // Pre-bind the ephemeral wallet of every NON-starting participant into the instance so the
+        // validator can resolve their sender authorization (VAL_BP_002). Starting-action senders are
+        // left UNBOUND so the engine's open-participant late-binding still fires on their first
+        // submission (binding them to the same ephemeral wallet we sign with). This is runtime
+        // instance state only — it does not affect the executable-definition hash / RehearsalPass.
+        var startingSenders = blueprint.Actions
+            .Where(a => a.IsStartingAction)
+            .Select(a => a.Sender)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var preBoundWallets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (role, wallet) in roleWallets)
+        {
+            if (!startingSenders.Contains(role))
+            {
+                preBoundWallets[role] = wallet;
+            }
+        }
+
         var instance = new Instance
         {
             Id = Guid.NewGuid().ToString(),
@@ -479,7 +499,7 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             BlueprintVersion = 1,
             RegisterId = sandboxRegisterId,
             CurrentActionIds = startingActions,
-            ParticipantWallets = new Dictionary<string, string>(),
+            ParticipantWallets = preBoundWallets,
             State = InstanceState.Active,
             TenantId = organizationId,
             Metadata = new Dictionary<string, string>
