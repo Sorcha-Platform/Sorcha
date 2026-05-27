@@ -265,6 +265,17 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateRe
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService,
     Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService>();
 
+// Feature 142 (US2) — full-rehearsal orchestration. The sandbox-register provider and the
+// orchestration service hold process-wide transient state (per-org sandbox-register cache;
+// in-flight rehearsal sessions) so both are singletons; the orchestration service resolves its
+// scoped collaborators (execution pipeline, stores, service clients) per operation via
+// IServiceScopeFactory. The executable-definition hasher is a stateless POCO.
+builder.Services.AddSingleton<Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.ISandboxRegisterProvider,
+    Sorcha.Blueprint.Service.Services.Implementation.SandboxRegisterProvider>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.IRehearsalOrchestrationService,
+    Sorcha.Blueprint.Service.Services.Implementation.RehearsalOrchestrationService>();
+
 // Feature 111: Timebound Presentation Lifecycle — Redis-backed transient state and rate limiting.
 builder.Services.Configure<Sorcha.Blueprint.Service.Configuration.PresentationLifecycleOptions>(
     builder.Configuration.GetSection("PresentationLifecycle"));
