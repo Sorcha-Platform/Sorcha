@@ -47,6 +47,13 @@ public class DesignerLifecyclePage
     public ILocator IssuesBadges => _page.Locator("[data-testid='journey-badge-issues']");
     public ILocator TechnicalFlowToggle => _page.Locator("[data-testid='understand-technical-toggle']");
 
+    /// <summary>The form-detail region revealed when a journey step is selected.</summary>
+    public ILocator StepDetail => _page.Locator("[data-testid='understand-step-detail']");
+
+    // --- First-run guided overlay (T018 / FR-005) -------------------------
+    public ILocator FirstRunOverlay => _page.Locator("[data-testid='rail-first-run-overlay']");
+    public ILocator FirstRunDismiss => _page.Locator("[data-testid='rail-first-run-dismiss']");
+
     public Task NavigateAsync(string? blueprintId = null)
     {
         var url = BaseUrl;
@@ -56,4 +63,27 @@ public class DesignerLifecyclePage
         }
         return _page.GotoAsync(url);
     }
+
+    /// <summary>Navigates to the designer workspace with an explicit <c>?stage=</c> deep-link.</summary>
+    public Task NavigateToStageAsync(string stage)
+        => _page.GotoAsync($"{BaseUrl}?stage={stage}");
+
+    /// <summary>
+    /// Probes whether the shell test seam (<c>window.sorcha.designer.shellRef</c>) is registered.
+    /// It is only present on DEBUG / E2E_TEST_HOOKS builds; the Release Docker image does not carry
+    /// it, so seam-dependent assertions must gate on this and mark themselves inconclusive when false.
+    /// </summary>
+    public Task<bool> ShellSeamReadyAsync()
+        => _page.EvaluateAsync<bool>(
+            "() => !!(window.sorcha && window.sorcha.designer && window.sorcha.designer.shellRef)");
+
+    /// <summary>
+    /// Invokes a parameterless <c>[JSInvokable]</c> seam method on the shell test hook
+    /// (e.g. <c>TestInject_MarkRehearsalPassed</c>). Callers MUST first verify
+    /// <see cref="ShellSeamReadyAsync"/> — invoking when the hook is absent throws.
+    /// </summary>
+    public Task InvokeShellSeamAsync(string method)
+        => _page.EvaluateAsync(
+            "async (m) => { await window.sorcha.designer.shellRef.invokeMethodAsync(m); }",
+            method);
 }

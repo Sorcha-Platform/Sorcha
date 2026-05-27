@@ -17,14 +17,15 @@ public class DesignerShellPage
 
     public DesignerShellPage(IPage page) => _page = page;
 
-    // Tab panels (MudTabs renders the active panel; KeepPanelsAlive keeps others in DOM).
+    // The persistent AI pane (Feature 142 — no longer a tab; always present on the left).
+    // Root testid retained as `ai-tab-panel` for selector stability across the 109→142 shell move.
     public ILocator AiTabPanel => _page.Locator("[data-testid='ai-tab-panel']");
-    public ILocator DiagramTabPanel => _page.Locator("[data-testid='diagram-tab-panel']");
 
-    // MudTabs buttons (fall back to role/text selectors).
-    public ILocator AiTabButton => _page.Locator(".mud-tab:has-text('AI')").First;
-    public ILocator DiagramTabButton => _page.Locator(".mud-tab:has-text('Diagram')").First;
-    public ILocator PreviewTabButton => _page.Locator(".mud-tab:has-text('Preview')").First;
+    // Lifecycle rail stage buttons (Feature 142 — replace the old AI/Diagram/Preview tabs).
+    public ILocator RailDescribe => _page.Locator("[data-testid='rail-stage-describe']");
+    public ILocator RailUnderstand => _page.Locator("[data-testid='rail-stage-understand']");
+    public ILocator RailRehearse => _page.Locator("[data-testid='rail-stage-rehearse']");
+    public ILocator RailGoLive => _page.Locator("[data-testid='rail-stage-golive']");
 
     // Chat input (pinned at the bottom of the AI pane).
     public ILocator ChatInput => _page.Locator("[data-testid='chat-input'] textarea").First;
