@@ -250,6 +250,9 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Infrastructure.I
     Sorcha.Blueprint.Service.Services.Infrastructure.SystemClock>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.PresentationLifecycleMetrics>();
 
+// Feature 142 — Blueprint Design Lifecycle designer metrics (instruments added in T058).
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.BlueprintDesignerMetrics>();
+
 // Feature 111 — IPresentationConsumer registrations dispatched by name from
 // PresentationLifecycleService. Consumers run in-process here in Blueprint
 // Service because the lifecycle dispatcher resolves them from the local DI

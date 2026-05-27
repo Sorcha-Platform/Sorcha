@@ -107,6 +107,10 @@ public static class Extensions
                 metrics.AddMeter("Sorcha.Peer");
                 metrics.AddMeter("Sorcha.Validator");
                 metrics.AddMeter("Sorcha.Blueprint");
+
+                // Feature 142 — Blueprint Design Lifecycle (rehearsal harness +
+                // governed Go-live). Exact-name allowlist entry; instruments in T058.
+                metrics.AddMeter("Sorcha.Blueprint.Designer");
             })
             .WithTracing(tracing =>
             {
