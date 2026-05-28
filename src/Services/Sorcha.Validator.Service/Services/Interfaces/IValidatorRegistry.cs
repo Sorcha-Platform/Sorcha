@@ -202,6 +202,40 @@ public interface IValidatorRegistry
     /// Event raised when validator list changes
     /// </summary>
     event EventHandler<ValidatorListChangedEventArgs>? ValidatorListChanged;
+
+    /// <summary>
+    /// Hydrates Redis from the MongoDB durable store. Best-effort: failures are
+    /// logged but do not throw. Intended to be called on service startup so a
+    /// cold Redis (e.g. after a <c>docker compose down -v</c>) does not cause the
+    /// heartbeat path to mistake a wiped cache for "no validators registered".
+    /// </summary>
+    /// <param name="ct">Cancellation token</param>
+    Task HydrateFromMongoAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Checks the MongoDB durable store (authoritative across Redis restarts)
+    /// for an <see cref="ValidatorStatus.Active"/> registration of this
+    /// validator on this register. Used by the heartbeat path so an
+    /// already-registered validator never re-enters <see cref="RegisterAsync"/>
+    /// on a cold-Redis cache and never grows the order list.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="validatorId">Validator ID</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>True if Mongo has an Active entry for this validator.</returns>
+    Task<bool> IsRegisteredInMongoAsync(string registerId, string validatorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Pulls a single validator from the MongoDB durable store and writes it
+    /// to Redis (refreshes the per-validator TTL) WITHOUT going through
+    /// <see cref="RegisterAsync"/>. Used by the heartbeat path to refresh the
+    /// TTL of an already-registered validator without growing the order list.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="validatorId">Validator ID</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>True if a record was found in Mongo and rewarmed into Redis.</returns>
+    Task<bool> HydrateOneAsync(string registerId, string validatorId, CancellationToken ct = default);
 }
 
 /// <summary>

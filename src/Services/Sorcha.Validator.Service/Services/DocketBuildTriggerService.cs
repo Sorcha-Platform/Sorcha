@@ -453,6 +453,22 @@ public class DocketBuildTriggerService : BackgroundService
             var validatorRegistry = scope.ServiceProvider.GetRequiredService<IValidatorRegistry>();
             var systemWalletId = _systemWalletProvider.GetSystemWalletId() ?? _validatorConfig.SystemWalletAddress;
 
+            // Belt-and-braces (Layer 4): consult Mongo (authoritative durable store)
+            // BEFORE entering RegisterAsync. If we are already registered, just
+            // refresh the Redis TTL via HydrateOneAsync — never re-enter the
+            // RegisterAsync path on a heartbeat, so the order list cannot grow.
+            if (await validatorRegistry.IsRegisteredInMongoAsync(
+                    registerId, _validatorConfig.ValidatorId, cancellationToken))
+            {
+                await validatorRegistry.HydrateOneAsync(
+                    registerId, _validatorConfig.ValidatorId, cancellationToken);
+                _lastHeartbeatTimes[registerId] = DateTimeOffset.UtcNow;
+                _logger.LogDebug(
+                    "Validator {ValidatorId} heartbeat for register {RegisterId} (Mongo-authoritative, Redis rewarmed)",
+                    _validatorConfig.ValidatorId, registerId);
+                return;
+            }
+
             var registration = new ValidatorRegistration
             {
                 ValidatorId = _validatorConfig.ValidatorId,

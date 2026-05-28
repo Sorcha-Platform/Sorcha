@@ -175,6 +175,9 @@ builder.Services.AddSingleton<Sorcha.Validator.Service.Services.IValidatorKeyPro
 // Add background services
 builder.Services.AddHostedService<Sorcha.Validator.Service.Services.SystemWalletInitializer>();
 builder.Services.AddHostedService<Sorcha.Validator.Service.Services.MemPoolCleanupService>();
+// Hydrate Redis from Mongo BEFORE DocketBuildTriggerService starts heartbeating,
+// so a cold Redis (post `down -v`) doesn't cause re-registration loops.
+builder.Services.AddHostedService<Sorcha.Validator.Service.Services.ValidatorRegistryHydrationService>();
 builder.Services.AddHostedService<Sorcha.Validator.Service.Services.DocketBuildTriggerService>();
 
 // Feature 108 — roster-driven monitoring bootstrap

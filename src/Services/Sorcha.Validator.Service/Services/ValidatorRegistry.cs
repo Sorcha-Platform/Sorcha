@@ -170,7 +170,7 @@ public class ValidatorRegistry : IValidatorRegistry
             }
 
             // Fetch from Redis
-            return await _pipeline.ExecuteAsync(async token =>
+            var fromRedis = await _pipeline.ExecuteAsync(async token =>
             {
                 var key = GetValidatorKey(registerId, validatorId);
                 var json = await _database.StringGetAsync(key);
@@ -180,6 +180,13 @@ public class ValidatorRegistry : IValidatorRegistry
 
                 return JsonSerializer.Deserialize<ValidatorInfo>(json.ToString(), _jsonOptions);
             }, ct);
+
+            if (fromRedis != null)
+                return fromRedis;
+
+            // Belt-and-braces (Layer 3): Redis miss — fall back to the durable
+            // Mongo store and rewarm Redis so subsequent reads are fast.
+            return await LoadFromMongoAndRewarmAsync(registerId, validatorId, ct);
         }
         catch (Exception ex)
         {
@@ -187,6 +194,100 @@ public class ValidatorRegistry : IValidatorRegistry
                 "Failed to get validator {ValidatorId} for register {RegisterId}",
                 validatorId, registerId);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads a single validator from MongoDB and rewarms the Redis cache when found.
+    /// Wrapped in try/catch so a Mongo outage never throws — returns null on failure.
+    /// </summary>
+    private async Task<ValidatorInfo?> LoadFromMongoAndRewarmAsync(
+        string registerId,
+        string validatorId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var filter = Builders<ValidatorDocument>.Filter.And(
+                Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId),
+                Builders<ValidatorDocument>.Filter.Eq(d => d.ValidatorId, validatorId));
+
+            var cursor = await _validatorsCollection.FindAsync(filter, cancellationToken: ct);
+            var doc = await cursor.FirstOrDefaultAsync(ct);
+            if (doc == null)
+                return null;
+
+            var info = doc.ToValidatorInfo();
+            _logger.LogInformation(
+                "Mongo fallback hit for validator {ValidatorId} on register {RegisterId} — rewarming Redis",
+                validatorId, registerId);
+
+            // Rewarm Redis. Best-effort: if the write fails the next read just hits Mongo again.
+            try
+            {
+                await StoreValidatorAsync(registerId, info, ct);
+            }
+            catch (Exception writeEx)
+            {
+                _logger.LogWarning(writeEx,
+                    "Rewarm of Redis failed for validator {ValidatorId} on register {RegisterId}",
+                    validatorId, registerId);
+            }
+
+            return info;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Mongo fallback read failed for validator {ValidatorId} on register {RegisterId}",
+                validatorId, registerId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads ALL validators for a register from MongoDB and rewarms the Redis cache.
+    /// Returns an empty list on failure (never throws).
+    /// </summary>
+    private async Task<List<ValidatorInfo>> LoadAllFromMongoAndRewarmAsync(
+        string registerId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var filter = Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId);
+            var cursor = await _validatorsCollection.FindAsync(filter, cancellationToken: ct);
+            var docs = await cursor.ToListAsync(ct);
+
+            if (docs.Count == 0)
+                return [];
+
+            var infos = docs.Select(d => d.ToValidatorInfo()).ToList();
+            _logger.LogInformation(
+                "Mongo fallback hit for register {RegisterId} — rewarming Redis with {Count} validators",
+                registerId, infos.Count);
+
+            foreach (var info in infos)
+            {
+                try
+                {
+                    await StoreValidatorAsync(registerId, info, ct);
+                }
+                catch (Exception writeEx)
+                {
+                    _logger.LogWarning(writeEx,
+                        "Rewarm failed for validator {ValidatorId} on register {RegisterId}",
+                        info.ValidatorId, registerId);
+                }
+            }
+
+            return infos;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Mongo fallback list read failed for register {RegisterId}", registerId);
+            return [];
         }
     }
 
@@ -312,10 +413,22 @@ public class ValidatorRegistry : IValidatorRegistry
             await PersistToMongoAsync(registerId, validator, ct);
             await StoreValidatorAsync(registerId, validator, ct);
 
-            // Update order list
+            // Update order list — idempotent: never append the same validator id twice.
+            // Belt-and-braces guard so a cold-Redis re-registration loop (when the
+            // per-validator key has expired/been wiped but the order list survives)
+            // cannot grow the order list with duplicates of the same id.
             var newOrder = order.ToList();
-            newOrder.Add(registration.ValidatorId);
-            await UpdateOrderAsync(registerId, newOrder, ct);
+            if (!newOrder.Contains(registration.ValidatorId))
+            {
+                newOrder.Add(registration.ValidatorId);
+                await UpdateOrderAsync(registerId, newOrder, ct);
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "Validator {ValidatorId} already in order list for register {RegisterId}; skipping order update",
+                    registration.ValidatorId, registerId);
+            }
 
             // Raise event
             RaiseValidatorListChanged(registerId, ValidatorListChangeType.ValidatorAdded,
@@ -933,6 +1046,15 @@ public class ValidatorRegistry : IValidatorRegistry
             }
         }
 
+        // Belt-and-braces (Layer 3): if the Redis scan returns nothing, the cache
+        // is cold (likely a `down -v` wiped it). Fall back to the durable Mongo
+        // store and rewarm Redis. This stops GetActiveCountAsync from reporting 0
+        // and gating consensus closed on every fresh reset.
+        if (validators.Count == 0)
+        {
+            validators = await LoadAllFromMongoAndRewarmAsync(registerId, ct);
+        }
+
         // Cache the list using operational TTL
         if (validators.Count > 0)
         {
@@ -960,6 +1082,17 @@ public class ValidatorRegistry : IValidatorRegistry
             var key = GetValidatorKey(registerId, validator.ValidatorId);
             var json = JsonSerializer.Serialize(validator, _jsonOptions);
             await _database.StringSetAsync(key, json, ttl);
+
+            // Belt-and-braces (Layer 5): verify the write actually landed.
+            // Symptom we're hunting: per-validator key absent from Redis even
+            // immediately after a "successful" StringSetAsync — currently silent.
+            var exists = await _database.KeyExistsAsync(key);
+            if (!exists)
+            {
+                _logger.LogWarning(
+                    "StoreValidatorAsync wrote key {Key} with TTL {TtlSeconds}s but KeyExists==false immediately after — Redis write silently failed",
+                    key, ttl.TotalSeconds);
+            }
 
             // Invalidate list cache
             var listKey = GetValidatorsKey(registerId);
@@ -1240,6 +1373,71 @@ public class ValidatorRegistry : IValidatorRegistry
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to hydrate validator registry from MongoDB");
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> IsRegisteredInMongoAsync(
+        string registerId,
+        string validatorId,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(validatorId);
+
+        try
+        {
+            var filter = Builders<ValidatorDocument>.Filter.And(
+                Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId),
+                Builders<ValidatorDocument>.Filter.Eq(d => d.ValidatorId, validatorId),
+                Builders<ValidatorDocument>.Filter.Eq(
+                    d => d.Status,
+                    Interfaces.ValidatorStatus.Active.ToString()));
+
+            var count = await _validatorsCollection.CountDocumentsAsync(filter, cancellationToken: ct);
+            return count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "IsRegisteredInMongoAsync failed for validator {ValidatorId} on register {RegisterId}",
+                validatorId, registerId);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> HydrateOneAsync(
+        string registerId,
+        string validatorId,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(validatorId);
+
+        try
+        {
+            var filter = Builders<ValidatorDocument>.Filter.And(
+                Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId),
+                Builders<ValidatorDocument>.Filter.Eq(d => d.ValidatorId, validatorId));
+
+            var cursor = await _validatorsCollection.FindAsync(filter, cancellationToken: ct);
+            var doc = await cursor.FirstOrDefaultAsync(ct);
+            if (doc == null)
+                return false;
+
+            await StoreValidatorAsync(registerId, doc.ToValidatorInfo(), ct);
+            _logger.LogDebug(
+                "HydrateOneAsync rewarmed validator {ValidatorId} for register {RegisterId} from Mongo",
+                validatorId, registerId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "HydrateOneAsync failed for validator {ValidatorId} on register {RegisterId}",
+                validatorId, registerId);
+            return false;
         }
     }
 
