@@ -1365,6 +1365,71 @@ public class ValidatorRegistry : IValidatorRegistry
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<bool> IsRegisteredInMongoAsync(
+        string registerId,
+        string validatorId,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(validatorId);
+
+        try
+        {
+            var filter = Builders<ValidatorDocument>.Filter.And(
+                Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId),
+                Builders<ValidatorDocument>.Filter.Eq(d => d.ValidatorId, validatorId),
+                Builders<ValidatorDocument>.Filter.Eq(
+                    d => d.Status,
+                    Interfaces.ValidatorStatus.Active.ToString()));
+
+            var count = await _validatorsCollection.CountDocumentsAsync(filter, cancellationToken: ct);
+            return count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "IsRegisteredInMongoAsync failed for validator {ValidatorId} on register {RegisterId}",
+                validatorId, registerId);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> HydrateOneAsync(
+        string registerId,
+        string validatorId,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(validatorId);
+
+        try
+        {
+            var filter = Builders<ValidatorDocument>.Filter.And(
+                Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId),
+                Builders<ValidatorDocument>.Filter.Eq(d => d.ValidatorId, validatorId));
+
+            var cursor = await _validatorsCollection.FindAsync(filter, cancellationToken: ct);
+            var doc = await cursor.FirstOrDefaultAsync(ct);
+            if (doc == null)
+                return false;
+
+            await StoreValidatorAsync(registerId, doc.ToValidatorInfo(), ct);
+            _logger.LogDebug(
+                "HydrateOneAsync rewarmed validator {ValidatorId} for register {RegisterId} from Mongo",
+                validatorId, registerId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "HydrateOneAsync failed for validator {ValidatorId} on register {RegisterId}",
+                validatorId, registerId);
+            return false;
+        }
+    }
+
     private class LocalCacheEntry
     {
         public required List<ValidatorInfo> Validators { get; init; }
