@@ -12,8 +12,8 @@ using Sorcha.Blueprint.Service.Data;
 namespace Sorcha.Blueprint.Service.Data.Migrations
 {
     [DbContext(typeof(BlueprintDbContext))]
-    [Migration("20260527123022_AddRehearsalPassAndPublishOverride")]
-    partial class AddRehearsalPassAndPublishOverride
+    [Migration("20260528205017_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
