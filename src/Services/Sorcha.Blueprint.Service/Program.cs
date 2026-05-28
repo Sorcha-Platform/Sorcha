@@ -956,6 +956,9 @@ blueprintGroup.MapGet("/{id}/versions/{version}", async (string id, int version,
 // Map full-rehearsal walk-through endpoints (POST/GET/DELETE under /api/blueprints/{id}/rehearsals).
 app.MapRehearsalEndpoints();
 
+// Feature 142 (T056 / US6) — amend / clone-to-draft endpoint (POST /api/blueprints/from-published).
+app.MapBlueprintFromPublishedEndpoint();
+
 // ===========================
 // Schema Endpoints (Sprint 7 - Schema Store)
 // ===========================

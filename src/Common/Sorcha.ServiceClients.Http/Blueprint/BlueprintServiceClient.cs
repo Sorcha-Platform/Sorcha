@@ -577,8 +577,40 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         throw new NotImplementedException("TODO(US2/US3): governance-hard / rehearsal-soft publish — Feature 142.");
 
     /// <inheritdoc />
-    public Task<CloneFromPublishedResult?> CloneFromPublishedAsync(CloneFromPublishedRequest request, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("TODO(US2/US3): clone-from-published (amend) — Feature 142.");
+    public async Task<CloneFromPublishedResult?> CloneFromPublishedAsync(CloneFromPublishedRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/blueprints/from-published", request, JsonOptions, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Blueprint CloneFromPublished failed: {StatusCode} (register {RegisterId}, source {BlueprintId} v{Version})",
+                    response.StatusCode, request.RegisterId, request.BlueprintId, request.Version);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<CloneFromPublishedResult>(JsonOptions, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed Blueprint CloneFromPublished");
+            return null;
+        }
+    }
 
     private async Task<string?> GetRawAsync(string url, string operation, CancellationToken cancellationToken)
     {
