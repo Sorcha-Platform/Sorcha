@@ -202,6 +202,15 @@ public interface IValidatorRegistry
     /// Event raised when validator list changes
     /// </summary>
     event EventHandler<ValidatorListChangedEventArgs>? ValidatorListChanged;
+
+    /// <summary>
+    /// Hydrates Redis from the MongoDB durable store. Best-effort: failures are
+    /// logged but do not throw. Intended to be called on service startup so a
+    /// cold Redis (e.g. after a <c>docker compose down -v</c>) does not cause the
+    /// heartbeat path to mistake a wiped cache for "no validators registered".
+    /// </summary>
+    /// <param name="ct">Cancellation token</param>
+    Task HydrateFromMongoAsync(CancellationToken ct = default);
 }
 
 /// <summary>
