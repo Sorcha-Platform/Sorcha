@@ -64,12 +64,60 @@ public partial class DesignerBlueprint : ComponentBase, IDisposable
             {
                 Context.SetBlueprint(bp);
                 _loadedBlueprintId = BlueprintId;
+
+                // Feature 142 / T057 / US6 — rehydrate AmendContext from the lineage metadata that
+                // POST /api/blueprints/from-published stamps onto the new draft. When present the
+                // designer knows the draft is an amendment of a specific published version on a
+                // specific register, which the Go-live stage uses to anchor the re-publish target.
+                Context.Lifecycle.AmendContext = TryReadAmendLineage(bp);
             }
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Failed to load blueprint {BlueprintId}; leaving Context.Blueprint null.", BlueprintId);
         }
+    }
+
+    /// <summary>
+    /// Reads the lineage metadata stamped by the amend / clone-to-draft endpoint
+    /// (<see cref="BlueprintFromPublishedEndpointKeys"/>) off the loaded blueprint and returns a
+    /// populated <see cref="AmendContext"/> when all three keys resolve. Returns null otherwise —
+    /// non-amend drafts simply have no lineage and stay in the regular create-to-live loop.
+    /// </summary>
+    private static Sorcha.UI.Core.Services.Designer.AmendContext? TryReadAmendLineage(
+        Sorcha.Blueprint.Models.Blueprint bp)
+    {
+        var metadata = bp.Metadata;
+        if (metadata is null
+            || !metadata.TryGetValue(BlueprintFromPublishedEndpointKeys.SourceRegister, out var registerId)
+            || !metadata.TryGetValue(BlueprintFromPublishedEndpointKeys.SourceBlueprint, out var sourceBlueprintId)
+            || !metadata.TryGetValue(BlueprintFromPublishedEndpointKeys.SourceVersion, out var versionRaw))
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(registerId)
+            || string.IsNullOrWhiteSpace(sourceBlueprintId)
+            || !int.TryParse(versionRaw, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var sourceVersion)
+            || sourceVersion < 1)
+        {
+            return null;
+        }
+
+        return new Sorcha.UI.Core.Services.Designer.AmendContext(registerId, sourceBlueprintId, sourceVersion);
+    }
+
+    /// <summary>
+    /// Mirrors the lineage metadata keys defined server-side in
+    /// <c>BlueprintFromPublishedEndpoint</c> (Sorcha.Blueprint.Service). Centralised so the UI
+    /// reads exactly what the server writes — a string-drift fix touches one place.
+    /// </summary>
+    private static class BlueprintFromPublishedEndpointKeys
+    {
+        public const string SourceRegister = "x-source-register";
+        public const string SourceBlueprint = "x-source-blueprint-id";
+        public const string SourceVersion = "x-source-version";
     }
 
     private void OnContextChanged()

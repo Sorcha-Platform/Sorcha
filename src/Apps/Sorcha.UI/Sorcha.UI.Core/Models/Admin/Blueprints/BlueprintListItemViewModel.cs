@@ -29,6 +29,15 @@ public record BlueprintVersionViewModel
     public DateTimeOffset PublishedAt { get; init; }
     public int ActionCount { get; init; }
     public string? ChangeDescription { get; init; }
+
+    /// <summary>
+    /// Feature 142 (T057 / US6) — the register the version was published to. Needed by the
+    /// amend / clone-from-published flow to address the source. The server already returns this on
+    /// the <c>GET /api/blueprints/{id}/versions</c> payload (mapped from PublishedBlueprint.RegisterId);
+    /// the VM previously dropped it, so the UI had to guess. Nullable for backwards-compatibility
+    /// on rows recorded before the field was populated.
+    /// </summary>
+    public string? RegisterId { get; init; }
 }
 
 /// <summary>

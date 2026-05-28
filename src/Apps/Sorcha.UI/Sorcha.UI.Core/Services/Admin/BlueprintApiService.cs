@@ -255,6 +255,43 @@ public class BlueprintApiService : IBlueprintApiService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<string?> FromPublishedAsync(
+        string registerId,
+        string blueprintId,
+        int version,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var body = new { registerId, blueprintId, version };
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/blueprints/from-published", body, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "FromPublished failed: {StatusCode} (register {RegisterId}, source {BlueprintId} v{Version})",
+                    response.StatusCode, registerId, blueprintId, version);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<CloneFromPublishedResponse>(
+                cancellationToken: cancellationToken);
+            return result?.DraftBlueprintId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cloning published blueprint {BlueprintId} v{Version}", blueprintId, version);
+            return null;
+        }
+    }
+
+    private sealed record CloneFromPublishedResponse(
+        string DraftBlueprintId,
+        int SourceVersion,
+        string RegisterId);
+
     public async Task<BlueprintListItemViewModel?> GetVersionAsync(string id, string version, CancellationToken cancellationToken = default)
     {
         try

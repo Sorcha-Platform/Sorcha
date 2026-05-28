@@ -44,6 +44,19 @@ public interface IBlueprintApiService
         string? overrideReason = null,
         CancellationToken cancellationToken = default);
     Task<List<BlueprintVersionViewModel>> GetVersionsAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Feature 142 (T057 / US6) — derives a new draft from a published version (the amend / clone-to-draft
+    /// flow). Calls <c>POST /api/blueprints/from-published</c>. On success, returns the new draft id;
+    /// the caller should navigate to the rail-driven designer to land in the amend draft with Go live
+    /// re-locked (the fresh exec-def hash has no recorded RehearsalPass).
+    /// </summary>
+    /// <param name="registerId">The register the source version lives on.</param>
+    /// <param name="blueprintId">The published blueprint id (the source).</param>
+    /// <param name="version">The published version number.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The id of the newly-created draft, or null on non-success (403 / 404 / transport).</returns>
+    Task<string?> FromPublishedAsync(string registerId, string blueprintId, int version, CancellationToken cancellationToken = default);
     Task<BlueprintListItemViewModel?> GetVersionAsync(string id, string version, CancellationToken cancellationToken = default);
     Task<AvailableBlueprintsViewModel?> GetAvailableBlueprintsAsync(string walletAddress, string registerId, CancellationToken cancellationToken = default);
 
