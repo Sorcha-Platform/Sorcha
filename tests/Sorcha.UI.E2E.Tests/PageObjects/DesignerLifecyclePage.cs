@@ -82,6 +82,15 @@ public class DesignerLifecyclePage
     public ILocator GoLiveOverrideConfirm => _page.Locator("[data-testid='golive-override-confirm']");
     public ILocator GoLiveLockedHint => _page.Locator("[data-testid='golive-locked-hint']");
 
+    // --- Amend loop (T053 / T057) -----------------------------------------
+    /// <summary>The "Amend" action on a published-blueprint row in the services/blueprints list.</summary>
+    public ILocator BlueprintAmendButton => _page.Locator("[data-testid^='blueprint-amend-']");
+
+    /// <summary>A specific published-row "Amend" action by blueprint id.</summary>
+    /// <param name="blueprintId">The published blueprint id whose row should be targeted.</param>
+    public ILocator BlueprintAmendButtonFor(string blueprintId)
+        => _page.Locator($"[data-testid='blueprint-amend-{blueprintId}']");
+
     public Task NavigateAsync(string? blueprintId = null)
     {
         var url = BaseUrl;
