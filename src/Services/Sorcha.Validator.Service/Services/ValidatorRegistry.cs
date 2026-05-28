@@ -312,10 +312,22 @@ public class ValidatorRegistry : IValidatorRegistry
             await PersistToMongoAsync(registerId, validator, ct);
             await StoreValidatorAsync(registerId, validator, ct);
 
-            // Update order list
+            // Update order list — idempotent: never append the same validator id twice.
+            // Belt-and-braces guard so a cold-Redis re-registration loop (when the
+            // per-validator key has expired/been wiped but the order list survives)
+            // cannot grow the order list with duplicates of the same id.
             var newOrder = order.ToList();
-            newOrder.Add(registration.ValidatorId);
-            await UpdateOrderAsync(registerId, newOrder, ct);
+            if (!newOrder.Contains(registration.ValidatorId))
+            {
+                newOrder.Add(registration.ValidatorId);
+                await UpdateOrderAsync(registerId, newOrder, ct);
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "Validator {ValidatorId} already in order list for register {RegisterId}; skipping order update",
+                    registration.ValidatorId, registerId);
+            }
 
             // Raise event
             RaiseValidatorListChanged(registerId, ValidatorListChangeType.ValidatorAdded,
