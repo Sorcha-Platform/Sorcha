@@ -1,0 +1,237 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using MudBlazor
+@using Sorcha.Blueprint.Models
+@using Sorcha.Blueprint.Models.Forms
+@using Sorcha.UI.Core.Services.Forms
+@using BlueprintAction = Sorcha.Blueprint.Models.Action
+
+@inject IFormLayoutAuthoringService Authoring
+
+@if (Action is not null)
+{
+    <MudPaper Class="layout-tools-panel pa-3 mb-3" Outlined="true" data-testid="layout-tools-panel">
+        <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-2">Form layout tools</MudText>
+        <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+            <MudButton Size="MudBlazor.Size.Small"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.ViewWeek"
+                       OnClick="HandleSplitIntoPages"
+                       data-testid="layout-tool-split-pages">
+                Split into pages
+            </MudButton>
+            <MudButton Size="MudBlazor.Size.Small"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.ViewAgenda"
+                       OnClick="HandleGroupIntoSection"
+                       data-testid="layout-tool-section">
+                Group fields
+            </MudButton>
+            <MudButton Size="MudBlazor.Size.Small"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Notes"
+                       OnClick="HandleSetIntroduction"
+                       data-testid="layout-tool-intro">
+                Introduction
+            </MudButton>
+            <MudButton Size="MudBlazor.Size.Small"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.AspectRatio"
+                       OnClick="HandleSetWidthHalf"
+                       data-testid="layout-tool-width">
+                Side-by-side widths
+            </MudButton>
+            <MudButton Size="MudBlazor.Size.Small"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Summarize"
+                       OnClick="HandleMarkReviewPage"
+                       data-testid="layout-tool-review-page">
+                Mark review page
+            </MudButton>
+            <MudButton Size="MudBlazor.Size.Small"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.AttachFile"
+                       OnClick="HandleFileUploadClicked"
+                       data-testid="layout-tool-file"
+                       Color="Color.Warning">
+                File upload…
+            </MudButton>
+        </MudStack>
+
+        @if (Action.DataSchemas is not null)
+        {
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-2">Per-field autofill</MudText>
+            <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+                @foreach (var (fieldName, currentPersona) in EnumerateTopLevelFields())
+                {
+                    <PersonaAutofillToggle FieldName="@fieldName"
+                                           CurrentPersonaKey="@currentPersona"
+                                           OnToggle="HandlePersonaToggle" />
+                }
+            </MudStack>
+        }
+
+        @if (_pendingFileUploadDialog)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                <strong>File upload is a behavioural change.</strong>
+                Adding a file-upload field changes what transactions the workflow produces and will
+                re-lock Go live until you re-rehearse the service.
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                           OnClick="() => _pendingFileUploadDialog = false"
+                           Class="ml-2">Dismiss</MudButton>
+            </MudAlert>
+        }
+    </MudPaper>
+}
+
+@code {
+    /// <summary>The action whose first dataSchemas[0] this panel mutates.</summary>
+    [Parameter, EditorRequired] public BlueprintAction? Action { get; set; }
+
+    /// <summary>Fires after every successful layout write, carrying the mutated Action.</summary>
+    [Parameter] public EventCallback<BlueprintAction> OnLayoutChanged { get; set; }
+
+    private bool _pendingFileUploadDialog;
+
+    /// <summary>
+    /// Walks the first schema's top-level <c>properties</c> and yields each field name
+    /// alongside its current <c>x-persona</c> binding (or null). Used by the per-field
+    /// autofill toggle row.
+    /// </summary>
+    private IEnumerable<(string FieldName, string? CurrentPersona)> EnumerateTopLevelFields()
+    {
+        var schema = Action?.DataSchemas?.FirstOrDefault();
+        if (schema is null) yield break;
+        if (!schema.RootElement.TryGetProperty("properties", out var props) ||
+            props.ValueKind != JsonValueKind.Object) yield break;
+
+        foreach (var prop in props.EnumerateObject())
+        {
+            string? personaKey = null;
+            if (prop.Value.ValueKind == JsonValueKind.Object &&
+                prop.Value.TryGetProperty("x-persona", out var personaEl) &&
+                personaEl.ValueKind == JsonValueKind.String)
+            {
+                personaKey = personaEl.GetString();
+            }
+            yield return (prop.Name, personaKey);
+        }
+    }
+
+    private async Task HandleSplitIntoPages()
+    {
+        if (Action is null) return;
+        // Two-page default: page 1 ("Step 1") gathers all top-level fields in one section,
+        // page 2 ("Review") is empty and ready to be marked as review. Designers can rearrange
+        // later via direct manipulation or chat.
+        var fieldNames = EnumerateTopLevelFields().Select(t => t.FieldName).ToList();
+        var pages = new JsonArray
+        {
+            new JsonObject
+            {
+                ["title"] = "Step 1",
+                ["sections"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["title"] = "Details",
+                        ["fields"] = new JsonArray(fieldNames.Select(n => JsonValue.Create(n)).Cast<JsonNode?>().ToArray()),
+                    },
+                },
+            },
+            new JsonObject
+            {
+                ["title"] = "Step 2",
+                ["sections"] = new JsonArray(),
+            },
+        };
+        var updated = Authoring.SetPages(Action, pages);
+        await NotifyAsync(updated);
+    }
+
+    private async Task HandleGroupIntoSection()
+    {
+        if (Action is null) return;
+        var fieldNames = EnumerateTopLevelFields().Select(t => t.FieldName).ToList();
+        var sections = new JsonArray
+        {
+            new JsonObject
+            {
+                ["title"] = "Details",
+                ["fields"] = new JsonArray(fieldNames.Select(n => JsonValue.Create(n)).Cast<JsonNode?>().ToArray()),
+            },
+        };
+        var updated = Authoring.SetSections(Action, sections);
+        await NotifyAsync(updated);
+    }
+
+    private async Task HandleSetIntroduction()
+    {
+        if (Action is null) return;
+        var updated = Authoring.SetIntroduction(Action, "Please complete this form carefully.");
+        await NotifyAsync(updated);
+    }
+
+    private async Task HandleSetWidthHalf()
+    {
+        if (Action is null) return;
+        // Sets every top-level field to "half" so they pair into side-by-side rows.
+        var current = Action;
+        foreach (var (name, _) in EnumerateTopLevelFields())
+        {
+            current = Authoring.SetFieldWidth(current, name, "half");
+        }
+        await NotifyAsync(current);
+    }
+
+    private async Task HandleMarkReviewPage()
+    {
+        if (Action is null) return;
+        var schema = Action.DataSchemas?.FirstOrDefault();
+        if (schema is null) return;
+        if (!schema.RootElement.TryGetProperty("x-pages", out var pagesEl) ||
+            pagesEl.ValueKind != JsonValueKind.Array || pagesEl.GetArrayLength() == 0)
+        {
+            // No pages yet — auto-split first so there's something to mark.
+            await HandleSplitIntoPages();
+            // Refresh local view of the action's schema and proceed.
+            schema = Action.DataSchemas?.FirstOrDefault();
+            if (schema is null || !schema.RootElement.TryGetProperty("x-pages", out pagesEl) ||
+                pagesEl.GetArrayLength() == 0) return;
+        }
+        var lastIndex = pagesEl.GetArrayLength() - 1;
+        var updated = Authoring.SetReviewPage(Action, lastIndex);
+        await NotifyAsync(updated);
+    }
+
+    private async Task HandlePersonaToggle((string FieldName, string? PersonaKey) change)
+    {
+        if (Action is null) return;
+        var updated = Authoring.SetFieldPersona(Action, change.FieldName, change.PersonaKey);
+        await NotifyAsync(updated);
+    }
+
+    private void HandleFileUploadClicked()
+    {
+        // FR-015 includes file upload as in scope but it's a BEHAVIOURAL keyword
+        // (x-file re-locks the rehearsal gate). LayoutToolsPanel only writes presentational
+        // keywords — surface the confirmation inline and defer the actual schema write to
+        // the typed set_action_schema escape hatch. (T051 / future work — out of US5 scope
+        // to write x-file from here; we surface the path without forging the write.)
+        _pendingFileUploadDialog = true;
+    }
+
+    private async Task NotifyAsync(BlueprintAction updated)
+    {
+        if (OnLayoutChanged.HasDelegate)
+        {
+            await OnLayoutChanged.InvokeAsync(updated);
+        }
+        StateHasChanged();
+    }
+}

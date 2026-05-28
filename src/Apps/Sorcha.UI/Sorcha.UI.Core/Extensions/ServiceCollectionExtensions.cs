@@ -72,6 +72,9 @@ public static class ServiceCollectionExtensions
         // Form renderer services
         services.AddScoped<IFormSchemaService, FormSchemaService>();
         services.AddScoped<IFormSigningService, FormSigningService>();
+        // Feature 142 / US5 — presentational form-layout authoring (T049). Shared
+        // by LayoutToolsPanel direct manipulation and the chat tool path (T051).
+        services.AddScoped<IFormLayoutAuthoringService, FormLayoutAuthoringService>();
 
         // Feature 142 — designer-only quick dry-run harness (D3/T024). Drives the portable
         // Blueprint Engine in-WASM (validate→calc→route→disclose) with no register/backend.

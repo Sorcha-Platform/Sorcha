@@ -1,0 +1,32 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+
+<MudButton Size="MudBlazor.Size.Small"
+           Variant="@(IsMarked ? Variant.Filled : Variant.Outlined)"
+           Color="@(IsMarked ? Color.Primary : Color.Default)"
+           StartIcon="@Icons.Material.Filled.Summarize"
+           OnClick="HandleClick"
+           data-testid="@($"review-page-marker-{PageIndex}")">
+    @(IsMarked ? "Review page" : "Mark as review")
+</MudButton>
+
+@code {
+    /// <summary>The zero-based wizard-page index this marker controls.</summary>
+    [Parameter, EditorRequired] public int PageIndex { get; set; }
+
+    /// <summary>True when the page already carries <c>x-review</c>.</summary>
+    [Parameter] public bool IsMarked { get; set; }
+
+    /// <summary>Fires with the page index the user wants marked as review.</summary>
+    [Parameter] public EventCallback<int> OnMark { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (OnMark.HasDelegate)
+        {
+            await OnMark.InvokeAsync(PageIndex);
+        }
+    }
+}
