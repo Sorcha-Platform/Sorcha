@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Blueprint.Engine.Implementation;
 using Sorcha.UI.Core.Models.Chat;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 
@@ -23,6 +24,14 @@ namespace Sorcha.UI.Core.Services.Designer;
 public class DesignerContext
 {
     private string? _lastAiEditedActionId;
+    private readonly ExecutableDefinitionHasher _execDefHasher = new();
+
+    /// <summary>
+    /// Feature 142 lifecycle state driving the rail (current stage, exec-def hash, rehearsal-pass
+    /// mirror, amend lineage). The exec-def hash is recomputed on every Blueprint change so the
+    /// Go-live lock re-locks on executable edits but not on presentational ones (FR-023).
+    /// </summary>
+    public LifecycleState Lifecycle { get; } = new();
 
     /// <summary>The blueprint currently being edited, or <c>null</c> when none is loaded.</summary>
     public BlueprintModel? Blueprint { get; set; }
@@ -54,6 +63,7 @@ public class DesignerContext
         Blueprint = bp;
         ActiveActionId = null;
         IsManualCursor = false;
+        RecomputeExecDefHash();
         Changed?.Invoke();
     }
 
@@ -72,6 +82,7 @@ public class DesignerContext
             ActiveActionId = editedActionId;
         }
         IsDirty = true;
+        RecomputeExecDefHash();
         Changed?.Invoke();
     }
 
@@ -118,5 +129,30 @@ public class DesignerContext
     {
         Validation = val;
         Changed?.Invoke();
+    }
+
+    /// <summary>Moves the lifecycle rail to <paramref name="stage"/>. Fires <see cref="Changed"/>.</summary>
+    public void SetStage(LifecycleStage stage)
+    {
+        Lifecycle.CurrentStage = stage;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Records that a full rehearsal passed for the current executable definition by snapshotting
+    /// the current <see cref="LifecycleState.ExecDefHash"/> as the passed hash. After this, the
+    /// Go-live lock opens and stays open across presentational edits, re-locking only on an
+    /// executable-definition change (FR-023). Mirrors the authoritative server <c>RehearsalPass</c>.
+    /// </summary>
+    public void RecordRehearsalPassed()
+    {
+        Lifecycle.PassedExecDefHash = Lifecycle.ExecDefHash;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Recomputes the executable-definition hash from the current Blueprint (null when none).</summary>
+    private void RecomputeExecDefHash()
+    {
+        Lifecycle.ExecDefHash = Blueprint is null ? null : _execDefHasher.ComputeHash(Blueprint);
     }
 }

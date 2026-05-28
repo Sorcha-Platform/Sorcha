@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.ServiceClients.Blueprint.Models;
+
 namespace Sorcha.ServiceClients.Blueprint;
 
 /// <summary>
@@ -260,6 +262,116 @@ public interface IBlueprintServiceClient
         string credentialId,
         string issuerWallet,
         string? newExpiryDuration = null,
+        CancellationToken cancellationToken = default);
+
+    // =========================================================================
+    // Feature 142 — Blueprint Design Lifecycle Overhaul.
+    // Rehearsal lifecycle, governance-hard / rehearsal-soft publish, and amend
+    // (clone-to-draft). Signatures only — implementations land in US2/US3.
+    // Wire shapes mirror specs/142-blueprint-lifecycle/contracts/blueprint-lifecycle.openapi.yaml.
+    // =========================================================================
+
+    /// <summary>
+    /// Starts a full rehearsal on the org sandbox register (Feature 142). Lazily provisions
+    /// (or reuses) the org devMode sandbox register, mints ephemeral per-role sandbox wallets,
+    /// publishes the current draft to the sandbox, creates a fresh instance, and returns the
+    /// initial walk-through. Calls <c>POST /api/blueprints/{id}/rehearsals</c>. Dry-run is
+    /// client-side and does NOT use this method.
+    /// </summary>
+    /// <param name="blueprintId">The draft blueprint to rehearse.</param>
+    /// <param name="request">The start request (mode = full).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The started rehearsal, or null on non-success (e.g. 409 blocking validation, 403 unauthorised).</returns>
+    Task<Rehearsal?> StartRehearsalAsync(
+        string blueprintId,
+        StartRehearsalRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a rehearsal's status and log (Feature 142). Calls
+    /// <c>GET /api/blueprints/{id}/rehearsals/{rehearsalId}</c>.
+    /// </summary>
+    /// <param name="blueprintId">The blueprint that owns the rehearsal.</param>
+    /// <param name="rehearsalId">The rehearsal id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The rehearsal, or null if unknown (404).</returns>
+    Task<Rehearsal?> GetRehearsalAsync(
+        string blueprintId,
+        Guid rehearsalId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resets/discards a rehearsal — clears the rehearsal instance and discards its ephemeral
+    /// per-role sandbox wallets (the sandbox register itself persists). Idempotent (Feature 142).
+    /// Calls <c>DELETE /api/blueprints/{id}/rehearsals/{rehearsalId}</c>.
+    /// </summary>
+    /// <param name="blueprintId">The blueprint that owns the rehearsal.</param>
+    /// <param name="rehearsalId">The rehearsal id to discard.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True on 204 (discarded or already gone); false on non-success.</returns>
+    Task<bool> ResetRehearsalAsync(
+        string blueprintId,
+        Guid rehearsalId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Switches the acting participant role within a rehearsal (Feature 142). Calls
+    /// <c>POST /api/blueprints/{id}/rehearsals/{rehearsalId}/role</c>.
+    /// </summary>
+    /// <param name="blueprintId">The blueprint that owns the rehearsal.</param>
+    /// <param name="rehearsalId">The rehearsal id.</param>
+    /// <param name="request">The role to act as.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The updated rehearsal, or null on non-success.</returns>
+    Task<Rehearsal?> SwitchRehearsalRoleAsync(
+        string blueprintId,
+        Guid rehearsalId,
+        SwitchRehearsalRoleRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Submits the current action as the acting role (Feature 142). Runs the real execution
+    /// pipeline against the sandbox register, advances the walk-through, appends to the log,
+    /// and may record a RehearsalPass that unlocks Go live. Calls
+    /// <c>POST /api/blueprints/{id}/rehearsals/{rehearsalId}/steps</c>.
+    /// </summary>
+    /// <param name="blueprintId">The blueprint that owns the rehearsal.</param>
+    /// <param name="rehearsalId">The rehearsal id.</param>
+    /// <param name="request">The action id + payload to submit.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The advanced rehearsal, or null on non-success (e.g. 422 payload/step error).</returns>
+    Task<Rehearsal?> SubmitRehearsalStepAsync(
+        string blueprintId,
+        Guid rehearsalId,
+        SubmitRehearsalStepRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Publishes (Go live) a blueprint — now governance-hard + rehearsal-soft gated (Feature 142,
+    /// CHANGED). Enforces register governance rights server-side, then checks the rehearsal soft
+    /// gate. Calls <c>POST /api/blueprints/{id}/publish</c>. The returned outcome distinguishes a
+    /// successful publish from a <c>409 REHEARSAL_REQUIRED</c> soft-gate block — resend with
+    /// <see cref="PublishBlueprintRequest.Override"/> to proceed.
+    /// </summary>
+    /// <param name="blueprintId">The draft blueprint to publish.</param>
+    /// <param name="request">The publish request (register + optional override).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The publish outcome (success result or rehearsal-required block), or null on non-success (e.g. 403).</returns>
+    Task<PublishBlueprintOutcome?> PublishBlueprintAsync(
+        string blueprintId,
+        PublishBlueprintRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Derives a new draft from a published version — the amend / clone-to-draft flow (Feature 142).
+    /// The new draft carries lineage (source register + prior version) and opens with Go live
+    /// re-locked pending a fresh rehearsal. Calls <c>POST /api/blueprints/from-published</c>.
+    /// </summary>
+    /// <param name="request">The source register, blueprint id, and version to clone.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The new draft id + lineage, or null on non-success (e.g. 403).</returns>
+    Task<CloneFromPublishedResult?> CloneFromPublishedAsync(
+        CloneFromPublishedRequest request,
         CancellationToken cancellationToken = default);
 }
 

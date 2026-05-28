@@ -212,6 +212,29 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
                 Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
             });
 
+        // Feature 142 — the test principal (org_id ...456) must hold a publish-governance role on
+        // any target register so the publish endpoint's server-side governance hard gate (FR-027)
+        // passes for the existing publish-path integration tests. The PublishGate matches the
+        // caller against the roster subject by substring, so embedding the org id in the subject
+        // makes this principal an Owner.
+        mockRegisterClient
+            .Setup(x => x.GetGovernanceRosterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string regId, CancellationToken _) => new GovernanceRosterResponse
+            {
+                RegisterId = regId,
+                MemberCount = 1,
+                Members =
+                {
+                    new RosterMember
+                    {
+                        Subject = "did:sorcha:org:00000000-0000-0000-0000-000000000456",
+                        Role = "Owner",
+                        Algorithm = "ED25519",
+                        GrantedAt = DateTimeOffset.UtcNow,
+                    }
+                }
+            });
+
         // Create mock participant service client
         var mockParticipantClient = new Mock<IParticipantServiceClient>();
         mockParticipantClient
@@ -255,6 +278,13 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
         services.AddSingleton<IWalletServiceClient>(mockWalletClient.Object);
         services.AddSingleton<IRegisterServiceClient>(mockRegisterClient.Object);
         services.AddSingleton<IParticipantServiceClient>(mockParticipantClient.Object);
+
+        // Feature 142 — the existing publish-path integration tests do not run a rehearsal, so
+        // replace the rehearsal-pass store with a stub that always reports a matching pass. This
+        // keeps the publish soft gate (FR-032) satisfied for tests that exercise publish/execute
+        // flows rather than the gate itself (the gate has dedicated unit coverage in PublishGateTests).
+        services.RemoveAll<Sorcha.Blueprint.Service.Storage.IRehearsalPassStore>();
+        services.AddSingleton<Sorcha.Blueprint.Service.Storage.IRehearsalPassStore, AlwaysPassRehearsalPassStore>();
     }
 
     private void SetupDefaultWalletResponses()
@@ -484,4 +514,27 @@ internal class TestAuthenticationHandler : AuthenticationHandler<AuthenticationS
 
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
+}
+
+/// <summary>
+/// Feature 142 test stub — an <see cref="Sorcha.Blueprint.Service.Storage.IRehearsalPassStore"/>
+/// that always reports a matching rehearsal pass, so the publish soft gate is satisfied for
+/// integration tests that exercise publish/execute flows rather than the gate itself.
+/// </summary>
+internal sealed class AlwaysPassRehearsalPassStore : Sorcha.Blueprint.Service.Storage.IRehearsalPassStore
+{
+    public Task<Sorcha.Blueprint.Service.Models.RehearsalPass> RecordAsync(
+        Sorcha.Blueprint.Service.Models.RehearsalPass pass, CancellationToken cancellationToken = default)
+        => Task.FromResult(pass);
+
+    public Task<Sorcha.Blueprint.Service.Models.RehearsalPass?> GetLatestAsync(
+        string blueprintId, string execDefHash, CancellationToken cancellationToken = default)
+        => Task.FromResult<Sorcha.Blueprint.Service.Models.RehearsalPass?>(new Sorcha.Blueprint.Service.Models.RehearsalPass
+        {
+            BlueprintId = blueprintId,
+            ExecDefHash = execDefHash,
+            RehearsedAt = DateTimeOffset.UtcNow,
+            RehearsedByPlatformUserId = Guid.Empty,
+            SandboxRegisterId = "test-sandbox",
+        });
 }

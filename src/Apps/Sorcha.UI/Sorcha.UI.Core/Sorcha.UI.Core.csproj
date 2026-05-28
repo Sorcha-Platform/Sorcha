@@ -24,6 +24,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
+    <!-- Feature 142: the designer recomputes the executable-definition hash client-side (WASM)
+         via Sorcha.Blueprint.Engine. Core is forbidden from the PWA bundle, so the Engine
+         (and its transitive Cryptography dep) never reaches the PWA via this reference. -->
+    <ProjectReference Include="..\..\..\Core\Sorcha.Blueprint.Engine\Sorcha.Blueprint.Engine.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />

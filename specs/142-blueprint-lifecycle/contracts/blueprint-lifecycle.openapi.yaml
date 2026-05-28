@@ -1,0 +1,241 @@
+openapi: 3.1.0
+info:
+  title: Blueprint Design Lifecycle Overhaul (142) — net-new / changed contracts
+  version: 0.1.0
+  description: >
+    Only the endpoints this feature adds or changes. Existing endpoints reused
+    unchanged (draft GET/POST/PUT, GET /versions, GET register reads,
+    GetGovernanceRosterAsync, register initiate/finalize, wallet create/sign)
+    are not redefined here. The quick dry-run is client-side (in-WASM engine)
+    and has no HTTP contract. Tier: platform (RequirePlatformAudience) unless
+    noted; publish/rehearsal additionally enforce register governance.
+
+paths:
+  /api/blueprints/{id}/rehearsals:
+    post:
+      summary: Start a full rehearsal on the org sandbox register
+      description: >
+        Lazily provisions (or reuses) the org's devMode sandbox register,
+        mints ephemeral per-role sandbox wallets, publishes the current draft
+        to the sandbox, creates a fresh instance, and returns the initial
+        walk-through. Dry-run mode is handled client-side and does NOT call this.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [full] }
+      responses:
+        "201":
+          description: Rehearsal started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rehearsal" }
+        "409": { description: Blueprint has blocking validation errors (cannot rehearse) }
+        "403": { description: Caller lacks rights to author this blueprint }
+
+  /api/blueprints/{id}/rehearsals/{rehearsalId}:
+    get:
+      summary: Get rehearsal status + log
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: rehearsalId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rehearsal" }
+        "404": { description: Unknown rehearsal }
+    delete:
+      summary: Reset/delete the rehearsal (discard instance + ephemeral identities)
+      description: Clears the rehearsal instance and discards its per-role sandbox wallets. The sandbox register itself persists (reused). Idempotent.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: rehearsalId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Discarded (or already gone) }
+
+  /api/blueprints/{id}/rehearsals/{rehearsalId}/role:
+    post:
+      summary: Switch the acting participant role
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: rehearsalId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties: { role: { type: string } }
+      responses:
+        "200":
+          content: { application/json: { schema: { $ref: "#/components/schemas/Rehearsal" } } }
+
+  /api/blueprints/{id}/rehearsals/{rehearsalId}/steps:
+    post:
+      summary: Submit the current action as the acting role
+      description: >
+        Runs the real execution pipeline (sign as acting role server-side,
+        validate, route, seal, disclose, issue credentials) against the sandbox
+        register, advances the walk-through, and appends to the log. On reaching
+        a successful terminal state in a full rehearsal, records a RehearsalPass
+        for the current executable-definition hash and marks Go live unlockable.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: rehearsalId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [actionId, payload]
+              properties:
+                actionId: { type: integer }
+                payload: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Step applied (rehearsal advanced; may now be Passed)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Rehearsal" } } }
+        "422": { description: Submitted payload failed validation / step not current }
+
+  /api/blueprints/{id}/publish:
+    post:
+      summary: Publish (Go live) — now governance-hard + rehearsal-soft gated
+      description: >
+        CHANGED. Enforces register governance rights server-side (hard refuse
+        if unauthorised). Then checks the rehearsal soft gate: the publishing
+        version's executable-definition hash must match a RehearsalPass; if not,
+        the publish is blocked unless `override.confirm=true` by a caller holding
+        register publish-governance authority, recording a PublishOverride audit row.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [registerId]
+              properties:
+                registerId: { type: string }
+                override:
+                  type: object
+                  description: Present only to override the rehearsal soft gate.
+                  required: [confirm]
+                  properties:
+                    confirm: { type: boolean }
+                    reason: { type: string }
+      responses:
+        "200":
+          description: Published (versioned immutable record created)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blueprintId: { type: string }
+                  version: { type: integer }
+                  registerId: { type: string }
+                  publishedAt: { type: string, format: date-time }
+                  overridden: { type: boolean }
+        "403": { description: Caller lacks register governance publish rights (no record written) }
+        "409":
+          description: Rehearsal soft gate — version not rehearsed; resend with override to proceed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, enum: [REHEARSAL_REQUIRED] }
+                  execDefHash: { type: string }
+                  message: { type: string }
+
+  /api/blueprints/from-published:
+    post:
+      summary: Amend — derive a new draft from a published version (clone-to-draft)
+      description: >
+        Fetches the published Blueprint version, creates a new draft carrying
+        lineage (source register + prior version), and returns its draft id.
+        The new draft opens with Go live re-locked pending a fresh rehearsal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [registerId, blueprintId, version]
+              properties:
+                registerId: { type: string }
+                blueprintId: { type: string }
+                version: { type: integer }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  draftBlueprintId: { type: string }
+                  sourceVersion: { type: integer }
+                  registerId: { type: string }
+        "403": { description: Caller lacks rights on the source register }
+
+  /api/registers/{id}:
+    get:
+      summary: Get register (CHANGED — now surfaces visibility)
+      description: >
+        Existing read; ADDS `advertise` (visibility public/private) to the
+        response so the Go-live detail card can show it. Other detail-card fields
+        come from existing reads (local-relationship, sync-state, governance
+        roster, devMode, published-blueprints count) aggregated client-side.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registerId: { type: string }
+                  name: { type: string }
+                  devMode: { type: boolean }
+                  advertise: { type: boolean, description: NET-NEW on this response }
+                  sandbox: { type: boolean, description: tag — sandbox registers are excluded from Go-live targets }
+
+components:
+  schemas:
+    Rehearsal:
+      type: object
+      properties:
+        rehearsalId: { type: string, format: uuid }
+        blueprintId: { type: string }
+        execDefHash: { type: string }
+        mode: { type: string, enum: [dryRun, full] }
+        sandboxRegisterId: { type: string, nullable: true }
+        currentActingRole: { type: string }
+        outcome: { type: string, enum: [InProgress, Passed, Abandoned, Failed] }
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              actionId: { type: integer }
+              actingRole: { type: string }
+              status: { type: string, enum: [Pending, Current, Done] }
+        log:
+          type: array
+          items:
+            type: object
+            properties:
+              at: { type: string, format: date-time }
+              message: { type: string }
+              kind: { type: string, enum: [info, sealed, gate, routed, delivered, error] }

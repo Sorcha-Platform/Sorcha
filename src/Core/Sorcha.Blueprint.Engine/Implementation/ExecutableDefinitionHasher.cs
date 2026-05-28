@@ -1,0 +1,318 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Sorcha.Blueprint.Models;
+using Sorcha.Blueprint.Models.Forms;
+using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
+using ActionModel = Sorcha.Blueprint.Models.Action;
+
+namespace Sorcha.Blueprint.Engine.Implementation;
+
+/// <summary>
+/// Computes a stable, deterministic hash over a Blueprint's <b>executable definition</b>
+/// (Feature 142 / T004). The hash is the join key for the rehearsal-pass soft gate (D4/FR-032):
+/// a recorded <c>RehearsalPass</c> is valid for a publish iff its <c>ExecDefHash</c> equals the
+/// publishing version's <c>ExecDefHash</c>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>What is included</b> (the executable definition): participants (identity / wallet-binding
+/// structural fields), actions (<c>id</c>, <c>sender</c>, <c>isStartingAction</c>,
+/// <c>requiredPriorActions</c>, <c>calculations</c>, <c>disclosures</c>,
+/// <c>credentialRequirements</c>, <c>credentialIssuanceConfig</c>, <c>routes</c>
+/// [<c>id</c>, <c>nextActionIds</c>, <c>isDefault</c>, <c>condition</c>, <c>outputMapping</c>]),
+/// and each action's <c>dataSchemas</c> with presentational <c>x-*</c> keywords stripped but
+/// behavioural <c>x-*</c> kept (see <see cref="FormKeywordClassifier"/>).
+/// </para>
+/// <para>
+/// <b>What is excluded</b> (presentational / display): blueprint and action <c>title</c> /
+/// <c>description</c>, <c>x-introduction</c>, and every keyword in the presentational set
+/// wherever it appears in a data schema.
+/// </para>
+/// <para>
+/// <b>Canonicalisation.</b> JSON object keys are sorted (order-insensitive) so semantically-equal
+/// blueprints hash identically; arrays keep their order because action and route order is
+/// semantic. The result is a SHA-256 over UTF-8 canonical JSON, returned as lowercase hex.
+/// </para>
+/// <para>
+/// <b>Portability.</b> This type lives in the portable <c>Sorcha.Blueprint.Engine</c> and uses
+/// only <see cref="SHA256"/> and <see cref="System.Text.Json"/> — no HttpClient, no platform
+/// APIs — so it is WASM-safe and produces identical results on the client and the server.
+/// </para>
+/// </remarks>
+public class ExecutableDefinitionHasher
+{
+    private static readonly JsonSerializerOptions ModelSerializerOptions = new()
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    /// <summary>
+    /// Computes the executable-definition hash for the supplied Blueprint.
+    /// </summary>
+    /// <param name="blueprint">The Blueprint to hash. Must not be null.</param>
+    /// <returns>A lowercase hex SHA-256 string over the canonical executable definition.</returns>
+    public string ComputeHash(BlueprintModel blueprint)
+    {
+        ArgumentNullException.ThrowIfNull(blueprint);
+
+        var execDef = BuildExecutableDefinition(blueprint);
+        var canonicalJson = canonicalSerialise(execDef);
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(canonicalJson));
+        return Convert.ToHexStringLower(bytes);
+    }
+
+    /// <summary>
+    /// Projects the Blueprint down to the executable definition as a <see cref="JsonObject"/>:
+    /// only the structural fields, with presentational layout removed.
+    /// </summary>
+    private static JsonObject BuildExecutableDefinition(BlueprintModel blueprint)
+    {
+        var root = new JsonObject
+        {
+            // Structural identity. Title/Description deliberately excluded (presentational).
+            ["id"] = blueprint.Id,
+            ["version"] = blueprint.Version,
+            ["participants"] = BuildParticipants(blueprint.Participants),
+            ["actions"] = BuildActions(blueprint.Actions),
+        };
+
+        return root;
+    }
+
+    private static JsonArray BuildParticipants(IEnumerable<Participant>? participants)
+    {
+        var arr = new JsonArray();
+        if (participants is null)
+        {
+            return arr;
+        }
+
+        foreach (var p in participants)
+        {
+            // Identity + wallet-binding structural fields only; instructions/display omitted.
+            var obj = new JsonObject
+            {
+                ["id"] = p.Id,
+                ["walletAddress"] = p.WalletAddress,
+                ["useStealthAddress"] = p.UseStealthAddress,
+            };
+            arr.Add(obj);
+        }
+
+        return arr;
+    }
+
+    private static JsonArray BuildActions(IEnumerable<ActionModel>? actions)
+    {
+        var arr = new JsonArray();
+        if (actions is null)
+        {
+            return arr;
+        }
+
+        // Action order is semantic — preserve it (no sorting of the array).
+        foreach (var a in actions)
+        {
+            var obj = new JsonObject
+            {
+                ["id"] = a.Id,
+                ["sender"] = a.Sender,
+                ["isStartingAction"] = a.IsStartingAction,
+                ["requiredPriorActions"] = ToIntArray(a.RequiredPriorActions),
+                ["calculations"] = SerialiseModel(a.Calculations),
+                ["disclosures"] = BuildDisclosures(a.Disclosures),
+                ["credentialRequirements"] = SerialiseModel(a.CredentialRequirements),
+                ["credentialIssuanceConfig"] = SerialiseModel(a.CredentialIssuanceConfig),
+                ["routes"] = BuildRoutes(a.Routes),
+                ["dataSchemas"] = BuildDataSchemas(a.DataSchemas),
+            };
+            arr.Add(obj);
+        }
+
+        return arr;
+    }
+
+    private static JsonArray BuildDisclosures(IEnumerable<Disclosure>? disclosures)
+    {
+        var arr = new JsonArray();
+        if (disclosures is null)
+        {
+            return arr;
+        }
+
+        foreach (var d in disclosures)
+        {
+            var obj = new JsonObject
+            {
+                ["participantAddress"] = d.ParticipantAddress,
+                ["dataPointers"] = new JsonArray(d.DataPointers.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray()),
+            };
+            arr.Add(obj);
+        }
+
+        return arr;
+    }
+
+    private static JsonArray BuildRoutes(IEnumerable<Route>? routes)
+    {
+        var arr = new JsonArray();
+        if (routes is null)
+        {
+            return arr;
+        }
+
+        // Route order is semantic (first matching condition wins) — preserve order.
+        foreach (var r in routes)
+        {
+            var obj = new JsonObject
+            {
+                ["id"] = r.Id,
+                ["nextActionIds"] = new JsonArray(r.NextActionIds.Select(i => (JsonNode)JsonValue.Create(i)).ToArray()),
+                ["isDefault"] = r.IsDefault,
+                ["condition"] = r.Condition?.DeepClone(),
+                ["outputMapping"] = SerialiseModel(r.OutputMapping),
+            };
+            arr.Add(obj);
+        }
+
+        return arr;
+    }
+
+    /// <summary>
+    /// Builds the data-schemas array with presentational <c>x-*</c> keywords stripped and
+    /// behavioural <c>x-*</c> kept, walking each schema recursively.
+    /// </summary>
+    private static JsonArray BuildDataSchemas(IEnumerable<JsonDocument>? schemas)
+    {
+        var arr = new JsonArray();
+        if (schemas is null)
+        {
+            return arr;
+        }
+
+        foreach (var doc in schemas)
+        {
+            var node = JsonNode.Parse(doc.RootElement.GetRawText());
+            var stripped = StripPresentational(node);
+            arr.Add(stripped);
+        }
+
+        return arr;
+    }
+
+    /// <summary>
+    /// Recursively removes presentational <c>x-*</c> keywords from a schema node. Behavioural
+    /// <c>x-*</c> keywords and standard JSON Schema vocabulary are retained. Returns a new node.
+    /// </summary>
+    private static JsonNode? StripPresentational(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+            {
+                var result = new JsonObject();
+                foreach (var kvp in obj)
+                {
+                    // Drop presentational extension keywords wherever they appear.
+                    if (FormKeywordClassifier.IsPresentational(kvp.Key))
+                    {
+                        continue;
+                    }
+
+                    result[kvp.Key] = StripPresentational(kvp.Value);
+                }
+
+                return result;
+            }
+
+            case JsonArray array:
+            {
+                var result = new JsonArray();
+                foreach (var item in array)
+                {
+                    result.Add(StripPresentational(item));
+                }
+
+                return result;
+            }
+
+            default:
+                return node?.DeepClone();
+        }
+    }
+
+    /// <summary>
+    /// Serialises an arbitrary model object to a canonical-ready <see cref="JsonNode"/> tree,
+    /// or <see langword="null"/> when the source is null. Used for the rich credential/config
+    /// objects whose every structural field participates in the hash.
+    /// </summary>
+    private static JsonNode? SerialiseModel(object? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        var json = JsonSerializer.Serialize(value, ModelSerializerOptions);
+        return JsonNode.Parse(json);
+    }
+
+    private static JsonNode? ToIntArray(IEnumerable<int>? values)
+    {
+        if (values is null)
+        {
+            return null;
+        }
+
+        return new JsonArray(values.Select(i => (JsonNode)JsonValue.Create(i)).ToArray());
+    }
+
+    /// <summary>
+    /// Serialises a node to canonical JSON: object keys sorted recursively (order-insensitive),
+    /// arrays left in source order (order-sensitive).
+    /// </summary>
+    private static string canonicalSerialise(JsonNode? node)
+    {
+        var canonical = Canonicalise(node);
+        return canonical?.ToJsonString() ?? "null";
+    }
+
+    private static JsonNode? Canonicalise(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+            {
+                var sorted = new JsonObject();
+                foreach (var kvp in obj.OrderBy(k => k.Key, StringComparer.Ordinal))
+                {
+                    sorted[kvp.Key] = Canonicalise(kvp.Value);
+                }
+
+                return sorted;
+            }
+
+            case JsonArray array:
+            {
+                var result = new JsonArray();
+                foreach (var item in array)
+                {
+                    result.Add(Canonicalise(item));
+                }
+
+                return result;
+            }
+
+            default:
+                return node?.DeepClone();
+        }
+    }
+}

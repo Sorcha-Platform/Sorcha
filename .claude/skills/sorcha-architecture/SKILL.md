@@ -1397,3 +1397,82 @@ Closes the citizen→credential loop across a federated node split: a citizen on
 ### Worked example
 
 `walkthroughs/AssuredIdentity/blueprints/assured-identity.json` — action 1 carries a `holderKeys` (`format: sorcha-holder-key`) field; action 2's `credentialIssuanceConfig.holderKeySourceField` points at `/holderKeys/holderJwk`. `run-phase1-identity.ps1` fetches `/api/v1/wallet/holder-keys` and supplies `holderKeys` in the action-1 payload. The live n1↔local cross-node run is **Tier-2** (the genesis-key machine); the C3 server is unit + single-node-integration covered (SC-005 Tier-1). Spec: `specs/137-cross-node-submission/`. Design: `docs/superpowers/specs/2026-05-23-cross-node-submission-design.md`.
+
+## F142 — Blueprint Design Lifecycle Overhaul
+
+The designer workspace is rail-driven: **Describe -> Understand -> Rehearse -> Go live**, with the Go-live stage gated by a server-side `RehearsalPass` keyed by the **executable-definition hash**. The UI lock mirrors the server state (`LifecycleState`) — never the other way round.
+
+### Executable-definition hash (`ExecutableDefinitionHasher` + `FormKeywordClassifier`)
+
+`Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher` canonicalises a blueprint into the bytes that actually drive execution and SHA-256s them. `FormKeywordClassifier` partitions JSON-Schema keywords into **presentational** (`title`, `description`, layout `x-*`, ordering hints) versus **behavioural** (`type`, `enum`, `required`, `pattern`, validation `x-*`, anything that changes which payloads validate). Only behavioural keywords contribute to the hash, so chrome edits (relabelling a field) don't re-lock the lifecycle, but a `required` toggle does. Unknown `x-*` extensions are treated as **behavioural** (fail-safe). The hash is the join key for `RehearsalPass`.
+
+### Two server tables (both via F113 `IStorageRegistrationLog`)
+
+- **`RehearsalPass`** — `{ Id, BlueprintId, ExecDefHash, RehearsedAt, RehearsedByPlatformUserId, SandboxRegisterId }`. Recorded exactly once per terminal-success rehearsal (in `RehearsalOrchestrationService.SubmitStepAsync` when `response.IsComplete`). One row per `(BlueprintId, ExecDefHash)` clears the soft gate.
+- **`PublishOverride`** — `{ Id, BlueprintId, Version, RegisterId, ExecDefHash, OverriddenByPlatformUserId, OverriddenAt, Reason? }`. Append-only audit. Written by the publish endpoint AFTER a successful publish on the override path.
+
+Both stores have a Postgres-backed `EfCore*Store` and an in-memory fallback registered via `RegisterPersistent` / `RegisterInMemory`. They are NOT audited (rehearsal/audit data, not ledger state), so the in-memory fallback is acceptable in non-production.
+
+### Publish gate (`IPublishGate` / `PublishGate`)
+
+The gate runs BEFORE any publish — `EvaluateAsync` returns one of `Forbidden` / `RehearsalRequired` / `Proceed` / `ProceedWithOverride`. The endpoint (`POST /api/blueprints/{id}/publish`) acts on the outcome and writes the override audit only AFTER `IPublishService.PublishAsync` returns success.
+
+- **Governance HARD gate (FR-027 / D5).** `IRegisterServiceClient.GetGovernanceRosterAsync(registerId)` -> look for a member holding Owner / Admin / Designer whose subject matches the caller. The roster subject is a wallet-DID (`did:sorcha:w:{walletId}`), so the **wallet address is the primary match key** (substring within the DID), with `org_id` as the fallback (covers callers without a wallet claim — some service-principal contexts). No roster, no match, no wallet+no org -> **403 Forbidden, no record written**.
+- **Rehearsal SOFT gate (FR-032 / D4).** Look up `IRehearsalPassStore.GetLatestAsync(blueprintId, execDefHash)`. Hit -> `Proceed`. Miss + no override -> **409 `REHEARSAL_REQUIRED`** with the computed `execDefHash` in the response (the UI shows the rehearsal CTA). Miss + `override.confirm=true` -> `ProceedWithOverride`. The caller has already passed the HARD governance check, so the same Owner/Admin/Designer authority that lets them publish lets them override.
+
+### Sandbox register (`SandboxRegisterProvider`)
+
+One per-org devMode register, lazily provisioned via the **two-phase initiate/finalize ceremony** (NOT a bare `POST /api/registers` — there is no such endpoint). The provider:
+
+1. Mints (and caches) the org's `sandbox-owner-{orgId}` wallet.
+2. `POST /api/registers/initiate` with `DevMode=true`, `Advertise=false`, `Metadata["sandbox"]="true"`.
+3. Signs each attestation hash pre-hashed against the owner wallet (mirrors the CLI's `RegisterCreateCommand`).
+4. `POST /api/registers/finalize` to seal the genesis transaction.
+
+Singleton (per-org cache is process-wide transient state) — scoped clients are resolved per-operation through `IServiceScopeFactory`. The `Metadata["sandbox"]="true"` marker drives the computed `Register.Sandbox` flag (T009) which the Go-live picker excludes.
+
+### Ephemeral per-role wallets + sandbox blueprint clone (VAL_BP_002 workaround)
+
+`RehearsalOrchestrationService.StartFullAsync` mints one ephemeral ED25519 wallet per participant role on the blueprint. **Critical**: the validator resolves sender authorisation from the **published blueprint on the register**, not from BP-service instance state. So a non-starting participant (e.g. a reviewer) with no resolvable wallet on the published blueprint trips VAL_BP_002 even if the BP-service has pre-bound a wallet on the instance.
+
+The orchestration publishes a sandbox-specific **clone** of the blueprint (`BuildSandboxBlueprint`) with each NON-starting participant's ephemeral wallet baked into its `WalletAddress`. Starting-action senders are left null so open-participant late-binding still fires (VAL_BP_010 forbids a baked wallet there). The `RehearsalPass` keeps the **original** exec-def hash — the sandbox clone's wallet differences never reach the Go-live gate.
+
+### Amend loop (`POST /api/blueprints/from-published` -> `LifecycleState.AmendContext`)
+
+`BlueprintFromPublishedEndpoint` clones a published version back to a fresh draft and stamps three lineage keys onto the cloned `Blueprint.Metadata`:
+
+- `x-source-register` — the register the source was published to.
+- `x-source-blueprint-id` — the source blueprint id.
+- `x-source-version` — the source version number.
+
+`DesignerBlueprint.razor.cs` reads those keys on load and rehydrates `LifecycleState.AmendContext` — the rail surfaces "Amending vN" plus an "Amend" entry on the services list (T057).
+
+### Chat tools (3 new) + directed-build starter
+
+The chat orchestration registers three layout/UX tools on top of the existing schema tools:
+
+- `set_form_layout` — set/replace a layout JSON on an action's form (`x-layout` block).
+- `set_field_autofill` — set an autofill hint on a single field.
+- `set_review_page` — set the workflow's review-page (terminal summary) config.
+
+A directed-build conversation starts when the AI emits a sentinel of the shape `__directed-start:<id>` where `<id>` is one of the three starter ids: **`grant`**, **`permit`**, **`certify-then-apply`**. The orchestration also recognises plain-language openers ("I want to issue a grant"; "I want a permit application"; "Citizens certify, then apply") — `DirectedBuildStarter` matches the phrase, replays as if the sentinel was emitted, and the rail's Describe stage drives the build.
+
+### UI surface
+
+- `LifecycleRail.razor` (Core/Components/Designer) — the four-stage progress + lock + "amending vN" tag.
+- `JourneyView.razor` — the journey of actions/participants the rehearsal walks (Describe + Understand surfaces).
+- `RehearsalStepper` — the Rehearse stage runner; on terminal success calls `RecordRehearsalPassed` which flips the rail's Go-live lock.
+- `GoLivePanel` — the Go-live picker (sandbox-excluded), system-info card, review, permanence notice, and publish action. Publish outcomes: 200 `overridden:true/false`, 403 with reason, 409 `REHEARSAL_REQUIRED` (returns to Rehearse) or override confirmation.
+
+Designer-only components live in **`Sorcha.UI.Core`** (PWA-forbidden — Core never reaches the wallet PWA bundle). Form authoring stays in **`Sorcha.UI.Components.User`** alongside `SorchaFormRenderer`. The canonical designer route is `/designer/blueprint?stage={describe|understand|rehearse|golive}`.
+
+### Observability
+
+`BlueprintDesignerMetrics` (`Sorcha.Blueprint.Designer` meter, already on the ServiceDefaults export allowlist) records:
+
+- `rehearsal_run_total{mode,outcome}` — counter, mode in {`dryRun`, `full`}, outcome in {`InProgress`, `Passed`, `Abandoned`, `Failed`}.
+- `rehearsal_duration_seconds{outcome}` — histogram (s), start to terminal write.
+- `publish_override_total{register_id,reason_provided}` — counter, audit-row writes.
+- `sandbox_provision_total{outcome,org_id}` — counter, outcome in {`Created`, `Reused`, `Failed`}.
+
+Plus `LogInformation` audit lines on publish overrides, sandbox provisioning, and sandbox-rehearsal discard.

@@ -4,6 +4,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using MudBlazor;
+using Sorcha.UI.Core.Components.Designer;
 using Sorcha.UI.Core.Services;
 using Sorcha.UI.Core.Services.Feedback;
 
@@ -22,6 +23,7 @@ public partial class DesignerToolbar : ComponentBase, IDisposable
 
     [Inject] private IBlueprintApiService BlueprintApi { get; set; } = default!;
     [Inject] private IInlineFeedback Feedback { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
     [Inject] private ILogger<DesignerToolbar> Logger { get; set; } = default!;
 
     /// <summary>Inline-edit binding for the blueprint title; marks the context dirty on change.</summary>
@@ -101,10 +103,47 @@ public partial class DesignerToolbar : ComponentBase, IDisposable
         }
     }
 
-    private void OnLoadClicked()
+    /// <summary>
+    /// Opens the shared <see cref="LoadBlueprintDialog"/> (which lists the caller's drafts via
+    /// <c>IBlueprintApiService.GetBlueprintsAsync</c>); on OK with a selected blueprint id, fetches
+    /// the full <see cref="Sorcha.Blueprint.Models.Blueprint"/> and adopts it via
+    /// <c>DesignerContext.SetBlueprint</c>. The context's exec-def hash recompute auto-re-locks Go
+    /// live for a freshly-loaded draft whose hash has no recorded RehearsalPass (FR-023 / US6).
+    /// </summary>
+    private async Task OnLoadClicked()
     {
-        // TODO(US1 follow-up): open LoadBlueprintDialog and call Context.SetBlueprint(...).
-        Feedback.ShowInfo("Load dialog wiring is scheduled for a follow-up PR");
+        try
+        {
+            var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+            var dialog = await DialogService.ShowAsync<LoadBlueprintDialog>("Load Blueprint", options);
+            var result = await dialog.Result;
+
+            if (result is null || result.Canceled || result.Data is null)
+            {
+                return;
+            }
+
+            if (result.Data is not string selectedBlueprintId || string.IsNullOrWhiteSpace(selectedBlueprintId))
+            {
+                Logger.LogWarning("Load dialog returned a non-string result; ignoring.");
+                return;
+            }
+
+            var bp = await BlueprintApi.GetBlueprintDetailAsync(selectedBlueprintId).ConfigureAwait(true);
+            if (bp is null)
+            {
+                Feedback.ShowWarning("Could not load that blueprint — please try again.");
+                return;
+            }
+
+            Context.SetBlueprint(bp);
+            Feedback.ShowSuccess($"Loaded '{bp.Title}'");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to open Load Blueprint dialog");
+            Feedback.ShowError($"Error opening Load dialog: {ex.Message}", autoDismissMs: 0);
+        }
     }
 
     /// <inheritdoc />

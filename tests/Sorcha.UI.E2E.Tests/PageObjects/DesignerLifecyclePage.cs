@@ -1,0 +1,126 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using Microsoft.Playwright;
+using Sorcha.UI.E2E.Tests.Infrastructure;
+
+namespace Sorcha.UI.E2E.Tests.PageObjects;
+
+/// <summary>
+/// Page object for the Feature 142 rail-driven designer workspace at
+/// <c>/app/designer/blueprint</c>. Selectors use the stable <c>data-testid</c>
+/// attributes carried by the lifecycle-rail / journey / stage components.
+/// </summary>
+/// <remarks>
+/// Scaffold introduced by T001/T002; locators target the test-ids the User Story
+/// components (LifecycleRail T014, JourneyView T016, stage canvases) will expose.
+/// Story suites under <c>Docker/Designer/</c> add the actual assertions.
+/// </remarks>
+public class DesignerLifecyclePage
+{
+    private readonly IPage _page;
+
+    public DesignerLifecyclePage(IPage page) => _page = page;
+
+    public string BaseUrl => $"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.DesignerBlueprint}";
+
+    // --- Lifecycle rail ---------------------------------------------------
+    public ILocator Rail => _page.Locator("[data-testid='lifecycle-rail']");
+    public ILocator RailDescribe => _page.Locator("[data-testid='rail-stage-describe']");
+    public ILocator RailUnderstand => _page.Locator("[data-testid='rail-stage-understand']");
+    public ILocator RailRehearse => _page.Locator("[data-testid='rail-stage-rehearse']");
+    public ILocator RailGoLive => _page.Locator("[data-testid='rail-stage-golive']");
+
+    /// <summary>The lock indicator on the Go live rail stage (present while locked).</summary>
+    public ILocator GoLiveLock => _page.Locator("[data-testid='rail-golive-lock']");
+
+    // --- Stage canvases (root markers established in T001) -----------------
+    public ILocator StageDescribe => _page.Locator("[data-testid='stage-describe']");
+    public ILocator StageUnderstand => _page.Locator("[data-testid='stage-understand']");
+    public ILocator StageRehearse => _page.Locator("[data-testid='stage-rehearse']");
+    public ILocator StageGoLive => _page.Locator("[data-testid='stage-golive']");
+
+    // --- Understand / journey --------------------------------------------
+    public ILocator JourneyView => _page.Locator("[data-testid='journey-view']");
+    public ILocator JourneySteps => _page.Locator("[data-testid^='journey-step-']");
+    public ILocator MustProveBadges => _page.Locator("[data-testid='journey-badge-mustprove']");
+    public ILocator IssuesBadges => _page.Locator("[data-testid='journey-badge-issues']");
+    public ILocator TechnicalFlowToggle => _page.Locator("[data-testid='understand-technical-toggle']");
+
+    /// <summary>The form-detail region revealed when a journey step is selected.</summary>
+    public ILocator StepDetail => _page.Locator("[data-testid='understand-step-detail']");
+
+    // --- First-run guided overlay (T018 / FR-005) -------------------------
+    public ILocator FirstRunOverlay => _page.Locator("[data-testid='rail-first-run-overlay']");
+    public ILocator FirstRunDismiss => _page.Locator("[data-testid='rail-first-run-dismiss']");
+
+    // --- Rehearse stage (T021 / T031-T032) --------------------------------
+    public ILocator RehearseModeDryRun => _page.Locator("[data-testid='rehearse-mode-dryrun']");
+    public ILocator RehearseModeFull => _page.Locator("[data-testid='rehearse-mode-full']");
+
+    /// <summary>The "private sandbox — nothing public" banner shown in full-rehearsal mode.</summary>
+    public ILocator RehearseSandboxBanner => _page.Locator("[data-testid='rehearse-sandbox-banner']");
+
+    /// <summary>The "Start full rehearsal" button shown before a server-side rehearsal begins.</summary>
+    public ILocator RehearseFullStart => _page.Locator("[data-testid='rehearse-full-start']");
+
+    public ILocator RehearsalStepper => _page.Locator("[data-testid='rehearsal-stepper']");
+    public ILocator RehearsalRoleSwitcher => _page.Locator("[data-testid='rehearsal-role-switcher']");
+    public ILocator RehearsalLog => _page.Locator("[data-testid='rehearsal-log']");
+    public ILocator RehearsalStepSubmit => _page.Locator("[data-testid='rehearsal-step-submit']");
+    public ILocator RehearsalReset => _page.Locator("[data-testid='rehearsal-reset']");
+
+    // --- Go live stage (T033 / T036-T040) ---------------------------------
+    public ILocator GoLivePanel => _page.Locator("[data-testid='golive-panel']");
+    public ILocator GoLiveRegisterSelect => _page.Locator("[data-testid='golive-register-select']");
+    public ILocator GoLiveSystemInfoCard => _page.Locator("[data-testid='golive-systeminfo-card']");
+    public ILocator GoLiveNoRights => _page.Locator("[data-testid='golive-no-rights']");
+    public ILocator GoLiveNoEligibleRegisters => _page.Locator("[data-testid='golive-no-eligible-registers']");
+    public ILocator GoLiveReview => _page.Locator("[data-testid='golive-review']");
+    public ILocator GoLiveVersion => _page.Locator("[data-testid='golive-version']");
+    public ILocator GoLivePublishButton => _page.Locator("[data-testid='golive-publish-btn']");
+    public ILocator GoLiveOverrideConfirm => _page.Locator("[data-testid='golive-override-confirm']");
+    public ILocator GoLiveLockedHint => _page.Locator("[data-testid='golive-locked-hint']");
+
+    // --- Amend loop (T053 / T057) -----------------------------------------
+    /// <summary>The "Amend" action on a published-blueprint row in the services/blueprints list.</summary>
+    public ILocator BlueprintAmendButton => _page.Locator("[data-testid^='blueprint-amend-']");
+
+    /// <summary>A specific published-row "Amend" action by blueprint id.</summary>
+    /// <param name="blueprintId">The published blueprint id whose row should be targeted.</param>
+    public ILocator BlueprintAmendButtonFor(string blueprintId)
+        => _page.Locator($"[data-testid='blueprint-amend-{blueprintId}']");
+
+    public Task NavigateAsync(string? blueprintId = null)
+    {
+        var url = BaseUrl;
+        if (!string.IsNullOrEmpty(blueprintId))
+        {
+            url += "/" + blueprintId;
+        }
+        return _page.GotoAsync(url);
+    }
+
+    /// <summary>Navigates to the designer workspace with an explicit <c>?stage=</c> deep-link.</summary>
+    public Task NavigateToStageAsync(string stage)
+        => _page.GotoAsync($"{BaseUrl}?stage={stage}");
+
+    /// <summary>
+    /// Probes whether the shell test seam (<c>window.sorcha.designer.shellRef</c>) is registered.
+    /// It is only present on DEBUG / E2E_TEST_HOOKS builds; the Release Docker image does not carry
+    /// it, so seam-dependent assertions must gate on this and mark themselves inconclusive when false.
+    /// </summary>
+    public Task<bool> ShellSeamReadyAsync()
+        => _page.EvaluateAsync<bool>(
+            "() => !!(window.sorcha && window.sorcha.designer && window.sorcha.designer.shellRef)");
+
+    /// <summary>
+    /// Invokes a parameterless <c>[JSInvokable]</c> seam method on the shell test hook
+    /// (e.g. <c>TestInject_MarkRehearsalPassed</c>). Callers MUST first verify
+    /// <see cref="ShellSeamReadyAsync"/> — invoking when the hook is absent throws.
+    /// </summary>
+    public Task InvokeShellSeamAsync(string method)
+        => _page.EvaluateAsync(
+            "async (m) => { await window.sorcha.designer.shellRef.invokeMethodAsync(m); }",
+            method);
+}

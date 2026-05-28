@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Models;
+using Sorcha.ServiceClients.Blueprint.Models;
 using Sorcha.UI.Core.Models.Blueprints;
 using Sorcha.UI.Core.Models.Common;
 using Sorcha.UI.Core.Models.Workflows;
@@ -177,6 +179,68 @@ public class BlueprintApiService : IBlueprintApiService
         }
     }
 
+    public async Task<GoLivePublishOutcome> PublishGoLiveAsync(
+        string id,
+        string registerId,
+        bool confirmOverride = false,
+        string? overrideReason = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new PublishBlueprintRequest
+            {
+                RegisterId = registerId,
+                Override = confirmOverride
+                    ? new PublishOverride { Confirm = true, Reason = overrideReason }
+                    : null
+            };
+
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/blueprints/{id}/publish", request, cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<PublishBlueprintResult>(
+                    cancellationToken: cancellationToken);
+                return result is not null
+                    ? GoLivePublishOutcome.Published(result)
+                    : GoLivePublishOutcome.Errored("Publish succeeded but the response could not be read.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Conflict)
+            {
+                var error = await response.Content.ReadFromJsonAsync<RehearsalRequiredError>(
+                    cancellationToken: cancellationToken);
+                return GoLivePublishOutcome.NeedsRehearsal(
+                    error ?? new RehearsalRequiredError
+                    {
+                        Message = "This version has not passed a full rehearsal."
+                    });
+            }
+
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                _logger.LogInformation(
+                    "Publish of blueprint {Id} to register {RegisterId} refused (403 — no publish rights)",
+                    id, registerId);
+                return GoLivePublishOutcome.Refused(
+                    "You do not have publishing rights (Owner, Admin, or Designer) on this register.");
+            }
+
+            _logger.LogWarning(
+                "Go-live publish of blueprint {Id} to register {RegisterId} failed: {StatusCode}",
+                id, registerId, response.StatusCode);
+            return GoLivePublishOutcome.Errored(
+                $"Publishing failed ({(int)response.StatusCode}). Please try again.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error publishing blueprint {Id} to register {RegisterId}", id, registerId);
+            return GoLivePublishOutcome.Errored($"Publishing error: {ex.Message}");
+        }
+    }
+
     public async Task<List<BlueprintVersionViewModel>> GetVersionsAsync(string id, CancellationToken cancellationToken = default)
     {
         try
@@ -190,6 +254,43 @@ public class BlueprintApiService : IBlueprintApiService
             return [];
         }
     }
+
+    /// <inheritdoc />
+    public async Task<string?> FromPublishedAsync(
+        string registerId,
+        string blueprintId,
+        int version,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var body = new { registerId, blueprintId, version };
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/blueprints/from-published", body, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "FromPublished failed: {StatusCode} (register {RegisterId}, source {BlueprintId} v{Version})",
+                    response.StatusCode, registerId, blueprintId, version);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<CloneFromPublishedResponse>(
+                cancellationToken: cancellationToken);
+            return result?.DraftBlueprintId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cloning published blueprint {BlueprintId} v{Version}", blueprintId, version);
+            return null;
+        }
+    }
+
+    private sealed record CloneFromPublishedResponse(
+        string DraftBlueprintId,
+        int SourceVersion,
+        string RegisterId);
 
     public async Task<BlueprintListItemViewModel?> GetVersionAsync(string id, string version, CancellationToken cancellationToken = default)
     {

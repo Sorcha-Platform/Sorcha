@@ -70,3 +70,22 @@ See `specs/123-ui-core-boundary-split/contracts/shared-dto-extraction-pattern.md
 3. Consumers inject the audience-correct interface. No user-facing page injects a `*AdminService`. No admin page injects a Shared read interface to reach an admin-only operation.
 
 If your file doesn't fit the convention, the convention isn't wrong — one of three things is: the audience classification (rethink the folder), the interface is bi-modal (split it), or a DTO needs to be extracted.
+
+
+## F142 Blueprint Lifecycle (designer-only surface lives here)
+
+Feature 142's designer workspace lives entirely in `Sorcha.UI.Core` (PWA-forbidden — Core never reaches the wallet PWA bundle). The page is `Pages/Designer/DesignerBlueprint.razor`, a rail-driven shell of four stages: **Describe -> Understand -> Rehearse -> Go live**.
+
+Component layout under `Components/Designer/`:
+
+- `LifecycleRail.razor` — four-stage progress + Go-live lock + "Amending vN" tag.
+- `JourneyView.razor` — actions/participants journey (Describe + Understand).
+- Stage views: `Stages/DescribeStage.razor`, `UnderstandStage.razor`, `RehearseStage.razor`, `GoLiveStage.razor`.
+- `RehearsalStepper.razor` — walk-through runner; on terminal success calls `RecordRehearsalPassed`.
+- `GoLivePanel.razor` — sandbox-excluded register picker, system-info card, permanence notice, publish action.
+
+State management is via `DesignerContext.Lifecycle` (a `LifecycleState` that recomputes its exec-def hash on change, re-locking Go-live whenever a behavioural keyword changes). Form authoring (the field tray, layout panel, schema importer) stays in `Sorcha.UI.Components.User` alongside `SorchaFormRenderer` so it can be reused by the PWA — the audience-partition rule above still applies.
+
+Canonical route: `/designer/blueprint?stage={describe|understand|rehearse|golive}`. Legacy `/designer` and `/designer/chat` redirect into the rail.
+
+Architecture detail: `.claude/skills/sorcha-architecture/SKILL.md` -> "F142 — Blueprint Design Lifecycle Overhaul". Spec: `specs/142-blueprint-lifecycle/`.

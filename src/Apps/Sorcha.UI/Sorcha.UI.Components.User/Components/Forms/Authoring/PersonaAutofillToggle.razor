@@ -1,0 +1,43 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+
+<MudButton Size="MudBlazor.Size.Small"
+           Variant="@(IsBound ? Variant.Filled : Variant.Outlined)"
+           Color="@(IsBound ? Color.Success : Color.Default)"
+           StartIcon="@(IsBound ? Icons.Material.Filled.PersonOutline : Icons.Material.Outlined.PersonOff)"
+           OnClick="HandleClick"
+           data-testid="@($"persona-autofill-toggle-{FieldName}")">
+    @FieldName
+</MudButton>
+
+@code {
+    /// <summary>Top-level schema property name (e.g. "email").</summary>
+    [Parameter, EditorRequired] public string FieldName { get; set; } = string.Empty;
+
+    /// <summary>Current persona binding key, or null when unbound.</summary>
+    [Parameter] public string? CurrentPersonaKey { get; set; }
+
+    /// <summary>
+    /// Fires when the user clicks. Carries the field name and the new persona key (null = opt out).
+    /// Field-name → persona-key inference is a deliberate heuristic: a field literally called
+    /// <c>email</c> binds to the <c>email</c> persona attribute. Unknown field names emit a
+    /// generic toggle that uses the field name as the persona key — chat / typed-schema authoring
+    /// can refine this further.
+    /// </summary>
+    [Parameter] public EventCallback<(string FieldName, string? PersonaKey)> OnToggle { get; set; }
+
+    private bool IsBound => !string.IsNullOrEmpty(CurrentPersonaKey);
+
+    private async Task HandleClick()
+    {
+        // Toggle: if currently bound, opt out (null); otherwise bind by inferring the
+        // persona key from the field name.
+        var next = IsBound ? null : FieldName;
+        if (OnToggle.HasDelegate)
+        {
+            await OnToggle.InvokeAsync((FieldName, next));
+        }
+    }
+}

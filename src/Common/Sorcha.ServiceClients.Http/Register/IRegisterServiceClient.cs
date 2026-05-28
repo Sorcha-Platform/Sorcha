@@ -441,6 +441,41 @@ public interface IRegisterServiceClient
         string tenant,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Initiates the two-phase owner-attestation register-creation ceremony (Phase 1) via
+    /// <c>POST /api/registers/initiate</c>. The server generates the register id and returns one
+    /// <see cref="AttestationToSign"/> per owner/admin; each carries a hex-encoded SHA-256 hash
+    /// (<see cref="AttestationToSign.DataToSign"/>) that the caller must sign with the owner wallet
+    /// before calling <see cref="FinalizeRegisterCreationAsync"/>.
+    /// </summary>
+    /// <param name="request">Initiation request (name, owners, devMode, metadata, advertise, purpose, …).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The initiation response with the generated register id, attestations to sign, nonce, and expiry.</returns>
+    /// <remarks>
+    /// Server-to-service surface. The caller is expected to be a service principal that can manage
+    /// registers. Throws on a non-success status — the ceremony has no partial-success state.
+    /// </remarks>
+    Task<InitiateRegisterCreationResponse> InitiateRegisterCreationAsync(
+        InitiateRegisterCreationRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finalises the two-phase register-creation ceremony (Phase 2) via
+    /// <c>POST /api/registers/finalize</c>. Submits the signed attestations; the server verifies each
+    /// signature against the hash it stored at initiation, seals the genesis transaction, and creates
+    /// the register.
+    /// </summary>
+    /// <param name="request">Finalisation request (register id, nonce, and one signed attestation per owner/admin).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The finalisation response with the created register id and genesis transaction id.</returns>
+    /// <remarks>
+    /// Server-to-service surface. Throws on a non-success status (e.g. 401 on a signature mismatch,
+    /// 408 if the 5-minute window lapsed).
+    /// </remarks>
+    Task<FinalizeRegisterCreationResponse> FinalizeRegisterCreationAsync(
+        FinalizeRegisterCreationRequest request,
+        CancellationToken cancellationToken = default);
+
     // =========================================================================
     // Policy Operations
     // =========================================================================

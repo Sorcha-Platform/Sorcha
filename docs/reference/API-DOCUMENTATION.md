@@ -1075,6 +1075,48 @@ POST /api/blueprints/{id}/publish
 
 ---
 
+### Feature 142 — Blueprint Design Lifecycle
+
+The staged designer workspace (Describe → Understand → Rehearse → Go live) is backed by a small set of new endpoints plus a CHANGED publish contract. The full OpenAPI shape lives at `specs/142-blueprint-lifecycle/contracts/blueprint-lifecycle.openapi.yaml`; the table below is the operator-facing summary.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/blueprints/{id}/rehearsals` | Start a full rehearsal — provisions/reuses the per-org devMode sandbox register and mints ephemeral per-role wallets. |
+| GET | `/api/blueprints/{id}/rehearsals/{rehearsalId}` | Read rehearsal status + walk-through log. |
+| DELETE | `/api/blueprints/{id}/rehearsals/{rehearsalId}` | Reset / discard a rehearsal (sandbox register persists; ephemeral wallets are abandoned). |
+| POST | `/api/blueprints/{id}/rehearsals/{rehearsalId}/role` | Switch the currently acting participant role. |
+| POST | `/api/blueprints/{id}/rehearsals/{rehearsalId}/steps` | Submit the current step's payload as the acting role. Terminal success records a `RehearsalPass` for the exec-def hash. |
+| POST | `/api/blueprints/{id}/publish` | CHANGED — now gated by governance (HARD) + rehearsal (SOFT). |
+| POST | `/api/blueprints/from-published` | NEW — clone a published version back to a fresh draft for amend. |
+
+**Read register response — new `advertise` + `sandbox` fields.**
+`GET /api/registers/{id}` now carries the `advertise` flag and a computed `sandbox` flag (true when the register's metadata has `sandbox=true`). The Go-live picker excludes sandbox registers.
+
+**`POST /api/blueprints/{id}/publish` (changed).** Request body now accepts an optional `override` block:
+
+```json
+{
+  "registerId": "reg-abc",
+  "override": { "confirm": true, "reason": "hot-fix policy update — rehearsal scheduled for end of week" }
+}
+```
+
+Responses:
+
+| Status | Body | When |
+|--------|------|------|
+| `200 OK` | `{ blueprintId, version, registerId, publishedAt, overridden, warnings? }` | Cleared — either via a matching `RehearsalPass` or via an authorised override (audited). |
+| `403 Forbidden` | `{ error: "…" }` | Caller does not hold a publish-governance role (Owner / Admin / Designer) on the target register's roster. No record written. |
+| `409 Conflict` | `{ code: "REHEARSAL_REQUIRED", execDefHash, message }` | No matching `RehearsalPass` for this exec-def hash and no override confirmed. Resend with `override.confirm=true` to proceed. |
+
+Override paths write a `PublishOverride` audit row (`OverriddenByPlatformUserId`, `OverriddenAt`, `RegisterId`, `ExecDefHash`, optional `Reason`). Observability: counters `rehearsal_run_total`, `publish_override_total`, `sandbox_provision_total` and histogram `rehearsal_duration_seconds` on the `Sorcha.Blueprint.Designer` meter.
+
+**`POST /api/blueprints/from-published` (new).** Request body `{ "publishedBlueprintId": "…" }` or `{ "sourceBlueprintId": "…", "version": 3 }`. Returns the new draft `Blueprint` with lineage keys (`x-source-register`, `x-source-blueprint-id`, `x-source-version`) on its `Metadata` so the designer can rehydrate the amend context.
+
+**Auth (all of the above):** JWT Bearer required. Rehearsal endpoints require `CanManageBlueprints`; publish requires `CanPublishBlueprints` AND the governance gate; `from-published` requires `CanManageBlueprints`.
+
+---
+
 ## Wallet Service API
 
 ### Base Path: `/api/wallets`

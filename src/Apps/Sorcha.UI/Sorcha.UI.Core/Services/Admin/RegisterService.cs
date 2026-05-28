@@ -5,6 +5,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.LocalRelationship;
+using Sorcha.ServiceClients.Register;
 using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Blueprints;
 using Sorcha.UI.Core.Models.Registers;
@@ -254,6 +256,103 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
         response.EnsureSuccessStatusCode();
     }
 
+    /// <inheritdoc />
+    public async Task<RegisterLocalRelationship?> GetLocalRelationshipAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                $"/api/registers/{Uri.EscapeDataString(registerId)}/local-relationship",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogWarning(
+                        "Failed to fetch local relationship for register {RegisterId}: {StatusCode}",
+                        registerId, response.StatusCode);
+                }
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RegisterLocalRelationship>(
+                JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching local relationship for register {RegisterId}", registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<RegisterSyncStateView?> GetSyncStateAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                $"/api/registers/{Uri.EscapeDataString(registerId)}/sync-state",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogWarning(
+                        "Failed to fetch sync state for register {RegisterId}: {StatusCode}",
+                        registerId, response.StatusCode);
+                }
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RegisterSyncStateView>(
+                JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching sync state for register {RegisterId}", registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> GetPublishedBlueprintCountAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(
+                $"/api/registers/{Uri.EscapeDataString(registerId)}/blueprints/published",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogWarning(
+                        "Failed to fetch published blueprints for register {RegisterId}: {StatusCode}",
+                        registerId, response.StatusCode);
+                }
+                return 0;
+            }
+
+            var published = await response.Content.ReadFromJsonAsync<PublishedBlueprintsResponse>(
+                JsonOptions, cancellationToken);
+            return published?.Blueprints.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching published blueprint count for register {RegisterId}", registerId);
+            return 0;
+        }
+    }
+
     private static RegisterViewModel MapToViewModel(Register.Models.Register register)
     {
         return new RegisterViewModel
@@ -268,7 +367,8 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
             CreatedAt = register.CreatedAt,
             UpdatedAt = register.UpdatedAt,
             SyncState = register.SyncState?.ToString(),
-            DevMode = register.DevMode
+            DevMode = register.DevMode,
+            Sandbox = register.Sandbox
         };
     }
 }

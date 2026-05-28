@@ -42,7 +42,7 @@ public class BlueprintToolExecutorTests
         var tools = _executor.GetToolDefinitions();
 
         // Assert
-        tools.Should().HaveCount(16);
+        tools.Should().HaveCount(19);
         tools.Select(t => t.Name).Should().BeEquivalentTo(new[]
         {
             "create_blueprint",
@@ -60,7 +60,11 @@ public class BlueprintToolExecutorTests
             "issue_credential",
             "set_action_schema",
             "set_action_routes",
-            "set_action_metadata"
+            "set_action_metadata",
+            // Feature 142 / US5 — presentational form-layout authoring tools.
+            "set_form_layout",
+            "set_field_autofill",
+            "set_review_page",
         });
     }
 

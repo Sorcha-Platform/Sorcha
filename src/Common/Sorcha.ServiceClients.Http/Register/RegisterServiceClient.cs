@@ -1064,6 +1064,100 @@ public class RegisterServiceClient : IRegisterServiceClient
         }
     }
 
+    /// <inheritdoc />
+    public async Task<InitiateRegisterCreationResponse> InitiateRegisterCreationAsync(
+        InitiateRegisterCreationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        try
+        {
+            _logger.LogDebug(
+                "Initiating register creation for '{Name}' with {OwnerCount} owner(s) (devMode={DevMode})",
+                request.Name, request.Owners.Count, request.DevMode);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.PostAsJsonAsync(
+                "api/registers/initiate",
+                request,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Failed to initiate register creation for '{Name}': {StatusCode} - {Error}",
+                    request.Name, response.StatusCode, error);
+                throw new HttpRequestException(
+                    $"Failed to initiate register creation: {response.StatusCode}");
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<InitiateRegisterCreationResponse>(
+                JsonOptions, cancellationToken);
+            return result ?? throw new InvalidOperationException(
+                "Failed to deserialize register initiation response");
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to initiate register creation for '{Name}'", request.Name);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<FinalizeRegisterCreationResponse> FinalizeRegisterCreationAsync(
+        FinalizeRegisterCreationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        try
+        {
+            _logger.LogDebug(
+                "Finalizing register creation for {RegisterId} with {AttestationCount} signed attestation(s)",
+                request.RegisterId, request.SignedAttestations.Count);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.PostAsJsonAsync(
+                "api/registers/finalize",
+                request,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Failed to finalize register creation for {RegisterId}: {StatusCode} - {Error}",
+                    request.RegisterId, response.StatusCode, error);
+                throw new HttpRequestException(
+                    $"Failed to finalize register creation: {response.StatusCode}");
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<FinalizeRegisterCreationResponse>(
+                JsonOptions, cancellationToken);
+            return result ?? throw new InvalidOperationException(
+                "Failed to deserialize register finalization response");
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to finalize register creation for {RegisterId}", request.RegisterId);
+            throw;
+        }
+    }
+
     // =========================================================================
     // Participant Query Operations
     // =========================================================================

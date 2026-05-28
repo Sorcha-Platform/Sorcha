@@ -1,0 +1,469 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@* Feature 142 — Rehearse stage canvas (dry-run + full rehearsal; T031 / T032). *@
+@* Mode pills (dry-run / full) switch between the in-WASM quick dry-run (no register) and the *@
+@* server-side full rehearsal against the org's private sandbox register. A passing FULL *@
+@* rehearsal records a RehearsalPass on the DesignerContext, unlocking Go live. *@
+
+@namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Stages
+@using MudBlazor
+@using Sorcha.UI.Core.Components.Designer
+@using Sorcha.UI.Core.Services.Designer
+@using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.ServiceClients.Blueprint.Models
+@using BlueprintModel = Sorcha.Blueprint.Models.Blueprint
+@inject DesignerContext Context
+@inject IDryRunHarness DryRun
+@inject IRehearsalApiService RehearsalApi
+@inject IInlineFeedback Feedback
+@implements IDisposable
+
+<div class="designer-stage designer-stage--rehearse" data-testid="stage-rehearse">
+
+    @* --- Mode pills --------------------------------------------------------------------- *@
+    <div class="rehearse-stage__modes mb-4">
+        <MudButtonGroup OverrideStyles="false" Variant="Variant.Outlined">
+            <MudButton Variant="@(_mode == RehearseMode.DryRun ? Variant.Filled : Variant.Outlined)"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Speed"
+                       OnClick="@(() => SetMode(RehearseMode.DryRun))"
+                       data-testid="rehearse-mode-dryrun">
+                Dry-run
+            </MudButton>
+            <MudButton Variant="@(_mode == RehearseMode.Full ? Variant.Filled : Variant.Outlined)"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Science"
+                       OnClick="@(() => SetMode(RehearseMode.Full))"
+                       data-testid="rehearse-mode-full">
+                Full rehearsal
+            </MudButton>
+        </MudButtonGroup>
+    </div>
+
+    @if (Context.Blueprint is null)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true">
+            Describe a service first so there is something to rehearse.
+        </MudAlert>
+    }
+    else if (_mode == RehearseMode.DryRun)
+    {
+        @* --- Dry-run mode: in-WASM, no register, no banner --------------------------- *@
+        <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+            A quick walk-through in your browser — schema validation, calculations, routing and
+            disclosure. No register, nothing saved. Credential steps are checked in the full rehearsal.
+        </MudText>
+
+        <RehearsalStepper Steps="@DryRunStepViews()"
+                          CurrentActingRole="@DryRun.CurrentActingRole"
+                          Roles="@_roles"
+                          Log="@DryRunLog()"
+                          IsComplete="@DryRun.IsComplete"
+                          IsBusy="@_busy"
+                          OnSwitchRole="@OnDryRunSwitchRole"
+                          OnSubmitStep="@OnDryRunSubmit"
+                          OnReset="@OnDryRunReset" />
+    }
+    else
+    {
+        @* --- Full rehearsal mode: server-side, sandbox register ---------------------- *@
+        <MudAlert Severity="Severity.Info" Dense="false" Class="mb-4 rehearse-stage__sandbox-banner"
+                  Icon="@Icons.Material.Filled.Shield"
+                  data-testid="rehearse-sandbox-banner">
+            <MudText Typo="Typo.subtitle2">Private sandbox — nothing is published.</MudText>
+            <MudText Typo="Typo.body2">
+                This full rehearsal runs the real execution pipeline against your organisation's
+                private sandbox register, with throwaway test wallets. Nothing here is public,
+                nothing reaches a live register, and everything is discarded when you reset.
+            </MudText>
+        </MudAlert>
+
+        @if (_rehearsal is null)
+        {
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PlayCircle"
+                       Disabled="@_busy"
+                       OnClick="@StartFullRehearsal"
+                       data-testid="rehearse-full-start">
+                Start full rehearsal
+            </MudButton>
+        }
+        else
+        {
+            <RehearsalStepper Steps="@FullStepViews()"
+                              CurrentActingRole="@_rehearsal.CurrentActingRole"
+                              Roles="@_roles"
+                              Log="@FullLog()"
+                              IsComplete="@(_rehearsal.Outcome != RehearsalOutcome.InProgress)"
+                              IsBusy="@_busy"
+                              OnSwitchRole="@OnFullSwitchRole"
+                              OnSubmitStep="@OnFullSubmit"
+                              OnReset="@OnFullReset" />
+        }
+    }
+</div>
+
+@code {
+    /// <summary>Which rehearsal mode is currently active.</summary>
+    private enum RehearseMode { DryRun, Full }
+
+    private RehearseMode _mode = RehearseMode.DryRun;
+    private bool _busy;
+    private Rehearsal? _rehearsal;
+    private IReadOnlyList<string> _roles = [];
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        Context.Changed += OnContextChanged;
+        EnsureDryRunStarted();
+        RefreshRoles();
+    }
+
+    private void OnContextChanged()
+    {
+        RefreshRoles();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshRoles() =>
+        _roles = Context.Blueprint?.Participants.Select(p => p.Id).ToList() ?? [];
+
+    private void SetMode(RehearseMode mode)
+    {
+        if (_mode == mode)
+        {
+            return;
+        }
+
+        _mode = mode;
+        if (mode == RehearseMode.DryRun)
+        {
+            EnsureDryRunStarted();
+        }
+        StateHasChanged();
+    }
+
+    private void EnsureDryRunStarted()
+    {
+        if (Context.Blueprint is { } bp && !DryRun.IsStarted)
+        {
+            DryRun.Start(bp);
+        }
+    }
+
+    // ---- Dry-run wiring ----------------------------------------------------------------
+
+    private async Task OnDryRunSwitchRole(string role)
+    {
+        // The in-WASM dry-run drives the acting role from the current action's sender, so a manual
+        // role switch is advisory only — surface it as info rather than mutating the walk.
+        Feedback.ShowInfo($"Dry-run acts as the current action's role ({DryRun.CurrentActingRole}).");
+        await Task.CompletedTask;
+    }
+
+    private async Task OnDryRunSubmit()
+    {
+        if (DryRun.IsComplete)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var step = await DryRun.SubmitCurrentStepAsync(new Dictionary<string, object>());
+            if (step.Status == Sorcha.Blueprint.Engine.Models.DryRunStepStatus.Failed)
+            {
+                Feedback.ShowWarning("This step's payload failed validation in the dry-run.");
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void OnDryRunReset()
+    {
+        DryRun.Reset();
+        StateHasChanged();
+    }
+
+    private IReadOnlyList<RehearsalStepView> DryRunStepViews()
+    {
+        var views = new List<RehearsalStepView>();
+        var blueprint = Context.Blueprint;
+
+        // Completed / failed steps recorded by the harness.
+        foreach (var step in DryRun.Steps)
+        {
+            views.Add(new RehearsalStepView(
+                ActionId: step.ActionId,
+                Title: step.Title,
+                ActingRole: step.ActingRole,
+                Status: step.Status == Sorcha.Blueprint.Engine.Models.DryRunStepStatus.Failed
+                    ? RehearsalStepViewStatus.Failed
+                    : RehearsalStepViewStatus.Done,
+                RoutingSummary: SummariseRouting(step.RoutingOutcome),
+                DisclosureSummary: SummariseDisclosure(step.DisclosureOutcome),
+                CredentialNote: step.CredentialNote));
+        }
+
+        // The current pending step (if the walk is not complete and not parked on a failure).
+        if (!DryRun.IsComplete && DryRun.CurrentActionId is { } currentId
+            && DryRun.Steps.LastOrDefault()?.Status != Sorcha.Blueprint.Engine.Models.DryRunStepStatus.Failed)
+        {
+            var action = blueprint?.Actions.FirstOrDefault(a => a.Id == currentId);
+            views.Add(new RehearsalStepView(
+                ActionId: currentId,
+                Title: action?.Title ?? string.Empty,
+                ActingRole: DryRun.CurrentActingRole ?? string.Empty,
+                Status: RehearsalStepViewStatus.Current));
+        }
+
+        return views;
+    }
+
+    private IReadOnlyList<RehearsalLogView> DryRunLog()
+    {
+        var log = new List<RehearsalLogView>();
+        foreach (var step in DryRun.Steps)
+        {
+            var title = string.IsNullOrWhiteSpace(step.Title) ? $"Action {step.ActionId}" : step.Title;
+            if (step.Status == Sorcha.Blueprint.Engine.Models.DryRunStepStatus.Failed)
+            {
+                log.Add(new RehearsalLogView($"\"{title}\" failed validation.", RehearsalLogKind.Error));
+                continue;
+            }
+
+            log.Add(new RehearsalLogView($"{step.ActingRole} submitted \"{title}\".", RehearsalLogKind.Info));
+            var routing = SummariseRouting(step.RoutingOutcome);
+            if (!string.IsNullOrWhiteSpace(routing))
+            {
+                log.Add(new RehearsalLogView(routing, RehearsalLogKind.Routed));
+            }
+            if (step.HasDeferredCredentialChecks)
+            {
+                log.Add(new RehearsalLogView(
+                    "Credential checks deferred to the full rehearsal.", RehearsalLogKind.Info));
+            }
+        }
+        if (DryRun.IsComplete)
+        {
+            log.Add(new RehearsalLogView("Dry-run walk-through complete.", RehearsalLogKind.Info));
+        }
+        return log;
+    }
+
+    private static string? SummariseRouting(Sorcha.Blueprint.Engine.Models.RoutingResult? routing)
+    {
+        if (routing is null)
+        {
+            return null;
+        }
+        if (routing.IsWorkflowComplete)
+        {
+            return "Workflow complete.";
+        }
+        if (!string.IsNullOrEmpty(routing.RejectedToParticipantId))
+        {
+            return $"Rejected back to {routing.RejectedToParticipantId}.";
+        }
+        if (routing.NextActions.Count > 1)
+        {
+            return $"Routed to {routing.NextActions.Count} parallel branches.";
+        }
+        if (!string.IsNullOrEmpty(routing.NextActionId))
+        {
+            return $"Routed to action {routing.NextActionId}"
+                + (string.IsNullOrEmpty(routing.NextParticipantId) ? "." : $" ({routing.NextParticipantId}).");
+        }
+        return null;
+    }
+
+    private static string? SummariseDisclosure(
+        IReadOnlyList<Sorcha.Blueprint.Engine.Models.DisclosureResult>? disclosure)
+    {
+        if (disclosure is null || disclosure.Count == 0)
+        {
+            return null;
+        }
+        return $"Disclosed to {disclosure.Count} participant(s).";
+    }
+
+    // ---- Full rehearsal wiring ---------------------------------------------------------
+
+    private async Task StartFullRehearsal()
+    {
+        if (Context.Blueprint is not { } bp)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var outcome = await RehearsalApi.StartFullRehearsalAsync(bp.Id);
+            if (outcome.Blocked)
+            {
+                Feedback.ShowError("Fix the outstanding validation errors before rehearsing.", autoDismissMs: 0);
+                return;
+            }
+            if (outcome.Rehearsal is null)
+            {
+                Feedback.ShowError("Could not start the full rehearsal. Please try again.");
+                return;
+            }
+
+            _rehearsal = outcome.Rehearsal;
+            AfterRehearsalRefresh();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OnFullSwitchRole(string role)
+    {
+        if (_rehearsal is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var updated = await RehearsalApi.SwitchRoleAsync(Context.Blueprint!.Id, _rehearsal.RehearsalId, role);
+            if (updated is not null)
+            {
+                _rehearsal = updated;
+                AfterRehearsalRefresh();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OnFullSubmit()
+    {
+        if (_rehearsal is null)
+        {
+            return;
+        }
+
+        var currentStep = _rehearsal.Steps.FirstOrDefault(s => s.Status == RehearsalStepStatus.Current);
+        if (currentStep is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var updated = await RehearsalApi.SubmitStepAsync(
+                Context.Blueprint!.Id, _rehearsal.RehearsalId, currentStep.ActionId, "{}");
+            if (updated is not null)
+            {
+                _rehearsal = updated;
+                AfterRehearsalRefresh();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OnFullReset()
+    {
+        if (_rehearsal is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await RehearsalApi.DeleteRehearsalAsync(Context.Blueprint!.Id, _rehearsal.RehearsalId);
+            _rehearsal = null;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// Post-refresh hook for the full rehearsal: when the server reports a Passed outcome, record a
+    /// RehearsalPass on the DesignerContext so Go live unlocks (FR-002 / FR-004). Surface terminal
+    /// outcomes as feedback.
+    /// </summary>
+    private void AfterRehearsalRefresh()
+    {
+        if (_rehearsal is null)
+        {
+            return;
+        }
+
+        switch (_rehearsal.Outcome)
+        {
+            case RehearsalOutcome.Passed:
+                Context.RecordRehearsalPassed();
+                Feedback.ShowSuccess("Full rehearsal passed — Go live is now unlocked.");
+                break;
+            case RehearsalOutcome.Failed:
+                Feedback.ShowError("The full rehearsal failed. Review the log and reset to try again.", autoDismissMs: 0);
+                break;
+        }
+    }
+
+    private IReadOnlyList<RehearsalStepView> FullStepViews()
+    {
+        if (_rehearsal is null)
+        {
+            return [];
+        }
+
+        var blueprint = Context.Blueprint;
+        return _rehearsal.Steps.Select(s =>
+        {
+            var action = blueprint?.Actions.FirstOrDefault(a => a.Id == s.ActionId);
+            return new RehearsalStepView(
+                ActionId: s.ActionId,
+                Title: action?.Title ?? string.Empty,
+                ActingRole: s.ActingRole,
+                Status: MapStepStatus(s.Status));
+        }).ToList();
+    }
+
+    private IReadOnlyList<RehearsalLogView> FullLog() =>
+        _rehearsal is null
+            ? []
+            : _rehearsal.Log.Select(e => new RehearsalLogView(e.Message, MapLogKind(e.Kind))).ToList();
+
+    private static RehearsalStepViewStatus MapStepStatus(RehearsalStepStatus status) => status switch
+    {
+        RehearsalStepStatus.Current => RehearsalStepViewStatus.Current,
+        RehearsalStepStatus.Done => RehearsalStepViewStatus.Done,
+        _ => RehearsalStepViewStatus.Pending,
+    };
+
+    private static RehearsalLogKind MapLogKind(RehearsalEventKind kind) => kind switch
+    {
+        RehearsalEventKind.Sealed => RehearsalLogKind.Sealed,
+        RehearsalEventKind.Gate => RehearsalLogKind.Gate,
+        RehearsalEventKind.Routed => RehearsalLogKind.Routed,
+        RehearsalEventKind.Delivered => RehearsalLogKind.Delivered,
+        RehearsalEventKind.Error => RehearsalLogKind.Error,
+        _ => RehearsalLogKind.Info,
+    };
+
+    /// <inheritdoc />
+    public void Dispose() => Context.Changed -= OnContextChanged;
+}
