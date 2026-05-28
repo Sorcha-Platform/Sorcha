@@ -68,8 +68,10 @@ public class RehearsalOrchestrationServiceTests
             .Setup(p => p.ValidateAsync(BlueprintId))
             .ReturnsAsync(new BlueprintValidationResult(BlueprintId, "Title", true, [], []));
 
+        // Matches both the original BlueprintId and the sandbox clone id created by
+        // BuildSandboxBlueprint → AddAsync (see ctor mock above for AddAsync).
         _publishService
-            .Setup(p => p.PublishAsync(BlueprintId, It.IsAny<string>()))
+            .Setup(p => p.PublishAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((string id, string reg) =>
                 PublishResult.Success(new PublishedBlueprint { BlueprintId = id, RegisterId = reg }));
 
@@ -80,6 +82,18 @@ public class RehearsalOrchestrationServiceTests
         _blueprintStore
             .Setup(s => s.GetAsync(BlueprintId))
             .ReturnsAsync(TwoStepBlueprint());
+
+        // Sandbox-clone publish path: StartFullAsync calls AddAsync on a sandbox-specific
+        // COPY of the blueprint (line 142 of RehearsalOrchestrationService). The default
+        // Moq return is null which would NRE on `savedSandboxBlueprint.Id`; return the
+        // input with a deterministic sandbox id so downstream assertions can rely on it.
+        _blueprintStore
+            .Setup(s => s.AddAsync(It.IsAny<BlueprintModel>()))
+            .ReturnsAsync((BlueprintModel bp) =>
+            {
+                bp.Id = string.IsNullOrEmpty(bp.Id) ? $"{BlueprintId}-sandbox" : bp.Id;
+                return bp;
+            });
     }
 
     private RehearsalOrchestrationService CreateService()
@@ -184,8 +198,12 @@ public class RehearsalOrchestrationServiceTests
             It.Is<ActionSubmissionRequest>(r => r.RegisterAddress == LiveRegisterId),
             It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal?>(),
             It.IsAny<CancellationToken>()), Times.Never);
-        _publishService.Verify(p => p.PublishAsync(BlueprintId, SandboxRegisterId), Times.Once);
-        _publishService.Verify(p => p.PublishAsync(BlueprintId, LiveRegisterId), Times.Never);
+        // The sandbox-clone fix (commits 5fd21785/180dd54e) publishes a CLONE of the blueprint
+        // with ephemeral wallets baked into non-starting participants; the clone gets its own
+        // id inside BuildSandboxBlueprint. The invariant under test is the register target —
+        // sandbox always, never live — so we match any blueprint id and assert the register.
+        _publishService.Verify(p => p.PublishAsync(It.IsAny<string>(), SandboxRegisterId), Times.Once);
+        _publishService.Verify(p => p.PublishAsync(It.IsAny<string>(), LiveRegisterId), Times.Never);
         _instanceStore.Verify(s => s.CreateAsync(
             It.Is<Instance>(i => i.RegisterId == SandboxRegisterId), It.IsAny<CancellationToken>()),
             Times.Once);
