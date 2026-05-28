@@ -81,6 +81,11 @@ public class ChatOrchestrationService : IChatOrchestrationService
         | **Wizard pages, sections, x-persona, x-credential-offer, x-review, x-file, $ref, formatMinimum/formatMaximum, nested objects, arrays** | `set_action_schema` |
         | **Terminal routes (`nextActionIds: []`), parallel branches, raw JSON Logic, `outputMapping` (Feature 104), `branchDeadline`** | `set_action_routes` |
         | **HAIP credential flows (`presentationSource: HaipExternalWallet`, `targetAudience: HaipExternalWallet`), `rejectionConfig`, `requiredPriorActions`, `isStartingAction`, action `instructions`** | `set_action_metadata` |
+        | **Refine layout (sections, wizard pages, widths, intro) on an EXISTING schema** | `set_form_layout` |
+        | **Bind / unbind a field to persona autofill** | `set_field_autofill` |
+        | **Mark a wizard page as the review/x-review summary** | `set_review_page` |
+
+        The three `set_form_layout` / `set_field_autofill` / `set_review_page` tools are PRESENTATIONAL only — they refuse to write behavioural keywords (x-file, x-credential-offer). They do not re-lock a passing rehearsal. Prefer them over `set_action_schema` when you only need to tweak how a form is laid out or pre-filled, not what it submits.
 
         The typed `require_credential` and `issue_credential` cannot set `presentationSource` or `targetAudience`. Any HAIP flow (Feature 104 credential claim, credential-bootstrapped open submission) MUST use `set_action_metadata` for those properties. Same for `rejectionConfig` (used by the Decline button on credential claim cards) and `requiredPriorActions`.
 

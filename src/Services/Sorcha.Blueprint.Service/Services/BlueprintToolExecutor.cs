@@ -2,8 +2,10 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Sorcha.Blueprint.Fluent;
 using Sorcha.Blueprint.Models.Credentials;
+using Sorcha.Blueprint.Models.Forms;
 using Sorcha.Blueprint.Service.Models.Chat;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Templates;
@@ -67,6 +69,9 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 "set_action_schema" => Task.FromResult(ExecuteSetActionSchema(arguments, builder)),
                 "set_action_routes" => Task.FromResult(ExecuteSetActionRoutes(arguments, builder)),
                 "set_action_metadata" => Task.FromResult(ExecuteSetActionMetadata(arguments, builder)),
+                "set_form_layout" => Task.FromResult(ExecuteSetFormLayout(arguments, builder)),
+                "set_field_autofill" => Task.FromResult(ExecuteSetFieldAutofill(arguments, builder)),
+                "set_review_page" => Task.FromResult(ExecuteSetReviewPage(arguments, builder)),
                 _ => Task.FromResult(ToolResult.Failed(Guid.NewGuid().ToString(), $"Unknown tool: {toolName}"))
             });
         }
@@ -1273,6 +1278,164 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
             blueprintChanged: false);
     }
 
+    /// <summary>
+    /// Feature 142 / US5 — chat-side counterpart to <c>FormLayoutAuthoringService.SetPages/Sections/Width/Introduction</c>.
+    /// Bulk-applies presentational <c>x-*</c> form-layout keywords to an action's first data
+    /// schema via the shared <see cref="FormLayoutWriter"/>, so direct manipulation and chat
+    /// produce byte-equivalent JSON (FR-016). Refuses to write behavioural keywords.
+    /// </summary>
+    private ToolResult ExecuteSetFormLayout(JsonDocument arguments, BlueprintBuilder builder)
+    {
+        var root = arguments.RootElement;
+        var actionId = root.GetProperty("actionId").GetInt32();
+        var schemaIndex = root.TryGetProperty("schemaIndex", out var idxEl) ? idxEl.GetInt32() : 0;
+
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action is null)
+        {
+            return ToolResult.Failed(Guid.NewGuid().ToString(), $"Action with ID {actionId} not found");
+        }
+
+        var schemas = action.DataSchemas?.ToList()
+            ?? throw new InvalidOperationException("Action has no dataSchemas — call set_action_schema first.");
+        if (schemaIndex < 0 || schemaIndex >= schemas.Count)
+        {
+            return ToolResult.Failed(Guid.NewGuid().ToString(),
+                $"schemaIndex {schemaIndex} out of range for {schemas.Count} schema(s).");
+        }
+
+        try
+        {
+            JsonArray? sections = ParseArray(root, "sections");
+            JsonArray? pages = ParseArray(root, "pages");
+            string? introduction = root.TryGetProperty("introduction", out var introEl) &&
+                                   introEl.ValueKind == JsonValueKind.String ? introEl.GetString() : null;
+            Dictionary<string, string>? widths = null;
+            if (root.TryGetProperty("widths", out var widthsEl) && widthsEl.ValueKind == JsonValueKind.Object)
+            {
+                widths = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var prop in widthsEl.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        widths[prop.Name] = prop.Value.GetString()!;
+                    }
+                }
+            }
+
+            schemas[schemaIndex] = FormLayoutWriter.SetFormLayout(
+                schemas[schemaIndex], sections, pages, introduction, widths);
+            action.DataSchemas = schemas;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ToolResult.Failed(Guid.NewGuid().ToString(), ex.Message);
+        }
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                message = $"Applied presentational layout to action '{action.Title}'",
+                actionId,
+                schemaIndex,
+            },
+            blueprintChanged: true);
+    }
+
+    /// <summary>
+    /// Feature 142 / US5 — chat counterpart to <c>FormLayoutAuthoringService.SetFieldPersona</c>.
+    /// Sets (or clears, when <c>personaKey</c> is omitted or null) the <c>x-persona</c>
+    /// autofill binding on a top-level field of the action's first data schema.
+    /// </summary>
+    private ToolResult ExecuteSetFieldAutofill(JsonDocument arguments, BlueprintBuilder builder)
+    {
+        var root = arguments.RootElement;
+        var actionId = root.GetProperty("actionId").GetInt32();
+        var fieldPath = root.GetProperty("fieldPath").GetString()
+            ?? throw new InvalidOperationException("fieldPath is required");
+        string? personaKey = root.TryGetProperty("personaKey", out var pEl) &&
+                             pEl.ValueKind == JsonValueKind.String ? pEl.GetString() : null;
+
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action is null)
+        {
+            return ToolResult.Failed(Guid.NewGuid().ToString(), $"Action with ID {actionId} not found");
+        }
+        var schemas = action.DataSchemas?.ToList()
+            ?? throw new InvalidOperationException("Action has no dataSchemas — call set_action_schema first.");
+
+        try
+        {
+            schemas[0] = FormLayoutWriter.SetFieldPersona(schemas[0], fieldPath, personaKey);
+            action.DataSchemas = schemas;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ToolResult.Failed(Guid.NewGuid().ToString(), ex.Message);
+        }
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                message = personaKey is null
+                    ? $"Cleared x-persona on '{fieldPath}'"
+                    : $"Bound '{fieldPath}' to persona '{personaKey}'",
+                actionId,
+                fieldPath,
+                personaKey,
+            },
+            blueprintChanged: true);
+    }
+
+    /// <summary>
+    /// Feature 142 / US5 — marks a wizard page as the <c>x-review</c> summary page.
+    /// Equivalent to the LayoutToolsPanel "Mark review page" button.
+    /// </summary>
+    private ToolResult ExecuteSetReviewPage(JsonDocument arguments, BlueprintBuilder builder)
+    {
+        var root = arguments.RootElement;
+        var actionId = root.GetProperty("actionId").GetInt32();
+        var pageIndex = root.GetProperty("pageIndex").GetInt32();
+
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action is null)
+        {
+            return ToolResult.Failed(Guid.NewGuid().ToString(), $"Action with ID {actionId} not found");
+        }
+        var schemas = action.DataSchemas?.ToList()
+            ?? throw new InvalidOperationException("Action has no dataSchemas — call set_action_schema first.");
+
+        try
+        {
+            schemas[0] = FormLayoutWriter.SetReviewPage(schemas[0], pageIndex);
+            action.DataSchemas = schemas;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ToolResult.Failed(Guid.NewGuid().ToString(), ex.Message);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return ToolResult.Failed(Guid.NewGuid().ToString(), ex.Message);
+        }
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new { message = $"Marked page {pageIndex} as review on action '{action.Title}'", actionId, pageIndex },
+            blueprintChanged: true);
+    }
+
+    private static JsonArray? ParseArray(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var el) || el.ValueKind != JsonValueKind.Array) return null;
+        return JsonNode.Parse(el.GetRawText()) as JsonArray;
+    }
+
     private static IReadOnlyList<ToolDefinition> CreateToolDefinitions()
     {
         return new List<ToolDefinition>
@@ -1766,6 +1929,97 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                         }
                     },
                     required = new[] { "actionId" }
+                }),
+
+            // Feature 142 / US5 — three presentational-only layout tools. They write ONLY the
+            // x-sections / x-pages / x-width / x-introduction / x-persona / x-review / x-address-lookup
+            // keywords (FormKeywordClassifier.Presentational), so the rehearsal gate is NOT re-locked
+            // (FR-023). For x-file / x-credential-offer (behavioural) keep using set_action_schema.
+            ToolDefinition.Create(
+                "set_form_layout",
+                "Apply presentational layout to an action's data schema in one call. " +
+                "Writes any combination of x-sections (grouping), x-pages (wizard split), x-width " +
+                "(side-by-side hints), and x-introduction. Behavioural keywords (x-file, " +
+                "x-credential-offer) are NOT writable here — use set_action_schema for those. " +
+                "Direct manipulation and this tool produce byte-equivalent schema JSON.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        actionId = new { type = "integer", description = "Action ID whose data schema to lay out." },
+                        schemaIndex = new { type = "integer", description = "Index into dataSchemas (default 0)." },
+                        sections = new
+                        {
+                            type = "array",
+                            description = "x-sections array. Each entry: { title, fields:[fieldName,…] }.",
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    title = new { type = "string" },
+                                    fields = new { type = "array", items = new { type = "string" } },
+                                    layout = new { type = "string", @enum = new[] { "vertical", "horizontal", "grid" } },
+                                },
+                            },
+                        },
+                        pages = new
+                        {
+                            type = "array",
+                            description = "x-pages array. Each entry: { title, sections:[…] }.",
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    title = new { type = "string" },
+                                    description = new { type = "string" },
+                                    sections = new { type = "array" },
+                                },
+                            },
+                        },
+                        introduction = new { type = "string", description = "x-introduction callout shown above the form." },
+                        widths = new
+                        {
+                            type = "object",
+                            description = "Map of fieldPath → 'full' | 'half' | 'third' (case-insensitive).",
+                            additionalProperties = new { type = "string" },
+                        },
+                    },
+                    required = new[] { "actionId" }
+                }),
+
+            ToolDefinition.Create(
+                "set_field_autofill",
+                "Bind (or, with personaKey omitted/null, unbind) a top-level field to a Sorcha " +
+                "persona attribute for autofill. Writes the presentational x-persona keyword — " +
+                "does NOT re-lock the rehearsal gate.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        actionId = new { type = "integer" },
+                        fieldPath = new { type = "string", description = "JSON Pointer (e.g. '/email') or bare property name." },
+                        personaKey = new { type = "string", description = "Persona attribute key (e.g. 'email'). Omit or pass null to clear." },
+                    },
+                    required = new[] { "actionId", "fieldPath" }
+                }),
+
+            ToolDefinition.Create(
+                "set_review_page",
+                "Mark the wizard page at pageIndex as the x-review summary page (Feature 107 id-card review). " +
+                "Requires x-pages to be set first. Writes the presentational x-review keyword.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        actionId = new { type = "integer" },
+                        pageIndex = new { type = "integer", description = "Zero-based index into the existing x-pages array." },
+                    },
+                    required = new[] { "actionId", "pageIndex" }
                 })
         };
     }
