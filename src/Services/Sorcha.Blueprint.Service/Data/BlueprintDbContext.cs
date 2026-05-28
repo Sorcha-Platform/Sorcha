@@ -23,6 +23,16 @@ public class BlueprintDbContext : DbContext
     public DbSet<FileMetadataEntity> FileMetadata => Set<FileMetadataEntity>();
     public DbSet<InstanceEntity> Instances => Set<InstanceEntity>();
 
+    /// <summary>
+    /// Feature 142 — rehearsal-pass records backing the server-side publish soft gate.
+    /// </summary>
+    public DbSet<RehearsalPassEntity> RehearsalPasses => Set<RehearsalPassEntity>();
+
+    /// <summary>
+    /// Feature 142 — append-only audit of publishes that overrode the rehearsal gate.
+    /// </summary>
+    public DbSet<PublishOverrideEntity> PublishOverrides => Set<PublishOverrideEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -101,6 +111,26 @@ public class BlueprintDbContext : DbContext
             entity.HasIndex(e => e.BlueprintId).HasDatabaseName("IX_Instances_BlueprintId");
             entity.HasIndex(e => e.RegisterId).HasDatabaseName("IX_Instances_RegisterId");
             entity.HasIndex(e => e.State).HasDatabaseName("IX_Instances_State");
+        });
+
+        // Feature 142 — RehearsalPass configuration
+        modelBuilder.Entity<RehearsalPassEntity>(entity =>
+        {
+            entity.ToTable("RehearsalPasses");
+            entity.HasKey(e => e.Id);
+            // Supports "latest pass per (BlueprintId, ExecDefHash)" lookups; the
+            // store orders by RehearsedAt descending within the matched set.
+            entity.HasIndex(e => new { e.BlueprintId, e.ExecDefHash, e.RehearsedAt })
+                .HasDatabaseName("IX_RehearsalPasses_Blueprint_ExecDef_RehearsedAt");
+        });
+
+        // Feature 142 — PublishOverride configuration (append-only audit)
+        modelBuilder.Entity<PublishOverrideEntity>(entity =>
+        {
+            entity.ToTable("PublishOverrides");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.BlueprintId, e.OverriddenAt })
+                .HasDatabaseName("IX_PublishOverrides_Blueprint_OverriddenAt");
         });
     }
 }

@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Sorcha.Blueprint.Models.Forms;
 using Sorcha.UI.Core.Services.Designer;
 using BlueprintAction = Sorcha.Blueprint.Models.Action;
 
@@ -20,6 +21,24 @@ public partial class FormPreviewPane : ComponentBase, IDisposable
 {
     // Context is injected via the .razor file's @inject directive.
     private bool _preventDefaultOnKey;
+    private FormAuthoringMode _editMode = FormAuthoringMode.Preview;
+
+    private void HandleEditModeChanged(FormAuthoringMode mode)
+    {
+        _editMode = mode;
+        StateHasChanged();
+    }
+
+    private void HandleLayoutChanged(BlueprintAction updatedAction)
+    {
+        var bp = Context.Blueprint;
+        if (bp is null)
+        {
+            return;
+        }
+        Context.SetBlueprint(bp);
+        StateHasChanged();
+    }
 
     /// <inheritdoc />
     protected override void OnInitialized()

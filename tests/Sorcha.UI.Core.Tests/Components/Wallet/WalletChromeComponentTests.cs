@@ -158,7 +158,7 @@ public sealed class WalletChromeComponentTests : BunitContext
         var cut = Render<FloatingTabBar>(ps => ps.Add(p => p.ActiveRoute, ""));
 
         cut.FindAll(".tab-pill").Count.Should().Be(4);
-        foreach (var id in new[] { "footer-nav-home", "footer-nav-devices", "footer-nav-activity", "footer-nav-settings" })
+        foreach (var id in new[] { "footer-nav-home", "footer-nav-cards", "footer-nav-activity", "footer-nav-settings" })
         {
             cut.FindAll($"[data-testid='{id}']").Should().ContainSingle($"tab {id} must exist for navigation tests");
         }
@@ -169,10 +169,10 @@ public sealed class WalletChromeComponentTests : BunitContext
     {
         var cut = Render<FloatingTabBar>(ps => ps.Add(p => p.ActiveRoute, "devices"));
 
-        var devices = cut.Find("[data-testid='footer-nav-devices']");
-        devices.ClassList.Should().Contain("tab-pill--active");
-        devices.GetAttribute("aria-current").Should().Be("page");
-        devices.TextContent.Should().Contain("Devices");
+        var cards = cut.Find("[data-testid='footer-nav-cards']");
+        cards.ClassList.Should().Contain("tab-pill--active");
+        cards.GetAttribute("aria-current").Should().Be("page");
+        cards.TextContent.Should().Contain("Cards");
 
         var home = cut.Find("[data-testid='footer-nav-home']");
         home.ClassList.Should().NotContain("tab-pill--active");

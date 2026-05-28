@@ -34,6 +34,31 @@
                 <Sorcha.UI.Web.Client.Components.Chat.ChatMessageItem Message="message" />
             }
 
+            @* Feature 142 US4 (T044) — directed-build chip row. Visible only on a fresh
+               designer load (no blueprint, opening turn) and hidden the moment the user
+               picks a chip or types a free-form message. *@
+            @if (ShouldShowDirectedBuildChips)
+            {
+                <div class="ai-pane-directed-build" data-testid="directed-build-chips">
+                    <MudText Typo="Typo.body2" Class="ai-pane-directed-build__hint mb-1">
+                        Or pick a starting point to build from:
+                    </MudText>
+                    <div class="ai-pane-directed-build__row">
+                        @foreach (var starter in DirectedBuildStarters)
+                        {
+                            <MudChip T="string"
+                                     Color="Color.Primary"
+                                     Variant="Variant.Outlined"
+                                     Disabled="@(!IsConnected || _isProcessing)"
+                                     OnClick="@(() => SendDirectedStarterAsync(starter))"
+                                     data-starter-id="@starter.Id">
+                                @starter.Label
+                            </MudChip>
+                        }
+                    </div>
+                </div>
+            }
+
             @if (_isProcessing)
             {
                 <div class="ai-pane-processing">

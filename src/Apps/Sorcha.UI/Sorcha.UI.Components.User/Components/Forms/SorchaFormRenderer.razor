@@ -5,6 +5,7 @@
 @using Microsoft.Extensions.Logging
 @using Sorcha.Blueprint.Models
 @using Sorcha.Blueprint.Models.Credentials
+@using Sorcha.Blueprint.Models.Forms
 @using Sorcha.Tenant.Models.Persona
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.UI.Core.Services.Forms
@@ -18,6 +19,24 @@
 <CascadingValue Value="_formContext">
     <div class="sorcha-form">
         <MudStack Spacing="4">
+            @* Feature 142 / US5 — Designer-only Edit-mode header. Renders ONLY when
+               EditAllowed is true (designer surfaces opt in); citizens never see this. *@
+            @if (EditAllowed)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.FlexEnd" Spacing="1"
+                          Class="sorcha-form-edit-header">
+                    <MudTooltip Text="@(Mode == FormAuthoringMode.Edit ? "Exit edit mode" : "Edit form layout")"
+                                Placement="Placement.Top">
+                        <MudIconButton Icon="@(Mode == FormAuthoringMode.Edit ? Icons.Material.Filled.Visibility : Icons.Material.Filled.Edit)"
+                                       Color="@(Mode == FormAuthoringMode.Edit ? Color.Primary : Color.Default)"
+                                       Size="MudBlazor.Size.Small"
+                                       OnClick="HandleEditModeToggle"
+                                       data-testid="form-edit-mode-toggle"
+                                       aria-pressed="@(Mode == FormAuthoringMode.Edit)" />
+                    </MudTooltip>
+                </MudStack>
+            }
+
             @* Previous Data Panel *@
             @if (PreviousData is not null)
             {
@@ -318,6 +337,27 @@
     /// with default <c>false</c>; existing callers are unaffected.
     /// </summary>
     [Parameter] public bool PreviewMode { get; set; } = false;
+
+    /// <summary>
+    /// Feature 142 / US5 — the renderer's authoring mode. <see cref="FormAuthoringMode.Preview"/>
+    /// (default) renders the form exactly as a citizen would see it. <see cref="FormAuthoringMode.Edit"/>
+    /// activates the designer's layout-authoring affordances (LayoutToolsPanel + per-field overlays).
+    /// Has no effect unless <see cref="EditAllowed"/> is true.
+    /// </summary>
+    [Parameter] public FormAuthoringMode Mode { get; set; } = FormAuthoringMode.Preview;
+
+    /// <summary>
+    /// Feature 142 / US5 — when true, the renderer surfaces the small Edit / Preview toggle in its
+    /// header. Designer surfaces (the Understand stage's FormPreviewPane) pass this; citizen
+    /// surfaces MUST leave it false.
+    /// </summary>
+    [Parameter] public bool EditAllowed { get; set; } = false;
+
+    /// <summary>
+    /// Feature 142 / US5 — fires when the user toggles between Preview and Edit. The parent is
+    /// the owner of <see cref="Mode"/> and decides whether to honour the change.
+    /// </summary>
+    [Parameter] public EventCallback<FormAuthoringMode> OnEditModeChanged { get; set; }
 
     private FormContext _formContext = new();
     private Control? _formControl;
@@ -1099,6 +1139,21 @@
     private async Task HandleReject()
     {
         await OnReject.InvokeAsync("rejected");
+    }
+
+    /// <summary>
+    /// Feature 142 / US5 — flips the local authoring mode and invokes the parent callback so
+    /// the owner (e.g. <c>FormPreviewPane</c>) can persist the choice and show/hide the
+    /// surrounding <c>LayoutToolsPanel</c>. Does nothing when <see cref="EditAllowed"/> is false.
+    /// </summary>
+    private async Task HandleEditModeToggle()
+    {
+        if (!EditAllowed) return;
+        var next = Mode == FormAuthoringMode.Edit ? FormAuthoringMode.Preview : FormAuthoringMode.Edit;
+        if (OnEditModeChanged.HasDelegate)
+        {
+            await OnEditModeChanged.InvokeAsync(next);
+        }
     }
 
     private async Task HandleCancel()

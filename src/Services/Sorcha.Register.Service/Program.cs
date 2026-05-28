@@ -692,6 +692,14 @@ registersGroup.MapGet("/", async (
 // <summary>
 // Get register by ID
 // </summary>
+// <remarks>
+// Returns the full register record. Feature 142 surfaces two fields used by the
+// Go-live detail card and the Go-live target picker:
+//   - <c>advertise</c> — register visibility (public/private to the peer network).
+//   - <c>sandbox</c> — computed; true when the register is a rehearsal sandbox
+//     (control-record metadata "sandbox" == "true"). Callers exclude sandbox
+//     registers from Go-live targets and normal listings.
+// </remarks>
 registersGroup.MapGet("/{id}", async (
     RegisterManager manager,
     string id) =>
@@ -701,7 +709,7 @@ registersGroup.MapGet("/{id}", async (
 })
 .WithName("GetRegister")
 .WithSummary("Get register by ID")
-.WithDescription("Retrieves a specific register by its unique identifier.")
+.WithDescription("Retrieves a specific register by its unique identifier. Surfaces 'advertise' (visibility) and a computed 'sandbox' flag (Feature 142) so callers can show visibility on the Go-live detail card and exclude sandbox registers from Go-live target pickers.")
 .Produces<object>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status404NotFound)
 .Produces(StatusCodes.Status401Unauthorized);

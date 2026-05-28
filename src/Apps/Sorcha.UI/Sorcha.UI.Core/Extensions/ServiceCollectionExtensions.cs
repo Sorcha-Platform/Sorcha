@@ -72,6 +72,15 @@ public static class ServiceCollectionExtensions
         // Form renderer services
         services.AddScoped<IFormSchemaService, FormSchemaService>();
         services.AddScoped<IFormSigningService, FormSigningService>();
+        // Feature 142 / US5 — presentational form-layout authoring (T049). Shared
+        // by LayoutToolsPanel direct manipulation and the chat tool path (T051).
+        services.AddScoped<IFormLayoutAuthoringService, FormLayoutAuthoringService>();
+
+        // Feature 142 — designer-only quick dry-run harness (D3/T024). Drives the portable
+        // Blueprint Engine in-WASM (validate→calc→route→disclose) with no register/backend.
+        // Scoped: holds per-session walk-through state. The engine it composes is dependency-free.
+        services.AddScoped<Sorcha.UI.Core.Services.Designer.IDryRunHarness>(
+            _ => Sorcha.UI.Core.Services.Designer.DryRunHarness.CreateDefault());
 
         // Feature 107 — client-side portrait token resizer for `x-file.embedAs`
         // fields. The interop is scoped (holds a lazy IJSObjectReference);
@@ -183,6 +192,23 @@ public static class ServiceCollectionExtensions
 
             var logger = sp.GetRequiredService<ILogger<BlueprintApiService>>();
             return new BlueprintApiService(httpClient, logger);
+        });
+
+        // Feature 142 — full-rehearsal API service (US2). Authenticated gateway HttpClient,
+        // same pattern as the Blueprint API Service above. Drives the server-side rehearsal
+        // walk-through (start/get/role/step/delete) against the org sandbox register.
+        services.AddScoped<Sorcha.UI.Core.Services.Designer.IRehearsalApiService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+
+            var httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri(baseAddress)
+            };
+
+            var logger = sp.GetRequiredService<ILogger<Sorcha.UI.Core.Services.Designer.RehearsalApiService>>();
+            return new Sorcha.UI.Core.Services.Designer.RehearsalApiService(httpClient, logger);
         });
 
         // Template API Service
@@ -887,6 +913,10 @@ public static class ServiceCollectionExtensions
         });
         services.AddScoped<IRegisterReadService>(sp => sp.GetRequiredService<RegisterService>());
         services.AddScoped<IRegisterGovernanceService>(sp => sp.GetRequiredService<RegisterService>());
+
+        // Feature 142 — Go-live system-info card aggregator (T035). Pure client-side fan-out over
+        // the register read + governance roster reads; no new server endpoint.
+        services.AddScoped<IRegisterSystemInfoService, RegisterSystemInfoService>();
 
         // Payload Decoder Service
         services.AddSingleton<IPayloadDecoderService, PayloadDecoderService>();

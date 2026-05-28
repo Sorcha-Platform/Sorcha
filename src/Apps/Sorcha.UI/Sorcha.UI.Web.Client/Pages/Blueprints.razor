@@ -138,6 +138,15 @@
                                 {
                                     <MudButton Color="Color.Info" Variant="Variant.Text"
                                                OnClick="() => ShowVersionHistory(blueprint)">Versions</MudButton>
+                                    @* Feature 142 / US6 — Amend a published service. Click derives a new
+                                       draft via POST /api/blueprints/from-published and opens the rail-
+                                       driven designer; the new draft's fresh exec-def hash re-locks Go
+                                       live until a fresh rehearsal passes. data-testid carries the
+                                       source blueprint id so AmendLoopTests can target the row. *@
+                                    <MudButton Color="Color.Warning" Variant="Variant.Text"
+                                               StartIcon="@Icons.Material.Filled.Edit"
+                                               data-testid="@($"blueprint-amend-{blueprint.Id}")"
+                                               OnClick="() => AmendBlueprint(blueprint)">Amend</MudButton>
                                 }
                                 <MudSpacer />
                                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
@@ -252,6 +261,60 @@
         {
             Feedback.ShowSuccess($"Blueprint '{blueprint.Title}' published successfully");
             await LoadBlueprintsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Feature 142 / US6 — derives a new amend draft from the published service and opens the
+    /// rail-driven designer for it. Looks up the latest published version + its <c>RegisterId</c>
+    /// via <see cref="IBlueprintApiService.GetVersionsAsync"/>, calls
+    /// <see cref="IBlueprintApiService.FromPublishedAsync"/>, and navigates to
+    /// <c>/designer/blueprint/{draftId}?stage=understand</c>. The draft carries lineage metadata
+    /// (x-source-register / x-source-blueprint-id / x-source-version); DesignerBlueprint reads it
+    /// on load to populate <c>LifecycleState.AmendContext</c>.
+    /// </summary>
+    private async Task AmendBlueprint(BlueprintListItemViewModel blueprint)
+    {
+        try
+        {
+            var versions = await BlueprintApi.GetVersionsAsync(blueprint.Id);
+            if (versions.Count == 0)
+            {
+                Feedback.ShowWarning("No published versions found — cannot amend a draft service.");
+                return;
+            }
+
+            // Latest version is the one to amend. Falling back through ordering by Version then
+            // PublishedAt protects against either field being missing on legacy rows.
+            var latest = versions
+                .OrderByDescending(v => v.Version)
+                .ThenByDescending(v => v.PublishedAt)
+                .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v.RegisterId))
+                ?? versions.OrderByDescending(v => v.Version).First();
+
+            if (string.IsNullOrWhiteSpace(latest.RegisterId))
+            {
+                Feedback.ShowError(
+                    "Cannot amend — the published version does not record a source register.",
+                    autoDismissMs: 0);
+                return;
+            }
+
+            var draftId = await BlueprintApi.FromPublishedAsync(latest.RegisterId, blueprint.Id, latest.Version);
+            if (string.IsNullOrWhiteSpace(draftId))
+            {
+                Feedback.ShowError(
+                    "Could not derive an amend draft. You may not hold publish-governance on the source register.",
+                    autoDismissMs: 0);
+                return;
+            }
+
+            Feedback.ShowSuccess($"Amend draft created from '{blueprint.Title}' v{latest.Version}.");
+            Navigation.NavigateTo($"designer/blueprint/{draftId}?stage=understand");
+        }
+        catch (Exception)
+        {
+            Feedback.ShowError("Error opening the amend draft.", autoDismissMs: 0);
         }
     }
 

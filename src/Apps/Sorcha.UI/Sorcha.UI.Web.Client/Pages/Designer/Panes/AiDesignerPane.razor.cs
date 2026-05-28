@@ -44,6 +44,48 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
 
     private bool IsConnected => _connected && ChatHub.State == ChatConnectionState.Connected;
 
+    /// <summary>
+    /// Feature 142 US4 (T044 / FR-010) — a directed-build starter offered as a chip on a fresh
+    /// designer load. The <see cref="Id"/> matches <c>DirectedBuildStarter.KnownStarterIds</c>
+    /// in the Blueprint service so the orchestration can short-circuit to a deterministic seed.
+    /// </summary>
+    /// <param name="Id">Stable starter id (e.g. <c>grant</c>).</param>
+    /// <param name="Label">Plain-language chip label shown to the user.</param>
+    /// <param name="UserMessage">
+    /// The plain-language user message the chip click enqueues into the chat — the orchestration
+    /// recognises these as directed-build openers (see
+    /// <c>ChatOrchestrationService.TryResolveDirectedStarter</c>). Plain English keeps the chat
+    /// history readable; the orchestration matches on a prefix allowlist for determinism.
+    /// </param>
+    public sealed record DirectedBuildStarterOption(string Id, string Label, string UserMessage);
+
+    /// <summary>The three directed-build starters surfaced by the chip row.</summary>
+    private static readonly IReadOnlyList<DirectedBuildStarterOption> DirectedBuildStarters =
+    [
+        new("grant", "Apply for a grant",
+            "Help me build a grant application"),
+        new("permit", "Apply for a permit / licence",
+            "Help me build a permit / licence application"),
+        new("certify-then-apply", "Certify, then apply",
+            "Help me build a certify-then-apply workflow"),
+    ];
+
+    /// <summary>Tracks whether the user has chosen a directed-build starter this session.</summary>
+    private bool _directedStarterClicked;
+
+    /// <summary>
+    /// The chip row is visible only on the very first turn (the opening assistant greeting may be
+    /// in the list — count ≤ 1), with no blueprint loaded, and only until the user picks a chip.
+    /// Once a free-form user message has been sent (<c>_messages.Count &gt; 1</c>) or a blueprint
+    /// has been applied via the chip path, the chips disappear.
+    /// </summary>
+    private bool ShouldShowDirectedBuildChips =>
+        !_directedStarterClicked
+        && Context.Blueprint is null
+        && _messages.Count <= 1
+        && IsConnected
+        && !_isProcessing;
+
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
@@ -351,6 +393,43 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
             && (!string.IsNullOrWhiteSpace(_messageInput) || _pendingAttachments.Count > 0))
         {
             await SendMessageAsync();
+        }
+    }
+
+    /// <summary>
+    /// Feature 142 US4 (T044) — handles a directed-build chip click by hiding the chip row and
+    /// dispatching the chip's plain-language user message into the chat. The Blueprint service
+    /// orchestration recognises the message via <c>TryResolveDirectedStarter</c> and seeds the
+    /// blueprint deterministically without invoking the AI, so the journey appears live in the
+    /// canvas (FR-011) and the AI takes over from the next user turn.
+    /// </summary>
+    private async Task SendDirectedStarterAsync(DirectedBuildStarterOption starter)
+    {
+        if (!IsConnected || _isProcessing || string.IsNullOrEmpty(_sessionId))
+        {
+            return;
+        }
+
+        _directedStarterClicked = true;
+
+        _messages.Add(new ChatMessageModel
+        {
+            Role = MessageRole.User,
+            Content = starter.UserMessage,
+            Timestamp = DateTime.UtcNow,
+        });
+        _isProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            await ChatHub.SendMessageAsync(_sessionId, starter.UserMessage, attachments: null);
+        }
+        catch (Exception ex)
+        {
+            Feedback.ShowError($"Failed to start directed build: {ex.Message}", autoDismissMs: 0);
+            _isProcessing = false;
+            StateHasChanged();
         }
     }
 

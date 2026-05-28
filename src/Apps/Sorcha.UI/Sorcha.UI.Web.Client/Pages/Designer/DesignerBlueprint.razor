@@ -8,26 +8,48 @@
 @attribute [Authorize(Roles = "Administrator,SystemAdmin,Designer")]
 @using Microsoft.AspNetCore.Authorization
 @using MudBlazor
+@using Sorcha.UI.Core.Components.Designer
 @using Sorcha.UI.Core.Services.Designer
 @using Sorcha.UI.Web.Client.Pages.DesignerShell.Panes
+@using Sorcha.UI.Web.Client.Pages.DesignerShell.Stages
 @inject NavigationManager Navigation
 @inject DesignerContext Context
 @implements IDisposable
 
+@*
+    Feature 142 designer shell: a rail-driven staged workspace. The toolbar and the always-visible
+    lifecycle rail sit at the top; below them a two-pane body keeps the AI chat persistent on the
+    left (it is the on-ramp across every stage and its E2E test hooks register on first render) and
+    swaps the right-hand stage canvas on Context.Lifecycle.CurrentStage. The active stage is mirrored
+    to the ?stage= query string for deep-linking; the legacy ?tab= values are accepted as an alias.
+*@
+
 <div class="designer-shell">
     <DesignerToolbar />
-    <MudTabs Elevation="0"
-             KeepPanelsAlive="true"
-             ActivePanelIndex="@((int)_activeTab)"
-             ActivePanelIndexChanged="OnTabChanged">
-        <MudTabPanel Text="AI">
+    <LifecycleRail />
+
+    <div class="designer-shell__body">
+        <div class="designer-shell__ai" data-testid="designer-ai-rail">
             <AiDesignerPane />
-        </MudTabPanel>
-        <MudTabPanel Text="Diagram" Disabled="@(Context.Blueprint == null)">
-            <DiagramPane />
-        </MudTabPanel>
-        <MudTabPanel Text="Preview" Disabled="@(Context.Blueprint == null || Context.Blueprint.Actions is null || Context.Blueprint.Actions.Count == 0)">
-            <FormPreviewPane />
-        </MudTabPanel>
-    </MudTabs>
+        </div>
+        <div class="designer-shell__canvas" data-testid="designer-stage-canvas">
+            @switch (Context.Lifecycle.CurrentStage)
+            {
+                case LifecycleStage.Describe:
+                    <DescribeStage />
+                    break;
+                case LifecycleStage.Understand:
+                    <UnderstandStage />
+                    break;
+                case LifecycleStage.Rehearse:
+                    <RehearseStage />
+                    break;
+                case LifecycleStage.GoLive:
+                    <GoLiveStage />
+                    break;
+            }
+        </div>
+    </div>
+
+    <RailGuidedOverlay />
 </div>

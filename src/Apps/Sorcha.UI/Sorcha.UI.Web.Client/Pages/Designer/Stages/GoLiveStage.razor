@@ -1,0 +1,15 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@* Feature 142 — Go live stage canvas (governed promote; T036 / T040). *@
+@* Hosts the reusable GoLivePanel (register dropdown + system-info detail card + review summary + *@
+@* permanence/versioning notice + the rehearsal-gated publish with 409-override handling). The *@
+@* panel itself reads DesignerContext.Lifecycle.RehearsalPassedForCurrentExecDef to gate Publish, *@
+@* mirroring the rail lock. *@
+
+@namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Stages
+@using Sorcha.UI.Core.Components.Blueprints
+
+<div class="designer-stage designer-stage--golive" data-testid="stage-golive">
+    <GoLivePanel />
+</div>

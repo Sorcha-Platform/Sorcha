@@ -1,0 +1,233 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Core.Components.Designer
+@using MudBlazor
+
+@*
+    Feature 142 (US2 / T025) — shared rehearsal stepper + role-switcher.
+
+    A pure presentation component used by BOTH the in-WASM dry-run and the server-side full
+    rehearsal. It is backend-agnostic: the hosting stage projects whichever step model it has
+    (engine DryRunStep or wire RehearsalStep) into the portable RehearsalStepView shape and drives
+    everything through [Parameter]s + EventCallbacks. Renders the ordered step list (current
+    highlighted, credential steps showing their "checked in full rehearsal" note), a role switcher,
+    a submit affordance for the current step, the plain-language log, and a Reset button.
+*@
+
+<MudPaper Class="rehearsal-stepper pa-4" Elevation="0" Outlined="true" data-testid="rehearsal-stepper">
+
+    @* --- Role switcher ------------------------------------------------------------------ *@
+    <div class="rehearsal-stepper__roleswitch d-flex align-center gap-2 mb-4">
+        <MudIcon Icon="@Icons.Material.Filled.SwitchAccount" Size="Size.Small" />
+        <MudSelect T="string"
+                   Label="Acting as"
+                   Value="@CurrentActingRole"
+                   ValueChanged="@OnRoleSelected"
+                   Dense="true"
+                   Variant="Variant.Outlined"
+                   Disabled="@(IsComplete || Roles.Count == 0)"
+                   Class="rehearsal-stepper__role-select"
+                   data-testid="rehearsal-role-switcher">
+            @foreach (var role in Roles)
+            {
+                <MudSelectItem T="string" Value="@role">@role</MudSelectItem>
+            }
+        </MudSelect>
+    </div>
+
+    @* --- Step list ---------------------------------------------------------------------- *@
+    <MudList T="string" Class="rehearsal-stepper__steps" Dense="true" data-testid="rehearsal-step-list">
+        @foreach (var step in Steps)
+        {
+            var isCurrent = step.IsCurrent;
+            <MudListItem T="string"
+                         Class="@StepClass(step)"
+                         Icon="@StepIcon(step)"
+                         IconColor="@StepColor(step)"
+                         data-testid="@($"rehearsal-step-{step.ActionId}")"
+                         data-step-status="@step.Status.ToString().ToLowerInvariant()">
+                <div class="d-flex flex-column">
+                    <div class="d-flex align-center gap-2">
+                        <MudText Typo="Typo.body1">
+                            @(string.IsNullOrWhiteSpace(step.Title) ? $"Action {step.ActionId}" : step.Title)
+                        </MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">
+                            @step.ActingRole
+                        </MudChip>
+                        @if (isCurrent)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">
+                                Current
+                            </MudChip>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(step.RoutingSummary))
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            <MudIcon Icon="@Icons.Material.Filled.AltRoute" Size="Size.Small" /> @step.RoutingSummary
+                        </MudText>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(step.DisclosureSummary))
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            <MudIcon Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" /> @step.DisclosureSummary
+                        </MudText>
+                    }
+                    @if (step.HasDeferredCredentialChecks)
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-1 rehearsal-stepper__cred-note"
+                                  data-testid="@($"rehearsal-step-{step.ActionId}-cred-note")">
+                            @(string.IsNullOrWhiteSpace(step.CredentialNote)
+                                ? "Credential prerequisites and issuance are checked in full rehearsal."
+                                : step.CredentialNote)
+                        </MudAlert>
+                    }
+                </div>
+            </MudListItem>
+        }
+    </MudList>
+
+    @* --- Submit current step ------------------------------------------------------------ *@
+    @if (!IsComplete && Steps.Any(s => s.IsCurrent))
+    {
+        <div class="rehearsal-stepper__submit mt-4">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       Disabled="@(IsBusy)"
+                       OnClick="@OnSubmitCurrent"
+                       data-testid="rehearsal-step-submit">
+                Submit step as @CurrentActingRole
+            </MudButton>
+        </div>
+    }
+    else if (IsComplete)
+    {
+        <MudAlert Severity="Severity.Success" Dense="true" Class="mt-4" data-testid="rehearsal-complete">
+            Walk-through complete.
+        </MudAlert>
+    }
+
+    @* --- Plain-language log ------------------------------------------------------------- *@
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Activity</MudText>
+    <div class="rehearsal-stepper__log" data-testid="rehearsal-log">
+        @if (Log.Count == 0)
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">No activity yet.</MudText>
+        }
+        else
+        {
+            @foreach (var entry in Log)
+            {
+                <div class="rehearsal-stepper__log-entry d-flex align-center gap-2"
+                     data-testid="rehearsal-log-entry">
+                    <MudIcon Icon="@LogIcon(entry.Kind)" Size="Size.Small" Color="@LogColor(entry.Kind)" />
+                    <MudText Typo="Typo.body2">@entry.Message</MudText>
+                </div>
+            }
+        }
+    </div>
+
+    @* --- Reset -------------------------------------------------------------------------- *@
+    <div class="rehearsal-stepper__reset mt-4">
+        <MudButton Variant="Variant.Text"
+                   Color="Color.Default"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   Disabled="@(IsBusy)"
+                   OnClick="@OnResetClicked"
+                   data-testid="rehearsal-reset">
+            Reset
+        </MudButton>
+    </div>
+</MudPaper>
+
+@code {
+    /// <summary>The ordered walk-through steps to render (current step flagged via <see cref="RehearsalStepView.IsCurrent"/>).</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<RehearsalStepView> Steps { get; set; } = [];
+
+    /// <summary>The participant role the author is currently acting as.</summary>
+    [Parameter]
+    public string? CurrentActingRole { get; set; }
+
+    /// <summary>The list of participant roles the author may switch between.</summary>
+    [Parameter]
+    public IReadOnlyList<string> Roles { get; set; } = [];
+
+    /// <summary>The plain-language activity log, oldest first.</summary>
+    [Parameter]
+    public IReadOnlyList<RehearsalLogView> Log { get; set; } = [];
+
+    /// <summary>True when the walk-through has reached its end (no current step to submit).</summary>
+    [Parameter]
+    public bool IsComplete { get; set; }
+
+    /// <summary>True while a backend call is in flight; disables the submit / reset affordances.</summary>
+    [Parameter]
+    public bool IsBusy { get; set; }
+
+    /// <summary>Raised when the author selects a different acting role.</summary>
+    [Parameter]
+    public EventCallback<string> OnSwitchRole { get; set; }
+
+    /// <summary>Raised when the author submits the current step. The host supplies the payload.</summary>
+    [Parameter]
+    public EventCallback OnSubmitStep { get; set; }
+
+    /// <summary>Raised when the author resets / discards the walk-through.</summary>
+    [Parameter]
+    public EventCallback OnReset { get; set; }
+
+    private async Task OnRoleSelected(string role)
+    {
+        if (!string.IsNullOrEmpty(role) && role != CurrentActingRole)
+        {
+            await OnSwitchRole.InvokeAsync(role);
+        }
+    }
+
+    private Task OnSubmitCurrent() => OnSubmitStep.InvokeAsync();
+
+    private Task OnResetClicked() => OnReset.InvokeAsync();
+
+    private static string StepClass(RehearsalStepView step) =>
+        step.IsCurrent ? "rehearsal-stepper__step rehearsal-stepper__step--current" : "rehearsal-stepper__step";
+
+    private static string StepIcon(RehearsalStepView step) => step.Status switch
+    {
+        RehearsalStepViewStatus.Done => Icons.Material.Filled.CheckCircle,
+        RehearsalStepViewStatus.Failed => Icons.Material.Filled.Error,
+        RehearsalStepViewStatus.Current => Icons.Material.Filled.RadioButtonChecked,
+        _ => Icons.Material.Filled.RadioButtonUnchecked,
+    };
+
+    private static Color StepColor(RehearsalStepView step) => step.Status switch
+    {
+        RehearsalStepViewStatus.Done => Color.Success,
+        RehearsalStepViewStatus.Failed => Color.Error,
+        RehearsalStepViewStatus.Current => Color.Primary,
+        _ => Color.Default,
+    };
+
+    private static string LogIcon(RehearsalLogKind kind) => kind switch
+    {
+        RehearsalLogKind.Sealed => Icons.Material.Filled.Lock,
+        RehearsalLogKind.Gate => Icons.Material.Filled.Gavel,
+        RehearsalLogKind.Routed => Icons.Material.Filled.AltRoute,
+        RehearsalLogKind.Delivered => Icons.Material.Filled.Outbox,
+        RehearsalLogKind.Error => Icons.Material.Filled.Error,
+        _ => Icons.Material.Filled.Info,
+    };
+
+    private static Color LogColor(RehearsalLogKind kind) => kind switch
+    {
+        RehearsalLogKind.Sealed => Color.Success,
+        RehearsalLogKind.Delivered => Color.Success,
+        RehearsalLogKind.Error => Color.Error,
+        RehearsalLogKind.Gate => Color.Warning,
+        _ => Color.Default,
+    };
+}

@@ -26,6 +26,15 @@ public class ChatOrchestrationService : IChatOrchestrationService
     private readonly ISchemaIndexService _schemaIndexService;
     private readonly IBlueprintTemplateService _templateService;
     private readonly ILogger<ChatOrchestrationService> _logger;
+    private readonly DirectedBuildStarter _directedBuildStarter = new();
+
+    /// <summary>
+    /// Feature 142 US4 sentinel — the AiDesignerPane prefixes a directed-build chip click with
+    /// this token so the orchestration can short-circuit the AI round-trip and seed a
+    /// deterministic starting blueprint. Format: <c>__directed-start:&lt;id&gt;</c> where the id
+    /// is one of <see cref="DirectedBuildStarter.KnownStarterIds"/>.
+    /// </summary>
+    public const string DirectedStartSentinelPrefix = "__directed-start:";
 
     // Base system prompt for the AI assistant — dynamic sections are appended at session creation
     private const string BaseSystemPrompt = """
@@ -72,6 +81,11 @@ public class ChatOrchestrationService : IChatOrchestrationService
         | **Wizard pages, sections, x-persona, x-credential-offer, x-review, x-file, $ref, formatMinimum/formatMaximum, nested objects, arrays** | `set_action_schema` |
         | **Terminal routes (`nextActionIds: []`), parallel branches, raw JSON Logic, `outputMapping` (Feature 104), `branchDeadline`** | `set_action_routes` |
         | **HAIP credential flows (`presentationSource: HaipExternalWallet`, `targetAudience: HaipExternalWallet`), `rejectionConfig`, `requiredPriorActions`, `isStartingAction`, action `instructions`** | `set_action_metadata` |
+        | **Refine layout (sections, wizard pages, widths, intro) on an EXISTING schema** | `set_form_layout` |
+        | **Bind / unbind a field to persona autofill** | `set_field_autofill` |
+        | **Mark a wizard page as the review/x-review summary** | `set_review_page` |
+
+        The three `set_form_layout` / `set_field_autofill` / `set_review_page` tools are PRESENTATIONAL only — they refuse to write behavioural keywords (x-file, x-credential-offer). They do not re-lock a passing rehearsal. Prefer them over `set_action_schema` when you only need to tweak how a form is laid out or pre-filled, not what it submits.
 
         The typed `require_credential` and `issue_credential` cannot set `presentationSource` or `targetAudience`. Any HAIP flow (Feature 104 credential claim, credential-bootstrapped open submission) MUST use `set_action_metadata` for those properties. Same for `rejectionConfig` (used by the Decline button on credential claim cards) and `requiredPriorActions`.
 
@@ -170,6 +184,67 @@ public class ChatOrchestrationService : IChatOrchestrationService
     private const string PostSchemaPrompt = """
 
         ## Available Templates
+
+        """;
+
+    // Feature 142 US4 (FR-010 / FR-012) — appended to the system prompt for brand-new sessions
+    // (no blueprint loaded). The assistant opens as a guided interviewer offering directed-build
+    // starting points instead of a blank box, and silently translates plain-language answers into
+    // the underlying constructs. Suppressed once a blueprint is loaded so edit-mode behaviour
+    // (see "Current Blueprint Being Edited" appendix) is not diluted.
+    private const string GuidedOpeningPrompt = """
+
+        ## Guided Opening (new service — no blueprint loaded)
+
+        The user has not yet started a blueprint. Do NOT open with a blank "describe your workflow"
+        prompt. Instead, open as a **guided interviewer**.
+
+        Offer the user a short menu of recognisable directed-build starting points before asking
+        free-form questions:
+
+        - **Apply for a grant** (starter id `grant`) — applicant submits an application, a reviewer
+          decides. Produces an open starting Action for the applicant and a reviewer Action.
+        - **Apply for a permit / licence** (starter id `permit`) — applicant submits, a case officer
+          decides, and on approval a verifiable permit credential is issued.
+        - **Certify, then apply** (starter id `certify-then-apply`) — the applicant must already
+          hold a certification before they may apply. Produces an open starting Action with a
+          credential prerequisite.
+
+        The UI presents these as chip buttons (data-testid `directed-build-chips`). When the user
+        clicks a chip, the chat surface sends you a sentinel message of the form
+        `__directed-start:<id>` — the engine intercepts that sentinel, seeds the blueprint
+        deterministically, and emits a BlueprintUpdated event before any AI turn. After the seed
+        lands you will receive the user's next free-form turn with the seeded blueprint already in
+        the "Current Blueprint Being Edited" appendix.
+
+        If the user does NOT pick a chip and instead types free-form intent, behave as an
+        interviewer. Ask for the four pieces of context one at a time (one focused question per
+        turn):
+
+        1. **Sector / purpose** — "What sector is this for, and what is it meant to achieve?"
+        2. **Who applies** — "Who initiates this — citizens, businesses, your own staff?"
+        3. **Who decides** — "Who reviews or approves the submission?"
+        4. **Prerequisites** — "Do applicants need to prove something before they apply (e.g. a
+           certification, a prior approval)?"
+
+        ### Plain-language → constructs (FR-012)
+
+        Translate plain language to constructs without exposing jargon to the user:
+
+        | The user says… | You produce… |
+        |---|---|
+        | "anyone in the public can apply" | a starting Action with no pre-bound sender wallet |
+        | "they must be certified / verified / registered first" | `require_credential` on the starting Action (the journey will show a "Must prove" badge) |
+        | "we give them a permit / licence / certificate at the end" | `issue_credential` on the approval Action |
+        | "the council / officer / committee decides" | a second Action with a reviewer participant as the sender |
+        | "if approved, do X; if rejected, do Y" | conditional routing on the reviewer's Action |
+
+        Never say "starting action", "credential requirement" or "issue_credential" to the user —
+        use everyday language ("the application step", "must prove they're certified", "we hand
+        them a permit") and call the right tools behind the scenes.
+
+        Stop the guided opening as soon as a blueprint is seeded (chip click) OR you have enough
+        from the user's answers to call `create_blueprint` + `add_participant` + `add_action`.
 
         """;
 
@@ -585,6 +660,39 @@ public class ChatOrchestrationService : IChatOrchestrationService
 
         ValidateAttachments(attachments);
 
+        // Feature 142 US4 (FR-010 / FR-011) — directed-build chip short-circuit.
+        // The AiDesignerPane chip row sends a recognisable user message when the administrator
+        // picks one of the directed-build starters. If the message resolves to a known starter
+        // AND the session has no blueprint yet, we seed the blueprint deterministically and
+        // surface a BlueprintUpdated event WITHOUT invoking the AI — the journey appears live in
+        // the canvas (FR-011) and the next free-form user turn gets the seed in the editing
+        // appendix so the AI continues from there. An unrecognised "directed-start" hint or a
+        // session that already has a blueprint falls through to the normal AI turn.
+        if (session.BlueprintDraft is null
+            && TryResolveDirectedStarter(message) is { } starterId
+            && _directedBuildStarter.TryCreateSeed(starterId) is { } seed)
+        {
+            session.BlueprintDraft = seed;
+            await _sessionStore.UpdateSessionAsync(session);
+
+            // Persist the user's chip click as a friendly chat history entry so the conversation
+            // makes sense if the administrator later scrolls back.
+            await _sessionStore.AddMessageAsync(sessionId, new ChatMessage
+            {
+                SessionId = sessionId,
+                Role = MessageRole.User,
+                Content = message,
+            });
+
+            var seededValidation = ValidateBlueprint(seed);
+            await onBlueprintUpdate(seed, seededValidation);
+
+            _logger.LogInformation(
+                "Directed-build starter '{StarterId}' seeded session {SessionId} (no AI turn)",
+                starterId, sessionId);
+            return;
+        }
+
         // Add user message
         var userMessage = new ChatMessage
         {
@@ -823,6 +931,14 @@ public class ChatOrchestrationService : IChatOrchestrationService
         var sb = new StringBuilder();
         sb.Append(BaseSystemPrompt);
 
+        // Feature 142 US4 — guided interviewer opening applies only to brand-new sessions.
+        // Once a blueprint is loaded, the edit-mode appendix takes over and the directed-build
+        // chips are gone from the UI, so we suppress this section to avoid mixed signals.
+        if (session.BlueprintDraft is null)
+        {
+            sb.Append(GuidedOpeningPrompt);
+        }
+
         // Inject available schemas summary from unified schema index
         try
         {
@@ -1002,6 +1118,52 @@ public class ChatOrchestrationService : IChatOrchestrationService
                     throw new ArgumentException($"Unknown attachment kind: {att.Kind}");
             }
         }
+    }
+
+    /// <summary>
+    /// Feature 142 US4 — maps an incoming user message to a directed-build starter id, or
+    /// returns <c>null</c> if it is not a recognised opener. Two paths are supported:
+    /// <list type="bullet">
+    ///   <item>The explicit sentinel <c>__directed-start:&lt;id&gt;</c> — used by tests and any
+    ///         programmatic caller that wants determinism without surface-level ambiguity.</item>
+    ///   <item>The plain-language chip labels used by the AiDesignerPane chip row
+    ///         (e.g. "Help me build a grant application") — chosen for chat-history friendliness.
+    ///         Match is prefix-style on a small allowlist; partial matches that could mean other
+    ///         things are intentionally rejected so free-form questions still reach the AI.</item>
+    /// </list>
+    /// </summary>
+    private static string? TryResolveDirectedStarter(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) { return null; }
+
+        var trimmed = message.Trim();
+
+        // 1) Explicit sentinel — anchors the contract used by tests and the orchestration smoke
+        //    paths. Format: __directed-start:<id>.
+        if (trimmed.StartsWith(DirectedStartSentinelPrefix, StringComparison.Ordinal))
+        {
+            var id = trimmed[DirectedStartSentinelPrefix.Length..].Trim();
+            return DirectedBuildStarter.KnownStarterIds.Contains(id) ? id : null;
+        }
+
+        // 2) Plain-language chip labels — exact starts used by AiDesignerPane chips.
+        var lower = trimmed.ToLowerInvariant();
+        if (lower.StartsWith("help me build a grant application", StringComparison.Ordinal))
+        {
+            return DirectedBuildStarter.Grant;
+        }
+        if (lower.StartsWith("help me build a permit", StringComparison.Ordinal)
+            || lower.StartsWith("help me build a licence", StringComparison.Ordinal))
+        {
+            return DirectedBuildStarter.Permit;
+        }
+        if (lower.StartsWith("help me build a certify-then-apply", StringComparison.Ordinal)
+            || lower.StartsWith("help me build a certified-applicant", StringComparison.Ordinal))
+        {
+            return DirectedBuildStarter.CertifyThenApply;
+        }
+
+        return null;
     }
 
     /// <summary>

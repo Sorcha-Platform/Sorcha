@@ -18,7 +18,7 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("blueprint")
-                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("ProductVersion", "10.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -297,6 +297,76 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                         .HasDatabaseName("IX_Instances_State");
 
                     b.ToTable("Instances", "blueprint");
+                });
+
+            modelBuilder.Entity("Sorcha.Blueprint.Service.Data.Entities.PublishOverrideEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BlueprintId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExecDefHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("OverriddenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OverriddenByPlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RegisterId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlueprintId", "OverriddenAt")
+                        .HasDatabaseName("IX_PublishOverrides_Blueprint_OverriddenAt");
+
+                    b.ToTable("PublishOverrides", "blueprint");
+                });
+
+            modelBuilder.Entity("Sorcha.Blueprint.Service.Data.Entities.RehearsalPassEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BlueprintId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExecDefHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("RehearsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RehearsedByPlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SandboxRegisterId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlueprintId", "ExecDefHash", "RehearsedAt")
+                        .HasDatabaseName("IX_RehearsalPasses_Blueprint_ExecDef_RehearsedAt");
+
+                    b.ToTable("RehearsalPasses", "blueprint");
                 });
 
             modelBuilder.Entity("Sorcha.Blueprint.Service.Data.Entities.BlueprintDraftAccessEntity", b =>

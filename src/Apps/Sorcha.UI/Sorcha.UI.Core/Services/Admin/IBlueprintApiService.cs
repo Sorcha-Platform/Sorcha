@@ -21,7 +21,42 @@ public interface IBlueprintApiService
     Task<PublishReviewViewModel?> PublishBlueprintAsync(string id, CancellationToken cancellationToken = default);
     Task<BlueprintValidationResponse?> ValidateBlueprintAsync(string id, CancellationToken cancellationToken = default);
     Task<PublishReviewViewModel?> PublishBlueprintToRegisterAsync(string id, string registerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Feature 142 Go-live publish (T039/T040). Posts <c>{ registerId, override? }</c> to the gated
+    /// <c>POST /api/blueprints/{id}/publish</c> endpoint and returns a typed
+    /// <see cref="Sorcha.UI.Core.Models.Blueprints.GoLivePublishOutcome"/> distinguishing success
+    /// (200, carrying version + <c>overridden</c>), the rehearsal soft gate (409
+    /// <c>REHEARSAL_REQUIRED</c>, carrying the unrehearsed exec-def hash), no-rights (403), and a
+    /// generic error. Pass <paramref name="overrideReason"/>/<paramref name="confirmOverride"/> to
+    /// re-publish past the soft gate (the server records the audit row).
+    /// </summary>
+    /// <param name="id">The draft blueprint to publish.</param>
+    /// <param name="registerId">The target live register.</param>
+    /// <param name="confirmOverride">When true, sends <c>override.confirm=true</c> to bypass the rehearsal soft gate.</param>
+    /// <param name="overrideReason">Optional reason recorded in the override audit row.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The typed Go-live publish outcome.</returns>
+    Task<Sorcha.UI.Core.Models.Blueprints.GoLivePublishOutcome> PublishGoLiveAsync(
+        string id,
+        string registerId,
+        bool confirmOverride = false,
+        string? overrideReason = null,
+        CancellationToken cancellationToken = default);
     Task<List<BlueprintVersionViewModel>> GetVersionsAsync(string id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Feature 142 (T057 / US6) — derives a new draft from a published version (the amend / clone-to-draft
+    /// flow). Calls <c>POST /api/blueprints/from-published</c>. On success, returns the new draft id;
+    /// the caller should navigate to the rail-driven designer to land in the amend draft with Go live
+    /// re-locked (the fresh exec-def hash has no recorded RehearsalPass).
+    /// </summary>
+    /// <param name="registerId">The register the source version lives on.</param>
+    /// <param name="blueprintId">The published blueprint id (the source).</param>
+    /// <param name="version">The published version number.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The id of the newly-created draft, or null on non-success (403 / 404 / transport).</returns>
+    Task<string?> FromPublishedAsync(string registerId, string blueprintId, int version, CancellationToken cancellationToken = default);
     Task<BlueprintListItemViewModel?> GetVersionAsync(string id, string version, CancellationToken cancellationToken = default);
     Task<AvailableBlueprintsViewModel?> GetAvailableBlueprintsAsync(string walletAddress, string registerId, CancellationToken cancellationToken = default);
 

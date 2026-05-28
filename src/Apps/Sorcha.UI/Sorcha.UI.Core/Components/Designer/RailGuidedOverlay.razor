@@ -1,0 +1,107 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Microsoft.JSInterop
+@using MudBlazor
+@inject IJSRuntime JS
+
+@*
+    Feature 142 first-run guided overlay (T018 / FR-005). A plain, dismissible introduction to the
+    four-stage golden path shown the first time an author opens the designer. Dismissal is persisted
+    in localStorage (key sorcha.designer.railTourDismissed) so it appears once per browser. Copy is
+    factual — it names the four stages and explains why Go live starts locked. No marketing language.
+*@
+
+@if (_visible)
+{
+    <MudOverlay Visible="true" DarkBackground="true" Absolute="false" ZIndex="1500">
+        <MudPaper Elevation="8"
+                  Class="rail-guided-overlay pa-6"
+                  data-testid="rail-first-run-overlay">
+            <MudText Typo="Typo.h6" GutterBottom="true">Designing a service, stage by stage</MudText>
+
+            <MudText Typo="Typo.body2" Class="mb-3">
+                This designer follows four stages along the top rail:
+            </MudText>
+
+            <MudList T="string" Dense="true" Class="mb-3">
+                <MudListItem T="string" Icon="@Icons.Material.Filled.Chat">
+                    <b>Describe</b> — tell the assistant what the service does, in plain English, to produce a draft.
+                </MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.AccountTree">
+                    <b>Understand</b> — see who does what, in order, as a human journey.
+                </MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.PlayCircle">
+                    <b>Rehearse</b> — run the service end-to-end on a sandbox register.
+                </MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.RocketLaunch">
+                    <b>Go live</b> — publish the rehearsed version to a live register.
+                </MudListItem>
+            </MudList>
+
+            <MudText Typo="Typo.body2" Class="mb-4">
+                Go live stays locked until a full rehearsal passes, so a service is exercised end-to-end
+                before it reaches a live register.
+            </MudText>
+
+            <div class="d-flex justify-end">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="DismissAsync"
+                           data-testid="rail-first-run-dismiss">
+                    Got it
+                </MudButton>
+            </div>
+        </MudPaper>
+    </MudOverlay>
+}
+
+@code {
+    private const string StorageKey = "sorcha.designer.railTourDismissed";
+
+    private bool _visible;
+
+    /// <inheritdoc />
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        bool dismissed;
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+            dismissed = string.Equals(stored, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            // localStorage unavailable (prerender/SSR or blocked) — treat as not-yet-dismissed but
+            // do not show until we can persist a dismissal, to avoid a re-appearing overlay loop.
+            dismissed = true;
+        }
+
+        if (!dismissed && !_visible)
+        {
+            _visible = true;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Persists the dismissal and hides the overlay.</summary>
+    private async Task DismissAsync()
+    {
+        _visible = false;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, "true");
+        }
+        catch
+        {
+            // Best-effort persistence; the overlay is already hidden for this session.
+        }
+
+        StateHasChanged();
+    }
+}

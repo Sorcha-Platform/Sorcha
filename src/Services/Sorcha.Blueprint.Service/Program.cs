@@ -227,11 +227,60 @@ else
         "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres");
 }
 
+// Feature 142 — RehearsalPass + PublishOverride storage (EF Core when configured,
+// InMemory fallback). Convenience-grade: NOT on the F113 fail-fast audited list, so
+// these warn on in-memory but do not gate startup.
+if (!string.IsNullOrEmpty(blueprintDbConn))
+{
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IRehearsalPassStore, Sorcha.Blueprint.Service.Storage.EfCoreRehearsalPassStore>();
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Blueprint.Service.Storage.IRehearsalPassStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.EfCoreRehearsalPassStore).FullName!,
+        "postgres");
+
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IPublishOverrideStore, Sorcha.Blueprint.Service.Storage.EfCorePublishOverrideStore>();
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Blueprint.Service.Storage.IPublishOverrideStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.EfCorePublishOverrideStore).FullName!,
+        "postgres");
+}
+else
+{
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IRehearsalPassStore, Sorcha.Blueprint.Service.Storage.InMemoryRehearsalPassStore>();
+    storageLog.RegisterInMemory(
+        typeof(Sorcha.Blueprint.Service.Storage.IRehearsalPassStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.InMemoryRehearsalPassStore).FullName!,
+        "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres — convenience-grade, not audited");
+
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IPublishOverrideStore, Sorcha.Blueprint.Service.Storage.InMemoryPublishOverrideStore>();
+    storageLog.RegisterInMemory(
+        typeof(Sorcha.Blueprint.Service.Storage.IPublishOverrideStore).FullName!,
+        typeof(Sorcha.Blueprint.Service.Storage.InMemoryPublishOverrideStore).FullName!,
+        "no Postgres connection string in ConnectionStrings:Blueprint:Postgres or ConnectionStrings:Sorcha:Postgres — convenience-grade, not audited");
+}
+
 // Add Orchestration services (Sprint 6)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateReconstructionService,
     Sorcha.Blueprint.Service.Services.Implementation.StateReconstructionService>();
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService,
     Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService>();
+
+// Feature 142 (US2) — full-rehearsal orchestration. The sandbox-register provider and the
+// orchestration service hold process-wide transient state (per-org sandbox-register cache;
+// in-flight rehearsal sessions) so both are singletons; the orchestration service resolves its
+// scoped collaborators (execution pipeline, stores, service clients) per operation via
+// IServiceScopeFactory. The executable-definition hasher is a stateless POCO.
+builder.Services.AddSingleton<Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.ISandboxRegisterProvider,
+    Sorcha.Blueprint.Service.Services.Implementation.SandboxRegisterProvider>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.IRehearsalOrchestrationService,
+    Sorcha.Blueprint.Service.Services.Implementation.RehearsalOrchestrationService>();
+
+// Feature 142 (T037/T038 / FR-027 + FR-032) — server-side publish gate. Scoped because it
+// depends on the scoped IRegisterServiceClient (governance roster read); reads the rehearsal-pass
+// store and computes the exec-def hash to evaluate the governance-hard + rehearsal-soft gates.
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Implementation.IPublishGate,
+    Sorcha.Blueprint.Service.Services.Implementation.PublishGate>();
 
 // Feature 111: Timebound Presentation Lifecycle — Redis-backed transient state and rate limiting.
 builder.Services.Configure<Sorcha.Blueprint.Service.Configuration.PresentationLifecycleOptions>(
@@ -249,6 +298,9 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IPresent
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Infrastructure.IClock,
     Sorcha.Blueprint.Service.Services.Infrastructure.SystemClock>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.PresentationLifecycleMetrics>();
+
+// Feature 142 — Blueprint Design Lifecycle designer metrics (instruments added in T058).
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.BlueprintDesignerMetrics>();
 
 // Feature 111 — IPresentationConsumer registrations dispatched by name from
 // PresentationLifecycleService. Consumers run in-process here in Blueprint
@@ -742,11 +794,20 @@ blueprintGroup.MapPost("/{id}/validate", async (string id, IPublishService servi
 .RequireAuthorization("CanPublishBlueprints");
 
 // <summary>
-// Publish blueprint, optionally to a register
+// Publish blueprint to a register — Feature 142: governance-hard + rehearsal-soft gated.
 // </summary>
-blueprintGroup.MapPost("/{id}/publish", async (string id, IPublishService service, IOutputCacheStore cache, HttpRequest request) =>
+blueprintGroup.MapPost("/{id}/publish", async (
+    HttpContext httpContext,
+    string id,
+    IPublishService service,
+    Sorcha.Blueprint.Service.Services.Implementation.IPublishGate publishGate,
+    Sorcha.Blueprint.Service.Storage.IPublishOverrideStore overrideStore,
+    Sorcha.Blueprint.Service.Services.Implementation.BlueprintDesignerMetrics designerMetrics,
+    ILogger<Program> publishLogger,
+    IOutputCacheStore cache,
+    HttpRequest request) =>
 {
-    // Read required registerId from JSON body
+    // Read required registerId (+ optional override) from JSON body.
     PublishRequest? body = null;
     if (request.ContentLength > 0)
     {
@@ -765,6 +826,47 @@ blueprintGroup.MapPost("/{id}/publish", async (string id, IPublishService servic
         return Results.BadRequest(new { error = "registerId is required. Blueprints must be published to a specific register." });
     }
 
+    // Resolve the caller identity from the JWT for the governance check + override attribution.
+    var sub = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+        ?? httpContext.User.FindFirst("sub")?.Value;
+    _ = Guid.TryParse(sub, out var platformUserId);
+    var caller = new Sorcha.Blueprint.Service.Services.Implementation.PublishCaller(
+        PlatformUserId: platformUserId,
+        OrganizationId: httpContext.GetOrganizationId(),
+        WalletAddress: httpContext.User.FindFirst("wallet_address")?.Value);
+
+    var overrideConfirmed = body.Override is { Confirm: true };
+
+    // Feature 142 — evaluate the server-side publish gate BEFORE any publish (FR-027 hard, FR-032 soft).
+    Sorcha.Blueprint.Service.Services.Implementation.PublishGateDecision decision;
+    try
+    {
+        decision = await publishGate.EvaluateAsync(
+            caller, id, body.RegisterId, overrideConfirmed, httpContext.RequestAborted);
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound(new { error = $"Blueprint {id} not found." });
+    }
+
+    switch (decision.Outcome)
+    {
+        case Sorcha.Blueprint.Service.Services.Implementation.PublishGateOutcome.Forbidden:
+            // FR-027 — hard refuse; no record written, no publish.
+            return Results.Json(
+                new { error = decision.Reason ?? "Caller lacks register governance publish rights." },
+                statusCode: StatusCodes.Status403Forbidden);
+
+        case Sorcha.Blueprint.Service.Services.Implementation.PublishGateOutcome.RehearsalRequired:
+            // FR-032 — soft gate blocked; resend with override to proceed. No publish.
+            return Results.Json(
+                new { code = "REHEARSAL_REQUIRED", execDefHash = decision.ExecDefHash, message = "This blueprint version has not been rehearsed. Run a full rehearsal, or resend with an override to publish anyway." },
+                statusCode: StatusCodes.Status409Conflict);
+    }
+
+    var overridden = decision.Outcome
+        == Sorcha.Blueprint.Service.Services.Implementation.PublishGateOutcome.ProceedWithOverride;
+
     var result = await service.PublishAsync(id, body.RegisterId);
 
     if (!result.IsSuccess)
@@ -772,26 +874,62 @@ blueprintGroup.MapPost("/{id}/publish", async (string id, IPublishService servic
         return Results.BadRequest(new { errors = result.Errors });
     }
 
+    // FR-032 — record the audited override AFTER a successful publish, using the version actually
+    // published, so the audit row references a real immutable record.
+    if (overridden)
+    {
+        var reasonProvided = !string.IsNullOrWhiteSpace(body.Override?.Reason);
+        await overrideStore.RecordAsync(new Sorcha.Blueprint.Service.Models.PublishOverride
+        {
+            BlueprintId = id,
+            Version = result.PublishedBlueprint!.Version,
+            RegisterId = body.RegisterId,
+            ExecDefHash = decision.ExecDefHash,
+            OverriddenByPlatformUserId = caller.PlatformUserId,
+            OverriddenAt = DateTimeOffset.UtcNow,
+            Reason = body.Override?.Reason,
+        }, httpContext.RequestAborted);
+
+        // T058 — count the override + emit an operator-visible audit line.
+        designerMetrics.RecordPublishOverride(body.RegisterId, reasonProvided);
+        publishLogger.LogInformation(
+            "Publish override recorded: blueprint={BlueprintId} register={RegisterId} version={Version} actor={ActorSubject} reasonProvided={ReasonProvided}",
+            id, body.RegisterId, result.PublishedBlueprint!.Version, caller.PlatformUserId, reasonProvided);
+    }
+
     await cache.EvictByTagAsync("blueprints", default);
     await cache.EvictByTagAsync("published", default);
 
-    // Include warnings (e.g., cycle detection) in the response
+    // Include warnings (e.g., cycle detection) in the response alongside the gate outcome.
     if (result.Warnings.Length > 0)
     {
         return Results.Ok(new
         {
             blueprintId = result.PublishedBlueprint!.BlueprintId,
             version = result.PublishedBlueprint.Version,
+            registerId = body.RegisterId,
             publishedAt = result.PublishedBlueprint.PublishedAt,
+            overridden,
             warnings = result.Warnings
         });
     }
 
-    return Results.Ok(result.PublishedBlueprint);
+    return Results.Ok(new
+    {
+        blueprintId = result.PublishedBlueprint!.BlueprintId,
+        version = result.PublishedBlueprint.Version,
+        registerId = body.RegisterId,
+        publishedAt = result.PublishedBlueprint.PublishedAt,
+        overridden
+    });
 })
 .WithName("PublishBlueprint")
-.WithSummary("Publish blueprint")
-.WithDescription("Validate and publish a blueprint to a register. Requires { registerId } in the request body.")
+.WithSummary("Publish blueprint (governance-hard + rehearsal-soft gated)")
+.WithDescription("Validate and publish a blueprint to a register. Requires { registerId } in the body. "
+    + "Enforces register governance rights server-side (403 if the caller lacks Owner/Admin/Designer on the register). "
+    + "Then checks the rehearsal soft gate: the publishing version's executable-definition hash must match a recorded "
+    + "rehearsal pass, otherwise 409 REHEARSAL_REQUIRED unless { override: { confirm: true, reason? } } is sent, which "
+    + "publishes and records an audited override. The 200 response carries 'overridden'.")
 .RequireAuthorization("CanPublishBlueprints");
 
 // <summary>
@@ -819,6 +957,16 @@ blueprintGroup.MapGet("/{id}/versions/{version}", async (string id, int version,
 .WithSummary("Get specific version")
 .WithDescription("Retrieve a specific published version of a blueprint (immutable)")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromDays(365)).Tag("published")); // Cache permanently - immutable
+
+// ===========================
+// Rehearsal Endpoints (Feature 142 — Blueprint Design Lifecycle, US2)
+// ===========================
+
+// Map full-rehearsal walk-through endpoints (POST/GET/DELETE under /api/blueprints/{id}/rehearsals).
+app.MapRehearsalEndpoints();
+
+// Feature 142 (T056 / US6) — amend / clone-to-draft endpoint (POST /api/blueprints/from-published).
+app.MapBlueprintFromPublishedEndpoint();
 
 // ===========================
 // Schema Endpoints (Sprint 7 - Schema Store)
@@ -3681,9 +3829,21 @@ public class PublishService(
 // ===========================
 
 /// <summary>
-/// Request body for publish with optional register target
+/// Request body for publish to a register. Feature 142 (FR-032): an optional
+/// <see cref="Override"/> overrides the rehearsal soft gate when the publishing version has not
+/// been rehearsed and the caller holds register publish-governance authority.
 /// </summary>
-public record PublishRequest(string RegisterId);
+/// <param name="RegisterId">The target live register the blueprint is published to. Required.</param>
+/// <param name="Override">Present only to override the rehearsal soft gate; null on a normal publish.</param>
+public record PublishRequest(string RegisterId, PublishOverrideRequest? Override = null);
+
+/// <summary>
+/// Feature 142 (FR-032) — the override sub-document on a publish request. Sent only when the
+/// caller intends to publish a version that has no matching rehearsal pass.
+/// </summary>
+/// <param name="Confirm">Must be <c>true</c> to confirm the override.</param>
+/// <param name="Reason">Optional free-text reason recorded on the audit record.</param>
+public record PublishOverrideRequest(bool Confirm, string? Reason = null);
 
 /// <summary>
 /// Blueprint summary for list views

@@ -68,6 +68,13 @@ public record RegisterViewModel
     public string? SyncState { get; init; }
 
     /// <summary>
+    /// Whether this register is a Feature 142 rehearsal sandbox (derived from the register's
+    /// <c>sandbox</c> control-record metadata). Sandbox registers are excluded from the Go-live
+    /// target picker and normal register listings — nothing is ever published to them.
+    /// </summary>
+    public bool Sandbox { get; init; }
+
+    /// <summary>
     /// Computed: Whether the register is currently syncing or in a sync-related state.
     /// Includes both legacy lifecycle values (Subscribing) and Feature 108 sync-state
     /// enum values (Indeterminate, Syncing).

@@ -1,0 +1,67 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+.journey-view {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.journey-view__empty {
+    opacity: 0.7;
+    padding: 1rem 0;
+}
+
+.journey-view__flow {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    padding: 0.5rem 0.25rem;
+}
+
+.journey-step {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 220px;
+    max-width: 280px;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: transform 0.1s ease-in-out;
+}
+
+.journey-step:hover {
+    transform: translateY(-2px);
+}
+
+.journey-step--selected {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: -1px;
+}
+
+.journey-step__role {
+    opacity: 0.75;
+    letter-spacing: 0.04em;
+}
+
+.journey-step__title {
+    font-weight: 600;
+}
+
+.journey-step__summary {
+    opacity: 0.85;
+}
+
+.journey-step__badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+}
+
+.journey-view__arrow {
+    align-self: center;
+    opacity: 0.4;
+    flex: 0 0 auto;
+}

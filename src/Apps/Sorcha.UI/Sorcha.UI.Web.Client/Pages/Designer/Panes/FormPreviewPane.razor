@@ -4,7 +4,9 @@
 @namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Panes
 @using MudBlazor
 @using Sorcha.UI.Core.Components.Forms
+@using Sorcha.UI.Core.Components.Forms.Authoring
 @using Sorcha.UI.Core.Services.Designer
+@using Sorcha.Blueprint.Models.Forms
 @using BlueprintAction = Sorcha.Blueprint.Models.Action
 @inject DesignerContext Context
 @implements IDisposable
@@ -94,10 +96,17 @@
         }
         else
         {
+            @if (_editMode == FormAuthoringMode.Edit)
+            {
+                <LayoutToolsPanel Action="@current" OnLayoutChanged="HandleLayoutChanged" />
+            }
             <SorchaFormRenderer Action="@current"
                                 PreviewMode="true"
                                 ParticipantAddress="@current.Sender"
-                                SigningWalletAddress="@string.Empty" />
+                                SigningWalletAddress="@string.Empty"
+                                EditAllowed="true"
+                                Mode="@_editMode"
+                                OnEditModeChanged="HandleEditModeChanged" />
         }
     </div>
 </div>

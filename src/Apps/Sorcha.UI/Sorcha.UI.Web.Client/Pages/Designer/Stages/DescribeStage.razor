@@ -1,0 +1,19 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@* Feature 142 — Describe stage canvas (guided AI on-ramp). *@
+@* The persistent AI chat pane (in the shell, left) drives the build; this canvas shows the *@
+@* service taking shape as a plain-language journey. US4 (T045) enriches the live-build *@
+@* interaction; the journey projection itself is shared with the Understand stage. *@
+
+@namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Stages
+@using MudBlazor
+@using Sorcha.UI.Core.Components.Designer
+
+<div class="designer-stage designer-stage--describe" data-testid="stage-describe">
+    <MudText Typo="Typo.body2" Class="designer-stage__hint mb-2">
+        Describe your service in the chat on the left. It takes shape here as a journey — who does
+        what, in order — so you can see it forming as you go.
+    </MudText>
+    <JourneyView />
+</div>

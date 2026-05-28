@@ -4,28 +4,48 @@
        this variable if layout chrome changes. */
     --designer-chrome-height: 168px;
     display: grid;
-    grid-template-rows: auto 1fr;
+    /* toolbar (auto) + lifecycle rail (auto) + body (1fr) */
+    grid-template-rows: auto auto 1fr;
     height: calc(100dvh - var(--designer-chrome-height));
     min-height: 0;
 }
 
-/* Pass real height through MudTabs so the active panel fills the 1fr row.
-   Without this the panel collapses to content height, breaking the
-   pinned-composer layout in AiDesignerPane. */
-.designer-shell ::deep .mud-tabs {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-}
-
-.designer-shell ::deep .mud-tabs-panels {
-    flex: 1 1 auto;
+/* Two-pane body: persistent AI chat on the left, swapping stage canvas on the right. */
+.designer-shell__body {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.9fr) 1.6fr;
+    gap: 0.5rem;
     min-height: 0;
     overflow: hidden;
 }
 
-.designer-shell ::deep .mud-tab-panel {
-    height: 100%;
+.designer-shell__ai {
+    display: flex;
+    flex-direction: column;
     min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    border-right: 1px solid var(--mud-palette-divider);
+}
+
+.designer-shell__canvas {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+}
+
+/* Stack the panes on narrow viewports so neither collapses. */
+@media (max-width: 960px) {
+    .designer-shell__body {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+        overflow: auto;
+    }
+
+    .designer-shell__ai {
+        border-right: none;
+        border-bottom: 1px solid var(--mud-palette-divider);
+    }
 }

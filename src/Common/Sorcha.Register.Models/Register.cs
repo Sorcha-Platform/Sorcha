@@ -102,4 +102,22 @@ public class Register
     /// Null on legacy records and on registers synced from a peer.
     /// </summary>
     public RegisterControlRecord? InitialControlRecord { get; set; }
+
+    /// <summary>
+    /// Metadata key (in <see cref="RegisterControlRecord.Metadata"/>) that tags a register
+    /// as a per-organisation rehearsal sandbox (Feature 142). Value is the string "true".
+    /// </summary>
+    public const string SandboxMetadataKey = "sandbox";
+
+    /// <summary>
+    /// Computed: whether this register is a rehearsal sandbox (Feature 142). Derived from
+    /// <c>InitialControlRecord.Metadata["sandbox"] == "true"</c>. Sandbox registers are
+    /// excluded from Go-live target pickers and normal register listings. Get-only and
+    /// computed, so it is surfaced on JSON reads but never persisted (BSON <c>AutoMap</c>
+    /// skips setter-less properties) and never recomputed into the canonical hash shape.
+    /// </summary>
+    public bool Sandbox =>
+        InitialControlRecord?.Metadata is { } metadata
+        && metadata.TryGetValue(SandboxMetadataKey, out var value)
+        && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
 }

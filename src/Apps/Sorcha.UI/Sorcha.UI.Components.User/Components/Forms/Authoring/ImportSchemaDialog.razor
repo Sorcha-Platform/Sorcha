@@ -1,0 +1,96 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Text.Json
+@using MudBlazor
+@using Sorcha.UI.Core.Services.Forms
+@inject IFormSchemaService SchemaService
+
+<MudDialog data-testid="import-schema-dialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Import data schema</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+            Paste a JSON Schema (2020-12) describing the fields this action collects.
+            A layout-less schema renders immediately via type inference; you can re-lay
+            it out from the form-authoring tools afterwards.
+        </MudText>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2"
+                      data-testid="import-schema-error">
+                @_errorMessage
+            </MudAlert>
+        }
+
+        <MudTextField @bind-Value="_pasted"
+                      Label="JSON Schema"
+                      Variant="Variant.Outlined"
+                      Lines="12"
+                      data-testid="import-schema-textarea" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="HandleCancel" data-testid="import-schema-cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="HandleAccept"
+                   Disabled="@string.IsNullOrWhiteSpace(_pasted)"
+                   data-testid="import-schema-accept">
+            Import
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private string _pasted = string.Empty;
+    private string? _errorMessage;
+
+    private void HandleCancel() => MudDialog.Cancel();
+
+    private void HandleAccept()
+    {
+        _errorMessage = null;
+        if (string.IsNullOrWhiteSpace(_pasted))
+        {
+            _errorMessage = "Paste a JSON Schema to import.";
+            return;
+        }
+
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(_pasted);
+        }
+        catch (JsonException ex)
+        {
+            _errorMessage = $"Schema is not valid JSON: {ex.Message}";
+            return;
+        }
+
+        if (doc.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            _errorMessage = "Top-level value must be a JSON object.";
+            doc.Dispose();
+            return;
+        }
+
+        // Sanity-check that AutoGenerateForm produces something — that proves the
+        // shape is at least renderable. We pass the schema through unchanged so any
+        // x-* layout the importer already wrote is preserved (FR-014 / FR-017).
+        try
+        {
+            _ = SchemaService.AutoGenerateForm(new[] { doc });
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Schema cannot be rendered: {ex.Message}";
+            doc.Dispose();
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(doc));
+    }
+}

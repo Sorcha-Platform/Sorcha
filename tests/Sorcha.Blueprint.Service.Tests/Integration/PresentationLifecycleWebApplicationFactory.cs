@@ -111,6 +111,28 @@ public sealed class PresentationLifecycleWebApplicationFactory : BlueprintServic
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+        // Feature 142 — the test principal (org_id ...456) must hold a publish-governance role on
+        // the target register so the publish endpoint's server-side governance hard gate (FR-027)
+        // passes. This factory replaces the base IRegisterServiceClient mock, so the roster default
+        // is re-applied here and survives ResetMocksAndState. (The rehearsal soft gate is satisfied
+        // by the base factory's AlwaysPassRehearsalPassStore.)
+        RegisterClient
+            .Setup(r => r.GetGovernanceRosterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string regId, CancellationToken _) => new GovernanceRosterResponse
+            {
+                RegisterId = regId,
+                MemberCount = 1,
+                Members =
+                {
+                    new RosterMember
+                    {
+                        Subject = "did:sorcha:org:00000000-0000-0000-0000-000000000456",
+                        Role = "Owner",
+                        Algorithm = "ED25519",
+                        GrantedAt = DateTimeOffset.UtcNow,
+                    }
+                }
+            });
         RegisterClient
             .Setup(r => r.GetTransactionsByInstanceIdAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
