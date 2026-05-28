@@ -76,7 +76,7 @@ dotnet restore && dotnet build && dotnet test
 | Peer | 70% | 5002 / 7002 | P2P network, gRPC |
 | API Gateway | 95% | 80 / 7082 | YARP reverse proxy |
 
-**Designer UI:** `/designer/blueprint` is the canonical route (replaces legacy `/designer` and `/designer/chat`).
+**Designer UI:** `/designer/blueprint` is the canonical route (replaces legacy `/designer` and `/designer/chat`). The page is a rail-driven Describe → Understand → Rehearse → Go live shell (Feature 142); Go-live is gated by a server-side `RehearsalPass` on the executable-definition hash.
 
 **Sorcha.UI.Core audience convention (Feature 123):** user-facing and admin-facing code in `Sorcha.UI.Core` is partitioned at folder level into `Services/User/`, `Services/Admin/`, `Services/Shared/` (and the same pattern under `Models/`). Folders carry the audience; namespaces stay at the subject level so consumer `using` directives are stable across moves. See `src/Apps/Sorcha.UI/Sorcha.UI.Core/README.md` for the full convention and bi-modal smell detector.
 
