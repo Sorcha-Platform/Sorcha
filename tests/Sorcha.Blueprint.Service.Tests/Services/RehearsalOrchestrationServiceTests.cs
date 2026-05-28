@@ -91,11 +91,15 @@ public class RehearsalOrchestrationServiceTests
         services.AddScoped(_ => _execution.Object);
         services.AddScoped(_ => _instanceStore.Object);
         services.AddSingleton<IRehearsalPassStore>(_passStore);
+        services.AddMetrics();
         var provider = services.BuildServiceProvider();
+        var metrics = new BlueprintDesignerMetrics(
+            provider.GetRequiredService<System.Diagnostics.Metrics.IMeterFactory>());
 
         return new RehearsalOrchestrationService(
             provider.GetRequiredService<IServiceScopeFactory>(),
             _sandboxProvider.Object,
+            metrics,
             NullLogger<RehearsalOrchestrationService>.Instance,
             new ExecutableDefinitionHasher());
     }

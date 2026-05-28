@@ -50,6 +50,7 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
     // cannot capture scoped services as fields (DI scope validation rejects it at startup).
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SandboxRegisterProvider> _logger;
+    private readonly BlueprintDesignerMetrics _metrics;
 
     /// <summary>org id → sandbox register id (resolved once, reused thereafter).</summary>
     private readonly ConcurrentDictionary<string, string> _byOrg =
@@ -75,9 +76,11 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
     /// <summary>Initialises a new instance of the <see cref="SandboxRegisterProvider"/> class.</summary>
     public SandboxRegisterProvider(
         IServiceScopeFactory scopeFactory,
+        BlueprintDesignerMetrics metrics,
         ILogger<SandboxRegisterProvider> logger)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -94,6 +97,7 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
         // Fast path — already provisioned and cached.
         if (_byOrg.TryGetValue(organizationId, out var cached))
         {
+            _metrics.RecordSandboxProvision("Reused", organizationId);
             return cached;
         }
 
@@ -104,6 +108,7 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
             // Double-check after acquiring the lock — a concurrent caller may have created it.
             if (_byOrg.TryGetValue(organizationId, out cached))
             {
+                _metrics.RecordSandboxProvision("Reused", organizationId);
                 return cached;
             }
 
@@ -116,17 +121,31 @@ public sealed class SandboxRegisterProvider : ISandboxRegisterProvider
             var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
             var walletClient = scope.ServiceProvider.GetRequiredService<IWalletServiceClient>();
 
-            // Mint (or reuse) the org's stable sandbox-owner wallet — the attestation signer.
-            var ownerWalletAddress = await GetOrCreateOwnerWalletAsync(organizationId, walletClient, cancellationToken);
+            string resolvedId;
+            try
+            {
+                // Mint (or reuse) the org's stable sandbox-owner wallet — the attestation signer.
+                var ownerWalletAddress = await GetOrCreateOwnerWalletAsync(organizationId, walletClient, cancellationToken);
 
-            var resolvedId = await RunCreationCeremonyAsync(
-                organizationId, ownerWalletAddress, registerClient, walletClient, cancellationToken);
+                resolvedId = await RunCreationCeremonyAsync(
+                    organizationId, ownerWalletAddress, registerClient, walletClient, cancellationToken);
+            }
+            catch (Exception)
+            {
+                _metrics.RecordSandboxProvision("Failed", organizationId);
+                _logger.LogInformation(
+                    "Sandbox register provisioned: register={RegisterId} outcome={Outcome} org={OrgId}",
+                    "—", "Failed", organizationId);
+                throw;
+            }
 
             _byOrg[organizationId] = resolvedId;
+            _metrics.RecordSandboxProvision("Created", organizationId);
 
+            // T058 — operator-visible audit line.
             _logger.LogInformation(
-                "Sandbox register {RegisterId} ready for organisation {OrgId}",
-                resolvedId, organizationId);
+                "Sandbox register provisioned: register={RegisterId} outcome={Outcome} org={OrgId}",
+                resolvedId, "Created", organizationId);
 
             return resolvedId;
         }

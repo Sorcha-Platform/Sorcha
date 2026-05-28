@@ -50,6 +50,9 @@ public sealed class RehearsalSession
     /// <summary>The platform user who started the rehearsal.</summary>
     public Guid StartedByPlatformUserId { get; init; }
 
+    /// <summary>UTC timestamp when the rehearsal started — drives the duration histogram (T058).</summary>
+    public DateTimeOffset StartedAt { get; init; } = DateTimeOffset.UtcNow;
+
     /// <summary>The ordered walk-through steps.</summary>
     public List<RehearsalSessionStep> Steps { get; } = [];
 

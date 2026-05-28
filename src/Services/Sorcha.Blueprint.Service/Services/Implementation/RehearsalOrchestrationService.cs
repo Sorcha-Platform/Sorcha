@@ -30,6 +30,7 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
     private readonly ISandboxRegisterProvider _sandboxProvider;
     private readonly ExecutableDefinitionHasher _hasher;
     private readonly ILogger<RehearsalOrchestrationService> _logger;
+    private readonly BlueprintDesignerMetrics _metrics;
 
     /// <summary>Transient rehearsal sessions keyed by id (singleton-scoped, in-memory).</summary>
     private readonly ConcurrentDictionary<Guid, RehearsalSession> _sessions = new();
@@ -44,11 +45,13 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
     public RehearsalOrchestrationService(
         IServiceScopeFactory scopeFactory,
         ISandboxRegisterProvider sandboxProvider,
+        BlueprintDesignerMetrics metrics,
         ILogger<RehearsalOrchestrationService> logger,
         ExecutableDefinitionHasher? hasher = null)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _sandboxProvider = sandboxProvider ?? throw new ArgumentNullException(nameof(sandboxProvider));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _hasher = hasher ?? new ExecutableDefinitionHasher();
     }
@@ -105,6 +108,9 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             StartedByPlatformUserId = platformUserId,
         };
 
+        // T058 — count the start (mode=full, outcome=InProgress); terminal events fire below.
+        _metrics.RecordRehearsalStart(session.Mode);
+
         // T026 — provision/reuse the per-org devMode sandbox register (D1).
         var sandboxRegisterId = await _sandboxProvider.GetOrCreateSandboxRegisterAsync(
             organizationId, cancellationToken);
@@ -146,6 +152,8 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
                 : "publish to sandbox failed";
             AppendLog(session, RehearsalEventKind.Error, $"Could not stage the blueprint for rehearsal: {reason}.");
             _sessions[rehearsalId] = session;
+            _metrics.RecordRehearsalTerminal(session.Mode, RehearsalOutcome.Failed,
+                (DateTimeOffset.UtcNow - session.StartedAt).TotalSeconds);
             return ToContract(session);
         }
 
@@ -288,13 +296,17 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             }
             catch (Exception ex)
             {
+                ContractRehearsal contract;
                 lock (session.SyncRoot)
                 {
                     session.Outcome = RehearsalOutcome.Failed;
                     AppendLog(session, RehearsalEventKind.Error,
                         $"Step '{actingRole}' failed: {ex.Message}");
-                    return ToContract(session);
+                    contract = ToContract(session);
                 }
+                _metrics.RecordRehearsalTerminal(session.Mode, RehearsalOutcome.Failed,
+                    (DateTimeOffset.UtcNow - session.StartedAt).TotalSeconds);
+                return contract;
             }
         }
 
@@ -338,6 +350,9 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             _logger.LogInformation(
                 "Rehearsal {RehearsalId} passed; recorded RehearsalPass for blueprint {BlueprintId} hash {Hash}",
                 rehearsalId, blueprintId, execDefHash);
+
+            _metrics.RecordRehearsalTerminal(session.Mode, RehearsalOutcome.Passed,
+                (DateTimeOffset.UtcNow - session.StartedAt).TotalSeconds);
         }
 
         lock (session.SyncRoot)
@@ -354,6 +369,9 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             // Idempotent: nothing to reset.
             return Task.FromResult(false);
         }
+
+        var wasInProgress = session.Outcome == RehearsalOutcome.InProgress;
+        var sandboxRegisterId = session.SandboxRegisterId;
 
         lock (session.SyncRoot)
         {
@@ -372,6 +390,17 @@ public sealed class RehearsalOrchestrationService : IRehearsalOrchestrationServi
             AppendLog(session, RehearsalEventKind.Info,
                 "Rehearsal reset — stand-in participants discarded; the sandbox register is kept for next time.");
         }
+
+        if (wasInProgress)
+        {
+            _metrics.RecordRehearsalTerminal(session.Mode, RehearsalOutcome.Abandoned,
+                (DateTimeOffset.UtcNow - session.StartedAt).TotalSeconds);
+        }
+
+        // T058 — operator-visible audit line for sandbox discard.
+        _logger.LogInformation(
+            "Sandbox rehearsal discarded: rehearsal={RehearsalId} register={RegisterId}",
+            rehearsalId, sandboxRegisterId);
 
         return Task.FromResult(true);
     }

@@ -802,6 +802,8 @@ blueprintGroup.MapPost("/{id}/publish", async (
     IPublishService service,
     Sorcha.Blueprint.Service.Services.Implementation.IPublishGate publishGate,
     Sorcha.Blueprint.Service.Storage.IPublishOverrideStore overrideStore,
+    Sorcha.Blueprint.Service.Services.Implementation.BlueprintDesignerMetrics designerMetrics,
+    ILogger<Program> publishLogger,
     IOutputCacheStore cache,
     HttpRequest request) =>
 {
@@ -876,6 +878,7 @@ blueprintGroup.MapPost("/{id}/publish", async (
     // published, so the audit row references a real immutable record.
     if (overridden)
     {
+        var reasonProvided = !string.IsNullOrWhiteSpace(body.Override?.Reason);
         await overrideStore.RecordAsync(new Sorcha.Blueprint.Service.Models.PublishOverride
         {
             BlueprintId = id,
@@ -886,6 +889,12 @@ blueprintGroup.MapPost("/{id}/publish", async (
             OverriddenAt = DateTimeOffset.UtcNow,
             Reason = body.Override?.Reason,
         }, httpContext.RequestAborted);
+
+        // T058 — count the override + emit an operator-visible audit line.
+        designerMetrics.RecordPublishOverride(body.RegisterId, reasonProvided);
+        publishLogger.LogInformation(
+            "Publish override recorded: blueprint={BlueprintId} register={RegisterId} version={Version} actor={ActorSubject} reasonProvided={ReasonProvided}",
+            id, body.RegisterId, result.PublishedBlueprint!.Version, caller.PlatformUserId, reasonProvided);
     }
 
     await cache.EvictByTagAsync("blueprints", default);

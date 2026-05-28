@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Diagnostics.Metrics;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -34,9 +35,12 @@ public class SandboxRegisterProviderTests
         var services = new ServiceCollection();
         services.AddSingleton(_registerClient.Object);
         services.AddSingleton(_walletClient.Object);
+        services.AddMetrics();
         var provider = services.BuildServiceProvider();
+        var metrics = new BlueprintDesignerMetrics(provider.GetRequiredService<IMeterFactory>());
         return new SandboxRegisterProvider(
             provider.GetRequiredService<IServiceScopeFactory>(),
+            metrics,
             NullLogger<SandboxRegisterProvider>.Instance);
     }
 
