@@ -1083,6 +1083,17 @@ public class ValidatorRegistry : IValidatorRegistry
             var json = JsonSerializer.Serialize(validator, _jsonOptions);
             await _database.StringSetAsync(key, json, ttl);
 
+            // Belt-and-braces (Layer 5): verify the write actually landed.
+            // Symptom we're hunting: per-validator key absent from Redis even
+            // immediately after a "successful" StringSetAsync — currently silent.
+            var exists = await _database.KeyExistsAsync(key);
+            if (!exists)
+            {
+                _logger.LogWarning(
+                    "StoreValidatorAsync wrote key {Key} with TTL {TtlSeconds}s but KeyExists==false immediately after — Redis write silently failed",
+                    key, ttl.TotalSeconds);
+            }
+
             // Invalidate list cache
             var listKey = GetValidatorsKey(registerId);
             await _database.KeyDeleteAsync(listKey);
