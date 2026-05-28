@@ -55,7 +55,7 @@ public class DirectedBuildStarterTests
         var bp = _starter.TryCreateSeed("grant");
 
         bp.Should().NotBeNull();
-        bp!.Participants.Count.Should().BeGreaterOrEqualTo(2,
+        bp!.Participants.Count.Should().BeGreaterThanOrEqualTo(2,
             "a grant workflow needs at least the applicant and a reviewer");
         bp.Actions.Should().NotBeEmpty();
         bp.Actions.Should().Contain(a => a.IsStartingAction,
@@ -69,7 +69,7 @@ public class DirectedBuildStarterTests
 
         bp.Should().NotBeNull();
         bp!.Actions.Should().Contain(
-            a => a.CredentialIssuanceConfig is not null,
+            a => a.CredentialIssuanceConfig != null,
             "the permit pattern translates 'we hand them a permit' into issue_credential");
     }
 

@@ -115,7 +115,7 @@ public class ChatOrchestrationGuidedOpeningTests
 
         emittedBlueprint.Should().NotBeNull(
             "the directed-start sentinel must seed a starting blueprint and emit a BlueprintUpdated event without invoking the AI");
-        emittedBlueprint!.Participants.Count.Should().BeGreaterOrEqualTo(2);
+        emittedBlueprint!.Participants.Count.Should().BeGreaterThanOrEqualTo(2);
         emittedBlueprint.Actions.Should().Contain(a => a.IsStartingAction);
 
         // No AI round-trip needed for the sentinel — the seed is deterministic.
