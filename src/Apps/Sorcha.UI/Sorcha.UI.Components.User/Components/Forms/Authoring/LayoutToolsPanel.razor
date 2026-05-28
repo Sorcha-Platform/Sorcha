@@ -10,6 +10,7 @@
 @using BlueprintAction = Sorcha.Blueprint.Models.Action
 
 @inject IFormLayoutAuthoringService Authoring
+@inject IDialogService DialogService
 
 @if (Action is not null)
 {
@@ -58,6 +59,13 @@
                        data-testid="layout-tool-file"
                        Color="Color.Warning">
                 File upload…
+            </MudButton>
+            <MudButton Size="MudBlazor.Size.Small"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.FileUpload"
+                       OnClick="HandleImportSchemaAsync"
+                       data-testid="layout-tool-import-schema">
+                Import schema
             </MudButton>
         </MudStack>
 
@@ -224,6 +232,32 @@
         // the typed set_action_schema escape hatch. (T051 / future work — out of US5 scope
         // to write x-file from here; we surface the path without forging the write.)
         _pendingFileUploadDialog = true;
+    }
+
+    /// <summary>
+    /// T052 — opens the <see cref="ImportSchemaDialog"/>; on accept, replaces the action's
+    /// <c>DataSchemas[0]</c> with the imported schema (preserving any presentational x-*
+    /// the importer already wrote) and notifies the parent.
+    /// </summary>
+    private async Task HandleImportSchemaAsync()
+    {
+        if (Action is null) return;
+        var dialog = await DialogService.ShowAsync<ImportSchemaDialog>("Import schema");
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+        if (result.Data is not JsonDocument imported) return;
+
+        var existing = Action.DataSchemas?.ToList() ?? new List<JsonDocument>();
+        if (existing.Count == 0)
+        {
+            existing.Add(imported);
+        }
+        else
+        {
+            existing[0] = imported;
+        }
+        Action.DataSchemas = existing;
+        await NotifyAsync(Action);
     }
 
     private async Task NotifyAsync(BlueprintAction updated)
