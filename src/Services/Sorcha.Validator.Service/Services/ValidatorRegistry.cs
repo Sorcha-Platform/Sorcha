@@ -170,7 +170,7 @@ public class ValidatorRegistry : IValidatorRegistry
             }
 
             // Fetch from Redis
-            return await _pipeline.ExecuteAsync(async token =>
+            var fromRedis = await _pipeline.ExecuteAsync(async token =>
             {
                 var key = GetValidatorKey(registerId, validatorId);
                 var json = await _database.StringGetAsync(key);
@@ -180,6 +180,13 @@ public class ValidatorRegistry : IValidatorRegistry
 
                 return JsonSerializer.Deserialize<ValidatorInfo>(json.ToString(), _jsonOptions);
             }, ct);
+
+            if (fromRedis != null)
+                return fromRedis;
+
+            // Belt-and-braces (Layer 3): Redis miss — fall back to the durable
+            // Mongo store and rewarm Redis so subsequent reads are fast.
+            return await LoadFromMongoAndRewarmAsync(registerId, validatorId, ct);
         }
         catch (Exception ex)
         {
@@ -187,6 +194,100 @@ public class ValidatorRegistry : IValidatorRegistry
                 "Failed to get validator {ValidatorId} for register {RegisterId}",
                 validatorId, registerId);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads a single validator from MongoDB and rewarms the Redis cache when found.
+    /// Wrapped in try/catch so a Mongo outage never throws — returns null on failure.
+    /// </summary>
+    private async Task<ValidatorInfo?> LoadFromMongoAndRewarmAsync(
+        string registerId,
+        string validatorId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var filter = Builders<ValidatorDocument>.Filter.And(
+                Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId),
+                Builders<ValidatorDocument>.Filter.Eq(d => d.ValidatorId, validatorId));
+
+            var cursor = await _validatorsCollection.FindAsync(filter, cancellationToken: ct);
+            var doc = await cursor.FirstOrDefaultAsync(ct);
+            if (doc == null)
+                return null;
+
+            var info = doc.ToValidatorInfo();
+            _logger.LogInformation(
+                "Mongo fallback hit for validator {ValidatorId} on register {RegisterId} — rewarming Redis",
+                validatorId, registerId);
+
+            // Rewarm Redis. Best-effort: if the write fails the next read just hits Mongo again.
+            try
+            {
+                await StoreValidatorAsync(registerId, info, ct);
+            }
+            catch (Exception writeEx)
+            {
+                _logger.LogWarning(writeEx,
+                    "Rewarm of Redis failed for validator {ValidatorId} on register {RegisterId}",
+                    validatorId, registerId);
+            }
+
+            return info;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Mongo fallback read failed for validator {ValidatorId} on register {RegisterId}",
+                validatorId, registerId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads ALL validators for a register from MongoDB and rewarms the Redis cache.
+    /// Returns an empty list on failure (never throws).
+    /// </summary>
+    private async Task<List<ValidatorInfo>> LoadAllFromMongoAndRewarmAsync(
+        string registerId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var filter = Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId);
+            var cursor = await _validatorsCollection.FindAsync(filter, cancellationToken: ct);
+            var docs = await cursor.ToListAsync(ct);
+
+            if (docs.Count == 0)
+                return [];
+
+            var infos = docs.Select(d => d.ToValidatorInfo()).ToList();
+            _logger.LogInformation(
+                "Mongo fallback hit for register {RegisterId} — rewarming Redis with {Count} validators",
+                registerId, infos.Count);
+
+            foreach (var info in infos)
+            {
+                try
+                {
+                    await StoreValidatorAsync(registerId, info, ct);
+                }
+                catch (Exception writeEx)
+                {
+                    _logger.LogWarning(writeEx,
+                        "Rewarm failed for validator {ValidatorId} on register {RegisterId}",
+                        info.ValidatorId, registerId);
+                }
+            }
+
+            return infos;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Mongo fallback list read failed for register {RegisterId}", registerId);
+            return [];
         }
     }
 
@@ -943,6 +1044,15 @@ public class ValidatorRegistry : IValidatorRegistry
                     validators.Add(validator);
                 }
             }
+        }
+
+        // Belt-and-braces (Layer 3): if the Redis scan returns nothing, the cache
+        // is cold (likely a `down -v` wiped it). Fall back to the durable Mongo
+        // store and rewarm Redis. This stops GetActiveCountAsync from reporting 0
+        // and gating consensus closed on every fresh reset.
+        if (validators.Count == 0)
+        {
+            validators = await LoadAllFromMongoAndRewarmAsync(registerId, ct);
         }
 
         // Cache the list using operational TTL
