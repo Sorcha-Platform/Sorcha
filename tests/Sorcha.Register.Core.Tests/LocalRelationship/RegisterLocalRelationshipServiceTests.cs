@@ -223,6 +223,64 @@ public class RegisterLocalRelationshipServiceTests
         rel.IsSubscriber.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Derive_GenesisPayloadWrappedInControlTransactionPayload_StillDerivesOwnerAndValidator()
+    {
+        // Regression: PR #868 wraps the orchestrator's genesis payload in
+        // ControlTransactionPayload { Version, Roster, Operation }. Without the symmetric
+        // reader-side fix in TryExtractControlRecord, this wrapped shape silently
+        // deserialised into a default-empty RegisterControlRecord and the validator
+        // dropped its own register from monitoring after the first reconcile tick,
+        // wedging Action 1 sealing on a fresh n1 deploy.
+        var record = BuildControlRecord(
+            ownerAddress: LocalWalletAddress,
+            validatorKeys: new[] { LocalValidatorKey });
+
+        var wrapper = new ControlTransactionPayload
+        {
+            Version = 1,
+            Roster = record,
+            Operation = null,
+        };
+        var payloadJson = JsonSerializer.SerializeToUtf8Bytes(wrapper);
+
+        var repo = new Mock<IReadOnlyRegisterRepository>();
+        repo.Setup(r => r.GetDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Docket { Id = 0, RegisterId = RegisterId });
+        repo.Setup(r => r.GetTransactionsByDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new TransactionModel
+                {
+                    RegisterId = RegisterId,
+                    TxId = new string('0', 64),
+                    SenderWallet = "system",
+                    MetaData = new TransactionMetaData { TransactionType = TransactionType.Control },
+                    Payloads = new[]
+                    {
+                        new PayloadModel
+                        {
+                            Data = Convert.ToBase64String(payloadJson),
+                            Hash = string.Empty,
+                        },
+                    },
+                    Signature = string.Empty,
+                },
+            });
+
+        var svc = new RegisterLocalRelationshipService(
+            repo.Object,
+            new StaticIdentityProvider(
+                new LocalIdentitySnapshot(new[] { LocalWalletAddress }, LocalValidatorKey)),
+            NullLogger<RegisterLocalRelationshipService>.Instance);
+
+        var rel = await svc.DeriveAsync(RegisterId);
+
+        rel.Should().NotBeNull();
+        rel!.IsOwner.Should().BeTrue();
+        rel.IsValidator.Should().BeTrue();
+    }
+
     // -------- test helpers --------
 
     private static RegisterLocalRelationshipService BuildService(
