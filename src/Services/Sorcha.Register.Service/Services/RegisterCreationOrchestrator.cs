@@ -713,10 +713,23 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
     /// </summary>
     private TransactionModel CreateGenesisTransaction(string registerId, RegisterControlRecord controlRecord, string ownerWalletAddress)
     {
+        // Wrap in ControlTransactionPayload so GovernanceRosterService can read the genesis
+        // payload via the same path as governance-proposal control transactions. The non-genesis
+        // commit at Program.cs:2204 already wraps in this shape; the genesis was the lone outlier
+        // — bare RegisterControlRecord deserialises silently into a default-empty
+        // ControlTransactionPayload, which surfaced as `members: []` on /governance/roster and
+        // led to a confusing 403 from the F142 PublishGate.
+        var payload = new ControlTransactionPayload
+        {
+            Version = 1,
+            Roster = controlRecord,
+            Operation = null   // genesis has no producing operation
+        };
+
         // Serialize to canonical form, then re-canonicalize through JsonElement round-trip.
         // This ensures the hash matches what the Validator computes when it receives the payload
         // and re-canonicalizes with the same options (compact, UnsafeRelaxedJsonEscaping).
-        var controlRecordJson = JsonSerializer.Serialize(controlRecord, _canonicalJsonOptions);
+        var controlRecordJson = JsonSerializer.Serialize(payload, _canonicalJsonOptions);
         using var doc = JsonDocument.Parse(controlRecordJson);
         var canonicalJson = JsonSerializer.Serialize(doc.RootElement, _canonicalJsonOptions);
         var controlRecordBytes = Encoding.UTF8.GetBytes(canonicalJson);
