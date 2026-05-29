@@ -1360,7 +1360,14 @@ function Publish-SorchaBlueprint {
         [Parameter(Mandatory)][hashtable]$WalletMap,
         [Parameter(Mandatory)][hashtable]$Headers,
         [string]$IdPrefix = "wt",
-        [string]$RegisterId
+        [string]$RegisterId,
+        # F142 publish-gate: walkthroughs don't run a UI rehearsal, so they
+        # default to publishing with the audited soft-gate override. The
+        # caller still has to pass the F142 governance HARD gate (their wallet
+        # must match an Owner/Admin/Designer on the register roster) — only
+        # the rehearsal soft gate is bypassed.
+        [switch]$OverrideRehearsal = $true,
+        [string]$OverrideReason = "Walkthrough automation: rehearsal not wired in scripted flow."
     )
 
     # Load template
@@ -1426,7 +1433,12 @@ function Publish-SorchaBlueprint {
     # Publish blueprint
     Write-WtInfo "Publishing blueprint..."
 
-    $publishBody = if ($RegisterId) { @{ registerId = $RegisterId } | ConvertTo-Json } else { $null }
+    $publishBodyHash = @{}
+    if ($RegisterId) { $publishBodyHash.registerId = $RegisterId }
+    if ($OverrideRehearsal) {
+        $publishBodyHash.override = @{ confirm = $true; reason = $OverrideReason }
+    }
+    $publishBody = if ($publishBodyHash.Count -gt 0) { $publishBodyHash | ConvertTo-Json -Depth 5 } else { $null }
 
     $publishRaw = Invoke-SorchaApi -Method POST `
         -Uri "$BlueprintUrl/blueprints/$blueprintId/publish" `

@@ -151,6 +151,29 @@ $verificationWallet = New-SorchaWallet `
     -FetchPublicKey
 Write-WtSuccess "Issuer wallet (Tier 2, org admin): $($verificationWallet.Address)"
 
+# Register verification-admin as a participant in her own org and link the issuer
+# wallet. This makes TokenService.AddWalletAddressClaimAsync find a (participant,
+# wallet) pair and emit `wallet_address` in her JWT — which F142 PublishGate
+# substring-matches against the register's roster Owner subject DID
+# (`did:sorcha:w:{walletAddress}`) to authorise blueprint publish (FR-027).
+# Without this link the token has no wallet_address claim and the publish 403s.
+$null = Register-SorchaParticipant `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $verificationOrgId `
+    -WalletAddress $verificationWallet.Address `
+    -DisplayName "Verification Admin" `
+    -Headers $verificationAdminSession.Headers
+Write-WtInfo "Verification admin participant registered (issuer wallet linked)"
+
+# Re-login so the refreshed access token carries the new wallet_address claim.
+$verificationAdminSession = Connect-SorchaUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $verificationAdminEmail `
+    -Password $verificationAdminPassword `
+    -OrganizationId $verificationOrgId
+Write-WtInfo "Verification admin session refreshed (wallet_address claim now present)"
+
 # ============================================================================
 # Step 5b: Citizen — Login, Wallet, Participant (best-effort, late-bound)
 # ============================================================================
@@ -349,7 +372,22 @@ Write-WtSuccess "Blueprint: $($blueprint.BlueprintId)"
 
 # ============================================================================
 # Step 9: Acme Licensing Co. — Feature 107 PR 2 (US2)
+#
+# Phase 2 (driving licence) is currently a stub — Feature 124 deferred the
+# credential-gated second-service flow to Spec 4 of the citizen arc. Steps 9
+# and 10 also predate F142's PublishGate, which requires the publisher's
+# wallet to hold an Owner/Admin/Designer role on the target register —
+# licensing-admin's wallet is only a subscribed participant on the assured-
+# identity register, so the publish (Step 10) cannot satisfy the governance
+# hard gate today. Wrap both steps in a best-effort guard so Step 11+ and
+# Phase 1 still run; a real Phase 2 will need either a separate licensing
+# register (with licensing-admin as Owner) or an Admin/Designer attestation
+# on the assured-identity register at register-creation time.
 # ============================================================================
+$licensingWallet = $null
+$licenceBlueprint = $null
+$licensingOrgId = $null
+try {
 Write-WtStep "Step 9: Create Acme Licensing Co."
 
 $licensingAdminEmail    = "licensing-admin@assured-identity.local"
@@ -454,6 +492,9 @@ $licenceBlueprint = Publish-SorchaBlueprint `
     -RegisterId $register.RegisterId
 
 Write-WtSuccess "Driving Licence blueprint: $($licenceBlueprint.BlueprintId)"
+} catch {
+    Write-WtWarn "Phase 2 setup (Steps 9-10) skipped (F142 publish-gate blocks licensing-admin — no Owner role on assured-identity register): $($_.Exception.Message)"
+}
 
 # ============================================================================
 # Save State
@@ -482,10 +523,12 @@ $state = @{
     # Sorcha Wallet (PWA) (SorchaLocalWallet target audience), not in a
     # filesystem wallet on the operator host.
     # PR 2 additions — licensing org, licensing wallet, Driving Licence blueprint id.
+    # Phase 2 is best-effort (see Step 9 comment); these may be null when the
+    # F142 publish gate blocks licensing-admin on the assured-identity register.
     licensingOrgId            = $licensingOrgId
-    licensingWalletAddress    = $licensingWallet.Address
-    licensingWalletPublicKey  = $licensingWallet.PublicKey
-    licenceBlueprintId        = $licenceBlueprint.BlueprintId
+    licensingWalletAddress    = if ($licensingWallet) { $licensingWallet.Address } else { $null }
+    licensingWalletPublicKey  = if ($licensingWallet) { $licensingWallet.PublicKey } else { $null }
+    licenceBlueprintId        = if ($licenceBlueprint) { $licenceBlueprint.BlueprintId } else { $null }
     roles = @{
         # Tier 2: org admin — authoring only. The Phase-1 citizen flow MUST NOT
         # use this identity for action submission.
