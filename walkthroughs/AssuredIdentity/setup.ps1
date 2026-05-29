@@ -126,31 +126,30 @@ $verificationOrgId = $verificationOrg.OrganizationId
 Write-WtSuccess "Verification org: $verificationOrgId"
 
 # ============================================================================
-# Step 5: Verification Admin — Login, Wallet, Participant
+# Step 5: Verification Admin (Tier 2) — Login + issuer wallet
 # ============================================================================
-Write-WtStep "Step 5: Verification Admin — Login, Wallet, Participant"
+# Three-tier identity model:
+#   Tier 1: admin@sorcha.local           — system admin (creates orgs)
+#   Tier 2: verification-admin@...local  — org admin (issuer wallet, register, blueprint)
+#   Tier 3: verification-analyst@...local — consumer (executes Action 2 ONLY)
+#
+# Step 5 sets up Tier 2. Tier 3 is provisioned in Step 5c.
+Write-WtStep "Step 5: Verification Admin (Tier 2) — Login + Issuer Wallet"
 
-$verificationSession = Connect-SorchaUser `
+$verificationAdminSession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl `
     -Email $verificationAdminEmail `
     -Password $verificationAdminPassword `
     -OrganizationId $verificationOrgId
 
+# Issuer wallet — owned by the org-admin (the org's signing identity for register
+# creation + blueprint publishing). NOT used for action submission.
 $verificationWallet = New-SorchaWallet `
     -WalletUrl $sorchaEnv.WalletUrl `
     -Name "Acme Verification Co. Issuer" `
-    -Headers $verificationSession.Headers `
+    -Headers $verificationAdminSession.Headers `
     -FetchPublicKey
-Write-WtSuccess "Verification wallet: $($verificationWallet.Address)"
-
-$null = Register-SorchaParticipant `
-    -TenantUrl $sorchaEnv.TenantUrl `
-    -WalletUrl $sorchaEnv.WalletUrl `
-    -OrganizationId $verificationOrgId `
-    -WalletAddress $verificationWallet.Address `
-    -DisplayName "Verification Analyst" `
-    -Headers $verificationSession.Headers
-Write-WtInfo "Verification analyst participant registered"
+Write-WtSuccess "Issuer wallet (Tier 2, org admin): $($verificationWallet.Address)"
 
 # ============================================================================
 # Step 5b: Citizen — Login, Wallet, Participant (best-effort, late-bound)
@@ -189,6 +188,55 @@ try {
 } catch {
     Write-WtWarn "Scripted-citizen wallet provisioning skipped (spec 136: consumer token has no org_id; citizen is late-bound and provisions via the PWA enrol flow): $($_.Exception.Message)"
 }
+
+# ============================================================================
+# Step 5c: Verification Analyst (Tier 3) — provision, login, wallet, participant
+# ============================================================================
+# Three-tier identity model — Tier 3 = consumer user, EXECUTES actions only.
+# The analyst is org-scoped (Consumer role inside Acme Verification Co.) and is
+# the sender of Action 2 (verifies the citizen's application). Their wallet —
+# not the org-admin's — is what gets baked into the blueprint's walletMap for
+# the 'verification-analyst' participant.
+Write-WtStep "Step 5c: Verification Analyst (Tier 3) — Provision + Wallet + Participant"
+
+$verificationAnalystEmail    = "verification-analyst@assured-identity.local"
+$verificationAnalystPassword = $secrets.DefaultPassword
+
+# Tier 3 user provisioned single-org-direct so they avoid the multi-org
+# OAuth-grant flow. Consumer role = no authoring rights; only action execution.
+$verificationAnalystUser = New-SorchaOrgUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -OrganizationId $verificationOrgId `
+    -Email $verificationAnalystEmail `
+    -Password $verificationAnalystPassword `
+    -DisplayName "Verification Analyst" `
+    -Headers $sysAdmin.Headers `
+    -Roles @("Consumer") `
+    -EmailVerified
+
+$verificationAnalystSession = Connect-SorchaUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $verificationAnalystEmail `
+    -Password $verificationAnalystPassword `
+    -OrganizationId $verificationOrgId
+
+# Analyst's own wallet — signs Action 2. The org's issuer wallet stays
+# separate (used by the Tier-2 admin path only).
+$verificationAnalystWallet = New-SorchaWallet `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "Verification Analyst Wallet" `
+    -Headers $verificationAnalystSession.Headers `
+    -FetchPublicKey
+Write-WtSuccess "Analyst wallet (Tier 3, executes Action 2): $($verificationAnalystWallet.Address)"
+
+$null = Register-SorchaParticipant `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $verificationOrgId `
+    -WalletAddress $verificationAnalystWallet.Address `
+    -DisplayName "Verification Analyst" `
+    -Headers $verificationAnalystSession.Headers
+Write-WtInfo "Verification analyst participant registered (Tier 3 wallet)"
 
 # ============================================================================
 # Step 6: Provision Trust Anchor + Enrol as HAIP Issuer
@@ -236,23 +284,26 @@ $register = New-SorchaRegister `
     -Name $registerName `
     -Description "Register for Feature 107 Assured Identity workflows" `
     -TenantId $verificationOrgId `
-    -OwnerUserId $verificationSession.UserId `
+    -OwnerUserId $verificationAdminSession.UserId `
     -OwnerWalletAddress $verificationWallet.Address `
-    -Headers $verificationSession.Headers `
+    -Headers $verificationAdminSession.Headers `
     -TenantUrl $sorchaEnv.TenantUrl `
     -DevMode:$DevMode
 Write-WtSuccess "Register: $($register.RegisterId)"
 
 try {
+    # Publish the ANALYST (Tier 3) as the on-register participant — the analyst
+    # is the action sender, NOT the org-admin. Org-admin still authorises the
+    # publish via their session headers (publishing is a Tier-2 authoring act).
     $null = Publish-SorchaParticipant `
         -TenantUrl $sorchaEnv.TenantUrl `
         -OrganizationId $verificationOrgId `
         -RegisterId $register.RegisterId `
         -ParticipantName "Verification Analyst" `
         -OrganizationName "Acme Verification Co." `
-        -WalletAddress $verificationWallet.Address `
-        -PublicKey $verificationWallet.PublicKey `
-        -Headers $verificationSession.Headers
+        -WalletAddress $verificationAnalystWallet.Address `
+        -PublicKey $verificationAnalystWallet.PublicKey `
+        -Headers $verificationAdminSession.Headers
 } catch {
     Write-WtWarn "Verification analyst participant publish failed: $($_.Exception.Message)"
 }
@@ -280,7 +331,9 @@ Write-WtStep "Step 8: Publish Blueprint"
 # Action 1 as the bound citizen for that instance.
 # See: .claude/skills/blueprint-builder/SKILL.md — "Open Participants & Late Binding"
 $walletMap = @{
-    "verification-analyst" = $verificationWallet.Address
+    # Tier 3 analyst's wallet — the action SENDER. NOT the org-admin's issuer
+    # wallet (that one stays purely for org-level authoring acts).
+    "verification-analyst" = $verificationAnalystWallet.Address
     # "citizen" is intentionally absent — late-bound at runtime.
 }
 
@@ -288,7 +341,7 @@ $blueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $sorchaEnv.BlueprintUrl `
     -TemplatePath (Join-Path $scriptDir "blueprints/assured-identity.json") `
     -WalletMap $walletMap `
-    -Headers $verificationSession.Headers `
+    -Headers $verificationAdminSession.Headers `
     -IdPrefix "assured-identity" `
     -RegisterId $register.RegisterId
 
@@ -413,8 +466,14 @@ $state = @{
     gatewayUrl                = $sorchaEnv.GatewayUrl
     tenantId                  = $tenantId
     verificationOrgId         = $verificationOrgId
+    # The Tier-2 org-admin's issuer wallet — used by org-level authoring acts
+    # (register creation, blueprint publish). NOT a runtime action sender.
     verificationWalletAddress = $verificationWallet.Address
     verificationWalletPublicKey = $verificationWallet.PublicKey
+    # The Tier-3 analyst's wallet — signs Action 2. This is the wallet bound
+    # to the verification-analyst participant on the published blueprint.
+    verificationAnalystWalletAddress = $verificationAnalystWallet.Address
+    verificationAnalystWalletPublicKey = $verificationAnalystWallet.PublicKey
     publicOrgId               = $publicOrgId
     citizenWalletAddress      = $citizenWallet.Address
     registerId                = $register.RegisterId
@@ -428,11 +487,22 @@ $state = @{
     licensingWalletPublicKey  = $licensingWallet.PublicKey
     licenceBlueprintId        = $licenceBlueprint.BlueprintId
     roles = @{
-        verificationAnalyst = @{
+        # Tier 2: org admin — authoring only. The Phase-1 citizen flow MUST NOT
+        # use this identity for action submission.
+        verificationAdmin = @{
             email          = $verificationAdminEmail
             password       = $verificationAdminPassword
             organizationId = $verificationOrgId
             walletAddress  = $verificationWallet.Address
+        }
+        # Tier 3: consumer (Consumer role inside Acme Verification Co.) — the
+        # sender of Action 2 (verifies the citizen's application). This is the
+        # identity Phase-1 step 5 logs in as.
+        verificationAnalyst = @{
+            email          = $verificationAnalystEmail
+            password       = $verificationAnalystPassword
+            organizationId = $verificationOrgId
+            walletAddress  = $verificationAnalystWallet.Address
         }
         citizen = @{
             email          = $citizenEmail
