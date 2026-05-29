@@ -42,26 +42,61 @@ public class GovernanceRosterService : IGovernanceRosterService
             return null;
         }
 
-        // The latest Control TX contains the full current roster
-        var latestControlTx = controlTransactions[^1];
-        var payload = DeserializeControlPayload(latestControlTx);
-
-        if (payload?.Roster == null)
+        // Walk newest → oldest and pick the first transaction whose payload actually deserialises
+        // to a populated ControlTransactionPayload (i.e. carries a real roster snapshot).
+        //
+        // TransactionType.Control is broader than "governance roster snapshot" — action
+        // submissions and other non-roster paths can also land with type=Control depending on the
+        // writer. Picking the LAST control tx unconditionally is therefore fragile: a single
+        // non-roster control tx (e.g. an action 1 submission with type=0 left in the register
+        // during cross-day n1 runs) silently wipes the F142 PublishGate's view of the roster
+        // (the policy endpoint returns members:[] and every publish refuses with
+        // "lacks publish-governance role").
+        //
+        // This loop is defensive — for a normal register with N genuine governance commits, it
+        // immediately picks the newest one; for a register that has accumulated a non-roster
+        // Control tx newer than the latest real roster commit, it skips past the noise.
+        TransactionModel? matchedTx = null;
+        ControlTransactionPayload? payload = null;
+        for (var i = controlTransactions.Count - 1; i >= 0; i--)
         {
-            _logger.LogWarning("Latest Control transaction for register {RegisterId} has no roster payload", registerId);
+            var candidate = controlTransactions[i];
+            var candidatePayload = DeserializeControlPayload(candidate);
+            if (candidatePayload?.Roster == null) continue;
+
+            // A populated roster snapshot has at least one attestation OR a non-null Validators
+            // section. A wrapper that deserialised silently from non-governance bytes will have
+            // Roster set (default-constructed) but no attestations and no validators — treat
+            // that as "this control tx does not carry a real roster" and keep scanning.
+            var roster = candidatePayload.Roster;
+            var hasAttestations = roster.Attestations is { Count: > 0 };
+            var hasValidatorRoster = roster.Validators is not null
+                && roster.Validators.Validators is { Count: > 0 };
+            if (!hasAttestations && !hasValidatorRoster) continue;
+
+            matchedTx = candidate;
+            payload = candidatePayload;
+            break;
+        }
+
+        if (matchedTx is null || payload?.Roster is null)
+        {
+            _logger.LogWarning(
+                "No Control transaction for register {RegisterId} carries a populated roster payload ({TxCount} candidates scanned)",
+                registerId, controlTransactions.Count);
             return null;
         }
 
         _logger.LogInformation(
-            "Reconstructed roster for register {RegisterId}: {MemberCount} members from {TxCount} Control transactions",
-            registerId, payload.Roster.Attestations.Count, controlTransactions.Count);
+            "Reconstructed roster for register {RegisterId}: {MemberCount} members from {TxCount} Control transactions (latest-with-roster: {TxId})",
+            registerId, payload.Roster.Attestations.Count, controlTransactions.Count, matchedTx.TxId);
 
         return new AdminRoster
         {
             RegisterId = registerId,
             ControlRecord = payload.Roster,
             ControlTransactionCount = controlTransactions.Count,
-            LastControlTxId = latestControlTx.TxId
+            LastControlTxId = matchedTx.TxId
         };
     }
 

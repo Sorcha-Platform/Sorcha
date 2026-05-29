@@ -103,6 +103,54 @@ public class GovernanceRosterServiceTests
         result!.ControlTransactionCount.Should().Be(1);
     }
 
+    [Fact]
+    public async Task GetCurrentRosterAsync_LatestControlTxHasUnrelatedPayload_FallsBackToLatestWithRoster()
+    {
+        // Regression: TransactionType.Control is broader than "governance roster snapshot".
+        // The blueprint workflow path can write a Control-typed transaction whose payload is
+        // an action-submission record, NOT a ControlTransactionPayload. The previous
+        // implementation picked the LAST control tx unconditionally, deserialised its
+        // unrelated payload into a default-empty ControlTransactionPayload (no attestations,
+        // no validator roster), and silently returned `members: []` — which made the F142
+        // PublishGate refuse every publish with "lacks publish-governance role".
+        //
+        // The fix walks newest → oldest and picks the latest control tx that actually carries
+        // a populated roster. Older real-genesis tx therefore wins over the noise.
+        var genesisRoster = CreateRoster(("did:sorcha:w:owner1", RegisterRole.Owner));
+        var genesisTx = CreateControlTransaction("tx-genesis", genesisRoster);
+
+        var noiseTx = new TransactionModel
+        {
+            TxId = "tx-noise",
+            MetaData = new TransactionMetaData
+            {
+                RegisterId = TestRegisterId,
+                TransactionType = TransactionType.Control,
+            },
+            Payloads = [new PayloadModel
+            {
+                // An action-submission payload: arbitrary JSON, not ControlTransactionPayload
+                // shaped, so .Roster on deserialise is null and the policy ought to skip it.
+                Data = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+                    "{\"action\":1,\"applicantName\":\"Alex MacLeod\"}")),
+            }],
+        };
+
+        _repositoryMock
+            .Setup(r => r.GetTransactionsAsync(TestRegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { genesisTx, noiseTx }.AsQueryable());
+
+        var result = await _service.GetCurrentRosterAsync(TestRegisterId);
+
+        result.Should().NotBeNull();
+        result!.ControlRecord.Attestations.Should().HaveCount(1);
+        result.ControlRecord.Attestations[0].Subject.Should().Be("did:sorcha:w:owner1");
+        result.LastControlTxId.Should().Be("tx-genesis");
+        // Both transactions are still counted (the noise is a real control tx, the count is
+        // informational); the picked one is the latest with a real roster.
+        result.ControlTransactionCount.Should().Be(2);
+    }
+
     // --- ValidateQuorumAsync ---
 
     [Fact]
