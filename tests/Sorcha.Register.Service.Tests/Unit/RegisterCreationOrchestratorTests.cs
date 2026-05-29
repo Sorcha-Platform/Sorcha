@@ -874,4 +874,227 @@ public class RegisterCreationOrchestratorTests
     }
 
     #endregion
+
+    #region Genesis Roster Payload Projection
+
+    /// <summary>
+    /// Regression: the genesis transaction's payload MUST be wrapped in
+    /// <see cref="ControlTransactionPayload"/> so <c>GovernanceRosterService.GetCurrentRosterAsync</c>
+    /// can project it as the initial roster. Prior to this fix the orchestrator serialised a bare
+    /// <see cref="RegisterControlRecord"/>, which deserialised silently into a default-empty
+    /// payload (Roster.Attestations == 0) and surfaced as <c>members: []</c> on
+    /// <c>GET /api/registers/{id}/governance/roster</c> — the F142 PublishGate then 403'd the
+    /// Owner because the roster had no matching member.
+    /// </summary>
+    [Fact]
+    public async Task FinalizeAsync_GenesisPayloadIsControlTransactionPayloadShape()
+    {
+        // Arrange
+        var initiateRequest = new InitiateRegisterCreationRequest
+        {
+            Name = "Roster Projection Register",
+            Owners = new List<OwnerInfo>
+            {
+                new() { UserId = "user-001", WalletId = "wallet-001" }
+            }
+        };
+
+        _mockHashProvider
+            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256))
+            .Returns(new byte[32]);
+
+        var initiateResponse = await _orchestrator.InitiateAsync(initiateRequest);
+
+        var signedAttestations = initiateResponse.AttestationsToSign.Select(a => new SignedAttestation
+        {
+            AttestationData = a.AttestationData,
+            PublicKey = Convert.ToBase64String(new byte[32]),
+            Signature = Convert.ToBase64String(new byte[64]),
+            Algorithm = SignatureAlgorithm.ED25519
+        }).ToList();
+
+        var finalizeRequest = new FinalizeRegisterCreationRequest
+        {
+            RegisterId = initiateResponse.RegisterId,
+            Nonce = initiateResponse.Nonce,
+            SignedAttestations = signedAttestations
+        };
+
+        _mockCryptoModule
+            .Setup(c => c.VerifyAsync(
+                It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.Success);
+
+        _mockRegisterManager
+            .Setup(m => m.CreateRegisterAsync(
+                It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<RegisterSyncState?>(),
+                It.IsAny<RegisterControlRecord?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = initiateResponse.RegisterId,
+                Name = "Roster Projection Register",
+                CreatedAt = DateTime.UtcNow
+            });
+
+        TransactionSubmission? capturedSubmission = null;
+        _mockValidatorClient
+            .Setup(v => v.SubmitTransactionAsync(
+                It.IsAny<TransactionSubmission>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<TransactionSubmission, CancellationToken>((s, _) => capturedSubmission = s)
+            .ReturnsAsync(new TransactionSubmissionResult
+            {
+                Success = true,
+                TransactionId = "tx-genesis",
+                RegisterId = initiateResponse.RegisterId,
+                AddedAt = DateTimeOffset.UtcNow
+            });
+
+        // Act
+        await _orchestrator.FinalizeAsync(finalizeRequest);
+
+        // Assert — the submitted genesis payload must be a ControlTransactionPayload, not a bare
+        // RegisterControlRecord. Deserialising as ControlTransactionPayload must yield a populated
+        // Roster (matching the Owner attestation we fed in) and Operation must be null (genesis
+        // has no producing governance operation).
+        capturedSubmission.Should().NotBeNull("FinalizeAsync should submit a genesis transaction");
+
+        var payloadJson = capturedSubmission!.Payload.GetRawText();
+        var payload = JsonSerializer.Deserialize<ControlTransactionPayload>(payloadJson, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+
+        payload.Should().NotBeNull();
+        payload!.Version.Should().Be(1);
+        payload.Operation.Should().BeNull("genesis has no producing operation");
+        payload.Roster.Should().NotBeNull();
+        payload.Roster.Attestations.Should().HaveCount(1, "the initiate request had exactly one Owner");
+        payload.Roster.Attestations[0].Role.Should().Be(RegisterRole.Owner);
+        payload.Roster.Attestations[0].Subject.Should().Be("did:sorcha:w:wallet-001");
+    }
+
+    /// <summary>
+    /// Round-trip pin: feed the genesis transaction the orchestrator submitted into a real
+    /// <see cref="GovernanceRosterService"/> backed by an in-memory mock repository, and assert
+    /// <c>GetCurrentRosterAsync</c> projects a non-empty roster including the Owner. This is the
+    /// exact path <c>GET /api/registers/{id}/governance/roster</c> takes — the projection is what
+    /// the F142 PublishGate consumes.
+    /// </summary>
+    [Fact]
+    public async Task FinalizeAsync_GenesisPayload_RoundTripsThroughGovernanceRosterService()
+    {
+        // Arrange
+        var initiateRequest = new InitiateRegisterCreationRequest
+        {
+            Name = "Round-Trip Register",
+            Owners = new List<OwnerInfo>
+            {
+                new() { UserId = "user-001", WalletId = "wallet-001" }
+            }
+        };
+
+        _mockHashProvider
+            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256))
+            .Returns(new byte[32]);
+
+        var initiateResponse = await _orchestrator.InitiateAsync(initiateRequest);
+
+        var signedAttestations = initiateResponse.AttestationsToSign.Select(a => new SignedAttestation
+        {
+            AttestationData = a.AttestationData,
+            PublicKey = Convert.ToBase64String(new byte[32]),
+            Signature = Convert.ToBase64String(new byte[64]),
+            Algorithm = SignatureAlgorithm.ED25519
+        }).ToList();
+
+        var finalizeRequest = new FinalizeRegisterCreationRequest
+        {
+            RegisterId = initiateResponse.RegisterId,
+            Nonce = initiateResponse.Nonce,
+            SignedAttestations = signedAttestations
+        };
+
+        _mockCryptoModule
+            .Setup(c => c.VerifyAsync(
+                It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.Success);
+
+        _mockRegisterManager
+            .Setup(m => m.CreateRegisterAsync(
+                It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<RegisterSyncState?>(),
+                It.IsAny<RegisterControlRecord?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = initiateResponse.RegisterId,
+                Name = "Round-Trip Register",
+                CreatedAt = DateTime.UtcNow
+            });
+
+        TransactionSubmission? capturedSubmission = null;
+        _mockValidatorClient
+            .Setup(v => v.SubmitTransactionAsync(
+                It.IsAny<TransactionSubmission>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<TransactionSubmission, CancellationToken>((s, _) => capturedSubmission = s)
+            .ReturnsAsync(new TransactionSubmissionResult
+            {
+                Success = true,
+                TransactionId = "tx-genesis",
+                RegisterId = initiateResponse.RegisterId,
+                AddedAt = DateTimeOffset.UtcNow
+            });
+
+        // Act — finalize to drive the genesis-tx build
+        await _orchestrator.FinalizeAsync(finalizeRequest);
+
+        // Rebuild the on-the-wire TransactionModel from the captured submission, then drive it
+        // through GovernanceRosterService exactly as the real Register Service would.
+        capturedSubmission.Should().NotBeNull();
+        var canonicalPayloadJson = capturedSubmission!.Payload.GetRawText();
+        var payloadBytes = System.Text.Encoding.UTF8.GetBytes(canonicalPayloadJson);
+        var base64UrlPayload = System.Buffers.Text.Base64Url.EncodeToString(payloadBytes);
+
+        var genesisTxModel = new TransactionModel
+        {
+            TxId = capturedSubmission.TransactionId,
+            MetaData = new TransactionMetaData
+            {
+                RegisterId = initiateResponse.RegisterId,
+                TransactionType = TransactionType.Control
+            },
+            Payloads = [new PayloadModel { Data = base64UrlPayload }]
+        };
+
+        var repositoryMock = new Mock<Sorcha.Register.Core.Storage.IRegisterRepository>();
+        repositoryMock
+            .Setup(r => r.GetTransactionsAsync(initiateResponse.RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { genesisTxModel }.AsQueryable());
+
+        var rosterLogger = new Mock<ILogger<Sorcha.Register.Core.Services.GovernanceRosterService>>();
+        var rosterService = new Sorcha.Register.Core.Services.GovernanceRosterService(
+            repositoryMock.Object, rosterLogger.Object);
+
+        // Act — drive the same projection the /governance/roster endpoint hits
+        var roster = await rosterService.GetCurrentRosterAsync(initiateResponse.RegisterId);
+
+        // Assert — roster is non-null AND non-empty (the bug pre-fix: members == 0 here)
+        roster.Should().NotBeNull("GovernanceRosterService must project the genesis payload");
+        roster!.ControlRecord.Attestations.Should().NotBeEmpty(
+            "the Owner attestation must round-trip from genesis-tx → ControlTransactionPayload → projected roster");
+        roster.ControlRecord.Attestations.Should().HaveCount(1);
+        roster.ControlRecord.Attestations[0].Role.Should().Be(RegisterRole.Owner);
+        roster.ControlRecord.Attestations[0].Subject.Should().Be("did:sorcha:w:wallet-001");
+        roster.LastControlTxId.Should().Be(capturedSubmission.TransactionId);
+    }
+
+    #endregion
 }

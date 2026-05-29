@@ -179,7 +179,7 @@ $actionResponse = Invoke-SorchaAction `
     -InstanceId $instanceId `
     -ActionId "2" `
     -BlueprintId $state.blueprintId `
-    -SenderWallet $state.verificationWalletAddress `
+    -SenderWallet $state.roles.verificationAnalyst.walletAddress `
     -RegisterId $state.registerId `
     -Token $analystSession.Token `
     -PayloadData @{
