@@ -1434,6 +1434,21 @@ function Publish-SorchaBlueprint {
         -Headers $Headers `
         -RawResponse
 
+    # Fail-loud guard: Invoke-WebRequest in PS 7+ throws on 4xx/5xx by default,
+    # but defense-in-depth — if a status ever slips through (proxy transform,
+    # custom 2xx-but-error JSON, future PS changes) make the script exit
+    # cleanly instead of silently proceeding to instance creation against a
+    # blueprint that was never actually published. This was the root cause of
+    # the AssuredIdentity "Action 1 not confirmed" 60s timeout: a 403 from the
+    # F142 PublishGate was swallowed and the citizen flow polled for a tx
+    # that never existed.
+    $publishStatus = [int]$publishRaw.StatusCode
+    if ($publishStatus -ne 200 -and $publishStatus -ne 201) {
+        $body = ""
+        try { $body = $publishRaw.Content } catch { }
+        throw "Blueprint publish failed for $blueprintId : HTTP $publishStatus, body=$body"
+    }
+
     $publishResponse = $publishRaw.Content | ConvertFrom-Json
 
     $warnings = @()
