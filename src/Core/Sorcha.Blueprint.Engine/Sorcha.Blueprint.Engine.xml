@@ -1033,6 +1033,149 @@
             - "~1" represents "/"
             </remarks>
         </member>
+        <member name="T:Sorcha.Blueprint.Engine.Implementation.DryRunStepper">
+            <summary>
+            Engine-local, dependency-free driver for the Feature 142 quick dry-run (D3 / T024 core logic).
+            Given a <see cref="T:Sorcha.Blueprint.Models.Blueprint"/> and an <see cref="T:Sorcha.Blueprint.Engine.Interfaces.IWalkState"/>, it processes one action at a
+            time — validate → calculate → route → disclose — entirely in memory, accumulating the
+            walk-through's state via the supplied <see cref="T:Sorcha.Blueprint.Engine.Interfaces.IWalkState"/> so routing and disclosure see
+            prior-action data across steps.
+            </summary>
+            <remarks>
+            <para>
+            This deliberately reproduces the canonical engine pipeline (the same steps
+            <see cref="T:Sorcha.Blueprint.Engine.Implementation.ActionProcessor"/> runs for a full execution) <b>except</b> credential prerequisites
+            and credential issuance: those are <i>not</i> executed. When an action declares
+            <see cref="P:Sorcha.Blueprint.Models.Action.CredentialRequirements"/> or
+            <see cref="P:Sorcha.Blueprint.Models.Action.CredentialIssuanceConfig"/>, the produced
+            <see cref="T:Sorcha.Blueprint.Engine.Models.DryRunStep"/> is annotated <see cref="F:Sorcha.Blueprint.Engine.Implementation.DryRunStepper.CheckedInFullRehearsalNote"/> rather than
+            exercising the credential pipeline (Clarification Q3 / FR-018).
+            </para>
+            <para>
+            The routing and disclosure outcomes this driver produces are exactly the engine's canonical
+            outcomes — it calls <see cref="M:Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine.DetermineRoutingAsync(Sorcha.Blueprint.Models.Blueprint,Sorcha.Blueprint.Models.Action,System.Collections.Generic.Dictionary{System.String,System.Object},System.Threading.CancellationToken)"/> and
+            <see cref="M:Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine.ApplyDisclosures(System.Collections.Generic.Dictionary{System.String,System.Object},Sorcha.Blueprint.Models.Action)"/> directly, so the dry-run cannot diverge from
+            real execution for the behaviours it covers.
+            </para>
+            <para>WASM-safe: no <c>HttpClient</c>, no platform APIs.</para>
+            </remarks>
+        </member>
+        <member name="F:Sorcha.Blueprint.Engine.Implementation.DryRunStepper.CheckedInFullRehearsalNote">
+            <summary>The annotation set on steps whose credential checks the dry-run skipped.</summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.DryRunStepper.#ctor(Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine,Sorcha.Blueprint.Engine.Interfaces.IWalkState)">
+            <summary>Creates a stepper bound to an execution engine and an accumulated-state holder.</summary>
+            <param name="engine">The portable execution engine.</param>
+            <param name="walkState">The engine-local in-memory accumulated state for this walk-through.</param>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.DryRunStepper.ResolveStartAction(Sorcha.Blueprint.Models.Blueprint)">
+            <summary>
+            Determines the action the walk-through should start on: the starting action if declared,
+            otherwise the lowest-id action.
+            </summary>
+            <param name="blueprint">The blueprint being rehearsed.</param>
+            <returns>The first action, or null when the blueprint has no actions.</returns>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.DryRunStepper.ProcessStepAsync(Sorcha.Blueprint.Models.Blueprint,Sorcha.Blueprint.Models.Action,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object},System.Threading.CancellationToken)">
+            <summary>
+            Processes the current action of the walk-through against a submitted payload, running
+            validate → calculate → route → disclose and (on success) advancing the accumulated state.
+            Credential prerequisites/issuance are NOT executed — they are flagged
+            <see cref="F:Sorcha.Blueprint.Engine.Implementation.DryRunStepper.CheckedInFullRehearsalNote"/> instead.
+            </summary>
+            <param name="blueprint">The blueprint being rehearsed.</param>
+            <param name="action">The action to process (the current step).</param>
+            <param name="submittedPayload">The payload the acting role submits.</param>
+            <param name="ct">Cancellation token.</param>
+            <returns>The per-step outcome, conceptually aligned with the data-model RehearsalStep.</returns>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.DryRunStepper.ResolveNextAction(Sorcha.Blueprint.Models.Blueprint,Sorcha.Blueprint.Engine.Models.RoutingResult)">
+            <summary>
+            Resolves the next action to step onto from a completed step's routing outcome, or null when
+            the workflow is complete / rejected / the next action cannot be found.
+            </summary>
+            <param name="blueprint">The blueprint being rehearsed.</param>
+            <param name="routing">The routing outcome of the just-completed step.</param>
+            <returns>The next action, or null to end the walk-through.</returns>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.DryRunStepper.BuildCredentialNote(Sorcha.Blueprint.Models.Action)">
+            <summary>
+            Builds the "checked in full rehearsal" note for an action that has credential prerequisites
+            and/or issuance, or null when the action involves no credentials.
+            </summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher">
+            <summary>
+            Computes a stable, deterministic hash over a Blueprint's <b>executable definition</b>
+            (Feature 142 / T004). The hash is the join key for the rehearsal-pass soft gate (D4/FR-032):
+            a recorded <c>RehearsalPass</c> is valid for a publish iff its <c>ExecDefHash</c> equals the
+            publishing version's <c>ExecDefHash</c>.
+            </summary>
+            <remarks>
+            <para>
+            <b>What is included</b> (the executable definition): participants (identity / wallet-binding
+            structural fields), actions (<c>id</c>, <c>sender</c>, <c>isStartingAction</c>,
+            <c>requiredPriorActions</c>, <c>calculations</c>, <c>disclosures</c>,
+            <c>credentialRequirements</c>, <c>credentialIssuanceConfig</c>, <c>routes</c>
+            [<c>id</c>, <c>nextActionIds</c>, <c>isDefault</c>, <c>condition</c>, <c>outputMapping</c>]),
+            and each action's <c>dataSchemas</c> with presentational <c>x-*</c> keywords stripped but
+            behavioural <c>x-*</c> kept (see <see cref="T:Sorcha.Blueprint.Models.Forms.FormKeywordClassifier"/>).
+            </para>
+            <para>
+            <b>What is excluded</b> (presentational / display): blueprint and action <c>title</c> /
+            <c>description</c>, <c>x-introduction</c>, and every keyword in the presentational set
+            wherever it appears in a data schema.
+            </para>
+            <para>
+            <b>Canonicalisation.</b> JSON object keys are sorted (order-insensitive) so semantically-equal
+            blueprints hash identically; arrays keep their order because action and route order is
+            semantic. The result is a SHA-256 over UTF-8 canonical JSON, returned as lowercase hex.
+            </para>
+            <para>
+            <b>Portability.</b> This type lives in the portable <c>Sorcha.Blueprint.Engine</c> and uses
+            only <see cref="T:System.Security.Cryptography.SHA256"/> and <see cref="N:System.Text.Json"/> — no HttpClient, no platform
+            APIs — so it is WASM-safe and produces identical results on the client and the server.
+            </para>
+            </remarks>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher.ComputeHash(Sorcha.Blueprint.Models.Blueprint)">
+            <summary>
+            Computes the executable-definition hash for the supplied Blueprint.
+            </summary>
+            <param name="blueprint">The Blueprint to hash. Must not be null.</param>
+            <returns>A lowercase hex SHA-256 string over the canonical executable definition.</returns>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher.BuildExecutableDefinition(Sorcha.Blueprint.Models.Blueprint)">
+            <summary>
+            Projects the Blueprint down to the executable definition as a <see cref="T:System.Text.Json.Nodes.JsonObject"/>:
+            only the structural fields, with presentational layout removed.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher.BuildDataSchemas(System.Collections.Generic.IEnumerable{System.Text.Json.JsonDocument})">
+            <summary>
+            Builds the data-schemas array with presentational <c>x-*</c> keywords stripped and
+            behavioural <c>x-*</c> kept, walking each schema recursively.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher.StripPresentational(System.Text.Json.Nodes.JsonNode)">
+            <summary>
+            Recursively removes presentational <c>x-*</c> keywords from a schema node. Behavioural
+            <c>x-*</c> keywords and standard JSON Schema vocabulary are retained. Returns a new node.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher.SerialiseModel(System.Object)">
+            <summary>
+            Serialises an arbitrary model object to a canonical-ready <see cref="T:System.Text.Json.Nodes.JsonNode"/> tree,
+            or <see langword="null"/> when the source is null. Used for the rich credential/config
+            objects whose every structural field participates in the hash.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.ExecutableDefinitionHasher.canonicalSerialise(System.Text.Json.Nodes.JsonNode)">
+            <summary>
+            Serialises a node to canonical JSON: object keys sorted recursively (order-insensitive),
+            arrays left in source order (order-sensitive).
+            </summary>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Implementation.ExecutionEngine">
              <summary>
              Main execution engine facade that provides both full workflow execution
@@ -1075,6 +1218,54 @@
             Create disclosure results for all participants based on the action's
             disclosure definitions.
             </summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Implementation.InMemoryWalkState">
+            <summary>
+            Engine-local, dependency-free, in-memory holder for the accumulated state of a single
+            dry-run walk-through (Feature 142 / D3 / T023). It records what each completed action
+            submitted (payload + calculated values) and tracks the current action pointer, so that
+            routing and disclosure can see prior-action data across steps — the same accumulated
+            state that <c>ActionExecutionService</c> reconstructs from sealed transactions server-side,
+            here reconstructed purely in memory.
+            </summary>
+            <remarks>
+            <para>
+            This is deliberately <b>not</b> the Blueprint Service <c>IInstanceStore</c>/<c>IActionStore</c>
+            (which live above the Engine and pull HTTP/encryption/transaction dependencies the Engine
+            cannot reference). It is a minimal engine-local abstraction (<see cref="T:Sorcha.Blueprint.Engine.Interfaces.IWalkState"/>) holding
+            a single flat dictionary of accumulated fields, matching how the engine's routing/calculation
+            pipeline consumes state: a flat <see cref="T:System.Collections.Generic.Dictionary`2"/> of <c>string</c>→<c>object</c>
+            merged with the current action's payload before routing (see <c>ActionExecutionService</c> step 7).
+            </para>
+            <para>
+            WASM-safe: no <c>HttpClient</c>, no platform APIs, no I/O. Not thread-safe — a walk-through is
+            driven sequentially, one step at a time.
+            </para>
+            </remarks>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Implementation.InMemoryWalkState.CurrentActionId">
+            <inheritdoc />
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Implementation.InMemoryWalkState.CompletedActionIds">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.InMemoryWalkState.SetCurrentAction(System.Int32)">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.InMemoryWalkState.GetAccumulatedState">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.InMemoryWalkState.BuildMergedInput(System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object})">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.InMemoryWalkState.RecordCompletedAction(System.Int32,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object})">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.InMemoryWalkState.GetActionData(System.Int32)">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.InMemoryWalkState.Reset">
+            <inheritdoc />
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator">
             <summary>
@@ -1884,6 +2075,57 @@
             with complex nested structures.
             </remarks>
         </member>
+        <member name="T:Sorcha.Blueprint.Engine.Interfaces.IWalkState">
+            <summary>
+            Engine-local accumulated-state holder for a single dry-run walk-through (Feature 142 / T023).
+            Holds the submitted payloads + calculations of completed actions plus the current action pointer
+            so that the validate → calculate → route → disclose pipeline can see prior-action data across a
+            multi-step walk — the in-memory equivalent of the server's state reconstruction from sealed
+            transactions.
+            </summary>
+            <remarks>
+            This abstraction is intentionally minimal and dependency-free so it can run in Blazor WASM with
+            no backend round-trip. It is <b>not</b> the Blueprint Service <c>IInstanceStore</c>/<c>IActionStore</c>
+            (which sit above the Engine and cannot be referenced from here).
+            </remarks>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Interfaces.IWalkState.CurrentActionId">
+            <summary>The action the walk-through is currently positioned on, or null before the first step.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Interfaces.IWalkState.CompletedActionIds">
+            <summary>Action ids recorded as completed, in completion order.</summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Interfaces.IWalkState.SetCurrentAction(System.Int32)">
+            <summary>Moves the walk-through pointer to <paramref name="actionId"/>.</summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Interfaces.IWalkState.GetAccumulatedState">
+            <summary>
+            Returns a snapshot copy of the flat accumulated state folded from all completed actions
+            (submitted payload + calculated values). Later actions overwrite earlier fields.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Interfaces.IWalkState.BuildMergedInput(System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object})">
+            <summary>
+            Produces the input dictionary for processing the current action: prior accumulated state
+            with <paramref name="submittedPayload"/> merged on top (the submission wins on conflict),
+            matching the server merge order.
+            </summary>
+            <param name="submittedPayload">The payload the acting role submits for the current step.</param>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Interfaces.IWalkState.RecordCompletedAction(System.Int32,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object})">
+            <summary>
+            Records the result of completing <paramref name="actionId"/> — the engine's processed data
+            (submitted payload + calculations) — folding it into the running accumulated state.
+            </summary>
+            <param name="actionId">The completed action's id.</param>
+            <param name="processedData">The processed data the engine produced for the action.</param>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Interfaces.IWalkState.GetActionData(System.Int32)">
+            <summary>Returns the recorded processed data for <paramref name="actionId"/>, or null if not completed.</summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Interfaces.IWalkState.Reset">
+            <summary>Discards all accumulated state and resets the pointer (re-run a fresh walk-through).</summary>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Models.ActionExecutionResult">
             <summary>
             Result of executing a blueprint action.
@@ -2189,6 +2431,71 @@
             <summary>
             Creates a disclosure result.
             </summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Models.DryRunStepStatus">
+            <summary>
+            Status of a single dry-run walk-through step (Feature 142 / D3).
+            </summary>
+        </member>
+        <member name="F:Sorcha.Blueprint.Engine.Models.DryRunStepStatus.Pending">
+            <summary>The step has not yet been reached.</summary>
+        </member>
+        <member name="F:Sorcha.Blueprint.Engine.Models.DryRunStepStatus.Current">
+            <summary>The step is the one currently awaiting a submitted payload.</summary>
+        </member>
+        <member name="F:Sorcha.Blueprint.Engine.Models.DryRunStepStatus.Done">
+            <summary>The step has been processed and the walk advanced.</summary>
+        </member>
+        <member name="F:Sorcha.Blueprint.Engine.Models.DryRunStepStatus.Failed">
+            <summary>The step's schema validation failed; the walk did not advance.</summary>
+        </member>
+        <member name="T:Sorcha.Blueprint.Engine.Models.DryRunStep">
+            <summary>
+            Per-step outcome of a quick dry-run (Feature 142 / D3 / T024). Captures, for one action in the
+            walk-through, the acting role, the payload submitted, and the engine's validation / routing /
+            disclosure outcomes. Conceptually aligns with the data-model <c>RehearsalStep</c> shape so the
+            designer UI (T025/T031) can render it directly.
+            </summary>
+            <remarks>
+            A dry-run covers schema validation, calculations, routing and disclosure only. When the action
+            declares credential prerequisites or issuance, those are <b>not executed</b>: instead
+            <see cref="P:Sorcha.Blueprint.Engine.Models.DryRunStep.CredentialNote"/> is set to flag that they are "checked in full rehearsal"
+            (Clarification Q3 / FR-018), so the dry-run is never mistaken for full fidelity.
+            </remarks>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.ActionId">
+            <summary>The action id this step corresponds to.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.Title">
+            <summary>Human-readable action title.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.ActingRole">
+            <summary>The participant id (role) acting on this step.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.Status">
+            <summary>The step's status within the walk-through.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.SubmittedPayload">
+            <summary>The payload the acting role submitted for this step (null until submitted).</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.Validation">
+            <summary>Schema-validation result for the submitted payload.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.RoutingOutcome">
+            <summary>Routing outcome — which action(s)/participant the workflow goes to next.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.DisclosureOutcome">
+            <summary>Who-sees-what disclosure outcome for this step.</summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.CredentialNote">
+            <summary>
+            Set when the action declares credential prerequisites and/or issuance. The dry-run does not
+            execute these (no proof verification, no minting); the note records that they are checked in
+            the full rehearsal instead. Null when the action involves no credentials.
+            </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.DryRunStep.HasDeferredCredentialChecks">
+            <summary>True when this step involves credential prerequisites or issuance that the dry-run skipped.</summary>
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Models.ExecutionContext">
             <summary>

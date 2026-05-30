@@ -151,10 +151,10 @@ handler is invoked with the forwarded submission and returns an ack over the rev
 
 ### Implementation for User Story 4
 
-- [ ] T029 [US4] Delete `src/Apps/Sorcha.PeerRouter/` project and its solution reference.
-- [ ] T030 [US4] Remove all `Sorcha.PeerRouter` / `peer-router` compose + env wiring in `docker-compose.yml` (and any `.env`/deploy refs); ensure peer-service rendezvous config is present where a public node runs.
-- [ ] T031 [US4] Migrate any unique coverage from `RouterCommunicationServiceRelayTests` into `tests/Sorcha.Peer.Service.Tests` (already covered by T008/T009 where possible); delete the PeerRouter test project.
-- [ ] T032 [US4] Verify the solution builds with no warnings and US1–US3 in-proc scenarios pass with no separate relay component (SC-005).
+- [X] T029 [US4] Delete `src/Apps/Sorcha.PeerRouter/` project and its solution reference.
+- [X] T030 [US4] Remove all `Sorcha.PeerRouter` / `peer-router` compose + env wiring in `docker-compose.yml` (and any `.env`/deploy refs); ensure peer-service rendezvous config is present where a public node runs.
+- [X] T031 [US4] Migrate any unique coverage from `RouterCommunicationServiceRelayTests` into `tests/Sorcha.Peer.Service.Tests` (already covered by T008/T009 where possible); delete the PeerRouter test project.
+- [X] T032 [US4] Verify the solution builds with no warnings and US1–US3 in-proc scenarios pass with no separate relay component (SC-005).
 
 **Checkpoint**: SC-005 — standalone relay removed, no capability lost.
 
