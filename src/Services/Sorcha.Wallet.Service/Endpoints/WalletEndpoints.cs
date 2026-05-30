@@ -1897,9 +1897,28 @@ public static class WalletEndpoints
     }
 
     // Helper methods for authentication/authorization
+    //
+    // Identity model on a human JWT (Tenant Service TokenService.cs):
+    //   sub                = UserIdentity.Id — the user-IN-this-org row (per-org, can change
+    //                        if the user joins another org or their org-scoped record is
+    //                        regenerated).
+    //   platform_user_id   = PlatformUser.Id — the cross-org persistent identity.
+    //
+    // For admin tokens these two are equal by setup convention; for consumer-tier citizens
+    // they differ. The wallet is owned by the PERSON, not their org-scoped row, so prefer
+    // platform_user_id when it's present and fall back to NameIdentifier for service /
+    // recovery tokens that don't carry it. New citizen wallets therefore land with
+    // Owner=platform_user_id, aligning Wallets.Owner with CitizenHolderIndex.PlatformUserId
+    // and CitizenCredentialEventLog.PlatformUserId — the keying inconsistency that drove
+    // the manual SQL surgery on n1 the day after PR #875 deployed.
+    //
+    // Read paths that look up wallets by NameIdentifier need to be aware of both eras
+    // (legacy Owner=sub vs new Owner=platform_user_id) — see
+    // CitizenWalletEndpoints.ResolveCitizenContextAsync for the read-tolerant equivalent.
     private static string? GetCurrentUser(HttpContext context)
     {
-        return context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return context.User.FindFirstValue("platform_user_id")
+            ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 
     private static async Task<IResult> EncapsulateKey(
