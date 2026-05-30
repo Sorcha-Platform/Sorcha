@@ -1476,3 +1476,43 @@ Designer-only components live in **`Sorcha.UI.Core`** (PWA-forbidden — Core ne
 - `sandbox_provision_total{outcome,org_id}` — counter, outcome in {`Created`, `Reused`, `Failed`}.
 
 Plus `LogInformation` audit lines on publish overrides, sandbox provisioning, and sandbox-rehearsal discard.
+
+---
+
+## Peer NAT Traversal — Reverse-Stream Rendezvous (Feature 143)
+
+Makes a register **owner** node behind NAT reachable by public subscribers, by folding a reverse-stream rendezvous capability into the **peer service** (the standalone `Sorcha.PeerRouter` is **retired**). Verified live across a real NAT boundary (tiny↔n1 over Caddy:50051).
+
+### The model
+
+- **Rendezvous is a capability, not a node.** A peer with a reachable address (`NetworkAddress.ExternalAddress` set, or explicit `PeerService:RelayRendezvousEnabled=true` → `PeerServiceConfiguration.IsRendezvousCapable`) accepts inbound reverse streams.
+- **The NAT'd node always dials out** and holds a persistent bidirectional `PeerCommunication.Stream` to each anchor; the rendezvous reuses that stream to broker requests back. NAT only blocks the *initiating* direction.
+- **Connection-direction invariant:** the subscriber initiates every cross-node connection (submit fan-out, docket pull, live subscribe). So the **owner must be inbound-reachable** — unless it dials out and is reached over its reverse stream (this feature).
+
+### Server side (rendezvous) — `PeerCommunicationServiceImpl.Stream`
+
+Accepts a reverse stream, registers it in `ReverseStreamManager` (keyed by the NAT'd peer id) on the first message (`InvalidArgument` if no `sender_peer_id`), pumps inbound messages through the existing `RelayMessageHandler`, tears down on disconnect. Gated on `IsRendezvousCapable`. `ReverseStreamManager.DispatchAsync(peerId, msg)` pushes a brokered request to a held stream (fail-fast `Unavailable` if none).
+
+### Brokered flows (reuse `RelayMessageHandler` correlation)
+
+| Flow | Message types | Owner-side handler |
+|---|---|---|
+| Sync (pull) | `REGISTER_SYNC_REQUEST/RESPONSE`, `TRANSACTION_DATA_REQUEST/RESPONSE` | reads cache / Register Service |
+| Notify | `TRANSACTION_NOTIFICATION` | triggers a sync |
+| **Submit-for-sealing** | `SUBMIT_TRANSACTION_REQUEST/RESPONSE` (12/13, **F143**) | `RelayMessageHandler.HandleSubmitTransactionRequestAsync` → `IValidatorServiceClient.SubmitTransactionAsync` → ack over reverse stream |
+
+`TransactionDistributionService.ForwardSubmissionAsync`: when a register's owner has no direct channel but its reverse stream is held, brokers the submission via `RelayCommunicationService.SendAndWaitAsync<SubmitTransactionRelayResponse>` instead of returning `LocallyOwned:true`.
+
+### Spoke side (multi-anchor) — `RelayCommunicationService`
+
+`EstablishReverseStreamAsync` maintains one reverse stream **per configured seed** concurrently (`Anchor` per seed; independent reconnect/backoff/keepalive; per-anchor write lock — gRPC streams aren't concurrent-write-safe). `SendViaRelayAsync` order: (1) rendezvous self-anchor (`ReverseStreamManager`), (2) outbound anchors via `OrderAnchorsForSend` — target-match → lowest `AverageLatencyMs` → recency, with failover, (3) unary fallback.
+
+### Observability (`Sorcha.Peer.Service` meter)
+
+`peer.reverse_streams.active` (gauge), `peer.relay.forward.duration{flow=submit|sync}`, `peer.path.selection{path=self|remote}`, `peer.anchor.failover`, `peer.anchor.reconnect`.
+
+### Scope / deferred
+
+v1 covers a NAT'd **owner** reached via its anchors (the demo: tiny=NAT'd owner dials n1=public subscriber; advert flows the proven `tiny→n1` heartbeat direction). **Deferred:** anchor-set *gossip* + multi-hop mesh routing (a subscriber relaying through a third-party anchor it doesn't hold — needs hub→hub forwarding); relay-payload re-encryption; rendezvous authz/quotas. **Trust boundary is the register** (wallet signatures + roster), not JWT — federated nodes are **separate installations** and MUST NOT share JWT signing keys.
+
+Spec: `specs/143-peer-nat-traversal/`. Design: `docs/superpowers/specs/2026-05-30-peer-nat-traversal-design.md`.

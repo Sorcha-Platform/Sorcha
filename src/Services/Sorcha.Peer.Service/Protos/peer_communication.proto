@@ -47,6 +47,9 @@ enum MessageType {
   REGISTER_SYNC_RESPONSE = 9;
   TRANSACTION_DATA_REQUEST = 10;
   TRANSACTION_DATA_RESPONSE = 11;
+  // Feature 143: forwarded submission-for-sealing to a NAT'd owner over the reverse stream
+  SUBMIT_TRANSACTION_REQUEST = 12;
+  SUBMIT_TRANSACTION_RESPONSE = 13;
 }
 
 // BLS threshold key share distribution request

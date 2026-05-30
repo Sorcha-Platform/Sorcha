@@ -6,6 +6,7 @@ using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Communication;
+using Sorcha.Peer.Service.Communication.Models;
 using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
@@ -25,6 +26,7 @@ public class TransactionDistributionService
     private readonly RelayCommunicationService _relayCommunication;
     private readonly PeerConnectionPool? _peerConnectionPool;
     private readonly PeerListManager? _peerListManager;
+    private readonly ReverseStreamManager? _reverseStreams;
     private readonly string _localPeerId;
 
     public TransactionDistributionService(
@@ -34,7 +36,8 @@ public class TransactionDistributionService
         GossipProtocolEngine gossipEngine,
         RelayCommunicationService relayCommunication,
         PeerConnectionPool? peerConnectionPool = null,
-        PeerListManager? peerListManager = null)
+        PeerListManager? peerListManager = null,
+        ReverseStreamManager? reverseStreams = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
@@ -43,6 +46,9 @@ public class TransactionDistributionService
         _relayCommunication = relayCommunication ?? throw new ArgumentNullException(nameof(relayCommunication));
         _peerConnectionPool = peerConnectionPool;
         _peerListManager = peerListManager;
+        // Feature 143: optional so existing call sites/tests compile; production DI injects it. Lets a
+        // rendezvous broker a submission to a NAT'd owner (no direct channel) over its reverse stream.
+        _reverseStreams = reverseStreams;
         _localPeerId = _configuration.ResolvedPeerId ?? "unknown";
     }
 
@@ -67,6 +73,56 @@ public class TransactionDistributionService
         var channels = _peerConnectionPool.GetChannelsForRegister(registerId);
         if (channels.Count == 0)
         {
+            // Feature 143: a NAT'd owner advertises this register but has no direct channel (empty
+            // Address → excluded from GetChannelsForRegister). If we hold its reverse stream, broker
+            // the submission to it over that stream so its validator can seal — the relay transport
+            // analog of the direct SubmitTransaction RPC.
+            if (_reverseStreams is not null && _peerListManager is not null)
+            {
+                var relayOwners = _peerListManager.GetPeersForRegister(registerId)
+                    .Where(p => _reverseStreams.TryGetStream(p.PeerId, out _))
+                    .ToList();
+
+                if (relayOwners.Count > 0)
+                {
+                    var relayAccepted = 0;
+                    foreach (var owner in relayOwners)
+                    {
+                        var correlationId = Guid.NewGuid().ToString();
+                        var relayRequest = new SubmitTransactionRelayRequest
+                        {
+                            CorrelationId = correlationId,
+                            RegisterId = registerId,
+                            SubmissionJson = submissionJson,
+                            OriginPeerId = _localPeerId
+                        };
+
+                        var relayResponse = await _relayCommunication.SendAndWaitAsync<SubmitTransactionRelayResponse>(
+                            owner.PeerId,
+                            MessageType.SubmitTransactionRequest,
+                            relayRequest,
+                            correlationId,
+                            cancellationToken: cancellationToken);
+
+                        if (relayResponse?.Accepted == true)
+                        {
+                            relayAccepted++;
+                            _logger.LogInformation(
+                                "Brokered submission for register {RegisterId} to NAT'd owner {PeerId} over reverse stream — accepted",
+                                registerId, owner.PeerId);
+                        }
+                        else
+                        {
+                            _logger.LogWarning(
+                                "Brokered submission for register {RegisterId} to NAT'd owner {PeerId} — not accepted: {Reason}",
+                                registerId, owner.PeerId, relayResponse?.RejectReason ?? "no response (timeout)");
+                        }
+                    }
+
+                    return (relayOwners.Count, relayAccepted, LocallyOwned: false);
+                }
+            }
+
             // No peer is currently advertised as holding this register. Do NOT infer local
             // ownership from an empty channel set — right after a restart the register
             // advertisements have not been re-exchanged yet, so a subscriber/replica would

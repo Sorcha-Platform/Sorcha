@@ -16,6 +16,7 @@ using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Observability;
 using Sorcha.Peer.Service.Protos;
 using Sorcha.Peer.Service.Replication;
+using Sorcha.ServiceClients.Validator;
 
 namespace Sorcha.Peer.Service.Tests.Communication;
 
@@ -104,6 +105,61 @@ public class RelayMessageHandlerTests : IAsyncDisposable
             Mock.Of<IServiceScopeFactory>());
 
         act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public async Task HandleAsync_SubmitTransactionRequest_SubmitsToLocalValidator()
+    {
+        // Owner-side (Feature 143): a relayed submission is handed to the local validator.
+        var validatorMock = new Mock<IValidatorServiceClient>();
+        validatorMock
+            .Setup(v => v.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionSubmissionResult { Success = true, TransactionId = "tx1", RegisterId = "reg1" });
+
+        var sp = new Mock<IServiceProvider>();
+        sp.Setup(p => p.GetService(typeof(IValidatorServiceClient))).Returns(validatorMock.Object);
+        var scope = new Mock<IServiceScope>();
+        scope.Setup(s => s.ServiceProvider).Returns(sp.Object);
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        var handler = new RelayMessageHandler(
+            new Mock<ILogger<RelayMessageHandler>>().Object,
+            _relayCommunication, _registerCache, _syncBackgroundService, scopeFactory.Object);
+
+        var submission = new TransactionSubmission
+        {
+            TransactionId = "tx1",
+            RegisterId = "reg1",
+            Payload = JsonSerializer.SerializeToElement(new { field = "value" }),
+            PayloadHash = "abc",
+            Signatures = new List<SignatureInfo>(),
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var submissionJson = JsonSerializer.SerializeToUtf8Bytes(
+            submission, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
+        var relayRequest = new SubmitTransactionRelayRequest
+        {
+            CorrelationId = "c1",
+            RegisterId = "reg1",
+            SubmissionJson = submissionJson,
+            OriginPeerId = "n1"
+        };
+        var message = new PeerMessage
+        {
+            SenderPeerId = "n1",
+            RecipientPeerId = "test-node",
+            MessageType = MessageType.SubmitTransactionRequest,
+            Payload = ByteString.CopyFromUtf8(JsonSerializer.Serialize(relayRequest)),
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        };
+
+        await handler.HandleAsync(message);
+
+        validatorMock.Verify(v => v.SubmitTransactionAsync(
+            It.Is<TransactionSubmission>(s => s.TransactionId == "tx1" && s.RegisterId == "reg1"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

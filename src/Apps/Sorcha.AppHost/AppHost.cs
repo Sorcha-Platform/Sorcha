@@ -68,7 +68,9 @@ var peerService = builder.AddProject<Projects.Sorcha_Peer_Service>("peer-service
     .WithEnvironment("ServiceAuth__ClientId", "service-peer")
     .WithEnvironment("ServiceAuth__ClientSecret", "peer-service-secret")
     .WithEnvironment("ServiceAuth__Scopes", "registers:write registers:read")
-    // Azure-hosted PeerRouter seed node
+    // Legacy seed placeholder (the standalone PeerRouter at n0.sorcha.dev was retired in
+    // Feature 143 — rendezvous now lives in peer-service). Point at a real public seed for
+    // local cross-node dev; a dead seed just logs reconnect warnings.
     .WithEnvironment("PeerService__SeedNodes__SeedNodes__0__NodeId", "n0.sorcha.dev")
     .WithEnvironment("PeerService__SeedNodes__SeedNodes__0__Hostname", "n0.sorcha.dev")
     .WithEnvironment("PeerService__SeedNodes__SeedNodes__0__Port", "443")

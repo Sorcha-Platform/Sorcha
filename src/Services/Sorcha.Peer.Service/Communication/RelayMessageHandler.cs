@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Peer.Service.Protos;
 using Sorcha.Peer.Service.Replication;
 using Sorcha.ServiceClients.Register;
+using Sorcha.ServiceClients.Validator;
 using RelayModels = Sorcha.Peer.Service.Communication.Models;
 
 namespace Sorcha.Peer.Service.Communication;
@@ -83,6 +84,14 @@ public class RelayMessageHandler
 
             case MessageType.TransactionNotification:
                 await HandleTransactionNotificationAsync(message, cancellationToken);
+                break;
+
+            case MessageType.SubmitTransactionRequest:
+                await HandleSubmitTransactionRequestAsync(message, cancellationToken);
+                break;
+
+            case MessageType.SubmitTransactionResponse:
+                HandleCorrelationResponse(message);
                 break;
 
             default:
@@ -224,8 +233,80 @@ public class RelayMessageHandler
     }
 
     /// <summary>
-    /// Handles response messages (REGISTER_SYNC_RESPONSE, TRANSACTION_DATA_RESPONSE)
-    /// by completing the pending correlation.
+    /// Feature 143. Owner-side handler for a forwarded submission relayed from a public subscriber to
+    /// this NAT'd owner. Deserialises the submission and hands it to the local Validator.Service
+    /// mempool (mirrors <c>TransactionDistributionGrpcService.SubmitTransaction</c>), then returns the
+    /// accept/reject result to the submitter over the reverse stream.
+    /// </summary>
+    private async Task HandleSubmitTransactionRequestAsync(PeerMessage message, CancellationToken cancellationToken)
+    {
+        var json = message.Payload.ToStringUtf8();
+        var request = JsonSerializer.Deserialize<RelayModels.SubmitTransactionRelayRequest>(json);
+
+        if (request == null)
+        {
+            _logger.LogWarning("Failed to deserialize SubmitTransactionRelayRequest from {SenderPeerId}", message.SenderPeerId);
+            return;
+        }
+
+        _logger.LogDebug(
+            "Handling relayed SubmitTransactionRequest for register {RegisterId} from {SenderPeerId}",
+            request.RegisterId, message.SenderPeerId);
+
+        var response = new RelayModels.SubmitTransactionRelayResponse
+        {
+            CorrelationId = request.CorrelationId,
+            RegisterId = request.RegisterId
+        };
+
+        try
+        {
+            TransactionSubmission? submission = JsonSerializer.Deserialize<TransactionSubmission>(
+                request.SubmissionJson,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true });
+
+            if (submission is null)
+            {
+                response.Accepted = false;
+                response.RejectReason = "submission_json not deserialisable";
+            }
+            else
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var validatorClient = scope.ServiceProvider.GetRequiredService<IValidatorServiceClient>();
+                var result = await validatorClient.SubmitTransactionAsync(submission, cancellationToken);
+
+                response.Accepted = result.Success;
+                response.RejectReason = result.Success ? string.Empty : $"{result.ErrorCode}: {result.ErrorMessage}";
+
+                _logger.LogInformation(
+                    "Relayed submission for register {RegisterId} from {Origin} → local validator ({Success})",
+                    request.RegisterId, request.OriginPeerId, result.Success);
+            }
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "SubmitTransactionRelayRequest payload failed to deserialise for register {RegisterId}", request.RegisterId);
+            response.Accepted = false;
+            response.RejectReason = "submission_json not deserialisable";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error submitting relayed transaction for register {RegisterId} to local validator", request.RegisterId);
+            response.Accepted = false;
+            response.RejectReason = "validator submission error";
+        }
+
+        await _relayCommunication.SendViaRelayAsync(
+            message.SenderPeerId,
+            MessageType.SubmitTransactionResponse,
+            response,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Handles response messages (REGISTER_SYNC_RESPONSE, TRANSACTION_DATA_RESPONSE,
+    /// SUBMIT_TRANSACTION_RESPONSE) by completing the pending correlation.
     /// </summary>
     private void HandleCorrelationResponse(PeerMessage message)
     {
