@@ -1566,12 +1566,17 @@ docketsGroup.MapPost("/", async (
         {
             // Set docket number for each transaction
             tx.DocketNumber = (ulong)request.DocketNumber;
+            logger.LogInformation(
+                "[TRACKDIAG register] docket {DocketNumber} tx {TxId}: type={Type} trackingDataCount={Count}",
+                request.DocketNumber, tx.TxId, tx.MetaData?.TransactionType,
+                tx.MetaData?.TrackingData?.Count ?? -1);
             try
             {
                 await repository.InsertTransactionAsync(tx);
             }
             catch (MongoDB.Driver.MongoWriteException ex) when (ex.WriteError?.Category == MongoDB.Driver.ServerErrorCategory.DuplicateKey)
             {
+                logger.LogWarning("[TRACKDIAG register] tx {TxId} ALREADY EXISTS — docket write-back skipped (pre-persisted version kept)", tx.TxId);
                 // Transaction already exists (e.g., genesis transactions stored during register creation).
                 // This is expected for docket write-back of transactions that were pre-persisted.
             }

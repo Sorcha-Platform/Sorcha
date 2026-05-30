@@ -229,6 +229,13 @@ public class ValidatorOrchestrator : IValidatorOrchestrator
                 docket.DocketNumber);
 
             var docketModel = DocketSerializer.ToRegisterModel(docket);
+            foreach (var dtx in docketModel.Transactions)
+            {
+                _logger.LogInformation(
+                    "[TRACKDIAG validator] docket {DocketNumber} tx {TxId}: type={Type} trackingDataCount={Count}",
+                    docket.DocketNumber, dtx.TxId, dtx.MetaData?.TransactionType,
+                    dtx.MetaData?.TrackingData?.Count ?? -1);
+            }
             var written = await _registerClient.WriteDocketAsync(docketModel, cancellationToken);
 
             if (!written)
