@@ -146,8 +146,13 @@ public class RegisterReplicationService
 
             if (channel == null)
             {
-                // No direct channel — try relay batch sync for NAT'd peers
-                if (string.IsNullOrEmpty(sourcePeer.Address) && _relayCommunication != null)
+                // No direct channel — try relay batch sync for NAT'd peers. A NAT'd owner may have
+                // self-registered with a placeholder (non-empty, undialable) address, so the relay
+                // path must also engage when we hold its reverse stream — not only on empty Address
+                // (Feature 143: the submit/fan-out path keys off the held reverse stream the same way).
+                if (_relayCommunication != null &&
+                    (string.IsNullOrEmpty(sourcePeer.Address) ||
+                     _relayCommunication.CanReachViaReverseStream(sourcePeer.PeerId)))
                 {
                     var (relayResult, relayDockets, relayTransactions) = await TryRelayBatchSyncAsync(
                         sourcePeer, subscription, cacheEntry, replicationToken);

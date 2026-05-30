@@ -92,6 +92,15 @@ public class RelayCommunicationService
     };
 
     /// <summary>
+    /// True when this node can reach <paramref name="peerId"/> over a held reverse stream — i.e. the
+    /// peer is a NAT'd node that dialled in and is registered in the <see cref="ReverseStreamManager"/>.
+    /// Replication source-peer selection uses this to engage the relay path for a NAT'd owner that
+    /// self-registered with a placeholder (non-empty, undialable) address (Feature 143).
+    /// </summary>
+    public bool CanReachViaReverseStream(string peerId) =>
+        _reverseStreams is not null && _reverseStreams.TryGetStream(peerId, out _);
+
+    /// <summary>
     /// Sends a message to a peer via relay (fire-and-forget). Order: (1) rendezvous — if this node
     /// holds the target's reverse stream, broker over it; (2) outbound anchors — if this node is NAT'd
     /// and dialled anchors, write over the best one (target-match → lowest-latency) with failover;

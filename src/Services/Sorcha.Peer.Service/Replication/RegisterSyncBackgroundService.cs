@@ -226,7 +226,10 @@ public class RegisterSyncBackgroundService : BackgroundService
         try
         {
             var peers = _peerListManager!.GetPeersForRegister(registerId);
-            var natdPeers = peers.Where(p => string.IsNullOrEmpty(p.Address)).ToList();
+            // A NAT'd owner is reachable via relay either when it has no dialable address OR when we
+            // hold its reverse stream (it may have self-registered a placeholder address) — Feature 143.
+            var natdPeers = peers.Where(p => string.IsNullOrEmpty(p.Address)
+                || (_relayCommunication?.CanReachViaReverseStream(p.PeerId) ?? false)).ToList();
 
             if (natdPeers.Count == 0) return;
 
