@@ -315,13 +315,9 @@ public class BlueprintVersionResolver : IBlueprintVersionResolver
 
         // A blueprint publication has:
         // - BlueprintId matching our target
-        // - No ActionId (or ActionId = 0 for initialization, but that's an action, not publication)
-        // - Could be TransactionType.Control or have specific markers
-
-        // For now, we identify blueprint publications as transactions with:
-        // - The correct BlueprintId
-        // - No ActionId set (null) - indicating it's a blueprint definition, not an action
-        // OR the ActionId indicates it's the blueprint registration action (typically -1 or a marker)
+        // - TransactionType.BlueprintPublish (post-#876) or TransactionType.Control (pre-#876)
+        // - No persisted ActionId (the validator's MetaData projection sets ActionId to null
+        //   when the submission's ActionId string ("blueprint-publish") does not parse as uint)
 
         if (tx.MetaData.BlueprintId != blueprintId)
             return false;
@@ -331,8 +327,10 @@ public class BlueprintVersionResolver : IBlueprintVersionResolver
         if (!tx.MetaData.ActionId.HasValue)
             return true;
 
-        // If it's the genesis transaction with this blueprint, it could be the initial publication
-        if (tx.MetaData.TransactionType == TransactionType.Control)
+        // Legacy edge case: a publish tx where ActionId somehow got set. Both the post-#876
+        // BlueprintPublish type and the pre-#876 Control type are valid here.
+        if (tx.MetaData.TransactionType == TransactionType.BlueprintPublish
+            || tx.MetaData.TransactionType == TransactionType.Control)
             return true;
 
         return false;

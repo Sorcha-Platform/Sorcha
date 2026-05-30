@@ -257,7 +257,17 @@ public class GovernanceModelsTests
     {
         // Control, Action, Docket, Participant, Revocation (Feature 079),
         // PresentationInitiated, PresentationOutcome, PresentationAbandoned (Feature 111),
-        // CredentialStatusChange (multi-node audit CRITICAL #2)
-        Enum.GetValues<Sorcha.Register.Models.Enums.TransactionType>().Should().HaveCount(9);
+        // CredentialStatusChange (multi-node audit CRITICAL #2),
+        // BlueprintPublish (PR #876 — split out of Control for clearer projections)
+        Enum.GetValues<Sorcha.Register.Models.Enums.TransactionType>().Should().HaveCount(10);
+    }
+
+    [Fact]
+    public void TransactionType_BlueprintPublish_HasValue9()
+    {
+        // The numeric value is part of the on-disk contract (MongoDB TransactionMetaData.
+        // TransactionType is persisted as int). Pin it so a reorder of the enum doesn't
+        // silently change what's already sealed in old dockets.
+        ((int)Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish).Should().Be(9);
     }
 }

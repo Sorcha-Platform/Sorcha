@@ -400,12 +400,13 @@ public class SystemRegisterService
         // null-propagating operators or out variables
         var materialized = allTransactions.ToList();
 
-        // Filter for blueprint transactions: Control type with a non-genesis BlueprintId.
-        // TrackingData is not reliably persisted through the validator pipeline,
-        // so we use BlueprintId from MetaData which IS stored.
+        // Filter for blueprint transactions: post-#876 BlueprintPublish OR pre-#876 Control
+        // with a non-genesis BlueprintId. TrackingData is not reliably persisted through the
+        // validator pipeline, so we use BlueprintId from MetaData which IS stored.
         return materialized
             .Where(t => t.MetaData is not null
-                && t.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control
+                && (t.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish
+                    || t.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control)
                 && !string.IsNullOrEmpty(t.MetaData.BlueprintId)
                 && t.MetaData.BlueprintId != "genesis")
             .ToList();

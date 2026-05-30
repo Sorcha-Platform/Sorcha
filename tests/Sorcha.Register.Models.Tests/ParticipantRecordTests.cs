@@ -271,12 +271,13 @@ public class ParticipantRecordTests
     }
 
     [Fact]
-    public void TransactionType_HasNineValues()
+    public void TransactionType_HasTenValues()
     {
         // Control, Action, Docket, Participant, Revocation (Feature 079),
         // PresentationInitiated, PresentationOutcome, PresentationAbandoned (Feature 111),
-        // CredentialStatusChange (multi-node audit CRITICAL #2)
-        Enum.GetValues<TransactionType>().Should().HaveCount(9);
+        // CredentialStatusChange (multi-node audit CRITICAL #2),
+        // BlueprintPublish (PR #876 — split out of Control for clearer projections)
+        Enum.GetValues<TransactionType>().Should().HaveCount(10);
     }
 
     #endregion
