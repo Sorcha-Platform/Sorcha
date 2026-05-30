@@ -144,6 +144,20 @@ passes (peer protocol direction; relay-machinery maturity/wiring). No open
   finding shows a **subset of US3 — register/advert propagation to reverse-stream peers — is a
   PREREQUISITE for SC-001**, not optional polish. The submit/sync transport (US1/US1b, unit-verified)
   cannot be exercised end-to-end until a NAT'd-relationship peer can *discover* the registers to act on.
+
+- **CORRECTION (2026-05-30, after topology clarification):** the above blocker was an **artifact of a
+  mis-architected test**, not a real gap for the target demo. I had stood tiny up as a `SyncOnly`
+  **subscriber to n1's system register** — which is the one case that needs `n1 → tiny` adverts (NAT
+  blocks them). The operator clarified the intended topology is **two separate installations**, with
+  the **register** as the trust boundary (wallet signatures + roster, not JWT). In the correct demo
+  topology — **tiny = NAT'd *owner* (dials out), n1 = public *subscriber*** — discovery flows the
+  proven direction: **tiny pushes its register advert to n1 over tiny's own outbound heartbeat**, n1
+  ingests it, holds tiny's reverse stream, and brokers the submission over it (US1b / T040). So
+  advert-over-reverse-stream is **not** required for the demo loop; it remains relevant only for a
+  NAT'd *subscriber*, which the demo does not use. **US3 stays "multi-anchor + latency routing"
+  robustness; it is NOT a SC-001 prerequisite.** (The cross-installation JWT-key sharing I did during
+  the mis-architected bring-up was wrong and has been reverted — separate installations must not share
+  signing keys.)
 - **Also confirmed (operational, not a code gap):** the cross-node JWT signing-key gotcha bites here
   too — a service started before its `.env` carried `JWT_SIGNING_KEY`/`INSTALLATION_NAME` signs with
   the generic dev key and gets `IDX10517` (kid missing) on cross-service calls (tiny's
