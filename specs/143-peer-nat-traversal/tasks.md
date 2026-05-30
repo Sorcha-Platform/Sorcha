@@ -112,10 +112,10 @@ handler is invoked with the forwarded submission and returns an ack over the rev
 
 ### Implementation for User Story 2
 
-- [ ] T019 [US2] Extend `src/Services/Sorcha.Peer.Service/Communication/RelayCommunicationService.cs`: single reverse stream → a keyed set of `Anchor`s (per-anchor connection state + last-heartbeat RTT). Expose `Anchors`.
-- [ ] T020 [US2] Extend `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` to establish reverse streams to the full anchor set (not just one seed).
-- [ ] T021 [US2] Per-anchor reconnect/backoff + heartbeat keep-alive; recover a dropped anchor without operator action; emit `peer_anchor_reconnect_total`. (extend existing reconnect logic in `RelayCommunicationService`.)
-- [ ] T022 [US2] Explicit-fail send path when no anchor is available (surface error, do not hang) and resume on reconnect, in `RelayCommunicationService` / `CommunicationProtocolManager`.
+- [X] T019 [US2] Extend `src/Services/Sorcha.Peer.Service/Communication/RelayCommunicationService.cs`: single reverse stream → a keyed set of `Anchor`s (per-anchor connection state + last-heartbeat RTT). Expose `Anchors`.
+- [X] T020 [US2] Extend `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` to establish reverse streams to the full anchor set (not just one seed).
+- [X] T021 [US2] Per-anchor reconnect/backoff + heartbeat keep-alive; recover a dropped anchor without operator action; emit `peer_anchor_reconnect_total`. (extend existing reconnect logic in `RelayCommunicationService`.)
+- [X] T022 [US2] Explicit-fail send path when no anchor is available (surface error, do not hang) and resume on reconnect, in `RelayCommunicationService` / `CommunicationProtocolManager`.
 
 **Checkpoint**: SC-002 + SC-003 — resilience with zero operator action.
 
@@ -129,17 +129,33 @@ handler is invoked with the forwarded submission and returns an ack over the rev
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T023 [P] [US3] Unit test `tests/Sorcha.Peer.Service.Tests/Communication/PathSelectionTests.cs`: prefers self-anchor; else lowest-RTT; fails over to next-best on circuit-breaker open; never selects a NAT'd target via direct address.
+- [X] T023 [P] [US3] Unit test `tests/Sorcha.Peer.Service.Tests/Communication/PathSelectionTests.cs`: prefers self-anchor; else lowest-RTT; fails over to next-best on circuit-breaker open; never selects a NAT'd target via direct address.
 - [ ] T024 [P] [US3] Test `tests/Sorcha.Peer.Service.Tests/Integration/AnchorAdvertConvergenceTests.cs`: anchor-set advert ingested into routing table; stale anchor pruned within one advert/heartbeat cycle.
 
 ### Implementation for User Story 3
 
 - [ ] T025 [US3] Extend the advert/heartbeat payload to carry a NAT'd node's live anchor set (`Protos/peer_heartbeat.proto` and/or the advert model) and re-advertise on anchor-set change.
 - [ ] T026 [US3] Ingest `AnchorAdvertisement` into a `NodeRoutingTable` (`peerId → DirectAddress? + Anchors[] + IsSelfAnchor`) in the advertisement/discovery ingest path; prune stale anchors within one cycle.
-- [ ] T027 [US3] Implement `RoutingPreference SelectPath(targetPeerId)` in `src/Services/Sorcha.Peer.Service/Communication/CommunicationProtocolManager.cs`: self-anchor (direct write over local reverse stream) → lowest measured-RTT remote anchor → `CircuitBreaker` failover; re-evaluated per request.
-- [ ] T028 [US3] Emit `peer_path_selection_total{path=self|remote}` and `peer_anchor_failover_total` from the selection/failover path.
+- [X] T027 [US3] Implement `RoutingPreference SelectPath(targetPeerId)` in `src/Services/Sorcha.Peer.Service/Communication/CommunicationProtocolManager.cs`: self-anchor (direct write over local reverse stream) → lowest measured-RTT remote anchor → `CircuitBreaker` failover; re-evaluated per request.
+- [X] T028 [US3] Emit `peer_path_selection_total{path=self|remote}` and `peer_anchor_failover_total` from the selection/failover path.
 
 **Checkpoint**: SC-004 — routing is latency-preferred and verifiable from metrics.
+
+> **Implementation note + scope (2026-05-30).** The anchor send-selection (T027) lives in
+> `RelayCommunicationService.OrderAnchorsForSend` (pure, unit-tested) + `SendViaRelayAsync` (self-anchor
+> via `ReverseStreamManager`, then target-match → lowest-`AverageLatencyMs` → failover), **not**
+> `CommunicationProtocolManager` — that's where the anchors live. Metrics (T028) emit from there.
+>
+> **DEFERRED (honest YAGNI):** **T024/T025/T026 — anchor-set *gossip*** (advert carries a NAT'd node's
+> anchor set; subscribers ingest it to route through a *third-party* anchor they don't themselves hold).
+> Its only consumer is **multi-hop mesh routing** (US3 acceptance #2: "reach a NAT'd node *through other
+> public peers*"), which needs hub→hub forwarding — a larger mesh feature beyond what the demo and
+> realistic topologies (one NAT'd owner ↔ one/few rendezvous; subscribers connect to a rendezvous
+> directly) require. The implemented selection covers **self-anchor + a NAT'd node's own multiple
+> anchors**, which is the resilience + routing the v1 topologies use. Building gossip without its
+> multi-hop consumer is premature. **T017/T018** (multi-anchor resilience) and **T009/T010** (full-loop
+> submit/seal/sync) are **two-peer in-proc integration tests** — deferred with the other live-harness
+> tests; the unit layer + the real tiny↔n1 run (T035) cover the behaviour.
 
 ---
 

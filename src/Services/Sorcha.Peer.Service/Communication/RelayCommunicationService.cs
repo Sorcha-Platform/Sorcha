@@ -16,9 +16,11 @@ using Sorcha.Peer.Service.Protos;
 namespace Sorcha.Peer.Service.Communication;
 
 /// <summary>
-/// Core relay communication primitive. Routes messages through seed node channels
-/// when peers are unreachable directly (NAT'd peers with empty Address).
-/// Supports fire-and-forget (SendViaRelayAsync) and request/response correlation (SendAndWaitAsync).
+/// Core relay communication primitive. A NAT'd node dials out to one or more public anchors and
+/// holds a persistent reverse stream to each (Feature 143 US2 — multi-anchor); brokered submit/sync
+/// requests travel back over those streams. Routing prefers the anchor that IS the target, then the
+/// lowest-latency connected anchor, with failover (US3). Supports fire-and-forget (SendViaRelayAsync)
+/// and request/response correlation (SendAndWaitAsync).
 /// </summary>
 public class RelayCommunicationService
 {
@@ -27,11 +29,7 @@ public class RelayCommunicationService
     private readonly PeerListManager _peerListManager;
     private readonly PeerServiceConfiguration _configuration;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<PeerMessage>> _pendingCorrelations = new();
-    private AsyncDuplexStreamingCall<PeerMessage, PeerMessage>? _reverseStreamCall;
-    private CancellationTokenSource? _reverseStreamCts;
-    private Task? _reverseStreamReceiveTask;
-    private Task? _reverseStreamKeepaliveTask;
-    private int _reverseStreamBackoffMs;
+    private readonly ConcurrentDictionary<string, Anchor> _anchors = new();
     private readonly Lazy<RelayMessageHandler> _relayMessageHandler;
     private readonly ReverseStreamManager? _reverseStreams;
     private readonly PeerServiceMetrics? _metrics;
@@ -52,12 +50,16 @@ public class RelayCommunicationService
     public static readonly TimeSpan MaxReconnectBackoff = TimeSpan.FromSeconds(60);
 
     /// <summary>
-    /// Whether the reverse stream is currently active and connected.
+    /// True if this node currently holds at least one connected reverse stream to an anchor.
     /// </summary>
-    public bool IsReverseStreamActive =>
-        _reverseStreamCall != null &&
-        _reverseStreamReceiveTask != null &&
-        !_reverseStreamReceiveTask.IsCompleted;
+    public bool IsReverseStreamActive => _anchors.Values.Any(a => a.Connected);
+
+    /// <summary>
+    /// Snapshot of this node's anchors (Feature 143 US2/US3): the public peers it holds reverse
+    /// streams to, each with its connection state and last-known latency.
+    /// </summary>
+    public IReadOnlyCollection<AnchorInfo> Anchors =>
+        _anchors.Values.Select(a => new AnchorInfo(a.AnchorId, a.Connected, ResolveLatencyMs(a.AnchorId))).ToList();
 
     public RelayCommunicationService(
         ILogger<RelayCommunicationService> logger,
@@ -83,15 +85,17 @@ public class RelayCommunicationService
     private static string FlowFor(MessageType messageType) => messageType switch
     {
         MessageType.TransactionNotification => "submit",
+        MessageType.SubmitTransactionRequest or MessageType.SubmitTransactionResponse => "submit",
         MessageType.RegisterSyncRequest or MessageType.RegisterSyncResponse
             or MessageType.TransactionDataRequest or MessageType.TransactionDataResponse => "sync",
         _ => "other"
     };
 
     /// <summary>
-    /// Sends a message to a peer via seed node relay (fire-and-forget).
-    /// Prefers the active reverse stream if available; falls back to unary SendMessage.
-    /// Returns true if the message was successfully forwarded to the seed node.
+    /// Sends a message to a peer via relay (fire-and-forget). Order: (1) rendezvous — if this node
+    /// holds the target's reverse stream, broker over it; (2) outbound anchors — if this node is NAT'd
+    /// and dialled anchors, write over the best one (target-match → lowest-latency) with failover;
+    /// (3) unary SendMessage fallback. Returns true if forwarded.
     /// </summary>
     public async Task<bool> SendViaRelayAsync(
         string targetPeerId,
@@ -101,9 +105,8 @@ public class RelayCommunicationService
     {
         var peerMessage = CreatePeerMessage(targetPeerId, messageType, payload);
 
-        // Rendezvous role (Feature 143): if this node holds the target's reverse stream — i.e. the
-        // target is a NAT'd peer that dialled in — broker directly over that stream. This is the
-        // "self-anchor" path: zero extra hop, no third party.
+        // (1) Rendezvous role (Feature 143): if this node holds the target's reverse stream — i.e. the
+        // target is a NAT'd peer that dialled in — broker directly over that stream. Self-anchor path.
         if (_reverseStreams is not null && _reverseStreams.TryGetStream(targetPeerId, out _))
         {
             var startTs = Stopwatch.GetTimestamp();
@@ -120,37 +123,41 @@ public class RelayCommunicationService
             catch (RpcException ex)
             {
                 _logger.LogDebug(ex,
-                    "Reverse-stream broker to {TargetPeerId} failed, falling back to outbound stream / unary",
+                    "Reverse-stream broker to {TargetPeerId} failed, falling back to outbound anchors / unary",
                     targetPeerId);
-                // Fall through — the held stream may have just dropped; try the other paths.
+                // Fall through — the held stream may have just dropped.
             }
         }
 
-        // Prefer reverse stream if active (this node is itself NAT'd and dialled out to its seed)
-        if (IsReverseStreamActive && _reverseStreamCall != null)
+        // (2) Outbound anchors (this node is NAT'd and dialled out to anchor(s); Feature 143 US2/US3).
+        // Prefer the anchor that IS the target, then the lowest-latency connected anchor; fail over.
+        var ordered = OrderAnchorsForSend(SnapshotAnchors(), targetPeerId);
+        for (var i = 0; i < ordered.Count; i++)
         {
+            var anchor = ordered[i];
+            if (!anchor.Connected || anchor.Call is null) continue;
             try
             {
-                await _reverseStreamCall.RequestStream.WriteAsync(peerMessage, cancellationToken);
+                await WriteToAnchorAsync(anchor, peerMessage, cancellationToken);
                 _logger.LogDebug(
-                    "Relay message {MessageType} sent to {TargetPeerId} via reverse stream",
-                    messageType, targetPeerId);
+                    "Relay message {MessageType} to {TargetPeerId} via anchor {Anchor}",
+                    messageType, targetPeerId, anchor.AnchorId);
                 return true;
             }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex,
-                    "Reverse stream send failed for {MessageType} to {TargetPeerId}, falling back to unary",
-                    messageType, targetPeerId);
-                // Fall through to unary send
+                    "Anchor {Anchor} send failed for {MessageType} to {TargetPeerId}, failing over",
+                    anchor.AnchorId, messageType, targetPeerId);
+                if (i < ordered.Count - 1) _metrics?.RecordAnchorFailover();
             }
         }
 
-        // Fall back to unary SendMessage
+        // (3) Fall back to unary SendMessage via the connection pool's seed channel.
         var seedChannel = GetSeedChannel();
         if (seedChannel == null)
         {
-            _logger.LogWarning("No seed node channel available for relay to peer {TargetPeerId}", targetPeerId);
+            _logger.LogWarning("No anchor or seed channel available for relay to peer {TargetPeerId}", targetPeerId);
             return false;
         }
 
@@ -248,31 +255,45 @@ public class RelayCommunicationService
     public int PendingCorrelationCount => _pendingCorrelations.Count;
 
     /// <summary>
-    /// Establishes a bidirectional reverse stream to the seed node.
-    /// Incoming messages are dispatched to RelayMessageHandler.
-    /// Sends keepalive pings every 30 seconds. Reconnects with exponential backoff on disconnect.
+    /// Establishes and maintains a reverse stream to EACH configured anchor (seed) concurrently
+    /// (Feature 143 US2). Each anchor reconnects independently with backoff; losing one leaves the
+    /// others serving. Runs until <paramref name="cancellationToken"/> is cancelled.
     /// </summary>
     public async Task EstablishReverseStreamAsync(CancellationToken cancellationToken = default)
     {
-        _reverseStreamBackoffMs = 0;
+        var seeds = GetAnchorSeeds();
+        if (seeds.Count == 0)
+        {
+            _logger.LogDebug("No seed nodes configured for reverse-stream anchoring; nothing to establish");
+            return;
+        }
+
+        _logger.LogInformation("Establishing reverse streams to {Count} anchor(s): {Anchors}",
+            seeds.Count, string.Join(", ", seeds.Select(s => s.AnchorId)));
+
+        var tasks = seeds.Select(s => MaintainAnchorAsync(s.AnchorId, s.Address, cancellationToken)).ToArray();
+        await Task.WhenAll(tasks);
+    }
+
+    /// <summary>
+    /// Maintains a single anchor's reverse stream: connect → identify → receive + keepalive →
+    /// reconnect with backoff on drop. One instance per configured anchor.
+    /// </summary>
+    private async Task MaintainAnchorAsync(string anchorId, string address, CancellationToken cancellationToken)
+    {
+        var anchor = _anchors.GetOrAdd(anchorId, id => new Anchor { AnchorId = id, Address = address });
+        var backoffMs = 0;
+        var everConnected = false;
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            // Create a DEDICATED channel for the reverse stream — do not share with
-            // the heartbeat connection pool, which cycles channels on failures and
-            // kills any in-flight streams.
-            var seedAddress = GetSeedNodeAddress();
-            if (seedAddress == null)
-            {
-                _logger.LogDebug("No seed node address available for reverse stream, retrying after backoff");
-                await ApplyBackoffAsync(cancellationToken);
-                continue;
-            }
-
-            Grpc.Net.Client.GrpcChannel? dedicatedChannel = null;
+            Grpc.Net.Client.GrpcChannel? channel = null;
+            CancellationTokenSource? cts = null;
             try
             {
-                dedicatedChannel = Grpc.Net.Client.GrpcChannel.ForAddress(seedAddress, new Grpc.Net.Client.GrpcChannelOptions
+                // Dedicated channel per anchor — do not share the heartbeat connection pool, which
+                // cycles channels on failures and would kill an in-flight stream.
+                channel = Grpc.Net.Client.GrpcChannel.ForAddress(address, new Grpc.Net.Client.GrpcChannelOptions
                 {
                     HttpHandler = new SocketsHttpHandler
                     {
@@ -283,72 +304,86 @@ public class RelayCommunicationService
                     }
                 });
 
-                _reverseStreamCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                var client = new PeerCommunication.PeerCommunicationClient(dedicatedChannel);
-                _reverseStreamCall = client.Stream(cancellationToken: _reverseStreamCts.Token);
+                cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var client = new PeerCommunication.PeerCommunicationClient(channel);
+                var call = client.Stream(cancellationToken: cts.Token);
+                anchor.Call = call;
+                anchor.Connected = true;
+                backoffMs = 0;
 
-                _logger.LogInformation("Reverse stream established to seed node");
-                _reverseStreamBackoffMs = 0; // Reset backoff on successful connection
+                if (everConnected)
+                {
+                    _metrics?.RecordAnchorReconnect();
+                    _logger.LogInformation("Reverse stream re-established to anchor {Anchor}", anchorId);
+                }
+                else
+                {
+                    _logger.LogInformation("Reverse stream established to anchor {Anchor}", anchorId);
+                }
+                everConnected = true;
 
-                // Send initial identification message immediately so the Router
-                // registers this stream before the first keepalive tick (30s delay)
-                var senderId = _configuration.ResolvedPeerId;
+                // Identify immediately so the rendezvous registers this stream before the first keepalive.
                 var hello = new PeerMessage
                 {
-                    SenderPeerId = senderId,
+                    SenderPeerId = _configuration.ResolvedPeerId,
                     RecipientPeerId = string.Empty,
                     MessageType = MessageType.Heartbeat,
                     Payload = Google.Protobuf.ByteString.Empty,
                     Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                 };
-                await _reverseStreamCall.RequestStream.WriteAsync(hello, _reverseStreamCts.Token);
-                _logger.LogDebug("Reverse stream identification sent as {PeerId}", senderId);
+                await WriteToAnchorAsync(anchor, hello, cts.Token);
 
-                // Start receive loop and keepalive in parallel
-                _reverseStreamReceiveTask = RunReceiveLoopAsync(_reverseStreamCts.Token);
-                _reverseStreamKeepaliveTask = RunKeepaliveLoopAsync(_reverseStreamCts.Token);
+                var receive = RunAnchorReceiveLoopAsync(anchor, cts.Token);
+                var keepalive = RunAnchorKeepaliveLoopAsync(anchor, cts.Token);
 
-                // Wait for either to complete (indicates disconnection)
-                await Task.WhenAny(_reverseStreamReceiveTask, _reverseStreamKeepaliveTask);
+                await Task.WhenAny(receive, keepalive);
+                cts.Cancel();
+                try { await Task.WhenAll(receive, keepalive); } catch (OperationCanceledException) { }
 
-                // Cancel the CTS first to stop both tasks before cleanup
-                _reverseStreamCts?.Cancel();
-                try { await Task.WhenAll(_reverseStreamReceiveTask, _reverseStreamKeepaliveTask); }
-                catch (OperationCanceledException) { }
-
-                _logger.LogWarning("Reverse stream disconnected, will reconnect after backoff");
+                _logger.LogWarning("Reverse stream to anchor {Anchor} disconnected, reconnecting after backoff", anchorId);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
-            catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled &&
-                                           cancellationToken.IsCancellationRequested)
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && cancellationToken.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Reverse stream error, will reconnect after backoff");
+                _logger.LogWarning(ex, "Reverse stream error to anchor {Anchor}, reconnecting after backoff", anchorId);
             }
             finally
             {
-                await CleanupReverseStreamAsync();
-                dedicatedChannel?.Dispose();
+                anchor.Connected = false;
+                try
+                {
+                    if (anchor.Call is not null) await anchor.Call.RequestStream.CompleteAsync();
+                }
+                catch { /* ignore cleanup errors */ }
+                anchor.Call?.Dispose();
+                anchor.Call = null;
+                cts?.Dispose();
+                channel?.Dispose();
             }
 
-            await ApplyBackoffAsync(cancellationToken);
+            backoffMs = await ApplyAnchorBackoffAsync(backoffMs, anchorId, cancellationToken);
         }
+
+        anchor.Connected = false;
     }
 
-    private async Task RunReceiveLoopAsync(CancellationToken cancellationToken)
+    private async Task RunAnchorReceiveLoopAsync(Anchor anchor, CancellationToken cancellationToken)
     {
-        if (_reverseStreamCall == null) return;
+        var call = anchor.Call;
+        if (call is null) return;
 
         try
         {
-            await foreach (var message in _reverseStreamCall.ResponseStream.ReadAllAsync(cancellationToken))
+            await foreach (var message in call.ResponseStream.ReadAllAsync(cancellationToken))
             {
+                anchor.LastActivityTicks = DateTimeOffset.UtcNow.UtcTicks;
                 try
                 {
                     await _relayMessageHandler.Value.HandleAsync(message, cancellationToken);
@@ -356,27 +391,24 @@ public class RelayCommunicationService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex,
-                        "Error handling reverse stream message {MessageType} from {SenderPeerId}",
-                        message.MessageType, message.SenderPeerId);
+                        "Error handling reverse stream message {MessageType} from {SenderPeerId} (anchor {Anchor})",
+                        message.MessageType, message.SenderPeerId, anchor.AnchorId);
                 }
             }
         }
         catch (OperationCanceledException)
         {
-            _logger.LogDebug("Reverse stream receive loop cancelled");
+            _logger.LogDebug("Reverse stream receive loop cancelled (anchor {Anchor})", anchor.AnchorId);
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
         {
-            _logger.LogDebug("Reverse stream receive loop cancelled (gRPC)");
+            _logger.LogDebug("Reverse stream receive loop cancelled (gRPC, anchor {Anchor})", anchor.AnchorId);
         }
     }
 
-    private async Task RunKeepaliveLoopAsync(CancellationToken cancellationToken)
+    private async Task RunAnchorKeepaliveLoopAsync(Anchor anchor, CancellationToken cancellationToken)
     {
-        if (_reverseStreamCall == null) return;
-
         var senderId = _configuration.ResolvedPeerId;
-
         try
         {
             using var timer = new PeriodicTimer(KeepaliveInterval);
@@ -391,61 +423,98 @@ public class RelayCommunicationService
                     Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                 };
 
-                await _reverseStreamCall.RequestStream.WriteAsync(ping, cancellationToken);
+                await WriteToAnchorAsync(anchor, ping, cancellationToken);
             }
         }
         catch (OperationCanceledException)
         {
-            _logger.LogDebug("Reverse stream keepalive loop cancelled");
+            _logger.LogDebug("Reverse stream keepalive loop cancelled (anchor {Anchor})", anchor.AnchorId);
         }
     }
 
-    private async Task ApplyBackoffAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Serializes writes to a single anchor's request stream — gRPC client streams are NOT safe for
+    /// concurrent writes, and keepalive + send + hello can race on the same stream.
+    /// </summary>
+    private static async Task WriteToAnchorAsync(Anchor anchor, PeerMessage message, CancellationToken cancellationToken)
     {
-        if (_reverseStreamBackoffMs == 0)
-        {
-            _reverseStreamBackoffMs = 2000; // Start at 2s
-        }
-        else
-        {
-            _reverseStreamBackoffMs = Math.Min(
-                _reverseStreamBackoffMs * 2,
-                (int)MaxReconnectBackoff.TotalMilliseconds);
-        }
-
-        _logger.LogDebug("Reverse stream reconnect backoff: {BackoffMs}ms", _reverseStreamBackoffMs);
-
+        var call = anchor.Call ?? throw new InvalidOperationException($"Anchor {anchor.AnchorId} has no active stream");
+        await anchor.WriteLock.WaitAsync(cancellationToken);
         try
         {
-            await Task.Delay(_reverseStreamBackoffMs, cancellationToken);
+            await call.RequestStream.WriteAsync(message, cancellationToken);
+            anchor.LastActivityTicks = DateTimeOffset.UtcNow.UtcTicks;
+        }
+        finally
+        {
+            anchor.WriteLock.Release();
+        }
+    }
+
+    private async Task<int> ApplyAnchorBackoffAsync(int backoffMs, string anchorId, CancellationToken cancellationToken)
+    {
+        backoffMs = backoffMs == 0
+            ? 2000
+            : Math.Min(backoffMs * 2, (int)MaxReconnectBackoff.TotalMilliseconds);
+
+        _logger.LogDebug("Anchor {Anchor} reconnect backoff: {BackoffMs}ms", anchorId, backoffMs);
+        try
+        {
+            await Task.Delay(backoffMs, cancellationToken);
         }
         catch (OperationCanceledException)
         {
             // Expected during shutdown
         }
+
+        return backoffMs;
     }
 
-    private async Task CleanupReverseStreamAsync()
+    /// <summary>
+    /// The configured anchor seeds (Feature 143 US2 — one reverse stream per seed). Each carries the
+    /// anchor peer id (so a response to that anchor target-matches) and the gRPC channel address.
+    /// </summary>
+    private List<(string AnchorId, string Address)> GetAnchorSeeds()
     {
-        try
+        var result = new List<(string, string)>();
+        var seeds = _configuration.SeedNodes?.SeedNodes;
+        if (seeds is not null)
         {
-            if (_reverseStreamCall != null)
+            foreach (var s in seeds.Where(s => !string.IsNullOrWhiteSpace(s.Hostname)))
             {
-                await _reverseStreamCall.RequestStream.CompleteAsync();
+                var anchorId = string.IsNullOrWhiteSpace(s.NodeId) ? s.Hostname : s.NodeId;
+                result.Add((anchorId, s.GrpcChannelAddress));
             }
         }
-        catch
-        {
-            // Ignore cleanup errors
-        }
 
-        _reverseStreamCall?.Dispose();
-        _reverseStreamCall = null;
+        return result;
+    }
 
-        // CTS is already cancelled in EstablishReverseStreamAsync before cleanup;
-        // just dispose here.
-        _reverseStreamCts?.Dispose();
-        _reverseStreamCts = null;
+    private List<Anchor> SnapshotAnchors()
+    {
+        var snapshot = _anchors.Values.Where(a => a.Connected && a.Call is not null).ToList();
+        // Refresh each anchor's latency from the heartbeat-measured value so send-ordering (US3)
+        // prefers the genuinely lowest-latency anchor.
+        foreach (var a in snapshot) a.LatencyMs = ResolveLatencyMs(a.AnchorId);
+        return snapshot;
+    }
+
+    /// <summary>
+    /// Orders candidate anchors for sending to <paramref name="targetPeerId"/> (Feature 143 US3):
+    /// the anchor that IS the target first (zero-extra-hop), then lowest measured latency, then most
+    /// recently active. Pure + static so the selection policy is unit-testable.
+    /// </summary>
+    internal static List<Anchor> OrderAnchorsForSend(IReadOnlyCollection<Anchor> anchors, string targetPeerId) =>
+        anchors
+            .OrderByDescending(a => a.AnchorId == targetPeerId)
+            .ThenBy(a => a.LatencyMs <= 0 ? int.MaxValue : a.LatencyMs)
+            .ThenByDescending(a => a.LastActivityTicks)
+            .ToList();
+
+    private int ResolveLatencyMs(string anchorId)
+    {
+        var peer = _peerListManager.GetPeer(anchorId);
+        return peer?.AverageLatencyMs ?? 0;
     }
 
     private PeerMessage CreatePeerMessage(string targetPeerId, MessageType messageType, object payload)
@@ -463,46 +532,6 @@ public class RelayCommunicationService
         };
     }
 
-    /// <summary>
-    /// Gets the gRPC address of the first available seed node for creating a dedicated channel.
-    /// </summary>
-    private string? GetSeedNodeAddress()
-    {
-        // Source the address from the SAME seed-endpoint configuration the connection pool uses to
-        // reach the seed (PeerConnectionPool.BootstrapFromSeedNodesAsync → seed.GrpcChannelAddress),
-        // so the reverse stream dials the identical scheme + gRPC port (e.g. https://host:50051).
-        // The previous implementation reconstructed the address from the PeerNode list, which had
-        // dropped the seed's TLS flag AND its gRPC port — it prepended "https://" but no port, so the
-        // stream hit the seed's web vhost (:443) where PeerCommunication/Stream 404s. That marked the
-        // seed "not alive" and silently disabled cross-node transaction fan-out.
-        var seed = _configuration.SeedNodes?.SeedNodes?
-            .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Hostname));
-        if (seed is not null)
-        {
-            return seed.GrpcChannelAddress;
-        }
-
-        // Legacy fallback: a seed peer discovered into the peer list (carries no TLS flag — assume
-        // plaintext h2c with the explicit gRPC port, matching the other outbound peer paths).
-        foreach (var peer in _peerListManager.GetAllPeers())
-        {
-            if (peer.IsSeedNode && !string.IsNullOrEmpty(peer.Address))
-            {
-                if (peer.Address.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                {
-                    return peer.Address;
-                }
-                return peer.Port > 0
-                    ? $"http://{peer.Address}:{peer.Port}"
-                    : $"http://{peer.Address}";
-            }
-        }
-
-        // Last resort: the active seed channel from the connection pool.
-        var seedChannel = GetSeedChannel();
-        return seedChannel?.Target;
-    }
-
     private Grpc.Net.Client.GrpcChannel? GetSeedChannel()
     {
         var activeChannels = _connectionPool.GetAllActiveChannels();
@@ -518,4 +547,20 @@ public class RelayCommunicationService
 
         return null;
     }
+
+    /// <summary>One reverse stream this NAT'd node holds to a public anchor (Feature 143 US2).</summary>
+    internal sealed class Anchor
+    {
+        public required string AnchorId { get; init; }
+        public required string Address { get; init; }
+        public volatile bool Connected;
+        public AsyncDuplexStreamingCall<PeerMessage, PeerMessage>? Call;
+        public long LastActivityTicks = DateTimeOffset.UtcNow.UtcTicks;
+        /// <summary>Best-known latency to this anchor in ms (0 = unknown); used by send-ordering.</summary>
+        public int LatencyMs;
+        public readonly SemaphoreSlim WriteLock = new(1, 1);
+    }
+
+    /// <summary>Public snapshot of an anchor (Feature 143 US2/US3).</summary>
+    public readonly record struct AnchorInfo(string AnchorId, bool Connected, int LatencyMs);
 }
