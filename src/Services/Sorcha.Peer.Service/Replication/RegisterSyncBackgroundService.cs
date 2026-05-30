@@ -338,6 +338,18 @@ public class RegisterSyncBackgroundService : BackgroundService
             }
 
             await DeleteSubscriptionAsync(registerId, cancellationToken);
+
+            // Flush the in-memory register cache (dockets + transactions). Without this, a later
+            // re-subscribe finds the cache still populated at the old high-water-mark and the
+            // replication state machine reports the register already fully replicated — even though
+            // the Register Service copy was deleted on unsubscribe — so it never re-finalises the
+            // dockets (a v5-cache vs empty-Register-Service desync). Evicting the cache here makes
+            // re-subscribe a true from-scratch full replica.
+            if (_registerCache?.Remove(registerId) == true)
+            {
+                _logger.LogDebug("Flushed register cache for unsubscribed register {RegisterId}", registerId);
+            }
+
             _logger.LogInformation("Unsubscribed from register {RegisterId}", registerId);
         }
     }

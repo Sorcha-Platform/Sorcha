@@ -1049,6 +1049,31 @@ public class ActionExecutionService : IActionExecutionService
             transaction.TxId, validatorResult.Success,
             distributeResult.AcceptedCount, distributeResult.TargetPeerCount, distributeResult.LocallyOwned);
 
+        // 12b. Cross-node async path. When this node does NOT own the register (the submission was
+        // brokered to a remote owner — e.g. a NAT'd owner over the F143 reverse stream), the docket
+        // seals on the owner and syncs back asynchronously (seconds to tens of seconds over the peer
+        // link). Blocking the HTTP caller on a synchronous confirmation poll would time out even though
+        // the seal succeeds. Return 202 like the encryption-offload path; the instance advances when the
+        // sealed docket syncs back (StateReconstructionService reads the replicated register). Only the
+        // locally-owned path (fast local seal) waits synchronously below. This makes DevMode cross-node
+        // submissions — which skip the async encryption offload — non-blocking too.
+        if (!distributeResult.LocallyOwned && distributeResult.AcceptedCount > 0)
+        {
+            await _actionStore.StoreIdempotencyKeyAsync(idempotencyKey, transaction.TxId, TimeSpan.FromHours(24));
+            _logger.LogInformation(
+                "Transaction {TxId} for register {RegisterId} brokered to remote owner ({Accepted}/{Targets} peer(s)); " +
+                "returning async — instance advances on sealed-docket sync-back.",
+                transaction.TxId, instance.RegisterId, distributeResult.AcceptedCount, distributeResult.TargetPeerCount);
+            return new ActionSubmissionResponse
+            {
+                TransactionId = transaction.TxId,
+                InstanceId = instanceId,
+                IsAsync = true,
+                NextActions = [],
+                IsComplete = false
+            };
+        }
+
         _logger.LogInformation(
             "Transaction {TxId} submitted to Validator for register {RegisterId}. Waiting for docket confirmation...",
             transaction.TxId, instance.RegisterId);
