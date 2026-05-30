@@ -465,7 +465,14 @@ public class RelayMessageHandler
                 var tx = await registerClient.GetTransactionAsync(request.RegisterId, txId, cancellationToken);
                 if (tx != null)
                 {
-                    var txData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(tx);
+                    // MUST serialise with the canonical (camelCase) options the receiver deserialises
+                    // with (GenesisControlTransactionLookup / DocketFinalizationService use
+                    // RegisterSerializationOptions.Canonical). Default options emit PascalCase, which
+                    // the case-sensitive canonical deserialise silently drops — wiping MetaData on the
+                    // relay-synced genesis Control tx so the validator roster can't be reconstructed and
+                    // post-genesis dockets are rejected ("validator key not available"). Feature 143.
+                    var txData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+                        tx, Sorcha.Register.Models.RegisterSerializationOptions.Canonical);
                     response.Transactions.Add(new RelayModels.TransactionEntry
                     {
                         TransactionId = tx.TxId,
