@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Domain.Entities;
+using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Hubs;
 using Sorcha.Wallet.Service.Services.Interfaces;
 
@@ -40,6 +41,7 @@ public sealed class CitizenInboxProjector : ICitizenInboxProjector
 
     private readonly WalletDbContext _db;
     private readonly IHolderAddressLookup _holderLookup;
+    private readonly IWalletRepository _walletRepository;
     private readonly IHubContext<WalletHub, IWalletHubClient> _hub;
     private readonly ILogger<CitizenInboxProjector> _logger;
 
@@ -47,11 +49,13 @@ public sealed class CitizenInboxProjector : ICitizenInboxProjector
     public CitizenInboxProjector(
         WalletDbContext db,
         IHolderAddressLookup holderLookup,
+        IWalletRepository walletRepository,
         IHubContext<WalletHub, IWalletHubClient> hub,
         ILogger<CitizenInboxProjector> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _holderLookup = holderLookup ?? throw new ArgumentNullException(nameof(holderLookup));
+        _walletRepository = walletRepository ?? throw new ArgumentNullException(nameof(walletRepository));
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -64,8 +68,39 @@ public sealed class CitizenInboxProjector : ICitizenInboxProjector
         var platformUserId = await _holderLookup.ResolvePlatformUserIdAsync(credential.WalletAddress, ct);
         if (platformUserId is null)
         {
-            // Org wallet, not a citizen holder — pipeline unchanged.
-            return;
+            // Fast-path lookup missed. F114's PWA enrolment endpoint is the canonical
+            // population point for CitizenHolderIndex, but walkthrough automation and
+            // any flow that creates a citizen wallet without going through the device-
+            // enrolment ceremony will hit this branch — and silently dropping the event
+            // means GET /api/v1/wallet/credentials returns [] even though the credential
+            // is on disk (the symptom diagnosed live on n1 after PR #871).
+            //
+            // Discriminator for "this is a citizen-holder pattern, not an org wallet":
+            //   SubjectDid == WalletAddress — the credential's subject is the wallet's
+            //   own holder. The issuer-side ledger row stored on the analyst's wallet
+            //   has SubjectDid pointing at the recipient, so it does NOT match — that
+            //   row stays excluded, exactly as before. Only the recipient-side row
+            //   (Subject = Wallet) triggers the lazy population path.
+            if (!string.Equals(credential.SubjectDid, credential.WalletAddress, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var wallet = await _walletRepository.GetByAddressAsync(
+                credential.WalletAddress, cancellationToken: ct);
+            if (wallet is null || !Guid.TryParse(wallet.Owner, out var owner))
+            {
+                // Owner not a parseable platform-user GUID (or wallet not found) — bail.
+                return;
+            }
+
+            // Lazily populate the index so subsequent reads hit the fast path. RegisterAsync
+            // is idempotent on (WalletAddress) and tolerates concurrent first-write races.
+            await _holderLookup.RegisterAsync(credential.WalletAddress, owner, ct);
+            platformUserId = owner;
+            _logger.LogInformation(
+                "CitizenHolderIndex lazily populated for wallet {Wallet} → platformUserId {PlatformUserId} on first inbound credential",
+                credential.WalletAddress, owner);
         }
 
         await AppendEventAsync(platformUserId.Value, CitizenCredentialEventKindValues.Added, credential.Id, ct);
