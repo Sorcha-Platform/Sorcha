@@ -1539,6 +1539,26 @@ docketsGroup.MapPost("/", async (
             return Results.NotFound(new { error = "Register not found" });
         }
     }
+    else if (request.DocketNumber == 0 && !register.DevMode)
+    {
+        // Reconcile DevMode from the synced genesis control record even when the register row
+        // already existed — e.g. a subscribe-flow stub was created (DevMode defaulting to false)
+        // before the genesis docket arrived, so the create-on-sync DevMode extraction above was
+        // skipped. The owner's DevMode posture is authoritative; a replica that misses it refuses
+        // to read the owner's plaintext payloads, so register-native credential delivery (a
+        // DevMode credential carried in an action payload) is silently dropped by the wallet
+        // service's InboundCredentialDetector. Only ever turns DevMode ON from genesis — turning
+        // it off is the governed one-way crypto-policy-update path, never a replication side effect.
+        var genesisControl = Sorcha.Register.Service.Services.GenesisControlRecordExtractor.TryExtract(request.Transactions);
+        if (genesisControl?.CryptoPolicy?.DevMode == true)
+        {
+            register.DevMode = true;
+            await registerManager.UpdateRegisterAsync(register);
+            logger.LogInformation(
+                "Reconciled DevMode=true on replicated register {RegisterId} from synced genesis control record",
+                registerId);
+        }
+    }
 
     // Create docket from request
     var docket = new Docket
