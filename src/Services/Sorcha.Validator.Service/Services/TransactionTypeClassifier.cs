@@ -16,6 +16,13 @@ namespace Sorcha.Validator.Service.Services;
 /// </summary>
 internal static class TransactionTypeClassifier
 {
+    /// <summary>
+    /// True for transactions that bypass action-schema validation and per-sender replay
+    /// protection: genesis, governance Control, and (post-#876) BlueprintPublish. All three
+    /// are administrative — signed by the system wallet (or in genesis's case the offline
+    /// ceremony key) and have no per-sender sequence; they carry a free-form ActionId
+    /// (<c>"blueprint-publish"</c>, etc.) that can't and shouldn't parse as an int.
+    /// </summary>
     public static bool IsGenesisOrControlTransaction(Transaction transaction)
     {
         if (string.Equals(transaction.BlueprintId, GenesisConstants.BlueprintId, StringComparison.OrdinalIgnoreCase))
@@ -23,7 +30,8 @@ internal static class TransactionTypeClassifier
 
         if (transaction.Metadata.TryGetValue("Type", out var typeStr) &&
             (string.Equals(typeStr, "Genesis", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(typeStr, "Control", StringComparison.OrdinalIgnoreCase)))
+             string.Equals(typeStr, "Control", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(typeStr, "BlueprintPublish", StringComparison.OrdinalIgnoreCase)))
             return true;
 
         return false;

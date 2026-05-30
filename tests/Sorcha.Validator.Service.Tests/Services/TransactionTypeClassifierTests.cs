@@ -54,8 +54,14 @@ public class TransactionTypeClassifierTests
     [InlineData("genesis")]
     [InlineData("Control")]
     [InlineData("CONTROL")]
+    [InlineData("BlueprintPublish")]
+    [InlineData("blueprintpublish")]
     public void IsGenesisOrControlTransaction_TypeMetadataMatches_ReturnsTrue(string type)
     {
+        // BlueprintPublish (post-#876) joins Genesis+Control in bypassing action-schema
+        // validation and per-sender replay protection: the publish is signed by the
+        // system wallet with an ActionId of "blueprint-publish" (not an int) and no
+        // per-sender sequence number — both checks would reject otherwise.
         var tx = TxWithMetadata(("Type", type));
 
         TransactionTypeClassifier.IsGenesisOrControlTransaction(tx).Should().BeTrue();
