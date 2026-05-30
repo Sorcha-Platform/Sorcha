@@ -155,9 +155,24 @@ public class SystemRegisterCreateCommand : Command
         var controlPublicKeyBytes = controlKeySet.PublicKey.Key!;
         var controlPrivateKey = controlKeySet.PrivateKey.Key!;
 
-        // 2. Build the control record
+        // 2. Build the control record and wrap it in a ControlTransactionPayload envelope.
+        //    PR #868 made the orchestrator's genesis path emit the wrapper shape
+        //    ({ version, roster, operation }) so GovernanceRosterService and the non-genesis
+        //    governance-commit path can read it back via a single deserialise. The CLI mints
+        //    the SYSTEM register genesis JSON that is then embedded in the register-service
+        //    image, so it must produce the same shape — otherwise the system register's
+        //    /governance/roster surfaces members:[] (an issue observed live on n1 the day
+        //    after PR #868 deployed). All known readers accept either shape via
+        //    RegisterControlPayloadReader; new genesis bytes therefore go through the same
+        //    path the orchestrator uses.
         var controlRecord = BuildControlRecord(publicKeyBytes, algorithm);
-        var controlRecordJson = JsonSerializer.Serialize(controlRecord, CanonicalJsonOptions);
+        var controlPayload = new ControlTransactionPayload
+        {
+            Version = 1,
+            Roster = controlRecord,
+            Operation = null, // genesis carries no producing operation
+        };
+        var controlRecordJson = JsonSerializer.Serialize(controlPayload, CanonicalJsonOptions);
         var controlRecordBytes = Encoding.UTF8.GetBytes(controlRecordJson);
 
         // 3. Compute payload hash

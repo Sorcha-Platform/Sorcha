@@ -204,12 +204,15 @@ public class GenesisIngestionService
         try
         {
             var payloadBytes = Convert.FromBase64String(genesis.GenesisTransaction.Payload);
-            controlRecord = JsonSerializer.Deserialize<RegisterControlRecord>(payloadBytes);
+            // Genesis bytes carry either the bare RegisterControlRecord shape (pre-PR #868
+            // / pre-CLI flip) or the ControlTransactionPayload wrapper shape (post-flip).
+            // RegisterControlPayloadReader handles both.
+            controlRecord = RegisterControlPayloadReader.TryRead(payloadBytes);
         }
-        catch (Exception ex) when (ex is FormatException or JsonException)
+        catch (FormatException ex)
         {
             _logger.LogWarning(ex,
-                "Failed to decode genesis payload into RegisterControlRecord — " +
+                "Failed to base64-decode genesis payload — " +
                 "skipping pre-create. Validator enrolment will rely on docket-0 seal.");
             return;
         }
@@ -217,7 +220,7 @@ public class GenesisIngestionService
         if (controlRecord is null)
         {
             _logger.LogWarning(
-                "Genesis payload decoded to null RegisterControlRecord — skipping pre-create");
+                "Genesis payload decoded to a null/empty RegisterControlRecord — skipping pre-create");
             return;
         }
 
