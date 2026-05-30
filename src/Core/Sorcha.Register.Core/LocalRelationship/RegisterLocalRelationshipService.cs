@@ -168,44 +168,16 @@ public sealed class RegisterLocalRelationshipService : IRegisterLocalRelationshi
 
             try
             {
-                var bytes = DecodeBase64Auto(data);
-
-                // Two on-disk shapes are valid here:
-                //   (a) ControlTransactionPayload { Version, Roster: RegisterControlRecord, Operation }
-                //       — the post-PR-#868 shape that GovernanceRosterService and the non-genesis
-                //       governance-commit path both produce.
-                //   (b) Bare RegisterControlRecord — the pre-PR-#868 genesis shape, still on disk
-                //       for any pre-existing register that hasn't been re-created since.
-                // Probe the wrapper shape first (it carries an explicit "roster" property); fall
-                // back to the bare shape so legacy genesis dockets still derive correctly. Without
-                // this, the post-#868 wrapped payload silently deserialises into a default-empty
-                // RegisterControlRecord — no validators, no attestations — which causes
-                // /api/internal/my-validated-registers to drop this register from the validator's
-                // monitoring set and stops every subsequent docket from sealing.
-                var wrapper = JsonSerializer.Deserialize<ControlTransactionPayload>(bytes);
-                if (wrapper?.Roster is not null
-                    && (wrapper.Roster.Attestations is { Count: > 0 }
-                        || wrapper.Roster.Validators is not null))
-                {
-                    return wrapper.Roster;
-                }
-
-                var bare = JsonSerializer.Deserialize<RegisterControlRecord>(bytes);
-                if (bare is not null
-                    && (bare.Attestations is { Count: > 0 } || bare.Validators is not null))
-                {
-                    return bare;
-                }
+                // RegisterControlPayloadReader handles both on-disk shapes (pre-#868 bare and
+                // post-#868 wrapped) and returns null for an empty/non-populated payload, so
+                // a default-empty deserialisation doesn't poison the relationship lookup.
+                var record = RegisterControlPayloadReader.TryRead(DecodeBase64Auto(data));
+                if (record is not null) return record;
             }
             catch (FormatException ex)
             {
                 _logger?.LogDebug(ex,
                     "Control tx payload for register {RegisterId} is not valid Base64/Base64Url", registerId);
-            }
-            catch (JsonException ex)
-            {
-                _logger?.LogDebug(ex,
-                    "Control tx payload for register {RegisterId} is not a valid control payload", registerId);
             }
         }
         return null;

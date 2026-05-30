@@ -51,25 +51,26 @@ public class ValidatorKeyCache
     /// </summary>
     public bool ExtractFromControlRecord(string registerId, byte[] controlRecordData)
     {
-        try
+        // Genesis control bytes carry either the bare RegisterControlRecord shape (pre-#868)
+        // or the ControlTransactionPayload wrapper shape (post-#868). Both paths are accepted.
+        var controlRecord = RegisterControlPayloadReader.TryRead(controlRecordData);
+        if (controlRecord is null)
         {
-            var controlRecord = JsonSerializer.Deserialize<RegisterControlRecord>(controlRecordData);
-            if (controlRecord?.Validators == null)
-            {
-                _logger.LogWarning(
-                    "Genesis control record for register {RegisterId} does not contain a validators field",
-                    registerId);
-                return false;
-            }
-
-            return ExtractFromControlRecord(registerId, controlRecord);
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogWarning(ex,
-                "Failed to deserialize control record for register {RegisterId}", registerId);
+            _logger.LogWarning(
+                "Failed to deserialise control record for register {RegisterId} (payload was neither a bare RegisterControlRecord nor a populated ControlTransactionPayload)",
+                registerId);
             return false;
         }
+
+        if (controlRecord.Validators is null)
+        {
+            _logger.LogWarning(
+                "Genesis control record for register {RegisterId} does not contain a validators field",
+                registerId);
+            return false;
+        }
+
+        return ExtractFromControlRecord(registerId, controlRecord);
     }
 
     /// <summary>

@@ -173,8 +173,9 @@ public class CryptoPolicyService
             if (policy != null && policy.Version > 0 && policy.AcceptedSignatureAlgorithms.Length > 0)
                 return policy;
 
-            // Try as RegisterControlRecord and extract CryptoPolicy
-            var controlRecord = JsonSerializer.Deserialize<RegisterControlRecord>(json);
+            // Try as RegisterControlRecord (either bare-shape pre-#868 or wrapped post-#868
+            // — RegisterControlPayloadReader handles both) and extract its CryptoPolicy.
+            var controlRecord = RegisterControlPayloadReader.TryRead(bytes);
             return controlRecord?.CryptoPolicy;
         }
         catch (JsonException)

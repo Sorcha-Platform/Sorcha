@@ -50,14 +50,16 @@ internal static class GenesisControlRecordExtractor
 
             try
             {
-                var json = Encoding.UTF8.GetString(ContentEncodings.DecodeBase64Auto(tx.Payloads[0].Data));
-                var record = JsonSerializer.Deserialize<RegisterControlRecord>(json);
+                var jsonBytes = ContentEncodings.DecodeBase64Auto(tx.Payloads[0].Data);
+                // Genesis bytes carry either the bare RegisterControlRecord shape (pre-#868)
+                // or the ControlTransactionPayload wrapper shape (post-#868).
+                var record = RegisterControlPayloadReader.TryRead(jsonBytes);
                 if (record is not null && !string.IsNullOrWhiteSpace(record.Name))
                 {
                     return record;
                 }
             }
-            catch (Exception ex) when (ex is FormatException or JsonException)
+            catch (FormatException)
             {
                 // Not a decodable control record — try the next transaction.
             }
