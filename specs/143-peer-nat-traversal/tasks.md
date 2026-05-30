@@ -26,8 +26,8 @@ description: "Task list for Peer NAT Traversal (Reverse-Stream Rendezvous)"
 
 ## Phase 1: Setup
 
-- [ ] T001 Establish baseline: build `src/Services/Sorcha.Peer.Service` and run `tests/Sorcha.Peer.Service.Tests` green before any change (capture current pass count).
-- [ ] T002 [P] Add NAT-traversal config surface in `src/Services/Sorcha.Peer.Service` options: reachability self-classification (`PeerService:PublicAddress` empty ⇒ NAT'd/spoke; set ⇒ public/rendezvous-capable) and `PeerService:Relay:RendezvousEnabled` (default derived from `PublicAddress`). See contracts/internal-interfaces.md → Configuration.
+- [X] T001 Establish baseline: build `src/Services/Sorcha.Peer.Service` and run `tests/Sorcha.Peer.Service.Tests` green before any change (capture current pass count).
+- [X] T002 [P] Add NAT-traversal config surface in `src/Services/Sorcha.Peer.Service` options: reachability self-classification (`PeerService:PublicAddress` empty ⇒ NAT'd/spoke; set ⇒ public/rendezvous-capable) and `PeerService:Relay:RendezvousEnabled` (default derived from `PublicAddress`). See contracts/internal-interfaces.md → Configuration.
 
 ---
 
@@ -35,11 +35,11 @@ description: "Task list for Peer NAT Traversal (Reverse-Stream Rendezvous)"
 
 **⚠️ CRITICAL**: All user stories depend on the reverse-stream registry + metrics. No story work begins until this phase is complete.
 
-- [ ] T003 Port `ReverseStreamEntry` into `src/Services/Sorcha.Peer.Service/Communication/ReverseStreamEntry.cs` (from `src/Apps/Sorcha.PeerRouter/Models/ReverseStreamEntry.cs`; adjust namespace; proto types already `Sorcha.Peer.Service.Protos`).
-- [ ] T004 Port + extend `ReverseStreamManager` into `src/Services/Sorcha.Peer.Service/Communication/ReverseStreamManager.cs` (from `src/Apps/Sorcha.PeerRouter/Services/ReverseStreamManager.cs`): `RegisterStream`/`TryGetStream`/`RemoveStream` + NEW `DispatchAsync(peerId, msg, ct)` (throws `RpcException(Unavailable)` on no live stream) + NEW `ActiveCount`.
-- [ ] T005 Register `ReverseStreamManager` as a singleton in `src/Services/Sorcha.Peer.Service/Program.cs` DI.
-- [ ] T006 [P] Add `Sorcha.Peer` meter instruments in a metrics type under `src/Services/Sorcha.Peer.Service/`: `peer_reverse_streams_active` (gauge), `peer_relay_forward_duration` (histogram, tag `flow`), `peer_path_selection_total` (counter, tag `path`), `peer_anchor_failover_total`, `peer_anchor_reconnect_total`. (Emission wired per story.)
-- [ ] T007 [P] Unit tests for `ReverseStreamManager` in `tests/Sorcha.Peer.Service.Tests/Communication/ReverseStreamManagerTests.cs`: register, replace/supersede (old CTS cancelled), remove, `DispatchAsync` on missing stream → `Unavailable`, `ActiveCount`.
+- [X] T003 Port `ReverseStreamEntry` into `src/Services/Sorcha.Peer.Service/Communication/ReverseStreamEntry.cs` (from `src/Apps/Sorcha.PeerRouter/Models/ReverseStreamEntry.cs`; adjust namespace; proto types already `Sorcha.Peer.Service.Protos`).
+- [X] T004 Port + extend `ReverseStreamManager` into `src/Services/Sorcha.Peer.Service/Communication/ReverseStreamManager.cs` (from `src/Apps/Sorcha.PeerRouter/Services/ReverseStreamManager.cs`): `RegisterStream`/`TryGetStream`/`RemoveStream` + NEW `DispatchAsync(peerId, msg, ct)` (throws `RpcException(Unavailable)` on no live stream) + NEW `ActiveCount`.
+- [X] T005 Register `ReverseStreamManager` as a singleton in `src/Services/Sorcha.Peer.Service/Program.cs` DI.
+- [X] T006 [P] Add `Sorcha.Peer` meter instruments in a metrics type under `src/Services/Sorcha.Peer.Service/`: `peer_reverse_streams_active` (gauge), `peer_relay_forward_duration` (histogram, tag `flow`), `peer_path_selection_total` (counter, tag `path`), `peer_anchor_failover_total`, `peer_anchor_reconnect_total`. (Emission wired per story.)
+- [X] T007 [P] Unit tests for `ReverseStreamManager` in `tests/Sorcha.Peer.Service.Tests/Communication/ReverseStreamManagerTests.cs`: register, replace/supersede (old CTS cancelled), remove, `DispatchAsync` on missing stream → `Unavailable`, `ActiveCount`.
 
 **Checkpoint**: registry + config + metrics ready.
 

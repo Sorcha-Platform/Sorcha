@@ -93,6 +93,25 @@ public class PeerServiceConfiguration
     /// this window; expired or unknown nonces are refused. Default 30s.
     /// </summary>
     public int ChallengeTtlSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Operator override for whether this node accepts inbound reverse streams from NAT'd peers
+    /// and brokers traffic to them (acts as a rendezvous). Feature 143 (peer NAT traversal).
+    /// When <c>null</c>, rendezvous-capability is derived from reachability via
+    /// <see cref="IsRendezvousCapable"/> — a node that has a configured external/public address is
+    /// itself inbound-reachable and therefore rendezvous-capable.
+    /// </summary>
+    public bool? RelayRendezvousEnabled { get; set; }
+
+    /// <summary>
+    /// True when this node should act as a rendezvous for NAT'd peers (Feature 143). Explicit
+    /// <see cref="RelayRendezvousEnabled"/> wins; otherwise derived from having a configured
+    /// external address (<see cref="NetworkAddressConfiguration.ExternalAddress"/>). A NAT'd /
+    /// outbound-only node has no external address and is therefore not rendezvous-capable — it
+    /// dials out and holds reverse streams to rendezvous-capable peers instead.
+    /// </summary>
+    public bool IsRendezvousCapable =>
+        RelayRendezvousEnabled ?? !string.IsNullOrEmpty(NetworkAddress.ExternalAddress);
 }
 
 public class NetworkAddressConfiguration

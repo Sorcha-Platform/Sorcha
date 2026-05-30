@@ -152,6 +152,9 @@ builder.Services.AddSingleton<PeerServiceActivitySource>();
 
 // Register relay communication services
 // Lazy<RelayMessageHandler> breaks the circular dependency between RelayCommunicationService and RelayMessageHandler
+// Feature 143: ReverseStreamManager holds the reverse streams NAT'd peers dial in on so this
+// (rendezvous-capable) node can broker submit/sync back to them.
+builder.Services.AddSingleton<Sorcha.Peer.Service.Communication.ReverseStreamManager>();
 builder.Services.AddSingleton<RelayMessageHandler>();
 builder.Services.AddSingleton(sp => new Lazy<RelayMessageHandler>(() => sp.GetRequiredService<RelayMessageHandler>()));
 builder.Services.AddSingleton<RelayCommunicationService>();
