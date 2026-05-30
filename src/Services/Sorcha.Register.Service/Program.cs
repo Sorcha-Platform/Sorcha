@@ -1843,7 +1843,7 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
         txId: txId,
         payloadHash: payloadHashHex,
         derivationPath: "sorcha:register-control",
-        transactionType: "Control");
+        transactionType: "BlueprintPublish");
 
     var systemSignature = new Sorcha.ServiceClients.Validator.SignatureInfo
     {
@@ -1865,7 +1865,14 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
         CreatedAt = DateTimeOffset.UtcNow,
         Metadata = new Dictionary<string, string>
         {
-            ["Type"] = "Control",
+            // Persisted TransactionType (the validator parses this via Enum.TryParse, ignoreCase=true).
+            // Pre-#876 publishes were "Control" + TrackingData; we now write a dedicated
+            // BlueprintPublish enum so roster, governance, and crypto-policy projections that
+            // filter on TransactionType.Control naturally exclude publishes without having to
+            // discriminate on free-form TrackingData strings. PR #871's reader-side defence stays
+            // as belt-and-braces for legacy registers; both eras coexist forever.
+            ["Type"] = "BlueprintPublish",
+            // Retained for legacy log/audit consumers that already scan TrackingData. Safe to keep.
             ["transactionType"] = "BlueprintPublish",
             ["publishedBy"] = request.PublishedBy,
             ["SystemWalletAddress"] = signResult.WalletAddress,
@@ -1918,12 +1925,15 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
         return Results.NotFound(new { error = $"Register '{registerId}' not found" });
     }
 
-    // Query all transactions then filter in-memory to blueprint-publish control transactions.
-    // Blueprint publishes are Control transactions (TransactionType == 0) with a non-genesis BlueprintId.
+    // Query all transactions then filter in-memory to blueprint-publish transactions.
+    // Post-#876 publishes are TransactionType.BlueprintPublish; pre-#876 publishes were
+    // TransactionType.Control + TrackingData["transactionType"]="BlueprintPublish".
+    // Both eras coexist forever, so this filter must accept either.
     var allTransactions = (await repository.GetTransactionsAsync(registerId)).ToList();
     var publishTransactions = allTransactions
         .Where(tx => tx.MetaData != null
-            && tx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control
+            && (tx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish
+                || tx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control)
             && !string.IsNullOrEmpty(tx.MetaData.BlueprintId)
             && tx.MetaData.BlueprintId != "genesis")
         .ToList();

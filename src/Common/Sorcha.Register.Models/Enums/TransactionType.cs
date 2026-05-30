@@ -59,5 +59,18 @@ public enum TransactionType
     /// remains the authoritative cross-node check for verifiers — this tx exists
     /// to keep the holder's locally-cached row in sync.)
     /// </summary>
-    CredentialStatusChange = 8
+    CredentialStatusChange = 8,
+
+    /// <summary>
+    /// Blueprint-publish transaction — a register-owned record that announces
+    /// "blueprint {id} version {n} is now active on this register" so that all
+    /// participants can resolve the same canonical exec-def without trusting the
+    /// transport. Distinct from <see cref="Control"/> (which is governance/roster
+    /// state) so that roster projections, governance proposal feeds, and
+    /// crypto-policy reads don't have to discriminate via free-form
+    /// <c>TrackingData["transactionType"]</c>. Pre-#876 publishes were written
+    /// with <see cref="Control"/> + <c>TrackingData["transactionType"]="BlueprintPublish"</c>;
+    /// readers that need to surface both eras should filter on either type.
+    /// </summary>
+    BlueprintPublish = 9
 }

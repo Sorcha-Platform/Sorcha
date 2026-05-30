@@ -852,11 +852,15 @@ public class ValidationEngine : IValidationEngine
                 // children — each workflow instance forks from its blueprint publish TX by design.
                 if (previousTx != null)
                 {
-                    // Control transactions (genesis, blueprint-publish) may have multiple children by design.
-                    // When MetaData is null (e.g. legacy or genesis transactions), treat as control to avoid
-                    // false fork detection — non-control transactions always have MetaData populated.
+                    // Multi-child predecessors: genesis (Control) and blueprint-publish (post-#876
+                    // BlueprintPublish, pre-#876 Control). Every workflow instance forks from its
+                    // blueprint publish TX by design — without this bypass each new instance
+                    // triggers a spurious VAL_CHAIN_FORK. When MetaData is null (legacy / genesis
+                    // round-trip shape failures), treat as the multi-child case to avoid the same
+                    // false fork — non-control transactions always have MetaData populated.
                     var isControlTx = previousTx.MetaData == null
-                        || previousTx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control;
+                        || previousTx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control
+                        || previousTx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish;
                     if (!isControlTx)
                     {
                         using var _forkScope = RuleTelemetry.TimeRule("VAL_CHAIN_FORK");

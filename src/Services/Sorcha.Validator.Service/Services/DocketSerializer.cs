@@ -75,6 +75,7 @@ public static class DocketSerializer
                     {
                         "participant" => Sorcha.Register.Models.Enums.TransactionType.Participant,
                         "control" => Sorcha.Register.Models.Enums.TransactionType.Control,
+                        "blueprintpublish" => Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish,
                         _ => Sorcha.Register.Models.Enums.TransactionType.Action
                     };
                 }
