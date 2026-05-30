@@ -53,17 +53,17 @@ description: "Task list for Peer NAT Traversal (Reverse-Stream Rendezvous)"
 
 ### Tests for User Story 1 ⚠️ (write first, ensure they fail)
 
-- [ ] T008 [P] [US1] Port/adapt `Stream` server tests → `tests/Sorcha.Peer.Service.Tests/GrpcServices/PeerCommunicationStreamTests.cs` (from `RouterCommunicationServiceRelayTests`): first-message registers stream; missing `sender_peer_id` ⇒ `InvalidArgument`; reconnect supersedes; inbound forward to recipient stream.
+- [X] T008 [P] [US1] Port/adapt `Stream` server tests → `tests/Sorcha.Peer.Service.Tests/GrpcServices/PeerCommunicationStreamTests.cs` (from `RouterCommunicationServiceRelayTests`): first-message registers stream; missing `sender_peer_id` ⇒ `InvalidArgument`; reconnect supersedes; inbound forward to recipient stream.
 - [ ] T009 [P] [US1] Integration test `tests/Sorcha.Peer.Service.Tests/Integration/NatTraversalSubmitTests.cs`: `natd` (no inbound) establishes reverse stream to `pub`; submit on `pub` for `natd`'s register → brokered → sealed on `natd`.
 - [ ] T010 [P] [US1] Integration test `tests/Sorcha.Peer.Service.Tests/Integration/NatTraversalSyncTests.cs`: sealed docket on `natd` replicates back to `pub` over the reverse stream (docket chain + tx data).
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Implement server-side `Stream` override in `src/Services/Sorcha.Peer.Service/GrpcServices/PeerCommunicationServiceImpl.cs` (port `RouterCommunicationService.Stream`): accept reverse stream, register on first message via `ReverseStreamManager`, update `LastActivityAt`, clean teardown on disconnect/cancel. Gate on rendezvous-enabled.
+- [X] T011 [US1] Implement server-side `Stream` override in `src/Services/Sorcha.Peer.Service/GrpcServices/PeerCommunicationServiceImpl.cs` (port `RouterCommunicationService.Stream`): accept reverse stream, register on first message via `ReverseStreamManager`, update `LastActivityAt`, clean teardown on disconnect/cancel. Gate on rendezvous-enabled.
 - [ ] T012 [US1] Implement inbound forwarding (port `ForwardStreamMessageAsync`) in `PeerCommunicationServiceImpl`: messages from the NAT'd peer carrying a `recipient_peer_id` → recipient's reverse stream, else direct channel, else log+drop.
 - [ ] T013 [US1] Wire SUBMIT brokering in `src/Services/Sorcha.Peer.Service/Communication/CommunicationProtocolManager.cs` + `Replication/TransactionDistributionService.cs`: a `TRANSACTION_NOTIFICATION` targeting a reverse-stream-only peer is sent via `ReverseStreamManager.DispatchAsync` instead of dialing.
 - [ ] T014 [US1] Wire SYNC brokering in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs`: `REGISTER_SYNC_REQUEST/RESPONSE` + `TRANSACTION_DATA_REQUEST/RESPONSE` carried over the reverse stream via `DispatchAsync`, correlation-matched (reuse `RelayMessageHandler`).
-- [ ] T015 [US1] Map the `Stream` gRPC endpoint and enable rendezvous when `PublicAddress` is set, in `src/Services/Sorcha.Peer.Service/Program.cs`.
+- [X] T015 [US1] Map the `Stream` gRPC endpoint and enable rendezvous when `PublicAddress` is set, in `src/Services/Sorcha.Peer.Service/Program.cs`.
 - [ ] T016 [US1] Emit `peer_reverse_streams_active` (on register/remove) and `peer_relay_forward_duration{flow=submit|sync}` (around `DispatchAsync`) with an OTel `peer.relay.forward` span.
 
 **Checkpoint**: SC-001 reachable on the in-proc harness — a NAT'd owner is fully usable by a public subscriber.
