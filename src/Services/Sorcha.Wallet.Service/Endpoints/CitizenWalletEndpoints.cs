@@ -592,17 +592,29 @@ public static class CitizenWalletEndpoints
 
         if (string.IsNullOrWhiteSpace(walletAddress))
         {
-            var owner = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
-            if (!string.IsNullOrWhiteSpace(owner))
+            // Wallet ownership keying alignment (cleanup of the Smell-1 architectural
+            // inconsistency): post-#878 WalletEndpoints.GetCurrentUser prefers
+            // platform_user_id when minting Wallets.Owner, so new citizen wallets land
+            // with Owner=PlatformUser.Id. Legacy wallets created pre-#878 still carry
+            // Owner=UserIdentity.Id (= sub). Try the new key first, then fall back to
+            // the legacy key — both eras coexist forever for any wallet that was on
+            // disk before the cutover.
+            var platformOwner = platformUserId?.ToString();
+            var legacyOwner = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
+            var tenant = user.FindFirstValue("tenant") ?? "default";
+
+            Sorcha.Wallet.Core.Domain.Entities.Wallet? chosen = null;
+            foreach (var candidate in new[] { platformOwner, legacyOwner })
             {
-                var tenant = user.FindFirstValue("tenant") ?? "default";
-                var owned = await walletRepository.GetByOwnerAsync(owner, tenant, ct);
-                var chosen = owned
+                if (string.IsNullOrWhiteSpace(candidate)) continue;
+                var owned = await walletRepository.GetByOwnerAsync(candidate, tenant, ct);
+                chosen = owned
                     .OrderByDescending(w => w.Status == WalletStatus.Active)
                     .ThenBy(w => w.CreatedAt)
                     .FirstOrDefault();
-                walletAddress = chosen?.Address;
+                if (chosen is not null) break;
             }
+            walletAddress = chosen?.Address;
         }
 
         return (platformUserId, walletAddress, organizationId);

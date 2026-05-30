@@ -105,4 +105,54 @@ public sealed class CitizenWalletContextResolutionTests
 
         wallet.Should().Be(CitizenWallet);
     }
+
+    [Fact]
+    public async Task PrefersPlatformUserIdOwnerOverNameIdentifier()
+    {
+        // Cleanup of the Smell-1 architectural inconsistency: post-#878 WalletEndpoints.GetCurrentUser
+        // mints Wallets.Owner from the JWT platform_user_id claim (cross-org persistent identity)
+        // rather than NameIdentifier (per-org). The citizen-side resolver must therefore try the
+        // platform_user_id lookup FIRST so new-shape wallets are discoverable. Without this
+        // preference, a citizen would have to fall through to the legacy-sub branch — fine when no
+        // legacy wallet exists, but a wallet that happens to be co-owned by a wallet-under-sub
+        // would be mistakenly chosen on the first hit.
+        const string PlatformOwner = "e2b28602-03a4-4da9-96b3-1c43408f2640";
+        const string PlatformWallet = "ws11qPLATFORMERAcitizenwallet";
+
+        var repo = new Mock<IWalletRepository>();
+        repo.Setup(r => r.GetByOwnerAsync(PlatformOwner, "default", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { TestWallet(PlatformWallet) });
+        // Sub-keyed lookup is a fallback path and must NOT be reached when platform_user_id hits.
+        repo.Setup(r => r.GetByOwnerAsync(Owner, "default", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { TestWallet("ws11qLEGACYsubwallet") });
+
+        var (_, wallet, _) = await CitizenWalletEndpoints.ResolveCitizenContextAsync(
+            Principal(withWalletClaim: false), repo.Object, CancellationToken.None);
+
+        wallet.Should().Be(PlatformWallet, "platform_user_id-owned wallets are the new canonical shape");
+        repo.Verify(r => r.GetByOwnerAsync(Owner, "default", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task LegacyPath_FallsBackToNameIdentifierOwner()
+    {
+        // Legacy era support: any wallet that pre-dates #878 still carries Owner=sub (= NameIdentifier).
+        // The resolver tries the new platform_user_id key first, then falls back to the sub-keyed
+        // lookup so existing-on-disk citizen wallets stay discoverable forever.
+        const string PlatformOwner = "e2b28602-03a4-4da9-96b3-1c43408f2640";
+        const string LegacyWallet = "ws11qLEGACYsubwallet";
+
+        var repo = new Mock<IWalletRepository>();
+        // Platform_user_id-keyed lookup returns empty (no new-shape wallet exists for this user).
+        repo.Setup(r => r.GetByOwnerAsync(PlatformOwner, "default", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<WalletEntity>());
+        // Sub-keyed lookup finds the legacy wallet.
+        repo.Setup(r => r.GetByOwnerAsync(Owner, "default", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { TestWallet(LegacyWallet) });
+
+        var (_, wallet, _) = await CitizenWalletEndpoints.ResolveCitizenContextAsync(
+            Principal(withWalletClaim: false), repo.Object, CancellationToken.None);
+
+        wallet.Should().Be(LegacyWallet);
+    }
 }
