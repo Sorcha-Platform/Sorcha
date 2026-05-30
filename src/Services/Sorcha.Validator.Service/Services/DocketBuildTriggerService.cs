@@ -640,6 +640,16 @@ public class DocketBuildTriggerService : BackgroundService
                             // payload (the validator only knows the static route graph), so the
                             // authoritative next action must originate from the submission.
                             NextActionId = ResolveNextActionId(t.Metadata),
+                            // Carry the submission metadata through to the persisted tx. This is the
+                            // authoritative write path, so omitting it left TrackingData null on EVERY
+                            // sealed transaction — dropping the F138 US4 blueprint `contentHash`
+                            // (publish-time sealed digest), `publishedBy`, and the legacy
+                            // `transactionType` discriminator. A node recovering a replicated register
+                            // then rejected every blueprint with `no_provenance`. Mirrors the parallel
+                            // DocketSerializer.ToRegisterModel projection.
+                            TrackingData = t.Metadata is { Count: > 0 }
+                                ? new Dictionary<string, string>(t.Metadata)
+                                : null,
                         }
                     };
                 }).ToList(),
