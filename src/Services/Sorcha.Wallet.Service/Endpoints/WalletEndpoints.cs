@@ -375,6 +375,7 @@ public static class WalletEndpoints
         WalletManager walletManager,
         ICryptoModule cryptoModule,
         IWalletUtilities walletUtilities,
+        Sorcha.Wallet.Service.Services.Interfaces.IHolderAddressLookup holderAddressLookup,
         IServiceScopeFactory serviceScopeFactory,
         HttpContext context,
         ILogger<Program> logger,
@@ -407,6 +408,38 @@ public static class WalletEndpoints
                 request.Passphrase,
                 signingModeOverride,
                 cancellationToken);
+
+            // F114 PWA enrolment is the canonical population point for
+            // CitizenHolderIndex (wallet ↔ PlatformUser.Id mapping the citizen-side
+            // /v1/wallet/credentials endpoint reads against), but any flow that
+            // creates a citizen wallet through this endpoint without going through
+            // PWA enrol (walkthrough automation, scripted CI, future direct-create
+            // surfaces) needs the same mapping or the citizen's credential list
+            // surfaces empty. Wallets.Owner is the JWT NameIdentifier (UserIdentity.Id,
+            // org-scoped) — NOT the PlatformUser.Id the citizen-credential tables key
+            // against. The JWT has both — `sub` = UserIdentity.Id, `platform_user_id`
+            // = PlatformUser.Id — so we pull the latter here, where we still have the
+            // JWT, and pre-populate the index. RegisterAsync is idempotent on
+            // (WalletAddress) and tolerates concurrent first-write races.
+            // Skipped when the JWT doesn't carry a parseable platform_user_id (admin
+            // / service tokens where the citizen-credential pipeline isn't in play).
+            var platformUserIdClaim = context.User.FindFirstValue("platform_user_id");
+            if (Guid.TryParse(platformUserIdClaim, out var platformUserId))
+            {
+                try
+                {
+                    await holderAddressLookup.RegisterAsync(wallet.Address, platformUserId, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    // Non-critical: a transient index-write failure must NOT roll back
+                    // the wallet creation. The projector's fallback (PR #873) will
+                    // populate it lazily on the first inbound credential.
+                    logger.LogWarning(ex,
+                        "Failed to pre-populate CitizenHolderIndex for wallet {Address} platformUser {PlatformUserId} — projector fallback will retry",
+                        wallet.Address, platformUserId);
+                }
+            }
 
             var response = new CreateWalletResponse
             {
