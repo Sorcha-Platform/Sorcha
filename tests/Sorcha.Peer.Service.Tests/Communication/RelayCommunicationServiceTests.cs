@@ -3,7 +3,9 @@
 
 using FluentAssertions;
 using Google.Protobuf;
+using Grpc.Core;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Sorcha.Peer.Service.Communication;
@@ -59,6 +61,52 @@ public class RelayCommunicationServiceTests : IAsyncDisposable
             _peerListManager,
             Options.Create(_config),
             new Lazy<RelayMessageHandler>(() => null!));
+    }
+
+    // --- Feature 143: rendezvous routing (broker over a held reverse stream) ---
+
+    [Fact]
+    public async Task SendViaRelayAsync_HoldingTargetReverseStream_BrokersOverIt()
+    {
+        var reverseStreams = new ReverseStreamManager(NullLogger<ReverseStreamManager>.Instance);
+        PeerMessage? written = null;
+        var writer = new Mock<IServerStreamWriter<PeerMessage>>();
+        writer.Setup(w => w.WriteAsync(It.IsAny<PeerMessage>()))
+            .Callback<PeerMessage>(m => written = m)
+            .Returns(Task.CompletedTask);
+        reverseStreams.RegisterStream("natd-owner", writer.Object);
+
+        var svc = new RelayCommunicationService(
+            new Mock<ILogger<RelayCommunicationService>>().Object,
+            _connectionPool, _peerListManager, Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!),
+            reverseStreams, new PeerServiceMetrics());
+
+        var ok = await svc.SendViaRelayAsync(
+            "natd-owner", MessageType.RegisterSyncRequest, new { CorrelationId = "c1", RegisterId = "reg1" });
+
+        ok.Should().BeTrue();
+        written.Should().NotBeNull();
+        written!.RecipientPeerId.Should().Be("natd-owner");
+        written.MessageType.Should().Be(MessageType.RegisterSyncRequest);
+        writer.Verify(w => w.WriteAsync(It.IsAny<PeerMessage>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendViaRelayAsync_NoReverseStreamAndNoSeed_ReturnsFalse()
+    {
+        var reverseStreams = new ReverseStreamManager(NullLogger<ReverseStreamManager>.Instance);
+        var svc = new RelayCommunicationService(
+            new Mock<ILogger<RelayCommunicationService>>().Object,
+            _connectionPool, _peerListManager, Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!),
+            reverseStreams, new PeerServiceMetrics());
+
+        // Not held as a reverse stream and no seed channel configured → falls through to unary, no seed → false.
+        var ok = await svc.SendViaRelayAsync(
+            "unknown-peer", MessageType.RegisterSyncRequest, new { CorrelationId = "c2", RegisterId = "reg1" });
+
+        ok.Should().BeFalse();
     }
 
     [Fact]

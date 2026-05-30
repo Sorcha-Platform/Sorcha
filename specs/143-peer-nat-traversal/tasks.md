@@ -61,12 +61,41 @@ description: "Task list for Peer NAT Traversal (Reverse-Stream Rendezvous)"
 
 - [X] T011 [US1] Implement server-side `Stream` override in `src/Services/Sorcha.Peer.Service/GrpcServices/PeerCommunicationServiceImpl.cs` (port `RouterCommunicationService.Stream`): accept reverse stream, register on first message via `ReverseStreamManager`, update `LastActivityAt`, clean teardown on disconnect/cancel. Gate on rendezvous-enabled.
 - [ ] T012 [US1] Implement inbound forwarding (port `ForwardStreamMessageAsync`) in `PeerCommunicationServiceImpl`: messages from the NAT'd peer carrying a `recipient_peer_id` → recipient's reverse stream, else direct channel, else log+drop.
-- [ ] T013 [US1] Wire SUBMIT brokering in `src/Services/Sorcha.Peer.Service/Communication/CommunicationProtocolManager.cs` + `Replication/TransactionDistributionService.cs`: a `TRANSACTION_NOTIFICATION` targeting a reverse-stream-only peer is sent via `ReverseStreamManager.DispatchAsync` instead of dialing.
-- [ ] T014 [US1] Wire SYNC brokering in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs`: `REGISTER_SYNC_REQUEST/RESPONSE` + `TRANSACTION_DATA_REQUEST/RESPONSE` carried over the reverse stream via `DispatchAsync`, correlation-matched (reuse `RelayMessageHandler`).
+- [X] T013 [US1] Wire SUBMIT brokering in `src/Services/Sorcha.Peer.Service/Communication/CommunicationProtocolManager.cs` + `Replication/TransactionDistributionService.cs`: a `TRANSACTION_NOTIFICATION` targeting a reverse-stream-only peer is sent via `ReverseStreamManager.DispatchAsync` instead of dialing.
+- [X] T014 [US1] Wire SYNC brokering in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs`: `REGISTER_SYNC_REQUEST/RESPONSE` + `TRANSACTION_DATA_REQUEST/RESPONSE` carried over the reverse stream via `DispatchAsync`, correlation-matched (reuse `RelayMessageHandler`).
 - [X] T015 [US1] Map the `Stream` gRPC endpoint and enable rendezvous when `PublicAddress` is set, in `src/Services/Sorcha.Peer.Service/Program.cs`.
-- [ ] T016 [US1] Emit `peer_reverse_streams_active` (on register/remove) and `peer_relay_forward_duration{flow=submit|sync}` (around `DispatchAsync`) with an OTel `peer.relay.forward` span.
+- [X] T016 [US1] Emit `peer_reverse_streams_active` (on register/remove) and `peer_relay_forward_duration{flow=submit|sync}` (around `DispatchAsync`) with an OTel `peer.relay.forward` span.
 
-**Checkpoint**: SC-001 reachable on the in-proc harness — a NAT'd owner is fully usable by a public subscriber.
+**Checkpoint**: reverse-stream server + rendezvous send-path routing (notification + sync) work.
+SC-001 (sealing through a NAT'd owner) is **NOT** yet reachable — see Phase 3b.
+
+> ⚠️ **Discovered scope (during T013/T014 implementation).** The send-path routing brokers the
+> *pull/notify* relay messages over a held reverse stream (sync-back from a NAT'd owner works).
+> But the **submission-for-sealing** path — `TransactionDistributionService.ForwardSubmissionAsync`
+> → `TransactionDistribution.SubmitTransaction` (full signed tx → owner's local validator) — uses
+> **direct gRPC channels only**; it has no relay message type and never traverses a reverse stream.
+> On a node with no seeds it returns `LocallyOwned: true` and skips fan-out. So a transaction
+> submitted on a public subscriber currently **cannot reach a NAT'd owner's validator to be sealed**.
+> The owner-side ingest logic exists (`TransactionDistributionGrpcService.SubmitTransaction:248-310`,
+> hands the tx to `IValidatorServiceClient`); only the relay **transport** for it is missing.
+> Closing this is **Phase 3b (US1b)** below and is a prerequisite for SC-001.
+
+---
+
+## Phase 3b: User Story 1b - Submit-for-sealing to a NAT'd owner over relay (Priority: P1) 🎯 MVP-completing
+
+**Goal**: A signed transaction submitted on a public subscriber reaches a NAT'd owner's validator
+and seals — the sealing transport over the reverse stream that the pull/notify path already has.
+
+**Independent Test**: in-proc `pub` + `natd`-owner; submit on `pub` → `natd`'s validator-submit
+handler is invoked with the forwarded submission and returns an ack over the reverse stream.
+
+- [ ] T038 [P] [US1b] Add relay message types `SUBMIT_TRANSACTION_REQUEST` (=12) and `SUBMIT_TRANSACTION_RESPONSE` (=13) to `Protos/peer_communication.proto`; add matching DTOs in `Communication/Models/RelayMessages.cs` (RegisterId, SubmissionJson, OriginPeerId, CorrelationId; response: Accepted, RejectReason, CorrelationId).
+- [ ] T039 [US1b] Owner-side handler in `RelayMessageHandler`: on `SUBMIT_TRANSACTION_REQUEST`, resolve `IValidatorServiceClient` via scope and submit (mirror `TransactionDistributionGrpcService.SubmitTransaction`), then send `SUBMIT_TRANSACTION_RESPONSE` back via `SendViaRelayAsync`; on `SUBMIT_TRANSACTION_RESPONSE`, complete the correlation.
+- [ ] T040 [US1b] Rendezvous-side routing in `TransactionDistributionService.ForwardSubmissionAsync`: when the register's owner is reachable only via a held reverse stream (no direct channel/seed), broker the submission via `RelayCommunicationService.SendAndWaitAsync<SubmitResponse>(ownerPeerId, SUBMIT_TRANSACTION_REQUEST, …)` instead of returning `LocallyOwned: true`. Needs register→owner→reverse-stream resolution (a `GetReverseStreamOwnerForRegister` analog of `GetChannelsForRegister`, fed by adverts).
+- [ ] T041 [US1b] Integration test: submit on `pub` for `natd`-owned register → brokered `SUBMIT_TRANSACTION_REQUEST` reaches `natd`'s validator-submit path and acks. (Then T009/T010 can prove the full SC-001 loop.)
+
+**Checkpoint**: SC-001 reachable on the in-proc harness.
 
 ---
 

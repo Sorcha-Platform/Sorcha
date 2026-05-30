@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Observability;
 using Sorcha.Peer.Service.Protos;
 
 namespace Sorcha.Peer.Service.Communication;
@@ -31,6 +33,8 @@ public class RelayCommunicationService
     private Task? _reverseStreamKeepaliveTask;
     private int _reverseStreamBackoffMs;
     private readonly Lazy<RelayMessageHandler> _relayMessageHandler;
+    private readonly ReverseStreamManager? _reverseStreams;
+    private readonly PeerServiceMetrics? _metrics;
 
     /// <summary>
     /// Default timeout for relay request/response correlation (30 seconds)
@@ -60,14 +64,29 @@ public class RelayCommunicationService
         PeerConnectionPool connectionPool,
         PeerListManager peerListManager,
         IOptions<PeerServiceConfiguration> configuration,
-        Lazy<RelayMessageHandler> relayMessageHandler)
+        Lazy<RelayMessageHandler> relayMessageHandler,
+        ReverseStreamManager? reverseStreams = null,
+        PeerServiceMetrics? metrics = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
         _relayMessageHandler = relayMessageHandler ?? throw new ArgumentNullException(nameof(relayMessageHandler));
+        // Feature 143: optional so existing call sites/tests compile unchanged; production DI injects both.
+        // When present, this node can broker to NAT'd peers whose reverse streams it holds (rendezvous role).
+        _reverseStreams = reverseStreams;
+        _metrics = metrics;
     }
+
+    /// <summary>Maps a relay message type to the metric flow tag (submit|sync|other).</summary>
+    private static string FlowFor(MessageType messageType) => messageType switch
+    {
+        MessageType.TransactionNotification => "submit",
+        MessageType.RegisterSyncRequest or MessageType.RegisterSyncResponse
+            or MessageType.TransactionDataRequest or MessageType.TransactionDataResponse => "sync",
+        _ => "other"
+    };
 
     /// <summary>
     /// Sends a message to a peer via seed node relay (fire-and-forget).
@@ -82,7 +101,32 @@ public class RelayCommunicationService
     {
         var peerMessage = CreatePeerMessage(targetPeerId, messageType, payload);
 
-        // Prefer reverse stream if active
+        // Rendezvous role (Feature 143): if this node holds the target's reverse stream — i.e. the
+        // target is a NAT'd peer that dialled in — broker directly over that stream. This is the
+        // "self-anchor" path: zero extra hop, no third party.
+        if (_reverseStreams is not null && _reverseStreams.TryGetStream(targetPeerId, out _))
+        {
+            var startTs = Stopwatch.GetTimestamp();
+            try
+            {
+                await _reverseStreams.DispatchAsync(targetPeerId, peerMessage, cancellationToken);
+                _metrics?.RecordRelayForward(Stopwatch.GetElapsedTime(startTs).TotalMilliseconds, FlowFor(messageType));
+                _metrics?.RecordPathSelection("self");
+                _logger.LogDebug(
+                    "Relay message {MessageType} brokered to NAT'd peer {TargetPeerId} over its reverse stream",
+                    messageType, targetPeerId);
+                return true;
+            }
+            catch (RpcException ex)
+            {
+                _logger.LogDebug(ex,
+                    "Reverse-stream broker to {TargetPeerId} failed, falling back to outbound stream / unary",
+                    targetPeerId);
+                // Fall through — the held stream may have just dropped; try the other paths.
+            }
+        }
+
+        // Prefer reverse stream if active (this node is itself NAT'd and dialled out to its seed)
         if (IsReverseStreamActive && _reverseStreamCall != null)
         {
             try

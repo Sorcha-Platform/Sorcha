@@ -103,6 +103,30 @@ passes (peer protocol direction; relay-machinery maturity/wiring). No open
 - **Rationale**: FR-012 + SC-004 require routing/health be verifiable from metrics
   without code inspection. Reuses the existing meter + export allowlist.
 
+## R-009 — Submission-for-sealing has no relay transport (discovered during implementation)
+
+- **Finding**: The design assumed the relay carried *both* submit and sync (per the optimistic
+  initial audit). In fact the relay (`RelayCommunicationService` / `RelayMessageHandler`) carries
+  only the **pull/notify** family — `RegisterSyncRequest/Response`, `TransactionDataRequest/Response`,
+  `TransactionNotification`. The **submission-for-sealing** path is separate and **direct-channel
+  only**: `TransactionDistributionService.ForwardSubmissionAsync` calls
+  `TransactionDistribution.SubmitTransaction` over a `PeerConnectionPool` gRPC channel
+  (`TransactionDistributionService.cs:125-137`), and on a node with no seeds returns
+  `LocallyOwned: true` and skips fan-out. There is no `MessageType` for a forwarded submission and
+  no `RelayMessageHandler` branch that submits to the local validator.
+- **Consequence**: docket **sync-back** from a NAT'd owner works once the rendezvous brokers over a
+  held reverse stream (T013/T014, done). But a transaction submitted on a public subscriber
+  **cannot reach a NAT'd owner's validator to be sealed** — so **SC-001 is not yet satisfied**.
+- **What exists / what's missing**: the owner-side *ingest logic* is already present
+  (`TransactionDistributionGrpcService.SubmitTransaction:248-310` → `IValidatorServiceClient`); only
+  the relay **transport** + rendezvous routing is missing.
+- **Decision**: add a relay submission round-trip as **Phase 3b / US1b** (tasks T038–T041): two new
+  relay message types, an owner-side validator-submit handler, and rendezvous-side routing in
+  `ForwardSubmissionAsync` when the owner is reachable only via a held reverse stream. This is a
+  bounded protocol extension reusing the existing correlation machinery (`SendAndWaitAsync`); kept
+  out of the "safe" T013/T014 slice because it is consensus-path-adjacent and warranted its own
+  explicit tasks rather than a rushed bolt-on.
+
 ## R-008 — Trust boundary (v1)
 
 - **Decision**: Rendezvous is trusted transport within one federation trust domain;
