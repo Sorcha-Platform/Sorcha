@@ -127,6 +127,29 @@ passes (peer protocol direction; relay-machinery maturity/wiring). No open
   out of the "safe" T013/T014 slice because it is consensus-path-adjacent and warranted its own
   explicit tasks rather than a rushed bolt-on.
 
+## R-010 — Advert propagation to NAT'd peers is a hard prerequisite for the loop (proven on metal, 2026-05-30)
+
+- **Live finding (real tiny↔n1):** the reverse-stream rendezvous works (tiny dials n1 over
+  Caddy:50051, n1 accepts + registers the reverse stream — verified). But the **full SC-001 loop is
+  blocked one layer up**: a node in the NAT'd relationship never learns the peer's registers.
+  Concretely, tiny (SyncOnly) logs `Bulk advertise processed: 0 total` and its register-service sits
+  in `System register not found — waiting for peer sync`; n1 logs `No source peers found for
+  register aebf…`. tiny cannot discover that n1 owns the system register, so it can't sync/subscribe,
+  so it can't host its own register, so there's nothing to submit-and-seal against.
+- **Why:** register adverts propagate via heartbeat **push** (owner → peer). n1 cannot dial the NAT'd
+  tiny, so n1's adverts never reach tiny, and there is **no path that carries adverts over the reverse
+  stream** the NAT'd node holds. That path is **US3** (gossip anchor/register adverts over the reverse
+  stream), which is **not yet implemented**.
+- **Reclassification:** US3 was scoped as "multi-anchor + latency-preferred routing" robustness. This
+  finding shows a **subset of US3 — register/advert propagation to reverse-stream peers — is a
+  PREREQUISITE for SC-001**, not optional polish. The submit/sync transport (US1/US1b, unit-verified)
+  cannot be exercised end-to-end until a NAT'd-relationship peer can *discover* the registers to act on.
+- **Also confirmed (operational, not a code gap):** the cross-node JWT signing-key gotcha bites here
+  too — a service started before its `.env` carried `JWT_SIGNING_KEY`/`INSTALLATION_NAME` signs with
+  the generic dev key and gets `IDX10517` (kid missing) on cross-service calls (tiny's
+  `/registers/{id}/subscribe` → 401). Fixed by recreating the service after the env is complete. Same
+  gotcha the n1-deploy skill documents.
+
 ## R-008 — Trust boundary (v1)
 
 - **Decision**: Rendezvous is trusted transport within one federation trust domain;
