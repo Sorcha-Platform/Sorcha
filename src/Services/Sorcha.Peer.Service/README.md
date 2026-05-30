@@ -1087,3 +1087,14 @@ Apache License 2.0 - See [LICENSE](../../../LICENSE) for details.
 **Last Updated**: 2026-03-07
 **Maintained By**: Sorcha Contributors
 **Status**: ✅ Complete (100% MVD)
+
+## NAT Traversal — Reverse-Stream Rendezvous (Feature 143)
+
+A register **owner** behind NAT is reachable by public subscribers without inbound connectivity: the NAT'd node dials out and holds a persistent bidirectional `PeerCommunication.Stream` to one or more public **anchors** (its seeds), and an anchor brokers submit/sync requests back over that stream. A peer is **rendezvous-capable** when it has a reachable address (or `PeerService:RelayRendezvousEnabled=true`). The standalone `Sorcha.PeerRouter` relay was retired — this capability now lives in the peer service.
+
+- Server: `GrpcServices/PeerCommunicationServiceImpl.Stream` + `Communication/ReverseStreamManager`.
+- Spoke (multi-anchor + latency-preferred send): `Communication/RelayCommunicationService`.
+- Submit-for-sealing over relay: `MessageType.SUBMIT_TRANSACTION_REQUEST/RESPONSE` + `RelayMessageHandler` + `Distribution/TransactionDistributionService.ForwardSubmissionAsync`.
+- Metrics: `peer.reverse_streams.active`, `peer.relay.forward.duration`, `peer.path.selection`, `peer.anchor.{failover,reconnect}`.
+
+Full reference: the `sorcha-architecture` skill → "Peer NAT Traversal". Spec: `specs/143-peer-nat-traversal/`.

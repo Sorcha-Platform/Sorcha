@@ -178,7 +178,7 @@ handler is invoked with the forwarded submission and returns an ack over the rev
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T033 [P] Doc updates: `src/Services/Sorcha.Peer.Service/README.md` (rendezvous capability), `.claude/skills/sorcha-architecture/SKILL.md` (NAT-traversal section), and CLAUDE.md peer-status note.
+- [X] T033 [P] Doc updates: `src/Services/Sorcha.Peer.Service/README.md` (rendezvous capability), `.claude/skills/sorcha-architecture/SKILL.md` (NAT-traversal section), and CLAUDE.md peer-status note.
 - [ ] T034 [P] Run quickstart §A (in-proc) end-to-end and confirm green.
 - [ ] T035 Real-network E2E on tiny↔n1 per quickstart §B: SC-001 gate (submit on n1 → seal on tiny → docket back), SC-002/SC-003 (sever/restart → recover), SC-004 (path selection from metrics). **This is the demo un-park trigger.**
 - [ ] T036 SC-006 latency comparison: cross-node submit/sync against the NAT'd owner vs a public-owner baseline; confirm same order of magnitude.
