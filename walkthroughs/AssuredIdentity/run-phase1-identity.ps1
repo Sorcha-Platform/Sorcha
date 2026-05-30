@@ -228,6 +228,25 @@ if (-not $delivered) {
 
 Write-WtSuccess "AssuredIdentityCredential delivered to PWA (credentialId=$credentialId)"
 
+# Holder-accept claim — mirror what a real citizen does when they tap "Claim" on
+# the pending-credential card in the PWA. For SorchaLocalWallet credentials the
+# acceptance contract is a PATCH on the citizen-scoped wallet credential resource
+# with `status: Active`. The credential lands at `PendingAcceptance` from
+# InboundCredentialDetector; without this PATCH it stays in that state until the
+# citizen acts in-app, so an automated walkthrough that wants to leave the wallet
+# in "credential held and usable for presentation" must drive the claim itself.
+# (Blueprint action-3 is HAIP-offer-shaped, not this path — see MEMORY 2026-05-25.)
+$claimUri = "$($state.walletUrl)/v1/wallets/$($state.citizenWalletAddress)/credentials/$credentialId"
+$claimResp = Invoke-SorchaApi -Method PATCH `
+    -Uri $claimUri `
+    -Body @{ status = "Active" } `
+    -Headers $citizenSession.Headers
+if ($claimResp.status -ne "Active") {
+    Write-WtFail "Holder-accept PATCH returned status='$($claimResp.status)' (expected 'Active') for credential $credentialId"
+    exit 1
+}
+Write-WtSuccess "Credential claimed (PATCH status=Active) — citizen wallet holding the AssuredIdentityCredential"
+
 Clear-SorchaCitizenPendingApplication `
     -WalletUrl $state.walletUrl `
     -Headers $citizenSession.Headers
