@@ -276,3 +276,4 @@ walkthroughs/*/state.gateway.json
 
 # Spec 117 — Phase 2 baseline OpenAPI capture (T006), local-only review artefact
 specs/117-ai-discoverability/baseline-openapi.json
+deploy/
