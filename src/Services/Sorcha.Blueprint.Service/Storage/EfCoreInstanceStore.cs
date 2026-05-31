@@ -106,17 +106,6 @@ public class EfCoreInstanceStore : IInstanceStore
             throw new InvalidOperationException($"Instance {instance.Id} not found");
         }
 
-        // Feature 106: read-only mirror guard. Mirror rows represent instances observed
-        // via peer sync from another node and MUST NOT be mutated via the normal
-        // execution path. Writes to mirror rows must go through UpdateMirrorAsync.
-        if (entity.IsReadOnlyMirror)
-        {
-            throw new InvalidOperationException(
-                $"Instance {instance.Id} is a read-only mirror (Feature 106). " +
-                $"Use IInstanceStore.UpdateMirrorAsync for reconstructor writes, or submit the " +
-                $"action to the authoritative node via a register transaction.");
-        }
-
         // Optimistic concurrency check (manual, supplementing EF Core's concurrency token)
         var expectedVersion = instance.Version;
         if (entity.Version != expectedVersion)
@@ -430,121 +419,6 @@ public class EfCoreInstanceStore : IInstanceStore
         return await context.Instances.CountAsync(i => i.State == state, cancellationToken);
     }
 
-    /// <inheritdoc/>
-    public async Task<Instance> CreateMirrorAsync(Instance instance, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrEmpty(instance.Id))
-        {
-            throw new ArgumentException("Instance ID is required", nameof(instance));
-        }
-
-        // Feature 106: force the mirror flag regardless of caller input.
-        instance.IsReadOnlyMirror = true;
-
-        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-
-        // Upsert — an authoritative row already existing on this node takes precedence
-        // (the mirror is a no-op for locally-originated instances).
-        var existing = await context.Instances
-            .FirstOrDefaultAsync(i => i.Id == instance.Id, cancellationToken);
-
-        if (existing is not null)
-        {
-            if (!existing.IsReadOnlyMirror)
-            {
-                _logger.LogDebug(
-                    "CreateMirrorAsync no-op: instance {InstanceId} is locally authoritative, not overwriting with mirror",
-                    instance.Id);
-                return ToModel(existing) ?? instance;
-            }
-
-            // Existing mirror — fall through to UpdateMirrorAsync semantics.
-            return await UpdateMirrorAsync(instance, cancellationToken);
-        }
-
-        var entity = ToEntity(instance);
-        entity.IsReadOnlyMirror = true;
-        context.Instances.Add(entity);
-
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("duplicate") == true
-                                            || ex.InnerException?.Message.Contains("unique") == true)
-        {
-            // Race: another reconstructor pass inserted the row first — retry as an update.
-            _logger.LogDebug(ex,
-                "CreateMirrorAsync race on instance {InstanceId}, delegating to UpdateMirrorAsync",
-                instance.Id);
-            return await UpdateMirrorAsync(instance, cancellationToken);
-        }
-
-        _logger.LogInformation(
-            "Created read-only mirror for instance {InstanceId} (blueprint {BlueprintId})",
-            instance.Id, instance.BlueprintId);
-
-        return instance;
-    }
-
-    /// <inheritdoc/>
-    public async Task<Instance> UpdateMirrorAsync(Instance instance, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrEmpty(instance.Id))
-        {
-            throw new ArgumentException("Instance ID is required", nameof(instance));
-        }
-
-        instance.IsReadOnlyMirror = true;
-
-        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-
-        var entity = await context.Instances
-            .FirstOrDefaultAsync(i => i.Id == instance.Id, cancellationToken);
-
-        if (entity is null)
-        {
-            throw new InvalidOperationException($"Mirror instance {instance.Id} not found");
-        }
-
-        if (!entity.IsReadOnlyMirror)
-        {
-            throw new InvalidOperationException(
-                $"Instance {instance.Id} is locally authoritative; refusing UpdateMirrorAsync write. " +
-                $"Use IInstanceStore.UpdateAsync to mutate locally-owned instances.");
-        }
-
-        // Mirror writes do NOT use optimistic concurrency — the reconstructor is the
-        // sole writer for mirror rows and idempotent observation replay is expected.
-        instance.Version = entity.Version + 1;
-        instance.UpdatedAt = DateTimeOffset.UtcNow;
-
-        entity.BlueprintId = instance.BlueprintId;
-        entity.BlueprintVersion = instance.BlueprintVersion;
-        entity.RegisterId = instance.RegisterId;
-        entity.State = instance.State;
-        entity.CurrentActionIds = SerializeJson(instance.CurrentActionIds);
-        entity.ParticipantWallets = SerializeJson(instance.ParticipantWallets);
-        entity.FirstTransactionId = instance.FirstTransactionId;
-        entity.LastTransactionId = instance.LastTransactionId;
-        entity.CompletedActionCount = instance.CompletedActionCount;
-        entity.AccumulatedData = SerializeJson(instance.AccumulatedData);
-        entity.PendingActionPayloads = SerializePendingActionPayloads(instance.PendingActionPayloads);
-        entity.ActiveBranches = SerializeJson(instance.ActiveBranches);
-        entity.Metadata = SerializeJson(instance.Metadata);
-        entity.Version = instance.Version;
-        entity.UpdatedAt = instance.UpdatedAt;
-        entity.CompletedAt = instance.CompletedAt;
-
-        await context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogDebug(
-            "Updated mirror instance {InstanceId} to version {Version}",
-            instance.Id, instance.Version);
-
-        return instance;
-    }
-
     private static InstanceEntity ToEntity(Instance instance)
     {
         return new InstanceEntity
@@ -604,7 +478,6 @@ public class EfCoreInstanceStore : IInstanceStore
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
                 CompletedAt = entity.CompletedAt,
-                IsReadOnlyMirror = entity.IsReadOnlyMirror,
                 LastAppliedTxId = entity.LastAppliedTxId,
             };
         }
