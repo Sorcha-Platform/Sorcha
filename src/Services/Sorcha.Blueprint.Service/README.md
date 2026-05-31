@@ -86,16 +86,24 @@ Blueprint Service
 ```
 Client → Blueprint API → [Create/Publish Blueprint]
       ↓
-Client → Action API → [Submit Action]
+Client → Action API → [Submit Action]  ──►  202 Accepted (single async path)
       ↓
 Execution Engine → [Validate, Calculate, Route, Disclose]
       ↓
 Wallet Service → [Sign Transaction]
       ↓
-Register Service → [Store on Blockchain]
+Register Service → [Seal on Ledger]
       ↓
-SignalR Hub → [Notify Clients: TransactionConfirmed]
+InstanceProjector (every node) → [Fold sealed docket → advance instance] → SignalR notify
 ```
+
+> **Feature 145 — ledger-derived instances.** A workflow instance is a deterministic
+> projection of the sealed register. Action submission always returns **`202 Accepted`**
+> (`isAsync`, empty `nextActions`); the submitter never advances instance state. The
+> single `InstanceProjector` folds each sealed action transaction on **every** node, so
+> all nodes derive identical state, and it fires the `action-available` / `workflow-completed`
+> notifications post-fold. There is no origin/mirror split and no synchronous-advance response.
+> See `specs/145-ledger-derived-instances/contracts/submission-response.md`.
 
 ---
 

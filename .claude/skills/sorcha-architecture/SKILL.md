@@ -1370,6 +1370,8 @@ Platform-security rework of how Sorcha issues + validates JWT access tokens. **F
 
 ## Cross-node submission round-trip (Feature 137 — Stage 5)
 
+> **F145 supersedes the instance mechanics here.** C5 "mirror submission" and the owner-node mirror advance are retired — instance state is now a single ledger projection (`InstanceProjector`, see the F145 section). The credential-delivery parts of this section (`cnf` binding, holder-key fields, recipient-key precedence) are still live; only the mirror/instance-advance wording is historical.
+
 Closes the citizen→credential loop across a federated node split: a citizen on a local SyncOnly replica submits an application against a register owned by another node (n1); the owner validates/seals it, an analyst approves, and the resulting credential is **bound to the citizen's holder key and encrypted to the citizen's wallet**, then delivered back to the citizen's local wallet. Four of five components (C5 mirror submission, C1 published-store-aware instance creation, C4 fan-out config, C2 event-driven recovery) landed earlier; **C3 (credential delivery) is this surface.**
 
 ### `cnf` binding + recipient-key precedence (server)
@@ -1519,9 +1521,11 @@ Spec: `specs/143-peer-nat-traversal/`. Design: `docs/superpowers/specs/2026-05-3
 
 ---
 
-## Ledger-Derived Workflow Instances (Feature 145) — IN PROGRESS
+## Ledger-Derived Workflow Instances (Feature 145) — US1 CUTOVER DONE (pending cross-node live validation)
 
-Makes a workflow instance a **deterministic projection of the sealed register** — one shared state machine on every node, no origin/mirror duplication, one async submission path, routing decisions carried on the transaction (in the clear) and validated at seal under a pluggable attestation. Replaces the imperative per-node instance mutation + the reconstructed cross-node mirror + the dual sync/async submission split. **Status: foundational layer landed (additive, non-breaking); the projector cutover + mirror removal (US1 T013-T020) is the next slice, gated on cross-node live validation.**
+Makes a workflow instance a **deterministic projection of the sealed register** — one shared state machine on every node, no origin/mirror duplication, one async submission path, routing decisions carried on the transaction (in the clear) and validated at seal under a pluggable attestation. Replaces the imperative per-node instance mutation + the reconstructed cross-node mirror + the dual sync/async submission split. **Status: US1 cutover landed — the `InstanceProjector` is the single instance writer on every node; the inline + encrypted submit paths return 202 and no longer advance instance state; the mirror (`InstanceMirrorReconstructor` / `IsReadOnlyMirror` / `Create|UpdateMirrorAsync`) is removed; the 3 mirror clean-break patterns are CI-enforced. Cross-node tiny+n1 live validation (SC-001/SC-002) is the final gate before merge. Deferred follow-ups: T017 roster sealer (peer transport, Feature 108 follow-up #1), T024 validator carries the RoutingDecision through the seal (the singular `NextActionId` stays a projector fallback meanwhile), US2 ReactionDispatcher (credential mint off the submit path), US6 presentation onto the projection.**
+
+> **SUPERSEDED MODEL NOTE (read when touching F106 / F137 below):** the "owner vs read-only mirror" instance model (F106 `InstanceMirrorReconstructor` + `IsReadOnlyMirror` + the F137 C5 owner-node "mirror submission/advance") is **retired by F145**. There is no mirror row and no dual submission path: the instance is a single ledger projection written only by the `InstanceProjector` on every node. F106/F137 prose below is kept for credential-delivery history (the `cnf`-binding / holder-key parts are still live); treat any "mirror" / `IsReadOnlyMirror` / "owner advances the mirror" wording there as historical.
 
 ### RoutingDecision — carried, attested routing fact (DONE)
 
@@ -1542,7 +1546,7 @@ AttestationKind = SenderSigned | ValidatorReEvaluated | Proof  // v2/v3 reserved
 
 `InstanceIdentity.Derive(registerId, blueprintId, startingActionTxHash)` (`src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceIdentity.cs`) = lowercase-hex SHA-256 over the three UTF-8 fields separated by `0x1F` unit-separator bytes (anti-collision on field boundaries). Node-independent: every node derives the same id for the same workflow. "Start application" becomes a local draft (no ledger write); the instance is born when its starting action seals. (Wiring `POST /instances` to a draft + returning the derived id on submit is US1 T018.)
 
-### The projection fold (DONE — pure core; BackgroundService wiring is T013)
+### The projection fold (DONE)
 
 `InstanceProjection` (`src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceProjection.cs`) is the pure, deterministic heart:
 - `ProjectedTransaction` record = the facts a sealed action contributes (`TxId`, `PreviousTransactionId`, `CompletedActionId`, `NextActionIds`, `ParticipantBindings`, `IsRejection`).
@@ -1550,6 +1554,10 @@ AttestationKind = SenderSigned | ValidatorReEvaluated | Proof  // v2/v3 reserved
 - `Apply(instance, tx)` — online incremental fold, **idempotent** on the `Instance.LastAppliedTxId` watermark (re-observing a folded tx is a no-op, FR-004).
 - Advances `CurrentActionIds` from the full `nextActions` set (parallel branches preserved, sorted for canonical cross-node equality); merges participant-id-keyed bindings; derives terminal `Completed` (no current actions) / `Rejected` state. Needs only the validated decision — never decrypts payload (FR-010).
 
-The online `InstanceProjector : BackgroundService` (T013) will wrap `Apply`, subscribe `docket:confirmed` (`RegisterEventChannels.DocketConfirmed`) on **every** node (generalizing the owner-only `InstanceMirrorReconstructor`), and resolve `ProjectedTransaction`s from the register + carried decision. The cutover (T015 remove `ApplyInstanceStateChanges`, T016 single async submit, T017 roster sealer, T020 delete mirror) lands only after the projector is green and **cross-node-validated on the standing two-node demo** (SC-001/SC-002).
+### The projector — single instance writer on every node (DONE)
 
-Spec: `specs/145-ledger-derived-instances/`. Design: `docs/superpowers/specs/2026-05-31-ledger-derived-instances-design.md`. CI clean-break gate (skeleton, activated per-pattern in T040): `scripts/check-ledger-derived-clean-break.ps1`.
+`InstanceProjector : BackgroundService` (`Services/Implementation/InstanceProjector.cs`, registered in `Program.cs`) wraps `Apply`, subscribes `docket:confirmed` (`RegisterEventChannels.DocketConfirmed`) on **every** node (it generalizes and replaces the deleted owner-only `InstanceMirrorReconstructor`), resolves each `ProjectedTransaction` from the register transaction + carried `RoutingDecision` (typed field, else the `routingDecision` tracking-metadata JSON, else the legacy `NextActionId` fallback), folds it, and fires the post-fold `action-available` / `workflow-completed` SignalR notifications (the **single** place these fire now). Idempotent via `LastAppliedTxId`.
+
+**The single async submit (T016):** `ActionExecutionService.ExecuteAsync` always returns **202** (`IsAsync`, empty `NextActions`, `IsComplete=false`) — no owner/subscriber response branch, no imperative advance. A bounded seal-wait is kept on the locally-owned path purely for chain ordering (the next submit's `StateReconstructionService` reads the prior tx from the sealed ledger as `previousTransactionId`; DevMode reads plaintext, encrypted decrypts). `instanceReference` is generated once **pre-submit** (the only point with the plaintext for both DevMode and encrypted registers, written before the tx can seal so it never races the projector). `EncryptionBackgroundService` likewise submits but no longer advances or notifies. The presentation-completion path (`CompleteAfterPresentationAsync`) still advances imperatively by design (US6) — its txs aren't projector-folded, so no double-write.
+
+Contract: `specs/145-ledger-derived-instances/contracts/submission-response.md`. Spec: `specs/145-ledger-derived-instances/`. Design: `docs/superpowers/specs/2026-05-31-ledger-derived-instances-design.md`. CI clean-break gate (3 mirror patterns enforced): `scripts/check-ledger-derived-clean-break.ps1` + `.github/workflows/ledger-derived-clean-break-gate.yml`.

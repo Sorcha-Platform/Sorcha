@@ -833,6 +833,22 @@ Three-event on-register lifecycle for timebound credential presentations. When a
 
 #### `POST /api/instances/{instanceId}/actions/{actionId}/execute` — 202 semantics
 
+**Feature 145 — single async submission.** A normal action submission always returns **`202 Accepted`** with `isAsync: true` and an **empty** `nextActions` (and `isComplete: false`). The submitter no longer advances the instance: state machines forward when the sealed docket is folded by the `InstanceProjector` on every node. Callers observe advancement via the instance read (`GET /api/instances/{id}`) or the `instance-advanced` / `action-available` hub events — **not** from the submit response. The endpoint may bound-wait briefly for the local seal (chain ordering) before responding; on timeout it still returns `202`.
+
+```json
+{
+  "transactionId": "abcd1234...",
+  "instanceId": "78654d78-...",
+  "isAsync": true,
+  "nextActions": [],
+  "isComplete": false,
+  "issuedCredentialId": "urn:uuid:...",
+  "calculations": { }
+}
+```
+
+`nextActions` and inline `issuedCredential` advancement are no longer carried on the submit response — resolve outcomes by observing the instance and credential events. Contract: `specs/145-ledger-derived-instances/contracts/submission-response.md`.
+
 When the action requires a HAIP presentation and the submitter has not attached presentations:
 
 **Response:** `202 Accepted` with `Location: /api/presentations/{id}/status`
