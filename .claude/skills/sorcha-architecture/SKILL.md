@@ -1516,3 +1516,40 @@ Accepts a reverse stream, registers it in `ReverseStreamManager` (keyed by the N
 v1 covers a NAT'd **owner** reached via its anchors (the demo: tiny=NAT'd owner dials n1=public subscriber; advert flows the proven `tiny→n1` heartbeat direction). **Deferred:** anchor-set *gossip* + multi-hop mesh routing (a subscriber relaying through a third-party anchor it doesn't hold — needs hub→hub forwarding); relay-payload re-encryption; rendezvous authz/quotas. **Trust boundary is the register** (wallet signatures + roster), not JWT — federated nodes are **separate installations** and MUST NOT share JWT signing keys.
 
 Spec: `specs/143-peer-nat-traversal/`. Design: `docs/superpowers/specs/2026-05-30-peer-nat-traversal-design.md`.
+
+---
+
+## Ledger-Derived Workflow Instances (Feature 145) — IN PROGRESS
+
+Makes a workflow instance a **deterministic projection of the sealed register** — one shared state machine on every node, no origin/mirror duplication, one async submission path, routing decisions carried on the transaction (in the clear) and validated at seal under a pluggable attestation. Replaces the imperative per-node instance mutation + the reconstructed cross-node mirror + the dual sync/async submission split. **Status: foundational layer landed (additive, non-breaking); the projector cutover + mirror removal (US1 T013-T020) is the next slice, gated on cross-node live validation.**
+
+### RoutingDecision — carried, attested routing fact (DONE)
+
+`RoutingDecision` rides on the action transaction's **clear** metadata (`TransactionMetaData.RoutingDecision`, `src/Common/Sorcha.Register.Models/Transactions/`), replacing the singular `TransactionMetaData.NextActionId` hint (now marked legacy, removed in T024). It carries the **full** next-action set (`ActionRef[]` — preserves parallel branches) plus a pluggable `Attestation`:
+
+```
+RoutingDecision { completedActionId:int, nextActions:ActionRef[], attestation:Attestation }
+ActionRef       { actionId:int, branchKey?:string }
+Attestation     { kind:AttestationKind, signature?:string }   // v1 = SenderSigned
+AttestationKind = SenderSigned | ValidatorReEvaluated | Proof  // v2/v3 reserved
+```
+
+- Serialized canonically via `RegisterSerializationOptions.Canonical` (camelCase, the #881 relay-stability lesson). `RoutingDecision.ComputeSignableBytes()` returns the attestation-free canonical bytes the sender signs (the signature can't sign over itself).
+- **Producer** (`ActionExecutionService.cs` step 10d): builds the decision from the routing result, signs `ComputeSignableBytes()` with the sender wallet via `IWalletServiceClient.SignTransactionAsync`, base64s into `Attestation.Signature`, writes canonical JSON to `transaction.Metadata["routingDecision"]`. That string-dict entry is copied wholesale into the sealed tx's `TrackingData` by the validator's authoritative projection (`DocketBuildTriggerService.cs:638-646`), so the carried decision reaches MongoDB with no validator change. The typed `TransactionMetaData.RoutingDecision` projection + `VAL_ROUTING_*` validation are US3 (T023/T024).
+- The projection consumes `nextActions` regardless of attestation kind; only validation branches on kind. v2/v3 throw "unsupported attestation strength" until implemented; required strength will be a register-governance field `routingAttestation` (default `sender-signed`, US3 T025).
+
+### Deterministic instance identity (DONE)
+
+`InstanceIdentity.Derive(registerId, blueprintId, startingActionTxHash)` (`src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceIdentity.cs`) = lowercase-hex SHA-256 over the three UTF-8 fields separated by `0x1F` unit-separator bytes (anti-collision on field boundaries). Node-independent: every node derives the same id for the same workflow. "Start application" becomes a local draft (no ledger write); the instance is born when its starting action seals. (Wiring `POST /instances` to a draft + returning the derived id on submit is US1 T018.)
+
+### The projection fold (DONE — pure core; BackgroundService wiring is T013)
+
+`InstanceProjection` (`src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceProjection.cs`) is the pure, deterministic heart:
+- `ProjectedTransaction` record = the facts a sealed action contributes (`TxId`, `PreviousTransactionId`, `CompletedActionId`, `NextActionIds`, `ParticipantBindings`, `IsRejection`).
+- `Project(...)` — batch rebuild from a transaction set, folded in **chain order** (predecessor links), **order-independent**, dedups by tx-id. This is also US4's `RebuildAsync` (FR-003 parity).
+- `Apply(instance, tx)` — online incremental fold, **idempotent** on the `Instance.LastAppliedTxId` watermark (re-observing a folded tx is a no-op, FR-004).
+- Advances `CurrentActionIds` from the full `nextActions` set (parallel branches preserved, sorted for canonical cross-node equality); merges participant-id-keyed bindings; derives terminal `Completed` (no current actions) / `Rejected` state. Needs only the validated decision — never decrypts payload (FR-010).
+
+The online `InstanceProjector : BackgroundService` (T013) will wrap `Apply`, subscribe `docket:confirmed` (`RegisterEventChannels.DocketConfirmed`) on **every** node (generalizing the owner-only `InstanceMirrorReconstructor`), and resolve `ProjectedTransaction`s from the register + carried decision. The cutover (T015 remove `ApplyInstanceStateChanges`, T016 single async submit, T017 roster sealer, T020 delete mirror) lands only after the projector is green and **cross-node-validated on the standing two-node demo** (SC-001/SC-002).
+
+Spec: `specs/145-ledger-derived-instances/`. Design: `docs/superpowers/specs/2026-05-31-ledger-derived-instances-design.md`. CI clean-break gate (skeleton, activated per-pattern in T040): `scripts/check-ledger-derived-clean-break.ps1`.

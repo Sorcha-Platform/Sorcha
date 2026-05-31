@@ -26,6 +26,7 @@ using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.Blueprint.Service.Storage.Presentations;
 using Sorcha.Cryptography.Enums;
+using Sorcha.Register.Models;
 using Sorcha.TransactionHandler.Encryption;
 using Sorcha.TransactionHandler.Encryption.Models;
 using Microsoft.Extensions.Configuration;
@@ -986,11 +987,37 @@ public class ActionExecutionService : IActionExecutionService
         //      CurrentActionIds (DocketBuildTriggerService projects it onto TransactionMetaData).
         //      Singular (first routed next action) — exact for linear flows; fan-out carries the
         //      primary branch only.
+        //      LEGACY (Feature 145): superseded by the full RoutingDecision written below.
+        //      Retained until the validator carries the decision through the seal (T024).
         var nextActionId = routingResult.NextActions.FirstOrDefault()?.ActionId;
         if (nextActionId.HasValue)
         {
             transaction.Metadata["nextActionId"] = nextActionId.Value.ToString();
         }
+
+        // 10d. Feature 145: assemble + sender-sign the full RoutingDecision and carry it on the
+        //      transaction's clear metadata. Every node folds decision.nextActions into the
+        //      instance projection without decrypting the payload (FR-007/FR-010); the validator
+        //      validates it at seal (VAL_ROUTING_*, T023). The full set preserves parallel
+        //      branches that the singular nextActionId above collapses. TrackingData copies all
+        //      string metadata to the sealed tx, so "routingDecision" rides through to the docket.
+        var routingDecision = new RoutingDecision
+        {
+            CompletedActionId = actionId,
+            NextActions = routingResult.NextActions
+                .Select(n => new ActionRef { ActionId = n.ActionId, BranchKey = n.BranchId })
+                .ToList(),
+            Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
+        };
+        var routingSignResult = await _walletClient.SignTransactionAsync(
+            request.SenderWallet,
+            routingDecision.ComputeSignableBytes(),
+            derivationPath: null,
+            isPreHashed: false,
+            cancellationToken);
+        routingDecision.Attestation.Signature = Convert.ToBase64String(routingSignResult.Signature);
+        transaction.Metadata["routingDecision"] =
+            JsonSerializer.Serialize(routingDecision, RegisterSerializationOptions.Canonical);
 
         // 11. Sign transaction using "{TxId}:{PayloadHash}" contract (matches Validator verification)
         var signResult = await _walletClient.SignTransactionAsync(

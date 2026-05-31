@@ -111,6 +111,8 @@ public static class Extensions
                 // Feature 142 — Blueprint Design Lifecycle (rehearsal harness +
                 // governed Go-live). Exact-name allowlist entry; instruments in T058.
                 metrics.AddMeter("Sorcha.Blueprint.Designer");
+                metrics.AddMeter("Sorcha.Blueprint.Instances");
+                metrics.AddMeter("Sorcha.Blueprint.Reactions");
             })
             .WithTracing(tracing =>
             {
