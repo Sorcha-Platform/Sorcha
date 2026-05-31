@@ -97,7 +97,6 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     CompletedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    IsReadOnlyMirror = table.Column<bool>(type: "boolean", nullable: false),
                     LastAppliedTxId = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>

@@ -135,15 +135,6 @@ public class Instance
     public Dictionary<int, JsonObject> PendingActionPayloads { get; set; } = new();
 
     /// <summary>
-    /// Feature 106: marks this instance as a read-only mirror reconstructed by the
-    /// <c>InstanceMirrorReconstructor</c> from peer-synced transactions rather than
-    /// a locally-executed authoritative instance. The normal
-    /// <c>IInstanceStore.UpdateAsync</c> path MUST reject writes when this flag is
-    /// set; mirror mutations go through the dedicated mirror-write path.
-    /// </summary>
-    public bool IsReadOnlyMirror { get; set; }
-
-    /// <summary>
     /// Feature 145: idempotency watermark for the deterministic instance projection — the
     /// id of the most recent sealed action transaction folded into this materialized view.
     /// The <c>InstanceProjector</c> skips re-applying a transaction at or before this point,

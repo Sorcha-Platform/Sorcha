@@ -256,9 +256,6 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     b.Property<string>("FirstTransactionId")
                         .HasColumnType("text");
 
-                    b.Property<bool>("IsReadOnlyMirror")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("LastAppliedTxId")
                         .HasColumnType("text");
 
