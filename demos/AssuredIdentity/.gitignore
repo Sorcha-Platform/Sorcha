@@ -1,0 +1,8 @@
+# Local, environment-specific demo files — never committed.
+# The agency-name and node addresses are operator config; secrets live in deploy/keys.env.
+demo-nodes.json
+state.json
+
+# Rendered (token-substituted) agent actor configs — produced at provision time.
+agent/analyst.rules.json
+agent/analyst.ai.json

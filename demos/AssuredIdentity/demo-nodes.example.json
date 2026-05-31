@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {
+      "id": "tiny",
+      "role": "issuer",
+      "gateway": "http://tiny:8090",
+      "installationName": "tiny.sorcha.dev",
+      "rendezvousCapable": false,
+      "adminEmail": "admin@sorcha.local"
+    },
+    {
+      "id": "n1",
+      "role": "subscriber",
+      "gateway": "https://n1.sorcha.dev",
+      "installationName": "n1.sorcha.dev",
+      "rendezvousCapable": true,
+      "adminEmail": "admin@sorcha.local"
+    }
+  ]
+}
