@@ -23,11 +23,11 @@ Toolkit: `demos/AssuredIdentity/` (module, `lib/`, `agent/`, `blueprints/`, `tes
 
 **Purpose**: Demo tree, module skeleton, config + blueprint templates, test harness.
 
-- [ ] T001 Create the demo directory tree `demos/AssuredIdentity/` with subdirs `lib/`, `agent/`, `blueprints/`, `tests/`
-- [ ] T002 [P] Create module skeleton `demos/AssuredIdentity/AssuredIdentityDemo.psm1` — SPDX header, `Import-Module` of `walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1`, stub-export the four commands (`New-IssuingAuthority`, `Connect-Subscriber`, `Reset-Demo`, `Get-DemoStatus`)
-- [ ] T003 [P] Create `demos/AssuredIdentity/blueprints/assured-identity.template.json` by copying `walkthroughs/AssuredIdentity/blueprints/assured-identity.json` and replacing the `x-review.header.issuerName` literal with a `{{issuerName}}` token (keep the `holderKeys`/`holderKeySourceField` F137 wiring intact)
-- [ ] T004 [P] Create `demos/AssuredIdentity/demo-nodes.example.json` conforming to `contracts/demo-nodes.schema.json` (tiny=issuer, n1=subscriber defaults)
-- [ ] T005 [P] Add Pester runner `demos/AssuredIdentity/tests/Invoke-DemoTests.ps1` (Invoke-Pester over `tests/*.Tests.ps1`) and a `.gitignore` entry block for `demo-nodes.json`, `state.json`, rendered `agent/analyst.*.json`
+- [X] T001 Create the demo directory tree `demos/AssuredIdentity/` with subdirs `lib/`, `agent/`, `blueprints/`, `tests/`
+- [X] T002 [P] Create module skeleton `demos/AssuredIdentity/AssuredIdentityDemo.psm1` — SPDX header, `Import-Module` of `walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1`, stub-export the four commands (`New-IssuingAuthority`, `Connect-Subscriber`, `Reset-Demo`, `Get-DemoStatus`)
+- [X] T003 [P] Create `demos/AssuredIdentity/blueprints/assured-identity.template.json` by copying `walkthroughs/AssuredIdentity/blueprints/assured-identity.json` and replacing the `x-review.header.issuerName` literal with a `{{issuerName}}` token (keep the `holderKeys`/`holderKeySourceField` F137 wiring intact)
+- [X] T004 [P] Create `demos/AssuredIdentity/demo-nodes.example.json` conforming to `contracts/demo-nodes.schema.json` (tiny=issuer, n1=subscriber defaults)
+- [X] T005 [P] Add Pester runner `demos/AssuredIdentity/tests/Invoke-DemoTests.ps1` (Invoke-Pester over `tests/*.Tests.ps1`) and a `.gitignore` entry block for `demo-nodes.json`, `state.json`, rendered `agent/analyst.*.json`
 
 ---
 
@@ -37,10 +37,10 @@ Toolkit: `demos/AssuredIdentity/` (module, `lib/`, `agent/`, `blueprints/`, `tes
 
 **⚠️ CRITICAL**: No user-story command can be built until this phase is complete.
 
-- [ ] T006 Implement `demos/AssuredIdentity/lib/NodeInventory.ps1` — load + schema-validate `demo-nodes.json`, select node by `id`, resolve by `role`, fail-fast on duplicate id / malformed URL / missing required field (FR-006, FR-007)
-- [ ] T007 [P] Pester tests `demos/AssuredIdentity/tests/NodeInventory.Tests.ps1` — valid load, duplicate-id rejection, malformed-URL rejection, missing-field rejection, select-by-id, select-by-role
-- [ ] T008 Implement `demos/AssuredIdentity/lib/DemoState.ps1` — read/write/merge `state.json` per `contracts/demo-state.schema.json`, plus a `Test-DemoStateStale` helper (registerId present in state but unreadable on the issuer node → stale)
-- [ ] T009 [P] Implement auth bootstrap in `demos/AssuredIdentity/lib/Auth.ps1` — load `deploy/keys.env`, per-node sysadmin login via SorchaWalkthrough `Connect-SorchaAdmin`, never echo secrets
+- [X] T006 Implement `demos/AssuredIdentity/lib/NodeInventory.ps1` — load + schema-validate `demo-nodes.json`, select node by `id`, resolve by `role`, fail-fast on duplicate id / malformed URL / missing required field (FR-006, FR-007)
+- [X] T007 [P] Pester tests `demos/AssuredIdentity/tests/NodeInventory.Tests.ps1` — valid load, duplicate-id rejection, malformed-URL rejection, missing-field rejection, select-by-id, select-by-role
+- [X] T008 Implement `demos/AssuredIdentity/lib/DemoState.ps1` — read/write/merge `state.json` per `contracts/demo-state.schema.json`, plus a `Test-DemoStateStale` helper (registerId present in state but unreadable on the issuer node → stale)
+- [X] T009 [P] Implement auth bootstrap in `demos/AssuredIdentity/lib/Auth.ps1` — load `deploy/keys.env`, per-node sysadmin login via SorchaWalkthrough `Connect-SorchaAdmin`, never echo secrets
 
 **Checkpoint**: Inventory + state + auth available — command implementation can begin.
 
@@ -54,20 +54,20 @@ Toolkit: `demos/AssuredIdentity/` (module, `lib/`, `agent/`, `blueprints/`, `tes
 
 ### Tests for User Story 1
 
-- [ ] T010 [P] [US1] Pester `demos/AssuredIdentity/tests/AgencyNaming.Tests.ps1` — a chosen name is injected into all four sites (org/register/published-participant/blueprint `issuerName`) and leaves no `{{issuerName}}` token
-- [ ] T011 [P] [US1] Pester `demos/AssuredIdentity/tests/Readiness.Tests.ps1` — predicate is `Ready` only when subscription `Active` ∧ sync-state `CaughtUp` ∧ target blueprint present; partial signals → `NotReady` with reasons; timeout path yields `NotReady(recovery-in-progress)`
-- [ ] T012 [P] [US1] Pester `demos/AssuredIdentity/tests/Idempotency.Tests.ps1` — existing org/register/blueprint detected → reuse (no duplicate); stale subscription-vs-missing-register → reconcile decision
+- [X] T010 [P] [US1] Pester `demos/AssuredIdentity/tests/AgencyNaming.Tests.ps1` — a chosen name is injected into all four sites (org/register/published-participant/blueprint `issuerName`) and leaves no `{{issuerName}}` token
+- [X] T011 [P] [US1] Pester `demos/AssuredIdentity/tests/Readiness.Tests.ps1` — predicate is `Ready` only when subscription `Active` ∧ sync-state `CaughtUp` ∧ target blueprint present; partial signals → `NotReady` with reasons; timeout path yields `NotReady(recovery-in-progress)`
+- [X] T012 [P] [US1] Pester `demos/AssuredIdentity/tests/Idempotency.Tests.ps1` — existing org/register/blueprint detected → reuse (no duplicate); stale subscription-vs-missing-register → reconcile decision
 
 ### Implementation for User Story 1
 
-- [ ] T013 [P] [US1] Implement `demos/AssuredIdentity/lib/AgencyNaming.ps1` — single-source `-AgencyName` → org name, register name, published-participant org name, and blueprint `{{issuerName}}` token replacement (FR-002, R3)
-- [ ] T014 [P] [US1] Implement `demos/AssuredIdentity/lib/Readiness.ps1` — poll `GET /api/organizations/{orgId}/register-subscriptions/{registerId}` (Active), `GET /api/registers/{id}/sync-state` (CaughtUp), `GET /api/registers/{id}/blueprints/published` (blueprint present); bounded backoff to `-TimeoutSeconds`; return `{status, reasons[]}` (FR-004, R4)
-- [ ] T015 [P] [US1] Implement `demos/AssuredIdentity/lib/Idempotency.ps1` — probe-and-reuse existing authority artefacts; detect+reconcile stale subscription-vs-missing-register (FR-003, R5)
-- [ ] T016 [P] [US1] Create `demos/AssuredIdentity/agent/analyst.rules.template.json` — deterministic auto-approve actor for Action 2, tokenised (`{{analystWallet}}`, `{{registerId}}`, `{{orgId}}`, gateway) for `{{placeholder}}` substitution from `state.json`
-- [ ] T017 [US1] Implement `demos/AssuredIdentity/lib/AgentLaunch.ps1` (rules path) — render `analyst.rules.json` from the template and launch `sorcha-agent run --config <rendered> --state state.json` as a tracked child process (FR-011 rules branch)
-- [ ] T018 [US1] Implement `New-IssuingAuthority` in `AssuredIdentityDemo.psm1` — resolve issuer node + creds → idempotency probe (T015) → provision (public org, verification-admin Tier-2, analyst Tier-3, wallets, participants, advertised DevMode register, publish analyst participant) → publish blueprint from template with injected name (T013) → launch rules agent (T017) → write `state.json` (T008). Default `-AgencyName "Strathcarron Identity Authority"`, default `-AgentMode rules` (FR-001)
-- [ ] T019 [US1] Implement `Connect-Subscriber` in `AssuredIdentityDemo.psm1` — resolve subscriber node + public org → discover advertised register on issuer → `POST /api/organizations/{orgId}/register-subscriptions` (reuse Active / reconcile stale) → readiness gate (T014) → append `subscribers[]` in `state.json` with status + `lastReadyAt` (FR-004)
-- [ ] T020 [US1] Write the **tester-journey** section of `demos/AssuredIdentity/DEMO.md` — sign up → F128 add-device → `/new-submissions` → Start → submit → receive in PWA; explicitly record PWA `/applications` + `samples/strathcarron-portal` as off-path (FR-014, FR-015, FR-016)
+- [X] T013 [P] [US1] Implement `demos/AssuredIdentity/lib/AgencyNaming.ps1` — single-source `-AgencyName` → org name, register name, published-participant org name, and blueprint `{{issuerName}}` token replacement (FR-002, R3)
+- [X] T014 [P] [US1] Implement `demos/AssuredIdentity/lib/Readiness.ps1` — poll `GET /api/organizations/{orgId}/register-subscriptions/{registerId}` (Active), `GET /api/registers/{id}/sync-state` (CaughtUp), `GET /api/registers/{id}/blueprints/published` (blueprint present); bounded backoff to `-TimeoutSeconds`; return `{status, reasons[]}` (FR-004, R4)
+- [X] T015 [P] [US1] Implement `demos/AssuredIdentity/lib/Idempotency.ps1` — probe-and-reuse existing authority artefacts; detect+reconcile stale subscription-vs-missing-register (FR-003, R5)
+- [X] T016 [P] [US1] Create `demos/AssuredIdentity/agent/analyst.rules.template.json` — deterministic auto-approve actor for Action 2, tokenised (`{{analystWallet}}`, `{{registerId}}`, `{{orgId}}`, gateway) for `{{placeholder}}` substitution from `state.json`
+- [X] T017 [US1] Implement `demos/AssuredIdentity/lib/AgentLaunch.ps1` (rules path) — render `analyst.rules.json` from the template and launch `sorcha-agent run --config <rendered> --state state.json` as a tracked child process (FR-011 rules branch)
+- [X] T018 [US1] Implement `New-IssuingAuthority` in `AssuredIdentityDemo.psm1` — resolve issuer node + creds → idempotency probe (T015) → provision (public org, verification-admin Tier-2, analyst Tier-3, wallets, participants, advertised DevMode register, publish analyst participant) → publish blueprint from template with injected name (T013) → launch rules agent (T017) → write `state.json` (T008). Default `-AgencyName "Strathcarron Identity Authority"`, default `-AgentMode rules` (FR-001)
+- [X] T019 [US1] Implement `Connect-Subscriber` in `AssuredIdentityDemo.psm1` — resolve subscriber node + public org → discover advertised register on issuer → `POST /api/organizations/{orgId}/register-subscriptions` (reuse Active / reconcile stale) → readiness gate (T014) → append `subscribers[]` in `state.json` with status + `lastReadyAt` (FR-004)
+- [X] T020 [US1] Write the **tester-journey** section of `demos/AssuredIdentity/DEMO.md` — sign up → F128 add-device → `/new-submissions` → Start → submit → receive in PWA; explicitly record PWA `/applications` + `samples/strathcarron-portal` as off-path (FR-014, FR-015, FR-016)
 
 **Checkpoint**: Default-named demo stands up and a tester completes the loop (MVP — SC-001, SC-002, SC-003 basic reuse).
 
@@ -79,10 +79,10 @@ Toolkit: `demos/AssuredIdentity/` (module, `lib/`, `agent/`, `blueprints/`, `tes
 
 **Independent Test**: Provision three times, one per mode; each yields an approved credential, and human mode prints approval steps instead of launching an agent (SC-005).
 
-- [ ] T021 [P] [US2] Create `demos/AssuredIdentity/agent/analyst.ai.template.json` + `demos/AssuredIdentity/agent/analyst.persona.md` — AI-persona approver actor (`"mode":"ai"`, persona file, `apiKeyEnvVar: ANTHROPIC_API_KEY`), tokenised like the rules template (FR-010)
-- [ ] T022 [US2] Extend `demos/AssuredIdentity/lib/AgentLaunch.ps1` — `ai` path (precheck `ANTHROPIC_API_KEY`, set decision-wait guardrail = 90s, launch) and `human` path (no launch; print "log into the issuer as the analyst and approve Action 2" steps) (FR-011, FR-012, R6)
-- [ ] T023 [US2] Wire `-AgentMode rules|ai|human` parameter through `New-IssuingAuthority` to `AgentLaunch` (default `rules`) and record `agentMode` in `state.json` (FR-010)
-- [ ] T024 [US2] Add the **agent-mode** section to `demos/AssuredIdentity/DEMO.md` — three modes, the AI guardrail behaviour (`Get-DemoStatus` surfaces "decision pending"; retry or switch), and the human steps
+- [X] T021 [P] [US2] Create `demos/AssuredIdentity/agent/analyst.ai.template.json` + `demos/AssuredIdentity/agent/analyst.persona.md` — AI-persona approver actor (`"mode":"ai"`, persona file, `apiKeyEnvVar: ANTHROPIC_API_KEY`), tokenised like the rules template (FR-010)
+- [X] T022 [US2] Extend `demos/AssuredIdentity/lib/AgentLaunch.ps1` — `ai` path (precheck `ANTHROPIC_API_KEY`, set decision-wait guardrail = 90s, launch) and `human` path (no launch; print "log into the issuer as the analyst and approve Action 2" steps) (FR-011, FR-012, R6)
+- [X] T023 [US2] Wire `-AgentMode rules|ai|human` parameter through `New-IssuingAuthority` to `AgentLaunch` (default `rules`) and record `agentMode` in `state.json` (FR-010)
+- [X] T024 [US2] Add the **agent-mode** section to `demos/AssuredIdentity/DEMO.md` — three modes, the AI guardrail behaviour (`Get-DemoStatus` surfaces "decision pending"; retry or switch), and the human steps
 
 **Checkpoint**: All three modes produce an approved credential (SC-005).
 
@@ -94,9 +94,9 @@ Toolkit: `demos/AssuredIdentity/` (module, `lib/`, `agent/`, `blueprints/`, `tes
 
 **Independent Test**: Provision with a non-default name; complete the loop; the credential's displayed issuer matches with zero manual edits (SC-004).
 
-- [ ] T025 [US3] Harden rename coherence in `New-IssuingAuthority` — re-running with a changed `-AgencyName` updates all tester-visible sites and reconciles prior-name artefacts via Idempotency (T015), leaving no stale prior-name reference on the tester path (FR-005)
-- [ ] T026 [P] [US3] Pester `demos/AssuredIdentity/tests/RenameCoherence.Tests.ps1` — a name change re-injects every site and surfaces any residual prior-name reference as a failure
-- [ ] T027 [US3] Add the **deep-customise** section to `demos/AssuredIdentity/DEMO.md` — amend the published blueprint via the real F142 Designer (Describe→Understand→Rehearse→Go-live) and republish to the same register; identity (org/wallet/register/DID) stays intact
+- [X] T025 [US3] Harden rename coherence in `New-IssuingAuthority` — re-running with a changed `-AgencyName` updates all tester-visible sites and reconciles prior-name artefacts via Idempotency (T015), leaving no stale prior-name reference on the tester path (FR-005)
+- [X] T026 [P] [US3] Pester `demos/AssuredIdentity/tests/RenameCoherence.Tests.ps1` — a name change re-injects every site and surfaces any residual prior-name reference as a failure
+- [X] T027 [US3] Add the **deep-customise** section to `demos/AssuredIdentity/DEMO.md` — amend the published blueprint via the real F142 Designer (Describe→Understand→Rehearse→Go-live) and republish to the same register; identity (org/wallet/register/DID) stays intact
 
 **Checkpoint**: Rebrand is coherent end-to-end (SC-004).
 
@@ -108,8 +108,8 @@ Toolkit: `demos/AssuredIdentity/` (module, `lib/`, `agent/`, `blueprints/`, `tes
 
 **Independent Test**: With an authority provisioned, connect a second subscriber id; a tester on that node completes the loop (SC-006).
 
-- [ ] T028 [US4] Make `Connect-Subscriber` repeatable across N subscriber ids — append/update per-node `subscribers[]` entries, each independently readiness-gated (T014); no cross-node coupling (FR-008)
-- [ ] T029 [US4] Add the **multi-node** section to `demos/AssuredIdentity/DEMO.md` — add a subscriber entry to `demo-nodes.json`, re-run `Connect-Subscriber -SubscriberNode <id>`; note swap/rename via inventory only (FR-006, FR-007)
+- [X] T028 [US4] Make `Connect-Subscriber` repeatable across N subscriber ids — append/update per-node `subscribers[]` entries, each independently readiness-gated (T014); no cross-node coupling (FR-008)
+- [X] T029 [US4] Add the **multi-node** section to `demos/AssuredIdentity/DEMO.md` — add a subscriber entry to `demo-nodes.json`, re-run `Connect-Subscriber -SubscriberNode <id>`; note swap/rename via inventory only (FR-006, FR-007)
 
 **Checkpoint**: A second independent subscriber serves a tester through the full loop (SC-006).
 
@@ -121,11 +121,11 @@ Toolkit: `demos/AssuredIdentity/` (module, `lib/`, `agent/`, `blueprints/`, `tes
 
 **Independent Test**: After a run, reset and re-provision cleanly; query status before/after and confirm the verdict predicts tester success (SC-007).
 
-- [ ] T030 [P] [US5] Implement `Reset-Demo` in `AssuredIdentityDemo.psm1` — `-Scope issuer|subscriber|all` per the documented reset recipe (demo wallets, non-system register Mongo DBs, `OrganizationRegisterSubscriptions` rows, replicated state, `state.json`), stop any tracked `sorcha-agent` process, idempotent no-op on already-clean (FR-017)
-- [ ] T031 [US5] Implement `demos/AssuredIdentity/lib/StatusVerdict.ps1` — gather per-node signals (gateway health, subscription, sync-state, blueprint-published, approver state) and compute `{verdict: Ready|NotReady, perNode[], reasons[]}` (FR-018, data-model "Derived")
-- [ ] T032 [US5] Implement `Get-DemoStatus` in `AssuredIdentityDemo.psm1` — render the verdict table from `StatusVerdict` across issuer + all `subscribers[]` (FR-018)
-- [ ] T033 [P] [US5] Pester `demos/AssuredIdentity/tests/StatusVerdict.Tests.ps1` — verdict combinations map correctly (all-green→Ready; each missing signal→NotReady with the right reason)
-- [ ] T034 [US5] Add the **reset / status** section to `demos/AssuredIdentity/DEMO.md`
+- [X] T030 [P] [US5] Implement `Reset-Demo` in `AssuredIdentityDemo.psm1` — `-Scope issuer|subscriber|all` per the documented reset recipe (demo wallets, non-system register Mongo DBs, `OrganizationRegisterSubscriptions` rows, replicated state, `state.json`), stop any tracked `sorcha-agent` process, idempotent no-op on already-clean (FR-017)
+- [X] T031 [US5] Implement `demos/AssuredIdentity/lib/StatusVerdict.ps1` — gather per-node signals (gateway health, subscription, sync-state, blueprint-published, approver state) and compute `{verdict: Ready|NotReady, perNode[], reasons[]}` (FR-018, data-model "Derived")
+- [X] T032 [US5] Implement `Get-DemoStatus` in `AssuredIdentityDemo.psm1` — render the verdict table from `StatusVerdict` across issuer + all `subscribers[]` (FR-018)
+- [X] T033 [P] [US5] Pester `demos/AssuredIdentity/tests/StatusVerdict.Tests.ps1` — verdict combinations map correctly (all-green→Ready; each missing signal→NotReady with the right reason)
+- [X] T034 [US5] Add the **reset / status** section to `demos/AssuredIdentity/DEMO.md`
 
 **Checkpoint**: Reset+re-provision is clean; status verdict matches reality (SC-007).
 
@@ -151,10 +151,10 @@ Toolkit: `demos/AssuredIdentity/` (module, `lib/`, `agent/`, `blueprints/`, `tes
 
 ## Phase 9: Polish & Cross-Cutting Concerns
 
-- [ ] T042 [P] Assemble the full `demos/AssuredIdentity/DEMO.md` operator runbook (provision/connect/reset/status/agent-modes/multi-node) from the per-story sections; cross-check against `quickstart.md`
+- [X] T042 [P] Assemble the full `demos/AssuredIdentity/DEMO.md` operator runbook (provision/connect/reset/status/agent-modes/multi-node) from the per-story sections; cross-check against `quickstart.md`
 - [ ] T043 Run the `quickstart.md` validation end-to-end one final time post-cleanup and confirm the acceptance-checkpoint table passes
-- [ ] T044 [P] Verify `.gitignore` covers `demo-nodes.json`, `state.json`, rendered `agent/analyst.*.json`; confirm no secret leaked into committed files
-- [ ] T045 [P] Final Pester suite green + PSScriptAnalyzer pass over `demos/AssuredIdentity/**`
+- [X] T044 [P] Verify `.gitignore` covers `demo-nodes.json`, `state.json`, rendered `agent/analyst.*.json`; confirm no secret leaked into committed files
+- [X] T045 [P] Final Pester suite green + PSScriptAnalyzer pass over `demos/AssuredIdentity/**`
 
 ---
 

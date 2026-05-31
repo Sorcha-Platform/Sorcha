@@ -1,0 +1,28 @@
+{
+  "actor": {
+    "name": "verification-analyst",
+    "description": "AI identity-validator agent — reads each Assured Identity application and decides (demo ai mode)."
+  },
+  "connection": {
+    "gatewayUrl": "{{gateway}}",
+    "registerId": "{{registerId}}",
+    "credentials": {
+      "email": "$env:AGENT_EMAIL",
+      "password": "$env:AGENT_PASSWORD",
+      "organizationId": "{{orgId}}"
+    },
+    "walletAddress": "{{analystWallet}}"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 15 }
+  },
+  "mode": "ai",
+  "ai": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "temperature": 0.2,
+    "personaFile": "./analyst.persona.md",
+    "apiKeyEnvVar": "ANTHROPIC_API_KEY"
+  }
+}
