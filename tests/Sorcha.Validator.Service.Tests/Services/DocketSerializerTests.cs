@@ -214,6 +214,47 @@ public class DocketSerializerTests
         model.Transactions[1].RecipientsWallets.Should().BeEmpty();
     }
 
+    // PR #883 regression: the persisted-projection MUST carry the submission Metadata through to
+    // TransactionMetaData.TrackingData. Omitting it (as the parallel DocketBuildTriggerService
+    // authoritative path did) drops the F138 US4 blueprint contentHash, so a recovering subscriber
+    // rejects every blueprint with no_provenance. Both projections must satisfy this contract.
+    [Fact]
+    public void ToRegisterModel_PreservesSubmissionMetadataAsTrackingData()
+    {
+        // Arrange
+        var docket = CreateValidDocket();
+        var tx = CreateTransaction("tx-with-metadata");
+        tx.Metadata["Type"] = "BlueprintPublish";
+        tx.Metadata["contentHash"] = "212b4f05497106dc11cc3db7366edad0110f0432afdb53a7d462da8060e95aea";
+        tx.Metadata["publishedBy"] = "system";
+        docket.Transactions.Add(tx);
+
+        // Act
+        var model = DocketSerializer.ToRegisterModel(docket);
+
+        // Assert
+        var meta = model.Transactions[0].MetaData;
+        meta.Should().NotBeNull();
+        meta!.TrackingData.Should().NotBeNull();
+        meta.TrackingData!.Should().ContainKey("contentHash")
+            .WhoseValue.Should().Be("212b4f05497106dc11cc3db7366edad0110f0432afdb53a7d462da8060e95aea");
+        meta.TrackingData.Should().ContainKey("publishedBy");
+        meta.TransactionType.Should().Be(Sorcha.Register.Models.Enums.TransactionType.BlueprintPublish);
+    }
+
+    [Fact]
+    public void ToRegisterModel_EmptyMetadata_TrackingDataIsNull()
+    {
+        // Arrange — CreateTransaction starts with an empty Metadata dictionary.
+        var docket = CreateDocketWithTransactions();
+
+        // Act
+        var model = DocketSerializer.ToRegisterModel(docket);
+
+        // Assert — empty metadata maps to null TrackingData (not an empty dict).
+        model.Transactions[0].MetaData!.TrackingData.Should().BeNull();
+    }
+
     #endregion
 
     #region Round Trip Tests

@@ -126,6 +126,45 @@ public class RegisterSyncBackgroundServiceTests : IDisposable
         await _service.UnsubscribeFromRegisterAsync("nonexistent");
     }
 
+    // PR #885 regression: unsubscribe must FLUSH the in-memory register cache. Otherwise a later
+    // re-subscribe finds the cache still at the old high-water-mark and reports the register already
+    // fully replicated — while the Register Service copy was deleted on unsubscribe — so it never
+    // re-finalises the dockets (a cache-vs-Register-Service desync).
+    [Fact]
+    public async Task UnsubscribeFromRegisterAsync_FlushesRegisterCache()
+    {
+        var registerCache = new RegisterCache(new Mock<ILogger<RegisterCache>>().Object);
+
+        var peerListManager = new PeerListManager(
+            new Mock<ILogger<PeerListManager>>().Object, Options.Create(_config));
+        var loggerFactoryMock = new Mock<ILoggerFactory>();
+        loggerFactoryMock.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(new Mock<ILogger>().Object);
+        var connectionPool = new PeerConnectionPool(
+            new Mock<ILogger<PeerConnectionPool>>().Object, loggerFactoryMock.Object,
+            peerListManager, Options.Create(_config), new PeerServiceMetrics(), new PeerServiceActivitySource());
+        var advertisementService = new RegisterAdvertisementService(
+            new Mock<ILogger<RegisterAdvertisementService>>().Object, peerListManager);
+        var replicationService = new RegisterReplicationService(
+            new Mock<ILogger<RegisterReplicationService>>().Object,
+            connectionPool, peerListManager, advertisementService, registerCache);
+
+        using var service = new RegisterSyncBackgroundService(
+            new Mock<ILogger<RegisterSyncBackgroundService>>().Object,
+            replicationService, Options.Create(_config), Mock.Of<IServiceScopeFactory>(),
+            registerCache: registerCache);
+
+        // Subscribe + populate the cache (simulating a prior full-replica sync).
+        await service.SubscribeToRegisterAsync("reg-flush", ReplicationMode.FullReplica);
+        registerCache.GetOrCreate("reg-flush");
+        registerCache.Get("reg-flush").Should().NotBeNull("cache was populated by the prior sync");
+
+        // Act
+        await service.UnsubscribeFromRegisterAsync("reg-flush");
+
+        // Assert — cache evicted so a re-subscribe re-replicates from scratch.
+        registerCache.Get("reg-flush").Should().BeNull("unsubscribe must flush the register cache");
+    }
+
     [Fact]
     public async Task GetSubscriptions_ReturnsAllSubscriptions()
     {

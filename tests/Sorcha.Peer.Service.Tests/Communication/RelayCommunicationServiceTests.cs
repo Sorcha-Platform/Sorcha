@@ -109,6 +109,48 @@ public class RelayCommunicationServiceTests : IAsyncDisposable
         ok.Should().BeFalse();
     }
 
+    // --- Feature 143 / PR #880: reverse-stream reachability predicate used by replication
+    //     source-peer selection. A NAT'd owner self-registers with a placeholder (non-empty)
+    //     address, so the replica-pull path must engage the relay when a reverse stream is HELD
+    //     — not only on an empty advertised address. Regression guard for that gap. ---
+
+    [Fact]
+    public void CanReachViaReverseStream_HeldStream_ReturnsTrue()
+    {
+        var reverseStreams = new ReverseStreamManager(NullLogger<ReverseStreamManager>.Instance);
+        reverseStreams.RegisterStream("natd-owner", new Mock<IServerStreamWriter<PeerMessage>>().Object);
+
+        var svc = new RelayCommunicationService(
+            new Mock<ILogger<RelayCommunicationService>>().Object,
+            _connectionPool, _peerListManager, Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!),
+            reverseStreams, new PeerServiceMetrics());
+
+        svc.CanReachViaReverseStream("natd-owner").Should().BeTrue();
+    }
+
+    [Fact]
+    public void CanReachViaReverseStream_NoHeldStream_ReturnsFalse()
+    {
+        var reverseStreams = new ReverseStreamManager(NullLogger<ReverseStreamManager>.Instance);
+        reverseStreams.RegisterStream("other-peer", new Mock<IServerStreamWriter<PeerMessage>>().Object);
+
+        var svc = new RelayCommunicationService(
+            new Mock<ILogger<RelayCommunicationService>>().Object,
+            _connectionPool, _peerListManager, Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!),
+            reverseStreams, new PeerServiceMetrics());
+
+        svc.CanReachViaReverseStream("natd-owner").Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanReachViaReverseStream_NoReverseStreamManager_ReturnsFalse()
+    {
+        // Default ctor path (no ReverseStreamManager injected) — a non-rendezvous peer.
+        _service.CanReachViaReverseStream("any-peer").Should().BeFalse();
+    }
+
     [Fact]
     public void Constructor_NullLogger_ThrowsArgumentNullException()
     {
