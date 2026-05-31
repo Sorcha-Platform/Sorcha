@@ -444,9 +444,13 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.ISchemaRefResolv
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
     Sorcha.Blueprint.Service.Services.Implementation.TransactionRetrievalService>();
 
-// Feature 106 Wave D — cross-node instance mirror reconstructor
-builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.InstanceMirrorReconstructorMetrics>();
-builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.InstanceMirrorReconstructor>();
+// Feature 145 — InstanceProjector: the single deterministic instance projector. Subscribes to
+// docket:confirmed on EVERY node holding the register and folds each sealed action transaction
+// into the instance materialized view (pure InstanceProjection fold, idempotent on the
+// LastAppliedTxId watermark). Replaces the owner-only InstanceMirrorReconstructor and the
+// submitter's imperative state mutation — one shared state machine, no origin/mirror split.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.InstanceProjectorMetrics>();
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.InstanceProjector>();
 
 // Orphan chunk cleanup — removes file metadata records with no confirmed parent transaction
 builder.Services.Configure<Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions>(

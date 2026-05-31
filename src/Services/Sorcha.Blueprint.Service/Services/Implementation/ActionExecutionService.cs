@@ -1782,9 +1782,7 @@ public class ActionExecutionService : IActionExecutionService
     /// InstanceMirrorReconstructor re-derives the mirror when the resulting transaction seals.
     /// </summary>
     private Task<Instance> PersistInstanceAsync(Instance instance, CancellationToken cancellationToken)
-        => instance.IsReadOnlyMirror
-            ? _instanceStore.UpdateMirrorAsync(instance, cancellationToken)
-            : _instanceStore.UpdateAsync(instance, cancellationToken);
+        => _instanceStore.UpdateAsync(instance, cancellationToken);
 
     private static void ApplyInstanceStateChanges(
         Instance instance,

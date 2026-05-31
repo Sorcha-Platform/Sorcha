@@ -464,24 +464,10 @@ public sealed class EncryptionBackgroundService : BackgroundService
             instance.CompletedAt = DateTimeOffset.UtcNow;
         }
 
-        // Feature 137 (C5): on the register-OWNING node a cross-node workflow surfaces as a
-        // read-only mirror row (the owner never ran CreateInstance), yet the owner MUST advance it
-        // when its own participant acts (e.g. the verification-analyst's credential issuance).
-        // IInstanceStore.UpdateAsync rejects mirror rows by design (Feature 106), so route the
-        // advance through the mirror-safe writer — mirroring the inline path's PersistInstanceAsync.
-        // Without this the async-encrypted issuance sealed the credential but threw here, leaving the
-        // owner's mirror stuck at the issuing action (the citizen's claim action never surfaced on n1).
-        if (instance.IsReadOnlyMirror)
-        {
-            await instanceStore.UpdateMirrorAsync(instance, ct);
-        }
-        else
-        {
-            await instanceStore.UpdateAsync(instance, ct);
-        }
+        await instanceStore.UpdateAsync(instance, ct);
         _logger.LogInformation(
-            "Instance {InstanceId} advanced after encrypted action {ActionId} (mirror={IsMirror}). Next actions: [{NextActions}]",
-            workItem.InstanceId, workItem.ActionId, instance.IsReadOnlyMirror,
+            "Instance {InstanceId} advanced after encrypted action {ActionId}. Next actions: [{NextActions}]",
+            workItem.InstanceId, workItem.ActionId,
             string.Join(", ", instance.CurrentActionIds));
 
         // B-15 — notify the next-action participants and emit workflow-complete
