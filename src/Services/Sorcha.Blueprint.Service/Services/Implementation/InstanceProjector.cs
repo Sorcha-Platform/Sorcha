@@ -117,13 +117,14 @@ public sealed class InstanceProjector : BackgroundService
         var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
         var instanceStore = scope.ServiceProvider.GetRequiredService<IInstanceStore>();
         var actionResolver = scope.ServiceProvider.GetRequiredService<IActionResolverService>();
+        var notifier = scope.ServiceProvider.GetService<INotificationService>();
 
         foreach (var txId in evt.TransactionIds)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                await FoldTransactionAsync(evt.RegisterId, txId, registerClient, instanceStore, actionResolver, ct);
+                await FoldTransactionAsync(evt.RegisterId, txId, registerClient, instanceStore, actionResolver, notifier, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -143,6 +144,7 @@ public sealed class InstanceProjector : BackgroundService
         IRegisterServiceClient registerClient,
         IInstanceStore instanceStore,
         IActionResolverService actionResolver,
+        INotificationService? notifier,
         CancellationToken ct)
     {
         var tx = await registerClient.GetTransactionAsync(registerId, txId, ct);
@@ -187,6 +189,7 @@ public sealed class InstanceProjector : BackgroundService
             _logger.LogInformation(
                 "InstanceProjector: created instance {InstanceId} (blueprint {BlueprintId}) at action(s) {Actions}",
                 instanceId, blueprintId, string.Join(",", created.CurrentActionIds));
+            await NotifyAdvancedAsync(notifier, created, ct);
             return;
         }
 
@@ -202,6 +205,48 @@ public sealed class InstanceProjector : BackgroundService
         _logger.LogInformation(
             "InstanceProjector: advanced instance {InstanceId} via tx {TxId} to action(s) {Actions} (state {State})",
             instanceId, tx.TxId, string.Join(",", existing.CurrentActionIds), existing.State);
+        await NotifyAdvancedAsync(notifier, existing, ct);
+    }
+
+    /// <summary>
+    /// Emits the real-time "action available" / "workflow completed" SignalR notifications after the
+    /// projection advances an instance (Feature 145 T019). The projector is the single place this
+    /// fires now — the submit and encryption paths no longer notify, because only here do we have the
+    /// freshly-folded participant bindings + current actions. Best-effort: a notify failure must never
+    /// disturb the committed projection.
+    /// </summary>
+    private async Task NotifyAdvancedAsync(INotificationService? notifier, Instance instance, CancellationToken ct)
+    {
+        if (notifier is null)
+            return;
+
+        try
+        {
+            if (instance.CurrentActionIds.Count == 0)
+            {
+                var wallets = instance.ParticipantWallets.Values
+                    .Where(w => !string.IsNullOrEmpty(w))
+                    .Distinct();
+                await notifier.NotifyWorkflowCompletedAsync(instance.Id, wallets, ct);
+                return;
+            }
+
+            foreach (var actionId in instance.CurrentActionIds)
+            {
+                // Resolve the assignee wallet from the folded bindings where possible; a null
+                // wallet broadcasts to the instance group so any holder of the action still learns.
+                string? walletAddress = instance.ParticipantWallets.Count == 1
+                    ? instance.ParticipantWallets.Values.First()
+                    : null;
+                await notifier.NotifyActionAvailableAsync(instance.Id, walletAddress, actionId.ToString(), ct);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "InstanceProjector: instance {InstanceId} advanced + persisted, but the post-fold notification failed",
+                instance.Id);
+        }
     }
 
     /// <summary>
