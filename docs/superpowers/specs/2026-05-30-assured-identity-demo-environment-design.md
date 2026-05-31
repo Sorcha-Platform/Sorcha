@@ -1,15 +1,36 @@
-# Assured Identity Demo Environment — PARKED design note
+# Assured Identity Demo Environment — design note (READY TO RESUME)
 
-- **Status:** ⏸️ PARKED — brainstorm incomplete. Deliberately deferred.
-- **Date:** 2026-05-30
-- **BLOCKED ON:** Peer-service **reverse data plane** (a NAT'd owner node must be
-  reachable by public subscribers). See the trigger condition below.
-- **Resume by:** re-opening the brainstorming flow on this note once the peer
-  spike's success criteria are met.
+- **Status:** 🟢 READY TO RESUME — the blocking trigger is **MET**. The reverse data
+  plane works and the full loop is proven E2E. (Was: ⏸️ PARKED, 2026-05-30.)
+- **Date:** 2026-05-30 (parked) · 2026-05-31 (unblocked)
+- **WAS BLOCKED ON:** Peer-service **reverse data plane** (a NAT'd owner node must be
+  reachable by public subscribers) — **now delivered as Feature 143** (merged #879;
+  cross-installation hardening + fixes #880/#881/#883/#884/#885, regression tests #886).
+- **Resume by:** re-opening the brainstorming flow on this note (the foundation it
+  waited on is done). Most of "Decided constraints" is now proven; "Open questions"
+  is the live agenda.
 
-> This is **not** an approved design. It captures a brainstorm-in-progress so the
-> thinking isn't lost while we build the foundation it depends on. Several
-> sections are open questions, not decisions.
+> **Foundation proven (2026-05-31).** Verified E2E across the real `tiny`↔`n1` network,
+> clean from a fresh dual-node reset:
+> - A NAT'd **owner** (`tiny`) receives forwarded action submissions over its held
+>   reverse stream and serves docket sync back to a public **subscriber** (`n1`) — the
+>   exact trigger condition below.
+> - The full Assured Identity loop runs cross-installation: anonymous citizen signs up
+>   on `n1` → submits → brokered to `tiny` → `tiny`'s validator seals → docket syncs back
+>   to `n1` → analyst on `tiny` approves → `AssuredIdentityCredential` (cnf-bound to the
+>   citizen's holder key) is delivered to the citizen's wallet on `n1`.
+> - **Topology DECIDED + proven:** two separate installations (separate JWT signing keys;
+>   `n1` holds the sorcha system-register genesis, `tiny` its own); trust boundary is the
+>   **register** (wallet signatures + roster), not JWT. `tiny` = NAT'd issuer (dials
+>   `n1:50051` over Caddy TLS); `n1` = public tester surface + rendezvous.
+> - References: F143 design `docs/superpowers/specs/2026-05-30-peer-nat-traversal-design.md`;
+>   mechanism write-up `docs/reference/two-installation-cross-subscription.md`; live recipe +
+>   state in auto-memory `f143-two-installation-demo.md`; local orchestration scripts (gitignored)
+>   `deploy/twoinstall-issuer.ps1` + `deploy/twoinstall-citizen-n1.ps1`.
+>
+> This is still **not** an approved design — the remaining "Open questions" below
+> (agent mode, template-modify-redeploy UX, self-service provisioning, tester journey)
+> are the agenda for the resumed brainstorm.
 
 ---
 
@@ -87,8 +108,10 @@ The desired shape (subject to the connectivity decision below):
 
 ## Open questions (resume here)
 
-- **Topology (final):** `tiny`-issuer + `n1`-tester (needs reverse data plane —
-  the chosen path) vs the proven inversion vs a Tailscale shortcut.
+- ~~**Topology (final):** `tiny`-issuer + `n1`-tester (needs reverse data plane —
+  the chosen path) vs the proven inversion vs a Tailscale shortcut.~~ **RESOLVED
+  (2026-05-31):** `tiny` = NAT'd issuer/owner + `n1` = public tester/subscriber,
+  two separate installations, reverse data plane via Feature 143 — proven E2E.
 - **Agent decision mode:** `rules` vs `ai` persona vs human-in-the-loop — and is
   it operator-selectable per demo run?
 - **Template-modify-then-redeploy UX:** Designer amend loop (`from-published`) vs
@@ -104,13 +127,17 @@ The desired shape (subject to the connectivity decision below):
   stale `sorcha-citizen-wallet`/`sorcha-citizen-verifier` containers) — folds into
   provisioning.
 
-## Trigger to un-park
-
-Resume this brainstorm when the peer reverse-data-plane work proves:
+## Trigger to un-park — ✅ MET (2026-05-31)
 
 > **A NAT'd owner node (tiny) can receive forwarded action submissions and serve
 > docket sync to a public subscriber (n1), proven end-to-end across the real
 > tiny↔n1 network.**
+
+**Status: satisfied.** Delivered by Feature 143 (reverse-stream rendezvous) plus the
+cross-installation hardening fixes #880/#881/#883/#884/#885 (regression tests #886). The
+trigger scenario — and the full anonymous-signup→credential loop on top of it — was run
+clean end-to-end from a fresh dual-node reset. See the "Foundation proven" note at the top.
+This brainstorm is unblocked; resume it against the "Open questions" section.
 
 ## Related
 
