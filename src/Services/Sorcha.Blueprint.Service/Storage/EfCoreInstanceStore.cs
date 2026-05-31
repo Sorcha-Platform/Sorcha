@@ -566,7 +566,8 @@ public class EfCoreInstanceStore : IInstanceStore
             Version = instance.Version,
             CreatedAt = instance.CreatedAt != default ? instance.CreatedAt : DateTimeOffset.UtcNow,
             UpdatedAt = instance.UpdatedAt != default ? instance.UpdatedAt : DateTimeOffset.UtcNow,
-            CompletedAt = instance.CompletedAt
+            CompletedAt = instance.CompletedAt,
+            LastAppliedTxId = instance.LastAppliedTxId,
         };
     }
 
@@ -604,6 +605,7 @@ public class EfCoreInstanceStore : IInstanceStore
                 UpdatedAt = entity.UpdatedAt,
                 CompletedAt = entity.CompletedAt,
                 IsReadOnlyMirror = entity.IsReadOnlyMirror,
+                LastAppliedTxId = entity.LastAppliedTxId,
             };
         }
         catch (Exception ex)

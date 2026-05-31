@@ -115,4 +115,12 @@ public class InstanceEntity
     /// <c>specs/106-register-native-credentials/contracts/instance-mirror-reconstructor.md</c>.
     /// </summary>
     public bool IsReadOnlyMirror { get; internal set; }
+
+    /// <summary>
+    /// Feature 145: idempotency watermark for the deterministic instance projection — the id of
+    /// the most recent sealed action transaction the <c>InstanceProjector</c> folded into this
+    /// materialized view. Re-observing a sealed docket at or below this point is a no-op (FR-004).
+    /// Null until the first sealed action is folded.
+    /// </summary>
+    public string? LastAppliedTxId { get; set; }
 }
