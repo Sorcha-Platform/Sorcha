@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sorcha.dev/schemas/demo/demo-state.schema.json",
+  "title": "Assured Identity Demo — per-run state record",
+  "description": "Records provisioned artefacts so re-provision is idempotent and reset is deterministic. Gitignored. No secrets.",
+  "type": "object",
+  "required": ["schemaVersion", "issuerNodeId", "agencyName", "organizationId", "registerId"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "issuerNodeId": { "type": "string", "description": "Inventory id used as issuer." },
+    "agencyName": { "type": "string", "description": "Single-source agency identity." },
+    "organizationId": { "type": "string", "description": "Issuer org id." },
+    "issuerWalletAddress": { "type": "string", "description": "Stable identity anchor (keeps credential-issuer DID valid across renames)." },
+    "analystEmail": { "type": "string", "format": "email" },
+    "analystWallet": { "type": "string" },
+    "registerId": { "type": "string", "description": "Advertised register id (32-char hex)." },
+    "blueprintId": { "type": "string", "description": "Published blueprint id (carries the injected issuerName)." },
+    "agentMode": { "type": "string", "enum": ["rules", "ai", "human"] },
+    "subscribers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["nodeId", "orgId", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "nodeId": { "type": "string" },
+          "orgId": { "type": "string" },
+          "subscriptionId": { "type": "string" },
+          "status": { "type": "string", "enum": ["Ready", "NotReady", "Active", "Pending"] },
+          "lastReadyAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "provisionedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

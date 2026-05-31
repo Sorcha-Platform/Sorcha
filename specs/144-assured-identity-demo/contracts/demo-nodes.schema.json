@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sorcha.dev/schemas/demo/demo-nodes.schema.json",
+  "title": "Assured Identity Demo — node inventory",
+  "description": "Installations participating in the demo. Gitignored in practice; demo-nodes.example.json documents it. Contains NO secrets — credentials live in deploy/keys.env.",
+  "type": "object",
+  "required": ["nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/node" }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "role", "gateway", "installationName"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
+          "description": "Stable handle used by -IssuerNode/-SubscriberNode. Unique within the inventory."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["issuer", "subscriber"],
+          "description": "Default/expected role; a node may be re-selected at run time."
+        },
+        "gateway": {
+          "type": "string",
+          "format": "uri",
+          "description": "API gateway base URL the toolkit calls."
+        },
+        "installationName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The installation's JWT InstallationName. Documents the trust boundary."
+        },
+        "rendezvousCapable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this node accepts inbound reverse streams (public/rendezvous)."
+        },
+        "adminEmail": {
+          "type": "string",
+          "format": "email",
+          "default": "admin@sorcha.local",
+          "description": "Sysadmin login on this node. Password comes from deploy/keys.env, never here."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "nodes": [
+        { "id": "tiny", "role": "issuer", "gateway": "http://tiny:8090", "installationName": "tiny.sorcha.dev", "rendezvousCapable": false },
+        { "id": "n1", "role": "subscriber", "gateway": "https://n1.sorcha.dev", "installationName": "n1.sorcha.dev", "rendezvousCapable": true }
+      ]
+    }
+  ]
+}
