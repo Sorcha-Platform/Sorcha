@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Feature 145 clean-break CI gate. Fails when the retired mirror constructs
+# (InstanceMirrorReconstructor / IsReadOnlyMirror / Create|UpdateMirrorAsync)
+# reappear in src/. The deterministic InstanceProjector is the single instance
+# writer — there is no origin/mirror split and no mirror-write path.
+#
+# See scripts/check-ledger-derived-clean-break.ps1 and the sorcha-architecture skill.
+
+name: ledger-derived-clean-break-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**/*.cs"
+      - "scripts/check-ledger-derived-clean-break.ps1"
+      - ".github/workflows/ledger-derived-clean-break-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  ledger-derived-clean-break:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Feature 145 ledger-derived clean-break gate
+        shell: pwsh
+        run: ./scripts/check-ledger-derived-clean-break.ps1

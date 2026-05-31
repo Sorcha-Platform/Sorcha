@@ -1004,13 +1004,12 @@ public class ActionExecutionService : IActionExecutionService
             transaction.Metadata["credentialRecipient"] = issuedCredential.SubjectDid;
         }
 
-        // 10c. Feature 137 (C5): carry the resolved next action so that when this tx seals on
-        //      the owning node, a cross-node InstanceMirrorReconstructor can seed the mirror's
-        //      CurrentActionIds (DocketBuildTriggerService projects it onto TransactionMetaData).
-        //      Singular (first routed next action) — exact for linear flows; fan-out carries the
-        //      primary branch only.
-        //      LEGACY (Feature 145): superseded by the full RoutingDecision written below.
-        //      Retained until the validator carries the decision through the seal (T024).
+        // 10c. Carry the singular resolved next action on the tx so a node that observes the sealed
+        //      docket can seed CurrentActionIds (DocketBuildTriggerService projects it onto
+        //      TransactionMetaData). Singular (first routed next action) — exact for linear flows.
+        //      LEGACY (Feature 145): superseded by the full RoutingDecision written below, which the
+        //      InstanceProjector folds (parallel branches preserved). Retained until the validator
+        //      carries the decision through the seal (T024); the projector falls back to it meanwhile.
         var nextActionId = routingResult.NextActions.FirstOrDefault()?.ActionId;
         if (nextActionId.HasValue)
         {
@@ -1717,13 +1716,10 @@ public class ActionExecutionService : IActionExecutionService
     }
 
     /// <summary>
-    /// Feature 137 (C5): persists instance state changes, choosing the mirror-safe writer when the
-    /// instance is a read-only mirror. On the register-owning node a cross-node workflow surfaces as
-    /// a mirror row (the node never ran CreateInstance), yet the owner MUST advance it when its own
-    /// participant acts (e.g. the verification-analyst approves). <see cref="IInstanceStore.UpdateAsync"/>
-    /// rejects mirror rows by design (Feature 106), so the advance is routed through
-    /// <see cref="IInstanceStore.UpdateMirrorAsync"/>. The register stays the source of truth — the
-    /// InstanceMirrorReconstructor re-derives the mirror when the resulting transaction seals.
+    /// Persists instance state changes for the presentation-completion path (US6), which still
+    /// advances the instance imperatively. Feature 145 removed the read-only-mirror split — there is
+    /// one writer per row and the normal action path advances via the <c>InstanceProjector</c>, so
+    /// this is now a plain <see cref="IInstanceStore.UpdateAsync"/> under optimistic concurrency.
     /// </summary>
     private Task<Instance> PersistInstanceAsync(Instance instance, CancellationToken cancellationToken)
         => _instanceStore.UpdateAsync(instance, cancellationToken);
