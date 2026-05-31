@@ -1,8 +1,10 @@
-# Assured Identity Demo Environment — design note (READY TO RESUME)
+# Assured Identity Demo Environment — design note (RESOLVED → SUPERSEDED)
 
-- **Status:** 🟢 READY TO RESUME — the blocking trigger is **MET**. The reverse data
-  plane works and the full loop is proven E2E. (Was: ⏸️ PARKED, 2026-05-30.)
-- **Date:** 2026-05-30 (parked) · 2026-05-31 (unblocked)
+- **Status:** ✅ RESOLVED — brainstorm resumed and completed 2026-05-31. The open
+  questions below are answered in the approved design:
+  **`docs/superpowers/specs/2026-05-31-assured-identity-demo-environment-design.md`**.
+  (Was: ⏸️ PARKED 2026-05-30 → 🟢 READY 2026-05-31 → ✅ RESOLVED.)
+- **Date:** 2026-05-30 (parked) · 2026-05-31 (unblocked + resolved)
 - **WAS BLOCKED ON:** Peer-service **reverse data plane** (a NAT'd owner node must be
   reachable by public subscribers) — **now delivered as Feature 143** (merged #879;
   cross-installation hardening + fixes #880/#881/#883/#884/#885, regression tests #886).
