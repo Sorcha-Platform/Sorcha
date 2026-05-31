@@ -750,6 +750,28 @@ public class ActionExecutionService : IActionExecutionService
             recipientFields["/credential"] = credentialDict;
         }
 
+        // 9b-ter. Feature 145: generate the human-readable instance reference here, PRE-SUBMIT, for
+        //         BOTH the DevMode and encrypted paths. This is the single point with the plaintext
+        //         first-action data regardless of register encryption, and persisting it before the
+        //         transaction can seal avoids racing the InstanceProjector — which is the sole writer
+        //         of control state (CurrentActionIds / CompletedActionCount / State) and never touches
+        //         this metadata key. Idempotent on the key, so only the first action that lacks it
+        //         pays the extra write. (Pre-145 this lived in the post-confirmation advance on both
+        //         the inline and encrypted paths; those advances are gone.)
+        if (!instance.Metadata.ContainsKey("instanceReference"))
+        {
+            var instanceRef = Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator.Generate(
+                blueprint.InstanceReference,
+                mergedData,
+                instance.Id,
+                blueprint.Title);
+            instance.Metadata["instanceReference"] = instanceRef;
+            instance = await _instanceStore.UpdateAsync(instance, cancellationToken);
+            _logger.LogInformation(
+                "Generated instance reference {Reference} for instance {InstanceId} (pre-submit, Feature 145)",
+                instanceRef, instance.Id);
+        }
+
         // 9c. Check register DevMode — skip encryption for DevMode registers
         var registerDevMode = false;
         try
@@ -1076,131 +1098,61 @@ public class ActionExecutionService : IActionExecutionService
             transaction.TxId, validatorResult.Success,
             distributeResult.AcceptedCount, distributeResult.TargetPeerCount, distributeResult.LocallyOwned);
 
-        // 12b. Cross-node async path. When this node does NOT own the register (the submission was
-        // brokered to a remote owner — e.g. a NAT'd owner over the F143 reverse stream), the docket
-        // seals on the owner and syncs back asynchronously (seconds to tens of seconds over the peer
-        // link). Blocking the HTTP caller on a synchronous confirmation poll would time out even though
-        // the seal succeeds. Return 202 like the encryption-offload path; the instance advances when the
-        // sealed docket syncs back (StateReconstructionService reads the replicated register). Only the
-        // locally-owned path (fast local seal) waits synchronously below. This makes DevMode cross-node
-        // submissions — which skip the async encryption offload — non-blocking too.
-        if (!distributeResult.LocallyOwned && distributeResult.AcceptedCount > 0)
-        {
-            await _actionStore.StoreIdempotencyKeyAsync(idempotencyKey, transaction.TxId, TimeSpan.FromHours(24));
-            _logger.LogInformation(
-                "Transaction {TxId} for register {RegisterId} brokered to remote owner ({Accepted}/{Targets} peer(s)); " +
-                "returning async — instance advances on sealed-docket sync-back.",
-                transaction.TxId, instance.RegisterId, distributeResult.AcceptedCount, distributeResult.TargetPeerCount);
-            return new ActionSubmissionResponse
-            {
-                TransactionId = transaction.TxId,
-                InstanceId = instanceId,
-                IsAsync = true,
-                NextActions = [],
-                IsComplete = false
-            };
-        }
-
-        _logger.LogInformation(
-            "Transaction {TxId} submitted to Validator for register {RegisterId}. Waiting for docket confirmation...",
-            transaction.TxId, instance.RegisterId);
-
-        // 13. Poll Register Service until transaction appears with a DocketNumber (confirmation)
+        // 12b. Feature 145 — single async submission path. The submitter NEVER advances instance
+        // state; the InstanceProjector folds the sealed docket on every node (SC-006), so there is no
+        // longer a locally-owned vs brokered branch in the response shape. AccumulatedData and the
+        // instance reference are no longer written here: subsequent actions' routing reads the sealed
+        // ledger via StateReconstructionService (DevMode plaintext or delegated decrypt), and the
+        // reference was generated pre-submit at step 9b-ter. Always returns 202 (IsAsync); the caller
+        // observes advancement via the instance read / hub event (contracts/submission-response.md).
         var confirmedTxId = transaction.TxId;
-        await WaitForTransactionConfirmationAsync(instance.RegisterId, confirmedTxId, cancellationToken);
-
-        // 13b. Store idempotency key (24-hour TTL)
         await _actionStore.StoreIdempotencyKeyAsync(idempotencyKey, confirmedTxId, TimeSpan.FromHours(24));
 
-        // 14. Persist accumulated data on instance for subsequent actions' routing/calculations
-        //     (fallback when Register-based state reconstruction is unavailable)
-        //     Only store fields from the action's schema or explicit calculations (SEC-AUDIT 3.6)
-        var allowedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (request.PayloadData != null)
+        // Bounded seal-wait for chain ordering (NOT an advance). A locally-owned (or validator-only)
+        // submission seals fast and locally; we wait for the tx to be queryable on the ledger so a
+        // back-to-back next submit's StateReconstructionService finds it as previousTransactionId —
+        // the projector, not this wait, advances the instance. A brokered submission seals on the
+        // remote owner and syncs back asynchronously, so we don't block the caller on that round trip.
+        if (distributeResult.LocallyOwned || distributeResult.AcceptedCount == 0)
         {
-            foreach (var key in request.PayloadData.Keys)
-                allowedFields.Add(key);
-        }
-        if (actionDef.Calculations != null)
-        {
-            foreach (var calc in actionDef.Calculations)
-            {
-                allowedFields.Add(calc.Key);
-            }
+            await WaitForTransactionConfirmationAsync(instance.RegisterId, confirmedTxId, cancellationToken);
         }
 
-        foreach (var kvp in mergedData.Where(kvp => allowedFields.Contains(kvp.Key)))
-        {
-            instance.AccumulatedData[kvp.Key] = kvp.Value;
-        }
-
-        // 14a. Generate instance reference on first action (idempotent)
-        if (!instance.Metadata.ContainsKey("instanceReference"))
-        {
-            var instanceRef = Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator.Generate(
-                blueprint.InstanceReference,
-                instance.AccumulatedData,
-                instance.Id,
-                blueprint.Title);
-            instance.Metadata["instanceReference"] = instanceRef;
-            _logger.LogInformation(
-                "Generated instance reference {Reference} for instance {InstanceId}",
-                instanceRef, instance.Id);
-        }
-
-        // 14b. Update instance state
-        instance = await UpdateInstanceAfterExecutionAsync(
-            instance,
-            actionId,
-            confirmedTxId,
-            routingResult,
-            cancellationToken);
-
-        // 15. Notify participants via SignalR
-        await NotifyParticipantsAsync(instance, actionDef, routingResult, cancellationToken);
-
-        // 15a. Action confirmed — participants already notified via thin signals in step 15
-
-        // 15b. Update issued credential with confirmed transaction ID
-        if (issuedCredential != null)
+        // Record an issued credential on its dedicated register if configured (FR-014c). This is the
+        // one inline side effect retained on the submit path until the ReactionDispatcher (US2) owns it.
+        if (issuedCredential != null && !string.IsNullOrEmpty(actionDef.CredentialIssuanceConfig?.RegisterId))
         {
             _logger.LogInformation(
                 "Credential {CredentialId} of type {Type} issued from {Issuer} to {Recipient} (tx: {TxId})",
                 issuedCredential.CredentialId, issuedCredential.Type,
                 issuedCredential.IssuerDid, issuedCredential.SubjectDid, confirmedTxId);
 
-            // 15c. Record credential on dedicated register if configured (FR-014c)
-            if (!string.IsNullOrEmpty(actionDef.CredentialIssuanceConfig?.RegisterId))
-            {
-                await RecordCredentialOnRegisterAsync(
-                    issuedCredential,
-                    actionDef.CredentialIssuanceConfig.RegisterId,
-                    request.SenderWallet,
-                    instanceId,
-                    confirmedTxId,
-                    cancellationToken);
-            }
+            await RecordCredentialOnRegisterAsync(
+                issuedCredential,
+                actionDef.CredentialIssuanceConfig.RegisterId,
+                request.SenderWallet,
+                instanceId,
+                confirmedTxId,
+                cancellationToken);
         }
 
-        // 16. Build response
         var issuedCredentialResponse = issuedCredential is null
             ? null
             : await BuildIssuedCredentialResponseAsync(
                 issuedCredential, blueprint, actionDef, caller, cancellationToken);
 
-        var response = new ActionSubmissionResponse
+        _logger.LogInformation(
+            "Action {ActionId} submitted for instance {InstanceId} (tx {TxId}); returning 202 — instance advances on projection of the sealed docket.",
+            actionId, instanceId, confirmedTxId);
+
+        return new ActionSubmissionResponse
         {
             TransactionId = confirmedTxId,
             InstanceId = instanceId,
-            NextActions = routingResult.NextActions.Select(na => new NextActionResponse
-            {
-                ActionId = na.ActionId,
-                ActionTitle = na.ActionTitle,
-                ParticipantId = na.ParticipantId,
-                BranchId = na.BranchId
-            }).ToList(),
+            IsAsync = true,
+            NextActions = [],
+            IsComplete = false,
             Calculations = calculations,
-            IsComplete = routingResult.NextActions.Count == 0,
             Warnings = validationResult.Warnings,
             IssuedCredentialId = issuedCredential?.CredentialId,
             IssuedCredential = issuedCredentialResponse,
@@ -1213,17 +1165,9 @@ public class ActionExecutionService : IActionExecutionService
                     ExpiresAt = haipOfferResult.ExpiresAt
                 }
                 : null,
-            // Presentation requests surface via the 202 Accepted short-circuit
-            // earlier in ExecuteAsync, so the 200 OK path never populates this.
-            // Field retained for backwards-compatible schema shape.
+            // Presentation requests surface via the 202 Accepted short-circuit earlier in ExecuteAsync.
             PresentationRequest = null
         };
-
-        _logger.LogInformation(
-            "Action {ActionId} executed successfully for instance {InstanceId}. Transaction: {TxId}, Complete: {IsComplete}",
-            actionId, instanceId, confirmedTxId, response.IsComplete);
-
-        return response;
     }
 
     /// <inheritdoc/>

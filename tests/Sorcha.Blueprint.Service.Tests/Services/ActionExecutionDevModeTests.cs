@@ -270,6 +270,56 @@ public class ActionExecutionDevModeTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_DevMode_ReturnsAsync202AndDoesNotAdvanceInstanceState()
+    {
+        // Feature 145: the submit path is now single-async. It returns 202 (IsAsync, empty
+        // NextActions, not complete) and NEVER advances instance control state — the
+        // InstanceProjector folds the sealed docket to advance CurrentActionIds. Here we prove
+        // the submitter left CurrentActionIds untouched at [1]; the only instance write it makes
+        // is the pre-submit instanceReference seed, which preserves the current actions.
+        var service = CreateServiceWithEncryption();
+        var instanceId = "devmode-async-instance";
+        var actionId = 1;
+        var request = CreateRequestWithExternalKeys(Convert.ToBase64String(new byte[32]));
+        var instance = CreateTestInstance(instanceId);
+        var blueprint = CreateTestBlueprint();
+        var action = blueprint.Actions!.First(a => a.Id == actionId);
+
+        SetupCommonMocks(instanceId, instance, blueprint, action);
+        SetupRoutingAndDisclosure(blueprint, action);
+        SetupFullTransactionFlow(instance);
+
+        // Capture the CurrentActionIds of every instance write the submit path performs.
+        var writtenCurrentActionIds = new List<List<int>>();
+        _mockInstanceStore
+            .Setup(x => x.UpdateAsync(It.IsAny<Instance>(), It.IsAny<CancellationToken>()))
+            .Callback<Instance, CancellationToken>((inst, _) => writtenCurrentActionIds.Add([.. inst.CurrentActionIds]))
+            .ReturnsAsync((Instance inst, CancellationToken _) => inst);
+
+        _mockRegisterClient
+            .Setup(x => x.GetRegisterAsync(instance.RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = instance.RegisterId,
+                Name = "DevMode Register",
+                DevMode = true
+            });
+
+        // Act
+        var result = await service.ExecuteAsync(instanceId, actionId, request, "test-token");
+
+        // Assert — the 202 async contract (contracts/submission-response.md)
+        result.IsAsync.Should().BeTrue();
+        result.NextActions.Should().BeEmpty();
+        result.IsComplete.Should().BeFalse();
+        result.TransactionId.Should().NotBeNullOrEmpty();
+
+        // Assert — the submitter never advanced control state. Every write it made kept
+        // CurrentActionIds at [1]; advancing past it is the InstanceProjector's responsibility.
+        writtenCurrentActionIds.Should().OnlyContain(ids => ids.SequenceEqual(new[] { 1 }));
+    }
+
     #region Helper Methods
 
     private void SetupCommonMocks(string instanceId, Instance instance, BlueprintModel blueprint, ActionModel action)
