@@ -16,10 +16,10 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Scaffold `RoutingDecision` + `Attestation` types in `src/Common/Sorcha.Register.Models/Transactions/RoutingDecision.cs` + `Attestation.cs` — `[JsonPropertyName]`-stable, canonical-serialisable (per `contracts/routing-decision.md`, data-model Entity 1/2)
-- [ ] T002 [P] Register new OTel meters `Sorcha.Blueprint.Instances` (projection) and `Sorcha.Blueprint.Reactions` on the ServiceDefaults export allowlist
-- [ ] T003 [P] Create `scripts/check-ledger-derived-clean-break.ps1` skeleton (patterns stubbed, initially passing) modelled on `scripts/check-trust-clean-break.ps1`
-- [ ] T004 [P] Add test fixtures area for sealed-docket streams in `tests/Sorcha.Blueprint.Service.Tests/Fixtures/LedgerDerived/` (canonical fixtures the projection tests fold)
+- [X] T001 [P] Scaffold `RoutingDecision` + `Attestation` types in `src/Common/Sorcha.Register.Models/Transactions/RoutingDecision.cs` + `Attestation.cs` — `[JsonPropertyName]`-stable, canonical-serialisable (per `contracts/routing-decision.md`, data-model Entity 1/2)
+- [X] T002 [P] Register new OTel meters `Sorcha.Blueprint.Instances` (projection) and `Sorcha.Blueprint.Reactions` on the ServiceDefaults export allowlist
+- [X] T003 [P] Create `scripts/check-ledger-derived-clean-break.ps1` skeleton (patterns stubbed, initially passing) modelled on `scripts/check-trust-clean-break.ps1`
+- [X] T004 [P] Add test fixtures area for sealed-docket streams in `tests/Sorcha.Blueprint.Service.Tests/Fixtures/LedgerDerived/` (canonical fixtures the projection tests fold)
 
 ---
 
@@ -27,11 +27,11 @@
 
 **⚠️ Blocks all user stories** — the projection (US1) reads the carried decision; the validator (US3) validates it.
 
-- [ ] T005 Complete `RoutingDecision{completedActionId, nextActions[], attestation}` + `Attestation.SenderSigned` in `Sorcha.Register.Models`; carry it on `TransactionMetaData` (clear) with canonical serialization; mark the legacy `NextActionId` for removal (compile-guarded)
-- [ ] T006 [P] Engine: emit the **full** `NextActions` set from routing evaluation in `src/Core/Sorcha.Blueprint.Engine/Routing/` (stop collapsing to a singular next action)
-- [ ] T007 Producer: assemble + sender-sign the `RoutingDecision` onto the action tx in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` (replace the `NextActionId` set at the former `:984-993`)
-- [ ] T008 [P] Implement deterministic identity `H(registerId, blueprintId, startingActionTxHash)` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceIdentity.cs` (data-model Entity 4)
-- [ ] T009 [P] Foundational unit tests in `tests/Sorcha.Blueprint.Engine.Tests` + `tests/Sorcha.Blueprint.Service.Tests`: `RoutingDecision` canonical round-trip, full-set emission, identity determinism
+- [X] T005 Complete `RoutingDecision{completedActionId, nextActions[], attestation}` + `Attestation.SenderSigned` in `Sorcha.Register.Models`; carry it on `TransactionMetaData` (clear) with canonical serialization; mark the legacy `NextActionId` for removal (compile-guarded)
+- [X] T006 [P] Engine: emit the **full** `NextActions` set from routing evaluation in `src/Core/Sorcha.Blueprint.Engine/Routing/` (stop collapsing to a singular next action) — NO-OP: `RoutingEngine.BuildRoutingResult` already emits the full deduped `NextActionIds` set on `RoutingResult.NextActions`; the singular collapse is downstream in `ActionExecutionService` only (addressed by T007)
+- [X] T007 Producer: assemble + sender-sign the `RoutingDecision` onto the action tx in `ActionExecutionService.cs` step 10d (~:995). Builds `RoutingDecision{CompletedActionId, NextActions(full set, BranchKey), Attestation.SenderSigned}`, signs `ComputeSignableBytes()` via `SignTransactionAsync`, base64s into `Attestation.Signature`, writes canonical JSON to `transaction.Metadata["routingDecision"]` → rides to the sealed docket via `TrackingData` copy. Legacy `nextActionId` write retained until T024. Builds green.
+- [X] T008 [P] Implement deterministic identity `H(registerId, blueprintId, startingActionTxHash)` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceIdentity.cs` (data-model Entity 4)
+- [X] T009 [P] Foundational unit tests: `tests/Sorcha.Register.Models.Tests/RoutingDecisionTests.cs` (6 tests — canonical round-trip, camelCase wire-stability, full-set/parallel preservation, attestation-free signable bytes, determinism, terminal empty set — all pass) + `tests/Sorcha.Blueprint.Service.Tests/Services/InstanceIdentityTests.cs` (identity determinism, distinctness, hex format, field-boundary anti-collision, arg validation — all pass). Full-set EMISSION (engine) was T006 no-op; carried-decision full-set is covered here.
 
 **Checkpoint**: a sealed action carries a full, signed `RoutingDecision`; instance ids are deterministic.
 
@@ -45,7 +45,7 @@
 
 ### Tests for US1
 
-- [ ] T010 [P] [US1] Projection determinism test (same docket stream, varied order + mid-stream restart → identical state) in `tests/Sorcha.Blueprint.Service.Tests/Projection/`
+- [X] T010 [P] [US1] Projection determinism test (same docket stream, varied order + mid-stream restart → identical state) in `tests/Sorcha.Blueprint.Service.Tests/Projection/InstanceProjectionTests.cs` — 10 tests pass: order-independence across all permutations, duplicate-folds-once idempotency, incremental `Apply`==batch `Project` parity, parallel-branch preservation, rejection/completion terminals. Backed by the pure fold `InstanceProjection.cs` (`Project` batch rebuild + `Apply` online watermark fold) — the deterministic core reused by T013 (projector) and T032 (rebuild).
 - [ ] T011 [P] [US1] Discovery + cross-node identical-state test (`GetPendingActionsByWalletAsync` surfaces the current action on a non-originating node) in `tests/Sorcha.Blueprint.Service.Tests/Projection/`
 - [ ] T012 [P] [US1] Single submission contract test (owner vs subscriber identical; `202` + bounded-wait `200`) in `tests/Sorcha.Blueprint.Service.Tests/Submission/`
 

@@ -142,6 +142,15 @@ public class Instance
     /// set; mirror mutations go through the dedicated mirror-write path.
     /// </summary>
     public bool IsReadOnlyMirror { get; set; }
+
+    /// <summary>
+    /// Feature 145: idempotency watermark for the deterministic instance projection — the
+    /// id of the most recent sealed action transaction folded into this materialized view.
+    /// The <c>InstanceProjector</c> skips re-applying a transaction at or before this point,
+    /// so re-observing an already-folded sealed docket is a no-op (FR-004). Null until the
+    /// first sealed action is folded.
+    /// </summary>
+    public string? LastAppliedTxId { get; set; }
 }
 
 /// <summary>
