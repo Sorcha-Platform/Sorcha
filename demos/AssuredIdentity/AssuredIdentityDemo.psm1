@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 
 # --- dependencies -----------------------------------------------------------
 $script:DemoRoot = $PSScriptRoot
-Import-Module (Join-Path $PSScriptRoot "../../walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "../../walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1") -Force -DisableNameChecking
 
 # dot-source the lib units (Common first — others depend on its helpers)
 . (Join-Path $PSScriptRoot "lib/Common.ps1")
@@ -289,11 +289,26 @@ function Connect-Subscriber {
     }
 
     Write-WtStep "3: readiness gate (subscription Active + sync CaughtUp + blueprint published) timeout=${TimeoutSeconds}s"
-    $verdict = Wait-SubscriberReady `
-        -GetSubscriptionStatus { Get-DemoSubscriptionStatus -Api $api -OrgId $script:PublicOrgId -RegisterId $RegisterId -Headers $sysAdmin.Headers }.GetNewClosure() `
-        -GetSyncState { Get-DemoSyncState -Api $api -RegisterId $RegisterId -Headers $sysAdmin.Headers }.GetNewClosure() `
-        -GetPublishedBlueprintIds { Get-DemoPublishedBlueprintIds -Api $api -RegisterId $RegisterId }.GetNewClosure() `
-        -TargetBlueprintId $targetBlueprintId -TimeoutSeconds $TimeoutSeconds
+    # Inline poll using the module-internal probes (cross-scope scriptblocks can't see
+    # module-private functions; Wait-SubscriberReady stays lib-only for unit tests).
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $rv = $null
+    do {
+        $subS  = Get-DemoSubscriptionStatus -Api $api -OrgId $script:PublicOrgId -RegisterId $RegisterId -Headers $sysAdmin.Headers
+        $syncS = Get-DemoSyncState -Api $api -RegisterId $RegisterId -Headers $sysAdmin.Headers
+        $pubIds = @(Get-DemoPublishedBlueprintIds -Api $api -RegisterId $RegisterId)
+        $rv = Test-SubscriberReady -SubscriptionStatus $subS -SyncState $syncS -PublishedBlueprintIds $pubIds -TargetBlueprintId $targetBlueprintId
+        if ($rv.Ready) { break }
+        if ($sw.Elapsed.TotalSeconds -ge $TimeoutSeconds) { break }
+        Write-WtInfo ("  waiting - sub=$subS sync=$syncS bpPublished=" + ($pubIds -contains $targetBlueprintId) + " (" + [int]$sw.Elapsed.TotalSeconds + "s)")
+        Start-Sleep -Seconds 6
+    } while ($true)
+    $sw.Stop()
+    $verdict = [pscustomobject]@{
+        Status  = if ($rv.Ready) { 'Ready' } else { 'NotReady' }
+        Reasons = $rv.Reasons
+        Elapsed = $sw.Elapsed
+    }
 
     # update subscribers[] in state
     if ($state) {

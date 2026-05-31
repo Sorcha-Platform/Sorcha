@@ -32,7 +32,7 @@ function New-AgentActorConfig {
     }
     $raw = Get-Content -LiteralPath $TemplatePath -Raw
     $rendered = Expand-DemoTokens -Text $raw -Tokens $Tokens
-    $unresolved = Get-DemoUnresolvedTokens -Text $rendered
+    $unresolved = @(Get-DemoUnresolvedTokens -Text $rendered)
     if ($unresolved.Count -gt 0) {
         throw "Agent config still has unresolved tokens: $($unresolved -join ', ')"
     }
