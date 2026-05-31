@@ -41,8 +41,8 @@ function Get-DemoUnresolvedTokens {
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$Text
     )
-    $matches = [regex]::Matches($Text, '{{\s*[A-Za-z0-9_]+\s*}}')
-    return @($matches | ForEach-Object { $_.Value } | Select-Object -Unique)
+    $found = [regex]::Matches($Text, '{{\s*[A-Za-z0-9_]+\s*}}')
+    return @($found | ForEach-Object { $_.Value } | Select-Object -Unique)
 }
 
 <#
