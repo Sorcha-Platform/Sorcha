@@ -151,37 +151,25 @@ public sealed class InstanceProjector : BackgroundService
         if (tx?.MetaData is null)
             return;
 
-        var blueprintId = tx.MetaData.BlueprintId;
-        var instanceId = tx.MetaData.InstanceId;
-        if (string.IsNullOrEmpty(blueprintId) || string.IsNullOrEmpty(instanceId) || tx.MetaData.ActionId is null)
+        // Single shared resolution (also used by InstanceRebuildService → guarantees rebuild parity).
+        var resolved = await InstanceProjectionResolver.ResolveAsync(tx, actionResolver, _logger, ct);
+        if (resolved is null)
         {
             // Not an instance-scoped action (genesis, governance, credential-issuance record, etc.).
             _metrics.RecordSkippedNotInstanceScoped();
             return;
         }
 
-        var completedActionId = (int)tx.MetaData.ActionId.Value;
-        var decision = ResolveRoutingDecision(tx.MetaData);
-        var nextActionIds = decision is not null
-            ? decision.NextActions.Select(a => a.ActionId).ToList()
-            : tx.MetaData.NextActionId.HasValue ? [(int)tx.MetaData.NextActionId.Value] : [];
-
-        var bindings = await ResolveParticipantBindingsAsync(
-            blueprintId, completedActionId, nextActionIds, tx, actionResolver, ct);
-
-        var projected = new ProjectedTransaction(
-            TxId: tx.TxId,
-            PreviousTransactionId: string.IsNullOrEmpty(tx.PrevTxId) ? null : tx.PrevTxId,
-            CompletedActionId: completedActionId,
-            NextActionIds: nextActionIds,
-            ParticipantBindings: bindings);
+        var blueprintId = resolved.BlueprintId;
+        var instanceId = resolved.InstanceId;
+        var projected = resolved.Tx;
 
         var existing = await instanceStore.GetAsync(instanceId, ct);
         if (existing is null)
         {
             var created = InstanceProjection.Project(
                 instanceId, registerId, blueprintId, blueprintVersion: 1,
-                ResolveTenantId(tx), [projected]);
+                resolved.TenantId, [projected]);
             if (created is null)
                 return;
             await instanceStore.CreateAsync(created, ct);
@@ -207,84 +195,4 @@ public sealed class InstanceProjector : BackgroundService
             instanceId, tx.TxId, string.Join(",", existing.CurrentActionIds), existing.State);
         await reactionDispatcher.DispatchAsync(existing, tx.TxId, ct);
     }
-
-    /// <summary>
-    /// Reads the carried <see cref="RoutingDecision"/> — preferring the typed
-    /// <see cref="TransactionMetaData.RoutingDecision"/> field, falling back to the canonical
-    /// JSON the producer wrote into the clear tracking metadata (key <c>routingDecision</c>),
-    /// which rides to the sealed docket via the validator's TrackingData copy. Returns null when
-    /// neither is present (legacy transactions predating Feature 145).
-    /// </summary>
-    private RoutingDecision? ResolveRoutingDecision(TransactionMetaData metadata)
-    {
-        if (metadata.RoutingDecision is not null)
-            return metadata.RoutingDecision;
-
-        if (metadata.TrackingData is not null
-            && metadata.TrackingData.TryGetValue("routingDecision", out var json)
-            && !string.IsNullOrEmpty(json))
-        {
-            try
-            {
-                return JsonSerializer.Deserialize<RoutingDecision>(
-                    json, Sorcha.Register.Models.RegisterSerializationOptions.Canonical);
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "InstanceProjector: could not deserialize carried routingDecision metadata");
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Resolves participant-id → wallet bindings this transaction contributes, keyed by the
-    /// blueprint participant id (never self-keyed by wallet address). Binds the completed action's
-    /// sender to the tx sender, and the next action's sender to the recipient (the next actor),
-    /// so bindings accumulate across the chain. Best-effort — on any resolution failure the
-    /// transaction still folds control state with whatever bindings resolved.
-    /// </summary>
-    private async Task<IReadOnlyDictionary<string, string>> ResolveParticipantBindingsAsync(
-        string blueprintId,
-        int completedActionId,
-        IReadOnlyList<int> nextActionIds,
-        Sorcha.Register.Models.TransactionModel tx,
-        IActionResolverService actionResolver,
-        CancellationToken ct)
-    {
-        var bindings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        try
-        {
-            var bp = await actionResolver.GetBlueprintAsync(blueprintId, ct);
-            if (bp is null)
-                return bindings;
-
-            var completedAction = actionResolver.GetActionDefinition(bp, completedActionId.ToString());
-            if (completedAction is { Sender.Length: > 0 } && !string.IsNullOrEmpty(tx.SenderWallet))
-                bindings[completedAction.Sender] = tx.SenderWallet;
-
-            var recipientWallet = tx.RecipientsWallets?.FirstOrDefault(
-                w => !string.IsNullOrEmpty(w) && !string.Equals(w, tx.SenderWallet, StringComparison.OrdinalIgnoreCase));
-            if (recipientWallet is not null)
-            {
-                foreach (var nextId in nextActionIds)
-                {
-                    var nextAction = actionResolver.GetActionDefinition(bp, nextId.ToString());
-                    if (nextAction is { Sender.Length: > 0 })
-                        bindings[nextAction.Sender] = recipientWallet;
-                }
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogDebug(ex,
-                "InstanceProjector: participant-binding resolution failed for blueprint {BlueprintId}", blueprintId);
-        }
-
-        return bindings;
-    }
-
-    private static string ResolveTenantId(Sorcha.Register.Models.TransactionModel tx)
-        => tx.MetaData?.TrackingData?.GetValueOrDefault("tenantId") ?? string.Empty;
 }

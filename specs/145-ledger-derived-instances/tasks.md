@@ -116,12 +116,12 @@
 
 ### Tests for US4
 
-- [ ] T031 [P] [US4] Rebuild-parity test (`RebuildAsync == materialized`; corrupt view → restored) in `tests/Sorcha.Blueprint.Service.Tests/Projection/`
+- [X] T031 [P] [US4] Rebuild-parity test in `tests/Sorcha.Blueprint.Service.Tests/Projection/InstanceRebuildServiceTests.cs` (5 tests): rebuild produces expected control state, no-txs → null, materialized==rebuild → InSync, corrupt view → divergence reported, rebuild-and-persist restores a corrupt view.
 
 ### Implementation for US4
 
-- [ ] T032 [US4] Implement `RebuildAsync(instanceId)` by generalising `StateReconstructionService` to fold control state (not just data) from the instance's sealed txs
-- [ ] T033 [US4] Periodic/CI parity self-check + an operator-triggered rebuild operation (internal, not a public mutation)
+- [X] T032 [US4] `InstanceRebuildService.RebuildAsync(registerId, instanceId)` replays the instance's sealed txs (`GetTransactionsByInstanceIdAsync`) through the pure `InstanceProjection.Project` fold. Rather than generalising `StateReconstructionService` (which decrypts *data* state), rebuild reuses the **new shared `InstanceProjectionResolver`** — the single tx→`ProjectedTransaction` resolution now used by BOTH the online `InstanceProjector` and the rebuild, so a rebuild is bit-for-bit identical to the materialized view by construction (the projector's private resolution helpers were extracted into it). Control state needs only the carried `RoutingDecision`, no decryption (FR-010).
+- [X] T033 [US4] `CheckParityAsync` (fresh rebuild vs materialized, field-level divergence detail) + `RebuildAndPersistAsync` (operator repair). Internal endpoints `GET /api/internal/instances/{registerId}/{instanceId}/parity` + `POST .../rebuild` (`RequireService` — not a public mutation). The T031 parity test is the CI self-check; a standing periodic sweep across all instances is left as a lightweight follow-up (the per-instance primitive + endpoint are in place).
 
 **Checkpoint**: recovery + integrity invariant (SC-003).
 
