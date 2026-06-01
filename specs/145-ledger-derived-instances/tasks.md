@@ -152,7 +152,8 @@
 
 ### Implementation for US6
 
-- [ ] T037 [US6] `PresentationOutcome`/`PresentationAbandoned` carry a `RoutingDecision`; the projector advances on their seal (F111/F119 path)
+- [~] **US6 Increment 1 (DONE, unit-tested)** — `InstanceProjectionResolver` now skips a presentation-lifecycle tx (`TransactionType.IsPresentationLifecycle()` = Initiated/Outcome/Abandoned) that carries no `RoutingDecision`, so the gated action stays current until a successful outcome routes it onward. Also a **latent-bug fix**: today the projector folds these (numeric ActionId is stamped on the sealed tx), retiring a still-current non-terminal presentation action → premature completion + imperative early-exit. 5 resolver tests; suite 851/0. Full 2–3 design (the atomic, live-gated success-advances-via-projector cutover) in `US6-IMPLEMENTATION-PLAN.md`.
+- [ ] T037 [US6] `PresentationOutcome`(success) carries a `RoutingDecision`; the projector advances on its seal (F111/F119 path). **Increment 2** — see `US6-IMPLEMENTATION-PLAN.md`. (Decline/abandoned/Initiated carry no decision and are skipped per Increment 1.)
 - [ ] T038 [US6] Subsume the F119 `IPresentationSealCoordinator` ordering where the seal-ordered projection now guarantees it; retain the `VAL_BP_003` carve-out + remaining F119 idempotency sentinels
 - [ ] T039 [US6] Migrate presentation consumers off the bespoke advancement path onto the projection
 
