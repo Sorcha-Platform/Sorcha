@@ -72,14 +72,14 @@
 
 ### Tests for US3
 
-- [ ] T021 [P] [US3] `VAL_ROUTING_001/002` tests (forged sig rejected; non-successor rejected; valid passes; parallel branches preserved) in `tests/Sorcha.Validator.Service.Tests/`
-- [ ] T022 [P] [US3] Governance enforcement test (register `routingAttestation` requiring `validator-reeval`/`proof` → refused in v1) in `tests/Sorcha.Validator.Service.Tests/`
+- [X] T021 [P] [US3] `VAL_ROUTING_001/002` tests in `tests/Sorcha.Validator.Service.Tests/Services/ValidationEngineRoutingTests.cs` — 10 tests pass: valid successor passes, parallel branches both preserved, non-successor rejected (`VAL_ROUTING_001`), terminal empty-set passes, completed-action mismatch rejected, forged sig rejected (`VAL_ROUTING_002`), reserved attestation kind rejected, no-decision-carried passes.
+- [X] T022 [P] [US3] Governance enforcement test (register `routingAttestation` requiring `validator-reeval` → refused in v1, `VAL_ROUTING_002`) — `ValidateRoutingDecision_GovernanceRequiresStrongerStrength_RefusedInV1` in the same file.
 
 ### Implementation for US3
 
-- [ ] T023 [US3] Implement `VAL_ROUTING_001` (structural successor vs published route graph) + `VAL_ROUTING_002` (attestation verify + required strength) in `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`
-- [ ] T024 [US3] Carry the validated `RoutingDecision` through the seal in `DocketBuildTriggerService.cs` (replace `ResolveNextActionId`); remove the singular `NextActionId` persistence
-- [ ] T025 [US3] Add `routingAttestation` to the register control record + read/derive it in `src/Core/Sorcha.Register.Core/Governance/` (sibling of crypto policy); validator enforces strength (v1 `sender-signed`; reserved values rejected)
+- [X] T023 [US3] `ValidateRoutingDecisionAsync` in `ValidationEngine.cs`: `VAL_ROUTING_001` (every `nextActions[i]` a structural successor of the completed action in the published route graph — `Routes.NextActionIds` ∪ `RejectionConfig.TargetActionId`; terminal `[]` valid; completed-action consistency) + `VAL_ROUTING_002` (governance strength gate, attestation-kind gate, sender-signature verify over `SHA256(ComputeSignableBytes())` against the tx signer via `ICryptoModule.VerifyAsync`). Wired into the main flow (step 4b-iii) behind `EnableRoutingValidation` (default on); skips genesis/control/participant/rejection/intra-action-lifecycle txs and txs carrying no decision.
+- [X] T024 [US3] `DocketBuildTriggerService.cs` carries the validated `RoutingDecision` onto the typed sealed `TransactionMetaData.RoutingDecision` (`ResolveRoutingDecision` replaces `ResolveNextActionId`); the singular `NextActionId` seal-write is removed. `InboundTransactionRouter` now derives its wallet-notification hint from `RoutingDecision.NextActions[0]`. Producer-side `nextActionId` string + projector legacy fallback remain until the US5 sweep.
+- [X] T025 [US3] `routingAttestation` (typed `AttestationKind?`) added to `RegisterControlRecord` as a sibling of `CryptoPolicy`; the validator reads it via `IGovernanceRosterService.GetCurrentRosterAsync().ControlRecord.RoutingAttestation` (optional ctor dep, defaults `SenderSigned`) and enforces strength (v1 `sender-signed`; `validator-reeval`/`proof` reserved values rejected).
 
 **Checkpoint**: routing decisions are trustworthy, governed, branch-complete (SC-005, SC-007).
 

@@ -522,16 +522,33 @@ public class DocketBuildTriggerService : BackgroundService
     }
 
     /// <summary>
-    /// Feature 137 (C5): resolves the next-action id carried in a transaction's submission
-    /// metadata (key <c>nextActionId</c>) for projection onto <see cref="TransactionMetaData.NextActionId"/>.
-    /// Returns null when absent or unparseable. The cross-node InstanceMirrorReconstructor reads the
-    /// projected value to seed a mirror's CurrentActionIds. Extracted as an internal static so the
-    /// parse/key contract can be unit-tested without the full docket-write flow.
+    /// Feature 145 (T024): resolves the routing decision carried in a transaction's submission
+    /// metadata (canonical JSON under key <c>routingDecision</c>) for projection onto the typed
+    /// <see cref="Sorcha.Register.Models.TransactionMetaData.RoutingDecision"/>. The validator has
+    /// already validated the decision (VAL_ROUTING_*) before this transaction reaches the seal, so
+    /// the docket builder simply carries the validated fact through onto the sealed metadata, where
+    /// every node's InstanceProjector folds it. Returns null when absent or unparseable. Extracted as
+    /// an internal static so the parse/key contract can be unit-tested without the full docket-write
+    /// flow.
     /// </summary>
-    internal static uint? ResolveNextActionId(IReadOnlyDictionary<string, string> metadata)
-        => metadata.TryGetValue("nextActionId", out var raw) && uint.TryParse(raw, out var value)
-            ? value
-            : null;
+    internal static Sorcha.Register.Models.RoutingDecision? ResolveRoutingDecision(
+        IReadOnlyDictionary<string, string> metadata)
+    {
+        if (!metadata.TryGetValue("routingDecision", out var json) || string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<Sorcha.Register.Models.RoutingDecision>(
+                json, Sorcha.Register.Models.RegisterSerializationOptions.Canonical);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// Writes docket and transactions to Register Service after successful build
@@ -633,13 +650,14 @@ public class DocketBuildTriggerService : BackgroundService
                                          && !string.IsNullOrWhiteSpace(iid)
                                 ? iid
                                 : null,
-                            // Feature 137 (C5): carry the Blueprint Service's resolved next
-                            // action through to the sealed tx so a cross-node InstanceMirror-
-                            // Reconstructor can seed CurrentActionIds without re-running routing.
-                            // The Blueprint Service evaluates conditional routes against the
-                            // payload (the validator only knows the static route graph), so the
-                            // authoritative next action must originate from the submission.
-                            NextActionId = ResolveNextActionId(t.Metadata),
+                            // Feature 145 (T024): carry the VALIDATED routing decision through the
+                            // seal as the typed field. The validator (VAL_ROUTING_*) has already
+                            // confirmed the carried decision is a structural successor set and that
+                            // its attestation verifies, so every node folds RoutingDecision.nextActions
+                            // (full set → parallel branches preserved) without re-running routing or
+                            // decrypting the payload. Supersedes the singular NextActionId hint, which
+                            // is no longer persisted onto the sealed metadata.
+                            RoutingDecision = ResolveRoutingDecision(t.Metadata),
                             // Carry the submission metadata through to the persisted tx. This is the
                             // authoritative write path, so omitting it left TrackingData null on EVERY
                             // sealed transaction — dropping the F138 US4 blueprint `contentHash`

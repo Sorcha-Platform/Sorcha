@@ -55,7 +55,14 @@ public class InboundTransactionRouterTests
             BlueprintId = blueprintId,
             InstanceId = instanceId,
             ActionId = actionId,
-            NextActionId = nextActionId
+            // Feature 145: the wallet-notification next-action hint now derives from the validated
+            // RoutingDecision's first next action; the singular NextActionId field is retired.
+            RoutingDecision = new RoutingDecision
+            {
+                CompletedActionId = (int)actionId,
+                NextActions = [new ActionRef { ActionId = (int)nextActionId }],
+                Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
+            },
         };
     }
 
