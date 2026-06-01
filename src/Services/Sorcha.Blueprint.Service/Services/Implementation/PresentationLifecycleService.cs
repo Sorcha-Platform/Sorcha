@@ -63,7 +63,6 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly IClock _clock;
     private readonly IServiceProvider? _serviceProvider;
     private readonly Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? _orgDidClient;
-    private readonly IPresentationRoutingDecisionBuilder? _routingDecisionBuilder;
     private readonly ILogger<PresentationLifecycleService> _logger;
 
     /// <summary>Constructor — DI-friendly.</summary>
@@ -84,8 +83,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IClaimsFetchTokenStore? claimsFetchTokenStore = null,
         IDisclosedClaimsStore? disclosedClaimsStore = null,
         IHubContext<BlueprintHub, IBlueprintHubClient>? hubContext = null,
-        Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? orgDidClient = null,
-        IPresentationRoutingDecisionBuilder? routingDecisionBuilder = null)
+        Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? orgDidClient = null)
     {
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
@@ -104,7 +102,6 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _disclosedClaimsStore = disclosedClaimsStore;
         _hubContext = hubContext;
         _orgDidClient = orgDidClient;
-        _routingDecisionBuilder = routingDecisionBuilder;
     }
 
     public async Task<PresentationInitiationResult> InitiateAsync(
@@ -510,9 +507,18 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         // decision rides through ToTransactionSubmission's whitelist (key "routingDecision") to the
         // validator (VAL_ROUTING_*) and the sealed docket. Attaching metadata here does NOT change
         // the txId/signature (those are over TransactionData/SigningData, not Metadata).
-        if (outcome.Kind == PresentationOutcomeKind.Success && _routingDecisionBuilder is not null)
+        // The routing-decision builder IS ActionExecutionService (it implements IPresentationRoutingDecisionBuilder,
+        // registered via a forwarding factory). Resolve it LAZILY here instead of via the constructor: a ctor-time
+        // dependency forms a circular scoped DI graph — ActionExecutionService → IPresentationLifecycleService →
+        // IPresentationRoutingDecisionBuilder → (factory) ActionExecutionService — which MEDI cannot detect through
+        // the factory lambda and which DEADLOCKS when the /execute endpoint resolves ActionExecutionService (the
+        // F145 504-hang root cause). By the time this method runs, this PresentationLifecycleService is already
+        // cached in the request scope, so resolving ActionExecutionService here returns without re-entering its
+        // construction — no cycle.
+        var routingDecisionBuilder = _serviceProvider?.GetService<IPresentationRoutingDecisionBuilder>();
+        if (outcome.Kind == PresentationOutcomeKind.Success && routingDecisionBuilder is not null)
         {
-            var routingDecision = await _routingDecisionBuilder.BuildForPresentationOutcomeAsync(
+            var routingDecision = await routingDecisionBuilder.BuildForPresentationOutcomeAsync(
                 pending.InstanceId.ToString(), pending.ActionId, draftPayload,
                 pending.SubmitterWallet, cancellationToken);
             if (routingDecision is not null)
