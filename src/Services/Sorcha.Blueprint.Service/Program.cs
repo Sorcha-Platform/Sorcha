@@ -452,6 +452,18 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransac
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.InstanceProjectorMetrics>();
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.InstanceProjector>();
 
+// Feature 145 US2 — ReactionDispatcher: owns the workflow's at-least-once, role-gated side effects
+// (notification + durable inbox writes), keeping the projector pure. The projector invokes it
+// in-process after folding an instance; the dispatcher entitlement-gates each reaction (only the
+// node hosting the target wallet fires it) and idempotency-claims it on (sealedTxId, kind, wallet)
+// via IAtomicDistributedCache SET-NX. Credential mint stays inline on the submit path by design.
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.ReactionDispatcherMetrics>();
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Implementation.IReactionDispatcher,
+    Sorcha.Blueprint.Service.Services.Implementation.ReactionDispatcher>();
+// IAtomicDistributedCache backs the reaction idempotency claim (SET-NX on (sealedTxId, kind, wallet)).
+Sorcha.AtomicCache.Extensions.AtomicCacheServiceExtensions.AddAtomicDistributedCache(
+    builder.Services, builder.Configuration, "Blueprint");
+
 // Orphan chunk cleanup — removes file metadata records with no confirmed parent transaction
 builder.Services.Configure<Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions>(
     builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions.SectionName));

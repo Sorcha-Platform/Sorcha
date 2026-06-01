@@ -91,18 +91,20 @@
 
 **Independent Test**: Issue a credential; replay the sealed tx + restart the dispatcher → exactly one credential; non-entitled nodes do nothing.
 
+> **⚠️ SCOPE DECISION (Stuart, 2026-06-01): credential mint STAYS INLINE; reactions are notifications/inbox ONLY.** The credential is minted during submit and sealed into the recipient-addressed encrypted disclosure group inside the action tx — it already lives on the immutable, disclosure-controlled, replicated ledger (the DAD model) and is already exactly-once. Moving the mint post-seal would either reopen the "who signs the re-seal" question or deliver out-of-band (losing the ledger-carried security model), and the inline path can't be cross-node live-validated from the dev box. **T028 is DROPPED by design.**
+
 ### Tests for US2
 
-- [ ] T026 [P] [US2] Reaction idempotency + entitlement test (replay/restart → one credential; non-entitled no-op; one notification) in `tests/Sorcha.Blueprint.Service.Tests/Reactions/`
+- [X] T026 [P] [US2] Reaction idempotency + entitlement test in `tests/Sorcha.Blueprint.Service.Tests/Reactions/ReactionDispatcherTests.cs` (8 tests): entitled-first-time fires once; not-entitled no-op; replay same sealedTx fires once; different sealedTx fires again; ambiguous-assignee no-op; workflow-completed notifies entitled participants once; workflow-completed replay once; workflow-completed not-entitled no-op. Plus AtomicCache contract tests for the SET-NX primitive (3, run across impls).
 
 ### Implementation for US2
 
-- [ ] T027 [US2] Implement `ReactionDispatcher.cs` (`BackgroundService`, subscribe `docket:confirmed`, entitlement via `IWalletServiceClient.GetWalletAsync` wallet-host probe, idempotent via `Sorcha.AtomicCache` SET-NX on `(sealedTxId, reactionKind)`) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/`
-- [ ] T028 [US2] Move credential mint out of `ActionExecutionService` inline path into a `CredentialMint` reaction (reuse holder-key-bound, encrypt-to-recipient issuance)
-- [ ] T029 [US2] `CredentialDeliver`/inbound-detect + `Notification`/`InboxWrite` reactions keyed on the same idempotency contract (contracts/reactions.md)
-- [ ] T030 [US2] Wire reaction OTel instruments (`reaction_dispatched_total`, `reaction_idempotent_skip_total`, `reaction_entitlement_skip_total`)
+- [X] T027 [US2] `ReactionDispatcher.cs` (+ `IReactionDispatcher`) — owns notification + durable-inbox side effects, entitlement-gated via `IWalletServiceClient.GetWalletAsync` (null ⇒ wallet not hosted here ⇒ another node reacts), idempotent via `IAtomicDistributedCache.TrySetIfAbsentAsync` (new SET-NX primitive added to the audited cache) on `react:{sealedTxId}:{kind}:{wallet}`. **Invoked in-process by the projector post-fold** (not a separate `BackgroundService`) so it has the freshly-folded instance and there's no projector/reaction race — a deliberate simplification of the spec's BackgroundService shape. The projector's `NotifyAdvancedAsync` is removed → the projector is now pure (state only).
+- [~] T028 [US2] **DROPPED by design** — credential mint stays inline (see scope decision above). `ActionExecutionService` credential issuance untouched.
+- [X] T029 [US2] `action-available` + `workflow-completed` notification/inbox reactions on the idempotency contract (each fires the existing `INotificationService`, which already does SignalR + durable inbox). `CredentialDeliver`/inbound-detect is N/A — credential delivery rides the existing on-ledger disclosure-group replication, not a reaction.
+- [X] T030 [US2] Reaction OTel instruments (`reaction_dispatched_total`, `reaction_idempotent_skip_total`, `reaction_entitlement_skip_total`, tagged by `kind`) on the `Sorcha.Blueprint.Reactions` meter.
 
-**Checkpoint**: no double-issue across nodes/replay/restart (SC-004).
+**Checkpoint**: workflow notifications/inbox fire exactly once on the entitled node across nodes/replay/restart; credential issuance unchanged (stays inline + on-ledger). **Cross-node live re-test still recommended** (lower risk now mint is untouched — only notification routing changed).
 
 ---
 

@@ -32,6 +32,17 @@ public interface IAtomicDistributedCache
     Task SetAsync(string key, string value, TimeSpan ttl, CancellationToken ct);
 
     /// <summary>
+    /// Atomically writes <paramref name="value"/> at <paramref name="key"/> with the
+    /// given TTL <b>only if the key does not already exist</b> (SET NX). Returns true if
+    /// this call created the key (the caller "claimed" it), false if a value was already
+    /// present. Single round-trip — the canonical claim-once / exactly-once primitive used
+    /// to gate at-least-once side effects (e.g. Feature 145 reactions keyed on
+    /// <c>(sealedTxId, reactionKind)</c>). Implemented as Redis <c>SET NX PX</c>; as a
+    /// guarded insert in memory.
+    /// </summary>
+    Task<bool> TrySetIfAbsentAsync(string key, string value, TimeSpan ttl, CancellationToken ct);
+
+    /// <summary>
     /// Deletes <paramref name="key"/>. Idempotent — returns true if the
     /// key existed and was deleted, false if it was absent.
     /// </summary>
