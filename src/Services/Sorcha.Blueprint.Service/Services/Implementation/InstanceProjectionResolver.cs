@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -43,6 +44,20 @@ public static class InstanceProjectionResolver
 
         var completedActionId = (int)tx.MetaData.ActionId.Value;
         var decision = ResolveRoutingDecision(tx.MetaData, logger);
+
+        // Feature 145 US6: a presentation-lifecycle tx (PresentationInitiated / PresentationOutcome /
+        // PresentationAbandoned) advances the instance ONLY when it carries a signed RoutingDecision —
+        // i.e. a successful outcome that routes onward. All three chain off (and carry the ActionId of)
+        // the same presentation-gated action, which became current via the PREVIOUS action's routing
+        // fold; folding one with an empty next-action set would wrongly retire that still-current
+        // action (premature completion) and then make the imperative advance early-exit. So skip a
+        // presentation-lifecycle tx that carries no decision — the action stays current until a
+        // successful outcome routes it onward. Genuine action terminals are unaffected: the producer
+        // always writes a RoutingDecision (with an empty NextActions set) for them, so they are not
+        // presentation-lifecycle txs and fold to completion correctly.
+        if (decision is null && tx.MetaData.TransactionType.IsPresentationLifecycle())
+            return null;
+
         // Feature 145: the carried RoutingDecision is the sole routing source — the legacy singular
         // NextActionId hint is fully removed. A tx with no decision contributes a terminal (empty)
         // next-action set (genuine terminals + legacy pre-145 txs that never carried one).
