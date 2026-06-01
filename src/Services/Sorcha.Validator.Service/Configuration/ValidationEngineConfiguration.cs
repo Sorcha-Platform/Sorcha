@@ -125,4 +125,14 @@ public class ValidationEngineConfiguration
     /// locally available without additional network round-trips.
     /// </remarks>
     public bool EnableFileReferenceValidation { get; set; } = true;
+
+    /// <summary>
+    /// Enable routing-decision validation (Feature 145, <c>VAL_ROUTING_001/002</c>).
+    /// When enabled, an action transaction that carries a <c>routingDecision</c> is checked:
+    /// every next action must be a structural successor of the completed action in the
+    /// published route graph, and the carried attestation must verify and satisfy the
+    /// register's <c>routingAttestation</c> governance policy. Transactions that do not
+    /// carry a decision are unaffected.
+    /// </summary>
+    public bool EnableRoutingValidation { get; set; } = true;
 }

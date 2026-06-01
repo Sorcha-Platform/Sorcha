@@ -39,6 +39,7 @@ public class ValidationEngine : IValidationEngine
     private readonly IChainTransactionCache? _chainTxCache;
     private readonly IRightsEnforcementService _rightsEnforcementService;
     private readonly IWalletSequenceRepository? _walletSequenceRepository;
+    private readonly Sorcha.Register.Core.Services.IGovernanceRosterService? _governanceRosterService;
     private readonly ILogger<ValidationEngine> _logger;
 
     // Statistics
@@ -61,7 +62,8 @@ public class ValidationEngine : IValidationEngine
         ILogger<ValidationEngine> logger,
         IBlueprintFetcher? blueprintFetcher = null,
         IWalletSequenceRepository? walletSequenceRepository = null,
-        IChainTransactionCache? chainTxCache = null)
+        IChainTransactionCache? chainTxCache = null,
+        Sorcha.Register.Core.Services.IGovernanceRosterService? governanceRosterService = null)
     {
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _blueprintCache = blueprintCache ?? throw new ArgumentNullException(nameof(blueprintCache));
@@ -73,6 +75,7 @@ public class ValidationEngine : IValidationEngine
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
         _chainTxCache = chainTxCache;
         _rightsEnforcementService = rightsEnforcementService ?? throw new ArgumentNullException(nameof(rightsEnforcementService));
+        _governanceRosterService = governanceRosterService;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         if (_blueprintFetcher != null)
@@ -150,6 +153,20 @@ public class ValidationEngine : IValidationEngine
                 if (!fileRefResult.IsValid)
                 {
                     errors.AddRange(fileRefResult.Errors);
+                }
+            }
+
+            // 4b-iii. Validate the carried routing decision (Feature 145, VAL_ROUTING_*).
+            //         Makes the next-action set a trusted, governed ledger fact: the validator
+            //         confirms every next action is a structural successor of the completed action
+            //         and that the attestation verifies + satisfies the register's routingAttestation
+            //         policy. Transactions that carry no decision are unaffected.
+            if (_config.EnableRoutingValidation)
+            {
+                var routingResult = await ValidateRoutingDecisionAsync(transaction, ct);
+                if (!routingResult.IsValid)
+                {
+                    errors.AddRange(routingResult.Errors);
                 }
             }
 
@@ -792,6 +809,231 @@ public class ValidationEngine : IValidationEngine
             transaction.TransactionId,
             transaction.RegisterId,
             sw.Elapsed);
+    }
+
+    /// <summary>
+    /// Validates the routing decision carried on an action transaction (Feature 145).
+    /// <para>
+    /// <b>VAL_ROUTING_001</b> — every <c>nextActions[i]</c> must be a structural successor of the
+    /// completed action in the published route graph (the same graph VAL_BP_003 enforces backward).
+    /// An empty next-action set (a terminating branch) is always structurally valid.
+    /// </para>
+    /// <para>
+    /// <b>VAL_ROUTING_002</b> — the carried attestation must verify and satisfy the register's
+    /// <c>routingAttestation</c> governance policy. v1 supports only
+    /// <see cref="Sorcha.Register.Models.AttestationKind.SenderSigned"/>: the sender wallet signature
+    /// over the canonical, attestation-free decision is verified against the transaction signer.
+    /// A register that governs itself up to a stronger strength — or a decision carrying a reserved
+    /// attestation kind — is refused until v2/v3 land.
+    /// </para>
+    /// Transactions that carry no decision are unaffected (the producer writes one for every action;
+    /// genesis/control/participant/rejection and intra-action lifecycle txns are skipped).
+    /// </summary>
+    public async Task<ValidationEngineResult> ValidateRoutingDecisionAsync(
+        Transaction transaction,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+
+        using var _section = RuleTelemetry.TimeSection("RoutingDecision");
+        var sw = Stopwatch.StartNew();
+        var errors = new List<ValidationEngineError>();
+
+        ValidationEngineResult Ok() => ValidationEngineResult.Success(
+            transaction.TransactionId, transaction.RegisterId, sw.Elapsed);
+
+        // Routing decisions ride on forward-routing action transactions only.
+        if (TransactionTypeClassifier.IsGenesisOrControlTransaction(transaction)
+            || TransactionTypeClassifier.IsParticipantTransaction(transaction)
+            || TransactionTypeClassifier.IsRejectionTransaction(transaction)
+            || TransactionTypeClassifier.IsIntraActionLifecycleTerminal(transaction))
+        {
+            return Ok();
+        }
+
+        // No carried decision → nothing to validate (legacy / pre-Feature-145 transactions).
+        if (transaction.Metadata is null
+            || !transaction.Metadata.TryGetValue("routingDecision", out var decisionJson)
+            || string.IsNullOrWhiteSpace(decisionJson))
+        {
+            return Ok();
+        }
+
+        Sorcha.Register.Models.RoutingDecision? decision;
+        try
+        {
+            decision = JsonSerializer.Deserialize<Sorcha.Register.Models.RoutingDecision>(
+                decisionJson, Sorcha.Register.Models.RegisterSerializationOptions.Canonical);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Routing decision on transaction {TransactionId} is malformed JSON",
+                transaction.TransactionId);
+            errors.Add(CreateError("VAL_ROUTING_002",
+                "Routing decision is malformed and cannot be validated",
+                ValidationErrorCategory.Blueprint, "routingDecision", isFatal: true));
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        if (decision is null)
+        {
+            errors.Add(CreateError("VAL_ROUTING_002",
+                "Routing decision deserialized to null",
+                ValidationErrorCategory.Blueprint, "routingDecision", isFatal: true));
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        // ---- VAL_ROUTING_001: structural successor check against the published route graph ----
+        var blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, ct);
+        if (blueprint is null)
+        {
+            // Schema/conformance validation already flags a missing blueprint; surface a routing
+            // error too so the decision is never trusted without its route graph.
+            errors.Add(CreateError("VAL_ROUTING_001",
+                $"Cannot verify routing decision: blueprint '{transaction.BlueprintId}' not found",
+                ValidationErrorCategory.Blueprint, "routingDecision"));
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        if (int.TryParse(transaction.ActionId, out var txActionId)
+            && decision.CompletedActionId != txActionId)
+        {
+            errors.Add(CreateError("VAL_ROUTING_001",
+                $"Routing decision completedActionId {decision.CompletedActionId} does not match the transaction's action {txActionId}",
+                ValidationErrorCategory.Blueprint, "routingDecision.completedActionId"));
+        }
+
+        var completedAction = blueprint.Actions.FirstOrDefault(a => a.Id == decision.CompletedActionId);
+        if (completedAction is null)
+        {
+            errors.Add(CreateError("VAL_ROUTING_001",
+                $"Routing decision references completed action {decision.CompletedActionId} which is not in blueprint '{transaction.BlueprintId}'",
+                ValidationErrorCategory.Blueprint, "routingDecision.completedActionId"));
+        }
+        else
+        {
+            var structuralSuccessors = (completedAction.Routes ?? [])
+                .SelectMany(r => r.NextActionIds)
+                .ToHashSet();
+            if (completedAction.RejectionConfig is not null)
+            {
+                structuralSuccessors.Add(completedAction.RejectionConfig.TargetActionId);
+            }
+
+            foreach (var next in decision.NextActions)
+            {
+                if (!structuralSuccessors.Contains(next.ActionId))
+                {
+                    errors.Add(CreateError("VAL_ROUTING_001",
+                        $"Routing decision next action {next.ActionId} is not a structural successor of action {decision.CompletedActionId} in the published route graph",
+                        ValidationErrorCategory.Blueprint, "routingDecision.nextActions"));
+                }
+            }
+        }
+
+        // ---- VAL_ROUTING_002: governance strength + attestation verification ----
+        var requiredStrength = await ResolveRequiredRoutingAttestationAsync(transaction.RegisterId, ct);
+        if (requiredStrength != Sorcha.Register.Models.AttestationKind.SenderSigned)
+        {
+            errors.Add(CreateError("VAL_ROUTING_002",
+                $"Register '{transaction.RegisterId}' requires routing attestation strength '{requiredStrength}', which is not supported in this version",
+                ValidationErrorCategory.Blueprint, "routingAttestation"));
+            // No point verifying a v1 signature against a policy we cannot satisfy.
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        var attestation = decision.Attestation;
+        if (attestation is null)
+        {
+            errors.Add(CreateError("VAL_ROUTING_002",
+                "Routing decision carries no attestation",
+                ValidationErrorCategory.Cryptographic, "routingDecision.attestation"));
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        if (attestation.Kind != Sorcha.Register.Models.AttestationKind.SenderSigned)
+        {
+            errors.Add(CreateError("VAL_ROUTING_002",
+                $"Routing attestation kind '{attestation.Kind}' is not supported in this version (only SenderSigned)",
+                ValidationErrorCategory.Cryptographic, "routingDecision.attestation.kind"));
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        if (string.IsNullOrEmpty(attestation.Signature))
+        {
+            errors.Add(CreateError("VAL_ROUTING_002",
+                "Routing attestation has no signature",
+                ValidationErrorCategory.Cryptographic, "routingDecision.attestation.signature"));
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        var signer = transaction.Signatures.FirstOrDefault();
+        if (signer is null || !AlgorithmMapper.TryParseAlgorithm(signer.Algorithm, out var network))
+        {
+            errors.Add(CreateError("VAL_ROUTING_002",
+                "Cannot verify routing attestation: transaction has no usable signer",
+                ValidationErrorCategory.Cryptographic, "routingDecision.attestation"));
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        try
+        {
+            // The producer signs the canonical, attestation-free decision with isPreHashed:false,
+            // i.e. over SHA-256 of the signable bytes — mirror that exactly for verification.
+            var signableHash = _hashProvider.ComputeHash(decision.ComputeSignableBytes(), HashType.SHA256);
+            var signatureBytes = Convert.FromBase64String(attestation.Signature);
+            var verifyResult = await _cryptoModule.VerifyAsync(
+                signatureBytes, signableHash, (byte)network, signer.PublicKey, ct);
+
+            if (verifyResult != CryptoStatus.Success)
+            {
+                errors.Add(CreateError("VAL_ROUTING_002",
+                    "Routing attestation signature is invalid",
+                    ValidationErrorCategory.Cryptographic, "routingDecision.attestation.signature"));
+            }
+        }
+        catch (Exception ex) when (ex is FormatException or JsonException)
+        {
+            errors.Add(CreateError("VAL_ROUTING_002",
+                $"Routing attestation could not be verified: {ex.Message}",
+                ValidationErrorCategory.Cryptographic, "routingDecision.attestation.signature"));
+        }
+
+        if (errors.Count > 0)
+        {
+            return CreateFailureResult(transaction, sw.Elapsed, errors);
+        }
+
+        return Ok();
+    }
+
+    /// <summary>
+    /// Resolves the register's required routing-attestation strength (Feature 145 governance).
+    /// Reads <c>routingAttestation</c> from the register's current control record; defaults to
+    /// <see cref="Sorcha.Register.Models.AttestationKind.SenderSigned"/> when no roster service is
+    /// wired or no policy is set.
+    /// </summary>
+    private async Task<Sorcha.Register.Models.AttestationKind> ResolveRequiredRoutingAttestationAsync(
+        string registerId, CancellationToken ct)
+    {
+        if (_governanceRosterService is null)
+        {
+            return Sorcha.Register.Models.AttestationKind.SenderSigned;
+        }
+
+        try
+        {
+            var roster = await _governanceRosterService.GetCurrentRosterAsync(registerId, ct);
+            return roster?.ControlRecord?.RoutingAttestation
+                ?? Sorcha.Register.Models.AttestationKind.SenderSigned;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Could not resolve routingAttestation policy for register {RegisterId}; defaulting to SenderSigned",
+                registerId);
+            return Sorcha.Register.Models.AttestationKind.SenderSigned;
+        }
     }
 
     /// <inheritdoc/>

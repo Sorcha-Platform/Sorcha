@@ -75,6 +75,19 @@ public class RegisterControlRecord
     public RegisterPolicy? RegisterPolicy { get; set; }
 
     /// <summary>
+    /// Routing-decision governance policy (Feature 145): the minimum attestation strength the
+    /// register requires on a carried <see cref="RoutingDecision"/> before its sealing validator
+    /// will accept it. Sibling of <see cref="CryptoPolicy"/>. Null defaults to
+    /// <see cref="AttestationKind.SenderSigned"/> (the v1 baseline). A register can govern itself
+    /// up to <see cref="AttestationKind.ValidatorReEvaluated"/> / <see cref="AttestationKind.Proof"/>,
+    /// but those strengths are not yet implemented and the validator refuses them in v1
+    /// (<c>VAL_ROUTING_002</c>).
+    /// </summary>
+    [JsonPropertyName("routingAttestation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AttestationKind? RoutingAttestation { get; set; }
+
+    /// <summary>
     /// Authorized validator signing keys and threshold parameters.
     /// Declares which validators are authorized to sign dockets for this register.
     /// Null for backward compatibility with pre-086 registers only (preproduction, clean break).

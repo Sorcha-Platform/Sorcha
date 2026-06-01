@@ -102,7 +102,13 @@ public sealed class InboundTransactionRouter : IInboundTransactionRouter
                     BlueprintId = metadata?.BlueprintId ?? string.Empty,
                     InstanceId = metadata?.InstanceId ?? string.Empty,
                     ActionId = metadata?.ActionId ?? 0,
-                    NextActionId = metadata?.NextActionId ?? 0,
+                    // Feature 145: the singular NextActionId hint is no longer persisted on the
+                    // sealed metadata — derive the wallet-notification hint from the first next
+                    // action of the validated routing decision (parallel branches preserved on the
+                    // ledger; this gRPC field is a single informational hint for the wallet UI).
+                    NextActionId = metadata?.RoutingDecision?.NextActions.FirstOrDefault() is { ActionId: var nextId }
+                        ? (uint)nextId
+                        : 0,
                     SenderAddress = senderAddress ?? string.Empty,
                     Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
                     IsRecovery = isRecovery

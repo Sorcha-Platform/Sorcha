@@ -1008,8 +1008,9 @@ public class ActionExecutionService : IActionExecutionService
         //      docket can seed CurrentActionIds (DocketBuildTriggerService projects it onto
         //      TransactionMetaData). Singular (first routed next action) — exact for linear flows.
         //      LEGACY (Feature 145): superseded by the full RoutingDecision written below, which the
-        //      InstanceProjector folds (parallel branches preserved). Retained until the validator
-        //      carries the decision through the seal (T024); the projector falls back to it meanwhile.
+        //      validator validates (VAL_ROUTING_*, T023) and carries onto the typed sealed metadata
+        //      (T024, both DONE). This singular string + the projector's NextActionId fallback are now
+        //      vestigial and are removed in the US5 dual-path sweep (T034).
         var nextActionId = routingResult.NextActions.FirstOrDefault()?.ActionId;
         if (nextActionId.HasValue)
         {
