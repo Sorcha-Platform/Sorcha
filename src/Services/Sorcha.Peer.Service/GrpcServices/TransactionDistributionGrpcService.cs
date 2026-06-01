@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Peer.Service.Distribution;
 using Sorcha.Peer.Service.Protos;
 using Sorcha.Peer.Service.Replication;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
 
 namespace Sorcha.Peer.Service.GrpcServices;
@@ -293,20 +294,26 @@ public class TransactionDistributionGrpcService : TransactionDistribution.Transa
 
             var result = await validatorClient.SubmitTransactionAsync(submission, context.CancellationToken);
 
+            // Feature 108 follow-up #1 (Feature 145 T017): report whether the receiving NODE is itself
+            // on the register's roster as a validator. The submitting peer uses this honest signal to
+            // distinguish "forwarded to a node whose validator will seal" from "forwarded to a mere
+            // relay/subscriber". Best-effort: a failed/absent relationship lookup leaves the flag false
+            // (the conservative default) rather than over-claiming sealing authority.
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+            var relationship = await registerClient.GetLocalRelationshipAsync(
+                request.RegisterId, context.CancellationToken);
+            var receiverIsValidator = relationship?.IsValidator ?? false;
+
             _logger.LogInformation(
-                "SubmitTransaction forwarded from peer {Origin} for register {RegisterId} → local validator ({Success})",
-                request.OriginPeerId, request.RegisterId, result.Success);
+                "SubmitTransaction forwarded from peer {Origin} for register {RegisterId} → local validator " +
+                "({Success}, receiverIsValidator={ReceiverIsValidator})",
+                request.OriginPeerId, request.RegisterId, result.Success, receiverIsValidator);
 
             return new SubmitTransactionResponse
             {
                 Accepted = result.Success,
                 RejectReason = result.Success ? string.Empty : $"{result.ErrorCode}: {result.ErrorMessage}",
-                // ReceiverIsValidator left at proto default (false). Honest signal: the
-                // peer service forwards to its local validator-service via gRPC and reports
-                // the result; whether the receiving NODE is itself on the register's roster
-                // is a separate question we can't answer without consulting
-                // IRegisterLocalRelationshipService.IsValidator(registerId). Wiring that
-                // through is tracked as Feature 108 follow-up #1.
+                ReceiverIsValidator = receiverIsValidator
             };
         }
         catch (Exception ex)

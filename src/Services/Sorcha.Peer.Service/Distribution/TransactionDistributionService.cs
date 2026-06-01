@@ -3,6 +3,7 @@
 
 using Google.Protobuf;
 using Grpc.Net.Client;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Communication;
@@ -11,6 +12,8 @@ using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Protos;
+using Sorcha.Register.Models.LocalRelationship;
+using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.Peer.Service.Distribution;
 
@@ -27,6 +30,7 @@ public class TransactionDistributionService
     private readonly PeerConnectionPool? _peerConnectionPool;
     private readonly PeerListManager? _peerListManager;
     private readonly ReverseStreamManager? _reverseStreams;
+    private readonly IServiceScopeFactory? _scopeFactory;
     private readonly string _localPeerId;
 
     public TransactionDistributionService(
@@ -37,7 +41,8 @@ public class TransactionDistributionService
         RelayCommunicationService relayCommunication,
         PeerConnectionPool? peerConnectionPool = null,
         PeerListManager? peerListManager = null,
-        ReverseStreamManager? reverseStreams = null)
+        ReverseStreamManager? reverseStreams = null,
+        IServiceScopeFactory? scopeFactory = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
@@ -49,6 +54,11 @@ public class TransactionDistributionService
         // Feature 143: optional so existing call sites/tests compile; production DI injects it. Lets a
         // rendezvous broker a submission to a NAT'd owner (no direct channel) over its reverse stream.
         _reverseStreams = reverseStreams;
+        // Feature 145 (T017): optional so existing call sites/tests compile; production DI injects it.
+        // Used to resolve the scoped IRegisterServiceClient for roster-based sealer selection — a node
+        // on the register's control-record roster seals locally (no fan-out), so the roster, not a
+        // seeds/topology heuristic, decides ownership. Null ⇒ fall back to the topology heuristic.
+        _scopeFactory = scopeFactory;
         _localPeerId = _configuration.ResolvedPeerId ?? "unknown";
     }
 
@@ -66,6 +76,22 @@ public class TransactionDistributionService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
         ArgumentNullException.ThrowIfNull(submissionJson);
+
+        // Feature 145 (T017): roster-based sealer selection. The register's control-record roster —
+        // not a seeds/topology heuristic — decides who seals. If this node holds the register and is
+        // on its roster as an Owner or Validator, the co-located validator seals locally, so no fan-out
+        // is required (LocallyOwned). Authoritative when the relationship resolves; when it doesn't
+        // (register not held locally yet, or the lookup failed) we fall through to the topology
+        // heuristic below so behaviour is never worse than before.
+        var relationship = await TryGetLocalRelationshipAsync(registerId, cancellationToken);
+        if (relationship is not null && (relationship.IsOwner || relationship.IsValidator))
+        {
+            _logger.LogDebug(
+                "ForwardSubmissionAsync: register {RegisterId} is locally sealable (roles={Roles}) — " +
+                "locally owned per roster, no fan-out required",
+                registerId, relationship.Roles);
+            return (0, 0, LocallyOwned: true);
+        }
 
         if (_peerConnectionPool is null)
             return (0, 0, LocallyOwned: true);
@@ -215,6 +241,37 @@ public class TransactionDistributionService
         }
 
         return (channels.Count, accepted, LocallyOwned: false);
+    }
+
+    /// <summary>
+    /// Feature 145 (T017): resolve this node's derived relationship to the register from the
+    /// co-located Register service (Feature 108 <c>GET /api/registers/{id}/local-relationship</c>,
+    /// roster-cached server-side). Returns <c>null</c> — and the caller falls back to the topology
+    /// heuristic — when the scope factory is unavailable (e.g. unit tests), the register is not yet
+    /// known locally, or the lookup fails. The relationship service lives in the Register process,
+    /// so we cross the local service boundary via the scoped <see cref="IRegisterServiceClient"/>.
+    /// </summary>
+    private async Task<RegisterLocalRelationship?> TryGetLocalRelationshipAsync(
+        string registerId,
+        CancellationToken cancellationToken)
+    {
+        if (_scopeFactory is null)
+            return null;
+
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+            return await registerClient.GetLocalRelationshipAsync(registerId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "ForwardSubmissionAsync: roster lookup failed for register {RegisterId}; " +
+                "falling back to topology heuristic for sealer selection",
+                registerId);
+            return null;
+        }
     }
 
     /// <summary>
