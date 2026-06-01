@@ -41,11 +41,20 @@ internal static class TransactionTypeClassifier
     /// True only for the pre-signed genesis transaction (the network trust anchor),
     /// NOT live control/governance transactions. The genesis transaction is signed
     /// once during the offline ceremony with a fixed timestamp and embedded for the
-    /// life of the network — it is ingested whenever a node bootstraps, which may be
-    /// arbitrarily long after the ceremony. It must therefore be exempt from the
-    /// transaction-freshness window (VAL_TIME_002); live control transactions are
-    /// created at submission time and stay subject to it.
+    /// life of the network.
     /// </summary>
+    /// <remarks>
+    /// Genesis is <b>not exempt</b> from the freshness check — it is subject to a
+    /// <b>separate, short window</b> (<see cref="Configuration.ValidationEngineConfiguration.GenesisMaxAge"/>,
+    /// default 1h) instead of the live-transaction window
+    /// (<see cref="Configuration.ValidationEngineConfiguration.MaxTransactionAge"/>); see
+    /// <c>ValidateTiming</c> / <c>VAL_TIME_002</c>. SECURITY: a stale-but-accepted genesis is a
+    /// replay vector, so the bound forces a regenerated system register to be minted, deployed, and
+    /// bootstrapped within the window. This gates the <b>ingest-and-seal</b> path (Auto bootstrap);
+    /// a node that <b>pulls an already-sealed genesis docket</b> verifies the docket's validator
+    /// signature + chain (not the genesis tx's age), so late-joining SyncOnly replicas are
+    /// unaffected by the window.
+    /// </remarks>
     public static bool IsGenesisTransaction(Transaction transaction)
     {
         if (string.Equals(transaction.BlueprintId, GenesisConstants.BlueprintId, StringComparison.OrdinalIgnoreCase))
