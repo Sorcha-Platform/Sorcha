@@ -464,6 +464,12 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Implementation.IRea
 Sorcha.AtomicCache.Extensions.AtomicCacheServiceExtensions.AddAtomicDistributedCache(
     builder.Services, builder.Configuration, "Blueprint");
 
+// Feature 145 US4 — InstanceRebuildService: reconstructs an instance's control state purely from the
+// register's sealed transactions (same InstanceProjectionResolver the projector uses → bit-for-bit
+// parity). Backs the parity self-check + an operator-triggered rebuild/repair of the materialized view.
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Implementation.IInstanceRebuildService,
+    Sorcha.Blueprint.Service.Services.Implementation.InstanceRebuildService>();
+
 // Orphan chunk cleanup — removes file metadata records with no confirmed parent transaction
 builder.Services.Configure<Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions>(
     builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions.SectionName));
@@ -2009,6 +2015,50 @@ notificationGroup.MapPost("/transaction-confirmed", async (
 var instancesGroup = app.MapGroup("/api/instances")
     .WithTags("Instances")
     .RequireAuthorization("CanExecuteBlueprints");
+
+// Feature 145 US4 — internal instance-rebuild surface (service-to-service / operator tooling).
+// The materialized instance row is a cache of the ledger projection; these endpoints let an operator
+// verify it against a fresh replay (parity self-check) and repair a corrupt/missing view by rebuilding
+// from the sealed transactions. Not a public mutation — gated by the service audience.
+var instanceRebuildGroup = app.MapGroup("/api/internal/instances")
+    .WithTags("Instances")
+    .RequireAuthorization("RequireService");
+
+instanceRebuildGroup.MapGet("/{registerId}/{instanceId}/parity", async (
+    string registerId,
+    string instanceId,
+    Sorcha.Blueprint.Service.Services.Implementation.IInstanceRebuildService rebuildService,
+    CancellationToken ct) =>
+{
+    var result = await rebuildService.CheckParityAsync(registerId, instanceId, ct);
+    return Results.Ok(new
+    {
+        instanceId,
+        registerId,
+        inSync = result.InSync,
+        detail = result.Detail,
+        rebuiltState = result.Rebuilt?.State.ToString(),
+        materializedState = result.Materialized?.State.ToString(),
+    });
+})
+    .WithName("CheckInstanceParity")
+    .WithSummary("Check instance projection parity")
+    .WithDescription("Rebuilds the instance from the register's sealed transactions and reports whether it matches the materialized view (Feature 145 US4 self-check).");
+
+instanceRebuildGroup.MapPost("/{registerId}/{instanceId}/rebuild", async (
+    string registerId,
+    string instanceId,
+    Sorcha.Blueprint.Service.Services.Implementation.IInstanceRebuildService rebuildService,
+    CancellationToken ct) =>
+{
+    var rebuilt = await rebuildService.RebuildAndPersistAsync(registerId, instanceId, ct);
+    return rebuilt is null
+        ? Results.NotFound(new { instanceId, message = "No sealed transactions found for this instance — nothing to rebuild." })
+        : Results.Ok(rebuilt);
+})
+    .WithName("RebuildInstance")
+    .WithSummary("Rebuild instance from the ledger")
+    .WithDescription("Operator repair: reconstructs the instance projection from the register's sealed transactions and overwrites the materialized view (Feature 145 US4).");
 
 // <summary>
 // List workflow instances for the authenticated user's wallet
