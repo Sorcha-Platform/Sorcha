@@ -6,14 +6,15 @@
 #
 # Usage: pwsh scripts/check-ledger-derived-clean-break.ps1
 #
-# Each pattern is enforced only once its replacement is green (US1 cutover). The mirror
-# constructs are fully removed and ENFORCED. The remaining three are still present BY DESIGN
-# and stay unenforced until their slice lands:
-#   - ApplyInstanceStateChanges: retained for the presentation-completion path (US6).
-#   - LocallyOwned: still a live peer-transport routing signal (sealer-selection refinement,
-#     Feature 108 follow-up #1 / T017, is a separate change).
-#   - NextActionId: the singular hint is retained as a projector fallback until the validator
-#     carries the full RoutingDecision through the seal (T024).
+# Each pattern is enforced only once its replacement is green. The mirror constructs, the singular
+# NextActionId hint, and the LocallyOwned dual-submit branch are removed and ENFORCED. One remains
+# unenforced BY DESIGN until its slice lands:
+#   - ApplyInstanceStateChanges: retained for the presentation-completion path until the US6 cleanup
+#     deletes it (US6 increments 2-3 retired its INVOCATION; removal-follows-proven-replacement).
+# LocallyOwned (T016/T034): the submit no longer branches on register ownership — it returns 202 on
+# local data-validation + a CARRIER-AWARE fan-out (only peers that carry the register; no seed/
+# topology dial), and nothing waits for sealing. The pattern is scoped to the code forms so it does
+# NOT catch prose that documents the removal.
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -30,7 +31,10 @@ $forbidden = @(
     @{ Pattern = 'IsReadOnlyMirror';                    Message = 'Mirror flag reintroduced (there is no mirror)';                       Enforced = $true }
     @{ Pattern = 'Create(Mirror|MirrorAsync)|UpdateMirrorAsync'; Message = 'Mirror write method reintroduced';                          Enforced = $true }
     @{ Pattern = 'ApplyInstanceStateChanges';           Message = 'Imperative instance-state mutation reintroduced (advance via projection)'; Enforced = $false }
-    @{ Pattern = '\bLocallyOwned\b';                    Message = 'Dual submit branch (LocallyOwned) reintroduced (single async path)';  Enforced = $false }
+    # Scoped to code forms (property access `.LocallyOwned`, named-arg/assignment `LocallyOwned:`/`=`,
+    # record param `bool LocallyOwned`) with word boundaries so it catches reintroduction WITHOUT
+    # flagging prose that documents the removal, nor the unrelated UI `IsLocallyOwned` ownership field.
+    @{ Pattern = '(\.LocallyOwned\b|\bLocallyOwned\s*[:=]|bool LocallyOwned\b)'; Message = 'Dual submit branch (LocallyOwned) reintroduced (single async carrier-aware path)'; Enforced = $true }
     @{ Pattern = '\bNextActionId\b';                    Message = 'Singular NextActionId hint reintroduced (use RoutingDecision)';       Enforced = $false }
 )
 

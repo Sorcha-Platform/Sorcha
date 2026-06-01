@@ -227,30 +227,26 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 workItem.RegisterId, workItem.SenderWallet, ct);
             var submission = transaction.ToTransactionSubmission(signResult, nextSeqNum);
 
-            // Feature 108 / Feature 137 — submit to BOTH the local validator (seals iff this node is
-            // on the roster) AND the peer-service fan-out (forwards to source peers for subscribed
-            // registers). This async/encrypted path previously skipped the fan-out, so a replica-
-            // origin encrypted submission never reached the register owner and never sealed.
-            var validatorTask = validatorClient.SubmitTransactionAsync(submission, ct);
-            var distributeTask = peerClient is null
-                ? Task.FromResult(new DistributeTransactionResult(0, 0, LocallyOwned: true))
-                : DistributeEncryptedSubmissionAsync(peerClient, workItem.RegisterId, submission, ct);
-            await Task.WhenAll(validatorTask, distributeTask);
-            var validatorResult = validatorTask.Result;
-            var distributeResult = distributeTask.Result;
+            // Feature 108 / 137 / 145 — submit to the local validator (data-validation + mempool
+            // ingress; seals iff this node is on the roster) AND a carrier-aware peer fan-out (only
+            // peers that carry the register; no seed/topology dial). Nothing waits for sealing — the
+            // InstanceProjector advances every node when the docket seals.
+            var validatorResult = await validatorClient.SubmitTransactionAsync(submission, ct);
+            var distributeResult = peerClient is null
+                ? new DistributeTransactionResult(0, 0)
+                : await DistributeEncryptedSubmissionAsync(peerClient, workItem.RegisterId, submission, ct);
 
             _logger.LogInformation(
-                "Encrypted submission {TxId} for register {RegisterId}: validator success={ValidatorSuccess}, fan-out targets={Targets} accepted={Accepted} locallyOwned={Local}",
+                "Encrypted submission {TxId} for register {RegisterId}: validator success={ValidatorSuccess}, carriers targets={Targets} accepted={Accepted}",
                 transaction.TxId, workItem.RegisterId, validatorResult.Success,
-                distributeResult.TargetPeerCount, distributeResult.AcceptedCount, distributeResult.LocallyOwned);
+                distributeResult.TargetPeerCount, distributeResult.AcceptedCount);
 
-            // Fail only when the local validator rejected AND no peer accepted the fan-out AND the
-            // register is not locally owned — a subscriber's local validator never seals (off-roster),
-            // so a peer-accepted submission is the success signal there.
-            if (!validatorResult.Success && distributeResult.AcceptedCount == 0 && !distributeResult.LocallyOwned)
+            // Fail only when the local validator rejected AND no carrier accepted — a subscriber's
+            // local validator never seals (off-roster), so a carrier acceptance is the ingress signal.
+            if (!validatorResult.Success && distributeResult.AcceptedCount == 0)
             {
                 await HandleFailureAsync(operationId, workItem.SenderWallet,
-                    $"Validator rejected transaction: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage} — and no peer accepted the fan-out",
+                    $"Validator rejected transaction: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage} — and no carrier accepted the fan-out",
                     null, StepSubmitting,
                     notificationService, scope.ServiceProvider, workItem, ct);
                 return;
@@ -354,9 +350,9 @@ public sealed class EncryptionBackgroundService : BackgroundService
         {
             _logger.LogWarning(ex,
                 "Feature 108 — peer fan-out errored for encrypted submission on register {RegisterId} " +
-                "(tx {TxId}); falling back to validator-only. Subscriber nodes depend on this path to reach the owner.",
+                "(tx {TxId}); falling back to validator-only. Subscriber nodes depend on this path to reach a carrier.",
                 registerId, submission.TransactionId);
-            return new DistributeTransactionResult(0, 0, LocallyOwned: false);
+            return new DistributeTransactionResult(0, 0);
         }
     }
 

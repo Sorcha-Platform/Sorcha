@@ -30,14 +30,13 @@ public static class DistributeEndpoints
             await ctx.Request.Body.CopyToAsync(ms, ct);
             var bytes = ms.ToArray();
 
-            var (targets, accepted, locallyOwned) =
+            var (targets, accepted) =
                 await distributionService.ForwardSubmissionAsync(registerId, bytes, ct);
 
             return Results.Ok(new
             {
                 targetPeerCount = targets,
-                acceptedCount = accepted,
-                locallyOwned = locallyOwned
+                acceptedCount = accepted
             });
         })
         .WithName("DistributeTransactionSubmission")
