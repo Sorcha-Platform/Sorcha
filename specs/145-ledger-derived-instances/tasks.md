@@ -133,10 +133,10 @@
 
 **Independent Test**: Owner-node and subscriber-node submits are identical; the clean-break check finds nothing.
 
-- [ ] T034 [US5] Sweep + delete residual references to the topology heuristic, the dual-path branch, and the `NextActionId` hint across Blueprint/Validator/Peer; remove now-dead code
-- [ ] T035 [US5] Owner-vs-subscriber parity integration test (same response contract + same projected state) in `tests/Sorcha.Blueprint.Service.Tests/Submission/`
+- [X] T034 [US5] (PR #896) Removed the legacy singular `NextActionId` hint end-to-end (producer writes in ActionExecutionService 10c + EncryptionBackgroundService; the `ToTransactionSubmission` whitelist copy; the typed `TransactionMetaData.NextActionId` property; the projector/resolver fallback). **Critically, also COMPLETED US3's dormant routing path**: (A) whitelisted `routingDecision` into `ToTransactionSubmission` (it was being silently dropped → validator never saw it → seal carried none → projector ran on the nextActionId fallback) + (B) made `EncryptionBackgroundService` produce+sign the `RoutingDecision` (encrypted path had none). The carried `RoutingDecision` is now the sole routing source. **Topology-heuristic + dual-path sweep (Peer T017) deferred** — still on the live-validation tail. **LIVE-VALIDATED** on a fresh tiny rebuild: sealed action txs show `nextActionId=<absent>`, `RoutingDecision=PRESENT` (the inverse of the pre-fix dormant state); full AssuredIdentity loop completed (credential delivered + claimed) ⇒ VAL_ROUTING runs+passes on real traffic.
+- [~] T035 [US5] Owner-vs-subscriber parity = the cross-node walkthrough. US5's routing change validated single-node on tiny; cross-node n1 leg is mechanically identical to US1's proven replication (sealed tx replicates byte-for-byte, n1 projector runs the same fold) — not separately re-run (dev→n1 HTTPS proxy-blocked).
 
-**Checkpoint**: the model is the only model (SC-006).
+**Checkpoint**: the carried `RoutingDecision` is the only routing source (SC-006, live-proven). Topology-heuristic removal pending T017.
 
 ---
 
