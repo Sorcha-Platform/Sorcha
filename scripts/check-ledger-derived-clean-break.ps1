@@ -6,15 +6,20 @@
 #
 # Usage: pwsh scripts/check-ledger-derived-clean-break.ps1
 #
-# Each pattern is enforced only once its replacement is green. The mirror constructs, the singular
-# NextActionId hint, and the LocallyOwned dual-submit branch are removed and ENFORCED. One remains
-# unenforced BY DESIGN until its slice lands:
+# Each pattern is enforced only once its replacement is green. The mirror constructs, the
+# LocallyOwned dual-submit branch (T016/T034), and the singular NextActionId hint (T024/T034) are
+# removed and ENFORCED. One remains unenforced BY DESIGN until its slice lands:
 #   - ApplyInstanceStateChanges: retained for the presentation-completion path until the US6 cleanup
 #     deletes it (US6 increments 2-3 retired its INVOCATION; removal-follows-proven-replacement).
 # LocallyOwned (T016/T034): the submit no longer branches on register ownership — it returns 202 on
 # local data-validation + a CARRIER-AWARE fan-out (only peers that carry the register; no seed/
-# topology dial), and nothing waits for sealing. The pattern is scoped to the code forms so it does
-# NOT catch prose that documents the removal.
+# topology dial), and nothing waits for sealing. Scoped to the code forms so it does NOT catch prose
+# that documents the removal nor the unrelated UI IsLocallyOwned field.
+# NextActionId: the singular F145 instance-routing hint (the typed TransactionMetaData property +
+# producer writes + projector/resolver fallback) was removed end-to-end in US5 (T024/T034). Scoped
+# to the metadata-access form so it does NOT catch the legitimate, differently-purposed Engine
+# RoutingResult.NextActionId (rehearsal/dry-run) or the wallet-notification NextActionId (the
+# "notify about this action" field derived FROM the RoutingDecision).
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -35,7 +40,10 @@ $forbidden = @(
     # record param `bool LocallyOwned`) with word boundaries so it catches reintroduction WITHOUT
     # flagging prose that documents the removal, nor the unrelated UI `IsLocallyOwned` ownership field.
     @{ Pattern = '(\.LocallyOwned\b|\bLocallyOwned\s*[:=]|bool LocallyOwned\b)'; Message = 'Dual submit branch (LocallyOwned) reintroduced (single async carrier-aware path)'; Enforced = $true }
-    @{ Pattern = '\bNextActionId\b';                    Message = 'Singular NextActionId hint reintroduced (use RoutingDecision)';       Enforced = $false }
+    # Scoped to the metadata-access form: the F145 hint was read as `tx.MetaData.NextActionId`.
+    # The legit Engine `RoutingResult.NextActionId` (`result.`/`routing.`) and the wallet-notification
+    # `NextActionId` (`request.`/`tx.NextActionId`, object-initializer assignments) are NOT this hint.
+    @{ Pattern = '(MetaData|Metadata|metadata)\.NextActionId'; Message = 'Singular NextActionId instance-routing hint reintroduced on transaction metadata (use RoutingDecision)'; Enforced = $true }
 )
 
 $searchFiles = Get-ChildItem -Path $srcRoot -Recurse -Include '*.cs' |

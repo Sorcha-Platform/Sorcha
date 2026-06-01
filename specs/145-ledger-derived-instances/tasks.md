@@ -163,7 +163,7 @@
 
 ## Phase 9: Polish & Cross-Cutting
 
-- [~] T040 `scripts/check-ledger-derived-clean-break.ps1` — **`LocallyOwned` now Enforced** (scoped to code forms — `.LocallyOwned` / `LocallyOwned:`/`=` / `bool LocallyOwned` — with word boundaries so it allows prose + the unrelated UI `IsLocallyOwned` field). Combined with the `NextActionId` enforcement (PR #901) the gate reaches **5/6**; only **`ApplyInstanceStateChanges`** remains gated (after the US6 cleanup deletes the kept-until-proven imperative advance). Already wired into CI.
+- [~] T040 `scripts/check-ledger-derived-clean-break.ps1` — **`LocallyOwned` (T016/T034, #903) and the singular `NextActionId` (PR #901) now Enforced**, both scoped to code forms with word boundaries so they allow prose + the unrelated UI `IsLocallyOwned` field and the legit Engine `RoutingResult.NextActionId` / wallet-notification `NextActionId`. Combined with the 3 mirror patterns the gate reaches **5/6**; only **`ApplyInstanceStateChanges`** remains gated (after the US6 cleanup deletes the kept-until-proven imperative advance). Already wired into CI (`.github/workflows/ledger-derived-clean-break-gate.yml`).
 - [ ] T041 [P] Migrate callers off the synchronous `nextActions`/`issuedCredential` response: walkthroughs + `Sorcha.UI` / `Sorcha.Wallet.Pwa` submit surfaces → subscribe/poll on instance-advanced + credential events (FR-021)
 - [ ] T042 [P] Align the `demos/AssuredIdentity/` toolkit: fix the readiness-gate auth (`Get-DemoPublishedBlueprintIds` 401) and confirm autonomous agent discovery now works against the projection
 - [ ] T043 Cross-node E2E green run on the standing two-node demo (autonomous loop, no manual approval, identical state) — SC-002, SC-008
