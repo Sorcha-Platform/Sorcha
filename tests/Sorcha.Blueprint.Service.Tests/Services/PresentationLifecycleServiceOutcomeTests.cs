@@ -241,7 +241,8 @@ public class PresentationLifecycleServiceOutcomeTests
     private PresentationLifecycleService MakeWithCoordinator(
         IPresentationConsumer consumer,
         Mock<IRegisterServiceClient> registerMock,
-        Mock<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator> coordMock)
+        Mock<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator> coordMock,
+        IPresentationRoutingDecisionBuilder? routingDecisionBuilder = null)
     {
         var opts = Options.Create(new PresentationLifecycleOptions());
         _wallet.Setup(w => w.SignTransactionAsync(
@@ -266,7 +267,8 @@ public class PresentationLifecycleServiceOutcomeTests
             haipClient: null, metrics: null, clock: null,
             serviceProvider: null,
             registerClient: registerMock.Object,
-            sealCoordinator: coordMock.Object);
+            sealCoordinator: coordMock.Object,
+            routingDecisionBuilder: routingDecisionBuilder);
     }
 
     [Fact]
@@ -298,13 +300,98 @@ public class PresentationLifecycleServiceOutcomeTests
         // Coordinator NOT used for the submission queue.
         coord.Verify(c => c.EnqueueSubmissionAsync(It.IsAny<SealAwaitingSubmission>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        // FR-015 advancement still goes through coordinator on success.
+        // Feature 145 US6 — advancement is no longer enqueued: the projector folds the sealed outcome
+        // (which carries the RoutingDecision on success) and advances. No imperative advance.
         coord.Verify(c => c.EnqueueAdvancementAsync(It.IsAny<SealAwaitingAdvancement>(), It.IsAny<CancellationToken>()),
-            Times.Once);
+            Times.Never);
     }
 
     [Fact]
-    public async Task HandleOutcomeAsync_PredecessorPending_EnqueuesSubmission_AndAdvancement_AndSetsSealSentinel()
+    public async Task HandleOutcomeAsync_Success_PredecessorSealed_AttachesRoutingDecisionToSubmission()
+    {
+        // Feature 145 US6 — a successful outcome attaches the signed RoutingDecision to the submitted
+        // outcome tx's metadata (via the ToTransactionSubmission whitelist) so the projector advances
+        // when it seals. Predecessor sealed ⇒ inline submit ⇒ we can capture the submission.
+        var id = Guid.NewGuid();
+        _store.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakePendingWithInitiated(id));
+        _store.Setup(s => s.GetOutcomeSentinelAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var register = new Mock<IRegisterServiceClient>();
+        register.Setup(r => r.GetTransactionAsync("reg-1", "tx-init-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.TransactionModel { TxId = "tx-init-1", RegisterId = "reg-1" });
+        var coord = new Mock<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator>();
+
+        var decision = new Sorcha.Register.Models.RoutingDecision
+        {
+            CompletedActionId = 3,
+            NextActions = new List<Sorcha.Register.Models.ActionRef> { new() { ActionId = 4 } },
+            Attestation = new Sorcha.Register.Models.Attestation
+            {
+                Kind = Sorcha.Register.Models.AttestationKind.SenderSigned,
+                Signature = "c2ln",
+            },
+        };
+        var builder = new Mock<IPresentationRoutingDecisionBuilder>();
+        builder.Setup(b => b.BuildForPresentationOutcomeAsync(
+                It.IsAny<string>(), 3, It.IsAny<IReadOnlyDictionary<string, object>?>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(decision);
+
+        var svc = MakeWithCoordinator(
+            new FakeConsumer(new PresentationOutcome(
+                PresentationOutcomeKind.Success, new Dictionary<string, object>(), null, null, "h")),
+            register, coord, routingDecisionBuilder: builder.Object);
+
+        // Capture AFTER MakeWithCoordinator (it sets up SubmitTransactionAsync; Moq's last setup wins).
+        TransactionSubmission? captured = null;
+        _validator.Setup(v => v.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .Callback<TransactionSubmission, CancellationToken>((s, _) => captured = s)
+            .ReturnsAsync(new TransactionSubmissionResult { Success = true, TransactionId = "tx-ok" });
+
+        await svc.HandleOutcomeAsync("test", id, new { }, CancellationToken.None);
+
+        captured.Should().NotBeNull();
+        captured!.Metadata.Should().ContainKey("routingDecision");
+        captured.Metadata!["routingDecision"].Should().Contain("completedActionId");
+        builder.Verify(b => b.BuildForPresentationOutcomeAsync(
+            It.IsAny<string>(), 3, It.IsAny<IReadOnlyDictionary<string, object>?>(),
+            "ws11qcitizen", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleOutcomeAsync_Decline_DoesNotInvokeRoutingDecisionBuilder()
+    {
+        // A declined outcome carries no decision — the builder is never called, so the projector
+        // leaves the gated action current for retry.
+        var id = Guid.NewGuid();
+        _store.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(MakePendingWithInitiated(id));
+        _store.Setup(s => s.GetOutcomeSentinelAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var register = new Mock<IRegisterServiceClient>();
+        register.Setup(r => r.GetTransactionAsync("reg-1", "tx-init-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.TransactionModel { TxId = "tx-init-1", RegisterId = "reg-1" });
+        var coord = new Mock<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator>();
+        var builder = new Mock<IPresentationRoutingDecisionBuilder>();
+
+        var svc = MakeWithCoordinator(
+            new FakeConsumer(new PresentationOutcome(
+                PresentationOutcomeKind.Decline, null, PresentationDeclineReason.ExpiredCredential, null, null)),
+            register, coord, routingDecisionBuilder: builder.Object);
+
+        await svc.HandleOutcomeAsync("test", id, new { }, CancellationToken.None);
+
+        builder.Verify(b => b.BuildForPresentationOutcomeAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, object>?>(),
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleOutcomeAsync_PredecessorPending_EnqueuesSubmission_AndSetsSealSentinel()
     {
         var id = Guid.NewGuid();
         _store.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>()))
@@ -323,13 +410,9 @@ public class PresentationLifecycleServiceOutcomeTests
             .ReturnsAsync((Sorcha.Register.Models.TransactionModel?)null);   // not yet sealed
 
         SealAwaitingSubmission? capturedSubmission = null;
-        SealAwaitingAdvancement? capturedAdvance = null;
         var coord = new Mock<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationSealCoordinator>();
         coord.Setup(c => c.EnqueueSubmissionAsync(It.IsAny<SealAwaitingSubmission>(), It.IsAny<CancellationToken>()))
             .Callback<SealAwaitingSubmission, CancellationToken>((s, _) => capturedSubmission = s)
-            .Returns(Task.CompletedTask);
-        coord.Setup(c => c.EnqueueAdvancementAsync(It.IsAny<SealAwaitingAdvancement>(), It.IsAny<CancellationToken>()))
-            .Callback<SealAwaitingAdvancement, CancellationToken>((a, _) => capturedAdvance = a)
             .Returns(Task.CompletedTask);
 
         var svc = MakeWithCoordinator(
@@ -347,9 +430,10 @@ public class PresentationLifecycleServiceOutcomeTests
         capturedSubmission!.Site.Should().Be(SealAwaitingSubmissionSite.Outcome);
         capturedSubmission.PredecessorTxId.Should().Be("tx-init-1");
         capturedSubmission.TargetSentinelOnSuccess.Should().Be("success");
-        capturedAdvance.Should().NotBeNull();
-        capturedAdvance!.PresentationRequestId.Should().Be(id);
-        capturedAdvance.CompletedActionId.Should().Be(3);
+        // Feature 145 US6 — no advancement is enqueued; the deferred submission carries the
+        // RoutingDecision and the projector advances when it seals.
+        coord.Verify(c => c.EnqueueAdvancementAsync(It.IsAny<SealAwaitingAdvancement>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]

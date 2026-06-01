@@ -41,7 +41,7 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// Orchestrates workflow action execution.
 /// Coordinates state reconstruction, validation, routing, transaction building, and notifications.
 /// </summary>
-public class ActionExecutionService : IActionExecutionService
+public class ActionExecutionService : IActionExecutionService, IPresentationRoutingDecisionBuilder
 {
     private readonly IActionResolverService _actionResolver;
     private readonly IStateReconstructionService _stateReconstruction;
@@ -1416,6 +1416,100 @@ public class ActionExecutionService : IActionExecutionService
         _logger.LogInformation(
             "FR-015: action {ActionId} on instance {InstanceId} completed; {NextCount} next action(s) routed; isComplete={IsComplete}",
             completedActionId, instanceId, routingResult.NextActions.Count, routingResult.NextActions.Count == 0);
+    }
+
+    /// <summary>
+    /// Feature 145 US6 (<see cref="IPresentationRoutingDecisionBuilder"/>) — evaluate routing for a
+    /// successful presentation outcome and return a sender-signed <see cref="RoutingDecision"/> for the
+    /// outcome tx to carry, so the projector advances on its seal. Mirrors the routing computation of
+    /// <see cref="CompleteAfterPresentationAsync"/> and the decision build/sign of the normal submit
+    /// path (step 10d), but performs no advance. Returns null on a missing instance or a non-current
+    /// action (idempotent replay), so no decision is attached and the deduplicated outcome tx does not
+    /// re-advance the instance.
+    /// </summary>
+    public async Task<RoutingDecision?> BuildForPresentationOutcomeAsync(
+        string instanceId,
+        int completedActionId,
+        IReadOnlyDictionary<string, object>? draftPayload,
+        string submitterWallet,
+        CancellationToken cancellationToken = default)
+    {
+        using var activity = ActivitySource.StartActivity("BuildPresentationRoutingDecision");
+        activity?.SetTag("instance.id", instanceId);
+        activity?.SetTag("action.id", completedActionId);
+
+        var instance = await _instanceStore.GetAsync(instanceId, cancellationToken);
+        if (instance is null)
+        {
+            _logger.LogWarning(
+                "US6: instance {InstanceId} not found while building the presentation routing decision for action {ActionId}; no decision attached (the projector will not advance this outcome)",
+                instanceId, completedActionId);
+            return null;
+        }
+
+        if (!instance.CurrentActionIds.Contains(completedActionId))
+        {
+            // Idempotent replay — the presentation action has already advanced. Attach no decision so
+            // the content-addressed (deduplicated) outcome tx does not re-advance the instance.
+            _logger.LogInformation(
+                "US6: action {ActionId} on instance {InstanceId} is no longer current; no presentation routing decision attached (idempotent replay)",
+                completedActionId, instanceId);
+            return null;
+        }
+
+        var blueprint = await _actionResolver.GetBlueprintAsync(instance.BlueprintId, cancellationToken);
+        if (blueprint is null)
+        {
+            _logger.LogWarning(
+                "US6: blueprint {BlueprintId} not found for instance {InstanceId}; no presentation routing decision attached",
+                instance.BlueprintId, instanceId);
+            return null;
+        }
+
+        var actionDef = _actionResolver.GetActionDefinition(blueprint, completedActionId.ToString());
+        if (actionDef is null)
+        {
+            _logger.LogWarning(
+                "US6: action {ActionId} not found in blueprint {BlueprintId}; no presentation routing decision attached",
+                completedActionId, blueprint.Id);
+            return null;
+        }
+
+        // Routing context is the draft payload only (no prior-state decryption), exactly as the legacy
+        // CompleteAfterPresentationAsync advance did — see its XML doc note.
+        var mergedData = draftPayload is null
+            ? new Dictionary<string, object>()
+            : draftPayload.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+        var calculations = await EvaluateCalculationsAsync(actionDef, mergedData, cancellationToken);
+        if (calculations is not null)
+        {
+            foreach (var kvp in calculations)
+                mergedData[kvp.Key] = kvp.Value;
+        }
+
+        var outputSource = BuildOutputMappingSource(
+            payloadData: mergedData, calculations: calculations, haipOfferResult: null, actionDef: actionDef);
+
+        var routingResult = await EvaluateRoutingAsync(blueprint, actionDef, mergedData, outputSource, cancellationToken);
+
+        var routingDecision = new RoutingDecision
+        {
+            CompletedActionId = completedActionId,
+            NextActions = routingResult.NextActions
+                .Select(n => new ActionRef { ActionId = n.ActionId, BranchKey = n.BranchId })
+                .ToList(),
+            Attestation = new Attestation { Kind = AttestationKind.SenderSigned },
+        };
+        var routingSignResult = await _walletClient.SignTransactionAsync(
+            submitterWallet, routingDecision.ComputeSignableBytes(),
+            derivationPath: null, isPreHashed: false, cancellationToken);
+        routingDecision.Attestation.Signature = Convert.ToBase64String(routingSignResult.Signature);
+
+        _logger.LogInformation(
+            "US6: built presentation routing decision for instance {InstanceId} action {ActionId} → {NextCount} next action(s)",
+            instanceId, completedActionId, routingDecision.NextActions.Count);
+        return routingDecision;
     }
 
     private async Task<RoutingResult> EvaluateRoutingAsync(

@@ -264,6 +264,12 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateRe
     Sorcha.Blueprint.Service.Services.Implementation.StateReconstructionService>();
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService,
     Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService>();
+// Feature 145 US6 — ActionExecutionService also builds the signed RoutingDecision a successful
+// presentation outcome carries (so the projector advances on its seal). Forward the interface to the
+// same scoped instance.
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationRoutingDecisionBuilder>(
+    sp => (Sorcha.Blueprint.Service.Services.Interfaces.IPresentationRoutingDecisionBuilder)
+        sp.GetRequiredService<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService>());
 
 // Feature 142 (US2) — full-rehearsal orchestration. The sandbox-register provider and the
 // orchestration service hold process-wide transient state (per-org sandbox-register cache;

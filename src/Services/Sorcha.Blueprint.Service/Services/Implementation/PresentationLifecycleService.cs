@@ -63,6 +63,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly IClock _clock;
     private readonly IServiceProvider? _serviceProvider;
     private readonly Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? _orgDidClient;
+    private readonly IPresentationRoutingDecisionBuilder? _routingDecisionBuilder;
     private readonly ILogger<PresentationLifecycleService> _logger;
 
     /// <summary>Constructor — DI-friendly.</summary>
@@ -83,7 +84,8 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IClaimsFetchTokenStore? claimsFetchTokenStore = null,
         IDisclosedClaimsStore? disclosedClaimsStore = null,
         IHubContext<BlueprintHub, IBlueprintHubClient>? hubContext = null,
-        Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? orgDidClient = null)
+        Sorcha.ServiceClients.OrgDidDocument.IOrgDidDocumentClient? orgDidClient = null,
+        IPresentationRoutingDecisionBuilder? routingDecisionBuilder = null)
     {
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
@@ -102,6 +104,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _disclosedClaimsStore = disclosedClaimsStore;
         _hubContext = hubContext;
         _orgDidClient = orgDidClient;
+        _routingDecisionBuilder = routingDecisionBuilder;
     }
 
     public async Task<PresentationInitiationResult> InitiateAsync(
@@ -499,6 +502,33 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         built.SenderWallet = pending.SubmitterWallet;
         built.Signature = signResult.Signature;
 
+        // Feature 145 US6 — on a SUCCESSFUL outcome, attach a sender-signed RoutingDecision to the
+        // outcome tx's clear metadata so the InstanceProjector advances the instance when this tx
+        // seals (the imperative CompleteAfterPresentationAsync advance is retired). Decline /
+        // abandonment carry no decision, so the projector leaves the gated action current for retry
+        // (InstanceProjectionResolver skips a presentation-lifecycle tx with no decision). The
+        // decision rides through ToTransactionSubmission's whitelist (key "routingDecision") to the
+        // validator (VAL_ROUTING_*) and the sealed docket. Attaching metadata here does NOT change
+        // the txId/signature (those are over TransactionData/SigningData, not Metadata).
+        if (outcome.Kind == PresentationOutcomeKind.Success && _routingDecisionBuilder is not null)
+        {
+            var routingDecision = await _routingDecisionBuilder.BuildForPresentationOutcomeAsync(
+                pending.InstanceId.ToString(), pending.ActionId, draftPayload,
+                pending.SubmitterWallet, cancellationToken);
+            if (routingDecision is not null)
+            {
+                built.Metadata["routingDecision"] = System.Text.Json.JsonSerializer.Serialize(
+                    routingDecision, Sorcha.Register.Models.RegisterSerializationOptions.Canonical);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "US6: no routing decision built for successful presentation outcome (instance {InstanceId} action {ActionId}); " +
+                    "the projector will not advance this instance — verify the action is current",
+                    pending.InstanceId, pending.ActionId);
+            }
+        }
+
         var nextSeqNum = await _validatorClient.GetNextSequenceNumberAsync(
             pending.RegisterId, pending.SubmitterWallet, cancellationToken);
         var submission = built.ToTransactionSubmission(signResult, nextSeqNum);
@@ -534,19 +564,10 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
                     TraceContext: System.Diagnostics.Activity.Current?.Id ?? string.Empty),
                     cancellationToken);
 
-                if (outcome.Kind == PresentationOutcomeKind.Success)
-                {
-                    await _sealCoordinator.EnqueueAdvancementAsync(new SealAwaitingAdvancement(
-                        PresentationRequestId: presentationRequestId,
-                        OutcomeTxId: built.TxId,
-                        InstanceId: pending.InstanceId,
-                        CompletedActionId: pending.ActionId,
-                        RegisterId: pending.RegisterId,
-                        DraftPayload: draftPayload,
-                        EnqueuedAt: _clock.UtcNow,
-                        TraceContext: System.Diagnostics.Activity.Current?.Id ?? string.Empty),
-                        cancellationToken);
-                }
+                // Feature 145 US6 — no separate advancement enqueue. The deferred submission carries
+                // the signed RoutingDecision (attached above for a successful outcome), so when it
+                // drains and seals, every node's InstanceProjector folds it and advances the instance.
+                // The imperative CompleteAfterPresentationAsync advance is retired.
 
                 _logger.LogInformation(
                     "Presentation outcome deferred (predecessor {PredecessorTxId} not sealed) requestId={RequestId} txId={TxId} kind={Kind}",
@@ -666,59 +687,15 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             kind: outcome.Kind.ToString().ToLowerInvariant(),
             seconds: (_clock.UtcNow - pending.CreatedAt).TotalSeconds);
 
-        // Feature 119 — FR-015 advancement, seal-aware. After a success outcome,
-        // we used to fire-and-forget Task.Run → CompleteAfterPresentationAsync, but
-        // that races StateReconstructionService (sealed-only reads) when the
-        // outcome tx hasn't sealed yet (VAL_BP_003). The coordinator now holds the
-        // advancement until the outcome's transaction:confirmed event arrives, in
-        // a fresh DI scope with CancellationToken.None (same lifetime contract as
-        // PR #583). CompleteAfterPresentationAsync's idempotency guard handles
-        // replays cleanly. Decline / abandonment paths do not advance.
-        if (outcome.Kind == PresentationOutcomeKind.Success && _sealCoordinator is not null)
-        {
-            await _sealCoordinator.EnqueueAdvancementAsync(new SealAwaitingAdvancement(
-                PresentationRequestId: presentationRequestId,
-                OutcomeTxId: built.TxId,
-                InstanceId: pending.InstanceId,
-                CompletedActionId: pending.ActionId,
-                RegisterId: pending.RegisterId,
-                DraftPayload: draftPayload,
-                EnqueuedAt: _clock.UtcNow,
-                TraceContext: System.Diagnostics.Activity.Current?.Id ?? string.Empty),
-                cancellationToken);
-        }
-        else if (outcome.Kind == PresentationOutcomeKind.Success && _serviceProvider is not null)
-        {
-            // Legacy fallback for unit-test paths that don't wire up the coordinator.
-            var instanceIdStr = pending.InstanceId.ToString();
-            var completedActionId = pending.ActionId;
-            var outcomeTxId = built.TxId;
-            var capturedDraftPayload = draftPayload;
-
-            _ = Task.Run(async () =>
-            {
-                using var scope = _serviceProvider.CreateScope();
-                var actionExecution = scope.ServiceProvider
-                    .GetRequiredService<Services.Interfaces.IActionExecutionService>();
-                var scopedLogger = scope.ServiceProvider
-                    .GetRequiredService<ILogger<PresentationLifecycleService>>();
-                try
-                {
-                    await actionExecution.CompleteAfterPresentationAsync(
-                        instanceId: instanceIdStr,
-                        completedActionId: completedActionId,
-                        outcomeTransactionId: outcomeTxId,
-                        draftPayload: capturedDraftPayload,
-                        cancellationToken: CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    scopedLogger.LogError(ex,
-                        "FR-015 action-advance failed after success outcome tx {TxId} for instance {InstanceId} action {ActionId}; outcome is on the register but the action is not advanced",
-                        outcomeTxId, instanceIdStr, completedActionId);
-                }
-            }, CancellationToken.None);
-        }
+        // Feature 145 US6 — FR-015 advancement is now the InstanceProjector's job. The inline outcome
+        // tx submitted above carries the signed RoutingDecision (for a successful outcome), so when it
+        // seals, every node folds it and advances the instance; the ReactionDispatcher fires the
+        // action-available / workflow-completed notifications post-fold. This retires the imperative
+        // CompleteAfterPresentationAsync advance (both the F119 advancement-queue path and the legacy
+        // Task.Run fallback) and the VAL_BP_003 / state-reconstruction race that motivated F119's
+        // advancement deferral — the seal-ordered projection guarantees ordering. The F119 outcome-tx
+        // SUBMISSION deferral (EnqueueSubmissionAsync, above) is retained for predecessor-seal ordering.
+        // Decline / abandonment carry no decision, so the projector leaves the action current.
 
         return new PresentationOutcomeResult(
             Kind: outcome.Kind,
