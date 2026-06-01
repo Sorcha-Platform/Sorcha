@@ -260,15 +260,22 @@ public class PresentationLifecycleServiceOutcomeTests
                 It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TransactionSubmissionResult { Success = true, TransactionId = "tx-ok" });
 
+        // F145 504-fix: the routing-decision builder (which IS ActionExecutionService) is now resolved
+        // lazily from IServiceProvider at the outcome site rather than injected via the constructor, to
+        // break the circular scoped DI dependency that deadlocked /execute. Surface it under test through
+        // a stub provider so the outcome path can still resolve it.
+        var sp = new Mock<IServiceProvider>();
+        sp.Setup(s => s.GetService(typeof(IPresentationRoutingDecisionBuilder)))
+            .Returns(routingDecisionBuilder!);
+
         return new PresentationLifecycleService(
             _builder, _wallet.Object, _validator.Object,
             _store.Object, [consumer], opts,
             new Mock<ILogger<PresentationLifecycleService>>().Object,
             haipClient: null, metrics: null, clock: null,
-            serviceProvider: null,
+            serviceProvider: sp.Object,
             registerClient: registerMock.Object,
-            sealCoordinator: coordMock.Object,
-            routingDecisionBuilder: routingDecisionBuilder);
+            sealCoordinator: coordMock.Object);
     }
 
     [Fact]
