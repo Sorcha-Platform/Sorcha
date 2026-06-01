@@ -36,17 +36,6 @@ public class TransactionMetaData
     public uint? ActionId { get; set; }
 
     /// <summary>
-    /// Next action/step in blueprint.
-    /// </summary>
-    /// <remarks>
-    /// LEGACY (Feature 145): the singular next-action hint is superseded by
-    /// <see cref="RoutingDecision"/>, which carries the <b>full</b> next-action set plus a
-    /// pluggable attestation. Slated for removal once the validated decision is carried
-    /// through the seal (tasks T024/T040). Do not read or write this in new code.
-    /// </remarks>
-    public uint? NextActionId { get; set; }
-
-    /// <summary>
     /// Routing decision carried on this action transaction (Feature 145) — the complete
     /// next-action set plus its trust attestation, in the clear so every node can advance
     /// instance control state without decrypting the payload (FR-007/FR-010).

@@ -658,16 +658,16 @@ public class BuiltTransaction
         if (Metadata.TryGetValue(Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.ConsumerName, out var consumer) && consumer is not null)
             submissionMetadata[Sorcha.Blueprint.Service.Services.Implementation.PresentationMetadataKeys.ConsumerName] = consumer.ToString()!;
 
-        // Feature 137 (C5) — propagate the Blueprint Service's resolved next-action id onto
-        // the submission so DocketBuildTriggerService.ResolveNextActionId can project it onto
-        // the sealed TransactionMetaData.NextActionId. The cross-node InstanceMirrorReconstructor
-        // reads that value to seed a mirror's CurrentActionIds; without it the analyst on the
-        // owner node has a mirror with no current action ("Action N is not a current action").
-        // submissionMetadata is a whitelist — the key MUST be copied explicitly here or it is
-        // silently dropped (it was, end-to-end, until this fix). ActionExecutionService and
-        // EncryptionBackgroundService both set Metadata["nextActionId"] before calling this.
-        if (Metadata.TryGetValue("nextActionId", out var nextActionId) && nextActionId is not null)
-            submissionMetadata["nextActionId"] = nextActionId.ToString()!;
+        // Feature 145 — propagate the producer's signed RoutingDecision (canonical JSON) onto the
+        // submission so the validator can validate it (VAL_ROUTING_*) and DocketBuildTriggerService
+        // can carry it onto the sealed TransactionMetaData.RoutingDecision, which every node's
+        // InstanceProjector folds. submissionMetadata is a WHITELIST — the key MUST be copied
+        // explicitly here or it is silently dropped (the legacy singular `nextActionId` hint that
+        // this replaces was the only routing key copied before, so the RoutingDecision never reached
+        // the validator or the seal — the projector advanced on the nextActionId fallback). Both
+        // ActionExecutionService and EncryptionBackgroundService set Metadata["routingDecision"].
+        if (Metadata.TryGetValue("routingDecision", out var routingDecision) && routingDecision is not null)
+            submissionMetadata["routingDecision"] = routingDecision.ToString()!;
 
         return new TransactionSubmission
         {

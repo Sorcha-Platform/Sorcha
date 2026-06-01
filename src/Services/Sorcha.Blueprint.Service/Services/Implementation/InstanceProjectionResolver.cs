@@ -43,9 +43,12 @@ public static class InstanceProjectionResolver
 
         var completedActionId = (int)tx.MetaData.ActionId.Value;
         var decision = ResolveRoutingDecision(tx.MetaData, logger);
+        // Feature 145: the carried RoutingDecision is the sole routing source — the legacy singular
+        // NextActionId hint is fully removed. A tx with no decision contributes a terminal (empty)
+        // next-action set (genuine terminals + legacy pre-145 txs that never carried one).
         var nextActionIds = decision is not null
             ? decision.NextActions.Select(a => a.ActionId).ToList()
-            : tx.MetaData.NextActionId.HasValue ? [(int)tx.MetaData.NextActionId.Value] : [];
+            : new List<int>();
 
         var bindings = await ResolveParticipantBindingsAsync(
             blueprintId, completedActionId, nextActionIds, tx, actionResolver, logger, ct);
@@ -63,8 +66,8 @@ public static class InstanceProjectionResolver
     /// <summary>
     /// Reads the carried <see cref="RoutingDecision"/> — preferring the typed
     /// <see cref="TransactionMetaData.RoutingDecision"/> field, falling back to the canonical JSON
-    /// the producer wrote into the clear tracking metadata (key <c>routingDecision</c>), then to the
-    /// legacy singular <see cref="TransactionMetaData.NextActionId"/>. Returns null when none present.
+    /// the producer wrote into the clear tracking metadata (key <c>routingDecision</c>). Returns null
+    /// when none present.
     /// </summary>
     public static RoutingDecision? ResolveRoutingDecision(TransactionMetaData metadata, ILogger logger)
     {

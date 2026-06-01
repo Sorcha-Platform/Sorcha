@@ -403,7 +403,7 @@ public class InboundTransactionRouterTests
             BlueprintId = "bp-partial",
             InstanceId = null,
             ActionId = 5,
-            NextActionId = null
+            // No RoutingDecision → the derived gRPC NextActionId hint is 0 (asserted below).
         };
 
         SetupBloomMatch(address, isLocal: true);

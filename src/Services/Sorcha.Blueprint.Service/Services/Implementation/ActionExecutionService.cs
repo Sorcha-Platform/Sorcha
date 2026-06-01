@@ -1004,19 +1004,6 @@ public class ActionExecutionService : IActionExecutionService
             transaction.Metadata["credentialRecipient"] = issuedCredential.SubjectDid;
         }
 
-        // 10c. Carry the singular resolved next action on the tx so a node that observes the sealed
-        //      docket can seed CurrentActionIds (DocketBuildTriggerService projects it onto
-        //      TransactionMetaData). Singular (first routed next action) — exact for linear flows.
-        //      LEGACY (Feature 145): superseded by the full RoutingDecision written below, which the
-        //      validator validates (VAL_ROUTING_*, T023) and carries onto the typed sealed metadata
-        //      (T024, both DONE). This singular string + the projector's NextActionId fallback are now
-        //      vestigial and are removed in the US5 dual-path sweep (T034).
-        var nextActionId = routingResult.NextActions.FirstOrDefault()?.ActionId;
-        if (nextActionId.HasValue)
-        {
-            transaction.Metadata["nextActionId"] = nextActionId.Value.ToString();
-        }
-
         // 10d. Feature 145: assemble + sender-sign the full RoutingDecision and carry it on the
         //      transaction's clear metadata. Every node folds decision.nextActions into the
         //      instance projection without decrypting the payload (FR-007/FR-010); the validator
