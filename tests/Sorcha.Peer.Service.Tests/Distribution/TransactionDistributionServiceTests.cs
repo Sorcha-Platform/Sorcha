@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -11,6 +12,8 @@ using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Distribution;
 using Sorcha.Peer.Service.Observability;
+using Sorcha.Register.Models.LocalRelationship;
+using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.Peer.Service.Tests.Distribution;
 
@@ -162,6 +165,131 @@ public class TransactionDistributionServiceTests : IAsyncDisposable
 
         accepted.Should().Be(0);
         locallyOwned.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ForwardSubmissionAsync_RosterOwner_ReportsLocallyOwnedWithoutFanOut()
+    {
+        // Feature 145 (T017): roster-based sealer selection. When the register's control-record roster
+        // marks this node as Owner, its co-located validator seals locally — no fan-out, regardless of
+        // channel/seed state. Configure a seed (which the topology heuristic would otherwise fan out to)
+        // to prove the roster short-circuits ahead of it.
+        await _peerListManager.AddOrUpdatePeerAsync(new PeerNode
+        {
+            PeerId = "seed-1",
+            Address = "seed.example",
+            Port = 50051,
+            IsSeedNode = true,
+            SupportedProtocols = new List<string> { "GrpcStream" }
+        });
+
+        var service = BuildServiceWithRoster(RegisterRoleSet.Owner);
+
+        var (targets, accepted, locallyOwned) = await service.ForwardSubmissionAsync(
+            "register-owned", System.Text.Encoding.UTF8.GetBytes("{}"));
+
+        targets.Should().Be(0);
+        accepted.Should().Be(0);
+        locallyOwned.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ForwardSubmissionAsync_RosterValidator_ReportsLocallyOwnedWithoutFanOut()
+    {
+        // A node on the roster as a Validator also seals locally — same short-circuit as Owner.
+        var service = BuildServiceWithRoster(RegisterRoleSet.Validator);
+
+        var (targets, accepted, locallyOwned) = await service.ForwardSubmissionAsync(
+            "register-validated", System.Text.Encoding.UTF8.GetBytes("{}"));
+
+        targets.Should().Be(0);
+        accepted.Should().Be(0);
+        locallyOwned.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ForwardSubmissionAsync_RosterSubscriber_DoesNotShortCircuitAndFansOutToSeed()
+    {
+        // A subscriber (roster role None) must NOT claim local ownership: it falls through to the
+        // transport path and forwards to its configured seed (which fails to connect in this unit
+        // context, so accepted=0 but locallyOwned=false — the cold-start fan-out guard).
+        await _peerListManager.AddOrUpdatePeerAsync(new PeerNode
+        {
+            PeerId = "seed-1",
+            Address = "seed.example",
+            Port = 50051,
+            IsSeedNode = true,
+            SupportedProtocols = new List<string> { "GrpcStream" }
+        });
+
+        var service = BuildServiceWithRoster(RegisterRoleSet.None);
+
+        var (_, accepted, locallyOwned) = await service.ForwardSubmissionAsync(
+            "register-subscribed", System.Text.Encoding.UTF8.GetBytes("{}"));
+
+        accepted.Should().Be(0);
+        locallyOwned.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ForwardSubmissionAsync_RelationshipUnknown_FallsBackToTopologyHeuristic()
+    {
+        // When the relationship lookup returns null (register not held locally / lookup failed), the
+        // service falls back to the seeds/topology heuristic unchanged: no seeds configured ⇒ standalone
+        // owner ⇒ locally owned.
+        var service = BuildServiceWithRoster(relationship: null);
+
+        var (targets, accepted, locallyOwned) = await service.ForwardSubmissionAsync(
+            "register-unknown", System.Text.Encoding.UTF8.GetBytes("{}"));
+
+        targets.Should().Be(0);
+        accepted.Should().Be(0);
+        locallyOwned.Should().BeTrue();
+    }
+
+    private TransactionDistributionService BuildServiceWithRoster(RegisterRoleSet roles)
+        => BuildServiceWithRoster(new RegisterLocalRelationship(
+            RegisterId: "register",
+            Roles: roles,
+            ControlRecordVersion: 0,
+            DerivedAt: DateTimeOffset.UtcNow));
+
+    private TransactionDistributionService BuildServiceWithRoster(RegisterLocalRelationship? relationship)
+    {
+        var registerClient = new Mock<IRegisterServiceClient>();
+        registerClient
+            .Setup(c => c.GetLocalRelationshipAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(relationship);
+
+        var clientServices = new ServiceCollection();
+        clientServices.AddScoped(_ => registerClient.Object);
+        var scopeFactory = clientServices.BuildServiceProvider()
+            .GetRequiredService<IServiceScopeFactory>();
+
+        var gossipEngine = new GossipProtocolEngine(
+            new Mock<ILogger<GossipProtocolEngine>>().Object,
+            Options.Create(_config),
+            _peerListManager);
+        var queueManager = new TransactionQueueManager(
+            new Mock<ILogger<TransactionQueueManager>>().Object,
+            Options.Create(_config));
+        var relayCommunication = new RelayCommunicationService(
+            new Mock<ILogger<RelayCommunicationService>>().Object,
+            _connectionPool,
+            _peerListManager,
+            Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!));
+
+        return new TransactionDistributionService(
+            new Mock<ILogger<TransactionDistributionService>>().Object,
+            Options.Create(_config),
+            queueManager,
+            gossipEngine,
+            relayCommunication,
+            _connectionPool,
+            _peerListManager,
+            reverseStreams: null,
+            scopeFactory: scopeFactory);
     }
 
     private TransactionDistributionService BuildServiceWithPool()
