@@ -574,9 +574,9 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
         if (_httpClient is null)
         {
             _logger.LogDebug(
-                "DistributeTransactionAsync: HTTP client unavailable — treating as locally-owned no-op for register {RegisterId}",
+                "DistributeTransactionAsync: HTTP client unavailable — no-op fan-out for register {RegisterId}",
                 registerId);
-            return new DistributeTransactionResult(0, 0, LocallyOwned: true);
+            return new DistributeTransactionResult(0, 0);
         }
 
         try
@@ -596,18 +596,18 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
                 _logger.LogWarning(
                     "DistributeTransactionAsync failed for register {RegisterId}: {StatusCode}",
                     registerId, response.StatusCode);
-                return new DistributeTransactionResult(0, 0, LocallyOwned: false);
+                return new DistributeTransactionResult(0, 0);
             }
 
             var payload = await response.Content.ReadFromJsonAsync<DistributeTransactionResult>(
                 cancellationToken: cancellationToken);
-            return payload ?? new DistributeTransactionResult(0, 0, LocallyOwned: false);
+            return payload ?? new DistributeTransactionResult(0, 0);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
                 "DistributeTransactionAsync errored for register {RegisterId}", registerId);
-            return new DistributeTransactionResult(0, 0, LocallyOwned: false);
+            return new DistributeTransactionResult(0, 0);
         }
     }
 }

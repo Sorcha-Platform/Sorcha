@@ -121,18 +121,16 @@ public interface IPeerServiceClient
 }
 
 /// <summary>
-/// Result of a peer-service fan-out for a signed submission (Feature 108).
+/// Result of a carrier-aware peer-service fan-out for a signed submission (Feature 108 / 145 T034).
+/// Counts only — the submitter does not branch on register ownership (there is no
+/// <c>LocallyOwned</c> signal): the fan-out targets only peers that carry the register, and the
+/// local validator seals if this node is on the roster.
 /// </summary>
-/// <param name="TargetPeerCount">Number of peers the submission was attempted against.</param>
-/// <param name="AcceptedCount">Number of peers that accepted the submission into their local mempool.</param>
-/// <param name="LocallyOwned">
-/// True when the local node owns the register — no fan-out was attempted.
-/// The caller's concurrent local-validator submission is sufficient in this case.
-/// </param>
+/// <param name="TargetPeerCount">Number of carrier peers the submission was attempted against.</param>
+/// <param name="AcceptedCount">Number of carrier peers that accepted the submission into their local mempool.</param>
 public sealed record DistributeTransactionResult(
     int TargetPeerCount,
-    int AcceptedCount,
-    bool LocallyOwned);
+    int AcceptedCount);
 
 /// <summary>
 /// Validator information from Peer Service

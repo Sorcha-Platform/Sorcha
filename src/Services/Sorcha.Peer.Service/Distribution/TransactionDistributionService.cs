@@ -3,7 +3,6 @@
 
 using Google.Protobuf;
 using Grpc.Net.Client;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Communication;
@@ -12,8 +11,6 @@ using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Protos;
-using Sorcha.Register.Models.LocalRelationship;
-using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.Peer.Service.Distribution;
 
@@ -30,7 +27,6 @@ public class TransactionDistributionService
     private readonly PeerConnectionPool? _peerConnectionPool;
     private readonly PeerListManager? _peerListManager;
     private readonly ReverseStreamManager? _reverseStreams;
-    private readonly IServiceScopeFactory? _scopeFactory;
     private readonly string _localPeerId;
 
     public TransactionDistributionService(
@@ -41,8 +37,7 @@ public class TransactionDistributionService
         RelayCommunicationService relayCommunication,
         PeerConnectionPool? peerConnectionPool = null,
         PeerListManager? peerListManager = null,
-        ReverseStreamManager? reverseStreams = null,
-        IServiceScopeFactory? scopeFactory = null)
+        ReverseStreamManager? reverseStreams = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
@@ -54,22 +49,24 @@ public class TransactionDistributionService
         // Feature 143: optional so existing call sites/tests compile; production DI injects it. Lets a
         // rendezvous broker a submission to a NAT'd owner (no direct channel) over its reverse stream.
         _reverseStreams = reverseStreams;
-        // Feature 145 (T017): optional so existing call sites/tests compile; production DI injects it.
-        // Used to resolve the scoped IRegisterServiceClient for roster-based sealer selection — a node
-        // on the register's control-record roster seals locally (no fan-out), so the roster, not a
-        // seeds/topology heuristic, decides ownership. Null ⇒ fall back to the topology heuristic.
-        _scopeFactory = scopeFactory;
         _localPeerId = _configuration.ResolvedPeerId ?? "unknown";
     }
 
     /// <summary>
-    /// Feature 108. Forwards a fully-signed transaction submission (JSON-encoded) to all
-    /// connected peers that hold this register — typically the owner (for NAT'd subscribers)
-    /// or validator peers. Returns counts of targets attempted vs accepted.
-    /// No-op with <c>LocallyOwned == true</c> when the local node has no active channels
-    /// for this register (i.e., we own it or have no source peers connected).
+    /// Feature 145 (T034) — carrier-aware fan-out. Forwards a fully-signed transaction submission
+    /// (JSON-encoded) ONLY to peers that actually carry/subscribe to <b>this</b> register — direct
+    /// channels (peers advertising the register) plus NAT'd owners reachable over a reverse stream
+    /// (Feature 143). Returns counts of targets attempted vs accepted.
     /// </summary>
-    public async Task<(int TargetCount, int AcceptedCount, bool LocallyOwned)> ForwardSubmissionAsync(
+    /// <remarks>
+    /// There is deliberately <b>no seed/topology fallback</b>: a transaction is never forwarded to a
+    /// node that does not carry the register (e.g. a configured bootstrap seed that never subscribed),
+    /// which previously hung the submit when that seed was unreachable. When no carrier is known the
+    /// method is a no-op — the local validator seals if this node is on the roster; otherwise the tx
+    /// awaits a carrier (durable hand-off + sealing-failure feedback to the consumer are tracked
+    /// follow-ups). The submitter does not branch on ownership — there is no <c>LocallyOwned</c> signal.
+    /// </remarks>
+    public async Task<(int TargetCount, int AcceptedCount)> ForwardSubmissionAsync(
         string registerId,
         byte[] submissionJson,
         CancellationToken cancellationToken = default)
@@ -77,32 +74,17 @@ public class TransactionDistributionService
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
         ArgumentNullException.ThrowIfNull(submissionJson);
 
-        // Feature 145 (T017): roster-based sealer selection. The register's control-record roster —
-        // not a seeds/topology heuristic — decides who seals. If this node holds the register and is
-        // on its roster as an Owner or Validator, the co-located validator seals locally, so no fan-out
-        // is required (LocallyOwned). Authoritative when the relationship resolves; when it doesn't
-        // (register not held locally yet, or the lookup failed) we fall through to the topology
-        // heuristic below so behaviour is never worse than before.
-        var relationship = await TryGetLocalRelationshipAsync(registerId, cancellationToken);
-        if (relationship is not null && (relationship.IsOwner || relationship.IsValidator))
-        {
-            _logger.LogDebug(
-                "ForwardSubmissionAsync: register {RegisterId} is locally sealable (roles={Roles}) — " +
-                "locally owned per roster, no fan-out required",
-                registerId, relationship.Roles);
-            return (0, 0, LocallyOwned: true);
-        }
-
         if (_peerConnectionPool is null)
-            return (0, 0, LocallyOwned: true);
+            return (0, 0);
 
         var channels = _peerConnectionPool.GetChannelsForRegister(registerId);
         if (channels.Count == 0)
         {
-            // Feature 143: a NAT'd owner advertises this register but has no direct channel (empty
+            // Feature 143: a NAT'd owner carries this register but has no direct channel (empty
             // Address → excluded from GetChannelsForRegister). If we hold its reverse stream, broker
             // the submission to it over that stream so its validator can seal — the relay transport
-            // analog of the direct SubmitTransaction RPC.
+            // analog of the direct SubmitTransaction RPC. This is still carrier-scoped:
+            // GetPeersForRegister only returns peers that advertise THIS register.
             if (_reverseStreams is not null && _peerListManager is not null)
             {
                 var relayOwners = _peerListManager.GetPeersForRegister(registerId)
@@ -145,56 +127,19 @@ public class TransactionDistributionService
                         }
                     }
 
-                    return (relayOwners.Count, relayAccepted, LocallyOwned: false);
+                    return (relayOwners.Count, relayAccepted);
                 }
             }
 
-            // No peer is currently advertised as holding this register. Do NOT infer local
-            // ownership from an empty channel set — right after a restart the register
-            // advertisements have not been re-exchanged yet, so a subscriber/replica would
-            // wrongly report LocallyOwned=true here and the caller would never fan the
-            // transaction out (it ends up stranded in the local unverified pool).
-            //
-            // Ownership is decided by configuration, not by runtime channel state: a node with
-            // seed node(s) configured is a subscriber that must forward to its seed (the owner
-            // /source); a node with NO seeds is the owner/standalone. Fall back to the
-            // bootstrap-established seed channel(s) — the write-path analog of the replication
-            // seed-node fallback (Feature 137).
-            var seeds = _peerListManager?.GetSeedNodes() ?? [];
-            if (seeds.Count == 0)
-            {
-                _logger.LogDebug(
-                    "ForwardSubmissionAsync: no channels and no seed nodes for register {RegisterId} — locally owned (no fan-out required)",
-                    registerId);
-                return (0, 0, LocallyOwned: true);
-            }
-
-            var seedChannels = new List<(string PeerId, GrpcChannel Channel)>();
-            foreach (var seed in seeds)
-            {
-                var seedChannel = _peerConnectionPool.GetChannel(seed.PeerId);
-                if (seedChannel is not null)
-                    seedChannels.Add((seed.PeerId, seedChannel));
-            }
-
-            if (seedChannels.Count == 0)
-            {
-                // Subscriber (seeds are configured) but no seed channel is connected yet — the
-                // topology is still cold (e.g. immediately after a restart, before the seed
-                // channel re-establishes). This is NOT locally owned; surface a no-target fan-out
-                // so the caller does not mistake it for an owned register. The seed channel
-                // re-establishes on the next relay poll / heartbeat.
-                _logger.LogWarning(
-                    "ForwardSubmissionAsync: register {RegisterId} has no advertised peer and no connected seed channel — " +
-                    "fan-out unavailable (topology cold). Not treating as locally owned.",
-                    registerId);
-                return (0, 0, LocallyOwned: false);
-            }
-
-            _logger.LogInformation(
-                "ForwardSubmissionAsync: no advertised peer for register {RegisterId} — forwarding to {Count} configured seed node(s) as fallback",
-                registerId, seedChannels.Count);
-            channels = seedChannels;
+            // Feature 145 (T034): no peer carries this register (no direct channel, no reverse-stream
+            // owner). Do NOT fall back to bootstrap seed nodes — a seed that never subscribed to this
+            // register is not a carrier, and forwarding to an unreachable one hung the submit (the
+            // 504). No-op: the local validator seals if this node is on the roster; otherwise the tx
+            // awaits a carrier (the "must reach a sealer" durability guarantee is a tracked follow-up).
+            _logger.LogDebug(
+                "ForwardSubmissionAsync: no carrier known for register {RegisterId} — no fan-out (local validator seals if on roster)",
+                registerId);
+            return (0, 0);
         }
 
         var submittedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -240,38 +185,7 @@ public class TransactionDistributionService
             }
         }
 
-        return (channels.Count, accepted, LocallyOwned: false);
-    }
-
-    /// <summary>
-    /// Feature 145 (T017): resolve this node's derived relationship to the register from the
-    /// co-located Register service (Feature 108 <c>GET /api/registers/{id}/local-relationship</c>,
-    /// roster-cached server-side). Returns <c>null</c> — and the caller falls back to the topology
-    /// heuristic — when the scope factory is unavailable (e.g. unit tests), the register is not yet
-    /// known locally, or the lookup fails. The relationship service lives in the Register process,
-    /// so we cross the local service boundary via the scoped <see cref="IRegisterServiceClient"/>.
-    /// </summary>
-    private async Task<RegisterLocalRelationship?> TryGetLocalRelationshipAsync(
-        string registerId,
-        CancellationToken cancellationToken)
-    {
-        if (_scopeFactory is null)
-            return null;
-
-        try
-        {
-            await using var scope = _scopeFactory.CreateAsyncScope();
-            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
-            return await registerClient.GetLocalRelationshipAsync(registerId, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "ForwardSubmissionAsync: roster lookup failed for register {RegisterId}; " +
-                "falling back to topology heuristic for sealer selection",
-                registerId);
-            return null;
-        }
+        return (channels.Count, accepted);
     }
 
     /// <summary>

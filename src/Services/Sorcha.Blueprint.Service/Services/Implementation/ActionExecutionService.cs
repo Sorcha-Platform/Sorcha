@@ -1048,62 +1048,48 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             instance.RegisterId, request.SenderWallet, cancellationToken);
         var submission = transaction.ToTransactionSubmission(signResult, nextSeqNum);
 
-        var validatorTask = _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
-        var distributeTask = _peerClient is null
-            ? Task.FromResult(new DistributeTransactionResult(0, 0, LocallyOwned: true))
-            : DistributeSubmissionAsync(instance.RegisterId, submission, cancellationToken);
+        // Feature 145 (T016/T034) — submit = local data-validation + mempool ingress AND a
+        // carrier-aware fan-out, and NOTHING waits for sealing. The 202 attests "data-validated and
+        // ingressed into the system"; the InstanceProjector advances every node when the docket seals
+        // (which may be local — if this node is on the roster — or remote on a carrier; irrelevant to
+        // the consumer). The fan-out targets ONLY peers that carry the register (no seed/topology
+        // dial), so an unreachable non-carrier can no longer hang the submit, and there is no
+        // LocallyOwned branch.
+        var validatorResult = await _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
+        var distributeResult = _peerClient is null
+            ? new DistributeTransactionResult(0, 0)
+            : await DistributeSubmissionAsync(instance.RegisterId, submission, cancellationToken);
 
-        await Task.WhenAll(validatorTask, distributeTask);
-        var validatorResult = validatorTask.Result;
-        var distributeResult = distributeTask.Result;
-
-        if (!validatorResult.Success && distributeResult.AcceptedCount == 0 && !distributeResult.LocallyOwned)
+        // Rejected to the consumer only when the tx failed data-validation locally AND no carrier
+        // accepted it. A subscriber's local validator does not seal (off-roster), so a carrier
+        // acceptance is also a valid ingress signal. (Async sealing-validation failure feedback to
+        // the consumer is a tracked follow-up — not surfaced here yet.)
+        if (!validatorResult.Success && distributeResult.AcceptedCount == 0)
         {
             throw new InvalidOperationException(
-                $"Validator rejected transaction {transaction.TxId}: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage} — and no peer accepted the fan-out");
+                $"Transaction {transaction.TxId} rejected: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage}");
         }
-
-        // Surface local-validator rejections even when a peer accepted. The concurrent peer
-        // path doesn't mask a structural rejection (schema violation, sequence-number mismatch,
-        // double-spend) — operators need to see these so they can intervene. We don't throw
-        // here because the accepting peer (typically the register owner) will also re-run
-        // validation under the same rules; if they accept, the tx is genuinely admissible.
         if (!validatorResult.Success)
         {
             _logger.LogWarning(
-                "Local validator rejected transaction {TxId} for register {RegisterId}: [{ErrorCode}] {ErrorMessage}. " +
-                "Continuing because peer fan-out accepted on {AcceptedCount}/{TargetCount} peer(s)" +
-                "{LocallyOwnedNote}",
-                transaction.TxId, instance.RegisterId,
-                validatorResult.ErrorCode, validatorResult.ErrorMessage,
-                distributeResult.AcceptedCount, distributeResult.TargetPeerCount,
-                distributeResult.LocallyOwned ? " (locally-owned register, no fan-out attempted)" : string.Empty);
+                "Local validator rejected transaction {TxId} for register {RegisterId} ([{ErrorCode}] {ErrorMessage}) " +
+                "but a carrier accepted it ({AcceptedCount}/{TargetCount}) — ingressed, continuing",
+                transaction.TxId, instance.RegisterId, validatorResult.ErrorCode, validatorResult.ErrorMessage,
+                distributeResult.AcceptedCount, distributeResult.TargetPeerCount);
         }
 
         _logger.LogDebug(
-            "Transaction {TxId} submitted: validator={ValidatorSuccess}, peers accepted={PeersAccepted}/{PeersAttempted}, locallyOwned={LocallyOwned}",
+            "Transaction {TxId} ingressed: validator={ValidatorSuccess}, carriers accepted={Accepted}/{Targets}",
             transaction.TxId, validatorResult.Success,
-            distributeResult.AcceptedCount, distributeResult.TargetPeerCount, distributeResult.LocallyOwned);
+            distributeResult.AcceptedCount, distributeResult.TargetPeerCount);
 
         // 12b. Feature 145 — single async submission path. The submitter NEVER advances instance
-        // state; the InstanceProjector folds the sealed docket on every node (SC-006), so there is no
-        // longer a locally-owned vs brokered branch in the response shape. AccumulatedData and the
-        // instance reference are no longer written here: subsequent actions' routing reads the sealed
-        // ledger via StateReconstructionService (DevMode plaintext or delegated decrypt), and the
-        // reference was generated pre-submit at step 9b-ter. Always returns 202 (IsAsync); the caller
-        // observes advancement via the instance read / hub event (contracts/submission-response.md).
+        // state and NEVER waits for sealing; the InstanceProjector folds the sealed docket on every
+        // node (SC-006). Always returns 202 (IsAsync); the caller observes advancement via the
+        // instance read / hub event. Chain ordering is client-gated (wait on instance-advanced before
+        // the next action — see contracts/submission-response.md).
         var confirmedTxId = transaction.TxId;
         await _actionStore.StoreIdempotencyKeyAsync(idempotencyKey, confirmedTxId, TimeSpan.FromHours(24));
-
-        // Bounded seal-wait for chain ordering (NOT an advance). A locally-owned (or validator-only)
-        // submission seals fast and locally; we wait for the tx to be queryable on the ledger so a
-        // back-to-back next submit's StateReconstructionService finds it as previousTransactionId —
-        // the projector, not this wait, advances the instance. A brokered submission seals on the
-        // remote owner and syncs back asynchronously, so we don't block the caller on that round trip.
-        if (distributeResult.LocallyOwned || distributeResult.AcceptedCount == 0)
-        {
-            await WaitForTransactionConfirmationAsync(instance.RegisterId, confirmedTxId, cancellationToken);
-        }
 
         // Record an issued credential on its dedicated register if configured (FR-014c). This is the
         // one inline side effect retained on the submit path until the ReactionDispatcher (US2) owns it.
@@ -2663,7 +2649,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         CancellationToken cancellationToken)
     {
         if (_peerClient is null)
-            return new DistributeTransactionResult(0, 0, LocallyOwned: true);
+            return new DistributeTransactionResult(0, 0);
 
         try
         {
@@ -2676,10 +2662,10 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         {
             _logger.LogWarning(ex,
                 "Feature 108 — peer-service fan-out errored for register {RegisterId} transaction {TxId}; " +
-                "falling back to validator-only. Subscriber nodes depend on this path to reach the owner — " +
+                "falling back to validator-only. Subscriber nodes depend on this path to reach a carrier — " +
                 "investigate if this repeats.",
                 registerId, submission.TransactionId);
-            return new DistributeTransactionResult(0, 0, LocallyOwned: false);
+            return new DistributeTransactionResult(0, 0);
         }
     }
 
