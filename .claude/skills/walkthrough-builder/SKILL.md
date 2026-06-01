@@ -57,6 +57,8 @@ $response = Invoke-SorchaAction `
 | `ParticipantSealed` | participant publish tx sealed | After `Publish-SorchaParticipant` in setup.ps1, before saving `state.json` |
 | `BlueprintSealed` | blueprint publish tx sealed | After `Publish-SorchaBlueprint` in setup.ps1, before saving `state.json` |
 
+> **Feature 145 made `AwaitingInbox` MANDATORY between actors (was optional).** Action submission is now single-**async**: `/execute` returns `202` (`isAsync`, empty `nextActions`) and the instance advances only when the `InstanceProjector` folds the **sealed** docket — a beat *after* the tx seals (observed ~1–3s local, longer cross-node). The pre-145 synchronous submit advanced the instance inline, so scripts could fire the next actor's action immediately and got away without a gate. Under 145 a script that submits actor B's action right after actor A's `202` races the projector and gets **`Action N is not a current action for instance …` (400)** even though the projection advances correctly moments later. So: after one actor submits, gate the NEXT actor on `Wait-SorchaActorReady -Mode AwaitingInbox -InstanceId … -ActionId <next> -RegisterId … -Headers <nextActor> -GatewayUrl …` before they act. `-WaitForSeal` (AfterSubmit) alone is NOT enough — it waits for the seal, not for the projection to surface the next action. Reference: `walkthroughs/AssuredIdentity/run-phase1-identity.ps1` Step 5.
+
 ### Don't save state.json until publishes seal
 
 A second class of failure (TradeFinance on 2026-05-19) was setup.ps1 saving `state.json` immediately after blueprint/participant publish HTTP responses — same issue, the tx hadn't sealed yet. `run.ps1` then starts instantly, tries to execute Action 1, the auth check looks up the participant record, gets a 404 because the tx hasn't sealed, and returns 403.
@@ -124,7 +126,13 @@ Use the shared module functions:
 $modulePath = Join-Path $PSScriptRoot ".." "modules" "SorchaWalkthrough" "SorchaWalkthrough.psm1"
 Import-Module $modulePath -Force
 
-# Initialize environment
+# Initialize environment.
+# Profiles: gateway (local Docker :80), direct, aspire, n1.
+# Deploy-anywhere: pass -GatewayUrl to target ANY node by URL without adding a profile
+# enum — all service URLs derive as "{GatewayUrl}/api". Use this for tiny, a second
+# n-node, a colleague's box, etc. (added F145):
+#   Initialize-SorchaEnvironment -GatewayUrl "http://tiny:8090"   # overrides -Profile
+# Setup scripts thread it through: `pwsh setup.ps1 -GatewayUrl http://tiny:8090`.
 $env = Initialize-SorchaEnvironment -Profile $Profile
 $secrets = Get-SorchaSecrets -WalkthroughName "my-walkthrough"
 
