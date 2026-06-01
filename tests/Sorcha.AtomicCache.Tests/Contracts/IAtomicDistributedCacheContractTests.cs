@@ -158,6 +158,45 @@ public abstract class IAtomicDistributedCacheContractTests
         results.Count(r => !r).Should().Be(49);
     }
 
+    [Fact]
+    public async Task TrySetIfAbsentAsync_AbsentKey_ClaimsAndReturnsTrue()
+    {
+        var cache = CreateCache();
+
+        var claimed = await cache.TrySetIfAbsentAsync("claim", "1", TimeSpan.FromMinutes(1), CancellationToken.None);
+
+        claimed.Should().BeTrue();
+        (await cache.GetAsync("claim", CancellationToken.None)).Should().Be("1");
+    }
+
+    [Fact]
+    public async Task TrySetIfAbsentAsync_PresentKey_ReturnsFalse_AndDoesNotOverwrite()
+    {
+        var cache = CreateCache();
+        await cache.SetAsync("claim", "original", TimeSpan.FromMinutes(1), CancellationToken.None);
+
+        var claimed = await cache.TrySetIfAbsentAsync("claim", "loser", TimeSpan.FromMinutes(1), CancellationToken.None);
+
+        claimed.Should().BeFalse();
+        (await cache.GetAsync("claim", CancellationToken.None)).Should().Be("original");
+    }
+
+    [Fact]
+    public async Task ConcurrentTrySetIfAbsent_OnSingleKey_ExactlyOneClaims()
+    {
+        // The exactly-once reaction contract (Feature 145): N nodes/replicas race to claim the
+        // same (sealedTxId, kind) key — exactly one wins and performs the side effect.
+        var cache = CreateCache();
+
+        var tasks = Enumerable.Range(0, 100)
+            .Select(_ => Task.Run(() => cache.TrySetIfAbsentAsync("react:tx:kind", "1", TimeSpan.FromMinutes(1), CancellationToken.None)))
+            .ToArray();
+        var results = await Task.WhenAll(tasks);
+
+        results.Count(r => r).Should().Be(1);
+        results.Count(r => !r).Should().Be(99);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

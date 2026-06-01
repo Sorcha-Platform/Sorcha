@@ -65,6 +65,21 @@ public sealed class RedisAtomicDistributedCache : IAtomicDistributedCache
     }
 
     /// <inheritdoc />
+    public async Task<bool> TrySetIfAbsentAsync(string key, string value, TimeSpan ttl, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentNullException.ThrowIfNull(value);
+        if (ttl <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ttl), "TTL must be positive.");
+        }
+        ct.ThrowIfCancellationRequested();
+
+        // SET key value PX <ttl> NX — atomic claim. Returns true only if the key was absent.
+        return await Db.StringSetAsync(key, value, ttl, When.NotExists).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
     public async Task<bool> RemoveAsync(string key, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrEmpty(key);

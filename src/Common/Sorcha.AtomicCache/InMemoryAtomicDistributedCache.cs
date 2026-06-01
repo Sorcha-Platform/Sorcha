@@ -57,6 +57,31 @@ public sealed class InMemoryAtomicDistributedCache : IAtomicDistributedCache
     }
 
     /// <inheritdoc />
+    public Task<bool> TrySetIfAbsentAsync(string key, string value, TimeSpan ttl, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentNullException.ThrowIfNull(value);
+        if (ttl <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ttl), "TTL must be positive.");
+        }
+        ct.ThrowIfCancellationRequested();
+
+        // Guarded under the CAS lock so the expiry-check + claim is atomic: an expired
+        // entry is treated as absent and reclaimed; a live entry blocks the claim.
+        lock (_casLock)
+        {
+            if (_store.TryGetValue(key, out var entry) && !entry.IsExpired)
+            {
+                return Task.FromResult(false);
+            }
+
+            _store[key] = new Entry(value, DateTimeOffset.UtcNow.Add(ttl));
+            return Task.FromResult(true);
+        }
+    }
+
+    /// <inheritdoc />
     public Task<bool> RemoveAsync(string key, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrEmpty(key);
