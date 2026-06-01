@@ -241,9 +241,12 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 return;
             }
 
-            // Wait for transaction confirmation on the ledger, then advance the instance
+            // Feature 145: the encrypted submission is now on the ledger. The InstanceProjector folds
+            // the sealed docket on every node to advance the instance — the background service no longer
+            // advances instance state itself (that was a double-write once the projector became the
+            // single writer) and no longer emits the next-participant notify (the projector fires that
+            // post-fold). The instance reference was generated pre-submit in ActionExecutionService.
             var txHash = transaction.TxId;
-            await WaitForConfirmationAndAdvanceInstanceAsync(scope, workItem, txHash, ct);
 
             // Complete
             var op = await _operationStore.GetByIdAsync(operationId);
@@ -364,168 +367,6 @@ public sealed class EncryptionBackgroundService : BackgroundService
         await StoreActivityEventAsync(serviceProvider, workItem, null, success: false, error: error);
 
         _logger.LogWarning("Encryption operation {OperationId} failed: {Error}", operationId, error);
-    }
-
-    /// <summary>
-    /// Poll the Register Service until the transaction is confirmed in a docket,
-    /// then advance the workflow instance to the next action(s).
-    /// </summary>
-    private async Task WaitForConfirmationAndAdvanceInstanceAsync(
-        AsyncServiceScope scope, EncryptionWorkItem workItem, string txId, CancellationToken ct)
-    {
-        var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
-        var instanceStore = scope.ServiceProvider.GetRequiredService<IInstanceStore>();
-        var confirmationOptions = scope.ServiceProvider.GetRequiredService<IOptions<TransactionConfirmationOptions>>().Value;
-
-        // Poll for confirmation
-        var deadline = DateTimeOffset.UtcNow + confirmationOptions.Timeout;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            var confirmedTx = await registerClient.GetTransactionAsync(workItem.RegisterId, txId, ct);
-            if (confirmedTx != null)
-            {
-                _logger.LogInformation(
-                    "Encrypted transaction {TxId} confirmed in docket {DocketNumber} for register {RegisterId}",
-                    txId, confirmedTx.DocketNumber, workItem.RegisterId);
-                break;
-            }
-
-            if (DateTimeOffset.UtcNow + confirmationOptions.PollInterval >= deadline)
-            {
-                _logger.LogWarning(
-                    "Encrypted transaction {TxId} not confirmed within {Timeout}s for register {RegisterId}. Instance will not advance.",
-                    txId, confirmationOptions.Timeout.TotalSeconds, workItem.RegisterId);
-                return;
-            }
-
-            await Task.Delay(confirmationOptions.PollInterval, ct);
-        }
-
-        // Update accumulated data on instance
-        var instance = await instanceStore.GetAsync(workItem.InstanceId, ct);
-        if (instance == null)
-        {
-            _logger.LogError("Instance {InstanceId} not found for post-confirmation advancement", workItem.InstanceId);
-            return;
-        }
-
-        foreach (var kvp in workItem.MergedData.Where(kvp => workItem.AllowedAccumulatedFields.Contains(kvp.Key)))
-        {
-            instance.AccumulatedData[kvp.Key] = kvp.Value;
-        }
-
-        // Generate instance reference on first action (idempotent)
-        if (!instance.Metadata.ContainsKey("instanceReference"))
-        {
-            var actionResolver = scope.ServiceProvider.GetRequiredService<IActionResolverService>();
-            var blueprint = await actionResolver.GetBlueprintAsync(instance.BlueprintId, ct);
-            if (blueprint != null)
-            {
-                var instanceRef = Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator.Generate(
-                    blueprint.InstanceReference,
-                    instance.AccumulatedData,
-                    instance.Id,
-                    blueprint.Title);
-                instance.Metadata["instanceReference"] = instanceRef;
-                _logger.LogInformation(
-                    "Generated instance reference {Reference} for instance {InstanceId} (async path)",
-                    instanceRef, instance.Id);
-            }
-        }
-
-        // Advance instance state (same logic as ActionExecutionService.ApplyInstanceStateChanges)
-        instance.CurrentActionIds.Remove(workItem.ActionId);
-        foreach (var nextAction in workItem.RoutingResult.NextActions)
-        {
-            if (!instance.CurrentActionIds.Contains(nextAction.ActionId))
-            {
-                instance.CurrentActionIds.Add(nextAction.ActionId);
-            }
-
-            if (!string.IsNullOrEmpty(nextAction.BranchId) &&
-                !instance.ActiveBranches.Any(b => b.Id == nextAction.BranchId))
-            {
-                instance.ActiveBranches.Add(new Branch
-                {
-                    Id = nextAction.BranchId,
-                    CurrentActionId = nextAction.ActionId,
-                    State = BranchState.Active
-                });
-            }
-        }
-
-        instance.LastTransactionId = txId;
-        instance.CompletedActionCount++;
-        instance.FirstTransactionId ??= txId;
-
-        if (instance.CurrentActionIds.Count == 0)
-        {
-            instance.State = InstanceState.Completed;
-            instance.CompletedAt = DateTimeOffset.UtcNow;
-        }
-
-        // Feature 137 (C5): on the register-OWNING node a cross-node workflow surfaces as a
-        // read-only mirror row (the owner never ran CreateInstance), yet the owner MUST advance it
-        // when its own participant acts (e.g. the verification-analyst's credential issuance).
-        // IInstanceStore.UpdateAsync rejects mirror rows by design (Feature 106), so route the
-        // advance through the mirror-safe writer — mirroring the inline path's PersistInstanceAsync.
-        // Without this the async-encrypted issuance sealed the credential but threw here, leaving the
-        // owner's mirror stuck at the issuing action (the citizen's claim action never surfaced on n1).
-        if (instance.IsReadOnlyMirror)
-        {
-            await instanceStore.UpdateMirrorAsync(instance, ct);
-        }
-        else
-        {
-            await instanceStore.UpdateAsync(instance, ct);
-        }
-        _logger.LogInformation(
-            "Instance {InstanceId} advanced after encrypted action {ActionId} (mirror={IsMirror}). Next actions: [{NextActions}]",
-            workItem.InstanceId, workItem.ActionId, instance.IsReadOnlyMirror,
-            string.Join(", ", instance.CurrentActionIds));
-
-        // B-15 — notify the next-action participants and emit workflow-complete
-        // when the chain has run out. The inline ActionExecutionService path
-        // calls NotifyParticipantsAsync at step 15; the async-encrypted path
-        // skipped this, so a user awaiting an action from someone whose
-        // submission went through the encrypted pipeline never received the
-        // real-time SignalR push and saw "All Caught Up" until manual refresh.
-        // Try/catch swallow — a notification failure must NOT roll back the
-        // committed instance state.
-        try
-        {
-            var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
-            foreach (var nextAction in workItem.RoutingResult.NextActions)
-            {
-                string? walletAddress = null;
-                instance.ParticipantWallets?.TryGetValue(nextAction.ParticipantId, out walletAddress);
-
-                await notificationService.NotifyActionAvailableAsync(
-                    instance.Id,
-                    walletAddress,
-                    actionId: nextAction.ActionId.ToString(),
-                    ct: ct);
-            }
-
-            if (workItem.RoutingResult.NextActions.Count == 0)
-            {
-                var walletAddresses = instance.ParticipantWallets?.Values
-                    .Where(w => !string.IsNullOrEmpty(w))
-                    .Distinct()
-                    ?? [];
-
-                await notificationService.NotifyWorkflowCompletedAsync(
-                    instance.Id,
-                    walletAddresses!,
-                    ct);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "NotifyParticipantsAsync (async-encrypted path) failed for instance {InstanceId} after action {ActionId}; instance state is committed but next-participant SignalR push was missed",
-                workItem.InstanceId, workItem.ActionId);
-        }
     }
 
     private async Task StoreActivityEventAsync(

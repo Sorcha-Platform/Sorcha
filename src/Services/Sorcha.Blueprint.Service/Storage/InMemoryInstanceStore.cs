@@ -50,14 +50,6 @@ public class InMemoryInstanceStore : IInstanceStore
             throw new InvalidOperationException($"Instance {instance.Id} not found");
         }
 
-        // Feature 106: read-only mirror guard — in-memory store mirrors EfCoreInstanceStore
-        // semantics so tests can exercise the guard without a database.
-        if (existing.IsReadOnlyMirror)
-        {
-            throw new InvalidOperationException(
-                $"Instance {instance.Id} is a read-only mirror (Feature 106). Use UpdateMirrorAsync.");
-        }
-
         // Optimistic concurrency: version must match
         if (existing.Version != instance.Version)
         {
@@ -65,53 +57,6 @@ public class InMemoryInstanceStore : IInstanceStore
         }
 
         instance.Version++;
-        instance.UpdatedAt = DateTimeOffset.UtcNow;
-
-        _instances[instance.Id] = instance;
-        return Task.FromResult(instance);
-    }
-
-    /// <inheritdoc/>
-    public Task<Instance> CreateMirrorAsync(Instance instance, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrEmpty(instance.Id))
-        {
-            throw new ArgumentException("Instance ID is required", nameof(instance));
-        }
-
-        instance.IsReadOnlyMirror = true;
-
-        if (_instances.TryGetValue(instance.Id, out var existing) && !existing.IsReadOnlyMirror)
-        {
-            // Locally authoritative — don't overwrite.
-            return Task.FromResult(existing);
-        }
-
-        _instances[instance.Id] = instance;
-        return Task.FromResult(instance);
-    }
-
-    /// <inheritdoc/>
-    public Task<Instance> UpdateMirrorAsync(Instance instance, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrEmpty(instance.Id))
-        {
-            throw new ArgumentException("Instance ID is required", nameof(instance));
-        }
-
-        if (!_instances.TryGetValue(instance.Id, out var existing))
-        {
-            throw new InvalidOperationException($"Mirror instance {instance.Id} not found");
-        }
-
-        if (!existing.IsReadOnlyMirror)
-        {
-            throw new InvalidOperationException(
-                $"Instance {instance.Id} is locally authoritative; refusing UpdateMirrorAsync write.");
-        }
-
-        instance.IsReadOnlyMirror = true;
-        instance.Version = existing.Version + 1;
         instance.UpdatedAt = DateTimeOffset.UtcNow;
 
         _instances[instance.Id] = instance;

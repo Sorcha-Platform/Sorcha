@@ -127,27 +127,4 @@ public interface IInstanceStore
     /// <returns>Number of instances in the specified state</returns>
     Task<int> CountByStateAsync(InstanceState state, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Feature 106 — creates or overwrites a read-only mirror row for an instance
-    /// observed via peer sync. The <see cref="Instance.IsReadOnlyMirror"/> flag is
-    /// forced true regardless of caller input, and subsequent writes through
-    /// <see cref="UpdateAsync"/> are rejected by the store; mirror rows can only
-    /// be mutated via <see cref="UpdateMirrorAsync"/>.
-    /// </summary>
-    /// <remarks>
-    /// Contract: <c>specs/106-register-native-credentials/contracts/instance-mirror-reconstructor.md</c>.
-    /// Called exclusively by <c>InstanceMirrorReconstructor</c> when a
-    /// <c>docket:confirmed</c> event references an instance whose participants
-    /// include a locally-registered wallet. Implementations should upsert (no-op
-    /// when the instance is already the authoritative row on this node).
-    /// </remarks>
-    Task<Instance> CreateMirrorAsync(Instance instance, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Feature 106 — updates an existing read-only mirror row. Unlike
-    /// <see cref="UpdateAsync"/>, this method is permitted on rows with
-    /// <see cref="Instance.IsReadOnlyMirror"/> set. Throws when the target row is
-    /// NOT a mirror (to prevent accidental mirror-write on an authoritative row).
-    /// </summary>
-    Task<Instance> UpdateMirrorAsync(Instance instance, CancellationToken cancellationToken = default);
 }

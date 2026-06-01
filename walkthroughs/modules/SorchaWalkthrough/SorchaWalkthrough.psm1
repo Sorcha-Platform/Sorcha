@@ -260,11 +260,26 @@ function Initialize-SorchaEnvironment {
     param(
         [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
         [string]$Profile = 'gateway',
+        # Deploy-anywhere override: point the walkthrough at any node by its gateway base URL
+        # (e.g. http://tiny:8090, https://n2.example.dev) without adding a new profile enum.
+        # When set, all service URLs derive from it as "{GatewayUrl}/api" and the profile is ignored.
+        [string]$GatewayUrl,
         [switch]$SkipHealthCheck
     )
 
     $env = @{ Profile = $Profile }
 
+    # Explicit gateway URL overrides the profile presets — deploy against any node without code edits.
+    if ($GatewayUrl) {
+        $base = $GatewayUrl.TrimEnd('/')
+        $env.Profile     = 'custom'
+        $env.GatewayUrl  = $base
+        $env.TenantUrl   = "$base/api"
+        $env.BlueprintUrl = "$base/api"
+        $env.RegisterUrl = "$base/api"
+        $env.WalletUrl   = "$base/api"
+    }
+    else {
     switch ($Profile) {
         'gateway' {
             $env.GatewayUrl   = "http://127.0.0.1"
@@ -294,6 +309,7 @@ function Initialize-SorchaEnvironment {
             $env.RegisterUrl  = "https://n1.sorcha.dev/api"
             $env.WalletUrl    = "https://n1.sorcha.dev/api"
         }
+    }
     }
 
     if (-not $SkipHealthCheck) {

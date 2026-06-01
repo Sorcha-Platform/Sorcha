@@ -18,6 +18,9 @@
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
+    # Deploy-anywhere override — target any node by gateway URL (e.g. http://tiny:8090) without
+    # adding a profile. Passed through to Initialize-SorchaEnvironment; ignored when empty.
+    [string]$GatewayUrl,
     [switch]$SkipHealthCheck,
     [switch]$Force,
     # DevMode register (plaintext payloads, disclosure-filtered) — the default for the
@@ -34,7 +37,7 @@ Import-Module $modulePath -Force
 Write-WtBanner "AssuredIdentity — Setup"
 
 $secrets = Get-SorchaSecrets -WalkthroughName "assured-identity" -Profile $Profile
-$sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
+$sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -GatewayUrl $GatewayUrl -SkipHealthCheck:$SkipHealthCheck
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stateFile = Join-Path $scriptDir "state.json"

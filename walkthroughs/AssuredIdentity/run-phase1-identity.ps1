@@ -174,6 +174,18 @@ Write-WtInfo "PWA will now render the waiting-card on Home"
 # ============================================================================
 Write-WtStep "Step 5: Verification Analyst verifies application (Action 2)"
 
+# Feature 145: the citizen's submit returns 202 and the instance advances only when the
+# InstanceProjector folds the sealed docket (a beat after the tx seals). Wait for the
+# projection to surface Action 2 as a current action before the analyst acts — the script
+# equivalent of the analyst receiving the SignalR action-available notification. Without
+# this the analyst races the fold and gets "Action 2 is not a current action".
+Wait-SorchaActorReady -Mode AwaitingInbox `
+    -InstanceId $instanceId `
+    -ActionId 2 `
+    -RegisterId $state.registerId `
+    -Headers $analystSession.Headers `
+    -GatewayUrl $state.gatewayUrl
+
 $actionResponse = Invoke-SorchaAction `
     -BlueprintUrl $state.blueprintUrl `
     -InstanceId $instanceId `
