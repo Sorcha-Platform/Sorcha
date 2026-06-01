@@ -263,7 +263,6 @@ public class TransactionManagerTests
             BlueprintId = "blueprint123",
             InstanceId = "instance456",
             ActionId = 1,
-            NextActionId = 2
         };
 
         // Act

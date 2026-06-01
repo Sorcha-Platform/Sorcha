@@ -10,7 +10,7 @@ namespace Sorcha.Register.Models;
 /// A routing decision carried on an action transaction's clear metadata (Feature 145).
 /// Records the action this transaction completes and the <b>full</b> set of next actions
 /// (preserving parallel branches), trusted via a pluggable <see cref="Attestation"/>.
-/// Replaces the legacy singular <see cref="TransactionMetaData.NextActionId"/> hint.
+/// Replaces the legacy singular next-action hint (Feature 145 — fully removed).
 /// </summary>
 /// <remarks>
 /// The decision rides on the transaction in the clear so every node can advance instance

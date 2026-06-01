@@ -122,4 +122,31 @@ public class ToTransactionSubmissionMetadataTests
         // PresentationInitiated has no outcomeKind — ensure we don't leak anything stale.
         submission.Metadata!.ContainsKey("outcomeKind").Should().BeFalse();
     }
+
+    [Fact]
+    public async Task ToTransactionSubmission_CarriesRoutingDecision_AndNoLegacyNextActionId()
+    {
+        // Feature 145 US5: the submission whitelist must propagate `routingDecision` (the carried,
+        // signed decision the validator validates + the seal carries) — and must NOT carry the
+        // removed legacy `nextActionId` hint. This is the hop that was silently dropping the
+        // decision end-to-end before the fix.
+        var built = await _service.BuildPresentationInitiatedAsync(
+            MakeBp(), MakeInst(), MakeAct(),
+            presentationRequestId: Guid.NewGuid(),
+            consumerName: "haip",
+            requirementsDigest: new byte[] { 0x01 },
+            validityWindowSeconds: 600,
+            submitterWallet: "ws11qcitizen",
+            previousTransactionId: null);
+        built.SenderWallet = "ws11qcitizen";
+        const string canonicalDecision = "{\"completedActionId\":1,\"nextActions\":[{\"actionId\":2}],\"attestation\":{\"kind\":\"SenderSigned\",\"signature\":\"sig\"}}";
+        built.Metadata["routingDecision"] = canonicalDecision;
+        // A producer that still wrote the legacy key must NOT leak it through the whitelist.
+        built.Metadata["nextActionId"] = "2";
+
+        var submission = built.ToTransactionSubmission(MakeSig(), sequenceNumber: 1);
+
+        submission.Metadata!["routingDecision"].Should().Be(canonicalDecision);
+        submission.Metadata!.ContainsKey("nextActionId").Should().BeFalse();
+    }
 }

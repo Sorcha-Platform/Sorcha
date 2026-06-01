@@ -183,14 +183,29 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 workItem.PreviousTransactionId,
                 ct);
 
-            // Feature 137 (C5): carry the resolved next action so a cross-node mirror can seed
-            // CurrentActionIds when this tx seals. Mirrors the synchronous path in
-            // ActionExecutionService; DocketBuildTriggerService projects it onto TransactionMetaData.
-            var nextActionId = workItem.RoutingResult.NextActions.FirstOrDefault()?.ActionId;
-            if (nextActionId.HasValue)
+            // Feature 145: assemble + sender-sign the full RoutingDecision (the encrypted path's
+            // analog of ActionExecutionService step 10d) and carry it on the tx's clear metadata.
+            // The validator validates it (VAL_ROUTING_*) and it rides to the seal as the typed
+            // RoutingDecision every node's InstanceProjector folds — replacing the legacy singular
+            // nextActionId hint. Without this, encrypted-register actions carried NO routing decision
+            // at all (only the now-removed nextActionId), so the decision never reached the seal.
+            var routingDecision = new Sorcha.Register.Models.RoutingDecision
             {
-                transaction.Metadata["nextActionId"] = nextActionId.Value.ToString();
-            }
+                CompletedActionId = workItem.ActionId,
+                NextActions = workItem.RoutingResult.NextActions
+                    .Select(n => new Sorcha.Register.Models.ActionRef { ActionId = n.ActionId, BranchKey = n.BranchId })
+                    .ToList(),
+                Attestation = new Sorcha.Register.Models.Attestation
+                {
+                    Kind = Sorcha.Register.Models.AttestationKind.SenderSigned,
+                },
+            };
+            var routingSignResult = await walletClient.SignTransactionAsync(
+                workItem.SenderWallet, routingDecision.ComputeSignableBytes(),
+                derivationPath: null, isPreHashed: false, ct);
+            routingDecision.Attestation.Signature = Convert.ToBase64String(routingSignResult.Signature);
+            transaction.Metadata["routingDecision"] = JsonSerializer.Serialize(
+                routingDecision, Sorcha.Register.Models.RegisterSerializationOptions.Canonical);
 
             // Step 4: Signing and Submitting
             await UpdateOperationStepAsync(operationId, EncryptionOpStatus.Submitting,
