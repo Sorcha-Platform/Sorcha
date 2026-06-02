@@ -96,7 +96,13 @@ services:
     environment:
       <<: *jwt-env
       PeerService__NodeId: n1.sorcha.dev
-      PeerService__PublicAddress: ${N1_PUBLIC_IP:-n1.sorcha.dev}
+      # n1 is the public rendezvous anchor for NAT'd federated nodes (F143). PublicAddress
+      # was a dead env var (no such config property) — rendezvous-capability is derived from
+      # NetworkAddress.ExternalAddress (or the explicit RelayRendezvousEnabled flag). Without
+      # this, n1 rejects NAT'd owners' reverse streams and cross-node app-register sync fails.
+      # See issue #909.
+      PeerService__NetworkAddress__ExternalAddress: ${N1_PUBLIC_IP:-n1.sorcha.dev}
+      PeerService__RelayRendezvousEnabled: "true"
 
   validator-service:
     image: sorchadev/validator-service:latest
