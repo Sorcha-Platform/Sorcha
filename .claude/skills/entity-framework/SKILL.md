@@ -34,6 +34,20 @@ services.AddDbContext<WalletDbContext>((sp, options) =>
 dotnet ef migrations add InitialSchema --project src/Core/Sorcha.Wallet.Core --startup-project src/Services/Sorcha.Wallet.Service
 ```
 
+### Clean-start migration convention (pre-release, no data preservation)
+
+This repo is pre-release and does **not** preserve existing data across schema changes. The convention is to **squash all migrations into a single `InitialCreate` per service** rather than accumulate incremental migrations — fold the new schema into the existing `*_InitialCreate.cs` + `.Designer.cs` + `*ModelSnapshot.cs`, keeping the **same migration ID** (don't regenerate the timestamp). Every environment re-creates its DB (`down -v`) to pick up the change. (E.g. `Sorcha.Blueprint.Service` absorbed the F142 RehearsalPass migration and the F145 `+LastAppliedTxId` / `−IsReadOnlyMirror` change into one `…_InitialCreate`.)
+
+Implications:
+- A **plain image swap is NOT enough** for a schema change on a *standing* node — `MigrateAsync` sees the `InitialCreate` ID already applied and skips it, so the new column never lands (symptom: `column "X" of relation "Y" does not exist`). Recreate the DB (`down -v`, or drop+recreate the one database) on existing nodes. A fresh-volume node is fine — it applies the full `InitialCreate`.
+- **Verify the single migration is in sync with the model** before relying on it (no need to regenerate if clean):
+
+```bash
+dotnet ef migrations has-pending-model-changes \
+  --project src/Services/Sorcha.Blueprint.Service --startup-project src/Services/Sorcha.Blueprint.Service
+# "No changes have been made to the model since the last migration." = in sync, nothing to squash.
+```
+
 ### Apply Migrations Programmatically
 
 ```csharp

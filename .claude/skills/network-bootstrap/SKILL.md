@@ -125,26 +125,20 @@ docker compose $COMPOSE_FILES up -d
 
 Replica nodes and routine n1 restarts omit `-f docker-compose.seed.yml`.
 
-### Step 4: Bootstrap Platform
+### Step 4: Platform bootstrap is AUTOMATIC — there is no manual bootstrap step (verified 2026-06-02)
 
-Create the first organization, admin user, and service principal. This step runs BEFORE importing the validator key (auth chicken-and-egg).
+`DatabaseInitializer` in tenant-service **auto-seeds the platform on startup**. The moment the full stack is healthy (i.e. as part of Step 5's "bring up the rest of the stack") it has already created: the System Admin Org (`00000000-…-0001` "Sorcha Local" / subdomain `sorcha-local`), the Public Org (`00000000-…-0002` "Sorcha Public" / `public`), the admin `PlatformUser` + `UserIdentity` + org membership, `PlatformSettings`, and the system-register Owner subscription.
+
+The seeded admin is **`admin@sorcha.local` / `Dev_Pass_2025!`** (`DatabaseInitializer.DefaultAdminPassword`; override via the `Seed:AdminPassword` config key). Log signals: `DatabaseInitializer … Admin UserIdentity created`, `… PlatformSettings seeded`, `… Owner subscription to system register`.
+
+⚠ **Do NOT run the CLI `sorcha bootstrap` against a freshly-seeded node.** The admin already exists, so it 500s with `duplicate key value violates unique constraint "UQ_PlatformUser_Email"` — but only AFTER committing a **stray org** in an earlier SaveChanges. (Earlier revisions of this doc told you to bootstrap with `admin@sorcha.dev` / `Dev_Pass_2026!` and a "Sorcha Dev" org — that account never existed; the startup seed owns the credentials now. The old "auth chicken-and-egg, bootstrap before import" framing is also obsolete — there's no manual bootstrap, and Step 5's import is independent of it.)
+
+Tenant tables live in the **`public`** schema (NOT `tenant`). If a stray org got created by a mistaken `bootstrap`, delete it once you've confirmed nothing references it:
 
 ```bash
-# Create CLI profile for n1
-dotnet run --project src/Apps/Sorcha.Cli -- config init \
-  --profile n1 --service-url https://n1.sorcha.dev --verify-ssl true --set-active true
-
-# Bootstrap (non-interactive)
-dotnet run --project src/Apps/Sorcha.Cli -- bootstrap --non-interactive \
-  --org-name "Sorcha Dev" --subdomain "sorcha-dev" \
-  --admin-email "admin@sorcha.dev" --admin-name "Admin" \
-  --admin-password "Dev_Pass_2026!" \
-  --create-sp --sp-name "n1-automation"
+docker exec sorcha-postgres psql -U sorcha -d sorcha_tenant \
+  -c "DELETE FROM public.\"Organizations\" WHERE \"Subdomain\"='<subdomain-you-passed>';"
 ```
-
-Save the service principal client ID and secret from the output.
-
-**Note:** The subdomain `dev` is reserved. Use `sorcha-dev` or similar.
 
 ### Step 5: Import Validator Key — must use the SYSTEM wallet endpoint
 
@@ -219,6 +213,8 @@ ssh sorcha@<n1-ip> 'cd /opt/sorcha && docker compose \
   -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml \
   up -d'
 ```
+
+**`HTTP 000` from the import almost always means it SUCCEEDED (verified 2026-06-02).** The one-shot curl can exit non-zero (lost response / blip) even though wallet-service processed the POST and logged `system/recover responded 201`. The automated `n1-setup-remote.sh` treats `000` as fatal (`set -euo pipefail`) and **aborts before bringing up the rest of the stack**. Do NOT `down -v` and retry — wallet-service-alone can't auto-generate a `validator:` wallet, so the recovered wallet is real. Verify with `docker exec sorcha-postgres psql -U sorcha -d sorcha_wallet -tc 'select "Owner" from wallet."Wallets" where "Owner" like '"'"'validator:%'"'"';'` (or grep the wallet-service log for `responded 201`), then just run Step 5e (`up -d`) to finish.
 
 **Note on wallet address:** the address returned by `/system/recover`
 will NOT match the `walletAddress` in `genesis-validator-key.json`.
