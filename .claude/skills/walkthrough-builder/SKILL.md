@@ -200,6 +200,22 @@ $ownerSession = Connect-SorchaUser `
 
 This is the same pattern AssuredIdentity uses for its issuer-admin publisher. The 403 is NOT the rehearsal soft-gate (that's a `409 REHEARSAL_REQUIRED`, handled by `Publish-SorchaBlueprint -OverrideRehearsal`, default true) — it's the governance HARD gate, and only a `wallet_address`-bearing token clears it. Symptom triaged 2026-06-02 across ConstructionPermit + TradeFinance (both pre-dated F142); fixed in ConstructionPermit by the re-login above.
 
+#### REQUIRED: the register OWNER must be an Administrator, never a Consumer participant
+
+Blueprint publishing requires `CanPublishBlueprints` = **Administrator role OR a `can_publish_blueprint` claim**, AND (F142) the caller's `wallet_address` must be the register's roster owner. So the **same identity** must (a) hold Administrator and (b) own the register wallet. Consumer-role workflow participants (auditors, sales managers, citizens) satisfy neither cleanly. **Make the org admin own + publish the register** (give the org admin a wallet + participant, re-login, use *its* wallet as `-OwnerWalletAddress` and *its* session to publish). Workflow participants stay separate (referenced in the blueprint, not as the register owner). ForestryCertification/TradeFinance originally owned registers with a Consumer participant's wallet → permanent 403; fixed 2026-06-02 by switching ownership to the org admin.
+
+#### REQUIRED: wait for the register-genesis roster to seal before publishing (publish races the seal)
+
+The register's genesis control tx — which records the owner governance roster the F142 gate reads — seals **asynchronously after `New-SorchaRegister` returns**. A blueprint publish issued immediately reads an **empty** roster and fail-closes with the *same* `403 "You do not hold a publish-governance role"`. ConstructionPermit/Forestry got away with it by having other steps between register-create and publish; TradeFinance didn't and 403'd every time. **Poll `GET /api/registers/{id}/governance/roster` until `members.Count > 0` before publishing** (the register-genesis analogue of the F145 action-seal cadence).
+
+#### Cadence is now auto-retried in `Invoke-SorchaAction` (F145)
+
+`Invoke-SorchaAction` wraps its submit POST in `Invoke-SorchaActionPostWithCadenceRetry`, which **retries only the transient `400 "Action N is not a current action"`** (the projector hasn't folded the previous seal yet) up to 15×1s. So you no longer strictly need an explicit `Wait-SorchaActorReady -Mode AwaitingInbox` before every actor switch — the retry self-heals the cadence everywhere. Explicit `AwaitingInbox` gates remain valid (belt-and-braces) and are still clearer in setup.ps1 publish-seal waits. Any non-cadence 400 (schema, auth) is rethrown immediately.
+
+#### Idempotency for cross-walkthrough shared orgs
+
+Some walkthroughs deliberately share an org/identity (Forestry + TradeFinance both use `highland-timber` so a credential issued in one is visible to the other). Re-running one after the other hits `400 "a platform user … already exists"` from `New-SorchaOrgUser`. Participant-user provisioning helpers (e.g. `New-ParticipantUserSession`) MUST catch the `400/409` duplicate and fall through to `Connect-SorchaUser` (the password is deterministic), reusing the existing org-scoped user.
+
 #### Foot-gun: do NOT include open participants in `$walletMap`
 
 If the blueprint has a participant that is the sender of an `isStartingAction: true` action (a citizen, applicant, public submitter, etc.), that participant is **late-bound** at runtime — its `walletAddress` MUST be null in the published blueprint, and your `$walletMap` MUST NOT contain an entry for it.

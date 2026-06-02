@@ -89,6 +89,17 @@ Write-WtStep "Step 3: Auditor performs audit (Action 2 — $($data.expectedDecis
 
 $action2Payload = $data.actions['2']
 
+# Feature 145: submission is single-async — Action 1's /execute returned 202 and the instance
+# advances only when the InstanceProjector folds the sealed docket (a beat after the seal).
+# Gate the auditor on the projection surfacing Action 2 as current, else we race the projector
+# and get "Action 2 is not a current action for instance". See walkthrough-builder skill, Cadence.
+Wait-SorchaActorReady -Mode AwaitingInbox `
+    -InstanceId $instanceId `
+    -ActionId 2 `
+    -RegisterId $state.registerId `
+    -Headers $auditorSession.Headers `
+    -GatewayUrl $state.gatewayUrl
+
 $action2Response = Invoke-SorchaAction `
     -BlueprintUrl $state.blueprintUrl `
     -InstanceId $instanceId `

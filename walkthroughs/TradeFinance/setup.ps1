@@ -332,6 +332,47 @@ foreach ($org in $selectedOrgs) {
 }
 
 # ============================================================================
+# Step 3b: Org-admin wallets (register owners + blueprint publishers)
+# ============================================================================
+# A register must NOT be owned by a Consumer participant. The owner + publisher must be an
+# Administrator (CanPublishBlueprints policy) AND hold the register's governance-roster wallet
+# (F142 PublishGate matches the caller's wallet_address against the roster owner wallet-DID). The
+# org admin holds Administrator; give it a wallet + participant so it can own its register, then
+# re-login so the JWT carries wallet_address (minted from the first linked wallet at login).
+# See walkthrough-builder skill, "re-login any session AFTER its wallet is created".
+Write-WtStep "Step 3b: Org-admin wallets (register owners)"
+
+foreach ($org in $selectedOrgs) {
+    $subdomain = $org.subdomain
+    $ctx = $orgContexts[$subdomain]
+
+    $adminWallet = New-SorchaWallet `
+        -WalletUrl $env.WalletUrl `
+        -Name "$($org.name) Admin" `
+        -Headers $ctx.Headers `
+        -FetchPublicKey
+    try {
+        $null = Register-SorchaParticipant `
+            -TenantUrl $env.TenantUrl `
+            -WalletUrl $env.WalletUrl `
+            -OrganizationId $ctx.OrganizationId `
+            -WalletAddress $adminWallet.Address `
+            -DisplayName "$($org.name) Admin" `
+            -Headers $ctx.Headers
+    } catch { Write-WtInfo "  admin participant for $subdomain already registered" }
+
+    $adminRelogin = Connect-SorchaUser `
+        -TenantUrl $env.TenantUrl `
+        -Email "admin@$subdomain.sorcha.dev" `
+        -Password (Get-AdminPassword -OrgSubdomain $subdomain) `
+        -OrganizationId $ctx.OrganizationId
+    $ctx.Headers = $adminRelogin.Headers
+    $ctx.AdminToken = $adminRelogin.Token
+    $ctx.AdminWallet = $adminWallet.Address
+    Write-WtInfo "  $subdomain admin wallet (register owner): $($adminWallet.Address)"
+}
+
+# ============================================================================
 # Step 4: Create Registers
 # ============================================================================
 
@@ -355,15 +396,12 @@ foreach ($regDef in $config.registers) {
     }
 
     $ctx = $orgContexts[$ownerSubdomain]
-    $ownerOrg = $selectedOrgs | Where-Object { $_.subdomain -eq $ownerSubdomain } | Select-Object -First 1
-    $firstParticipant = $ownerOrg.participants[0]
-    $ownerWalletAddress = $state.wallets[$firstParticipant.id]
-    # Initiate/finalize run as the org admin (org-level operation), but the
-    # `/v1/wallets/{addr}/sign` call inside the function is delegated to the
-    # wallet-owner participant — pass their headers via WalletSignerHeaders.
-    $walletOwner = $state.roles[$firstParticipant.id]
+    # Register owner = the org ADMIN's wallet (Administrator + roster owner), NOT a Consumer
+    # participant. Both -Headers and -WalletSignerHeaders are the (re-logged) admin, who owns
+    # $ctx.AdminWallet, so the owner attestation is signed by the wallet it names.
+    $ownerWalletAddress = $ctx.AdminWallet
 
-    Write-WtInfo "  Creating register '$($regDef.name)' (owner: $ownerSubdomain/$($firstParticipant.id))..."
+    Write-WtInfo "  Creating register '$($regDef.name)' (owner: $ownerSubdomain admin)..."
 
     $register = New-SorchaRegister `
         -RegisterUrl $env.RegisterUrl `
@@ -374,7 +412,7 @@ foreach ($regDef in $config.registers) {
         -OwnerUserId $ctx.AdminUserId `
         -OwnerWalletAddress $ownerWalletAddress `
         -Headers $ctx.Headers `
-        -WalletSignerHeaders $walletOwner.participantHeaders `
+        -WalletSignerHeaders $ctx.Headers `
         -DevMode `
         -Metadata @{ createdBy = "TradeFinance/setup.ps1"; registerType = $regDef.ownerOrg }
 
@@ -441,6 +479,33 @@ foreach ($regDef in $config.registers) {
     $ctx = $orgContexts[$ownerSubdomain]
     $registerId = $state.registers[$regShortName].id
 
+    # Re-login the owner admin FRESH right here so the publish token definitely carries the
+    # wallet_address claim (F142 PublishGate matches it against the register's roster owner). The
+    # owner admin holds Administrator (CanPublishBlueprints) and owns the register wallet (Step 3b),
+    # so a fresh token clears both gates. Done inline rather than reusing a step-old session token.
+    $publisher = Connect-SorchaUser `
+        -TenantUrl $env.TenantUrl `
+        -Email "admin@$ownerSubdomain.sorcha.dev" `
+        -Password (Get-AdminPassword -OrgSubdomain $ownerSubdomain) `
+        -OrganizationId $ctx.OrganizationId
+    # The register's genesis control tx — which records the owner governance roster — seals
+    # asynchronously AFTER New-SorchaRegister returns. The F142 publish gate reads that roster and
+    # fail-closes with a 403 ("no publish-governance role") when it isn't recorded yet. Wait for the
+    # roster to populate before publishing (the register-genesis analogue of the F145 action-seal
+    # cadence). Unlike ConstructionPermit/Forestry there are no intervening on-register steps here,
+    # so the publish would otherwise race the seal.
+    $rosterReady = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        try {
+            $roster = Invoke-SorchaApi -Method GET `
+                -Uri "$($env.RegisterUrl)/registers/$registerId/governance/roster" `
+                -Headers $publisher.Headers
+            if ($roster.members -and $roster.members.Count -gt 0) { $rosterReady = $true; break }
+        } catch { }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $rosterReady) { Write-WtWarn "  register $registerId governance roster not populated after 30s" }
+
     # Build wallet map from all participants across all selected orgs.
     # Publish-SorchaBlueprint auto-skips any participant that is the sender
     # of an open starting action (isStartingAction: true), so we don't need
@@ -456,7 +521,7 @@ foreach ($regDef in $config.registers) {
         -BlueprintUrl $env.BlueprintUrl `
         -TemplatePath $templatePath `
         -WalletMap $walletMap `
-        -Headers $ctx.Headers `
+        -Headers $publisher.Headers `
         -IdPrefix "trade-$bpShortName" `
         -RegisterId $registerId
 

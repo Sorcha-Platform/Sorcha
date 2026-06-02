@@ -77,16 +77,29 @@ function New-ParticipantUserSession {
 
     # Spec 136: provision the operator org-scoped + verified (single-org — no public account, no
     # multi-org clash). Org operators are never public users; only citizens are.
-    $provisioned = New-SorchaOrgUser `
-        -TenantUrl $sorchaEnv.TenantUrl `
-        -OrganizationId $OrganizationId `
-        -Email $email `
-        -Password $password `
-        -DisplayName $DisplayName `
-        -Headers $OrgAdminHeaders `
-        -Roles @("Consumer") `
-        -EmailVerified
-    $userId = $provisioned.UserId
+    # Idempotent: this org/user may already exist from a sibling walkthrough that shares the org
+    # (Forestry + TradeFinance both use highland-timber by design). On a duplicate, fall through
+    # to login as the existing org-scoped user — the password is deterministic.
+    $userId = $null
+    try {
+        $provisioned = New-SorchaOrgUser `
+            -TenantUrl $sorchaEnv.TenantUrl `
+            -OrganizationId $OrganizationId `
+            -Email $email `
+            -Password $password `
+            -DisplayName $DisplayName `
+            -Headers $OrgAdminHeaders `
+            -Roles @("Consumer") `
+            -EmailVerified
+        $userId = $provisioned.UserId
+    } catch {
+        $status = $null; try { $status = $_.Exception.Response.StatusCode.value__ } catch {}
+        if ($status -eq 400 -or $status -eq 409) {
+            Write-WtInfo "  $email already provisioned — reusing"
+        } else {
+            throw
+        }
+    }
 
     $session = Connect-SorchaUser `
         -TenantUrl $sorchaEnv.TenantUrl `
@@ -97,7 +110,7 @@ function New-ParticipantUserSession {
     return @{
         Email    = $email
         Password = $password
-        UserId   = $userId
+        UserId   = if ($userId) { $userId } else { $session.UserId }
         Headers  = $session.Headers
         Token    = $session.Token
     }
@@ -338,6 +351,30 @@ Write-WtInfo "Sales Manager participant registered"
 # ============================================================================
 Write-WtStep "Step 6: Create Forestry Certification Register"
 
+# The blueprint publisher must be BOTH an Administrator (CanPublishBlueprints policy) AND the
+# register's governance-roster owner (F142 PublishGate matches the caller's wallet_address against
+# the roster owner wallet-DID). The org admin (fc-admin) holds the Administrator role, so make it
+# the register owner too: give it a wallet + participant, then re-login so the JWT carries
+# wallet_address (minted from the first linked wallet at login). The auditor stays a workflow
+# participant. See walkthrough-builder skill, "re-login any session AFTER its wallet is created".
+$fcAdminWallet = New-SorchaWallet `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "Forestry Certification Admin" `
+    -Headers $fcAdminSession.Headers `
+    -FetchPublicKey
+$null = Register-SorchaParticipant `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $fcOrgId `
+    -WalletAddress $fcAdminWallet.Address `
+    -DisplayName "Forestry Certification Admin" `
+    -Headers $fcAdminSession.Headers
+$fcAdminSession = Connect-SorchaUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $fcAdminEmail `
+    -Password $fcAdminPassword `
+    -OrganizationId $fcOrgId
+
 $register = New-SorchaRegister `
     -RegisterUrl $sorchaEnv.RegisterUrl `
     -WalletUrl $sorchaEnv.WalletUrl `
@@ -345,9 +382,9 @@ $register = New-SorchaRegister `
     -Description "Digital Product Passports for verifiably-sustainable timber batches" `
     -TenantId $fcOrgId `
     -OwnerUserId $fcAdminSession.UserId `
-    -OwnerWalletAddress $auditorWallet.Address `
+    -OwnerWalletAddress $fcAdminWallet.Address `
     -Headers $fcAdminSession.Headers `
-    -WalletSignerHeaders $auditorUser.Headers `
+    -WalletSignerHeaders $fcAdminSession.Headers `
     -TenantUrl $sorchaEnv.TenantUrl `
     -DevMode
 Write-WtSuccess "Register: $($register.RegisterId)"
