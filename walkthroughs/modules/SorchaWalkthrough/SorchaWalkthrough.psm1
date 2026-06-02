@@ -1517,6 +1517,41 @@ function Publish-SorchaBlueprint {
 # T016: Invoke-SorchaAction — Execute or Reject an Action
 # ============================================================================
 
+# Feature 145 cadence: action submission is single-async — the previous action's /execute returns
+# 202 and the instance only advances once the InstanceProjector folds the sealed docket (a beat
+# later). A script that submits the next action immediately races the projector and gets a transient
+# 400 "Action N is not a current action for instance". Rather than make every walkthrough gate each
+# actor switch on AwaitingInbox, this wraps the submit POST and retries ONLY that transient error
+# (bounded), so the cadence self-heals everywhere. Any other error (schema 400, auth, etc.) is
+# rethrown immediately.
+function Invoke-SorchaActionPostWithCadenceRetry {
+    param(
+        [string]$Method,
+        [string]$Uri,
+        [hashtable]$Body,
+        [hashtable]$Headers,
+        [string]$ActionId,
+        [int]$MaxAttempts = 15,
+        [int]$DelaySeconds = 1
+    )
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            return Invoke-SorchaApi -Method $Method -Uri $Uri -Body $Body -Headers $Headers
+        } catch {
+            $errBody = $null
+            try { $errBody = Get-SorchaErrorBody -Exception $_.Exception } catch {}
+            if ($attempt -lt $MaxAttempts -and $errBody -and ($errBody -match 'not a current action')) {
+                if ($attempt -eq 1) {
+                    Write-WtInfo "  Action $ActionId not yet current (projector folding) — waiting…"
+                }
+                Start-Sleep -Seconds $DelaySeconds
+                continue
+            }
+            throw
+        }
+    }
+}
+
 function Invoke-SorchaAction {
     <#
     .SYNOPSIS
@@ -1578,10 +1613,11 @@ function Invoke-SorchaAction {
             registerAddress = $RegisterId
         }
 
-        $response = Invoke-SorchaApi -Method POST `
+        $response = Invoke-SorchaActionPostWithCadenceRetry -Method POST `
             -Uri "$BlueprintUrl/instances/$InstanceId/actions/$ActionId/reject" `
             -Body $rejectBody `
-            -Headers $executeHeaders
+            -Headers $executeHeaders `
+            -ActionId $ActionId
 
         Write-WtSuccess "Action $ActionId REJECTED"
 
@@ -1610,10 +1646,11 @@ function Invoke-SorchaAction {
             $actionBody.credentialPresentations = @($CredentialPresentations)
         }
 
-        $response = Invoke-SorchaApi -Method POST `
+        $response = Invoke-SorchaActionPostWithCadenceRetry -Method POST `
             -Uri "$BlueprintUrl/instances/$InstanceId/actions/$ActionId/execute" `
             -Body $actionBody `
-            -Headers $executeHeaders
+            -Headers $executeHeaders `
+            -ActionId $ActionId
 
         $nextAction = if ($response.nextAction) { $response.nextAction } else { "complete" }
         Write-WtSuccess "Action $ActionId executed (next: $nextAction)"

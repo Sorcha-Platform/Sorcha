@@ -158,6 +158,16 @@ function Invoke-BlueprintScenario {
         $senderToken = $participantTokens[$sender]
         $actionDataObj = $ActionData."$actionId"
 
+        # Feature 145: submission is single-async — the previous action's /execute returned 202 and
+        # the instance advances only when the InstanceProjector folds the sealed docket. Gate each
+        # subsequent action on the projection surfacing it as current, else we race the projector and
+        # get a 400 ("Action N is not a current action"). See walkthrough-builder skill, Cadence.
+        if ($actionId -ne $ExpectedPath[0]) {
+            Wait-SorchaActorReady -Mode AwaitingInbox `
+                -InstanceId $instanceId -ActionId ([int]$actionId) -RegisterId $RegisterId `
+                -Headers @{ Authorization = "Bearer $senderToken" } -GatewayUrl $env.GatewayUrl
+        }
+
         # Convert PSObject to hashtable
         $payloadData = @{}
         if ($actionDataObj) {
@@ -263,6 +273,14 @@ function Invoke-DisputedProcurement {
         $senderWallet = $wallets[$sender]
         $senderToken = $participantTokens[$sender]
         $actionDataObj = $ActionData."$actionId"
+
+        # Feature 145: gate each subsequent action on the projector surfacing it as current (the
+        # async-submit cadence) — otherwise we race the projector and get a 400. See run loop above.
+        if ($actionId -ne 1) {
+            Wait-SorchaActorReady -Mode AwaitingInbox `
+                -InstanceId $instanceId -ActionId ([int]$actionId) -RegisterId $RegisterId `
+                -Headers @{ Authorization = "Bearer $senderToken" } -GatewayUrl $env.GatewayUrl
+        }
 
         $payloadData = @{}
         if ($actionDataObj) {
