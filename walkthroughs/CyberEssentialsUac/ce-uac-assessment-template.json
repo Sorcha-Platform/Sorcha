@@ -307,6 +307,8 @@
           "credentialType": "CyberEssentialsUacPosture",
           "recipientParticipantId": "subject-org",
           "expiryDuration": "P1Y",
+          "targetAudience": "SorchaLocalWallet",
+          "usagePolicy": "Reusable",
           "claimMappings": [
             { "claimName": "compliant",          "sourceField": "/uac/compliant" },
             { "claimName": "assessmentDate",     "sourceField": "/assessment/date" },
