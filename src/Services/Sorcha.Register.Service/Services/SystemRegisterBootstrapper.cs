@@ -359,8 +359,15 @@ public class SystemRegisterBootstrapper : BackgroundService
     {
         await WaitForGenesisDocketAsync(registerManager, cancellationToken);
 
-        var systemRegisterService = scope.ServiceProvider.GetRequiredService<SystemRegisterService>();
-        await SeedBlueprintsIfMissingAsync(systemRegisterService, cancellationToken);
+        // SyncOnly nodes are subscribers: the governance blueprints arrive via replication from
+        // the register owner, and a SyncOnly node is not on the system-register roster so it cannot
+        // seal a publish anyway. Seeding here is wasted work + log noise and briefly emits an
+        // unsealable publish tx. Owners (Auto / GenesisFile) seed; subscribers pull. (#907)
+        if (_options.BootstrapMode != BootstrapMode.SyncOnly)
+        {
+            var systemRegisterService = scope.ServiceProvider.GetRequiredService<SystemRegisterService>();
+            await SeedBlueprintsIfMissingAsync(systemRegisterService, cancellationToken);
+        }
 
         // Ensure peer-service knows to advertise the system register for sync.
         // Idempotent — SubscribeToRegisterAsync logs a warning and returns the
