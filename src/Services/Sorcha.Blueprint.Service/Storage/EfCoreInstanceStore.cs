@@ -289,7 +289,12 @@ public class EfCoreInstanceStore : IInstanceStore
             {
                 blueprintCache.TryGetValue(instance.BlueprintId, out var blueprint);
 
-                return instance.CurrentActionIds.Select(actionId =>
+                // Only surface actions this wallet is actually the sender of — not every current
+                // action of an instance the wallet merely participates in (the citizen-sees-the-
+                // analyst's-action bug). See IsActionForWallet.
+                return instance.CurrentActionIds
+                    .Where(actionId => IsActionForWallet(blueprint, actionResolver, instance, actionId, walletAddress))
+                    .Select(actionId =>
                 {
                     var actionTitle = $"Action {actionId}";
                     JsonElement? dataSchema = null;
@@ -373,13 +378,35 @@ public class EfCoreInstanceStore : IInstanceStore
             .Where(i => i.State == activeState)
             .ToListAsync(cancellationToken);
 
-        return entities
+        var matchingInstances = entities
             .Where(e => ContainsWalletAddress(e.ParticipantWallets, walletAddress))
-            .Sum(e =>
+            .Select(ToModel)
+            .Where(i => i is not null)
+            .Cast<Instance>()
+            .ToList();
+
+        // Resolve blueprints to apply the same sender-filter as GetPendingActionsByWalletAsync, so
+        // the badge count matches the list (count only actions this wallet is the sender of).
+        var blueprintCache = new Dictionary<string, Sorcha.Blueprint.Models.Blueprint?>();
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var actionResolver = scope.ServiceProvider.GetService<IActionResolverService>();
+        if (actionResolver != null)
+        {
+            foreach (var bpId in matchingInstances.Select(i => i.BlueprintId).Distinct())
             {
-                var actionIds = DeserializeJson<List<int>>(e.CurrentActionIds);
-                return actionIds?.Count ?? 0;
-            });
+                if (!blueprintCache.ContainsKey(bpId))
+                {
+                    blueprintCache[bpId] = await actionResolver.GetBlueprintAsync(bpId, cancellationToken);
+                }
+            }
+        }
+
+        return matchingInstances.Sum(instance =>
+        {
+            blueprintCache.TryGetValue(instance.BlueprintId, out var blueprint);
+            return instance.CurrentActionIds.Count(actionId =>
+                IsActionForWallet(blueprint, actionResolver, instance, actionId, walletAddress));
+        });
     }
 
     /// <inheritdoc/>
@@ -616,5 +643,44 @@ public class EfCoreInstanceStore : IInstanceStore
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Whether a current action is actionable by <paramref name="walletAddress"/> — i.e. the
+    /// action's <c>Sender</c> participant either binds to that wallet in the instance, or is not
+    /// yet bound to any wallet (open / late-bound, ambiguous). It excludes ONLY actions whose
+    /// sender is bound to a <b>different</b> wallet, so a participant who merely shares an instance
+    /// (e.g. the citizen applicant whose wallet is in <see cref="Instance.ParticipantWallets"/>
+    /// alongside the analyst's) is no longer shown the analyst's action as if it were their own.
+    /// Falls back to inclusive whenever the blueprint / action / sender can't be resolved, so a
+    /// resolution failure never hides a legitimate pending action from the actor who must perform it.
+    /// </summary>
+    internal static bool IsActionForWallet(
+        Sorcha.Blueprint.Models.Blueprint? blueprint,
+        IActionResolverService? actionResolver,
+        Instance instance,
+        int actionId,
+        string walletAddress)
+    {
+        if (blueprint is null || actionResolver is null)
+        {
+            return true;
+        }
+
+        var sender = actionResolver.GetActionDefinition(blueprint, actionId.ToString())?.Sender;
+        if (string.IsNullOrEmpty(sender))
+        {
+            return true;
+        }
+
+        if (instance.ParticipantWallets.TryGetValue(sender, out var senderWallet)
+            && !string.IsNullOrEmpty(senderWallet))
+        {
+            // Sender is bound to a wallet — the action belongs to that wallet only.
+            return string.Equals(senderWallet, walletAddress, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Sender not yet bound (open / late-bound participant) — ambiguous, don't hide it.
+        return true;
     }
 }
