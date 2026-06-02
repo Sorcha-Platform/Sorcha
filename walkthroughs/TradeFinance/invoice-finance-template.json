@@ -416,7 +416,7 @@
           },
           {
             "participantAddress": "finance-director",
-            "dataPointers": ["/advancePercentage", "/feeRate"]
+            "dataPointers": ["/evaluationNotes", "/advancePercentage", "/feeRate"]
           }
         ],
         "routes": [

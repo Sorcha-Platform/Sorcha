@@ -318,6 +318,14 @@ function Invoke-DisputedProcurement {
     $sender = $procurementSenderMap[6]
     $senderWallet = $wallets[$sender]
     $senderToken = $participantTokens[$sender]
+
+    # Feature 145: action 5 (last in the loop above) advances to action 6 only once the projector
+    # folds its sealed docket. Gate on AwaitingInbox before the dispute, else we race the projector
+    # and get a 400 ("Action 6 is not a current action").
+    Wait-SorchaActorReady -Mode AwaitingInbox `
+        -InstanceId $instanceId -ActionId 6 -RegisterId $RegisterId `
+        -Headers @{ Authorization = "Bearer $senderToken" } -GatewayUrl $env.GatewayUrl
+
     try {
         $disputeData = $ActionData."6_dispute"
         $payloadData = @{}
@@ -351,6 +359,14 @@ function Invoke-DisputedProcurement {
             $payloadData[$prop.Name] = $prop.Value
         }
     }
+
+    # Feature 145: the dispute (action 6) routes back to action 5. The instance only re-surfaces
+    # action 5 as current once the InstanceProjector folds the sealed dispute docket — a beat after
+    # the seal. Gate on AwaitingInbox before resubmitting, else we race the projector and get a 400
+    # ("Action 5 is not a current action"). See walkthrough-builder skill, Cadence.
+    Wait-SorchaActorReady -Mode AwaitingInbox `
+        -InstanceId $instanceId -ActionId 5 -RegisterId $RegisterId `
+        -Headers @{ Authorization = "Bearer $senderToken" } -GatewayUrl $env.GatewayUrl
 
     try {
         $response = Invoke-SorchaAction `
@@ -387,6 +403,12 @@ function Invoke-DisputedProcurement {
             $payloadData[$prop.Name] = $prop.Value
         }
     }
+
+    # Feature 145: gate on the resubmitted action 5 surfacing action 6 as current again before
+    # the final approval, same async-projection cadence as above.
+    Wait-SorchaActorReady -Mode AwaitingInbox `
+        -InstanceId $instanceId -ActionId 6 -RegisterId $RegisterId `
+        -Headers @{ Authorization = "Bearer $senderToken" } -GatewayUrl $env.GatewayUrl
 
     try {
         $response = Invoke-SorchaAction `

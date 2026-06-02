@@ -1,0 +1,33 @@
+{
+  "actor": {
+    "name": "verification-analyst",
+    "description": "Deterministic identity-validator agent — auto-approves Assured Identity applications (demo rules mode)."
+  },
+  "connection": {
+    "gatewayUrl": "http://tiny:8090",
+    "registerId": "4148b7d7573540c5af2d13fde5d2feb2",
+    "credentials": {
+      "email": "$env:AGENT_EMAIL",
+      "password": "$env:AGENT_PASSWORD",
+      "organizationId": "ed5f735a-cf12-4267-a305-9d8919a4c9bd"
+    },
+    "walletAddress": "ws11qq9g4qyz8m9uqla925h3xv6ks75tvw3m69j7sft33x494ycty83fw54dj3z"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 15 }
+  },
+  "mode": "rules",
+  "rules": [
+    {
+      "actionName": "Verify Assured Identity Application",
+      "condition": { "==": [true, true] },
+      "decision": "approve",
+      "payload": {
+        "decision": "approved",
+        "verificationNotes": "Auto-approved by the demo identity-validator agent (rules mode)."
+      }
+    }
+  ]
+}
+

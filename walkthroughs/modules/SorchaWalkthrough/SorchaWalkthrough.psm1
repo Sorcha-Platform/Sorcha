@@ -933,6 +933,48 @@ function New-SorchaWallet {
 }
 
 # ============================================================================
+# Set-SorchaOrgMasterKey — provision the org's Feature 083 HD master key (idempotent)
+# ============================================================================
+
+function Set-SorchaOrgMasterKey {
+    <#
+    .SYNOPSIS
+        Provision the organisation's Feature 083 HD master key (idempotent).
+    .DESCRIPTION
+        POST /api/wallets/org/{orgId}/master-key. REQUIRED for any org that ISSUES credentials:
+        without a master key the org can't derive its Feature 120 VC-issuance key, so blueprint-
+        issued SorchaLocalWallet credentials are signed with the bare wallet key (iss = bare
+        address, no did:sorcha kid). Such credentials fail cross-register presentation — the
+        engine TrustEvaluator rejects them with "issuer signature not verified" (fail-closed),
+        breaking credential-chain walkthroughs (TradeFinance Finance, SelfBuildHouse warrant).
+        The server deliberately does NOT auto-provision master keys (they mint a recovery
+        mnemonic that must be backed up — an explicit org-setup step), so the walkthrough must.
+        Requires an Administrator + platform-audience token (the org admin, re-logged so it carries
+        wallet_address). Idempotent: returns silently on 409 (already provisioned). The one-time
+        recovery mnemonic in the response is intentionally discarded (walkthrough/dev only).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+    try {
+        $null = Invoke-SorchaApi -Method POST `
+            -Uri "$WalletUrl/wallets/org/$OrganizationId/master-key" `
+            -Headers $Headers
+        Write-WtInfo "  Org master key provisioned for $OrganizationId (enables Feature 120 VC-issuance key)"
+    } catch {
+        $status = $null
+        try { $status = $_.Exception.Response.StatusCode.value__ } catch {}
+        if ($status -eq 409) {
+            Write-WtInfo "  Org master key already provisioned for $OrganizationId"
+        } else {
+            throw
+        }
+    }
+}
+
+# ============================================================================
 # T012: Register-SorchaParticipant — Participant Registration + Wallet Link
 # ============================================================================
 
