@@ -1,0 +1,385 @@
+{
+  "id": "ce-uac-assessment-v1",
+  "title": "Cyber Essentials UAC Posture Assessment",
+  "description": "Two-participant UAC posture assessment workflow. A cyber assessor evaluates user account controls against Cyber Essentials requirements (MFA, offboarding, privileged access, password policy), computes a compliance gate, and route-gates credential issuance: compliant evidence proceeds to an issue action that mints a CyberEssentialsUacPosture credential for the assessed organisation; non-compliant evidence routes to a terminal record-fail action — the credential is withheld and never minted. This workflow produces a posture assessment credential and does NOT constitute formal Cyber Essentials certification.",
+  "version": 1,
+  "category": "security",
+  "tags": ["cyber-essentials", "uac", "posture", "mfa", "privileged-access", "conditional-routing", "calculations", "verifiable-credential", "compliance"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "ce-uac-assessment-generated",
+    "title": "Cyber Essentials UAC Posture Assessment",
+    "description": "Assessor-driven UAC evidence collection with JSON Logic compliance gate and route-gated posture credential issuance. Compliant: posture credential issued to assessed org. Non-compliant: non-compliance recorded, no credential minted. This is a posture assessment — not formal Cyber Essentials certification.",
+    "version": 1,
+    "metadata": {
+      "category": "Security & Compliance",
+      "complexity": "Moderate",
+      "actions": "3",
+      "features": "Open Participant, Conditional Routing, Calculations, Verifiable Credential, Non-Compliance Recording",
+      "sector": "Cyber Security"
+    },
+    "instanceReference": {
+      "prefix": "CEU",
+      "components": [
+        { "field": "/assessment/orgDid",    "transform": "FirstWord", "chars": 4 },
+        { "field": "/assessment/scopeName", "transform": "FirstWord", "chars": 3 }
+      ]
+    },
+    "participants": [
+      {
+        "id": "assessor",
+        "name": "Cyber Assessor",
+        "organisation": "Assessing Org",
+        "description": "Runs the UAC assessment and issues the posture credential. OPEN starter (late-bound) — VAL_BP_010."
+      },
+      {
+        "id": "subject-org",
+        "name": "Assessed Organisation",
+        "organisation": "Subject SME",
+        "description": "Receives the posture credential (pre-bound recipient)."
+      }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Submit UAC Assessment",
+        "description": "Assessor submits UAC evidence across provisioning, offboarding, MFA, privileged access, and password policy domains. A JSON Logic gate computes overall compliance and routes to credential issuance (compliant) or non-compliance recording (non-compliant).",
+        "sender": "assessor",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "assessment": {
+                "type": "object",
+                "title": "Assessment Metadata",
+                "properties": {
+                  "orgDid": {
+                    "type": "string",
+                    "title": "Organisation DID"
+                  },
+                  "scopeName": {
+                    "type": "string",
+                    "title": "Scope Name"
+                  },
+                  "scopeDeviceCount": {
+                    "type": "integer",
+                    "title": "Scope Device Count",
+                    "minimum": 0
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "title": "Assessment Date"
+                  },
+                  "assessorType": {
+                    "type": "string",
+                    "title": "Assessor Type"
+                  },
+                  "infraVersion": {
+                    "type": "string",
+                    "title": "Infrastructure Version"
+                  }
+                },
+                "required": ["date"]
+              },
+              "provisioning": {
+                "type": "object",
+                "title": "Account Provisioning",
+                "properties": {
+                  "processDocumented": {
+                    "type": "boolean",
+                    "title": "Provisioning Process Documented"
+                  },
+                  "uniquePerUser": {
+                    "type": "boolean",
+                    "title": "Unique Accounts Per User"
+                  },
+                  "accountsInScope": {
+                    "type": "integer",
+                    "title": "Accounts In Scope",
+                    "minimum": 0
+                  },
+                  "policyHash": {
+                    "type": "string",
+                    "title": "Policy Document Hash"
+                  }
+                }
+              },
+              "offboarding": {
+                "type": "object",
+                "title": "Offboarding Controls",
+                "properties": {
+                  "processDocumented": {
+                    "type": "boolean",
+                    "title": "Offboarding Process Documented"
+                  },
+                  "revocationSla": {
+                    "type": "string",
+                    "title": "Account Revocation SLA"
+                  },
+                  "staleAccounts": {
+                    "type": "integer",
+                    "title": "Stale Accounts Count",
+                    "minimum": 0
+                  },
+                  "lastReviewDate": {
+                    "type": "string",
+                    "title": "Last Account Review Date"
+                  }
+                }
+              },
+              "mfa": {
+                "type": "object",
+                "title": "Multi-Factor Authentication",
+                "properties": {
+                  "cloudServicesTotal": {
+                    "type": "integer",
+                    "title": "Total Cloud Services",
+                    "minimum": 0
+                  },
+                  "cloudServicesWithMfa": {
+                    "type": "integer",
+                    "title": "Cloud Services With MFA",
+                    "minimum": 0
+                  },
+                  "adminMfaEnforced": {
+                    "type": "boolean",
+                    "title": "Admin MFA Enforced"
+                  },
+                  "userMfaEnforced": {
+                    "type": "boolean",
+                    "title": "User MFA Enforced"
+                  },
+                  "hardwareTokenWhereSupported": {
+                    "type": "boolean",
+                    "title": "Hardware Token Used Where Supported"
+                  }
+                }
+              },
+              "privilegedAccess": {
+                "type": "object",
+                "title": "Privileged Access Management",
+                "properties": {
+                  "adminAccountsCount": {
+                    "type": "integer",
+                    "title": "Admin Accounts Count",
+                    "minimum": 0
+                  },
+                  "separateAdminAccounts": {
+                    "type": "boolean",
+                    "title": "Separate Admin Accounts Used"
+                  },
+                  "leastPrivilege": {
+                    "type": "boolean",
+                    "title": "Least Privilege Enforced"
+                  },
+                  "staleAdminPrivileges": {
+                    "type": "integer",
+                    "title": "Stale Admin Privileges Count",
+                    "minimum": 0
+                  },
+                  "lastReviewDate": {
+                    "type": "string",
+                    "title": "Last Privilege Review Date"
+                  }
+                }
+              },
+              "passwordPolicy": {
+                "type": "object",
+                "title": "Password Policy",
+                "properties": {
+                  "approach": {
+                    "type": "string",
+                    "title": "Password Approach",
+                    "enum": ["mfa+8", "lockout+8", "denylist+12"]
+                  },
+                  "minLength": {
+                    "type": "integer",
+                    "title": "Minimum Password Length",
+                    "minimum": 1
+                  },
+                  "lockoutThreshold": {
+                    "type": "integer",
+                    "title": "Lockout Attempt Threshold",
+                    "minimum": 0
+                  },
+                  "lockoutDurationMins": {
+                    "type": "integer",
+                    "title": "Lockout Duration (minutes)",
+                    "minimum": 0
+                  },
+                  "denyListEnabled": {
+                    "type": "boolean",
+                    "title": "Password Deny List Enabled"
+                  }
+                }
+              },
+              "uac": {
+                "type": "object",
+                "title": "UAC Summary",
+                "properties": {
+                  "compliant": {
+                    "type": "boolean",
+                    "title": "UAC Compliant (assessor judgement)"
+                  },
+                  "requirementsMet": {
+                    "type": "array",
+                    "title": "Requirements Met",
+                    "items": { "type": "string" }
+                  },
+                  "autoFailTriggered": {
+                    "type": "array",
+                    "title": "Auto-Fail Conditions Triggered",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            },
+            "required": ["assessment", "mfa", "offboarding", "passwordPolicy", "privilegedAccess"]
+          }
+        ],
+        "calculations": {
+          "computedCompliant": {
+            "and": [
+              { "==": [ { "var": "mfa.adminMfaEnforced" }, true ] },
+              { "==": [ { "var": "offboarding.staleAccounts" }, 0 ] },
+              { "==": [ { "var": "privilegedAccess.separateAdminAccounts" }, true ] },
+              { "==": [ { "var": "privilegedAccess.leastPrivilege" }, true ] },
+              { "or": [
+                { "and": [
+                  { "in": [ { "var": "passwordPolicy.approach" }, [ "mfa+8", "lockout+8" ] ] },
+                  { ">=": [ { "var": "passwordPolicy.minLength" }, 8 ] }
+                ] },
+                { "and": [
+                  { "==": [ { "var": "passwordPolicy.approach" }, "denylist+12" ] },
+                  { ">=": [ { "var": "passwordPolicy.minLength" }, 12 ] }
+                ] }
+              ] }
+            ]
+          }
+        },
+        "routes": [
+          {
+            "id": "compliant-issue",
+            "nextActionIds": [1],
+            "condition": { "==": [ { "var": "computedCompliant" }, true ] },
+            "description": "UAC requirements met — proceed to issue the posture credential"
+          },
+          {
+            "id": "noncompliant-record",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "UAC requirements not met — record non-compliance, withhold the credential"
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "assessor",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "subject-org",
+            "dataPointers": ["/uac", "/assessment/date", "/assessment/infraVersion"]
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Issue Posture Credential",
+        "description": "Assessor issues a CyberEssentialsUacPosture verifiable credential to the assessed organisation. Reached only when the compliance gate (computedCompliant) evaluates to true. This action sources claim mappings from the action 0 evidence via requiredPriorActions.",
+        "sender": "assessor",
+        "requiredPriorActions": [0],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "issuanceNote": {
+                "type": "string",
+                "title": "Issuance note",
+                "maxLength": 200
+              }
+            }
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "CyberEssentialsUacPosture",
+          "recipientParticipantId": "subject-org",
+          "expiryDuration": "P1Y",
+          "claimMappings": [
+            { "claimName": "compliant",          "sourceField": "/uac/compliant" },
+            { "claimName": "assessmentDate",     "sourceField": "/assessment/date" },
+            { "claimName": "infraVersion",       "sourceField": "/assessment/infraVersion" },
+            { "claimName": "passwordApproach",   "sourceField": "/passwordPolicy/approach" },
+            { "claimName": "mfaAdminEnforced",   "sourceField": "/mfa/adminMfaEnforced" },
+            { "claimName": "assessorType",       "sourceField": "/assessment/assessorType" },
+            { "claimName": "scopeDeviceCount",   "sourceField": "/assessment/scopeDeviceCount" },
+            { "claimName": "mfaCoverage",        "sourceField": "/mfa/cloudServicesWithMfa" },
+            { "claimName": "staleAccounts",      "sourceField": "/offboarding/staleAccounts" },
+            { "claimName": "policyEvidenceHash", "sourceField": "/provisioning/policyHash" }
+          ],
+          "disclosable": ["assessorType", "scopeDeviceCount", "mfaCoverage", "staleAccounts", "policyEvidenceHash"]
+        },
+        "routes": [
+          {
+            "id": "issued",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Posture credential issued — workflow complete"
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "assessor",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "subject-org",
+            "dataPointers": ["/*"]
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Record Non-Compliance",
+        "description": "Assessor records that UAC requirements were not met. This is a terminal action — no credential is issued or minted. Reached only when computedCompliant evaluates to false (default route from action 0).",
+        "sender": "assessor",
+        "requiredPriorActions": [0],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "remediationNotes": {
+                "type": "string",
+                "title": "Remediation notes",
+                "maxLength": 500
+              }
+            }
+          }
+        ],
+        "routes": [
+          {
+            "id": "recorded",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Non-compliance recorded — no credential issued"
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "assessor",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "subject-org",
+            "dataPointers": ["/*"]
+          }
+        ]
+      }
+    ]
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": []
+}
