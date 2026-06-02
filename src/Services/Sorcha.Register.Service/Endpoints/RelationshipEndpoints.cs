@@ -39,7 +39,10 @@ public static class RelationshipEndpoints
         .WithTags("Registers — Feature 108")
         .WithSummary("Get this node's derived role set for a register (Feature 108)")
         .WithDescription("Returns the local-installation's role set on the register, derived from the latest control record and local identity. Cached; recomputed on control-transaction seal.")
-        .RequireAuthorization(AuthorizationPolicies.CanWriteDockets)
+        // Read-only endpoint: the standard transaction-read policy (any authenticated caller that
+        // can read the register), NOT the write policy CanWriteDockets — which 403'd legitimate
+        // readers such as admins, subscribers, and AI agents (#910).
+        .RequireAuthorization("CanReadTransactions")
         .Produces<RegisterLocalRelationship>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);
@@ -70,7 +73,9 @@ public static class RelationshipEndpoints
         .WithTags("Registers — Feature 108")
         .WithSummary("Get typed sync state for a register with the inputs that derived it (Feature 108)")
         .WithDescription("Returns the resolved sync state for a register (synced, recovering, stalled) along with the inputs the resolver used: local docket height, recent peer-height observations within the staleness window, the latest validator sealing observation, and the persisted state. AI agents call this to decide whether a register is current enough to read from before consuming transactions or generating verification bundles.")
-        .RequireAuthorization(AuthorizationPolicies.CanWriteDockets)
+        // Read-only endpoint: the standard transaction-read policy, NOT the write policy
+        // CanWriteDockets — which 403'd legitimate readers (admins, subscribers, AI agents) (#910).
+        .RequireAuthorization("CanReadTransactions")
         .Produces<RegisterSyncStateView>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);
