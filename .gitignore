@@ -269,6 +269,7 @@ tests/Sorcha.Performance.Tests/performance-reports/
 docs/api/*.json
 build/
 walkthroughs/*/wallet/
+walkthroughs/*/agent-wallet/
 walkthroughs/*/state.json
 .claude/scheduled_tasks.lock
 verify-feature-106.ps1

@@ -417,6 +417,84 @@ try {
 }
 
 # ============================================================================
+# Step 10: HAIP Trust Prerequisites (for the selective-disclosure variant)
+# ============================================================================
+# These two calls are required before the assessor org can issue OID4VCI
+# credentials via /api/v1/offers/. They establish the trust anchor for the
+# assessor's tenant and enrol the assessor wallet as a HAIP-capable issuer.
+# Mirror pattern: walkthroughs/AssuredIdentity/setup.ps1:274-291.
+# Auth: RequireAdministrator + RequirePlatformAudience → use $sysAdmin.Headers.
+
+Write-WtStep "Step 10: HAIP trust prerequisites (for the selective-disclosure variant)"
+
+try {
+    Invoke-SorchaApi -Method POST `
+        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$assessorOrgId/provision" `
+        -Headers $sysAdmin.Headers `
+        -Body @{} | Out-Null
+    Write-WtSuccess "Trust anchor provisioned for assessor org $assessorOrgId"
+} catch {
+    Write-WtWarn "Trust anchor provision failed (may already exist): $($_.Exception.Message)"
+}
+
+try {
+    Invoke-SorchaApi -Method POST `
+        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$assessorOrgId/orgs/$($assessorWallet.Address)/enrol" `
+        -Headers $sysAdmin.Headers `
+        -Body @{
+            orgPublicKeyBase64 = $assessorWallet.PublicKey
+            orgDisplayName     = "Cyber Assessor Co."
+        } | Out-Null
+    Write-WtSuccess "Assessor org enrolled as HAIP issuer (wallet: $($assessorWallet.Address))"
+} catch {
+    Write-WtWarn "Assessor org enrolment failed (may already exist): $($_.Exception.Message)"
+}
+
+# ============================================================================
+# Step 11: Register HAIP Service Principal (for the selective-disclosure variant)
+# ============================================================================
+# The /api/v1/offers/ and /api/v1/verifier/requests endpoints on the HAIP
+# service require a token with a client_id claim (RequireService policy,
+# HAIP Program.cs:38-40). A service token is obtained via the client_credentials
+# OAuth2 grant against /api/service-auth/token — this requires a registered
+# service principal. We register one here and persist the credentials so
+# run-haip-sd.ps1 can exchange them for a service token at run time.
+
+Write-WtStep "Step 11: Register HAIP walkthrough service principal"
+
+$svcPrincipal = $null
+try {
+    $svcPrincipal = Invoke-SorchaApi -Method POST `
+        -Uri "$($sorchaEnv.TenantUrl)/api/service-principals/" `
+        -Headers $sysAdmin.Headers `
+        -Body @{
+            serviceName = "ce-uac-haip-walkthrough"
+            scopes      = @("haip:issue", "haip:verify")
+        }
+    Write-WtSuccess "Service principal registered: $($svcPrincipal.clientId)"
+} catch {
+    Write-WtWarn "Service principal registration failed (may already exist — will attempt lookup): $($_.Exception.Message)"
+    # Attempt lookup by name — list all and find by serviceName
+    try {
+        $spList = Invoke-SorchaApi -Method GET `
+            -Uri "$($sorchaEnv.TenantUrl)/api/service-principals/" `
+            -Headers $sysAdmin.Headers
+        $existing = $spList.servicePrincipals | Where-Object { $_.serviceName -eq "ce-uac-haip-walkthrough" }
+        if ($existing) {
+            Write-WtWarn "Found existing service principal '$($existing.clientId)' but cannot recover the secret — delete it via the admin API and re-run setup to obtain fresh credentials."
+        }
+    } catch {
+        Write-WtWarn "Service principal lookup also failed: $($_.Exception.Message)"
+    }
+}
+
+# Persist client credentials so run-haip-sd.ps1 can exchange them for a service token.
+# If registration failed above, $svcPrincipal is $null and the state block records nulls
+# — run-haip-sd.ps1 will detect this and exit with a clear error.
+$haipClientId     = if ($svcPrincipal) { $svcPrincipal.clientId }     else { $null }
+$haipClientSecret = if ($svcPrincipal) { $svcPrincipal.clientSecret } else { $null }
+
+# ============================================================================
 # Save State
 # ============================================================================
 Write-WtStep "Saving State"
@@ -430,6 +508,10 @@ $state = @{
     registerUrl  = $sorchaEnv.RegisterUrl
     registerId   = $registerId
     assessorDid  = $assessorDid
+    haip         = @{
+        clientId     = $haipClientId
+        clientSecret = $haipClientSecret
+    }
     blueprints   = @{
         "ce-uac-assessment"          = @{ id = $blueprintA.BlueprintId }
         "cyber-insurance-application" = @{ id = $blueprintB.BlueprintId }
