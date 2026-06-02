@@ -8,7 +8,7 @@
 #
 # Flow:
 #   1. Assessor issues CyberEssentialsUacPosture via OID4VCI → agent file wallet
-#   2. Agent presents via OID4VP disclosing ONLY 4 of 9 evidence claims
+#   2. Agent presents via OID4VP disclosing ONLY 4 of 10 evidence claims
 #   3. Assertions:
 #      POSITIVE: verifiedClaims = exactly {compliant, assessmentDate, passwordApproach, mfaAdminEnforced}
 #      NEGATIVE: a second verifier request requiring "policyEvidenceHash" is REJECTED as invalid
@@ -112,21 +112,14 @@ if (-not (Test-Path $walletDir)) {
 
 $secrets = Get-SorchaSecrets -WalkthroughName "cyber-essentials-uac"
 
-# Assessor session (needed so we have the wallet address for the offer body)
-$assessorSession = Connect-SorchaUser `
-    -TenantUrl      $tenantUrl `
-    -Email          $state.roles.assessor.email `
-    -Password       $secrets.DefaultPassword `
-    -OrganizationId $state.roles.assessor.organizationId
-Write-WtSuccess "Assessor authenticated"
-
 # SERVICE TOKEN — client_credentials grant using the service principal registered by setup.ps1.
 # The resulting token carries a client_id claim and token_type=service, satisfying the
 # RequireService policy on /api/v1/offers/ and /api/v1/verifier/requests + /result.
 $encodedSecret = [Uri]::EscapeDataString($state.haip.clientSecret)
-$ccBody = "grant_type=client_credentials&client_id=$($state.haip.clientId)&client_secret=$encodedSecret&scope=haip:issue haip:verify"
+$encodedScope  = [Uri]::EscapeDataString("haip:issue haip:verify")
+$ccBody = "grant_type=client_credentials&client_id=$($state.haip.clientId)&client_secret=$encodedSecret&scope=$encodedScope"
 $tokenResp = Invoke-SorchaApi -Method POST `
-    -Uri "$tenantUrl/api/service-auth/token" `
+    -Uri "$baseUrl/api/service-auth/token" `
     -Body $ccBody `
     -ContentType "application/x-www-form-urlencoded"
 
@@ -135,14 +128,14 @@ $svcHeaders = @{ Authorization = "Bearer $($tokenResp.access_token)" }
 Write-WtSuccess "Service token acquired (client: $($state.haip.clientId))"
 
 # ============================================================================
-# Step 2: Create the OID4VCI credential offer (all 9 claims, all disclosable)
+# Step 2: Create the OID4VCI credential offer (all 10 claims, all disclosable)
 # ============================================================================
-# CRITICAL: ALL 9 evidence claims MUST be in disclosablePaths.
+# CRITICAL: ALL 10 evidence claims MUST be in disclosablePaths.
 # Any claim NOT listed is minted as always-plaintext (not wrapped in an SD-JWT
 # disclosure) and would be visible in the credential header regardless of --disclose,
 # breaking the negative assertion (withheld claims must be absent from the wire).
 
-Write-WtStep "Step 2: Create OID4VCI credential offer (9 claims, all in disclosablePaths)"
+Write-WtStep "Step 2: Create OID4VCI credential offer (10 claims, all in disclosablePaths)"
 
 $offerBody = @{
     issuerWalletAddress = $state.roles.assessor.walletAddress
@@ -230,7 +223,7 @@ Write-WtSuccess "Verifier request created: $($vreq.requestId)"
 Write-WtInfo   "Request URI: $($vreq.requestUri)"
 
 # ============================================================================
-# Step 5: Agent presents the credential — disclosing ONLY 4 of 9 claims
+# Step 5: Agent presents the credential — disclosing ONLY 4 of 10 claims
 # ============================================================================
 Write-WtStep "Step 5: Agent haip present (disclose: compliant,assessmentDate,passwordApproach,mfaAdminEnforced)"
 
@@ -247,9 +240,14 @@ Write-WtSuccess "Agent presentation complete"
 # ============================================================================
 Write-WtStep "Step 6: Read-back and assert selective-disclosure (positive path)"
 
-$res = Invoke-SorchaApi -Method GET `
-    -Uri "$baseUrl/api/v1/verifier/requests/$($vreq.requestId)/result" `
-    -Headers $svcHeaders
+$res = $null
+for ($i = 0; $i -lt 10; $i++) {
+    $res = Invoke-SorchaApi -Method GET `
+        -Uri "$baseUrl/api/v1/verifier/requests/$($vreq.requestId)/result" `
+        -Headers $svcHeaders
+    if ($res -and $res.result -and $res.result.state -in @('Verified', 'Denied')) { break }
+    if ($i -lt 9) { Start-Sleep -Seconds 1 }
+}
 
 if ($ShowJson) { Write-Host "Verifier result: $($res | ConvertTo-Json -Depth 10)" }
 
@@ -265,7 +263,7 @@ $expected = @('assessmentDate', 'compliant', 'mfaAdminEnforced', 'passwordApproa
 Assert (-not (Compare-Object $got $expected)) "verifier received EXACTLY the 4 disclosed claims (got: $($got -join ','))"
 
 # Negative presence check — none of the 5 withheld evidence claims should appear
-$withheld = @('assessorType', 'mfaCoverage', 'policyEvidenceHash', 'scopeDeviceCount', 'staleAccounts')
+$withheld = @('infraVersion', 'assessorType', 'scopeDeviceCount', 'mfaCoverage', 'staleAccounts', 'policyEvidenceHash')
 $leaked   = @($withheld | Where-Object { $allNames -contains $_ })
 Assert ($leaked.Count -eq 0) "withheld evidence claims NOT present in verifiedClaims (selective disclosure holds — nothing leaked: $($withheld -join ','))"
 
@@ -302,9 +300,14 @@ Assert ($vreq2 -and $vreq2.requestId) "second verifier request created"
     --disclose "compliant,assessmentDate,passwordApproach,mfaAdminEnforced" `
     --wallet-dir $walletDir
 
-$res2 = Invoke-SorchaApi -Method GET `
-    -Uri "$baseUrl/api/v1/verifier/requests/$($vreq2.requestId)/result" `
-    -Headers $svcHeaders
+$res2 = $null
+for ($i = 0; $i -lt 10; $i++) {
+    $res2 = Invoke-SorchaApi -Method GET `
+        -Uri "$baseUrl/api/v1/verifier/requests/$($vreq2.requestId)/result" `
+        -Headers $svcHeaders
+    if ($res2 -and $res2.result -and $res2.result.state -in @('Verified', 'Denied')) { break }
+    if ($i -lt 9) { Start-Sleep -Seconds 1 }
+}
 
 if ($ShowJson) { Write-Host "Second verifier result: $($res2 | ConvertTo-Json -Depth 10)" }
 
@@ -321,9 +324,9 @@ Write-WtBanner "HAIP selective-disclosure variant — PASS"
 Write-Host ""
 Write-WtInfo "Summary:"
 Write-WtInfo "  Credential type : CyberEssentialsUacPosture"
-Write-WtInfo "  Total claims     : 9"
+Write-WtInfo "  Total claims     : 10 (4 always-disclosed in this presentation, 6 withheld)"
 Write-WtInfo "  Disclosed        : 4  (compliant, assessmentDate, passwordApproach, mfaAdminEnforced)"
-Write-WtInfo "  Withheld         : 5  (assessorType, mfaCoverage, policyEvidenceHash, scopeDeviceCount, staleAccounts)"
+Write-WtInfo "  Withheld         : 6  (infraVersion, assessorType, scopeDeviceCount, mfaCoverage, staleAccounts, policyEvidenceHash)"
 Write-WtInfo "  Positive test    : verifier accepted the presentation, saw exactly 4 claims"
 Write-WtInfo "  Negative test    : verifier rejected presentation when it required a withheld claim"
 Write-WtInfo "  Agent wallet dir : $walletDir"

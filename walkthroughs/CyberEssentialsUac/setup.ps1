@@ -465,7 +465,7 @@ Write-WtStep "Step 11: Register HAIP walkthrough service principal"
 $svcPrincipal = $null
 try {
     $svcPrincipal = Invoke-SorchaApi -Method POST `
-        -Uri "$($sorchaEnv.TenantUrl)/api/service-principals/" `
+        -Uri "$($sorchaEnv.GatewayUrl)/api/service-principals/" `
         -Headers $sysAdmin.Headers `
         -Body @{
             serviceName = "ce-uac-haip-walkthrough"
@@ -477,7 +477,7 @@ try {
     # Attempt lookup by name — list all and find by serviceName
     try {
         $spList = Invoke-SorchaApi -Method GET `
-            -Uri "$($sorchaEnv.TenantUrl)/api/service-principals/" `
+            -Uri "$($sorchaEnv.GatewayUrl)/api/service-principals/" `
             -Headers $sysAdmin.Headers
         $existing = $spList.servicePrincipals | Where-Object { $_.serviceName -eq "ce-uac-haip-walkthrough" }
         if ($existing) {
