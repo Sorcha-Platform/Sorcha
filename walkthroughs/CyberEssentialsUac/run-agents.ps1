@@ -175,7 +175,8 @@ $credentialIssuedObj = $r1.credentialIssued
 $credentialIdFromResponse = if ($credentialIssuedObj) { $credentialIssuedObj.credentialId } else { $null }
 
 if ($credentialIssuedObj) {
-    Assert ([bool]$credentialIssuedObj) "Action 1 response carries credentialIssued object"
+    Assert ($credentialIssuedObj -ne $null) "Action 1 response carries credentialIssued object"
+    Assert (![string]::IsNullOrEmpty($credentialIdFromResponse)) "credentialIssued object carries a non-empty credentialId"
     Write-WtInfo "Posture credential type: $($credentialIssuedObj.credentialType)"
     Write-WtInfo "Posture credential id  : $credentialIdFromResponse"
 } else {
@@ -215,7 +216,8 @@ $instB = Invoke-SorchaApi `
     -Method  POST `
     -Uri     "$($sorchaEnv.BlueprintUrl)/instances/" `
     -Body    $instBBody `
-    -Headers $subjectSession.Headers
+    -Headers $subjectSession.Headers `
+    -ShowJson:$ShowJson
 
 Assert ([bool]$instB.id) "Blueprint B instance created — response carries .id"
 $instanceBId = $instB.id
@@ -363,27 +365,24 @@ Assert ($r0b.calculatedValues.computedCompliant -eq $false) `
 # ------------------------------------------------------------------
 Write-WtInfo "S2-2: Asserting route went to action 2 (Record Non-Compliance), not action 1"
 
-# Poll the instance to confirm action 2 is now the current action.
-$instanceUrl = "$($sorchaEnv.GatewayUrl)/api/instances/$instanceA2Id"
-$routeDeadline = (Get-Date).AddSeconds(60)
-$action2Current = $false
-while ((Get-Date) -lt $routeDeadline) {
-    try {
-        $instState = Invoke-SorchaApi `
-            -Method  GET `
-            -Uri     $instanceUrl `
-            -Headers $assessorSession.Headers
-        if ($instState.currentActionIds -contains 2) {
-            $action2Current = $true
-            break
-        }
-    } catch {
-        # 404 is expected during projector fold window — keep polling silently
-    }
-    Start-Sleep -Seconds 1
-}
+# Use Wait-SorchaActorReady (90s timeout, throws on miss) instead of inline poll.
+# A timeout here means the non-compliance route never fired — hard fail is correct.
+Wait-SorchaActorReady `
+    -Mode       AwaitingInbox `
+    -InstanceId $instanceA2Id `
+    -ActionId   2 `
+    -RegisterId $state.registerId `
+    -Headers    $assessorSession.Headers `
+    -GatewayUrl $sorchaEnv.GatewayUrl
 
-Assert $action2Current "Auto-fail route: action 2 (Record Non-Compliance) is current (not action 1)"
+# Re-fetch the instance once to make the assertion explicit.
+$instStateAfterWait = Invoke-SorchaApi `
+    -Method  GET `
+    -Uri     "$($sorchaEnv.GatewayUrl)/api/instances/$instanceA2Id" `
+    -Headers $assessorSession.Headers `
+    -ShowJson:$ShowJson
+Assert ($instStateAfterWait.currentActionIds -contains 2) `
+    "Auto-fail route: action 2 (Record Non-Compliance) is current (not action 1)"
 
 # ------------------------------------------------------------------
 # S2-3: Assert action 1 (Issue Posture Credential) is UNREACHABLE
@@ -405,7 +404,12 @@ try {
     # not after an expensive seal wait.
 } catch {
     $threw = $true
-    Write-WtInfo "Action 1 threw as expected: $($_.Exception.Message)"
+    $errStatus = $null
+    try { $errStatus = $_.Exception.Response.StatusCode.value__ } catch {}
+    Write-WtInfo "  Action 1 threw as expected (HTTP $errStatus): $($_.Exception.Message)"
+    if ($errStatus) {
+        Assert (($errStatus -ge 400) -and ($errStatus -lt 500)) "S2-3: action 1 rejected with a 4xx domain error (HTTP $errStatus), not a network/auth failure"
+    }
 }
 
 Assert $threw "Issue action (1) unreachable on auto-fail route — no posture credential minted"
@@ -417,15 +421,16 @@ Write-WtInfo "S2-3: Confirming no new posture credential was delivered to subjec
 $walletCredsAfterFail = Invoke-SorchaApi `
     -Method  GET `
     -Uri     "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All" `
-    -Headers $subjectSession.Headers
+    -Headers $subjectSession.Headers `
+    -ShowJson:$ShowJson
 
 # Count posture credentials — should still be exactly the one from Scenario 1.
 $postureCredCount = 0
 if ($walletCredsAfterFail) {
     $postureCredCount = (@($walletCredsAfterFail) | Where-Object { $_.type -eq "CyberEssentialsUacPosture" }).Count
 }
-Assert ($postureCredCount -le 1) `
-    "No additional posture credential issued by auto-fail run (count after both scenarios: $postureCredCount)"
+Assert ($postureCredCount -eq 1) `
+    "Wallet holds exactly one posture credential after both scenarios (S1 issued one; S2 withheld one)"
 
 Write-WtSuccess "========== SCENARIO 2 COMPLETE — ALL ASSERTIONS PASSED =========="
 
