@@ -573,14 +573,41 @@ public class ValidationEngine : IValidationEngine
                 transaction.Payload.TryGetProperty("payloads", out var payloadsElement) &&
                 payloadsElement.ValueKind == JsonValueKind.Object)
             {
-                // Use the first disclosed payload (all should conform to the schema)
-                using var enumerator = payloadsElement.EnumerateObject();
-                if (enumerator.MoveNext())
+                // Merge ALL disclosed payload views into a single union before schema
+                // validation. Each entry in `payloads` is one recipient's disclosure-
+                // filtered view of the action data. With field-level disclosures (e.g. a
+                // required "evaluationNotes" field disclosed only to the sender via "/*",
+                // while other recipients see only "/advancePercentage" + "/feeRate"), no
+                // single recipient view is guaranteed to contain every required field. The
+                // union of all views is the complete payload the submitter provided, which
+                // is what the schema's `required` constraint applies to. Validating only the
+                // first view (the previous behaviour) spuriously failed VAL_SCHEMA_004 when
+                // the first-enumerated recipient had a narrower disclosure than the schema's
+                // required set. Overlapping fields carry identical values across views, so
+                // first-writer-wins is safe.
+                var merged = new JsonObject();
+                var viewCount = 0;
+                foreach (var recipient in payloadsElement.EnumerateObject())
                 {
-                    payloadToValidate = enumerator.Current.Value;
-                    _logger.LogDebug(
-                        "Extracted user payload from envelope for schema validation");
+                    if (recipient.Value.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    viewCount++;
+                    foreach (var field in recipient.Value.EnumerateObject())
+                    {
+                        if (!merged.ContainsKey(field.Name))
+                        {
+                            merged[field.Name] = JsonNode.Parse(field.Value.GetRawText());
+                        }
+                    }
                 }
+
+                payloadToValidate = JsonSerializer.SerializeToElement(merged);
+                _logger.LogDebug(
+                    "Merged {ViewCount} disclosed payload view(s) into a union for schema validation",
+                    viewCount);
             }
 
             // Evaluate payload against all schemas (payload must pass ALL schemas)

@@ -823,6 +823,65 @@ public class ValidationEngineTests
     }
 
     [Fact]
+    public async Task ValidateSchemaAsync_FieldLevelDisclosures_MergesAllViews_Passes()
+    {
+        // Arrange — a plaintext envelope carrying one disclosure-filtered view per
+        // recipient. With field-level disclosures the FIRST-enumerated view is narrower
+        // than the schema's required set: "amount" is disclosed to everyone but the
+        // required "name" is disclosed only to the second recipient. The complete
+        // submitted payload is the union of all views and DOES satisfy the schema.
+        // Regression for VAL_SCHEMA_004 spuriously firing when the validator validated
+        // only the first disclosed view (TradeFinance "evaluationNotes" disclosed to the
+        // sender only).
+        var envelope = """
+        {
+            "payloads": {
+                "ws-narrow-recipient": { "amount": 100 },
+                "ws-full-recipient":   { "name": "Alice", "amount": 100 }
+            }
+        }
+        """;
+        var tx = CreateValidTransaction(payloadJson: envelope);
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+
+        // Act
+        var result = await _engine.ValidateSchemaAsync(tx);
+
+        // Assert
+        result.IsValid.Should().BeTrue(
+            "the union of all disclosed views contains every required field");
+    }
+
+    [Fact]
+    public async Task ValidateSchemaAsync_FieldLevelDisclosures_RequiredFieldInNoView_StillFails()
+    {
+        // Arrange — guard that merging views does not silently disable required checks:
+        // if a required field ("name") appears in NO disclosed view, the union is still
+        // missing it and schema validation must fail.
+        var envelope = """
+        {
+            "payloads": {
+                "ws-recipient-a": { "amount": 100 },
+                "ws-recipient-b": { "amount": 100 }
+            }
+        }
+        """;
+        var tx = CreateValidTransaction(payloadJson: envelope);
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+
+        // Act
+        var result = await _engine.ValidateSchemaAsync(tx);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Code == "VAL_SCHEMA_004");
+    }
+
+    [Fact]
     public async Task ValidateSchemaAsync_WrongType_ReturnsSchemaError()
     {
         // Arrange - amount is string instead of number
