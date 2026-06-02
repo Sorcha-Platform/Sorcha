@@ -112,7 +112,8 @@ services:
       ServiceClients__TenantService__Address: http://tenant-service-b:8080
       ServiceClients__RegisterService__Address: http://register-service-b:8080
       PeerService__NodeId: "peer-b.sorcha.local"
-      PeerService__PublicAddress: "peer-service-b:5000"
+      # ExternalAddress (not the dead PublicAddress key) is the node's dialable address. (#909)
+      PeerService__NetworkAddress__ExternalAddress: "peer-service-b:5000"
       PeerService__Port: "5000"
       PeerService__EnableTls: "false"
       # Seed peer-a so the two peers discover each other.
