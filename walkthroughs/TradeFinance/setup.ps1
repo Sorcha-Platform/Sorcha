@@ -370,6 +370,12 @@ foreach ($org in $selectedOrgs) {
     $ctx.AdminToken = $adminRelogin.Token
     $ctx.AdminWallet = $adminWallet.Address
     Write-WtInfo "  $subdomain admin wallet (register owner): $($adminWallet.Address)"
+
+    # Provision the org's Feature 083 master key so its Feature 120 VC-issuance key can derive —
+    # required for any credential this org issues to be cross-register-verifiable (otherwise the
+    # credential is signed with the bare wallet key and the Finance phase's TrustEvaluator rejects
+    # it: "issuer signature not verified"). Idempotent. See walkthrough-builder skill.
+    Set-SorchaOrgMasterKey -WalletUrl $env.WalletUrl -OrganizationId $ctx.OrganizationId -Headers $ctx.Headers
 }
 
 # ============================================================================

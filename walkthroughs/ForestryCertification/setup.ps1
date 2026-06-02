@@ -218,6 +218,12 @@ $fcAdminSession = Connect-SorchaUser `
     -Password $fcAdminPassword `
     -OrganizationId $fcOrgId
 
+# Provision the FC org's Feature 083 master key so its Feature 120 VC-issuance key can derive —
+# the ForestProductDPPCredential it issues must be cross-register-verifiable (TradeFinance's
+# Finance phase presents it). Without it the credential signs with the bare wallet key and fails
+# the TrustEvaluator ("issuer signature not verified"). Idempotent. See walkthrough-builder skill.
+Set-SorchaOrgMasterKey -WalletUrl $sorchaEnv.WalletUrl -OrganizationId $fcOrgId -Headers $fcAdminSession.Headers
+
 $auditorUser = New-ParticipantUserSession `
     -ParticipantId "auditor" `
     -DisplayName "Forestry Auditor" `

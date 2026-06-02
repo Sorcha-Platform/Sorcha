@@ -326,7 +326,36 @@ foreach ($orgKey in $privateOrgKeys) {
 # ============================================================================
 Write-WtStep "Step 10: Publish Blueprints (2)"
 
+# Both registers ISSUE credentials (planning permission, building warrant) that are later
+# presented across registers. Provision each issuing org's Feature 083 HD master key so the
+# F120 kid-swap signs with the org issuance key (iss=did:sorcha:org:..., kid=...#vc-issuance-N);
+# without it the credentials are signed with the bare wallet key and fail the engine
+# TrustEvaluator ("issuer signature not verified") on presentation. Idempotent (silent on 409).
+Set-SorchaOrgMasterKey -WalletUrl $env.WalletUrl `
+    -OrganizationId $users["planning-officer"].organizationId -Headers $planningSession.Headers
+Set-SorchaOrgMasterKey -WalletUrl $env.WalletUrl `
+    -OrganizationId $users["building-standards-officer"].organizationId -Headers $bsSession.Headers
+
+# The register's genesis control tx — which records the owner governance roster — seals
+# asynchronously AFTER New-SorchaRegister returns. The F142 publish gate reads that roster and
+# fail-closes with a 403 ("no publish-governance role") when it isn't recorded yet. Wait for each
+# register's roster to populate before publishing its blueprint (the register-genesis analogue of
+# the F145 action-seal cadence).
+function Wait-RegisterRosterReady($registerId, $headers) {
+    for ($i = 0; $i -lt 30; $i++) {
+        try {
+            $roster = Invoke-SorchaApi -Method GET `
+                -Uri "$($env.RegisterUrl)/registers/$registerId/governance/roster" -Headers $headers
+            if ($roster.members -and $roster.members.Count -gt 0) { return $true }
+        } catch { }
+        Start-Sleep -Seconds 1
+    }
+    Write-WtWarn "  register $registerId governance roster not populated after 30s"
+    return $false
+}
+
 Write-WtInfo "  Publishing Planning Permission blueprint..."
+$null = Wait-RegisterRosterReady $planningRegister.RegisterId $planningSession.Headers
 $planningBlueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $env.BlueprintUrl `
     -TemplatePath (Join-Path $scriptDir "planning-permission-template.json") `
@@ -337,6 +366,7 @@ $planningBlueprint = Publish-SorchaBlueprint `
 Write-WtSuccess "  Planning Blueprint: $($planningBlueprint.BlueprintId)"
 
 Write-WtInfo "  Publishing Building Warrant blueprint..."
+$null = Wait-RegisterRosterReady $buildingRegister.RegisterId $bsSession.Headers
 $warrantBlueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $env.BlueprintUrl `
     -TemplatePath (Join-Path $scriptDir "building-warrant-template.json") `

@@ -946,6 +946,12 @@
                 "type": "string",
                 "title": "Dispute Reason",
                 "maxLength": 1000
+              },
+              "poReference": {
+                "type": "string",
+                "title": "PO Reference",
+                "description": "The purchase-order reference being approved — confirmed by the approver and carried into the VerifiedInvoiceCredential (the issuing action's payload is the reliable claim-mapping source; cross-action state is not guaranteed to reach this action).",
+                "maxLength": 50
               }
             },
             "required": ["decision"]

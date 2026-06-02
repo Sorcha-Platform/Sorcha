@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# LOCAL DEV ONLY — never deploy this override.
+#
+# Relaxes the validator's genesis freshness window so a clean local start can ingest the
+# embedded genesis even when it was minted more than the default 1h ago (avoids a full
+# re-mint + image rebuild just to stand up a local regression environment). The 1h
+# GenesisMaxAge is a replay guard for real networks; on an isolated localhost stack it only
+# blocks bootstrap. See network-bootstrap skill ("Genesis freshness window").
+services:
+  validator-service:
+    environment:
+      ValidationEngine__GenesisMaxAge: "30.00:00:00"
