@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -11,6 +12,7 @@ using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Observability;
 using Sorcha.Peer.Service.Replication;
+using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.Peer.Service.Tests.Replication;
 
@@ -402,6 +404,88 @@ public class RegisterReplicationServiceTests : IAsyncDisposable
 
         // Should complete without throwing
         await _service.SubscribeToLiveTransactionsAsync(subscription);
+    }
+
+    // ---- Issue #908: incremental sync floor reconciled against the actual local register height ----
+
+    /// <summary>
+    /// Builds a service whose co-located Register Service reports <paramref name="localHeight"/> as
+    /// the local docket count for any register (a real DI scope chain, so CreateAsyncScope works).
+    /// </summary>
+    private RegisterReplicationService ServiceWithLocalHeight(long localHeight)
+    {
+        var registerClient = new Mock<IRegisterServiceClient>();
+        registerClient
+            .Setup(c => c.GetRegisterHeightAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(localHeight);
+
+        var services = new ServiceCollection();
+        services.AddScoped(_ => registerClient.Object);
+        var provider = services.BuildServiceProvider();
+        var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+
+        return new RegisterReplicationService(
+            new Mock<ILogger<RegisterReplicationService>>().Object,
+            _connectionPool,
+            _peerListManager,
+            _advertisementService,
+            _registerCache,
+            _config,
+            _relayCommunication,
+            docketFinalizationService: null,
+            scopeFactory: scopeFactory);
+    }
+
+    [Fact]
+    public async Task ResolveFromVersion_EmptyLocalRegister_RequestsFromMinusOne()
+    {
+        // height=-1 (register absent locally) ⇒ request from -1 so the owner serves from docket 0.
+        var svc = ServiceWithLocalHeight(-1);
+        var subscription = new RegisterSubscription { RegisterId = "reg-1", LastSyncedDocketVersion = 1 };
+
+        var fromVersion = await svc.ResolveFromVersionAsync(subscription, CancellationToken.None);
+
+        fromVersion.Should().Be(-1,
+            "an empty subscription must request from -1 even when a stale cursor says otherwise (the #908 bug)");
+    }
+
+    [Fact]
+    public async Task ResolveFromVersion_LocalHeightZero_RequestsFromMinusOne()
+    {
+        // A 0-count register holds nothing ⇒ still request from -1 (full backfill from genesis).
+        var svc = ServiceWithLocalHeight(0);
+        var subscription = new RegisterSubscription { RegisterId = "reg-1", LastSyncedDocketVersion = 1 };
+
+        var fromVersion = await svc.ResolveFromVersionAsync(subscription, CancellationToken.None);
+
+        fromVersion.Should().Be(-1);
+    }
+
+    [Theory]
+    [InlineData(1, 0)]  // holds docket 0 ⇒ request the tail after index 0
+    [InlineData(2, 1)]  // holds dockets 0,1 ⇒ request after index 1
+    [InlineData(5, 4)]  // holds 0..4 ⇒ request after index 4
+    public async Task ResolveFromVersion_NonEmptyLocalRegister_RequestsIncrementalTail(long localHeight, long expectedFromVersion)
+    {
+        var svc = ServiceWithLocalHeight(localHeight);
+        var subscription = new RegisterSubscription { RegisterId = "reg-1", LastSyncedDocketVersion = 0 };
+
+        var fromVersion = await svc.ResolveFromVersionAsync(subscription, CancellationToken.None);
+
+        fromVersion.Should().Be(expectedFromVersion,
+            "the floor is the highest docket index already held (height-1), so the owner serves only the missing tail");
+    }
+
+    [Fact]
+    public async Task ResolveFromVersion_NoScopeFactory_FallsBackToSubscriptionCursor()
+    {
+        // Unit-test path (and any context without a co-located Register Service): preserve the prior
+        // behaviour of trusting the persisted cursor rather than failing.
+        var subscription = new RegisterSubscription { RegisterId = "reg-1", LastSyncedDocketVersion = 7 };
+
+        var fromVersion = await _service.ResolveFromVersionAsync(subscription, CancellationToken.None);
+
+        fromVersion.Should().Be(7);
     }
 
     public async ValueTask DisposeAsync()

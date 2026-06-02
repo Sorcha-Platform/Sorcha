@@ -548,12 +548,17 @@ public class RelayMessageHandler
         {
             _logger.LogDebug("Relayed transaction notification triggering sync for register {RegisterId}", registerId);
 
+            // Issue #908: reconcile against the actual local register height, not the possibly-stale
+            // LastSyncedDocketVersion cursor — an empty subscription requests from -1 so the owner
+            // serves from docket 0 instead of serving nothing.
+            var fromDocketVersion = await _syncBackgroundService.ResolveSyncFromVersionAsync(
+                subscription, cancellationToken);
             var correlationId = Guid.NewGuid().ToString();
             var syncRequest = new RelayModels.RegisterSyncRequest
             {
                 CorrelationId = correlationId,
                 RegisterId = registerId,
-                FromDocketVersion = subscription.LastSyncedDocketVersion
+                FromDocketVersion = fromDocketVersion
             };
 
             var syncResponse = await _relayCommunication.SendAndWaitAsync<RelayModels.RegisterSyncResponse>(

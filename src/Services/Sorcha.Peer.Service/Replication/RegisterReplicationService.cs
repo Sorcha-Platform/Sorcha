@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Grpc.Core;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Communication;
@@ -9,6 +10,7 @@ using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Protos;
+using Sorcha.ServiceClients.Register;
 using RelayModels = Sorcha.Peer.Service.Communication.Models;
 
 namespace Sorcha.Peer.Service.Replication;
@@ -33,6 +35,7 @@ public class RegisterReplicationService
     private readonly RegisterCache _registerCache;
     private readonly RelayCommunicationService? _relayCommunication;
     private readonly DocketFinalizationService? _docketFinalizationService;
+    private readonly IServiceScopeFactory? _scopeFactory;
     private readonly RegisterSyncConfiguration _syncConfig;
     private readonly string _localPeerId;
 
@@ -44,7 +47,8 @@ public class RegisterReplicationService
         RegisterCache registerCache,
         IOptions<PeerServiceConfiguration>? configuration = null,
         RelayCommunicationService? relayCommunication = null,
-        DocketFinalizationService? docketFinalizationService = null)
+        DocketFinalizationService? docketFinalizationService = null,
+        IServiceScopeFactory? scopeFactory = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
@@ -53,8 +57,59 @@ public class RegisterReplicationService
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
         _relayCommunication = relayCommunication;
         _docketFinalizationService = docketFinalizationService;
+        _scopeFactory = scopeFactory;
         _syncConfig = configuration?.Value?.RegisterSync ?? new RegisterSyncConfiguration();
         _localPeerId = configuration?.Value?.ResolvedPeerId ?? Environment.MachineName;
+    }
+
+    /// <summary>
+    /// Resolves the docket version to request a sync FROM, reconciled against the subscriber's
+    /// <b>actual</b> local register height rather than a possibly-stale
+    /// <see cref="RegisterSubscription.LastSyncedDocketVersion"/> cursor (issue #908).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both serve loops (direct gRPC <c>PullDocketChainFromRegisterServiceAsync</c> and relay
+    /// <c>RelayMessageHandler.PopulateResponseFromRegisterServiceAsync</c>) serve dockets in the
+    /// half-open range <c>(fromVersion, height)</c> — i.e. <c>docketNum = fromVersion + 1 .. height-1</c>,
+    /// where <c>height</c> is a COUNT. So <c>fromVersion</c> MUST be the highest docket index the
+    /// subscriber already holds. An empty/absent local register holds nothing, so it requests from
+    /// <see cref="AllDocketVersions"/> (-1) → the owner serves from docket 0. The previous code sent
+    /// the raw <c>LastSyncedDocketVersion</c>, which for an empty subscription could be a non-(-1)
+    /// value (e.g. 1) that made the owner serve 0 dockets despite a non-zero height — the register
+    /// then looked stuck until the owner's peer-service was restarted.
+    /// </para>
+    /// <para>
+    /// <see cref="IRegisterServiceClient.GetRegisterHeightAsync"/> returns the local docket COUNT,
+    /// or -1 when the register is absent locally. We map that to the highest held index
+    /// (<c>count - 1</c>), or -1 (full sync from genesis) when nothing is held. Falls back to the
+    /// subscription cursor only when the co-located Register Service cannot be consulted (e.g. the
+    /// scope factory is absent in unit tests).
+    /// </para>
+    /// </remarks>
+    internal async Task<long> ResolveFromVersionAsync(
+        RegisterSubscription subscription, CancellationToken cancellationToken)
+    {
+        if (_scopeFactory is not null)
+        {
+            try
+            {
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+                var localHeight = await registerClient.GetRegisterHeightAsync(
+                    subscription.RegisterId, cancellationToken);
+
+                return localHeight > 0 ? localHeight - 1 : AllDocketVersions;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogDebug(ex,
+                    "Could not resolve local register height for {RegisterId} — falling back to subscription cursor {Cursor}",
+                    subscription.RegisterId, subscription.LastSyncedDocketVersion);
+            }
+        }
+
+        return subscription.LastSyncedDocketVersion;
     }
 
     /// <summary>
@@ -66,9 +121,13 @@ public class RegisterReplicationService
         CancellationToken cancellationToken = default)
     {
         var registerId = subscription.RegisterId;
+        // Issue #908: reconcile the request floor against the actual local register height once,
+        // up front, so this diagnostic line (and every source-peer attempt below) reflects what we
+        // truly hold — not a possibly-stale LastSyncedDocketVersion cursor.
+        var resolvedFromVersion = await ResolveFromVersionAsync(subscription, cancellationToken);
         _logger.LogInformation(
             "Starting full replica sync for register {RegisterId} from docket version {FromVersion}",
-            registerId, subscription.LastSyncedDocketVersion);
+            registerId, resolvedFromVersion);
 
         // Find peers that can serve full replica
         var sourcePeers = _peerListManager.GetFullReplicaPeersForRegister(registerId);
@@ -155,7 +214,7 @@ public class RegisterReplicationService
                      _relayCommunication.CanReachViaReverseStream(sourcePeer.PeerId)))
                 {
                     var (relayResult, relayDockets, relayTransactions) = await TryRelayBatchSyncAsync(
-                        sourcePeer, subscription, cacheEntry, replicationToken);
+                        sourcePeer, subscription, cacheEntry, resolvedFromVersion, replicationToken);
 
                     totalDockets += relayDockets;
                     totalTransactions += relayTransactions;
@@ -170,7 +229,7 @@ public class RegisterReplicationService
             try
             {
                 var client = new RegisterSync.RegisterSyncClient(channel);
-                var fromVersion = subscription.LastSyncedDocketVersion;
+                var fromVersion = resolvedFromVersion;
                 var batchSize = _syncConfig.DocketPullBatchSize;
                 var batchDocketCount = 0;
 
@@ -330,6 +389,7 @@ public class RegisterReplicationService
         PeerNode sourcePeer,
         RegisterSubscription subscription,
         RegisterCacheEntry cacheEntry,
+        long resolvedFromVersion,
         CancellationToken cancellationToken)
     {
         var registerId = subscription.RegisterId;
@@ -342,7 +402,10 @@ public class RegisterReplicationService
 
         try
         {
-            var fromVersion = subscription.LastSyncedDocketVersion;
+            // Issue #908: request from the reconciled local height (resolved by the caller), not the
+            // possibly-stale LastSyncedDocketVersion — an empty subscription requests from -1 so the
+            // owner serves from docket 0 instead of serving nothing.
+            var fromVersion = resolvedFromVersion;
             var maxDockets = _syncConfig.DocketPullBatchSize;
             var hasMore = true;
             var consecutiveNullRetries = 0;
