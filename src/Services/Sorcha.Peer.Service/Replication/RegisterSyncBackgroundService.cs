@@ -237,12 +237,18 @@ public class RegisterSyncBackgroundService : BackgroundService
 
             foreach (var peer in natdPeers)
             {
+                // Issue #908: reconcile against the actual local register height rather than the
+                // possibly-stale LastSyncedDocketVersion cursor (shared with PullFullReplica /
+                // TryRelayBatchSync) so an empty subscription polls from -1 and backfills, instead
+                // of requesting a stale floor that makes the owner serve 0 dockets.
+                var fromDocketVersion = await _replicationService.ResolveFromVersionAsync(
+                    subscription, cancellationToken);
                 var correlationId = Guid.NewGuid().ToString();
                 var syncRequest = new RelayModels.RegisterSyncRequest
                 {
                     CorrelationId = correlationId,
                     RegisterId = registerId,
-                    FromDocketVersion = subscription.LastSyncedDocketVersion
+                    FromDocketVersion = fromDocketVersion
                 };
 
                 var response = await _relayCommunication!.SendAndWaitAsync<RelayModels.RegisterSyncResponse>(
@@ -370,6 +376,17 @@ public class RegisterSyncBackgroundService : BackgroundService
         _subscriptions.TryGetValue(registerId, out var sub);
         return sub;
     }
+
+    /// <summary>
+    /// Resolves the docket version to request a sync FROM, reconciled against the actual local
+    /// register height rather than the possibly-stale <see cref="RegisterSubscription.LastSyncedDocketVersion"/>
+    /// cursor (issue #908). Delegates to the single implementation on
+    /// <see cref="RegisterReplicationService.ResolveFromVersionAsync"/> so every sync-request site
+    /// (full pull, relay batch, relay poll, notification-triggered pull) shares one floor semantics.
+    /// </summary>
+    internal Task<long> ResolveSyncFromVersionAsync(
+        RegisterSubscription subscription, CancellationToken cancellationToken)
+        => _replicationService.ResolveFromVersionAsync(subscription, cancellationToken);
 
     internal async Task ProcessSubscriptionsAsync(CancellationToken cancellationToken)
     {
