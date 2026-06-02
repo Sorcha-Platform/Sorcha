@@ -163,7 +163,7 @@ public static class ActionEndpoints
     /// Returns an empty list when neither path yields a wallet — the caller
     /// should surface an empty result rather than a 401.
     /// </summary>
-    private static async Task<IReadOnlyList<string>> ResolveUserWalletAddressesAsync(
+    internal static async Task<IReadOnlyList<string>> ResolveUserWalletAddressesAsync(
         HttpContext httpContext,
         IWalletServiceClient walletClient,
         ILogger logger,
@@ -175,22 +175,49 @@ public static class ActionEndpoints
             return new[] { claim };
         }
 
+        // Wallet Service fallback (no wallet_address claim — e.g. consumer-tier tokens, which
+        // omit wallet binding by design under Feature 136). Wallets are keyed by their Owner,
+        // and per the Feature 136 / #878 alignment a wallet's Owner is the cross-org
+        // platform_user_id, NOT the per-org sub/UserIdentity.Id. For admin tokens the two are
+        // equal, but for an org-scoped Consumer (e.g. a verification analyst running the rules
+        // agent) they differ — so a sub-keyed lookup silently misses the wallet and the agent
+        // never discovers the action it must approve (#912). Prefer platform_user_id, then fall
+        // back to sub/NameIdentifier so pre-#878 wallets stay discoverable. Both eras coexist.
+        var ownerCandidates = new List<string>();
+        var platformUserId = httpContext.User.FindFirst("platform_user_id")?.Value;
+        if (!string.IsNullOrEmpty(platformUserId))
+        {
+            ownerCandidates.Add(platformUserId);
+        }
+
         var userId = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? httpContext.User.FindFirst("sub")?.Value;
-        if (string.IsNullOrEmpty(userId))
+        if (!string.IsNullOrEmpty(userId) && !ownerCandidates.Contains(userId, StringComparer.Ordinal))
+        {
+            ownerCandidates.Add(userId);
+        }
+
+        if (ownerCandidates.Count == 0)
         {
             return Array.Empty<string>();
         }
 
         try
         {
-            var wallets = await walletClient.GetWalletsByOwnerAsync(userId, cancellationToken);
-            if (wallets.Count == 0)
+            foreach (var owner in ownerCandidates)
             {
-                return Array.Empty<string>();
+                var wallets = await walletClient.GetWalletsByOwnerAsync(owner, cancellationToken);
+                var addresses = wallets
+                    .Select(w => w.Address)
+                    .Where(a => !string.IsNullOrEmpty(a))
+                    .ToArray();
+                if (addresses.Length > 0)
+                {
+                    return addresses;
+                }
             }
 
-            return wallets.Select(w => w.Address).Where(a => !string.IsNullOrEmpty(a)).ToArray();
+            return Array.Empty<string>();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -203,8 +230,8 @@ public static class ActionEndpoints
             // must propagate cleanly so ASP.NET's request pipeline can short
             // circuit without a bogus 200 response.
             logger.LogWarning(ex,
-                "Failed to resolve wallet addresses for user {UserId} via Wallet Service fallback; returning empty list",
-                userId);
+                "Failed to resolve wallet addresses for user (platform_user_id={PlatformUserId}, sub={UserId}) via Wallet Service fallback; returning empty list",
+                platformUserId, userId);
             return Array.Empty<string>();
         }
     }
