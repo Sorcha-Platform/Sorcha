@@ -525,7 +525,10 @@ services:
       ServiceClients__ValidatorService__Address: http://validator-service:8080
       # Node identity and network configuration
       PeerService__NodeId: "${PEER_NODE_ID:-local-peer.sorcha.dev}"
-      PeerService__PublicAddress: "${PEER_PUBLIC_ADDRESS:-}"
+      # PEER_PUBLIC_ADDRESS sets the node's externally-dialable address. It must bind to
+      # NetworkAddress.ExternalAddress — PublicAddress was a dead config key (no such property),
+      # so the value was silently ignored and the node never became rendezvous-capable. (#909)
+      PeerService__NetworkAddress__ExternalAddress: "${PEER_PUBLIC_ADDRESS:-}"
       PeerService__Port: "5000"
       PeerService__EnableTls: "false"
       # Cross-machine seed node (configure via .env). The legacy n0.sorcha.dev
