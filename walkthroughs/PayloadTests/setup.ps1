@@ -175,6 +175,17 @@ $senderParticipant = Register-SorchaParticipant `
     -Headers $senderAuth.Headers
 Write-WtSuccess "Sender: $($senderWallet.Address)"
 
+# Re-login the sender (register owner + blueprint publisher) so the JWT carries the
+# wallet_address claim now that their wallet is created + linked. The F142 publish governance
+# gate matches wallet_address against the register roster owner; a token minted before the wallet
+# existed lacks it and the publish 403s "You do not hold a publish-governance role". See the
+# walkthrough-builder skill, "re-login the blueprint publisher".
+$senderAuth = Connect-SorchaUser `
+    -TenantUrl $env.TenantUrl `
+    -Email $senderEmail `
+    -Password $userPassword `
+    -OrganizationId $senderOrg.OrganizationId
+
 # Receiver
 $receiverAuth = Connect-SorchaUser `
     -TenantUrl $env.TenantUrl `
@@ -194,6 +205,15 @@ $receiverParticipant = Register-SorchaParticipant `
     -DisplayName "Receiver" `
     -Headers $receiverAuth.Headers
 Write-WtSuccess "Receiver: $($receiverWallet.Address)"
+
+# Re-login the receiver too — the file-download endpoint (F085) authorizes via the caller's
+# wallet, and the receiver's first token (minted before its wallet existed) carries no
+# wallet_address claim, which 403s the download. Same root cause as the publisher re-login.
+$receiverAuth = Connect-SorchaUser `
+    -TenantUrl $env.TenantUrl `
+    -Email $receiverEmail `
+    -Password $userPassword `
+    -OrganizationId $receiverOrg.OrganizationId
 
 # ============================================================================
 # Step 5: Create Register

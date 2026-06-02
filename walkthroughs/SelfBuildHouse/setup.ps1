@@ -230,7 +230,13 @@ Write-WtStep "Step 8: Create Registers (2)"
 # Planning register is owned by Strathcarron Council — Planning (planning-officer).
 # Build the headers/user-id/wallet from the planning-officer's session so the
 # register is created under that user and their org is subscribed as Owner.
-$planningSession = $sessionCache["$($users['planning-officer'].email)|$($users['planning-officer'].organizationId)"]
+# Re-login the planning-officer (register owner) so the JWT carries wallet_address now that
+# their wallet is linked — required by the F142 publish governance gate (see walkthrough-builder
+# skill, "re-login any session AFTER its wallet is created").
+$planningSession = Connect-SorchaUser -TenantUrl $env.TenantUrl `
+    -Email $users['planning-officer'].email -Password $users['planning-officer'].password `
+    -OrganizationId $users['planning-officer'].organizationId
+$sessionCache["$($users['planning-officer'].email)|$($users['planning-officer'].organizationId)"] = $planningSession
 $planningOfficerJwt = Decode-SorchaJwt -Token $planningSession.Token
 $planningOwnerUserId = $planningOfficerJwt.sub
 
@@ -249,7 +255,11 @@ Write-WtSuccess "  Planning Register: $($planningRegister.RegisterId)"
 
 # Building Standards register is owned by Strathcarron Council — Building Standards
 # (building-standards-officer).
-$bsSession = $sessionCache["$($users['building-standards-officer'].email)|$($users['building-standards-officer'].organizationId)"]
+# Re-login the building-standards-officer (register owner) so the JWT carries wallet_address (F142).
+$bsSession = Connect-SorchaUser -TenantUrl $env.TenantUrl `
+    -Email $users['building-standards-officer'].email -Password $users['building-standards-officer'].password `
+    -OrganizationId $users['building-standards-officer'].organizationId
+$sessionCache["$($users['building-standards-officer'].email)|$($users['building-standards-officer'].organizationId)"] = $bsSession
 $bsOfficerJwt = Decode-SorchaJwt -Token $bsSession.Token
 $bsOwnerUserId = $bsOfficerJwt.sub
 

@@ -24,6 +24,9 @@
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
+    # Deploy-anywhere: target ANY node by URL (e.g. http://tiny:8090) without adding a
+    # profile enum. Passed through to Initialize-SorchaEnvironment; ignored when empty.
+    [string]$GatewayUrl,
     [switch]$SkipHealthCheck,
     [switch]$Force
 )
@@ -36,7 +39,7 @@ Import-Module $modulePath -Force
 Write-WtBanner "ConstructionPermit — Multi-Org Setup"
 
 $secrets = Get-SorchaSecrets -WalkthroughName "construction-permit" -Profile $Profile
-$env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
+$env = Initialize-SorchaEnvironment -Profile $Profile -GatewayUrl $GatewayUrl -SkipHealthCheck:$SkipHealthCheck
 
 # ============================================================================
 # Pre-flight: if state.json exists, validate that resources are still live.
@@ -318,8 +321,20 @@ foreach ($u in $userDefs) {
 # ============================================================================
 Write-WtStep "Step 8: Create Register"
 
-# Reuse contractor's cached session for meridian org
-$meridianSession = $sessionCache["$($secrets.contractorEmail)|$($orgs.stoniebridge)"]
+# Re-login the contractor (register owner) so the JWT carries the wallet_address claim.
+# The cached session was minted at first login BEFORE this user's wallet existed, so it has no
+# wallet_address. The F142 publish governance gate (PublishGate) matches the caller's
+# wallet_address JWT claim against the register's roster owner (a did:sorcha:w:{wallet} subject);
+# org_id can't match a wallet-DID, so a token without wallet_address is refused with a 403
+# "You do not hold a publish-governance role". TokenService adds wallet_address from the user's
+# first active linked wallet (created+linked above via Register-SorchaParticipant), so a fresh
+# login now includes it. (Same pattern AssuredIdentity uses for its issuer-admin publisher.)
+$meridianSession = Connect-SorchaUser `
+    -TenantUrl $env.TenantUrl `
+    -Email $users["contractor"].Email `
+    -Password $users["contractor"].Password `
+    -OrganizationId $orgs.stoniebridge
+$sessionCache["$($secrets.contractorEmail)|$($orgs.stoniebridge)"] = $meridianSession
 
 $register = New-SorchaRegister `
     -RegisterUrl $env.RegisterUrl `

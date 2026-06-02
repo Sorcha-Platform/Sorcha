@@ -173,6 +173,15 @@ $null = Register-SorchaParticipant `
     -Headers $submitterAuth.Headers
 Write-WtSuccess "Submitter: $($submitterWallet.Address)"
 
+# Re-login the submitter (register owner + blueprint publisher) so the JWT carries wallet_address
+# now that the wallet is linked — required by the F142 publish governance gate (see the
+# walkthrough-builder skill, "re-login the blueprint publisher").
+$submitterAuth = Connect-SorchaUser `
+    -TenantUrl $env.TenantUrl `
+    -Email $secrets.submitterEmail `
+    -Password $secrets.submitterPassword `
+    -OrganizationId $demoOrg.OrganizationId
+
 $reviewerAuth = Connect-SorchaUser `
     -TenantUrl $env.TenantUrl `
     -Email $secrets.reviewerEmail `
