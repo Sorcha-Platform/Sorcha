@@ -178,6 +178,28 @@ $ops = Connect-SorchaUser -TenantUrl $env.TenantUrl -Email "ops@acme-verif.test"
 - **ANTI-PATTERN (do not do this):** `Register-SorchaPublicUser ops@… ; New-SorchaOrganization -AdminEmail ops@…` → multi-org operator → 401 on the password grant.
 - **Citizens / public submitters are the deliberate exception** — they ARE public users (`Register-SorchaPublicUser`): a citizen belongs to the public org and is late-bound into the workflow. Only *org operators* use the org-scoped path.
 
+#### REQUIRED: re-login any session AFTER its wallet is created, so the JWT carries `wallet_address`
+
+This is the single most common cause of walkthrough breakage after the F136 tiered-token + F142 publish-gate work landed. **`wallet_address` is added to the JWT only at login, from the user's first active linked wallet** (`TokenService.AddWalletAddressClaimAsync`). Walkthroughs log in *first*, then create + link the wallet (`New-SorchaWallet` + `Register-SorchaParticipant -WalletAddress`) — so the cached session token has **no `wallet_address` claim**, and every endpoint that authorizes via wallet fails for that stale token. Two confirmed failure modes (triaged 2026-06-02 across ConstructionPermit / TradeFinance / PayloadTests):
+
+- **F142 blueprint publish gate** — `PublishGate` matches the caller's `wallet_address` claim as a substring of the roster member's `did:sorcha:w:{wallet}` subject (`org_id` is a documented fallback but **can't match a wallet-DID**). A token without `wallet_address` ⇒ `403 { "error": "You do not hold a publish-governance role (Owner, Admin, or Designer) on the target register." }` (the governance HARD gate — NOT the `409 REHEARSAL_REQUIRED` soft gate that `-OverrideRehearsal` handles).
+- **F085 file download** (`GET /api/v1/wallets/{addr}/files/download`) — authorizes via the caller's wallet; the receiver's stale token ⇒ `403 Forbidden` on download even though the upload + actions succeeded.
+
+**Rule: after `Register-SorchaParticipant` links a user's wallet, re-login that user before they perform any wallet-authorized operation** (create/own a register, publish a blueprint, download a file, etc.). Use the fresh session everywhere downstream:
+
+```powershell
+# After the per-role loop has created + linked the owner's wallet:
+$ownerSession = Connect-SorchaUser `
+    -TenantUrl $env.TenantUrl `
+    -Email $users["contractor"].Email `
+    -Password $users["contractor"].Password `
+    -OrganizationId $orgs.stoniebridge
+# (if you cache sessions, overwrite the cache entry too)
+# now use $ownerSession.Headers for New-SorchaRegister AND Publish-SorchaBlueprint
+```
+
+This is the same pattern AssuredIdentity uses for its issuer-admin publisher. The 403 is NOT the rehearsal soft-gate (that's a `409 REHEARSAL_REQUIRED`, handled by `Publish-SorchaBlueprint -OverrideRehearsal`, default true) — it's the governance HARD gate, and only a `wallet_address`-bearing token clears it. Symptom triaged 2026-06-02 across ConstructionPermit + TradeFinance (both pre-dated F142); fixed in ConstructionPermit by the re-login above.
+
 #### Foot-gun: do NOT include open participants in `$walletMap`
 
 If the blueprint has a participant that is the sender of an `isStartingAction: true` action (a citizen, applicant, public submitter, etc.), that participant is **late-bound** at runtime — its `walletAddress` MUST be null in the published blueprint, and your `$walletMap` MUST NOT contain an entry for it.
