@@ -17,16 +17,19 @@
 #   Participants: subject-org (OPEN starter, credential-gated), insurer (pre-bound)
 #   WalletMap:    { "insurer": <insurerWallet.Address> }        # subject-org omitted — open
 #
-# Idempotent — safe to run multiple times (New-SorchaRegister reuses by name;
-# subscriptions 409 gracefully; blueprint IDs are timestamp-stamped so each run
-# produces a fresh pair).
+# Re-run guard: exits early when state.json exists; use -Force to re-provision.
+# (New-SorchaRegister reuses by name; subscriptions 409 gracefully; blueprint IDs
+# are timestamp-stamped so each -Force run produces a fresh pair.)
 
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
     # Deploy-anywhere override — target any node by gateway URL without adding a
     # profile. Passed through to Initialize-SorchaEnvironment; ignored when empty.
-    [string]$GatewayUrl
+    [string]$GatewayUrl,
+    # Re-provision even when state.json already exists. Without -Force, the script
+    # exits early to prevent accumulating orphan timestamped blueprints on re-run.
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +40,15 @@ Import-Module $modulePath -Force
 Write-WtBanner "CyberEssentialsUac — Setup"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# ============================================================================
+# Re-run guard — exit early if state.json exists and -Force not supplied
+# ============================================================================
+$stateFile = Join-Path $scriptDir "state.json"
+if ((Test-Path $stateFile) -and -not $Force) {
+    Write-WtInfo "state.json exists — use -Force to re-provision"
+    exit 0
+}
 
 # ============================================================================
 # Environment + Secrets
@@ -261,24 +273,26 @@ Write-WtSuccess "Register: $registerId"
 Write-WtStep "Step 5: Subscribe Subject Org + Insurer"
 
 try {
+    # participant org (assessor owns the register) — Public, matches ConstructionPermit
     $null = New-SorchaRegisterSubscription `
         -TenantUrl       $sorchaEnv.TenantUrl `
         -OrganizationId  $subjectOrgId `
         -RegisterId      $registerId `
         -RegisterName    "Cyber Essentials UAC Register" `
-        -SubscriptionType "Owner" `
+        -SubscriptionType "Public" `
         -Headers         $subjectSession.Headers
 } catch {
     Write-WtWarn "Subject-org subscription failed (may already exist): $($_.Exception.Message)"
 }
 
 try {
+    # participant org (assessor owns the register) — Public, matches ConstructionPermit
     $null = New-SorchaRegisterSubscription `
         -TenantUrl       $sorchaEnv.TenantUrl `
         -OrganizationId  $insurerOrgId `
         -RegisterId      $registerId `
         -RegisterName    "Cyber Essentials UAC Register" `
-        -SubscriptionType "Owner" `
+        -SubscriptionType "Public" `
         -Headers         $insurerSession.Headers
 } catch {
     Write-WtWarn "Insurer subscription failed (may already exist): $($_.Exception.Message)"
@@ -384,28 +398,28 @@ $walletMapB = @{
     # "subject-org" intentionally absent — open credential-gated starting-action sender (VAL_BP_010)
 }
 
-$blueprintB = Publish-SorchaBlueprint `
-    -BlueprintUrl  $sorchaEnv.BlueprintUrl `
-    -TemplatePath  $bpBResolvedPath `
-    -WalletMap     $walletMapB `
-    -Headers       $assessorSession.Headers `
-    -IdPrefix      "cyber-insurance-application" `
-    -RegisterId    $registerId
+try {
+    $blueprintB = Publish-SorchaBlueprint `
+        -BlueprintUrl  $sorchaEnv.BlueprintUrl `
+        -TemplatePath  $bpBResolvedPath `
+        -WalletMap     $walletMapB `
+        -Headers       $assessorSession.Headers `
+        -IdPrefix      "cyber-insurance-application" `
+        -RegisterId    $registerId
 
-Write-WtSuccess "Blueprint B: $($blueprintB.BlueprintId)"
-if ($blueprintB.Warnings -and ($blueprintB.Warnings | Measure-Object).Count -gt 0) {
-    foreach ($w in $blueprintB.Warnings) { Write-WtWarn "  $w" }
+    Write-WtSuccess "Blueprint B: $($blueprintB.BlueprintId)"
+    if ($blueprintB.Warnings -and ($blueprintB.Warnings | Measure-Object).Count -gt 0) {
+        foreach ($w in $blueprintB.Warnings) { Write-WtWarn "  $w" }
+    }
+} finally {
+    # Always clean up the resolved temp file, even if Publish-SorchaBlueprint throws
+    Remove-Item -Path $bpBResolvedPath -ErrorAction SilentlyContinue
 }
-
-# Clean up resolved temp file
-Remove-Item -Path $bpBResolvedPath -ErrorAction SilentlyContinue
 
 # ============================================================================
 # Save State
 # ============================================================================
 Write-WtStep "Saving State"
-
-$stateFile = Join-Path $scriptDir "state.json"
 
 $state = @{
     profile      = $Profile
@@ -432,6 +446,7 @@ $state = @{
         "subject-org" = @{
             organizationId = $subjectOrgId
             walletAddress  = $subjectWallet.Address
+            publicKey      = $subjectWallet.PublicKey
             email          = $subjectAdminEmail
             password       = $secrets.DefaultPassword
             userId         = $subjectSession.UserId
@@ -439,6 +454,7 @@ $state = @{
         "insurer"    = @{
             organizationId = $insurerOrgId
             walletAddress  = $insurerWallet.Address
+            publicKey      = $insurerWallet.PublicKey
             email          = $insurerAdminEmail
             password       = $secrets.DefaultPassword
             userId         = $insurerSession.UserId
