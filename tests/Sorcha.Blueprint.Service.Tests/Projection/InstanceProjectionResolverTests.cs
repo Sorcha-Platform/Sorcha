@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Register.Models;
@@ -104,5 +105,128 @@ public class InstanceProjectionResolverTests
 
         resolved.Should().NotBeNull();
         resolved!.Tx.NextActionIds.Should().BeEmpty();
+    }
+
+    // ---- Feature 145 (#912): pre-baked participant wallets are seeded into the projection so a
+    // closed participant (e.g. a verification analyst) is discoverable BEFORE they act. ----
+
+    /// <summary>
+    /// Builds an AssuredIdentity-shaped resolver: action 1 (open applicant, starting) → action 2
+    /// (pre-baked analyst). The analyst's wallet is baked into the published blueprint; the
+    /// applicant late-binds at runtime (WalletAddress null).
+    /// </summary>
+    private static IActionResolverService PreBakedAnalystResolver(string analystWallet)
+    {
+        var blueprint = new Sorcha.Blueprint.Models.Blueprint
+        {
+            Id = "bp-1",
+            Participants =
+            [
+                new Participant { Id = "applicant", Name = "Applicant", WalletAddress = null },
+                new Participant { Id = "analyst", Name = "Verification Analyst", WalletAddress = analystWallet },
+            ],
+            Actions =
+            [
+                new Sorcha.Blueprint.Models.Action { Id = 1, Sender = "applicant", IsStartingAction = true },
+                new Sorcha.Blueprint.Models.Action { Id = 2, Sender = "analyst" },
+            ],
+        };
+
+        var mock = new Mock<IActionResolverService>();
+        mock.Setup(r => r.GetBlueprintAsync("bp-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+        mock.Setup(r => r.GetActionDefinition(blueprint, It.IsAny<string>()))
+            .Returns((Sorcha.Blueprint.Models.Blueprint bp, string id) => bp.Actions.FirstOrDefault(a => a.Id.ToString() == id));
+        return mock.Object;
+    }
+
+    [Fact]
+    public async Task ResolveAsync_SeedsPreBakedParticipantWallet_BeforeThatParticipantActs()
+    {
+        // Citizen submits the starting action (action 1). The analyst (action 2) has not acted, and
+        // the tx carries no recipient wallet — so the ONLY way the analyst's wallet enters the
+        // bindings is the pre-baked seed. This is the chicken-and-egg that issue #912 fixes.
+        var tx = new TransactionModel
+        {
+            TxId = "tx-action1",
+            PrevTxId = string.Empty,
+            SenderWallet = "ws-citizen",
+            MetaData = new TransactionMetaData
+            {
+                BlueprintId = "bp-1",
+                InstanceId = "inst-1",
+                ActionId = 1,
+                TransactionType = TransactionType.Action,
+                RoutingDecision = Decision(1, 2),
+            },
+        };
+
+        var resolved = await InstanceProjectionResolver.ResolveAsync(
+            tx, PreBakedAnalystResolver("ws-analyst"), NullLogger.Instance, CancellationToken.None);
+
+        resolved.Should().NotBeNull();
+        // Open applicant late-bound from the tx sender.
+        resolved!.Tx.ParticipantBindings.Should().Contain("applicant", "ws-citizen");
+        // Pre-baked analyst seeded from the blueprint even though they have not yet acted.
+        resolved.Tx.ParticipantBindings.Should().Contain("analyst", "ws-analyst");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DoesNotSeedOpenParticipantWithNullWallet()
+    {
+        var tx = new TransactionModel
+        {
+            TxId = "tx-action1",
+            PrevTxId = string.Empty,
+            SenderWallet = "ws-citizen",
+            MetaData = new TransactionMetaData
+            {
+                BlueprintId = "bp-1",
+                InstanceId = "inst-1",
+                ActionId = 1,
+                TransactionType = TransactionType.Action,
+                RoutingDecision = Decision(1, 2),
+            },
+        };
+
+        var resolved = await InstanceProjectionResolver.ResolveAsync(
+            tx, PreBakedAnalystResolver("ws-analyst"), NullLogger.Instance, CancellationToken.None);
+
+        // The open applicant's binding must come from the tx sender (late-bind), never from a
+        // pre-baked seed — there is exactly one applicant entry, the live wallet.
+        resolved!.Tx.ParticipantBindings["applicant"].Should().Be("ws-citizen");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_PreBakedSeed_FlowsIntoInstanceParticipantWallets_MakingItDiscoverable()
+    {
+        // End-to-end of the two pure pieces: resolve the starting tx, then fold it. The projected
+        // instance's ParticipantWallets must contain the analyst wallet so
+        // EfCoreInstanceStore.GetPendingActionsByWalletAsync(analystWallet) — which matches on
+        // ParticipantWallets — surfaces action 2 for the rules agent the moment action 1 seals.
+        var tx = new TransactionModel
+        {
+            TxId = "tx-action1",
+            PrevTxId = string.Empty,
+            SenderWallet = "ws-citizen",
+            MetaData = new TransactionMetaData
+            {
+                BlueprintId = "bp-1",
+                InstanceId = "inst-1",
+                ActionId = 1,
+                TransactionType = TransactionType.Action,
+                RoutingDecision = Decision(1, 2),
+            },
+        };
+
+        var resolved = await InstanceProjectionResolver.ResolveAsync(
+            tx, PreBakedAnalystResolver("ws-analyst"), NullLogger.Instance, CancellationToken.None);
+
+        var instance = InstanceProjection.Project(
+            "inst-1", "reg", "bp-1", 1, "tenant", [resolved!.Tx]);
+
+        instance.Should().NotBeNull();
+        instance!.CurrentActionIds.Should().Equal(2);
+        instance.ParticipantWallets.Should().Contain("analyst", "ws-analyst");
     }
 }

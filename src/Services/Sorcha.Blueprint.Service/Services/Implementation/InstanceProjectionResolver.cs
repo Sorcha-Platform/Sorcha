@@ -130,6 +130,23 @@ public static class InstanceProjectionResolver
             if (bp is null)
                 return bindings;
 
+            // Feature 145 (#912): seed pre-baked participant → wallet mappings straight from the
+            // published blueprint. A closed / pre-registered participant (e.g. a verification
+            // analyst) carries its WalletAddress baked into the blueprint at publish time. Without
+            // this, a participant only enters instance.ParticipantWallets once they ACT — so an
+            // instance sitting at a pre-baked participant's action is invisible to
+            // EfCoreInstanceStore.GetPendingActionsByWalletAsync(thatWallet) until they submit, the
+            // chicken-and-egg that stops a rules agent from auto-approving the action it was waiting
+            // on. Open participants (WalletAddress null, e.g. the late-bound applicant) are
+            // intentionally skipped — they bind from the tx sender below. Seeding here, in the
+            // shared resolver, keeps the online projector and the offline rebuild in lock-step
+            // (US4 parity); the per-tx bindings below take precedence via last-writer-wins.
+            foreach (var participant in bp.Participants)
+            {
+                if (!string.IsNullOrEmpty(participant.Id) && !string.IsNullOrEmpty(participant.WalletAddress))
+                    bindings[participant.Id] = participant.WalletAddress;
+            }
+
             var completedAction = actionResolver.GetActionDefinition(bp, completedActionId.ToString());
             if (completedAction is { Sender.Length: > 0 } && !string.IsNullOrEmpty(tx.SenderWallet))
                 bindings[completedAction.Sender] = tx.SenderWallet;
