@@ -177,7 +177,65 @@ public class ActionExecutionStartingActionTests
         instance.ParticipantWallets.Should().NotContainKey("reviewer");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_OpenStartingAction_MissingParticipantProfile_IsAllowed_AndBinds()
+    {
+        // Feature 103 / #911: an OPEN starting action (Sender participant has no hardcoded wallet)
+        // accepts a walk-in submitter whose consumer token carries org_id (F136) but who has no
+        // participant profile yet. SEC-006 must NOT fail-closed on the missing profile — the wallet
+        // is late-bound right after the ownership check. The participant client returns null (default).
+        var instanceId = "inst-open-911";
+        var actionId = 0;
+        var senderWallet = "ws11q-citizen-walkin";
+        var instance = CreateInstance(instanceId, participantWallets: new());
+        var blueprint = CreateBlueprintWithStartingAction();
+        var action = blueprint.Actions!.First(a => a.Id == actionId);
+        var request = CreateRequest(senderWallet);
+        SetupMocks(instanceId, instance, blueprint, action);
+
+        var caller = CreateConsumerCaller(Guid.NewGuid(), Guid.NewGuid());
+
+        // Act — proceeds past the SEC-006 ownership check (no 403) and binds; later steps throw.
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() =>
+            _service.ExecuteAsync(instanceId, actionId, request, "token", caller));
+
+        // Assert — NOT the participant-profile rejection; the bind happened (proves it cleared 4b).
+        (ex is UnauthorizedAccessException && ex.Message.Contains("No participant profile"))
+            .Should().BeFalse("open-participant walk-in submission must not be rejected for a missing participant profile (#911)");
+        instance.ParticipantWallets.Should().ContainKey("citizen");
+        instance.ParticipantWallets["citizen"].Should().Be(senderWallet);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NonOpenAction_MissingParticipantProfile_RejectsFailClosed()
+    {
+        // Regression guard: SEC-006 still fails closed on a missing participant for a NON-open action
+        // (a designated participant with a hardcoded wallet), so the #911 fix doesn't weaken the gate.
+        var instanceId = "inst-closed-911";
+        var actionId = 1; // reviewer (hardcoded wallet) — not an open starting action
+        var instance = CreateInstance(instanceId, participantWallets: new() { ["citizen"] = "ws11q-citizen" });
+        instance.CurrentActionIds = [1];
+        var blueprint = CreateBlueprintWithStartingAction();
+        var action = blueprint.Actions!.First(a => a.Id == 1);
+        var request = CreateRequest("ws11q-reviewer");
+        SetupMocks(instanceId, instance, blueprint, action);
+
+        var caller = CreateConsumerCaller(Guid.NewGuid(), Guid.NewGuid());
+
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.ExecuteAsync(instanceId, actionId, request, "token", caller));
+        ex.Message.Should().Contain("No participant profile");
+    }
+
     #region Helpers
+
+    private static ClaimsPrincipal CreateConsumerCaller(Guid userId, Guid orgId) =>
+        new(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+                new Claim("org_id", orgId.ToString())
+            ],
+            authenticationType: "test"));
 
     private void SetupMocks(string instanceId, Instance instance, BlueprintModel blueprint, ActionModel action)
     {

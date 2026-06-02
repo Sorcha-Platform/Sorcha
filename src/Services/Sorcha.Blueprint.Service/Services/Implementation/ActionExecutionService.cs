@@ -211,8 +211,18 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             throw new InvalidOperationException($"Action {actionId} is not a current action for instance {instanceId}");
         }
 
-        // 4b. Validate wallet ownership (SEC-006)
-        await ValidateWalletOwnershipAsync(request.SenderWallet, caller, cancellationToken);
+        // 4b. Validate wallet ownership (SEC-006). Feature 103: an OPEN starting action — one whose
+        // Sender participant carries no hardcoded wallet — accepts a walk-in submitter who has no
+        // participant profile yet (they are late-bound at 4d below). SEC-006's fail-closed
+        // missing-participant check must NOT block them (#911): F136 consumer tokens now carry org_id,
+        // which would otherwise trip the check the open-participant flow exists to bypass. Wallet
+        // ownership is still enforced by the Wallet Service at signing time, and participant binding
+        // by the validator (VAL_BP_002) + the late-bind below.
+        var senderParticipantDef = blueprint.Participants?
+            .FirstOrDefault(p => string.Equals(p.Id, actionDef.Sender, StringComparison.OrdinalIgnoreCase));
+        var isOpenStartingAction = actionDef.IsStartingAction
+            && string.IsNullOrWhiteSpace(senderParticipantDef?.WalletAddress);
+        await ValidateWalletOwnershipAsync(request.SenderWallet, caller, isOpenStartingAction, cancellationToken);
 
         // 4c. Validate sender matches action's designated participant role (SEC-AUDIT 3.1)
         // When a participant has a hardcoded wallet address in the blueprint, enforce strict matching.
@@ -1198,9 +1208,10 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             throw new InvalidOperationException($"Rejection target action {actionDef.RejectionConfig.TargetActionId} not found");
         }
 
-        // 6b. Validate wallet ownership (SEC-006)
+        // 6b. Validate wallet ownership (SEC-006). A rejection is never an open-participant
+        // walk-in (the rejecter is an established participant), so the profile is required.
         var rejectWallet = request.SenderWallet ?? instance.ParticipantWallets.Values.FirstOrDefault() ?? "";
-        await ValidateWalletOwnershipAsync(rejectWallet, caller, cancellationToken);
+        await ValidateWalletOwnershipAsync(rejectWallet, caller, allowMissingParticipant: false, cancellationToken);
 
         // 7. Build rejection transaction
         var rejectionData = new Dictionary<string, object>
@@ -2372,6 +2383,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     private async Task ValidateWalletOwnershipAsync(
         string senderWallet,
         ClaimsPrincipal? caller,
+        bool allowMissingParticipant,
         CancellationToken cancellationToken)
     {
         // Skip validation for null caller (backward compat / internal calls)
@@ -2434,6 +2446,18 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
 
         if (participant == null)
         {
+            // Feature 103: open-participant walk-in submission. The caller has no participant
+            // profile yet — they are late-bound to the action's Sender role immediately after this
+            // check. Wallet ownership is enforced at signing time by the Wallet Service, so a missing
+            // profile here is expected, not a failure (#911).
+            if (allowMissingParticipant)
+            {
+                _logger.LogInformation(
+                    "No participant profile for user {UserId} in org {OrgId} — allowing open-participant (Feature 103) walk-in submission. Wallet: {Wallet}",
+                    userId, orgId, senderWallet);
+                return;
+            }
+
             if (!_walletOwnershipSettings.AllowMissingParticipant
                 && _walletOwnershipSettings.EnforcementMode == Configuration.WalletOwnershipEnforcementMode.FailClosed)
             {
