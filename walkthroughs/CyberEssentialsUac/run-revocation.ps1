@@ -121,7 +121,7 @@ Write-WtSuccess "Both roles authenticated"
 # ============================================================================
 Write-WtStep "S3-1: Locate posture credential in subject-org wallet"
 
-$walletCredUrl = "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials?status=All"
+$walletCredUrl = "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All"
 $walletCreds = Invoke-SorchaApi `
     -Method  GET `
     -Uri     $walletCredUrl `
@@ -139,7 +139,6 @@ if (-not $cred) {
     exit 1
 }
 
-Assert ([bool]$cred) "posture credential present before revocation"
 Write-WtInfo "Posture credential id: $($cred.id)"
 Write-WtInfo "Posture credential status: $($cred.status)"
 
@@ -240,8 +239,9 @@ try {
 Assert $rejected "post-revocation Request Cover REJECTED (FailClosed)"
 
 if ($null -ne $status) {
-    Assert ($status -eq 400) `
-        "rejection surfaced as HTTP 400 — credential-verification failure (status was $status; the revoked reason is logged server-side, not returned)"
+    Assert ($status -eq 400) "rejection surfaced as HTTP 400 (generic body — the revoked reason is logged server-side, not returned)"
+} else {
+    Assert $false "rejection has no extractable HTTP status — likely a network/auth failure, not a FailClosed 400. Cannot confirm revocation rejection."
 }
 
 Write-Host ""
