@@ -1,0 +1,165 @@
+{
+  "id": "cyber-insurance-application-v1",
+  "title": "Cyber Insurance Application",
+  "description": "Two-participant cyber insurance application workflow. An organisation that holds a current, non-revoked CyberEssentialsUacPosture credential presents it as access control to request cover (OPEN, credential-gated starting action). The insurer reviews the posture evidence and issues a quote. This workflow consumes a posture/assessment credential — it does NOT constitute or verify Cyber Essentials certification.",
+  "version": 1,
+  "category": "security",
+  "tags": ["cyber-essentials", "uac", "insurance", "posture", "credential-gated", "open-participant", "quote"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "cyber-insurance-application-generated",
+    "title": "Cyber Insurance Application",
+    "description": "Credential-gated open starter: the requesting organisation must hold a current, non-revoked CyberEssentialsUacPosture credential issued by a recognised assessor. The insurer late-binds as the quoting party and issues a premium quote on satisfaction of the posture requirement.",
+    "version": 1,
+    "metadata": {
+      "category": "Security & Compliance",
+      "complexity": "Simple",
+      "actions": "2",
+      "features": "Open Participant, Credential Gate, Trust Policy, FailClosed Revocation",
+      "sector": "Cyber Insurance"
+    },
+    "instanceReference": {
+      "prefix": "CIA",
+      "components": [
+        { "field": "/sector", "transform": "FirstWord", "chars": 4 }
+      ]
+    },
+    "participants": [
+      {
+        "id": "subject-org",
+        "name": "Assessed Organisation",
+        "organisation": "Subject SME",
+        "description": "Requests cyber cover; presents the posture credential. OPEN starter (credential-gated, late-bound)."
+      },
+      {
+        "id": "insurer",
+        "name": "Cyber Insurer",
+        "organisation": "Insurer/Broker",
+        "description": "Quotes only when the posture requirement is satisfied (pre-bound)."
+      }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Request Cover",
+        "description": "Assessed organisation requests cyber insurance cover by presenting a current, non-revoked CyberEssentialsUacPosture credential. This is an OPEN starting action — the sender is late-bound at submission time; the credential requirement is the sole access control. Cover amount, sector, and employee count are captured for the insurer.",
+        "sender": "subject-org",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "coverAmountGbp": {
+                "type": "integer",
+                "minimum": 0,
+                "title": "Requested cover (GBP)"
+              },
+              "sector": {
+                "type": "string",
+                "title": "Sector"
+              },
+              "employeeCount": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Employees"
+              }
+            },
+            "required": ["coverAmountGbp"]
+          }
+        ],
+        "credentialRequirements": [
+          {
+            "type": "CyberEssentialsUacPosture",
+            "presentationSource": "SorchaInternal",
+            "trustPolicy": {
+              "sources": [
+                {
+                  "kind": "did-allowlist",
+                  "allowedIssuers": ["{{ASSESSOR_ISSUER_DID}}"],
+                  "confersAssurance": "low"
+                }
+              ],
+              "combinator": "anyOf",
+              "minAssuranceLevel": "low"
+            },
+            "requiredClaims": [
+              { "claimName": "compliant", "expectedValue": true },
+              { "claimName": "assessmentDate" }
+            ],
+            "revocationCheckPolicy": "FailClosed",
+            "description": "Requires a current, non-revoked Cyber Essentials UAC posture credential from a recognised assessor."
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-quote",
+            "nextActionIds": [1],
+            "isDefault": true,
+            "description": "Posture verified — route to insurer for a quote"
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "subject-org",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "insurer",
+            "dataPointers": ["/*"]
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Issue Quote",
+        "description": "Insurer reviews the verified posture evidence forwarded from the cover request and issues a premium quote. This is a terminal action — the workflow completes on quote issuance.",
+        "sender": "insurer",
+        "requiredPriorActions": [0],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "premiumGbp": {
+                "type": "number",
+                "minimum": 0,
+                "title": "Annual premium (GBP)"
+              },
+              "quoteRef": {
+                "type": "string",
+                "title": "Quote reference"
+              },
+              "validUntil": {
+                "type": "string",
+                "format": "date",
+                "title": "Quote valid until"
+              }
+            },
+            "required": ["premiumGbp", "quoteRef"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "quoted",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Quote issued — workflow complete"
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "insurer",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "subject-org",
+            "dataPointers": ["/*"]
+          }
+        ]
+      }
+    ]
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": []
+}
