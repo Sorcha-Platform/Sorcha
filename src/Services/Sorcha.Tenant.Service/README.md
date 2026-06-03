@@ -990,6 +990,29 @@ redis-cli ping  # Should return: PONG
 
 ---
 
+## Secret Protection at Rest (Feature 146)
+
+Sensitive secrets stored by the Tenant Service — **TOTP 2FA secrets** and **OIDC identity-provider
+client secrets** — are encrypted at rest with **AES-256-GCM** via `ISecretProtectionProvider`
+(`SoftwareSecretProtectionProvider`). The 32-byte key is resolved once at startup by
+`TenantSecretKeyResolver`:
+
+1. If `Tenant:SecretProtection:Key` (base64-encoded 32 bytes) is set, it is used (KeyId `config-v1`).
+2. Otherwise the key is **HKDF-SHA256-derived from the JWT signing key** (`JwtSettings:SigningKey`,
+   info `sorcha:tenant:secret-protection:v1`) — so **no new mandatory configuration** is required
+   (KeyId `jwt-derived-v1`).
+3. In **Production/Staging**, if neither resolves, the service **fails to start** (fail-closed).
+
+The KeyId is stored alongside each ciphertext to support rotation. The 2FA intermediate-token HMAC
+key is derived from the same JWT signing key (info `sorcha:tenant:login-token-hmac:v1`), making it
+**stable across replicas and restarts**. Generate an override key with `openssl rand -base64 32`.
+
+> The seam intentionally mirrors the Wallet `IOrgKeyProtectionProvider`; the two converge onto a
+> shared provider (and gain a KMS/HSM implementation) during the Hardware Key Storage initiative.
+> Design: `docs/superpowers/specs/2026-06-03-tenant-secret-protection-design.md`.
+
+---
+
 ## License
 
 This project is licensed under the Apache License 2.0. See [LICENSE](../../../LICENSE) for details.

@@ -207,19 +207,3 @@ public sealed class CitizenSyncService : ICitizenSyncService
         return byId.Values;
     }
 }
-
-/// <summary>
-/// Empty credential event source used until the citizen-credential issuance pipeline
-/// lands (US4 / Feature 114 Phase 6). Returns no events so a freshly enrolled wallet
-/// gets an empty snapshot and the sync surface is still exercisable end-to-end.
-/// </summary>
-public sealed class EmptyCitizenCredentialEventStream : ICitizenCredentialEventStream
-{
-    /// <inheritdoc />
-    public Task<IReadOnlyList<CitizenCredentialEvent>> ReadAsync(Guid platformUserId, long afterSeq, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<CitizenCredentialEvent>>(Array.Empty<CitizenCredentialEvent>());
-
-    /// <inheritdoc />
-    public Task<long> GetHighestSeqAsync(Guid platformUserId, CancellationToken ct = default)
-        => Task.FromResult(0L);
-}

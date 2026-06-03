@@ -178,6 +178,7 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             var credentialHeader = TryParseJwtHeader(credentialJwt);
             var credentialKid = credentialHeader is { } h ? TryGetString(h, "kid") : null;
             var issuerJwk = await _issuerKeys.ResolveAsync(issuer, credentialKid, ct);
+            var issuerSignatureVerified = false;
             if (issuerJwk is not null)
             {
                 if (!VerifyJwsSignature(credentialJwt, issuerJwk.Value, out _))
@@ -185,6 +186,8 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                     errors.Add($"Credential signature verification failed against issuer '{issuer}' key.");
                     return Failure(errors);
                 }
+
+                issuerSignatureVerified = true;
             }
             else if (_requireIssuerSignature)
             {
@@ -278,6 +281,9 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 DisclosedClaims = disclosed,
                 Errors = [],
                 CompletedAt = _clock.GetUtcNow(),
+                IssuerSignature = issuerSignatureVerified
+                    ? IssuerSignatureStatus.Verified
+                    : IssuerSignatureStatus.NotVerified,
             };
         }
         catch (Exception ex)

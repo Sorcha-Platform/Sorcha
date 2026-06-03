@@ -327,7 +327,8 @@ namespace Sorcha.Tenant.Service.Migrations
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     UserId = table.Column<Guid>(type: "uuid", nullable: false),
-                    EncryptedSecret = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
+                    EncryptedSecret = table.Column<byte[]>(type: "bytea", nullable: false),
+                    EncryptionKeyId = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     BackupCodes = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
                     IsEnabled = table.Column<bool>(type: "boolean", nullable: false),
                     VerifiedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
@@ -395,6 +396,7 @@ namespace Sorcha.Tenant.Service.Migrations
                     IssuerUrl = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     ClientId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     ClientSecretEncrypted = table.Column<byte[]>(type: "bytea", nullable: false),
+                    ClientSecretKeyId = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     Scopes = table.Column<string[]>(type: "text[]", nullable: false),
                     AuthorizationEndpoint = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     TokenEndpoint = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),

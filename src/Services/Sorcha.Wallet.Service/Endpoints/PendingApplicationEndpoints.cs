@@ -23,7 +23,9 @@ public static class PendingApplicationEndpoints
     {
         var group = app.MapGroup("/api/v1/wallet/pending-applications")
             .WithTags("Citizen Wallet")
-            .RequireAuthorization()
+            // Feature 147 / review F124: consumer-tier only, matching every sibling citizen surface.
+            // Plain .RequireAuthorization() let a platform token read/set a citizen's notice.
+            .RequireAuthorization(Microsoft.Extensions.Hosting.AuthorizationPolicies.RequireConsumerAudience)
             .RequireRateLimiting(RateLimitPolicies.Strict);
 
         group.MapGet("", GetPendingApplication)

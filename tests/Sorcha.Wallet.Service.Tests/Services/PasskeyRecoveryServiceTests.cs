@@ -52,14 +52,18 @@ public class PasskeyRecoveryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RecoverAsync_WithValidPasskey_RestoresWallets()
+    public async Task RecoverAsync_WithMatchingWrap_ThrowsNotSupported_AndDoesNotRekey()
     {
+        // Review M3b: a matching wrap is the point recovery would be authorised — but WebAuthn assertion
+        // verification is not implemented, so the service must fail loud rather than re-key the wallet.
         await SeedWalletWithPasskeyWrap();
 
-        var result = await _sut.RecoverAsync(UserId, TenantId, CredentialId);
+        var act = () => _sut.RecoverAsync(UserId, TenantId, CredentialId);
 
-        result.WalletsRecovered.Should().Be(1);
-        result.WalletAddresses.Should().Contain("ws1-test-address");
+        await act.Should().ThrowAsync<NotSupportedException>()
+            .WithMessage("*WebAuthn*");
+        var wallet = await _dbContext.Wallets.FirstAsync();
+        wallet.EncryptedPrivateKey.Should().Be("old-encrypted", "the wallet must not be re-keyed without verified proof");
     }
 
     [Fact]
@@ -81,58 +85,10 @@ public class PasskeyRecoveryServiceTests : IDisposable
         result.WalletsRecovered.Should().Be(0);
     }
 
-    [Fact]
-    public async Task RecoverAsync_RevokesAllDelegations()
-    {
-        var wallet = await SeedWalletWithPasskeyWrap();
-        _dbContext.WalletAccess.Add(new WalletAccess
-        {
-            ParentWalletAddress = wallet.Address,
-            Subject = "delegate-user",
-            AccessRight = AccessRight.ReadWrite,
-            GrantedBy = UserId
-        });
-        _dbContext.WalletAccess.Add(new WalletAccess
-        {
-            ParentWalletAddress = wallet.Address,
-            Subject = "another-delegate",
-            AccessRight = AccessRight.ReadOnly,
-            GrantedBy = UserId
-        });
-        await _dbContext.SaveChangesAsync();
-
-        var result = await _sut.RecoverAsync(UserId, TenantId, CredentialId);
-
-        result.DelegationsRevoked.Should().Be(2);
-        result.DelegationsPendingReview.Should().HaveCount(2);
-    }
-
-    [Fact]
-    public async Task RecoverAsync_CreatesAuditLog()
-    {
-        await SeedWalletWithPasskeyWrap();
-
-        await _sut.RecoverAsync(UserId, TenantId, CredentialId, "192.168.1.1");
-
-        var auditLogs = await _dbContext.RecoveryAuditLogs.ToListAsync();
-        auditLogs.Should().HaveCount(1);
-        auditLogs[0].UserId.Should().Be(UserId);
-        auditLogs[0].RecoveryPath.Should().Be(RecoveryPathType.Passkey);
-        auditLogs[0].IpAddress.Should().Be("192.168.1.1");
-        auditLogs[0].WalletsRecovered.Should().Be(1);
-    }
-
-    [Fact]
-    public async Task RecoverAsync_MultipleWallets_RestoresAll()
-    {
-        await SeedWalletWithPasskeyWrap("ws1-wallet-1");
-        await SeedWalletWithPasskeyWrap("ws1-wallet-2");
-
-        var result = await _sut.RecoverAsync(UserId, TenantId, CredentialId);
-
-        result.WalletsRecovered.Should().Be(2);
-        result.WalletAddresses.Should().HaveCount(2);
-    }
+    // Note (review M3b): the prior success-path tests (RevokesAllDelegations / CreatesAuditLog /
+    // MultipleWallets) asserted that recovery COMPLETED a re-key without verified WebAuthn proof — the
+    // exact behaviour now removed. They are dropped until full WebAuthn assertion verification is built
+    // (the deferred wallet-recovery feature), at which point the success path + these assertions return.
 
     [Fact]
     public async Task RecoverAsync_RevokedWrap_IsSkipped()

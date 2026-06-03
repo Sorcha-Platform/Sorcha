@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.AspNetCore.Authorization;
+
 using Sorcha.ServiceClients.Auth;
+using Sorcha.Wallet.Service.Authorization;
 
 namespace Sorcha.Wallet.Service.Extensions;
 
@@ -21,6 +24,10 @@ public static class AuthenticationExtensions
         // RequireOrganizationMember, RequireDelegatedAuthority, RequireAdministrator, CanWriteDockets)
         services.AddSorchaAuthorizationPolicies();
 
+        // Feature 147 / review H1: the system-wallet recover operation accepts either a service-tier
+        // caller or a platform-tier administrator (resolved against this installation's audiences).
+        services.AddSingleton<IAuthorizationHandler, SystemWalletRecoveryAuthorizationHandler>();
+
         services.AddAuthorization(options =>
         {
             // Wallet management (create, read wallet list)
@@ -31,6 +38,14 @@ public static class AuthenticationExtensions
                     var isService = context.User.Claims.Any(c => c.Type == TokenClaimConstants.TokenType && c.Value == TokenClaimConstants.TokenTypeService);
                     return hasOrgId || isService;
                 }));
+
+            // System-wallet recovery (BIP39 import that seats a validator docket-signing wallet).
+            // Feature 147 / review H1: service-tier caller OR platform-tier administrator.
+            // Logic lives in SystemWalletRecoveryAuthorizationHandler so the audience tier is
+            // resolved from the single source of truth at request time.
+            options.AddPolicy("CanRecoverSystemWallet", policy =>
+                policy.RequireAuthenticatedUser()
+                      .AddRequirements(new SystemWalletRecoveryRequirement()));
 
             // Wallet operations (sign, encrypt, decrypt) - requires wallet ownership
             options.AddPolicy("CanUseWallet", policy =>

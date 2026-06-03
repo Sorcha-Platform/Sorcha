@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Services\Sorcha.Haip.Service\Sorcha.Haip.Service.csproj" />
     <ProjectReference Include="..\..\src\Services\Sorcha.Tenant.Service\Sorcha.Tenant.Service.csproj" />
+    <ProjectReference Include="..\..\src\Common\Sorcha.AtomicCache\Sorcha.AtomicCache.csproj" />
   </ItemGroup>
 
   <ItemGroup>

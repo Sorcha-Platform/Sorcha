@@ -98,7 +98,8 @@ public class AuthMethodServiceTests : IDisposable
             {
                 Id = Guid.NewGuid(),
                 UserId = ui.Id,
-                EncryptedSecret = "stub",
+                EncryptedSecret = new byte[] { 1, 2, 3 },
+                EncryptionKeyId = "stub",
                 BackupCodes = "stub",
                 IsEnabled = true,
             });

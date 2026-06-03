@@ -43,6 +43,11 @@ public class IdentityProviderConfiguration
     public byte[] ClientSecretEncrypted { get; set; } = [];
 
     /// <summary>
+    /// Identifier of the key that protected <see cref="ClientSecretEncrypted"/> (e.g. "jwt-derived-v1").
+    /// </summary>
+    public string ClientSecretKeyId { get; set; } = string.Empty;
+
+    /// <summary>
     /// OAuth2 scopes (e.g., openid, profile, email).
     /// Must include at least "openid" scope.
     /// </summary>
