@@ -103,15 +103,17 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
 
 | Stage | Behaviour | Source |
 |---|---|---|
-| Validator (chain) | Starting actions accept any wallet — strict participant check is skipped | `ValidationEngine.cs:1027` |
-| Submission gate | Starting actions are exempt from the "must be a current action" check | `ActionExecutionService.cs:184` |
-| Chain anchor | A starting action with no prior tx auto-chains from the blueprint publish tx (each instance forks the blueprint) | `ActionExecutionService.cs:297` |
-| Late binding | First sender's wallet is bound to the participant role on the Instance and persisted; **immutable thereafter** (re-bind throws) | `ActionExecutionService.cs:309-332` |
-| Credential gate | If `credentialRequirements` are present, they are enforced before binding (HAIP external presentation or internal Sorcha verifier) | `ActionExecutionService.cs:218-269` |
+| Validator (chain) | Starting actions accept any wallet — strict participant check is skipped | `ValidationEngine.cs:~1352` (`IsStartingAction` branch) |
+| Submission gate | Starting actions are exempt from the "must be a current action" check | `ActionExecutionService.cs:~209` |
+| Chain anchor | A starting action with no prior tx auto-chains from the blueprint publish tx (each instance forks the blueprint) | `ActionExecutionService.cs:~375` |
+| Late binding | First sender's wallet is bound to the participant role on the Instance and persisted; **immutable thereafter** (re-bind throws) | `ActionExecutionService.cs:~419-452` |
+| Credential gate | If `credentialRequirements` are present, they are enforced before binding (HAIP external presentation or internal Sorcha verifier) | `ActionExecutionService.cs:~253-269` |
+
+> Line numbers are indicative (verified 2026-06); they drift — grep the method bodies if a citation misses.
 
 ### Author rules
 
-1. **Participants targeted by a starting action MUST have `walletAddress` null** in the published blueprint. Do not pre-fill the wallet at publish time. The strict-equality check at `ActionExecutionService.cs:196-216` only fires when `walletAddress` is set, so a baked-in wallet *defeats* late binding and rejects every real submitter.
+1. **Participants targeted by a starting action MUST have `walletAddress` null** in the published blueprint. Do not pre-fill the wallet at publish time. The strict-equality check (`ActionExecutionService.cs:~236-248`) only fires when `walletAddress` is set, so a baked-in wallet *defeats* late binding and rejects every real submitter.
 2. **All other participants** (case officers, assessors, internal roles) should have a known `walletAddress` at publish time — they are not open.
 3. **Credential-bootstrapped flows** (e.g. "Driving Licence" requires a `AssuredIdentityCredential` to start) belong on the starting action's `credentialRequirements`, not on a new flag. The runtime gates the open submission on credential possession before binding the participant.
 4. **Once bound, the binding is canonical for that instance.** Subsequent actions resolve disclosures, recipients, and credential issuance targets via `instance.ParticipantWallets[participantId]`, not via the blueprint's null wallet.
@@ -178,7 +180,7 @@ The applicant doesn't authenticate as a pre-existing identity; they prove they h
 
 ## Reusable Schema Components (Sorcha core library)
 
-> **Status:** Catalog and resolver land with the Verified Citizen v2 PR. This section is authoritative direction — once the PR ships, blueprints SHOULD prefer `$ref` to a core component over inlining identity primitives. Design spec: `docs/superpowers/specs/2026-04-13-verified-citizen-v2-design.md`.
+> **Status: Shipped (Feature 103).** The resolver (`SchemaRefResolver.cs`, prefix `https://schemas.sorcha.dev/core/`, child-wins layout override) and the startup seeder (`CoreSchemaSeedService.cs`) are live; the five catalog primitives exist on disk under `blueprints/schemas/sorcha-core/*.json`; and `PublishService.PublishAsync` flattens `$ref`s (`FlattenActionSchemas`) before validation, surfacing `SchemaRefResolutionException` as a publish error. Blueprints SHOULD prefer `$ref` to a core component over inlining identity primitives. Design spec: `docs/superpowers/specs/2026-04-13-verified-citizen-v2-design.md`.
 
 ### Why
 
@@ -269,7 +271,9 @@ If your blueprint asks the user for a name, date of birth, email, or postal addr
 
 ## Blueprint Validation Codes
 
-Publish-time validation runs in `Sorcha.Validator.Service`. Errors block publication; warnings publish but surface in the response.
+Publish-time validation runs in **`Sorcha.Blueprint.Service`** (`PublishService.ValidateBlueprint`) — **not** `Sorcha.Validator.Service` (that service does transaction-chain validation, the `VAL_*` runtime codes). Errors block publication; warnings publish but surface in the response.
+
+> **Two validation surfaces, one table.** The coded errors below are emitted in full by the AI-chat `validate_blueprint` tool (`BlueprintToolExecutor`). The HTTP `/publish` path enforces the structural rules (`VAL_BP_010/011/012`, `WARN_BP_006`, recipient + cycle checks, plus the credential codes `VAL_BP_CRED_001/003`) but emits some as plain-text messages, and currently does **not** enforce `INVALID_TITLE` / `INVALID_DESCRIPTION` (title/description length) — those fire only in the chat tool. Reconciling the two surfaces is a tracked follow-up; until then treat the chat tool as the stricter gate.
 
 | Code | Severity | Trigger |
 |------|----------|---------|
@@ -282,7 +286,7 @@ Publish-time validation runs in `Sorcha.Validator.Service`. Errors block publica
 | `VAL_BP_011` | error | An `outputMapping` target pointer's top-level field is not declared on any next action's schema |
 | `VAL_BP_012` | error | `x-credential-offer: true` on a non-object field |
 | `INVALID_CREDENTIAL_RECIPIENT` | warning | `credentialIssuanceConfig.recipientParticipantId` references an unknown participant |
-| `OPEN_CREDENTIAL_ISSUER` | warning | `credentialRequirements[].acceptedIssuers` empty (any issuer accepted) — usually too permissive |
+| `OPEN_CREDENTIAL_ISSUER` | warning | `credentialRequirements[].trustPolicy` is null or has no `sources` (any issuer accepted) — usually too permissive. (Pre-F135 this keyed off an empty `acceptedIssuers`, now removed.) |
 | `WARN_BP_006` | warning | An `x-credential-offer` object should declare `credential_offer_uri` in its `required` list |
 | `NO_STARTING_ACTION` | warning | No action marked `isStartingAction: true` |
 | Cycle warning | warning | Cyclic route detected — publish proceeds; set `metadata.hasCycles = "true"` for clarity |
@@ -530,7 +534,11 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
   {
     "type": "AssuredIdentityCredential",
     "presentationSource": "HaipExternalWallet",
-    "acceptedIssuers": ["did:sorcha:org:ws1abc..."],
+    "trustPolicy": {
+      "sources": [
+        { "kind": "did-allowlist", "allowedIssuers": ["did:sorcha:org:ws1abc..."] }
+      ]
+    },
     "requiredClaims": [
       { "claimName": "givenName" },
       { "claimName": "dateOfBirth" }
@@ -543,7 +551,7 @@ Watermark states (Draft/Pending/Issued/None), stacked-cards behaviour for `crede
 
 - `presentationSource: "SorchaInternal"` (default) matches against the holder's on-platform Sorcha credentials.
 - `presentationSource: "HaipExternalWallet"` runs the OpenID4VP `direct_post` flow (Feature 098) — required for citizen-facing services that accept external wallets and for credential-bootstrapped open submissions.
-- Empty `acceptedIssuers` accepts any issuer (`OPEN_CREDENTIAL_ISSUER` warning at publish time).
+- `trustPolicy` replaced the removed `acceptedIssuers` field (F135). A null/empty `trustPolicy` accepts any issuer (`OPEN_CREDENTIAL_ISSUER` warning at publish time); a `did-allowlist` source is the direct equivalent of the old issuer list, and a `register` source trusts register-resolved issuers. Full shape: the F135 section of the `sorcha-architecture` skill. **Do not write `acceptedIssuers`** — it is silently ignored.
 - Multiple requirements are AND-combined.
 
 ### Issuing a credential on action completion
@@ -863,7 +871,7 @@ Both → Complete
 | `src/Core/Sorcha.Blueprint.Engine/` | Execution engine (validate/calculate/route/disclose) |
 | `src/Core/Sorcha.Blueprint.Fluent/` | Fluent API for programmatic blueprint creation |
 | `src/Services/Sorcha.Blueprint.Service/Program.cs` | PublishService, ValidateBlueprint, DetectCycles |
-| `src/Services/Sorcha.Blueprint.Service/Templates/TemplateSeedingService.cs` | Startup seeding |
+| `src/Services/Sorcha.Blueprint.Service/Services/TemplateSeedService.cs` | Startup template seeding (`CoreSchemaSeedService.cs` seeds the `$ref` core-schema catalog) |
 
 ## See Also
 

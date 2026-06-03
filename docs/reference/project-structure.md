@@ -18,9 +18,11 @@ Sorcha/
 │   │   ├── Sorcha.Cli/                         # Administrative CLI (System.CommandLine + Refit + Spectre.Console)
 │   │   ├── Sorcha.Demo/                        # Demo application
 │   │   ├── Sorcha.McpServer/                   # MCP Server for AI assistants (Claude Desktop, etc.)
-│   │   ├── Sorcha.PeerRouter/                  # Peer routing / federation helper
+│   │   ├── Sorcha.Verifier/                    # Reference OID4VP verifier (Blazor Server)
+│   │   ├── Sorcha.Wallet.Pwa/                  # Citizen wallet PWA (Blazor WASM, Feature 114)
 │   │   └── Sorcha.UI/                          # Main user-facing UI (Blazor WASM)
-│   │       ├── Sorcha.UI.Core/                 # Shared UI components
+│   │       ├── Sorcha.UI.Core/                 # Shared admin/designer/explorer UI components
+│   │       ├── Sorcha.UI.Components.User/      # Shared user-facing components, web + PWA (Feature 122)
 │   │       ├── Sorcha.UI.Web/                  # Web host
 │   │       ├── Sorcha.UI.Web.Client/           # Web client (Blazor WASM)
 │   │       └── tests/                          # UI-scoped test projects
@@ -36,7 +38,6 @@ Sorcha/
 │   │   ├── Sorcha.ServiceClients.Http/         # HTTP REST clients + SignalR (NuGet, mobile-friendly)
 │   │   ├── Sorcha.ServiceDefaults/             # Aspire shared configuration + rate limiting
 │   │   ├── Sorcha.Storage.Abstractions/        # IRepository<T>, IUnitOfWork
-│   │   ├── Sorcha.Storage.EFCore/              # EF Core implementation
 │   │   ├── Sorcha.Storage.InMemory/            # In-memory implementation (testing)
 │   │   ├── Sorcha.Storage.MongoDB/             # MongoDB implementation
 │   │   ├── Sorcha.Storage.Redis/               # Redis caching implementation
@@ -153,7 +154,7 @@ All projects target **`net10.0`** (C# 14). Central package management via `Direc
 |-------|---------|----------|
 | Apps | `Sorcha.{Feature}` | `Sorcha.AppHost`, `Sorcha.Cli`, `Sorcha.Agent`, `Sorcha.McpServer` |
 | Services | `Sorcha.{Feature}.Service` or `Sorcha.{Feature}Gateway` | `Sorcha.Register.Service`, `Sorcha.ApiGateway`, `Sorcha.Haip.Service` |
-| Common | `Sorcha.{Feature}` or `Sorcha.{Feature}.{Kind}` | `Sorcha.Cryptography`, `Sorcha.Storage.EFCore`, `Sorcha.ServiceClients.Http` |
+| Common | `Sorcha.{Feature}` or `Sorcha.{Feature}.{Kind}` | `Sorcha.Cryptography`, `Sorcha.Storage.MongoDB`, `Sorcha.ServiceClients.Http` |
 | Core | `Sorcha.{Feature}.{Kind}` | `Sorcha.Blueprint.Engine`, `Sorcha.Register.Core`, `Sorcha.Wallet.Portable` |
 | Tests | `{Project}.Tests` / `{Project}.IntegrationTests` / `{Project}.E2E.Tests` / `{Project}.Benchmarks` | `Sorcha.Register.Core.Tests`, `Sorcha.Wallet.Service.IntegrationTests`, `Sorcha.UI.E2E.Tests` |
 
