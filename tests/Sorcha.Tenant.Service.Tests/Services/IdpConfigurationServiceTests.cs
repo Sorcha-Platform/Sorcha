@@ -11,6 +11,7 @@ using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 using Sorcha.Tenant.Service.Tests.Helpers;
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using Xunit;
 
@@ -22,6 +23,7 @@ public class IdpConfigurationServiceTests : IDisposable
     private readonly Mock<IOidcDiscoveryService> _discoveryServiceMock;
     private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
     private readonly Mock<ILogger<IdpConfigurationService>> _loggerMock;
+    private readonly ISecretProtectionProvider _protection;
     private readonly IIdpConfigurationService _service;
 
     private readonly Guid _testOrgId = Guid.NewGuid();
@@ -44,10 +46,15 @@ public class IdpConfigurationServiceTests : IDisposable
         });
         _dbContext.SaveChanges();
 
+        var key = new byte[32];
+        for (var i = 0; i < key.Length; i++) key[i] = (byte)(i + 7);
+        _protection = new SoftwareSecretProtectionProvider(key, "test-key-v1");
+
         _service = new IdpConfigurationService(
             _dbContext,
             _discoveryServiceMock.Object,
             _httpClientFactoryMock.Object,
+            _protection,
             _loggerMock.Object);
     }
 
@@ -201,6 +208,24 @@ public class IdpConfigurationServiceTests : IDisposable
         var plaintextBytes = System.Text.Encoding.UTF8.GetBytes(request.ClientSecret);
         persisted.ClientSecretEncrypted.Should().NotBeEquivalentTo(plaintextBytes,
             "client secret must be encrypted, not stored as plaintext");
+    }
+
+    [Fact]
+    public async Task CreateOrUpdateAsync_StoredSecret_IsReversibleToOriginal()
+    {
+        // Arrange
+        var request = CreateTestIdpRequest(); // ClientSecret = "test-client-secret-value"
+
+        // Act
+        var result = await _service.CreateOrUpdateAsync(_testOrgId, request);
+
+        // Assert — regression guard for the old SHA-256 (irreversible) storage: the REAL secret
+        // must be recoverable so the OIDC token exchange can authenticate to the provider.
+        var persisted = await _dbContext.IdentityProviderConfigurations.FindAsync(result.Id);
+        persisted!.ClientSecretKeyId.Should().NotBeNullOrEmpty();
+        var recovered = Encoding.UTF8.GetString(
+            await _protection.DecryptAsync(persisted.ClientSecretEncrypted, persisted.ClientSecretKeyId));
+        recovered.Should().Be(request.ClientSecret);
     }
 
     #endregion
@@ -400,8 +425,10 @@ public class IdpConfigurationServiceTests : IDisposable
 
     #region Test Helpers
 
-    private static IdentityProviderConfiguration CreateTestIdpConfig(Guid organizationId)
+    private IdentityProviderConfiguration CreateTestIdpConfig(Guid organizationId)
     {
+        var (encryptedSecret, secretKeyId) = _protection
+            .EncryptAsync(Encoding.UTF8.GetBytes("test-client-secret-value")).GetAwaiter().GetResult();
         return new IdentityProviderConfiguration
         {
             Id = Guid.NewGuid(),
@@ -409,7 +436,8 @@ public class IdpConfigurationServiceTests : IDisposable
             ProviderPreset = IdentityProviderType.MicrosoftEntra,
             IssuerUrl = "https://login.microsoftonline.com/tenant-id/v2.0",
             ClientId = "test-client-id",
-            ClientSecretEncrypted = [0x01, 0x02, 0x03, 0x04], // Dummy encrypted bytes
+            ClientSecretEncrypted = encryptedSecret,
+            ClientSecretKeyId = secretKeyId,
             Scopes = ["openid", "profile", "email"],
             AuthorizationEndpoint = "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/authorize",
             TokenEndpoint = "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token",

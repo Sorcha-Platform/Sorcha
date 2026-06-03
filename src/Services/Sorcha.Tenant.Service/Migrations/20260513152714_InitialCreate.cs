@@ -396,6 +396,7 @@ namespace Sorcha.Tenant.Service.Migrations
                     IssuerUrl = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     ClientId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     ClientSecretEncrypted = table.Column<byte[]>(type: "bytea", nullable: false),
+                    ClientSecretKeyId = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     Scopes = table.Column<string[]>(type: "text[]", nullable: false),
                     AuthorizationEndpoint = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     TokenEndpoint = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),

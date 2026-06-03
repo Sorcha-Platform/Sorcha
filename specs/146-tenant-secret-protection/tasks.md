@@ -43,8 +43,8 @@ Single microservice: `src/Services/Sorcha.Tenant.Service/` + `tests/Sorcha.Tenan
 - [X] T005 [P] Write FAILING unit tests for `TenantSecretKeyResolver` (HKDF determinism: same JWT key ⇒ same 32-byte key/KeyId; `Tenant:SecretProtection:Key` override precedence + 32-byte validation; Production/Staging with no key ⇒ throws at startup; non-prod derives from dev JWT key) in `tests/Sorcha.Tenant.Service.Tests/Services/TenantSecretKeyResolverTests.cs`.
 - [X] T006 Implement `TenantSecretKeyResolver` (`HKDF-SHA256(JwtConfiguration.SigningKey, info "sorcha:tenant:secret-protection:v1")` default → `KeyId "jwt-derived-v1"`; override → `"config-v1"`; fail-closed) in `src/Services/Sorcha.Tenant.Service/Services/Implementation/TenantSecretKeyResolver.cs` — make T005 pass. (Depends on T005.)
 - [X] T007 Wire DI in `src/Services/Sorcha.Tenant.Service/Program.cs` (and/or `Extensions/ServiceCollectionExtensions.cs`): register `ISecretProtectionProvider`→`SoftwareSecretProtectionProvider` as singleton via the resolver; derive + register the login-token HMAC key singleton (`HKDF-SHA256(SigningKey, info "sorcha:tenant:login-token-hmac:v1")`); run the fail-closed key resolution at startup. (Depends on T004, T006.)
-- [X] T008 [P] *(TOTP portion done; IdP `ClientSecretKeyId` column deferred to US2 so the entity + service + seed change together)* Apply data-model changes per `data-model.md`: `TotpConfiguration.EncryptedSecret` `string→byte[]` + add `EncryptionKeyId` (`Models/TotpConfiguration.cs`); add `ClientSecretKeyId` to `Models/IdentityProviderConfiguration.cs`; update both `TenantDbContext` column configs (TOTP entity + IdP entity at ~lines 358 and 466) in `src/Services/Sorcha.Tenant.Service/Data/TenantDbContext.cs`.
-- [X] T009 *(TOTP columns squashed; IdP `ClientSecretKeyId` deferred to US2)* Squash the column changes into the existing migration (NO new migration): edit `Migrations/20260513152714_InitialCreate.cs`, `Migrations/20260513152714_InitialCreate.Designer.cs`, and `Migrations/TenantDbContextModelSnapshot.cs` so they match the model; verify EF reports no model drift at startup. (Depends on T008.)
+- [X] T008 [P] *(done across US1 (TOTP) + US2 (IdP `ClientSecretKeyId`))* Apply data-model changes per `data-model.md`: `TotpConfiguration.EncryptedSecret` `string→byte[]` + add `EncryptionKeyId` (`Models/TotpConfiguration.cs`); add `ClientSecretKeyId` to `Models/IdentityProviderConfiguration.cs`; update both `TenantDbContext` column configs (TOTP entity + IdP entity at ~lines 358 and 466) in `src/Services/Sorcha.Tenant.Service/Data/TenantDbContext.cs`.
+- [X] T009 *(done across US1 (TOTP) + US2 (IdP `ClientSecretKeyId`))* Squash the column changes into the existing migration (NO new migration): edit `Migrations/20260513152714_InitialCreate.cs`, `Migrations/20260513152714_InitialCreate.Designer.cs`, and `Migrations/TenantDbContextModelSnapshot.cs` so they match the model; verify EF reports no model drift at startup. (Depends on T008.)
 
 **Checkpoint**: Provider + resolver + DI + schema ready. User stories can begin.
 
@@ -77,13 +77,13 @@ Single microservice: `src/Services/Sorcha.Tenant.Service/` + `tests/Sorcha.Tenan
 
 ### Tests for User Story 2 ⚠️ (write first, ensure they FAIL)
 
-- [ ] T013 [P] [US2] Write FAILING tests in `tests/Sorcha.Tenant.Service.Tests/Services/IdpConfigurationServiceTests.cs`: save→read recovers the original client secret (regression guard for the SHA-256 bug); stored `ClientSecretEncrypted` ≠ plaintext; `ClientSecretKeyId` persisted.
+- [X] T013 [P] [US2] Write FAILING tests in `tests/Sorcha.Tenant.Service.Tests/Services/IdpConfigurationServiceTests.cs`: save→read recovers the original client secret (regression guard for the SHA-256 bug); stored `ClientSecretEncrypted` ≠ plaintext; `ClientSecretKeyId` persisted.
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Update `src/Services/Sorcha.Tenant.Service/Services/IdpConfigurationService.cs`: inject `ISecretProtectionProvider`; encrypt the client secret on create/update (store `ClientSecretEncrypted` + `ClientSecretKeyId`); decrypt on read; **delete** the SHA-256 `EncryptSecret`/`DecryptSecret`; convert the static helpers to instance/async members as needed. — makes T013 pass.
-- [ ] T015 [US2] Update `src/Services/Sorcha.Tenant.Service/Services/OidcExchangeService.cs` (~line 127) to obtain the real decrypted client secret via `IdpConfigurationService`/`ISecretProtectionProvider` for the token exchange.
-- [ ] T016 [US2] Update the IdP seed in `src/Services/Sorcha.Tenant.Service/Data/DatabaseInitializer.cs` (~line 479) to route the seeded client secret through `ISecretProtectionProvider` (or drop the seeded secret if it's placeholder only).
+- [X] T014 [US2] Update `src/Services/Sorcha.Tenant.Service/Services/IdpConfigurationService.cs`: inject `ISecretProtectionProvider`; encrypt the client secret on create/update (store `ClientSecretEncrypted` + `ClientSecretKeyId`); decrypt on read; **delete** the SHA-256 `EncryptSecret`/`DecryptSecret`; convert the static helpers to instance/async members as needed. — makes T013 pass.
+- [X] T015 [US2] Update `src/Services/Sorcha.Tenant.Service/Services/OidcExchangeService.cs` (~line 127) to obtain the real decrypted client secret via `IdpConfigurationService`/`ISecretProtectionProvider` for the token exchange.
+- [X] T016 [US2] *(NO-OP — corrected: `DatabaseInitializer.cs:479` seeds a **`ServicePrincipal`** (Argon2id-hashed, correct), NOT an OIDC IdP config. No IdP config is seeded — admins create them at runtime. The audit misattributed this line.)*
 
 **Checkpoint**: OIDC client secrets protected AND the exchange path fixed — independently testable.
 
