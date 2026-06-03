@@ -341,6 +341,39 @@ if (-not $rosterReady) {
 }
 
 # ============================================================================
+# Step 6b: Publish Participants to Register
+# ============================================================================
+# Each participant's public key must be ON THE REGISTER so the issuer can
+# X25519-encrypt a SorchaLocalWallet credential to the recipient (subject-org).
+# Without this, issuance logs "Public key not found on register ... recipient
+# skipped (no external key provided)" — the credential is minted but never
+# delivered to the wallet. Mirrors ConstructionPermit's participant-publish loop.
+
+Write-WtStep "Step 6b: Publish Participants to Register"
+
+$participantDefs = @(
+    @{ Name = "assessor";    OrgName = "Cyber Assessor Co."; OrgId = $assessorOrgId; Wallet = $assessorWallet; Headers = $assessorSession.Headers }
+    @{ Name = "subject-org"; OrgName = "Assessed SME";       OrgId = $subjectOrgId;  Wallet = $subjectWallet;  Headers = $subjectSession.Headers }
+    @{ Name = "insurer";     OrgName = "Cyber Insurer";      OrgId = $insurerOrgId;  Wallet = $insurerWallet;  Headers = $insurerSession.Headers }
+)
+foreach ($p in $participantDefs) {
+    try {
+        $null = Publish-SorchaParticipant `
+            -TenantUrl        $sorchaEnv.TenantUrl `
+            -OrganizationId   $p.OrgId `
+            -RegisterId       $registerId `
+            -ParticipantName  $p.Name `
+            -OrganizationName $p.OrgName `
+            -WalletAddress    $p.Wallet.Address `
+            -PublicKey        $p.Wallet.PublicKey `
+            -Headers          $p.Headers
+        Write-WtSuccess "Published participant '$($p.Name)' -> $($p.Wallet.Address)"
+    } catch {
+        Write-WtWarn "Publish participant '$($p.Name)' failed (may already exist): $($_.Exception.Message)"
+    }
+}
+
+# ============================================================================
 # Step 7: Substitute Assessor Issuer DID into Blueprint B
 # ============================================================================
 # Blueprint B's credentialRequirements.trustPolicy.allowedIssuers contains the
