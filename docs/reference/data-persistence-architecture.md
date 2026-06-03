@@ -156,6 +156,15 @@ public interface ICacheStore
 
 ### 2. Repository Interface (Warm Tier - Relational)
 
+> **Implementation note (2026-06-03):** the generic `IRepository<TEntity, TId>` below is an
+> **illustrative model of the warm-tier role — it is NOT a type in the codebase.** Sorcha does not use
+> a generic repository; each service defines a **focused repository interface** (`IWalletRepository`,
+> `IRegisterRepository`, `IInstanceStore`, `IActionStore`, …) with a concrete EF Core implementation
+> over its own `DbContext`, registered via `IStorageRegistrationLog` (Feature 113) so the backend
+> choice is visible at startup and fails closed on an in-memory fallback in Production/Staging. The
+> `IRepository<…>` rows in the tables below denote "a warm-tier relational repository for this entity",
+> not a literal shared interface. (See the `entity-framework` skill → "Concrete repository".)
+
 ```csharp
 namespace Sorcha.Storage.Abstractions;
 

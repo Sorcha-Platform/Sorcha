@@ -2,10 +2,10 @@
 
 ## Overview
 
-Sorcha is organised around a four-tier layering (Apps / Services / Core / Common) with a dedicated `tests/` root and top-level support directories for docs, specs, blueprints, walkthroughs, infra, and tooling.
+Sorcha is organised around layered tiers (Apps / Services / Core / Common, plus a small `Providers/` tier for pluggable infrastructure) with a dedicated `tests/` root and top-level support directories for docs, specs, blueprints, walkthroughs, infra, and tooling.
 
-**Last Updated:** 2026-04-21
-**Version:** 3.0.0
+**Last Updated:** 2026-06-03
+**Version:** 3.1.0
 
 ## Directory Structure
 
@@ -30,25 +30,27 @@ Sorcha/
 │   │           └── Sorcha.UI.Integration.Tests/
 │   ├── Common/                                 # Cross-cutting libraries (no business logic)
 │   │   ├── Sorcha.AddressLookup/               # Postal-address lookup abstractions
+│   │   ├── Sorcha.AtomicCache/                 # IAtomicDistributedCache (GETDEL + Lua CAS primitive)
 │   │   ├── Sorcha.Blueprint.Models/            # Blueprint domain models + JSON-LD
 │   │   ├── Sorcha.Blueprint.Schemas/           # Schema definitions (shared)
-│   │   ├── Sorcha.Cryptography/                # Multi-algorithm crypto (ED25519, P-256, RSA-4096)
+│   │   ├── Sorcha.CitizenWallet.Abstractions/  # Citizen-wallet DTOs, derivation contexts, VCT URIs (F114)
+│   │   ├── Sorcha.Cryptography/                # Multi-algorithm crypto (ED25519, P-256, RSA-4096) + SD-JWT + mdoc
+│   │   ├── Sorcha.PresentationLifecycle.Abstractions/ # Cross-consumer presentation-lifecycle contract (F111)
 │   │   ├── Sorcha.Register.Models/             # Register domain models + genesis resources
 │   │   ├── Sorcha.ServiceClients/              # Consolidated HTTP/gRPC clients
 │   │   ├── Sorcha.ServiceClients.Http/         # HTTP REST clients + SignalR (NuGet, mobile-friendly)
-│   │   ├── Sorcha.ServiceDefaults/             # Aspire shared configuration + rate limiting
-│   │   ├── Sorcha.Storage.Abstractions/        # IRepository<T>, IUnitOfWork
+│   │   ├── Sorcha.ServiceDefaults/             # Aspire shared config, rate limiting, tiered-audience auth, storage audit
+│   │   ├── Sorcha.Storage.Abstractions/        # Storage seams: ICacheStore, IDocumentStore, IWormStore, IVerifiedCache
 │   │   ├── Sorcha.Storage.InMemory/            # In-memory implementation (testing)
 │   │   ├── Sorcha.Storage.MongoDB/             # MongoDB implementation
 │   │   ├── Sorcha.Storage.Redis/               # Redis caching implementation
 │   │   ├── Sorcha.Tenant.Models/               # Tenant domain models
 │   │   ├── Sorcha.TransactionHandler/          # Transaction building/serialization
 │   │   ├── Sorcha.Validator.Core/              # Enclave-safe validation library
-│   │   └── Sorcha.Wallet.Core/                 # Wallet domain logic
+│   │   └── Sorcha.Verifier.Engine/             # WASM-friendly OID4VP presentation validator + issuer-key resolvers
 │   ├── Core/                                   # Business logic
-│   │   ├── Sorcha.Blueprint.Engine/            # Portable execution (WASM-compatible)
+│   │   ├── Sorcha.Blueprint.Engine/            # Portable execution (WASM-compatible) + credential trust/format handlers
 │   │   ├── Sorcha.Blueprint.Fluent/            # Fluent API for blueprint construction
-│   │   ├── Sorcha.Blueprint.Schemas/           # Schema management with caching
 │   │   ├── Sorcha.Blueprint.Schemas.Client/    # Client-side schema facade
 │   │   ├── Sorcha.Register.Core/               # Ledger business logic + LocalRelationship + SyncState
 │   │   ├── Sorcha.Register.Storage/            # Register-specific storage abstractions
@@ -57,6 +59,8 @@ Sorcha/
 │   │   ├── Sorcha.Register.Storage.Redis/
 │   │   ├── Sorcha.Wallet.Core/                 # Wallet business logic
 │   │   └── Sorcha.Wallet.Portable/             # Portable wallet: entities, enums, derivation (NuGet)
+│   ├── Providers/                              # Pluggable infrastructure providers
+│   │   └── Sorcha.Wallet.Providers.Azure/      # Azure Key Vault / KMS-resident wallet key protection
 │   └── Services/                               # REST / gRPC / background services
 │       ├── Sorcha.ApiGateway/                  # YARP reverse proxy
 │       ├── Sorcha.Blueprint.Service/           # Workflow management + SignalR
@@ -66,7 +70,7 @@ Sorcha/
 │       ├── Sorcha.Tenant.Service/              # Multi-tenant auth, JWT, Participant/Platform Identity
 │       ├── Sorcha.Validator.Service/           # Consensus + chain integrity
 │       └── Sorcha.Wallet.Service/              # Crypto wallet management
-├── tests/                                      # ~47 top-level test projects (plus UI-scoped tests under src/Apps/Sorcha.UI/tests)
+├── tests/                                      # ~52 top-level test projects (plus 2 UI-scoped tests under src/Apps/Sorcha.UI/tests)
 │   ├── Sorcha.Testing/                         # Shared test factory / fixtures
 │   ├── {Project}.Tests/                        # Unit tests
 │   ├── {Project}.IntegrationTests/             # Integration tests (real DB/services)
@@ -89,7 +93,7 @@ Sorcha/
 └── Sorcha.sln                                  # Solution file
 ```
 
-**Counts (2026-04-21):** 7 App projects, 17 Common libraries, 11 Core libraries, 8 Services, ~47 top-level test projects + 2 UI-scoped test projects.
+**Counts (2026-06-03):** 7 standalone App projects + 4 UI projects (under `Sorcha.UI/`), 19 Common libraries, 10 Core libraries, 1 Providers project, 8 Services. Tests: ~52 top-level test projects (under `tests/`) + 2 UI-scoped test projects (under `src/Apps/Sorcha.UI/tests/`).
 
 ## Layer Purposes
 
@@ -104,6 +108,10 @@ Cross-cutting libraries. Contents: domain models, cryptography, storage abstract
 ### src/Core/
 
 Domain business logic — execution engines, ledger core, schema management, fluent builders, portable wallet. Depends on Common only.
+
+### src/Providers/
+
+Pluggable infrastructure providers selected by configuration — e.g. `Sorcha.Wallet.Providers.Azure` supplies Azure Key Vault / KMS-resident wallet key protection behind the Wallet Service's key-protection seam. Kept separate so a deployment pulls in only the cloud providers it uses.
 
 ### src/Services/
 

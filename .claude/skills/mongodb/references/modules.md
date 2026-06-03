@@ -237,7 +237,7 @@ See the **redis** skill for caching patterns and **entity-framework** skill for 
 public class WorkflowService
 {
     private readonly IDocumentStore<Blueprint, string> _blueprintStore;  // MongoDB
-    private readonly IRepository<Wallet> _walletRepo;                    // PostgreSQL via EF
+    private readonly IWalletRepository _walletRepo;                       // PostgreSQL via EF (service-specific repo; no generic IRepository<T>)
     private readonly IDistributedCache _cache;                           // Redis
 }
 ```
