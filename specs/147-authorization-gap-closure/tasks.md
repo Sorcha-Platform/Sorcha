@@ -109,12 +109,12 @@ Multi-service repo. Production code under `src/Services/Sorcha.{Wallet,Blueprint
 
 ### Tests for User Story 4 (write first, must FAIL) ⚠️
 
-- [ ] T017 [P] [US4] Policy-evaluation tests in `tests/Sorcha.Tenant.Service.Tests/Authorization/TenantSystemAdminPolicyTests.cs` — build a provider via `services.AddLogging(); services.AddTenantAuthorization();` and assert: SystemAdmin in `00000000-0000-0000-0000-000000000001`→allow; SystemAdmin in a different org→deny; non-SystemAdmin in the system-admin org→deny. (Fails: Tenant override is role-only, so non-system-org SystemAdmin currently allowed.)
+- [x] T017 [P] [US4] Policy-evaluation tests in `tests/Sorcha.Tenant.Service.Tests/Authorization/TenantSystemAdminPolicyTests.cs` — build a provider via `services.AddLogging(); services.AddTenantAuthorization();` and assert: SystemAdmin in `00000000-0000-0000-0000-000000000001`→allow; SystemAdmin in a different org→deny; non-SystemAdmin in the system-admin org→deny. (Fails: Tenant override is role-only, so non-system-org SystemAdmin currently allowed.)
 
 ### Implementation for User Story 4
 
-- [ ] T018 [US4] In `src/Services/Sorcha.Tenant.Service/Extensions/AuthenticationExtensions.cs`: delete the duplicate `options.AddPolicy("RequireSystemAdmin", policy => policy.RequireRole("SystemAdmin"))` so the shared org-scoped definition from `AddSorchaAuthorizationPolicies` wins. (FR-010 verified: all four Tenant usages already compose `RequirePlatformAudience` and are platform-management endpoints.)
-- [ ] T019 [US4] Build + run `tests/Sorcha.Tenant.Service.Tests` to green; commit `fix(147): LOW restore org-scope on Tenant RequireSystemAdmin`.
+- [x] T018 [US4] In `src/Services/Sorcha.Tenant.Service/Extensions/AuthenticationExtensions.cs`: delete the duplicate `options.AddPolicy("RequireSystemAdmin", policy => policy.RequireRole("SystemAdmin"))` so the shared org-scoped definition from `AddSorchaAuthorizationPolicies` wins. (FR-010 verified: all four Tenant usages already compose `RequirePlatformAudience` and are platform-management endpoints.)
+- [x] T019 [US4] Build + run `tests/Sorcha.Tenant.Service.Tests` to green; commit `fix(147): LOW restore org-scope on Tenant RequireSystemAdmin`.
 
 **Checkpoint**: All four findings closed.
 
