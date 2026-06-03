@@ -1,14 +1,14 @@
 name: NuGet CI — Build & Test
 
+# No `paths:` filter on the trigger. `build-and-test` is a REQUIRED status
+# check on master, and GitHub leaves a required check stuck in "Expected" (which
+# blocks the merge) whenever a path filter skips the whole workflow — e.g. a
+# docs-only PR. So the workflow always runs; the `changes` guard step below
+# decides whether the expensive build+test actually executes. Docs-only PRs get
+# an instant green `build-and-test` instead of a perpetually-pending one.
 on:
   pull_request:
     branches: [ master ]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - '*.sln'
-      - 'Directory.Packages.props'
-      - '.github/workflows/nuget-ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,7 +22,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Detect whether anything that affects the build/tests changed. When it
+      # hasn't (docs/workflow-of-other-kinds-only PR), every step below is
+      # skipped and the job still reports success, satisfying the required check.
+      - name: Detect code changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'tests/**'
+              - '*.sln'
+              - 'Directory.Packages.props'
+              - '.github/workflows/nuget-ci.yml'
+
+      - name: No code changes — build/test skipped
+        if: steps.changes.outputs.code != 'true'
+        run: echo "No src/tests/sln/packages changes — skipping build+test; required check passes."
+
       - name: Setup .NET
+        if: steps.changes.outputs.code == 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
@@ -31,6 +51,7 @@ jobs:
       # manifest + every csproj. restore-keys lets a partial cache seed a cold
       # restore instead of starting from empty.
       - name: Cache NuGet packages
+        if: steps.changes.outputs.code == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
@@ -39,12 +60,15 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore
+        if: steps.changes.outputs.code == 'true'
         run: dotnet restore
 
       - name: Build
+        if: steps.changes.outputs.code == 'true'
         run: dotnet build --no-restore --configuration Release
 
       - name: Test (unit + in-memory integration)
+        if: steps.changes.outputs.code == 'true'
         shell: bash
         run: |
           # Bypass `dotnet test` and invoke each test exe directly via its xunit.v3
@@ -131,12 +155,13 @@ jobs:
           exit $EXIT_CODE
 
       - name: PWA bundle hygiene check (Feature 122)
+        if: steps.changes.outputs.code == 'true'
         shell: pwsh
         run: pwsh scripts/check-pwa-bundle.ps1
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.changes.outputs.code == 'true'
         with:
           name: test-results
           path: '**/test-results.trx'
