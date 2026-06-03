@@ -81,14 +81,31 @@ group.MapPost("/", CreateBlueprint)
 
 ```csharp
 // AuthenticationExtensions.cs
-options.AddPolicy("CanManageBlueprints", policy =>
+options.AddPolicy("CanPublishBlueprints", policy =>
     policy.RequireAssertion(context =>
-    {
-        var hasOrgId = context.User.Claims.Any(c => c.Type == "org_id" && !string.IsNullOrEmpty(c.Value));
-        var isService = context.User.Claims.Any(c => c.Type == "token_type" && c.Value == "service");
-        return hasOrgId || isService;
-    }));
+        context.User.Claims.Any(c => c.Type == "can_publish_blueprint" && c.Value == "true")
+        || context.User.IsInRole("Administrator")));
 ```
+
+### Tier-aware policy (fold the audience in — Feature 147)
+
+**When:** A gate must admit a service-tier caller OR a specific human-tier caller. Because a
+**consumer**-tier token also carries `org_id` (Feature 136), a bare `hasOrgId || isService` check
+lets a citizen through — the tier **audience** must be part of the gate. Resolve the expected
+audience from the DI singleton `SorchaAudiences` (never hard-code the string), so the check lives in
+a requirement + handler rather than an inline assertion. `CanManageBlueprints` is the canonical example:
+
+```csharp
+// Sorcha.Blueprint.Service/Authorization/BlueprintManagementAuthorizationHandler.cs
+//   succeed iff (token_type==service AND HasTierAudience(user, audiences, Tier.Service))
+//            || (org_id present       AND HasTierAudience(user, audiences, Tier.Platform))
+services.AddSingleton<IAuthorizationHandler, BlueprintManagementAuthorizationHandler>();
+options.AddPolicy("CanManageBlueprints", policy =>
+    policy.AddRequirements(new BlueprintManagementRequirement()));
+```
+
+The Wallet Service's `CanRecoverSystemWallet` (system-wallet BIP39 import) follows the same shape:
+service-tier **OR** (`Administrator`/`SystemAdmin` role AND `:platform` audience).
 
 ### Extract Claims in Handler
 

@@ -170,8 +170,8 @@ options.AddPolicy("RequireService", policy =>
 ### Composite Policy (OR logic)
 
 ```csharp
-// Either org member OR service token
-options.AddPolicy("CanManageBlueprints", policy =>
+// Either org member OR service token (benign example — no tier sensitivity)
+options.AddPolicy("CanReadReports", policy =>
     policy.RequireAssertion(context =>
     {
         var hasOrgId = context.User.Claims.Any(c => c.Type == "org_id" && !string.IsNullOrEmpty(c.Value));
@@ -179,6 +179,13 @@ options.AddPolicy("CanManageBlueprints", policy =>
         return hasOrgId || isService;
     }));
 ```
+
+> **⚠️ Tier sensitivity (Feature 136/147).** A **consumer**-tier (citizen) token also carries
+> `org_id`, so `hasOrgId || isService` admits citizens. For an authoring/admin gate, the tier
+> **audience** must be part of the check. Do NOT hard-code the audience string — resolve
+> `SorchaAudiences` from DI in a requirement + handler. `CanManageBlueprints` is implemented this
+> way: `(token_type==service AND :service aud) || (org_id AND :platform aud)` — see
+> `Sorcha.Blueprint.Service/Authorization/BlueprintManagementAuthorizationHandler.cs`.
 
 ### Multiple Conditions (AND logic)
 
