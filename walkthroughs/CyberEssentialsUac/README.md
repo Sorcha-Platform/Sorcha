@@ -69,7 +69,9 @@ Two blueprints, one register, three actors.
 
 ### Credential type
 
-`CyberEssentialsUacPosture` — 10 claims mapped from the assessment evidence:
+`CyberEssentialsUacPosture` — 10 claims mapped from the assessment evidence.
+
+**Blueprint-level (SorchaInternal) disclosure model** — applies to scenarios 1–3:
 
 | Claim | Source field | Always disclosed |
 |-------|-------------|-----------------|
@@ -83,6 +85,8 @@ Two blueprints, one register, three actors.
 | `mfaCoverage` | `/mfa/cloudServicesWithMfa` | selectively disclosable |
 | `staleAccounts` | `/offboarding/staleAccounts` | selectively disclosable |
 | `policyEvidenceHash` | `/provisioning/policyHash` | selectively disclosable |
+
+> **HAIP/OID4VP variant** (`run-haip-sd.ps1`) uses a different disclosure model: all 10 claims are placed in `disclosablePaths` (none is baked in as always-plaintext), and the presentation discloses only 4 (`compliant`, `assessmentDate`, `passwordApproach`, `mfaAdminEnforced`). In this path `infraVersion` is also withheld — 6 claims withheld in total.
 
 Credential validity: `P1Y` (1 year from issuance). Blueprint B checks `assessmentDate` is present and `compliant = true`.
 
