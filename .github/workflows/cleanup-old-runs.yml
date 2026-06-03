@@ -1,0 +1,66 @@
+name: Cleanup Old Workflow Runs
+
+# Keeps the Actions run history trimmed to a rolling window. The repo retention
+# setting only expires logs/artifacts — the run *entries* persist — so we delete
+# the runs themselves. Runs nightly in the small hours (UK); use the manual
+# workflow_dispatch (with a custom retention_days) to clear a larger backlog.
+on:
+  schedule:
+    # 02:17 UTC daily — ~03:17 BST / 02:17 GMT, the middle of the night UK.
+    # Off-the-hour minute reduces scheduler queue delay.
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      retention_days:
+        description: 'Delete workflow runs older than this many days'
+        required: false
+        default: '7'
+
+permissions:
+  actions: write      # required to delete workflow runs
+  contents: read
+
+concurrency:
+  group: cleanup-old-runs
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete runs older than the retention window
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RETENTION_DAYS: ${{ github.event.inputs.retention_days || '7' }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          cutoff=$(date -u -d "-${RETENTION_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)
+          echo "Deleting workflow runs created before $cutoff (retention ${RETENTION_DAYS}d)"
+          deleted=0; failed=0
+          while :; do
+            # Only fetch runs older than the cutoff so the matching set shrinks
+            # as we delete. One page (100) at a time.
+            mapfile -t ids < <(gh api -X GET "repos/$REPO/actions/runs" \
+              -f "created=<$cutoff" -F per_page=100 \
+              --jq '.workflow_runs[].id' 2>/dev/null)
+            [ "${#ids[@]}" -eq 0 ] && { echo "No more matching runs."; break; }
+            iter=0
+            for id in "${ids[@]}"; do
+              if gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null 2>&1; then
+                deleted=$((deleted+1)); iter=$((iter+1))
+              else
+                failed=$((failed+1))
+              fi
+            done
+            echo "progress: deleted=$deleted failed=$failed"
+            # GITHUB_TOKEN is capped at ~1000 requests/hour per repo. Stop well
+            # short so the job never errors on the limit; the next nightly run
+            # drains any remainder (daily volume is far below this cap).
+            [ "$deleted" -ge 800 ] && { echo "Reached the safe per-run budget (800); remainder next run."; break; }
+            # A page that deleted nothing means only undeletable runs remain
+            # (e.g. still in progress) — stop rather than loop forever.
+            [ "$iter" -eq 0 ] && { echo "No deletable runs in this page; stopping."; break; }
+          done
+          echo "Done. Deleted $deleted (failed/skipped: $failed)."
