@@ -834,8 +834,10 @@ Detailed authoring guidance lives in `.claude/skills/blueprint-builder/SKILL.md`
 | Resolver returns | `RequireIssuerSignature` | Outcome |
 |---|---|---|
 | Public JWK | (any) | Verify signature; reject if mismatch. |
-| `null` | `false` (v1 default) | Log warning; accept on holder→device chain alone. |
+| `null` | `false` (PWA offline doorstep) | Accept on holder→device chain alone, **and mark the outcome `IssuerSignature = NotVerified`** (review H3 — no longer a silent accept). |
 | `null` | `true` (production hardening) | Reject with "RequireIssuerSignature is enabled". |
+
+**Issuer-signature status on the outcome (review H3).** `VerificationOutcome.IssuerSignature` (`Verified` / `NotVerified`) records whether the issuer JWS was actually checked. The desk verifier + Blueprint Service run `requireIssuerSignature:true`, so an accepted outcome is always `Verified`. The PWA citizen verifier runs `requireIssuerSignature:false` with `OptOutIssuerKeyResolver` (a citizen device has no service principal to resolve `did:sorcha:org:*` and is often offline), so it can land `Accepted + NotVerified`; `RealVerifierEngine` maps that to **`VerifyOutcome.Warn`** (reduced assurance, "issuer not verified") — never a plain `Pass`. This offline reduced-assurance path is a deliberate, documented scoped exception (see `RealVerifierEngine` remarks); online issuer verification on the device (via a consumer/anonymous DID path) is a backlog enhancement.
 
 The seam shipped in PR #434; the DID-resolver-backed production impl shipped in **Feature 120** (`DidResolverBackedIssuerKeyResolver`, resolving `did:sorcha:org:...` via the F120 DID resolver registry → published verification methods). Both the reference verifier (`Sorcha.Verifier`) and Blueprint Service (PR #795, for `SorchaWalletPresentationConsumer`) now register a `CompositeIssuerKeyResolver` that tries the DID-backed resolver first and falls back to `JwkRegistryIssuerKeyResolver`. `RequireIssuerSignature` defaults to `true` (F120 FR-019). The demo flow still uses the JWK registry — `DemoMintEndpoint` registers each freshly-generated issuer JWK on every mint so demo presentations pass full signature verification without a published DID document.
 

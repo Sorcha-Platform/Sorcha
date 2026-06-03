@@ -103,7 +103,7 @@ description: "Task list for Verification-correctness"
 
 ## Phase 6: Polish & Cross-Cutting
 
-- [ ] T016 [P] Doc sync: `verifiable-credentials` skill (note the `VerificationOutcome.IssuerSignature` status + the PWA offline reduced-assurance exception) and `docs/guides/AUTHENTICATION-SETUP.md` (OIDC ID-token JWKS signature validation). Record the backlog items (online issuer verification; §5.1 two-stack consolidation; full WebAuthn/org-signature recovery) where the initiative tracks them.
+- [x] T016 [P] Doc sync: `verifiable-credentials` skill (note the `VerificationOutcome.IssuerSignature` status + the PWA offline reduced-assurance exception) and `docs/guides/AUTHENTICATION-SETUP.md` (OIDC ID-token JWKS signature validation). Record the backlog items (online issuer verification; §5.1 two-stack consolidation; full WebAuthn/org-signature recovery) where the initiative tracks them.
 - [ ] T017 Push branch `148-verification-correctness`; open PR (`gh pr create`) referencing the design + spec; confirm `claude-review` is green (full-solution `build-and-test`/`test` stay red on the unrelated Refit-cert / Playwright infra issues — claude-review is the gate); merge on green.
 
 ---
