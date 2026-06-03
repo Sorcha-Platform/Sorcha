@@ -24,7 +24,7 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 - **UI Register Management 100% complete**: Wallet selection wizard, search/filter, transaction query
 - **Verifiable Credentials 100% complete**: SD-JWT VC format, credential gating on actions, blueprint-as-issuer, cross-blueprint composability, selective disclosure, revocation (53 engine + 6 crypto + 4 endpoint tests)
 - **CLI Register Commands 100% complete**: Two-phase creation, dockets, queries with System.CommandLine 2.0.2
-- **Peer Router & Peer Service Completion (Feature 053) 100% complete**: PeerRouter standalone app, circuit breaking, SQLite removed, PostgreSQL queue migration, Phases 1-8 delivered
+- **Peer Router & Peer Service Completion (Feature 053) 100% complete**: PeerRouter standalone app, circuit breaking, SQLite removed, PostgreSQL queue migration, Phases 1-8 delivered *(the PeerRouter standalone app was later **retired in Feature 143** — capability folded into Sorcha.Peer.Service)*
 - **Organization Admin & Identity Management (Feature 054) complete**: OIDC discovery-first integration, multi-tenant URL resolution, 5-role model, 7 Blazor admin pages, social login, TOTP 2FA, invitation system, progressive lockout
 - **Encryption Integration (Feature 052) 100% complete**: End-to-end async encryption pipeline wired to UI and CLI — CryptoProgressPopover with per-recipient progress (replacing EncryptionProgressIndicator), SignalR push + polling fallback, retry on failure, cross-page toast notifications via EventsHub, operations history page with pagination, CLI `action execute` with blocking spinner and `--no-wait` mode (63+ new tests)
 - **FLE Completion & Crypto Progress UX (Feature 075) complete**: Per-recipient SignalR events from encryption pipeline, floating popover UI (expanded/minimised/dismissed), DevMode per-register unit tests, FLE disclosure group unit tests, actionable error feedback with retry (35+ new tests)
@@ -46,7 +46,7 @@ For detailed implementation status, see the individual section files:
 | [Wallet Service](status/wallet-service.md) | 98% | EF Core, API complete, HD wallets, Azure Key Vault KMS (Feature 082), Org Key Derivation (Feature 083) |
 | [Register Service](status/register-service.md) | 100% | 20 REST endpoints, OData, SignalR |
 | [Peer Service](status/peer-service.md) | 95% | P2P, 7 gRPC RPCs, replication, circuit breaking, PostgreSQL queue |
-| **Sorcha.PeerRouter** | 100% | Standalone P2P network bootstrap and debug tool |
+| **Sorcha.PeerRouter** | Retired (F143) | Standalone app removed — capability folded into Sorcha.Peer.Service (reverse-stream rendezvous) |
 | [Validator Service](status/validator-service.md) | 100% MVD | Consensus, mempool, dedup cross-check |
 | [Tenant Service](status/tenant-service.md) | 97% | Auth, orgs, OIDC, identity mgmt, admin console, platform org topology |
 | [Authentication (AUTH-002)](status/authentication.md) | 100% | JWT Bearer for all services |
@@ -67,7 +67,7 @@ For detailed implementation status, see the individual section files:
 | **Wallet.Service** | 98% | Nearly Complete | AWS/GCP KMS (deferred), threshold signing (deferred) |
 | **Register.Service** | 100% | Complete | None |
 | **Peer.Service** | 95% | Complete | None (deferred: BLS threshold) |
-| **Sorcha.PeerRouter** | 100% | Complete | None |
+| **Sorcha.PeerRouter** | Retired (F143) | Removed | Folded into Sorcha.Peer.Service |
 | **Validator.Service** | 100% MVD | Complete | None (deferred: enclave, fork detection) |
 | **Tenant.Service** | 97% | Complete | None (deferred: Phase 10 polish) |
 | **Authentication (AUTH-002)** | 100% | Complete | None |
@@ -193,7 +193,7 @@ For detailed implementation status, see the individual section files:
 ### 2026-03-07
 - **053-Peer-Router-App-and-Peer-Service-Completion** (Phases 1-8 complete)
   - **Peer Service upgraded to 95%**: Circuit breaking wired, SQLite removed, PostgreSQL queue migration complete
-  - **PeerRouter application (100%)**: Standalone P2P network bootstrap and debug tool for peer network diagnostics
+  - **PeerRouter application (100%)**: Standalone P2P network bootstrap and debug tool for peer network diagnostics *(later retired in Feature 143 — folded into Sorcha.Peer.Service)*
   - All 8 phases delivered (T001-T056)
 
 ### 2026-03-06

@@ -57,7 +57,7 @@ public async Task<IssuedCredentialInfo> MintAsync(
 }
 ```
 
-The signing key is retrieved via the Wallet Service using the `"sorcha:vc-issuance"` derivation purpose — never the root wallet key. Mirror the feature 086 docket-signing convention.
+The signing key is the **org's VC-issuance key**, derived under `KeyUsage.VCIssuance` (Feature 083 slot 1) via `IOrgKeyDerivationService` and surfaced by `IIssuanceKeyService.GetActiveSigningMaterialAsync` (Feature 120) as `IssuanceSigningMaterial` (issuer DID + a `#vc-issuance-{rotationIndex}` kid + the private key bytes) — **never the root wallet key**. There is no `"sorcha:vc-issuance"` derivation-purpose string; the key is selected by `KeyUsage`, not a purpose label.
 
 ### Verifying a presentation — the actual API shape
 
@@ -214,12 +214,18 @@ Actions carry credential configs as first-class fields (not an `x-*` schema exte
   "credentialRequirements": [
     {
       "type": "IdentityAttestation",
-      "acceptedIssuers": ["did:sorcha:org:ws1q..."],
+      "trustPolicy": {
+        "sources": [
+          { "kind": "did-allowlist", "allowedIssuers": ["did:sorcha:org:ws1q..."] }
+        ]
+      },
       "revocationCheckPolicy": "FailClosed"
     }
   ]
 }
 ```
+
+> **Feature 135:** `CredentialRequirement.acceptedIssuers` was **removed** and replaced by `trustPolicy` (a `sources[]` + `combinator` + `minAssuranceLevel` shape decided by the unified `ITrustEvaluator`). The `did-allowlist` source above is the direct equivalent of the old flat issuer list; omit `trustPolicy` (or use a `{ "kind": "register" }` source) to trust register-resolved issuers. Full shape: the "EUDI credential format & unified trust (Feature 135)" section of the `sorcha-architecture` skill. **Do not** write `acceptedIssuers` — it is silently ignored.
 
 `expiryDuration` is an ISO 8601 duration string (`P10Y`, `P90D`), not a `TimeSpan`.
 
@@ -306,7 +312,7 @@ See `references/maui-ui.md` for full component set, QR/deep-link flows, and Play
 - **Do not** use Data Integrity Proofs / JSON-LD canonicalisation. Sorcha chose SD-JWT VC. `DataIntegrityProof`, `eddsa-rdfc-2022`, and RDF canonicalisation are **not** in the codebase and should not be added.
 - **Do not** hand-roll `publicKeyMultibase` — call `Multicodec.ToMultibasePublicKey(algorithm, keyBytes)`. Feature 093 exists because someone did this wrong before.
 - **Do not** use `Newtonsoft.Json`. All VC serialisation is `System.Text.Json` with `JsonDefaults.Api` on the wire (see `CLAUDE.md` § Critical Pattern 4 — JsonSchema.Net expects `JsonElement`).
-- **Do not** sign from the root wallet key. Use derivation purpose `"sorcha:vc-issuance"` via `SignTransactionAsync(..., "sorcha:vc-issuance", isPreHashed: true)`.
+- **Do not** sign from the root wallet key. VC issuance uses the org's `KeyUsage.VCIssuance` key (Feature 083 slot 1) via `IIssuanceKeyService` (Feature 120) — there is **no** `"sorcha:vc-issuance"` derivation-purpose string (that label does not exist in the codebase; key selection is by `KeyUsage`).
 - **Do not** put `HttpClient` calls inside `CredentialVerifier`. Revocation lookups go through `IRevocationChecker`; the WASM-friendly in-memory implementation is what makes offline verification bundles (feature 079) possible.
 - **Do not** cache DID documents indefinitely. Validator key rotation (feature 086) must invalidate cached documents. Use `IMemoryCache` with a `CancellationChangeToken` driven off `IValidatorKeyCache.OnRotated`.
 - **Do not** default `RevocationCheckPolicy` to `FailOpen` — feature 093 made `FailClosed` the default for a reason.
