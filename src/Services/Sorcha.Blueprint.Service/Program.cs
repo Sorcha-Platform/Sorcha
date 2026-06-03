@@ -343,6 +343,25 @@ var f138KbJwtMaxLifetime = TimeSpan.FromSeconds(
 Sorcha.ServiceClients.Http.Extensions.HttpServiceCollectionExtensions
     .AddDidResolvers(builder.Services, builder.Configuration);
 
+// Feature 149 — the engine verifier must resolve an org's PUBLISHED did.json (the only place
+// the re-anchored issuer DID's vc-issuance key lives — the issuer DID is the operational wallet
+// A, but credentials are signed by the derived sub-key C), NOT rebuild it from the wallet row.
+// Override SorchaDidResolver to the published-DID-aware ctor pointed at the Tenant by-DID route.
+// Registered AFTER AddDidResolvers so this scoped factory wins; the IDidResolver delegate (and
+// thus the registry) resolves this instance.
+builder.Services.AddHttpClient("PublishedOrgDid", client =>
+{
+    client.BaseAddress = new Uri(
+        builder.Configuration["ServiceClients:TenantService:Address"]
+        ?? builder.Configuration["ServiceClients:Tenant:BaseAddress"]
+        ?? "http://tenant-service:8080");
+});
+builder.Services.AddScoped<Sorcha.ServiceClients.Did.SorchaDidResolver>(sp =>
+    new Sorcha.ServiceClients.Did.SorchaDidResolver(
+        sp.GetRequiredService<Sorcha.ServiceClients.Wallet.IWalletServiceClient>(),
+        sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("PublishedOrgDid"),
+        sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Sorcha.ServiceClients.Did.SorchaDidResolver>>()));
+
 // DidResolverBackedIssuerKeyResolver consumes the scoped IDidResolverRegistry, so it (and the
 // composite resolver + validator that depend on it) MUST be scoped — registering them as singletons
 // is a captive dependency that production DI validation (ValidateOnBuild) rejects at startup. Mirrors

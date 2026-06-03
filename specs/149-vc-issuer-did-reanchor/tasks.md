@@ -43,10 +43,10 @@
 
 ### Implementation
 
-- [ ] T010 [US1] `src/Services/Sorcha.Wallet.Service/Services/Implementation/IssuanceKeyService.cs`: build `iss`/`kid` from A (resolved via `IOrgInfoClient`) instead of `derivedRecord.WalletAddress`; pass A as `OrgDidRegenerateRequest.WalletAddress` at every snapshot push (`GetOrDeriveAsync`, `PushDidDocumentSnapshotAsync`). C's public key stays the VM JWK. Depends on T006.
-- [ ] T011 [US1] `src/Common/Sorcha.ServiceClients.Http/Did/SorchaDidResolver.cs`: `ResolveOrgDidAsync` fetches the Tenant by-DID `did.json` via the 3-arg HttpClient and parses it to `DidDocument`; **remove the hardcoded `#vc-issuance-1` local rebuild for org DIDs** (return null on 404/unreachable). Leave `did:sorcha:w:` resolution untouched. Depends on T004.
-- [ ] T012 [US1] `src/Services/Sorcha.Blueprint.Service/Program.cs`: after `AddDidResolvers(...)`, override `AddScoped<SorchaDidResolver>` to the 3-arg ctor with an `HttpClient` whose base address is `ServiceClients:TenantService:Address` (reuse the `IOrgDidDocumentClient` registration pattern). Depends on T011.
-- [ ] T013 [P] [US1] `src/Services/Sorcha.Haip.Service/Program.cs`: repoint the public-DID `HttpClient` base address from the Wallet Service to the Tenant Service so HAIP's resolver also reads the published `did.json` (re-anchor breaks HAIP's old by-address resolution). Depends on T011.
+- [X] T010 [US1] `src/Services/Sorcha.Wallet.Service/Services/Implementation/IssuanceKeyService.cs`: build `iss`/`kid` from A (resolved via `IOrgInfoClient`) instead of `derivedRecord.WalletAddress`; pass A as `OrgDidRegenerateRequest.WalletAddress` at every snapshot push (`GetOrDeriveAsync`, `PushDidDocumentSnapshotAsync`). C's public key stays the VM JWK. Depends on T006.
+- [X] T011 [US1] `src/Common/Sorcha.ServiceClients.Http/Did/SorchaDidResolver.cs`: `ResolveOrgDidAsync` fetches the Tenant by-DID `did.json` via the 3-arg HttpClient and parses it to `DidDocument`; **remove the hardcoded `#vc-issuance-1` local rebuild for org DIDs** (return null on 404/unreachable). Leave `did:sorcha:w:` resolution untouched. Depends on T004.
+- [X] T012 [US1] `src/Services/Sorcha.Blueprint.Service/Program.cs`: after `AddDidResolvers(...)`, override `AddScoped<SorchaDidResolver>` to the 3-arg ctor with an `HttpClient` whose base address is `ServiceClients:TenantService:Address` (reuse the `IOrgDidDocumentClient` registration pattern). Depends on T011.
+- [X] T013 [P] [US1] `src/Services/Sorcha.Haip.Service/Program.cs`: repoint the public-DID `HttpClient` base address from the Wallet Service to the Tenant Service so HAIP's resolver also reads the published `did.json` (re-anchor breaks HAIP's old by-address resolution). Depends on T011.
 - [ ] T014 [US1] Confirm/adjust the engine verifier (`SdJwtVcFormatHandler` / `ISdJwtService`) consumes the OKP raw-32 `IssuerKeyResolution.PublicKey` for EdDSA issuers; fix the shape only if T009 fails. Depends on T009.
 
 **Checkpoint:** US1 independently testable — trusted issuance + verification accept end-to-end (SC-001, SC-002).
@@ -66,8 +66,8 @@
 
 ### Implementation
 
-- [ ] T017 [US2] `src/Services/Sorcha.Wallet.Service/Endpoints/CredentialEndpoints.cs`: add a guard before the signing-material fallback (~`:598`) — `if (issuanceMaterial is null) return Results.Problem(409/422, "...provision a Feature 083 org master key (Set-SorchaOrgMasterKey)...")`; delete the `signingIssuer = … ?? walletAddress` and null-`kid` fallback (`:605-606`).
-- [ ] T018 [US2] `IssuanceKeyService`: when `IOrgInfoClient` returns null A (org not provisioned), return null signing material (no derived-only fallback) so the T017 guard fires. Depends on T010.
+- [X] T017 [US2] `src/Services/Sorcha.Wallet.Service/Endpoints/CredentialEndpoints.cs`: add a guard before the signing-material fallback (~`:598`) — `if (issuanceMaterial is null) return Results.Problem(409/422, "...provision a Feature 083 org master key (Set-SorchaOrgMasterKey)...")`; delete the `signingIssuer = … ?? walletAddress` and null-`kid` fallback (`:605-606`).
+- [X] T018 [US2] `IssuanceKeyService`: when `IOrgInfoClient` returns null A (org not provisioned), return null signing material (no derived-only fallback) so the T017 guard fires. Depends on T010.
 
 **Checkpoint:** US2 independently testable — no unverifiable credential can be minted (SC-003).
 
@@ -80,7 +80,7 @@
 **Independent test:** issue under `#vc-issuance-1`, rotate, issue under `#vc-issuance-2`; both verify.
 
 - [ ] T019 [P] [US3] Test: after rotation the published doc (anchored on A) lists all Active VMs and the `#vc-issuance-2` credential resolves + verifies — `tests/Sorcha.Blueprint.Service.Tests/` (+ Tenant doc assertion).
-- [ ] T020 [US3] Confirm `IssuanceKeyService.RotateAsync`'s `PushDidDocumentSnapshotAsync` carries A (covered by T010's snapshot change); add the A-anchored rotation snapshot only if T019 reveals a gap. Depends on T010.
+- [X] T020 [US3] Confirm `IssuanceKeyService.RotateAsync`'s `PushDidDocumentSnapshotAsync` carries A (covered by T010's snapshot change); add the A-anchored rotation snapshot only if T019 reveals a gap. Depends on T010.
 
 **Checkpoint:** US3 independently testable — rotation does not regress verification (SC-004).
 

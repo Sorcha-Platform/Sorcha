@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sorcha.Cryptography;
 using Sorcha.ServiceClients.OrgDidDocument;
+using Sorcha.ServiceClients.OrgInfo;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.Enums;
@@ -31,6 +32,7 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
     private readonly WalletDbContext _db;
     private readonly IOrgKeyDerivationService _orgKey;
     private readonly IOrgDidDocumentClient _didDocClient;
+    private readonly IOrgInfoClient _orgInfo;
     private readonly Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProtectionProvider _orgKeyProtection;
     private readonly ILogger<IssuanceKeyService> _logger;
 
@@ -39,12 +41,14 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         WalletDbContext db,
         IOrgKeyDerivationService orgKey,
         IOrgDidDocumentClient didDocClient,
+        IOrgInfoClient orgInfo,
         Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProtectionProvider orgKeyProtection,
         ILogger<IssuanceKeyService> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _orgKey = orgKey ?? throw new ArgumentNullException(nameof(orgKey));
         _didDocClient = didDocClient ?? throw new ArgumentNullException(nameof(didDocClient));
+        _orgInfo = orgInfo ?? throw new ArgumentNullException(nameof(orgInfo));
         _orgKeyProtection = orgKeyProtection ?? throw new ArgumentNullException(nameof(orgKeyProtection));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -121,20 +125,36 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             "Issuance key derived for org {OrgId} algo={Algorithm} rotation={Rotation}",
             organizationId, state.Algorithm, state.RotationIndex);
 
-        // Fire-and-forget DID-document regeneration trigger; the client is non-throwing.
-        var snapshot = new OrgDidRegenerateRequest(
-            OrganizationId: organizationId,
-            KeyEventReason: "IssuanceKeyDerived",
-            WalletAddress: derived.WalletAddress,
-            ActiveKeys:
-            [
-                new OrgDidActiveKey(
-                    RotationIndex: state.RotationIndex,
-                    Algorithm: state.Algorithm,
-                    PublicKeyJwk: jwkJson,
-                    Thumbprint: state.Thumbprint)
-            ]);
-        await _didDocClient.RegenerateAsync(snapshot, ct).ConfigureAwait(false);
+        // Feature 149: publish the DID document anchored on the CANONICAL operational wallet (A),
+        // not the derived child (C). If A is unresolvable, skip the publish — the signing-material
+        // path fails closed, so an unanchored document would never be used.
+        var canonicalAddress = await _orgInfo
+            .ResolveCanonicalWalletAddressAsync(organizationId, ct)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(canonicalAddress))
+        {
+            _logger.LogWarning(
+                "Derived issuance key for org {OrgId} but no canonical wallet address to anchor the " +
+                "DID document; skipping publish (issuance fails closed until the org is provisioned).",
+                organizationId);
+        }
+        else
+        {
+            // Fire-and-forget DID-document regeneration trigger; the client is non-throwing.
+            var snapshot = new OrgDidRegenerateRequest(
+                OrganizationId: organizationId,
+                KeyEventReason: "IssuanceKeyDerived",
+                WalletAddress: canonicalAddress,
+                ActiveKeys:
+                [
+                    new OrgDidActiveKey(
+                        RotationIndex: state.RotationIndex,
+                        Algorithm: state.Algorithm,
+                        PublicKeyJwk: jwkJson,
+                        Thumbprint: state.Thumbprint)
+                ]);
+            await _didDocClient.RegenerateAsync(snapshot, ct).ConfigureAwait(false);
+        }
 
         return state;
     }
@@ -230,7 +250,24 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
             return null;
         }
 
-        var issuerDid = $"did:sorcha:org:{derivedRecord.WalletAddress}";
+        // Feature 149: anchor the issuer DID on the org's CANONICAL operational wallet (A),
+        // not the derived VC-issuance child (C). The signing key stays C; verifiers resolve
+        // C's public key from the published did:sorcha:org:{A} document (under #vc-issuance-{n}).
+        // No resolvable A → fail closed (return null) rather than mint an unverifiable credential.
+        var canonicalAddress = await _orgInfo
+            .ResolveCanonicalWalletAddressAsync(organizationId, ct)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(canonicalAddress))
+        {
+            _logger.LogWarning(
+                "No canonical operational wallet address for org {OrgId} — cannot anchor a verifiable " +
+                "issuer DID; refusing to supply signing material (fail closed).",
+                organizationId);
+            Array.Clear(privateKey); // drop the decrypted key we will not use
+            return null;
+        }
+
+        var issuerDid = $"did:sorcha:org:{canonicalAddress}";
         var kid = $"{issuerDid}#vc-issuance-{state.RotationIndex}";
 
         return new Sorcha.Wallet.Service.Services.Interfaces.IssuanceSigningMaterial(
@@ -315,7 +352,7 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         if (derivedRecord is not null)
         {
             await PushDidDocumentSnapshotAsync(
-                organizationId, derivedRecord.WalletAddress, "IssuanceKeyRotated", ct)
+                organizationId, "IssuanceKeyRotated", ct)
                 .ConfigureAwait(false);
         }
 
@@ -371,7 +408,7 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         if (derivedRecord is not null)
         {
             await PushDidDocumentSnapshotAsync(
-                organizationId, derivedRecord.WalletAddress, "IssuanceKeyRevoked", ct)
+                organizationId, "IssuanceKeyRevoked", ct)
                 .ConfigureAwait(false);
         }
 
@@ -384,8 +421,20 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
     /// rotation/revocation to regenerate the published DID document.
     /// </summary>
     private async Task PushDidDocumentSnapshotAsync(
-        Guid organizationId, string walletAddress, string keyEventReason, CancellationToken ct)
+        Guid organizationId, string keyEventReason, CancellationToken ct)
     {
+        // Feature 149: anchor the regenerated document on the canonical operational wallet (A).
+        var canonicalAddress = await _orgInfo
+            .ResolveCanonicalWalletAddressAsync(organizationId, ct)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(canonicalAddress))
+        {
+            _logger.LogWarning(
+                "Cannot publish DID document for org {OrgId} ({Reason}) — no canonical wallet address.",
+                organizationId, keyEventReason);
+            return;
+        }
+
         var activeKeys = await _db.IssuanceKeyStates
             .Where(k => k.OrganizationId == organizationId
                      && k.Slot == IssuanceSlot
@@ -405,7 +454,7 @@ public sealed class IssuanceKeyService : IIssuanceKeyService
         var snapshot = new OrgDidRegenerateRequest(
             OrganizationId: organizationId,
             KeyEventReason: keyEventReason,
-            WalletAddress: walletAddress,
+            WalletAddress: canonicalAddress,
             ActiveKeys: snapshotKeys);
         await _didDocClient.RegenerateAsync(snapshot, ct).ConfigureAwait(false);
     }

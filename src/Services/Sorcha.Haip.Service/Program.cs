@@ -152,14 +152,15 @@ builder.Services.AddHttpClient<
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 
-// Feature 120 — verifier-side anonymous DID resolution. SorchaDidResolver in HAIP
-// hits wallet's /api/v1/wallets/{addr}/did-document (anonymous) so the verifier
-// path doesn't need service-auth bearer just to read the public key.
+// Feature 149 — verifier-side anonymous DID resolution. SorchaDidResolver fetches the org's
+// PUBLISHED did.json from Tenant (GET /orgs/by-did/{did}/did.json, anonymous). After re-anchoring,
+// the issuer DID's vc-issuance key lives only in the Tenant document, not the wallet row — so this
+// client points at the Tenant Service (was the Wallet by-address endpoint pre-149).
 builder.Services.AddHttpClient("PublicWalletDid", client =>
 {
-    var walletAddress = builder.Configuration["ServiceClients:WalletService:Address"]
-        ?? "http://wallet-service:8080";
-    client.BaseAddress = new Uri(walletAddress);
+    var tenantAddress = builder.Configuration["ServiceClients:TenantService:Address"]
+        ?? "https+http://tenant-service";
+    client.BaseAddress = new Uri(tenantAddress.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 // Override SorchaDidResolver registration to use the constructor that takes the public-DID HttpClient.
