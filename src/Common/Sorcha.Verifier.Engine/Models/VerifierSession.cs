@@ -41,6 +41,26 @@ public sealed record VerifierSession
     public VerificationOutcome? Outcome { get; init; }
 }
 
+/// <summary>
+/// Whether the credential's issuer signature was cryptographically verified (review H3).
+/// Distinguishes a fully-verified credential from one accepted on the holder→device chain alone
+/// because the issuer key could not be resolved and the verifier does not require it (offline /
+/// reduced-assurance path).
+/// </summary>
+public enum IssuerSignatureStatus
+{
+    /// <summary>
+    /// The issuer key could not be resolved and the verifier does not require the issuer signature
+    /// (<c>requireIssuerSignature == false</c>); the credential was accepted on the holder→device chain
+    /// and status list alone. The default — verifiers that require the issuer signature reject instead
+    /// of reaching an accepted outcome with this value.
+    /// </summary>
+    NotVerified,
+
+    /// <summary>The issuer key was resolved and the credential's issuer JWS verified against it.</summary>
+    Verified,
+}
+
 /// <summary>Result of verifying a wallet's vp_token submission.</summary>
 public sealed record VerificationOutcome
 {
@@ -55,4 +75,13 @@ public sealed record VerificationOutcome
 
     /// <summary>UTC time the verifier completed validation.</summary>
     public required DateTimeOffset CompletedAt { get; init; }
+
+    /// <summary>
+    /// Whether the credential's issuer signature was verified (review H3). Defaults to
+    /// <see cref="IssuerSignatureStatus.NotVerified"/> so existing construction sites are unaffected;
+    /// the validator sets <see cref="IssuerSignatureStatus.Verified"/> on the success path when the
+    /// issuer JWS verified. For an accepted outcome under <c>requireIssuerSignature == true</c> this is
+    /// always <see cref="IssuerSignatureStatus.Verified"/> (the unresolved-key path rejects instead).
+    /// </summary>
+    public IssuerSignatureStatus IssuerSignature { get; init; } = IssuerSignatureStatus.NotVerified;
 }

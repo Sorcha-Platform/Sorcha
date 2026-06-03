@@ -26,7 +26,7 @@ description: "Task list for Verification-correctness"
 
 **Purpose**: Establish a green TDD baseline. No project initialization (existing solution).
 
-- [ ] T001 Establish baseline: build `tests/Sorcha.Verifier.Tests`, `tests/Sorcha.Wallet.Pwa.Tests`, `tests/Sorcha.Tenant.Service.Tests`, `tests/Sorcha.Wallet.Service.Tests` to confirm they compile and pass before changes (MTP runs whole projects; `--filter` ignored).
+- [x] T001 Establish baseline: build `tests/Sorcha.Verifier.Tests`, `tests/Sorcha.Wallet.Pwa.Tests`, `tests/Sorcha.Tenant.Service.Tests`, `tests/Sorcha.Wallet.Service.Tests` to confirm they compile and pass before changes (MTP runs whole projects; `--filter` ignored).
 
 ---
 
@@ -44,19 +44,19 @@ description: "Task list for Verification-correctness"
 
 ### Implementation prerequisite (additive carrier type — lets tests compile)
 
-- [ ] T002 [US1] Add `IssuerSignatureStatus` enum (`Verified` / `NotVerified`) and a non-required `VerificationOutcome.IssuerSignature` property (default `NotVerified`) in `src/Common/Sorcha.Verifier.Engine/Models/VerifierSession.cs`.
+- [x] T002 [US1] Add `IssuerSignatureStatus` enum (`Verified` / `NotVerified`) and a non-required `VerificationOutcome.IssuerSignature` property (default `NotVerified`) in `src/Common/Sorcha.Verifier.Engine/Models/VerifierSession.cs`.
 
 ### Tests for User Story 1 (write before the behaviour impl, must FAIL) ⚠️
 
-- [ ] T003 [P] [US1] Validator status tests in `tests/Sorcha.Verifier.Tests/Services/VerifiablePresentationValidatorTests.cs`: unresolved key + `requireIssuerSignature:false` → `Accepted==true` AND `IssuerSignature==NotVerified`; resolved key + valid JWS → `IssuerSignature==Verified`; unresolved key + `requireIssuerSignature:true` → `Accepted==false` (unchanged). (Fails: validator does not yet set `Verified`.)
-- [ ] T004 [P] [US1] PWA mapping test in `tests/Sorcha.Wallet.Pwa.Tests/Services/Verification/RealVerifierEngineTests.cs`: `Accepted && NotVerified` → `VerifyOutcome.Warn` with an issuer-not-verified message; `Accepted && Verified` → `Pass`; `!Accepted` → `Fail`. (Fails: `Map` currently returns `Pass` for any accepted outcome.)
+- [x] T003 [P] [US1] Validator status tests in `tests/Sorcha.Verifier.Tests/Services/VerifiablePresentationValidatorTests.cs`: unresolved key + `requireIssuerSignature:false` → `Accepted==true` AND `IssuerSignature==NotVerified`; resolved key + valid JWS → `IssuerSignature==Verified`; unresolved key + `requireIssuerSignature:true` → `Accepted==false` (unchanged). (Fails: validator does not yet set `Verified`.)
+- [x] T004 [P] [US1] PWA mapping test in `tests/Sorcha.Wallet.Pwa.Tests/Services/Verification/RealVerifierEngineTests.cs`: `Accepted && NotVerified` → `VerifyOutcome.Warn` with an issuer-not-verified message; `Accepted && Verified` → `Pass`; `!Accepted` → `Fail`. (Fails: `Map` currently returns `Pass` for any accepted outcome.)
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] In `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`: track an `issuerSignatureVerified` flag (set true in the resolved-key + valid-JWS branch, ~`:181-188`) and set `IssuerSignature = Verified|NotVerified` on the success outcome (~`:275`). (Depends on T002.)
-- [ ] T006 [US1] In `src/Apps/Sorcha.Wallet.Pwa/Services/Verification/RealVerifierEngine.cs` `Map`: map `Accepted && IssuerSignature==NotVerified` → `VerifyOutcome.Warn` + an "issuer not verified — offline / reduced assurance" message; keep `Pass` for `Verified`. (Depends on T002.)
-- [ ] T007 [US1] Document the offline reduced-assurance behaviour as a deliberate scoped exception in the PWA README (`src/Apps/Sorcha.Wallet.Pwa/README.md` or nearest doc). (FR-006.)
-- [ ] T008 [US1] Build + run `tests/Sorcha.Verifier.Tests` and `tests/Sorcha.Wallet.Pwa.Tests` to green; commit `fix(148): H3 surface issuer-signature status — PWA verifier no longer silently accepts`.
+- [x] T005 [US1] In `src/Common/Sorcha.Verifier.Engine/VerifiablePresentationValidator.cs`: track an `issuerSignatureVerified` flag (set true in the resolved-key + valid-JWS branch, ~`:181-188`) and set `IssuerSignature = Verified|NotVerified` on the success outcome (~`:275`). (Depends on T002.)
+- [x] T006 [US1] In `src/Apps/Sorcha.Wallet.Pwa/Services/Verification/RealVerifierEngine.cs` `Map`: map `Accepted && IssuerSignature==NotVerified` → `VerifyOutcome.Warn` + an "issuer not verified — offline / reduced assurance" message; keep `Pass` for `Verified`. (Depends on T002.)
+- [x] T007 [US1] Document the offline reduced-assurance behaviour as a deliberate scoped exception in the PWA README (`src/Apps/Sorcha.Wallet.Pwa/README.md` or nearest doc). (FR-006.)
+- [x] T008 [US1] Build + run `tests/Sorcha.Verifier.Tests` and `tests/Sorcha.Wallet.Pwa.Tests` to green; commit `fix(148): H3 surface issuer-signature status — PWA verifier no longer silently accepts`.
 
 **Checkpoint**: The device verifier is honest; server verifiers unchanged.
 
