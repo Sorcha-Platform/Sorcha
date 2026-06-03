@@ -26,7 +26,7 @@ Multi-service repo. Production code under `src/Services/Sorcha.{Wallet,Blueprint
 
 **Purpose**: Establish a green TDD baseline so the new failing tests are meaningfully red. No project initialization needed (existing solution).
 
-- [ ] T001 Establish baseline: build `tests/Sorcha.Wallet.Service.Tests`, `tests/Sorcha.Blueprint.Service.Tests`, and `tests/Sorcha.Tenant.Service.Tests` to confirm they compile and pass before changes (MTP runs whole projects; `--filter` is ignored).
+- [x] T001 Establish baseline: build `tests/Sorcha.Wallet.Service.Tests`, `tests/Sorcha.Blueprint.Service.Tests`, and `tests/Sorcha.Tenant.Service.Tests` to confirm they compile and pass before changes (MTP runs whole projects; `--filter` is ignored).
 
 ---
 
@@ -46,16 +46,16 @@ Multi-service repo. Production code under `src/Services/Sorcha.{Wallet,Blueprint
 
 ### Tests for User Story 1 (write first, must FAIL) ⚠️
 
-- [ ] T002 [P] [US1] Policy-evaluation tests for `CanRecoverSystemWallet` in `tests/Sorcha.Wallet.Service.Tests/Authorization/WalletAuthorizationPolicyTests.cs` — build a provider via `services.AddLogging(); services.AddWalletAuthorization();` (mirror `AuthorizationPolicyExtensionsTests`) and assert: service(`token_type=service`+`sorcha:service`)→allow; admin role+`sorcha:platform`→allow; consumer(`sorcha:consumer`)→deny; admin role+`sorcha:consumer`→deny; authenticated non-admin no-audience→deny; unauthenticated→deny. (Fails: policy does not exist yet.)
-- [ ] T003 [P] [US1] Endpoint-metadata regression tests in `tests/Sorcha.Wallet.Service.Tests/Endpoints/SystemWalletEndpointAuthorizationTests.cs` — map the wallet endpoints onto a minimal host, enumerate `EndpointDataSource`, and assert `POST /api/v1/wallets/system` and `/system/recover` carry **no** `IAllowAnonymous` metadata and an `IAuthorizeData` with policy `RequireService` and `CanRecoverSystemWallet` respectively. (Fails: endpoints currently `AllowAnonymous`.)
+- [x] T002 [P] [US1] Policy-evaluation tests for `CanRecoverSystemWallet` in `tests/Sorcha.Wallet.Service.Tests/Authorization/WalletAuthorizationPolicyTests.cs` — build a provider via `services.AddLogging(); services.AddWalletAuthorization();` (mirror `AuthorizationPolicyExtensionsTests`) and assert: service(`token_type=service`+`sorcha:service`)→allow; admin role+`sorcha:platform`→allow; consumer(`sorcha:consumer`)→deny; admin role+`sorcha:consumer`→deny; authenticated non-admin no-audience→deny; unauthenticated→deny. (Fails: policy does not exist yet.)
+- [x] T003 [P] [US1] Endpoint-metadata regression tests in `tests/Sorcha.Wallet.Service.Tests/Endpoints/SystemWalletEndpointAuthorizationTests.cs` — map the wallet endpoints onto a minimal host, enumerate `EndpointDataSource`, and assert `POST /api/v1/wallets/system` and `/system/recover` carry **no** `IAllowAnonymous` metadata and an `IAuthorizeData` with policy `RequireService` and `CanRecoverSystemWallet` respectively. (Fails: endpoints currently `AllowAnonymous`.)
 
 ### Implementation for User Story 1
 
-- [ ] T004 [P] [US1] Create `SystemWalletRecoveryRequirement : IAuthorizationRequirement` (marker, XML-documented) in `src/Services/Sorcha.Wallet.Service/Authorization/SystemWalletRecoveryRequirement.cs`.
-- [ ] T005 [US1] Create `SystemWalletRecoveryAuthorizationHandler : AuthorizationHandler<SystemWalletRecoveryRequirement>` in `src/Services/Sorcha.Wallet.Service/Authorization/SystemWalletRecoveryAuthorizationHandler.cs` — inject `SorchaAudiences`; succeed iff (`token_type==service` AND `HasTierAudience(Service)`) OR ((`IsInRole("Administrator")`||`IsInRole("SystemAdmin")`) AND `HasTierAudience(Platform)`); never `Fail()`. (Depends on T004.)
-- [ ] T006 [US1] Register the handler (`AddSingleton<IAuthorizationHandler, SystemWalletRecoveryAuthorizationHandler>`) and define policy `CanRecoverSystemWallet` (`RequireAuthenticatedUser().AddRequirements(new SystemWalletRecoveryRequirement())`) in `src/Services/Sorcha.Wallet.Service/Extensions/AuthenticationExtensions.cs`. (Depends on T004, T005.)
-- [ ] T007 [US1] In `src/Services/Sorcha.Wallet.Service/Endpoints/WalletEndpoints.cs`: remove `.AllowAnonymous()` from `/system` and `/system/recover`; add `.RequireAuthorization(AuthorizationPolicies.RequireService)` to create and `.RequireAuthorization("CanRecoverSystemWallet")` to recover; update the misleading inline comments; leave the 409-on-exists guard untouched. (Depends on T006.)
-- [ ] T008 [US1] Build + run `tests/Sorcha.Wallet.Service.Tests` to green; commit `feat(147): H1 gate system-wallet create/recover (close AllowAnonymous)`.
+- [x] T004 [P] [US1] Create `SystemWalletRecoveryRequirement : IAuthorizationRequirement` (marker, XML-documented) in `src/Services/Sorcha.Wallet.Service/Authorization/SystemWalletRecoveryRequirement.cs`.
+- [x] T005 [US1] Create `SystemWalletRecoveryAuthorizationHandler : AuthorizationHandler<SystemWalletRecoveryRequirement>` in `src/Services/Sorcha.Wallet.Service/Authorization/SystemWalletRecoveryAuthorizationHandler.cs` — inject `SorchaAudiences`; succeed iff (`token_type==service` AND `HasTierAudience(Service)`) OR ((`IsInRole("Administrator")`||`IsInRole("SystemAdmin")`) AND `HasTierAudience(Platform)`); never `Fail()`. (Depends on T004.)
+- [x] T006 [US1] Register the handler (`AddSingleton<IAuthorizationHandler, SystemWalletRecoveryAuthorizationHandler>`) and define policy `CanRecoverSystemWallet` (`RequireAuthenticatedUser().AddRequirements(new SystemWalletRecoveryRequirement())`) in `src/Services/Sorcha.Wallet.Service/Extensions/AuthenticationExtensions.cs`. (Depends on T004, T005.)
+- [x] T007 [US1] In `src/Services/Sorcha.Wallet.Service/Endpoints/WalletEndpoints.cs`: remove `.AllowAnonymous()` from `/system` and `/system/recover`; add `.RequireAuthorization(AuthorizationPolicies.RequireService)` to create and `.RequireAuthorization("CanRecoverSystemWallet")` to recover; update the misleading inline comments; leave the 409-on-exists guard untouched. (Depends on T006.)
+- [x] T008 [US1] Build + run `tests/Sorcha.Wallet.Service.Tests` to green; commit `feat(147): H1 gate system-wallet create/recover (close AllowAnonymous)`.
 
 **Checkpoint**: System-wallet create/recover are gated; tests green.
 
