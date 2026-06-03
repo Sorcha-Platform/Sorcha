@@ -168,8 +168,8 @@
     <!-- Console -->
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <!-- HTTP Client -->
-    <PackageVersion Include="Refit" Version="10.1.6" />
-    <PackageVersion Include="Refit.HttpClientFactory" Version="10.1.6" />
+    <PackageVersion Include="Refit" Version="11.0.0" />
+    <PackageVersion Include="Refit.HttpClientFactory" Version="11.0.0" />
     <!-- OpenAPI -->
     <PackageVersion Include="Scalar.AspNetCore" Version="2.14.14" />
     <!-- Email Templates -->
