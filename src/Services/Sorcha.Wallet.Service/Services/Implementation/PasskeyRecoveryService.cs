@@ -80,15 +80,16 @@ public class PasskeyRecoveryService : IPasskeyRecoveryService
                 continue;
             }
 
-            // In a full implementation, the recovery key would be unwrapped using the passkey's
-            // private key via a WebAuthn assertion. For now, we verify the wrap exists and
-            // the passkey credential matches — the actual unwrapping requires browser-side
-            // cryptographic operations that pass the decrypted recovery key back to the server.
-            //
-            // TODO: Implement full WebAuthn assertion flow for recovery key unwrapping.
-            // For MVP, the presence of a valid wrap + authenticated passkey session is sufficient
-            // to prove the user controls the passkey and authorize recovery.
+            // Review M3b: passkey recovery requires a verified WebAuthn assertion to unwrap the recovery
+            // key — that verification is NOT implemented (the prior code re-keyed on the strength of
+            // "the wrap exists" alone). Fail loud rather than silently authorising recovery without real
+            // cryptographic proof, so enabling Features:WalletRecoveryEnabled cannot open this path with
+            // broken verification. Full WebAuthn assertion flow is a backlog item (wallet-recovery build).
+            throw new NotSupportedException(
+                "Passkey wallet recovery requires WebAuthn assertion verification, which is not yet " +
+                "implemented. Keep Features:WalletRecoveryEnabled disabled until it is.");
 
+#pragma warning disable CS0162 // Unreachable behind the M3b fail-loud guard; retained for the deferred WebAuthn build.
             // Re-encrypt the wallet's private key with a fresh encryption key
             var (newEncryptedKey, newKeyId) = await _keyManagementService.EncryptPrivateKeyAsync(
                 await _keyManagementService.DecryptPrivateKeyAsync(
@@ -123,6 +124,7 @@ public class PasskeyRecoveryService : IPasskeyRecoveryService
             }
 
             restoredAddresses.Add(wallet.Address);
+#pragma warning restore CS0162
         }
 
         // Create audit log entry

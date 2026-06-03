@@ -90,12 +90,12 @@ description: "Task list for Verification-correctness"
 
 ### Tests for User Story 3 (write first, must FAIL) ⚠️
 
-- [ ] T013 [P] [US3] Fail-loud tests in `tests/Sorcha.Wallet.Service.Tests/Services/PasskeyRecoveryServiceTests.cs` and `OrgRecoveryServiceTests.cs`: invoking the recovery path (feature enabled) throws `NotSupportedException` and does not mutate wallet state. (Fails: services currently re-key without proof.)
+- [x] T013 [P] [US3] Fail-loud tests in `tests/Sorcha.Wallet.Service.Tests/Services/PasskeyRecoveryServiceTests.cs` and `OrgRecoveryServiceTests.cs`: invoking the recovery path (feature enabled) throws `NotSupportedException` and does not mutate wallet state. (Fails: services currently re-key without proof.)
 
 ### Implementation for User Story 3
 
-- [ ] T014 [US3] Throw `NotSupportedException` (clear message naming the missing proof + the feature flag) at the unverified unwrap point in `src/Services/Sorcha.Wallet.Service/Services/Implementation/PasskeyRecoveryService.cs` (~`:83`) and `OrgRecoveryService.cs` (~`:82`), before any wallet state mutation.
-- [ ] T015 [US3] Build + run `tests/Sorcha.Wallet.Service.Tests` to green; commit `fix(148): M3b fail loud on unverified passkey/org recovery`.
+- [x] T014 [US3] Throw `NotSupportedException` (clear message naming the missing proof + the feature flag) at the unverified unwrap point in `src/Services/Sorcha.Wallet.Service/Services/Implementation/PasskeyRecoveryService.cs` (~`:83`) and `OrgRecoveryService.cs` (~`:82`), before any wallet state mutation.
+- [x] T015 [US3] Build + run `tests/Sorcha.Wallet.Service.Tests` to green; commit `fix(148): M3b fail loud on unverified passkey/org recovery`.
 
 **Checkpoint**: All three findings closed.
 
