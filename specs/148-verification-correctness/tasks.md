@@ -70,13 +70,13 @@ description: "Task list for Verification-correctness"
 
 ### Tests for User Story 2 (write first, must FAIL) ⚠️
 
-- [ ] T009 [P] [US2] Signature-validation tests in `tests/Sorcha.Tenant.Service.Tests/Services/OidcExchangeServiceTests.cs`: inject a test signing-key set; assert a validly-signed token passes; tampered/wrong-key/unsigned → reject; key-source failure → reject (fail-closed); iss/aud/exp/nonce still enforced. (Fails: signature is not validated yet.)
+- [x] T009 [P] [US2] Signature-validation tests in `tests/Sorcha.Tenant.Service.Tests/Services/OidcExchangeServiceTests.cs`: inject a test signing-key set; assert a validly-signed token passes; tampered/wrong-key/unsigned → reject; key-source failure → reject (fail-closed); iss/aud/exp/nonce still enforced. (Fails: signature is not validated yet.)
 
 ### Implementation for User Story 2
 
-- [ ] T010 [US2] Add an injectable signing-key resolver seam (e.g. `IOidcSigningKeyResolver` returning `IEnumerable<SecurityKey>` for an `IdentityProviderConfiguration`) with a production impl that fetches + caches the JWKS (`JsonWebKeySet` from `config.JwksUri`, discovery fallback via `MetadataUrl`/`DiscoveryDocumentJson`/`{IssuerUrl}/.well-known/openid-configuration`, refresh-once on `kid` miss) under `src/Services/Sorcha.Tenant.Service/Services/`, using the existing `IHttpClientFactory`.
-- [ ] T011 [US2] In `src/Services/Sorcha.Tenant.Service/Services/OidcExchangeService.cs` `ValidateIdTokenAsync`: make it genuinely async; before trusting claims, verify the ID-token JWS signature against the resolved keys (`RequireSignedTokens`, `ValidateIssuerSigningKey`; signature-only), fail-closed on invalid/unmatched/unobtainable; keep the existing iss/aud/exp/nonce checks; remove the misleading TODO. (Depends on T010.)
-- [ ] T012 [US2] Build + run `tests/Sorcha.Tenant.Service.Tests` to green; commit `fix(148): M3a validate OIDC ID-token signature against provider JWKS`.
+- [x] T010 [US2] Add an injectable signing-key resolver seam (e.g. `IOidcSigningKeyResolver` returning `IEnumerable<SecurityKey>` for an `IdentityProviderConfiguration`) with a production impl that fetches + caches the JWKS (`JsonWebKeySet` from `config.JwksUri`, discovery fallback via `MetadataUrl`/`DiscoveryDocumentJson`/`{IssuerUrl}/.well-known/openid-configuration`, refresh-once on `kid` miss) under `src/Services/Sorcha.Tenant.Service/Services/`, using the existing `IHttpClientFactory`.
+- [x] T011 [US2] In `src/Services/Sorcha.Tenant.Service/Services/OidcExchangeService.cs` `ValidateIdTokenAsync`: make it genuinely async; before trusting claims, verify the ID-token JWS signature against the resolved keys (`RequireSignedTokens`, `ValidateIssuerSigningKey`; signature-only), fail-closed on invalid/unmatched/unobtainable; keep the existing iss/aud/exp/nonce checks; remove the misleading TODO. (Depends on T010.)
+- [x] T012 [US2] Build + run `tests/Sorcha.Tenant.Service.Tests` to green; commit `fix(148): M3a validate OIDC ID-token signature against provider JWKS`.
 
 **Checkpoint**: Social-login trusts only cryptographically-verified identity tokens.
 

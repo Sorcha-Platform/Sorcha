@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.IdentityModel.Tokens;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -24,6 +26,7 @@ public class OidcExchangeService : IOidcExchangeService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IDistributedCache _cache;
     private readonly ISecretProtectionProvider _secretProtection;
+    private readonly IOidcSigningKeyResolver _signingKeyResolver;
     private readonly ILogger<OidcExchangeService> _logger;
 
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(10);
@@ -38,6 +41,7 @@ public class OidcExchangeService : IOidcExchangeService
         IHttpClientFactory httpClientFactory,
         IDistributedCache cache,
         ISecretProtectionProvider secretProtection,
+        IOidcSigningKeyResolver signingKeyResolver,
         ILogger<OidcExchangeService> logger)
     {
         _dbContext = dbContext;
@@ -45,6 +49,7 @@ public class OidcExchangeService : IOidcExchangeService
         _httpClientFactory = httpClientFactory;
         _cache = cache;
         _secretProtection = secretProtection;
+        _signingKeyResolver = signingKeyResolver;
         _logger = logger;
     }
 
@@ -233,7 +238,7 @@ public class OidcExchangeService : IOidcExchangeService
     }
 
     /// <inheritdoc />
-    public Task<OidcUserClaims> ValidateIdTokenAsync(
+    public async Task<OidcUserClaims> ValidateIdTokenAsync(
         string idToken, IdentityProviderConfiguration config, string expectedNonce, CancellationToken cancellationToken = default)
     {
         // Parse JWT payload (base64url-encoded JSON)
@@ -295,10 +300,10 @@ public class OidcExchangeService : IOidcExchangeService
                 "ID token nonce mismatch. Possible replay attack.");
         }
 
-        // TODO: Validate JWT signature against JWKS endpoint in production.
-        // For now, we trust the token came from the configured IDP via the token endpoint
-        // (which uses TLS and client credentials). This is acceptable per the OIDC spec
-        // when the token is received directly from the token endpoint.
+        // Verify the ID token's JWS signature against the provider's published signing keys (review M3a).
+        // Defense-in-depth on top of the code-flow channel (token fetched server-side from the token
+        // endpoint over TLS): fail-closed if the signature cannot be verified.
+        await VerifyIdTokenSignatureAsync(idToken, config, cancellationToken);
 
         // Extract claims
         var sub = payload.TryGetProperty("sub", out var subProp)
@@ -327,7 +332,58 @@ public class OidcExchangeService : IOidcExchangeService
             "Extracted claims from ID token: sub={Subject}, email={Email}, name={Name}",
             claims.Subject, claims.Email, claims.DisplayName);
 
-        return Task.FromResult(claims);
+        return claims;
+    }
+
+    /// <summary>
+    /// Verifies the ID token's JWS signature against the provider's JWKS (review M3a). Signature-only —
+    /// issuer / audience / expiry / nonce are checked separately by the caller. Tolerates key rotation
+    /// by refreshing the JWKS once on a <c>kid</c> miss. Throws (fail-closed) when the signature cannot
+    /// be verified.
+    /// </summary>
+    private async Task VerifyIdTokenSignatureAsync(
+        string idToken, IdentityProviderConfiguration config, CancellationToken cancellationToken)
+    {
+        var keys = await _signingKeyResolver.GetSigningKeysAsync(config, forceRefresh: false, cancellationToken);
+        if (keys.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "ID token signature cannot be verified: the identity provider published no signing keys.");
+        }
+
+        var handler = new JwtSecurityTokenHandler { MapInboundClaims = false };
+        var parameters = new TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = false,
+            ValidateIssuerSigningKey = true,
+            RequireSignedTokens = true,
+            IssuerSigningKeys = keys,
+        };
+
+        try
+        {
+            handler.ValidateToken(idToken, parameters, out _);
+        }
+        catch (SecurityTokenSignatureKeyNotFoundException)
+        {
+            // Possible key rotation — refresh the JWKS once and retry against the fresh key set.
+            var refreshed = await _signingKeyResolver.GetSigningKeysAsync(config, forceRefresh: true, cancellationToken);
+            parameters.IssuerSigningKeys = refreshed;
+            try
+            {
+                handler.ValidateToken(idToken, parameters, out _);
+            }
+            catch (SecurityTokenException ex)
+            {
+                throw new InvalidOperationException("ID token signature validation failed.", ex);
+            }
+        }
+        catch (SecurityTokenException ex)
+        {
+            throw new InvalidOperationException("ID token signature validation failed.", ex);
+        }
     }
 
     #region Private Helpers

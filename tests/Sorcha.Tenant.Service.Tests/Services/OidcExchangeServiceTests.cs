@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using Moq;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
@@ -23,7 +25,14 @@ public class OidcExchangeServiceTests : IDisposable
     private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
     private readonly Mock<IDistributedCache> _cacheMock;
     private readonly Mock<ILogger<OidcExchangeService>> _loggerMock;
+    private readonly Mock<IOidcSigningKeyResolver> _signingKeyResolverMock;
     private readonly ISecretProtectionProvider _protection;
+
+    // RS256 test signing key — the production code verifies the ID-token JWS against the keys the
+    // resolver returns, so test tokens are signed with this key and the resolver mock returns its public part.
+    private const string TestKeyId = "test-signing-key-1";
+    private static readonly RSA TestRsa = RSA.Create(2048);
+    private static readonly RsaSecurityKey TestSigningKey = new(TestRsa) { KeyId = TestKeyId };
 
     private static readonly Guid TestOrgId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
@@ -50,6 +59,10 @@ public class OidcExchangeServiceTests : IDisposable
         _httpClientFactoryMock = new Mock<IHttpClientFactory>();
         _cacheMock = new Mock<IDistributedCache>();
         _loggerMock = new Mock<ILogger<OidcExchangeService>>();
+        _signingKeyResolverMock = new Mock<IOidcSigningKeyResolver>();
+        _signingKeyResolverMock
+            .Setup(r => r.GetSigningKeysAsync(It.IsAny<IdentityProviderConfiguration>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SecurityKey[] { TestSigningKey });
 
         var key = new byte[32];
         for (var i = 0; i < key.Length; i++) key[i] = (byte)(i + 7);
@@ -67,7 +80,7 @@ public class OidcExchangeServiceTests : IDisposable
 
     #region Helper Methods
 
-    private OidcExchangeService CreateService()
+    private OidcExchangeService CreateService(IOidcSigningKeyResolver? signingKeyResolver = null)
     {
         return new OidcExchangeService(
             _dbContext,
@@ -75,6 +88,7 @@ public class OidcExchangeServiceTests : IDisposable
             _httpClientFactoryMock.Object,
             _cacheMock.Object,
             _protection,
+            signingKeyResolver ?? _signingKeyResolverMock.Object,
             _loggerMock.Object
         );
     }
@@ -341,17 +355,12 @@ public class OidcExchangeServiceTests : IDisposable
     #region ValidateIdTokenAsync Tests
 
     [Fact]
-    public async Task ValidateIdTokenAsync_ValidToken_ReturnsClaims()
+    public async Task ValidateIdTokenAsync_ValidSignedToken_ReturnsClaims()
     {
         // Arrange
-        // Note: In a real test, this would use a properly signed JWT.
-        // This test validates the happy path structure; actual JWT validation
-        // requires a matching JWKS endpoint mock with real RSA keys.
         var service = CreateService();
         var expectedNonce = Guid.NewGuid().ToString("N");
 
-        // TODO: Create a properly signed test JWT once implementation exists.
-        // For now, this test documents the expected behavior.
         var validIdToken = CreateTestJwt(
             sub: "user-123",
             email: "user@example.com",
@@ -361,17 +370,80 @@ public class OidcExchangeServiceTests : IDisposable
             expiry: DateTimeOffset.UtcNow.AddHours(1),
             nonce: expectedNonce);
 
-        // Mock JWKS endpoint for signature validation
-        SetupJwksEndpoint();
-
-        // Act & Assert — adjust once real implementation available
-        // The test verifies the method returns OidcUserClaims with correct fields
+        // Act
         var result = await service.ValidateIdTokenAsync(validIdToken, TestIdpConfig, expectedNonce);
 
+        // Assert
         result.Should().NotBeNull();
         result.Subject.Should().Be("user-123");
         result.Email.Should().Be("user@example.com");
         result.DisplayName.Should().Be("Test User");
+    }
+
+    [Fact]
+    public async Task ValidateIdTokenAsync_TamperedSignature_Throws()
+    {
+        // Arrange — a validly-structured token whose signature is corrupted.
+        var service = CreateService();
+        var expectedNonce = Guid.NewGuid().ToString("N");
+        var token = CreateTestJwt(
+            sub: "user-123", email: "user@example.com", name: "Test User",
+            issuer: TestIdpConfig.IssuerUrl, audience: TestIdpConfig.ClientId,
+            expiry: DateTimeOffset.UtcNow.AddHours(1), nonce: expectedNonce);
+        var parts = token.Split('.');
+        var tampered = $"{parts[0]}.{parts[1]}.{parts[2][..^4]}AAAA"; // corrupt the signature segment
+
+        // Act
+        var act = () => service.ValidateIdTokenAsync(tampered, TestIdpConfig, expectedNonce);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*signature*");
+    }
+
+    [Fact]
+    public async Task ValidateIdTokenAsync_NoSigningKeys_Throws_FailClosed()
+    {
+        // Arrange — the provider publishes no usable signing keys.
+        var emptyResolver = new Mock<IOidcSigningKeyResolver>();
+        emptyResolver
+            .Setup(r => r.GetSigningKeysAsync(It.IsAny<IdentityProviderConfiguration>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<SecurityKey>());
+        var service = CreateService(emptyResolver.Object);
+        var expectedNonce = Guid.NewGuid().ToString("N");
+        var token = CreateTestJwt(
+            sub: "user-123", email: "user@example.com", name: "Test User",
+            issuer: TestIdpConfig.IssuerUrl, audience: TestIdpConfig.ClientId,
+            expiry: DateTimeOffset.UtcNow.AddHours(1), nonce: expectedNonce);
+
+        // Act
+        var act = () => service.ValidateIdTokenAsync(token, TestIdpConfig, expectedNonce);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be verified*");
+    }
+
+    [Fact]
+    public async Task ValidateIdTokenAsync_KeyFetchFailure_Throws_FailClosed()
+    {
+        // Arrange — the resolver cannot obtain keys (e.g. JWKS unreachable).
+        var failingResolver = new Mock<IOidcSigningKeyResolver>();
+        failingResolver
+            .Setup(r => r.GetSigningKeysAsync(It.IsAny<IdentityProviderConfiguration>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Failed to fetch JWKS."));
+        var service = CreateService(failingResolver.Object);
+        var expectedNonce = Guid.NewGuid().ToString("N");
+        var token = CreateTestJwt(
+            sub: "user-123", email: "user@example.com", name: "Test User",
+            issuer: TestIdpConfig.IssuerUrl, audience: TestIdpConfig.ClientId,
+            expiry: DateTimeOffset.UtcNow.AddHours(1), nonce: expectedNonce);
+
+        // Act
+        var act = () => service.ValidateIdTokenAsync(token, TestIdpConfig, expectedNonce);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
     [Fact]
@@ -390,7 +462,6 @@ public class OidcExchangeServiceTests : IDisposable
             expiry: DateTimeOffset.UtcNow.AddHours(-1),
             nonce: expectedNonce);
 
-        SetupJwksEndpoint();
 
         // Act
         var act = () => service.ValidateIdTokenAsync(expiredToken, TestIdpConfig, expectedNonce);
@@ -428,7 +499,6 @@ public class OidcExchangeServiceTests : IDisposable
             expiry: DateTimeOffset.UtcNow.AddHours(1),
             nonce: expectedNonce);
 
-        SetupJwksEndpoint();
 
         // Act
         var act = () => service.ValidateIdTokenAsync(token, wrongIssuerConfig, expectedNonce);
@@ -443,9 +513,9 @@ public class OidcExchangeServiceTests : IDisposable
     #region Test JWT Helpers
 
     /// <summary>
-    /// Creates a test JWT string for validation tests.
-    /// TODO: Replace with real RSA-signed JWT once implementation is wired up.
-    /// This placeholder produces a structurally valid but unsigned JWT.
+    /// Creates a real RS256-signed test JWT using <see cref="TestSigningKey"/>. The production code
+    /// verifies the signature against the keys the resolver returns (the public part of this key), so
+    /// these tokens validate. The payload JSON shape matches what <c>ValidateIdTokenAsync</c> expects.
     /// </summary>
     private static string CreateTestJwt(
         string sub,
@@ -456,48 +526,28 @@ public class OidcExchangeServiceTests : IDisposable
         DateTimeOffset expiry,
         string? nonce = null)
     {
-        var header = Convert.ToBase64String(
-            Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { alg = "RS256", typ = "JWT" })))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var header = B64Url(JsonSerializer.SerializeToUtf8Bytes(new { alg = "RS256", typ = "JWT", kid = TestKeyId }));
+        var payload = B64Url(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            sub,
+            email,
+            email_verified = true,
+            name,
+            iss = issuer,
+            aud = audience,
+            exp = expiry.ToUnixTimeSeconds(),
+            iat = DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds(),
+            nonce = nonce ?? Guid.NewGuid().ToString("N")
+        }));
 
-        var payload = Convert.ToBase64String(
-            Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
-            {
-                sub,
-                email,
-                email_verified = true,
-                name,
-                iss = issuer,
-                aud = audience,
-                exp = expiry.ToUnixTimeSeconds(),
-                iat = DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds(),
-                nonce = nonce ?? Guid.NewGuid().ToString("N")
-            })))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-        // Unsigned — real tests will need RSA-signed tokens
-        return $"{header}.{payload}.fake-signature";
+        var signingInput = $"{header}.{payload}";
+        var signature = TestRsa.SignData(
+            Encoding.ASCII.GetBytes(signingInput), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        return $"{signingInput}.{B64Url(signature)}";
     }
 
-    /// <summary>
-    /// Sets up a mock JWKS endpoint response.
-    /// TODO: Populate with real RSA public key once implementation validates signatures.
-    /// </summary>
-    private void SetupJwksEndpoint()
-    {
-        var jwksJson = JsonSerializer.Serialize(new { keys = Array.Empty<object>() });
-
-        var handler = new MockHttpMessageHandler(
-            new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-            {
-                Content = new StringContent(jwksJson, Encoding.UTF8, "application/json")
-            });
-
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://login.example.com") };
-        _httpClientFactoryMock
-            .Setup(f => f.CreateClient(It.IsAny<string>()))
-            .Returns(httpClient);
-    }
+    private static string B64Url(byte[] bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     #endregion
 
