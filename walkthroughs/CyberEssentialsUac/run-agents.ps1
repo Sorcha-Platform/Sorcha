@@ -135,15 +135,15 @@ $r0 = Invoke-SorchaAction `
     -PayloadData   $evidenceCompliant `
     -WaitForSeal
 
-# calculatedValues is a PSObject from ConvertFrom-Json; access property directly.
-# NOTE: The response field is `calculatedValues` (NOT `calculations`) — confirmed
-#       against every existing walkthrough that uses Invoke-SorchaAction.
-Assert ($r0.calculatedValues -ne $null) "Action 0 response carries calculatedValues"
-Assert ($r0.calculatedValues.computedCompliant -eq $true) `
-    "Compliant evidence => computedCompliant=true"
+# Gate verification is via instance ROUTING, not the async /execute response.
+# Under F145 the response is non-deterministic — sometimes operation-queued with
+# calculations=null and transactionId="" — so reading $r0.calculations is unreliable.
+# The compliant gate (computedCompliant=true) routes action 0 -> action 1; waiting
+# for action 1 to become current below proves the gate fired (the wait throws and
+# fails the run if action 1 never surfaces). The auto-fail mirror (action 2) is in S2.
 
 # ------------------------------------------------------------------
-# S1-3: Wait for action 1 to surface, then issue posture credential
+# S1-3: Wait for action 1 to surface (proves compliant gate), then issue
 # ------------------------------------------------------------------
 Write-WtInfo "S1-3: Waiting for action 1 (Issue Posture Credential) to become current"
 
@@ -155,7 +155,25 @@ Wait-SorchaActorReady `
     -Headers    $assessorSession.Headers `
     -GatewayUrl $sorchaEnv.GatewayUrl
 
+Assert $true "Compliant gate routed action 0 -> action 1 (computedCompliant=true)"
+
 Write-WtInfo "S1-3: Submitting action 1 — Issue Posture Credential"
+
+# Re-carry the evidence in action 1's payload so the credential claim mappings
+# (/uac/compliant, /assessment/date, ...) resolve directly from this action's data.
+# A same-sender gate->issue split cannot reconstruct the gate action's evidence
+# (the assessor's own /* disclosure produces no reconstructable envelope), so the
+# evidence is passed forward explicitly here.
+$action1Payload = @{
+    issuanceNote     = "Issued on UAC pass"
+    assessment       = $evidenceCompliant.assessment
+    uac              = $evidenceCompliant.uac
+    mfa              = $evidenceCompliant.mfa
+    offboarding      = $evidenceCompliant.offboarding
+    provisioning     = $evidenceCompliant.provisioning
+    passwordPolicy   = $evidenceCompliant.passwordPolicy
+    privilegedAccess = $evidenceCompliant.privilegedAccess
+}
 
 $r1 = Invoke-SorchaAction `
     -BlueprintUrl  $sorchaEnv.BlueprintUrl `
@@ -165,42 +183,31 @@ $r1 = Invoke-SorchaAction `
     -SenderWallet  $state.roles.assessor.walletAddress `
     -RegisterId    $state.registerId `
     -Token         $assessorSession.Token `
-    -PayloadData   @{ issuanceNote = "Issued on UAC pass" } `
+    -PayloadData   $action1Payload `
     -WaitForSeal
 
-# Primary assertion: credentialIssued object on the response.
-# NOTE: The response field is `credentialIssued` (NOT `issuedCredentialId`) —
-#       confirmed against every existing walkthrough that issues credentials.
-$credentialIssuedObj = $r1.credentialIssued
-$credentialIdFromResponse = if ($credentialIssuedObj) { $credentialIssuedObj.credentialId } else { $null }
-
-if ($credentialIssuedObj) {
-    Assert ($credentialIssuedObj -ne $null) "Action 1 response carries credentialIssued object"
-    Assert (![string]::IsNullOrEmpty($credentialIdFromResponse)) "credentialIssued object carries a non-empty credentialId"
-    Write-WtInfo "Posture credential type: $($credentialIssuedObj.credentialType)"
-    Write-WtInfo "Posture credential id  : $credentialIdFromResponse"
-} else {
-    # Fallback: poll the wallet for a CyberEssentialsUacPosture credential.
-    # This handles the case where the server does not echo credentialIssued on
-    # the action response (some versions omit it when the VC delivery is async).
-    Write-WtWarn "credentialIssued not on response — polling subject-org wallet for CyberEssentialsUacPosture"
-
-    $walletCredUrl = "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All"
-    $walletCreds = Invoke-SorchaApi `
-        -Method  GET `
-        -Uri     $walletCredUrl `
-        -Headers $subjectSession.Headers
-
-    $postureCred = $null
-    if ($walletCreds) {
-        $postureCred = @($walletCreds) | Where-Object { $_.type -eq "CyberEssentialsUacPosture" } |
-            Select-Object -First 1
-    }
-
-    Assert ($postureCred -ne $null) "Posture credential appears in subject-org wallet after action 1 (wallet poll fallback)"
-    $credentialIdFromResponse = if ($postureCred) { $postureCred.id } else { $null }
-    Write-WtInfo "Posture credential found via wallet poll: $credentialIdFromResponse"
+# The posture credential is delivered SorchaLocalWallet (Feature 106): sealed into
+# the action tx, peer-replicated, then the recipient's InboundCredentialDetector
+# decrypts + persists it (PendingAcceptance) a few seconds later. The async /execute
+# response often omits issuedCredentialId, so poll the recipient wallet until the
+# credential appears (up to 45s) rather than trusting the response field.
+$walletCredUrl = "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All"
+$postureCred  = $null
+$credDeadline = (Get-Date).AddSeconds(45)
+while ((Get-Date) -lt $credDeadline) {
+    try {
+        $walletCreds = Invoke-SorchaApi -Method GET -Uri $walletCredUrl -Headers $subjectSession.Headers
+        $items = if ($walletCreds.credentials) { $walletCreds.credentials } else { $walletCreds }
+        if ($items) {
+            $postureCred = @($items) | Where-Object { $_.type -eq "CyberEssentialsUacPosture" } | Select-Object -First 1
+            if ($postureCred) { break }
+        }
+    } catch { }
+    Start-Sleep -Seconds 2
 }
+Assert ($postureCred -ne $null) "Posture credential delivered to subject-org wallet after action 1"
+$credentialIdFromResponse = if ($postureCred) { $postureCred.id } else { $r1.issuedCredentialId }
+Write-WtInfo "Posture credential id: $credentialIdFromResponse"
 
 # ------------------------------------------------------------------
 # S1-4: Create Blueprint B instance and get presentation
@@ -342,6 +349,21 @@ $evidenceAutofail = Get-Content -Path (Join-Path $scriptDir "data/evidence-autof
 # Patch the orgDid placeholder.
 $evidenceAutofail.assessment.orgDid = $state.assessorDid
 
+# Baseline the recipient's posture-credential count BEFORE the auto-fail run, so
+# the "no credential minted" assertion is a delta (re-run safe — the wallet
+# persists across invocations and accumulates one credential per happy-path run).
+function Get-PostureCount {
+    param($url, $headers)
+    try {
+        $r = Invoke-SorchaApi -Method GET -Uri $url -Headers $headers
+        $items = if ($r.credentials) { $r.credentials } else { $r }
+        return (@($items) | Where-Object { $_.type -eq "CyberEssentialsUacPosture" }).Count
+    } catch { return 0 }
+}
+$postureWalletUrl = "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All"
+$postureBaseline  = Get-PostureCount $postureWalletUrl $subjectSession.Headers
+Write-WtInfo "Baseline posture credentials in subject-org wallet: $postureBaseline"
+
 $r0b = Invoke-SorchaAction `
     -BlueprintUrl  $sorchaEnv.BlueprintUrl `
     -InstanceId    $instanceA2Id `
@@ -353,9 +375,9 @@ $r0b = Invoke-SorchaAction `
     -PayloadData   $evidenceAutofail `
     -WaitForSeal
 
-Assert ($r0b.calculatedValues -ne $null) "Auto-fail action 0 response carries calculatedValues"
-Assert ($r0b.calculatedValues.computedCompliant -eq $false) `
-    "Auto-fail evidence => computedCompliant=false"
+# Gate verification is via routing (S2-2 below), not the async response — the
+# /execute response is non-deterministic under F145. The auto-fail gate
+# (computedCompliant=false) routes action 0 -> action 2 (Record Non-Compliance).
 
 # ------------------------------------------------------------------
 # S2-2: Assert that the route went to action 2, not action 1.
@@ -414,23 +436,14 @@ try {
 
 Assert $threw "Issue action (1) unreachable on auto-fail route — no posture credential minted"
 
-# Confirm that no CyberEssentialsUacPosture credential was delivered to
-# the subject-org's wallet as a result of the auto-fail run.
+# Confirm the auto-fail run delivered NO new posture credential — compare against
+# the baseline captured before S2 (re-run safe; the wallet persists across runs).
+# Brief settle delay so a (hypothetical) erroneous delivery would have landed.
 Write-WtInfo "S2-3: Confirming no new posture credential was delivered to subject-org wallet"
-
-$walletCredsAfterFail = Invoke-SorchaApi `
-    -Method  GET `
-    -Uri     "$($sorchaEnv.WalletUrl)/v1/wallets/$($state.roles.'subject-org'.walletAddress)/credentials/?status=All" `
-    -Headers $subjectSession.Headers `
-    -ShowJson:$ShowJson
-
-# Count posture credentials — should still be exactly the one from Scenario 1.
-$postureCredCount = 0
-if ($walletCredsAfterFail) {
-    $postureCredCount = (@($walletCredsAfterFail) | Where-Object { $_.type -eq "CyberEssentialsUacPosture" }).Count
-}
-Assert ($postureCredCount -eq 1) `
-    "Wallet holds exactly one posture credential after both scenarios (S1 issued one; S2 withheld one)"
+Start-Sleep -Seconds 5
+$postureCountAfterFail = Get-PostureCount $postureWalletUrl $subjectSession.Headers
+Assert ($postureCountAfterFail -eq $postureBaseline) `
+    "No posture credential minted by the auto-fail run (count unchanged at $postureBaseline; S2 withheld issuance)"
 
 Write-WtSuccess "========== SCENARIO 2 COMPLETE — ALL ASSERTIONS PASSED =========="
 

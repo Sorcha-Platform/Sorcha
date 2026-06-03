@@ -288,18 +288,21 @@
       {
         "id": 1,
         "title": "Issue Posture Credential",
-        "description": "Assessor issues a CyberEssentialsUacPosture verifiable credential to the assessed organisation. Reached only when the compliance gate (computedCompliant) evaluates to true. This action sources claim mappings from the action 0 evidence via requiredPriorActions.",
+        "description": "Assessor issues a CyberEssentialsUacPosture verifiable credential to the assessed organisation. Reached only when the compliance gate (computedCompliant) evaluates to true. The evidence is re-carried in this action's payload so the claim mappings resolve directly (a sender's own /* disclosure on the gate action does not produce a reconstructable envelope for a same-sender issuance action).",
         "sender": "assessor",
         "requiredPriorActions": [0],
         "dataSchemas": [
           {
             "type": "object",
             "properties": {
-              "issuanceNote": {
-                "type": "string",
-                "title": "Issuance note",
-                "maxLength": 200
-              }
+              "issuanceNote":     { "type": "string", "title": "Issuance note", "maxLength": 200 },
+              "assessment":       { "type": "object" },
+              "uac":              { "type": "object" },
+              "mfa":              { "type": "object" },
+              "offboarding":      { "type": "object" },
+              "provisioning":     { "type": "object" },
+              "passwordPolicy":   { "type": "object" },
+              "privilegedAccess": { "type": "object" }
             }
           }
         ],
