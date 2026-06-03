@@ -190,6 +190,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IServiceAuthService, ServiceAuthService>();
         services.AddScoped<ITotpService, TotpService>();
+        // Feature 146 — at-rest secret protection (AES-256-GCM; key derived from the JWT signing key
+        // via HKDF, or the Tenant:SecretProtection:Key override; fail-closed in Production/Staging).
+        services.AddSingleton<TenantSecretKeyResolver>();
+        services.AddSingleton<ISecretProtectionProvider>(sp =>
+        {
+            var (key, keyId) = sp.GetRequiredService<TenantSecretKeyResolver>().ResolveProtectionKey();
+            return new SoftwareSecretProtectionProvider(key, keyId);
+        });
+        // Feature 146 — login-token HMAC key, derived once from the JWT signing key (stable across replicas/restarts).
+        services.AddSingleton<LoginTokenSigningKey>();
         services.AddScoped<IPasskeyService, PasskeyService>();
         services.AddScoped<IRegisterSubscriptionService, RegisterSubscriptionService>();
         services.AddScoped<IRegisterInvitationService, RegisterInvitationService>();

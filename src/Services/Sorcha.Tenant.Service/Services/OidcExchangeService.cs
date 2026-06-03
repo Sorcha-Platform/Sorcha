@@ -23,6 +23,7 @@ public class OidcExchangeService : IOidcExchangeService
     private readonly IOidcDiscoveryService _discoveryService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IDistributedCache _cache;
+    private readonly ISecretProtectionProvider _secretProtection;
     private readonly ILogger<OidcExchangeService> _logger;
 
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(10);
@@ -36,12 +37,14 @@ public class OidcExchangeService : IOidcExchangeService
         IOidcDiscoveryService discoveryService,
         IHttpClientFactory httpClientFactory,
         IDistributedCache cache,
+        ISecretProtectionProvider secretProtection,
         ILogger<OidcExchangeService> logger)
     {
         _dbContext = dbContext;
         _discoveryService = discoveryService;
         _httpClientFactory = httpClientFactory;
         _cache = cache;
+        _secretProtection = secretProtection;
         _logger = logger;
     }
 
@@ -124,7 +127,8 @@ public class OidcExchangeService : IOidcExchangeService
 
         // Load IDP configuration
         var config = await GetEnabledIdpConfigAsync(flowState.OrgId, cancellationToken);
-        var clientSecret = IdpConfigurationService.DecryptSecret(config.ClientSecretEncrypted);
+        var clientSecret = Encoding.UTF8.GetString(
+            await _secretProtection.DecryptAsync(config.ClientSecretEncrypted, config.ClientSecretKeyId, cancellationToken));
 
         // Exchange authorization code for tokens at the token endpoint
         var httpClient = _httpClientFactory.CreateClient();

@@ -35,23 +35,23 @@ public class TotpService : ITotpService
     private readonly TenantDbContext _db;
     private readonly IIdentityRepository _identityRepository;
     private readonly ITenantSecurityInboxWriter _securityInbox;
+    private readonly ISecretProtectionProvider _secretProtection;
+    private readonly byte[] _loginTokenSigningKey;
     private readonly ILogger<TotpService> _logger;
-
-    /// <summary>
-    /// HMAC key for signing login tokens. Derived from a stable source per process lifetime.
-    /// In production, this should be sourced from key management (Azure Key Vault, etc.).
-    /// </summary>
-    private static readonly byte[] LoginTokenSigningKey = GenerateStableKey();
 
     public TotpService(
         TenantDbContext db,
         IIdentityRepository identityRepository,
         ITenantSecurityInboxWriter securityInbox,
+        ISecretProtectionProvider secretProtection,
+        LoginTokenSigningKey loginTokenSigningKey,
         ILogger<TotpService> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _securityInbox = securityInbox ?? throw new ArgumentNullException(nameof(securityInbox));
+        _secretProtection = secretProtection ?? throw new ArgumentNullException(nameof(secretProtection));
+        _loginTokenSigningKey = (loginTokenSigningKey ?? throw new ArgumentNullException(nameof(loginTokenSigningKey))).Key;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -82,11 +82,16 @@ public class TotpService : ITotpService
             _db.TotpConfigurations.Remove(existing);
         }
 
+        // Protect the secret at rest (AES-256-GCM via ISecretProtectionProvider).
+        var (encryptedSecret, encryptionKeyId) = await _secretProtection.EncryptAsync(
+            Encoding.UTF8.GetBytes(base32Secret), cancellationToken);
+
         // Create new TOTP configuration (not yet enabled — pending verification)
         var config = new TotpConfiguration
         {
             UserId = userId,
-            EncryptedSecret = EncryptSecret(base32Secret),
+            EncryptedSecret = encryptedSecret,
+            EncryptionKeyId = encryptionKeyId,
             BackupCodes = JsonSerializer.Serialize(hashedBackupCodes),
             IsEnabled = false,
             CreatedAt = DateTime.UtcNow,
@@ -129,7 +134,11 @@ public class TotpService : ITotpService
         }
 
         // Decrypt secret and validate the code
-        var base32Secret = DecryptSecret(config.EncryptedSecret);
+        var base32Secret = await TryDecryptSecretAsync(config, cancellationToken);
+        if (base32Secret is null)
+        {
+            return false;
+        }
         var secretBytes = Base32Encoding.ToBytes(base32Secret);
 
         var totp = new Totp(secretBytes, step: TotpStepSeconds, totpSize: TotpDigits);
@@ -170,7 +179,11 @@ public class TotpService : ITotpService
             return false;
         }
 
-        var base32Secret = DecryptSecret(config.EncryptedSecret);
+        var base32Secret = await TryDecryptSecretAsync(config, cancellationToken);
+        if (base32Secret is null)
+        {
+            return false;
+        }
         var secretBytes = Base32Encoding.ToBytes(base32Secret);
 
         var totp = new Totp(secretBytes, step: TotpStepSeconds, totpSize: TotpDigits);
@@ -360,51 +373,35 @@ public class TotpService : ITotpService
     }
 
     /// <summary>
-    /// Encrypts the TOTP secret for storage.
-    /// In production, use Azure Key Vault or similar HSM-backed encryption.
-    /// This implementation uses AES-256-GCM with a machine-derived key.
-    /// For now, we use a reversible Base64 encoding with a prefix marker
-    /// so it can be upgraded to proper encryption without schema changes.
+    /// Decrypts the stored TOTP secret via <see cref="ISecretProtectionProvider"/>, returning null
+    /// (and logging) on any cryptographic/format failure so callers treat it as an invalid code
+    /// rather than surfacing an unhandled error (FR-010). A tampered or wrong-key ciphertext raises
+    /// <see cref="System.Security.Cryptography.AuthenticationTagMismatchException"/> (a
+    /// <see cref="CryptographicException"/>), which is caught here.
     /// </summary>
-    private static string EncryptSecret(string plainTextSecret)
+    private async Task<string?> TryDecryptSecretAsync(TotpConfiguration config, CancellationToken ct)
     {
-        // Prefix with "v1:" to indicate encoding version for future migration
-        return $"v1:{Convert.ToBase64String(Encoding.UTF8.GetBytes(plainTextSecret))}";
-    }
-
-    /// <summary>
-    /// Decrypts the TOTP secret from storage.
-    /// </summary>
-    private static string DecryptSecret(string encryptedSecret)
-    {
-        if (encryptedSecret.StartsWith("v1:"))
+        try
         {
-            return Encoding.UTF8.GetString(Convert.FromBase64String(encryptedSecret[3..]));
+            var plaintext = await _secretProtection.DecryptAsync(config.EncryptedSecret, config.EncryptionKeyId, ct);
+            return Encoding.UTF8.GetString(plaintext);
         }
-
-        // Fallback: treat as plain text (legacy)
-        return encryptedSecret;
+        catch (Exception ex) when (ex is CryptographicException or ArgumentException)
+        {
+            _logger.LogWarning(ex, "TOTP secret decryption failed for user {UserId}; treating as invalid.", config.UserId);
+            return null;
+        }
     }
 
     /// <summary>
-    /// Computes HMAC-SHA256 signature for login token payload.
+    /// Computes the HMAC-SHA256 signature for a login-token payload using the deployment-stable,
+    /// JWT-derived signing key (Feature 146 — stable across replicas and restarts).
     /// </summary>
-    private static string ComputeHmac(string payload)
+    private string ComputeHmac(string payload)
     {
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
-        var hash = HMACSHA256.HashData(LoginTokenSigningKey, payloadBytes);
+        var hash = HMACSHA256.HashData(_loginTokenSigningKey, payloadBytes);
         return Convert.ToHexStringLower(hash);
-    }
-
-    /// <summary>
-    /// Generates a stable signing key for login tokens.
-    /// Uses RandomNumberGenerator for cryptographic randomness.
-    /// </summary>
-    private static byte[] GenerateStableKey()
-    {
-        var key = new byte[32];
-        RandomNumberGenerator.Fill(key);
-        return key;
     }
 
     /// <summary>

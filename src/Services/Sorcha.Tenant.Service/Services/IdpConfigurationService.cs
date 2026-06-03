@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +19,7 @@ public class IdpConfigurationService : IIdpConfigurationService
     private readonly TenantDbContext _dbContext;
     private readonly IOidcDiscoveryService _discoveryService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ISecretProtectionProvider _secretProtection;
     private readonly ILogger<IdpConfigurationService> _logger;
 
     /// <summary>
@@ -39,11 +39,13 @@ public class IdpConfigurationService : IIdpConfigurationService
         TenantDbContext dbContext,
         IOidcDiscoveryService discoveryService,
         IHttpClientFactory httpClientFactory,
+        ISecretProtectionProvider secretProtection,
         ILogger<IdpConfigurationService> logger)
     {
         _dbContext = dbContext;
         _discoveryService = discoveryService;
         _httpClientFactory = httpClientFactory;
+        _secretProtection = secretProtection;
         _logger = logger;
     }
 
@@ -63,6 +65,11 @@ public class IdpConfigurationService : IIdpConfigurationService
     {
         var providerPreset = Enum.Parse<IdentityProviderType>(request.ProviderPreset, ignoreCase: true);
 
+        // Protect the client secret at rest with AES-256-GCM — reversible, so the OIDC token
+        // exchange (and test-connection) can recover the real secret.
+        var (encryptedSecret, secretKeyId) = await _secretProtection.EncryptAsync(
+            Encoding.UTF8.GetBytes(request.ClientSecret), cancellationToken);
+
         var existing = await _dbContext.IdentityProviderConfigurations
             .FirstOrDefaultAsync(c => c.OrganizationId == organizationId, cancellationToken);
 
@@ -71,7 +78,8 @@ public class IdpConfigurationService : IIdpConfigurationService
             existing.ProviderPreset = providerPreset;
             existing.IssuerUrl = request.IssuerUrl;
             existing.ClientId = request.ClientId;
-            existing.ClientSecretEncrypted = EncryptSecret(request.ClientSecret);
+            existing.ClientSecretEncrypted = encryptedSecret;
+            existing.ClientSecretKeyId = secretKeyId;
             existing.Scopes = request.Scopes.Length > 0 ? request.Scopes : ["openid", "profile", "email"];
             existing.DisplayName = request.DisplayName;
             existing.UpdatedAt = DateTimeOffset.UtcNow;
@@ -84,7 +92,8 @@ public class IdpConfigurationService : IIdpConfigurationService
                 ProviderPreset = providerPreset,
                 IssuerUrl = request.IssuerUrl,
                 ClientId = request.ClientId,
-                ClientSecretEncrypted = EncryptSecret(request.ClientSecret),
+                ClientSecretEncrypted = encryptedSecret,
+                ClientSecretKeyId = secretKeyId,
                 Scopes = request.Scopes.Length > 0 ? request.Scopes : ["openid", "profile", "email"],
                 DisplayName = request.DisplayName,
                 MetadataUrl = $"{request.IssuerUrl.TrimEnd('/')}/.well-known/openid-configuration",
@@ -162,7 +171,8 @@ public class IdpConfigurationService : IIdpConfigurationService
         try
         {
             var httpClient = _httpClientFactory.CreateClient();
-            var decryptedSecret = DecryptSecret(config.ClientSecretEncrypted);
+            var decryptedSecret = Encoding.UTF8.GetString(
+                await _secretProtection.DecryptAsync(config.ClientSecretEncrypted, config.ClientSecretKeyId, cancellationToken));
 
             var tokenRequest = new FormUrlEncodedContent(new Dictionary<string, string>
             {
@@ -241,25 +251,4 @@ public class IdpConfigurationService : IIdpConfigurationService
         DiscoveryFetchedAt = config.DiscoveryFetchedAt
     };
 
-    /// <summary>
-    /// Encrypts a client secret using SHA-256 hash for storage.
-    /// In production, this would use AES-256-GCM with a key from Azure Key Vault.
-    /// </summary>
-    internal static byte[] EncryptSecret(string secret)
-    {
-        return SHA256.HashData(Encoding.UTF8.GetBytes(secret));
-    }
-
-    /// <summary>
-    /// Decrypts a stored client secret.
-    /// Note: SHA-256 is one-way — in production, use AES-256-GCM for reversible encryption.
-    /// For test connection, the admin must re-provide the secret or we store it reversibly.
-    /// This implementation stores a hash for verification, not the original secret.
-    /// </summary>
-    internal static string DecryptSecret(byte[] encrypted)
-    {
-        // SHA-256 is irreversible — return hex for comparison purposes.
-        // In production, use AES-256-GCM with Key Vault managed key.
-        return Convert.ToHexString(encrypted).ToLowerInvariant();
-    }
 }

@@ -23,6 +23,7 @@ public class OidcExchangeServiceTests : IDisposable
     private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
     private readonly Mock<IDistributedCache> _cacheMock;
     private readonly Mock<ILogger<OidcExchangeService>> _loggerMock;
+    private readonly ISecretProtectionProvider _protection;
 
     private static readonly Guid TestOrgId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
@@ -50,6 +51,10 @@ public class OidcExchangeServiceTests : IDisposable
         _cacheMock = new Mock<IDistributedCache>();
         _loggerMock = new Mock<ILogger<OidcExchangeService>>();
 
+        var key = new byte[32];
+        for (var i = 0; i < key.Length; i++) key[i] = (byte)(i + 7);
+        _protection = new SoftwareSecretProtectionProvider(key, "test-key-v1");
+
         // Seed test organization with IDP config
         SeedTestData();
     }
@@ -69,6 +74,7 @@ public class OidcExchangeServiceTests : IDisposable
             _discoveryServiceMock.Object,
             _httpClientFactoryMock.Object,
             _cacheMock.Object,
+            _protection,
             _loggerMock.Object
         );
     }
@@ -86,6 +92,8 @@ public class OidcExchangeServiceTests : IDisposable
 
         _dbContext.Organizations.Add(org);
 
+        var (encryptedSecret, secretKeyId) = _protection
+            .EncryptAsync(Encoding.UTF8.GetBytes("test-secret")).GetAwaiter().GetResult();
         var idpConfig = new IdentityProviderConfiguration
         {
             Id = TestIdpConfig.Id,
@@ -93,7 +101,8 @@ public class OidcExchangeServiceTests : IDisposable
             ProviderPreset = TestIdpConfig.ProviderPreset,
             IssuerUrl = TestIdpConfig.IssuerUrl,
             ClientId = TestIdpConfig.ClientId,
-            ClientSecretEncrypted = TestIdpConfig.ClientSecretEncrypted,
+            ClientSecretEncrypted = encryptedSecret,
+            ClientSecretKeyId = secretKeyId,
             Scopes = TestIdpConfig.Scopes,
             AuthorizationEndpoint = TestIdpConfig.AuthorizationEndpoint,
             TokenEndpoint = TestIdpConfig.TokenEndpoint,

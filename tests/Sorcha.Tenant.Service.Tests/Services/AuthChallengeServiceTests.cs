@@ -76,7 +76,8 @@ public class AuthChallengeServiceTests : IDisposable
             {
                 Id = Guid.NewGuid(),
                 UserId = userIdentity.Id,
-                EncryptedSecret = "stub",
+                EncryptedSecret = new byte[] { 1, 2, 3 },
+                EncryptionKeyId = "stub",
                 BackupCodes = "stub",
                 IsEnabled = true,
             });

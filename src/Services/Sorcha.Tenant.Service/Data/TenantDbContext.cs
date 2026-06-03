@@ -358,6 +358,10 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.ClientSecretEncrypted)
                 .IsRequired();
 
+            entity.Property(e => e.ClientSecretKeyId)
+                .IsRequired()
+                .HasMaxLength(64);
+
             entity.Property(e => e.Scopes)
                 .IsRequired();
 
@@ -842,8 +846,11 @@ public class TenantDbContext : DbContext
             entity.HasKey(e => e.Id);
 
             entity.Property(e => e.EncryptedSecret)
+                .IsRequired();
+
+            entity.Property(e => e.EncryptionKeyId)
                 .IsRequired()
-                .HasMaxLength(500);
+                .HasMaxLength(64);
 
             entity.Property(e => e.BackupCodes)
                 .IsRequired()
