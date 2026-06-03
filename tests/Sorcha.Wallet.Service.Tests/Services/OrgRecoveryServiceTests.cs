@@ -51,14 +51,19 @@ public class OrgRecoveryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RecoverAsync_AdminRecoversUserWallets_Succeeds()
+    public async Task RecoverAsync_WithOrgWrap_ThrowsNotSupported_AndDoesNotRekey()
     {
+        // Review M3b: an org-managed wrap is the point recovery would be authorised — but org
+        // recovery-key signature verification is not implemented, so the service must fail loud rather
+        // than re-key the wallet on the admin's session alone.
         await SeedWalletWithOrgWrap();
 
-        var result = await _sut.RecoverAsync(AdminUserId, TargetUserId, TenantId, "signature");
+        var act = () => _sut.RecoverAsync(AdminUserId, TargetUserId, TenantId, "signature");
 
-        result.WalletsRecovered.Should().Be(1);
-        result.WalletAddresses.Should().Contain("ws1-org-wallet");
+        await act.Should().ThrowAsync<NotSupportedException>()
+            .WithMessage("*signature*");
+        var wallet = await _dbContext.Wallets.FirstAsync();
+        wallet.EncryptedPrivateKey.Should().Be("old-encrypted", "the wallet must not be re-keyed without verified proof");
     }
 
     [Fact]
@@ -69,94 +74,10 @@ public class OrgRecoveryServiceTests : IDisposable
         result.WalletsRecovered.Should().Be(0);
     }
 
-    [Fact]
-    public async Task RecoverAsync_RevokesDelegationsByDefault()
-    {
-        var wallet = await SeedWalletWithOrgWrap();
-        _dbContext.WalletAccess.Add(new WalletAccess
-        {
-            ParentWalletAddress = wallet.Address,
-            Subject = "delegate-user",
-            AccessRight = AccessRight.ReadWrite,
-            GrantedBy = TargetUserId
-        });
-        await _dbContext.SaveChangesAsync();
-
-        var result = await _sut.RecoverAsync(AdminUserId, TargetUserId, TenantId, "signature");
-
-        result.DelegationsRevoked.Should().Be(1);
-        result.DelegationsPendingReview.Should().HaveCount(1);
-    }
-
-    [Fact]
-    public async Task RecoverAsync_SkipDelegationRevocation_PreservesDelegations()
-    {
-        var wallet = await SeedWalletWithOrgWrap();
-        _dbContext.WalletAccess.Add(new WalletAccess
-        {
-            ParentWalletAddress = wallet.Address,
-            Subject = "delegate-user",
-            AccessRight = AccessRight.ReadWrite,
-            GrantedBy = TargetUserId
-        });
-        await _dbContext.SaveChangesAsync();
-
-        var result = await _sut.RecoverAsync(
-            AdminUserId, TargetUserId, TenantId, "signature",
-            skipDelegationRevocation: true);
-
-        result.DelegationsRevoked.Should().Be(0);
-        result.DelegationsPendingReview.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task RecoverAsync_CreatesAuditLogWithAdminAsInitiator()
-    {
-        await SeedWalletWithOrgWrap();
-
-        await _sut.RecoverAsync(AdminUserId, TargetUserId, TenantId, "signature", ipAddress: "10.0.0.1");
-
-        var auditLogs = await _dbContext.RecoveryAuditLogs.ToListAsync();
-        auditLogs.Should().HaveCount(1);
-        auditLogs[0].UserId.Should().Be(TargetUserId);
-        auditLogs[0].InitiatedBy.Should().Be(AdminUserId);
-        auditLogs[0].RecoveryPath.Should().Be(RecoveryPathType.OrgManaged);
-        auditLogs[0].IpAddress.Should().Be("10.0.0.1");
-    }
-
-    [Fact]
-    public async Task RecoverAsync_OnlyRecoversTenantWallets()
-    {
-        await SeedWalletWithOrgWrap("ws1-same-tenant", TenantId);
-        // Seed a wallet in a different tenant
-        var otherWallet = new WalletEntity
-        {
-            Address = "ws1-other-tenant",
-            EncryptedPrivateKey = "enc",
-            EncryptionKeyId = "key",
-            Algorithm = "ED25519",
-            Owner = TargetUserId,
-            Tenant = "other-tenant",
-            Name = "Other Tenant Wallet",
-            RecoveryEnabled = true,
-            EncryptedMasterKeyBlob = "blob"
-        };
-        _dbContext.Wallets.Add(otherWallet);
-        _dbContext.RecoveryKeyWraps.Add(new RecoveryKeyWrap
-        {
-            WalletAddress = "ws1-other-tenant",
-            RecoveryPath = RecoveryPathType.OrgManaged,
-            EncryptedRecoveryKey = "wrapped",
-            RecipientKeyId = "org-key",
-            Algorithm = "ED25519"
-        });
-        await _dbContext.SaveChangesAsync();
-
-        var result = await _sut.RecoverAsync(AdminUserId, TargetUserId, TenantId, "signature");
-
-        result.WalletsRecovered.Should().Be(1);
-        result.WalletAddresses.Should().OnlyContain(a => a == "ws1-same-tenant");
-    }
+    // Note (review M3b): the prior success-path tests (RevokesDelegationsByDefault /
+    // SkipDelegationRevocation / CreatesAuditLog / OnlyRecoversTenantWallets) asserted that recovery
+    // COMPLETED a re-key on the admin session alone — the exact behaviour now removed. They are dropped
+    // until org recovery-key signature verification is built (the deferred wallet-recovery feature).
 
     private async Task<WalletEntity> SeedWalletWithOrgWrap(string address = "ws1-org-wallet", string tenantId = TenantId)
     {

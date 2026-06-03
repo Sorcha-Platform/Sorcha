@@ -37,6 +37,18 @@ namespace Sorcha.Wallet.Pwa.Services.Verification;
 /// Unrecognised JSON returns a Fail outcome with a plain-English recovery
 /// message. The <c>StubVerifierEngine</c> remains available for tests /
 /// pre-real-engine staging.
+/// <para>
+/// <b>Offline issuer-signature exception (review H3, deliberate + scoped).</b> The wallet runs with
+/// <c>requireIssuerSignature:false</c> and an <c>OptOutIssuerKeyResolver</c> — a citizen device doing a
+/// doorstep check has no service principal to resolve <c>did:sorcha:org:*</c> issuer keys and is often
+/// offline. When the issuer signature cannot be verified, the credential is accepted on the
+/// holder→device delegation chain + status list alone, and the result is mapped to
+/// <c>VerifyOutcome.Warn</c> (reduced assurance) with an explicit "issuer not verified" message — never
+/// a plain <c>Pass</c>. This is intentionally weaker than the authoritative server gates (Blueprint
+/// Service + the desk <c>Sorcha.Verifier</c>), which run <c>requireIssuerSignature:true</c> and reject
+/// an unverifiable issuer. Online issuer verification on the device (via a consumer/anonymous DID path)
+/// is a tracked backlog enhancement.
+/// </para>
 /// </remarks>
 public sealed class RealVerifierEngine : IVerifierEngine
 {
@@ -123,9 +135,17 @@ public sealed class RealVerifierEngine : IVerifierEngine
     private static LibVerificationResult Map(
         VerificationOutcome outcome, OfferEnvelope offer, VerifierEngineRequest request)
     {
-        var liveOutcome = outcome.Accepted
-            ? LibVerifyOutcome.Pass
-            : LibVerifyOutcome.Fail;
+        // Review H3: a credential accepted on the holder→device chain when the issuer signature could
+        // not be verified (offline doorstep, no resolvable issuer key) is NOT a plain Pass — surface it
+        // as a reduced-assurance Warn so the citizen sees that the issuer was not confirmed.
+        var issuerUnverified = outcome.Accepted
+            && outcome.IssuerSignature == IssuerSignatureStatus.NotVerified;
+
+        var liveOutcome = !outcome.Accepted
+            ? LibVerifyOutcome.Fail
+            : issuerUnverified
+                ? LibVerifyOutcome.Warn
+                : LibVerifyOutcome.Pass;
 
         var holderDisplay = offer.HolderDisplayName
             ?? (outcome.DisclosedClaims.TryGetValue("givenName", out var gn) ? gn?.ToString() : null)
@@ -136,6 +156,8 @@ public sealed class RealVerifierEngine : IVerifierEngine
         var messages = outcome.Errors;
         if (outcome.Accepted && messages.Count == 0)
             messages = Array.Empty<string>();
+        if (issuerUnverified)
+            messages = ["Issuer not verified — checked offline on the holder's device only (reduced assurance)."];
 
         var trustPanelJson = JsonSerializer.Serialize(new
         {

@@ -227,6 +227,9 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient();
 
         // OIDC authentication flow services
+        // Review M3a: resolve + cache the provider JWKS so ID-token signatures are verified.
+        services.AddMemoryCache();
+        services.AddScoped<IOidcSigningKeyResolver, JwksOidcSigningKeyResolver>();
         services.AddScoped<IOidcExchangeService, OidcExchangeService>();
         services.AddScoped<IOidcProvisioningService, OidcProvisioningService>();
         services.AddScoped<IEmailVerificationService, EmailVerificationService>();

@@ -79,9 +79,16 @@ public class OrgRecoveryService : IOrgRecoveryService
                 continue;
             }
 
-            // TODO: Verify orgRecoveryKeySignature against the org's recovery public key
-            // For MVP, the admin's authenticated session + Administrator role is sufficient authorization.
+            // Review M3b: org-managed recovery requires verifying the org recovery-key signature against
+            // the org's recovery public key — that verification is NOT implemented (the prior code re-keyed
+            // on the admin's authenticated session alone). Fail loud rather than silently authorising
+            // recovery without real cryptographic proof, so enabling Features:WalletRecoveryEnabled cannot
+            // open this path with broken verification. Full org-signature verification is a backlog item.
+            throw new NotSupportedException(
+                "Org-managed wallet recovery requires org recovery-key signature verification, which is " +
+                "not yet implemented. Keep Features:WalletRecoveryEnabled disabled until it is.");
 
+#pragma warning disable CS0162 // Unreachable code — retained for the deferred wallet-recovery feature build.
             // Re-encrypt the wallet's private key
             var (newEncryptedKey, newKeyId) = await _keyManagementService.EncryptPrivateKeyAsync(
                 await _keyManagementService.DecryptPrivateKeyAsync(
@@ -119,6 +126,7 @@ public class OrgRecoveryService : IOrgRecoveryService
             }
 
             restoredAddresses.Add(wallet.Address);
+#pragma warning restore CS0162
         }
 
         // Audit log

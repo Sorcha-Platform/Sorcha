@@ -44,7 +44,18 @@ public sealed class RealVerifierEngineTests
             Accepted = true,
             DisclosedClaims = claims ?? new Dictionary<string, object?>(),
             Errors = Array.Empty<string>(),
-            CompletedAt = DateTimeOffset.UtcNow
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.Verified
+        };
+
+    private static VerificationOutcome AcceptIssuerUnverified(IReadOnlyDictionary<string, object?>? claims = null) =>
+        new()
+        {
+            Accepted = true,
+            DisclosedClaims = claims ?? new Dictionary<string, object?>(),
+            Errors = Array.Empty<string>(),
+            CompletedAt = DateTimeOffset.UtcNow,
+            IssuerSignature = IssuerSignatureStatus.NotVerified
         };
 
     private static VerificationOutcome Reject(string reason) =>
@@ -96,6 +107,25 @@ public sealed class RealVerifierEngineTests
         result.DisclosedClaims.Should().ContainKey("givenName");
         result.TrustPanelJson.Should().NotBeNullOrEmpty();
         result.TrustPanelJson.Should().Contain("Liam Buchanan");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_AcceptedButIssuerUnverified_MapsToWarn_WithReducedAssuranceMessage()
+    {
+        // Review H3: an offline doorstep accept where the issuer signature could not be verified must
+        // surface as a reduced-assurance Warn, never a plain Pass.
+        var claims = new Dictionary<string, object?> { ["givenName"] = "Liam" };
+        var sut = NewSut(AcceptIssuerUnverified(claims), out _);
+        var offer = """
+            {"vpToken":"vp.token.here","delegationCredential":"d.c.here","requiredVct":"WaterEngineerCredential/v1","holderDisplayName":"Liam Buchanan","issuerOrgName":"Caledonian Water"}
+            """;
+
+        var result = await sut.VerifyAsync(Request(offer));
+
+        result.Outcome.Should().Be(LibVerifyOutcome.Warn,
+            "an accepted credential whose issuer signature was not verified is reduced-assurance, not a full Pass");
+        result.Messages.Should().ContainSingle()
+            .Which.Should().Contain("Issuer not verified");
     }
 
     [Fact]

@@ -89,7 +89,7 @@ Social login uses OAuth2/OIDC with PKCE for all providers.
 2. Server generates PKCE challenge, stores state, returns authorization URL
 3. User completes OAuth dance with provider
 4. Client sends authorization code to `POST /api/auth/social/callback`
-5. Server exchanges code for tokens, resolves/creates `PlatformUser` + `PlatformSocialLogin`
+5. Server exchanges code for tokens **and verifies the ID token's JWS signature against the provider's published JWKS** (review M3a — `IOidcSigningKeyResolver` fetches + caches the keys from the IdP's `jwks_uri`/discovery, rotation-tolerant; fail-closed if the signature can't be verified), in addition to the existing issuer / audience / expiry / nonce checks, then resolves/creates `PlatformUser` + `PlatformSocialLogin`
 6. JWT issued for the user's default organisation
 
 ### Configuration

@@ -75,6 +75,54 @@ public sealed class VerifiablePresentationValidatorTests
         outcome.DisclosedClaims.Should().ContainKey("familyName");
     }
 
+    // ── Review H3: issuer-signature status surfaced on the outcome ───────────────────────────
+
+    [Fact]
+    public async Task ValidateAsync_IssuerKeyUnresolved_NotRequired_AcceptsButReportsIssuerNotVerified()
+    {
+        // Default validator: OptOutIssuerKeyResolver + requireIssuerSignature:false (the PWA offline path).
+        var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce);
+
+        var outcome = await _validator.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
+        outcome.IssuerSignature.Should().Be(IssuerSignatureStatus.NotVerified,
+            "the issuer key could not be resolved and the verifier does not require it");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_IssuerKeyResolvesAndSignatureValid_ReportsIssuerVerified()
+    {
+        var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce);
+        var resolver = new JwkRegistryIssuerKeyResolver();
+        resolver.Register(
+            "did:sorcha:org:test",
+            System.Text.Json.JsonDocument.Parse(TestVpFactory.ToJwk(bundle.IssuerKey)).RootElement);
+        var validator = new VerifiablePresentationValidator(
+            _statusList.Object, resolver, TimeProvider.System,
+            NullLogger<VerifiablePresentationValidator>.Instance, requireIssuerSignature: false);
+
+        var outcome = await validator.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeTrue(string.Join(", ", outcome.Errors));
+        outcome.IssuerSignature.Should().Be(IssuerSignatureStatus.Verified,
+            "the issuer key resolved and the credential's issuer JWS verified against it");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_IssuerKeyUnresolved_Required_Rejects()
+    {
+        // Authoritative server-gate posture (F120): require the issuer signature → reject when unresolvable.
+        var bundle = TestVpFactory.Mint(Vct, Claims(("givenName", "Stuart")), ClientId, Nonce);
+        var validator = new VerifiablePresentationValidator(
+            _statusList.Object, new OptOutIssuerKeyResolver(), TimeProvider.System,
+            NullLogger<VerifiablePresentationValidator>.Instance, requireIssuerSignature: true);
+
+        var outcome = await validator.ValidateAsync(Session(), bundle.VpToken, bundle.Delegation);
+
+        outcome.Accepted.Should().BeFalse("require-issuer-signature rejects an unresolvable issuer key");
+    }
+
     [Fact]
     public async Task ValidateAsync_MissingDelegation_Rejected()
     {
