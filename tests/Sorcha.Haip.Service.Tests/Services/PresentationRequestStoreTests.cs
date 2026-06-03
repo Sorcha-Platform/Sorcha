@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sorcha.AtomicCache;
 using Sorcha.Haip.Service.Models;
 using Sorcha.Haip.Service.Services;
 using Xunit;
@@ -12,7 +13,7 @@ using Xunit;
 namespace Sorcha.Haip.Service.Tests.Services;
 
 /// <summary>
-/// Tests for PresentationRequestStore — in-memory fallback.
+/// Tests for PresentationRequestStore — backed by the in-memory IAtomicDistributedCache.
 /// </summary>
 public class PresentationRequestStoreTests
 {
@@ -29,7 +30,8 @@ public class PresentationRequestStoreTests
 
         _store = new PresentationRequestStore(
             Mock.Of<ILogger<PresentationRequestStore>>(),
-            config);
+            config,
+            new InMemoryAtomicDistributedCache());
     }
 
     [Fact]
@@ -114,5 +116,34 @@ public class PresentationRequestStoreTests
         var updated = await _store.GetAsync(created.Id);
         updated!.State.Should().Be(PresentationRequestState.Denied);
         updated.Result!.Errors.Should().Contain("KB-JWT signature invalid");
+    }
+
+    [Fact]
+    public async Task MarkCompletedAsync_SecondCallAfterTerminal_IsIdempotentNoOp()
+    {
+        // Review M4: the CAS completion is first-writer-wins. A second callback for an
+        // already-completed request must NOT overwrite the recorded outcome.
+        var created = await _store.CreateAsync(
+            "https://test.example/haip", "TestCredential",
+            null, null, "https://test.example/haip");
+
+        await _store.MarkCompletedAsync(created.Id, new VerificationResult
+        {
+            IsValid = true,
+            VerifiedClaims = new() { ["name"] = "Alice" },
+            HolderKeyVerified = true
+        });
+
+        // A racing/second callback arriving with a different (denied) outcome must be ignored.
+        await _store.MarkCompletedAsync(created.Id, new VerificationResult
+        {
+            IsValid = false,
+            Errors = { "late duplicate callback" }
+        });
+
+        var final = await _store.GetAsync(created.Id);
+        final!.State.Should().Be(PresentationRequestState.Verified, "the first writer's terminal state wins");
+        final.Result!.IsValid.Should().BeTrue();
+        final.Result.VerifiedClaims.Should().ContainKey("name");
     }
 }

@@ -1,33 +1,33 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Microsoft.Extensions.Caching.Distributed;
+using Sorcha.AtomicCache;
 using Sorcha.Haip.Service.Models;
 
 namespace Sorcha.Haip.Service.Services;
 
 /// <summary>
-/// Redis-backed store for HAIP presentation requests. Requests have TTL-based
-/// expiry and transition through Pending → Submitted → Verified/Denied states.
+/// Store for HAIP presentation requests. Requests have TTL-based expiry and transition through
+/// Pending → Submitted → Verified/Denied states. Backed by <see cref="IAtomicDistributedCache"/>
+/// (Redis in production, in-memory in tests) so the completion transition can be a compare-and-set
+/// — closing the prior Get-then-Set TOCTOU (review M4) where two concurrent verifier callbacks
+/// raced and the last writer won.
 /// </summary>
 public class PresentationRequestStore
 {
-    private readonly IDistributedCache? _cache;
+    private readonly IAtomicDistributedCache _cache;
     private readonly ILogger<PresentationRequestStore> _logger;
     private readonly int _ttlSeconds;
-
-    private readonly ConcurrentDictionary<Guid, PresentationRequest> _memoryStore = new();
 
     public PresentationRequestStore(
         ILogger<PresentationRequestStore> logger,
         IConfiguration configuration,
-        IDistributedCache? cache = null)
+        IAtomicDistributedCache cache)
     {
         _logger = logger;
-        _cache = cache;
+        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _ttlSeconds = configuration.GetValue<int>("Haip:PresentationRequestTtlSeconds", 600);
     }
 
@@ -60,18 +60,8 @@ public class PresentationRequestStore
             StateToken = id.ToString()
         };
 
-        if (_cache != null)
-        {
-            var key = $"haip:vp-request:{request.Id}";
-            var json = JsonSerializer.Serialize(request);
-            await _cache.SetStringAsync(key, json,
-                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(_ttlSeconds) },
-                ct);
-        }
-        else
-        {
-            _memoryStore[request.Id] = request;
-        }
+        var key = $"haip:vp-request:{request.Id}";
+        await _cache.SetAsync(key, JsonSerializer.Serialize(request), TimeSpan.FromSeconds(_ttlSeconds), ct);
 
         _logger.LogInformation(
             "Created presentation request {RequestId} for credential type {Type}",
@@ -85,60 +75,59 @@ public class PresentationRequestStore
     /// </summary>
     public async Task<PresentationRequest?> GetAsync(Guid requestId, CancellationToken ct = default)
     {
-        if (_cache != null)
-        {
-            var key = $"haip:vp-request:{requestId}";
-            var json = await _cache.GetStringAsync(key, ct);
-            return json != null ? JsonSerializer.Deserialize<PresentationRequest>(json) : null;
-        }
-
-        _memoryStore.TryGetValue(requestId, out var request);
-        if (request != null && request.ExpiresAt < DateTimeOffset.UtcNow)
-        {
-            _memoryStore.TryRemove(requestId, out _);
-            return null;
-        }
-        return request;
+        var key = $"haip:vp-request:{requestId}";
+        var json = await _cache.GetAsync(key, ct);
+        return json != null ? JsonSerializer.Deserialize<PresentationRequest>(json) : null;
     }
 
     /// <summary>
     /// Updates a request with the verification result and marks it as completed.
     /// </summary>
     /// <remarks>
-    /// TODO(113-followup): The Get-then-Set sequence here is not CAS-protected.
-    /// Two HandleDirectPost callbacks for the same request landing concurrently
-    /// will each read the pending state, transition it independently, and the
-    /// last writer wins. Today this is a low-probability race because verifier
-    /// callbacks for the same request are unusual. Migrating this to
-    /// IAtomicDistributedCache.TryUpdateIfMatchAsync would close the window
-    /// fully — but the migration is more invasive than the
-    /// NonceStore/PreAuthCodeStore changes (this store has read-many semantics
-    /// and serialised PresentationRequest objects, not opaque tokens).
-    /// Tracked as a feature 113 follow-up; not blocking US3 closure.
+    /// Review M4: the completion transition is a compare-and-set
+    /// (<see cref="IAtomicDistributedCache.TryUpdateIfMatchAsync"/>) so two concurrent
+    /// verifier callbacks for the same request cannot both transition it — the first writer
+    /// wins, and a callback that loses the race observes the already-terminal state and is an
+    /// idempotent no-op (rather than the prior last-writer-wins Get-then-Set).
     /// </remarks>
     public async Task MarkCompletedAsync(
         Guid requestId,
         VerificationResult result,
         CancellationToken ct = default)
     {
-        if (_cache != null)
+        var key = $"haip:vp-request:{requestId}";
+        var ttl = TimeSpan.FromSeconds(_ttlSeconds);
+        var newState = result.IsValid ? PresentationRequestState.Verified : PresentationRequestState.Denied;
+
+        // Bounded CAS retry: re-read on a lost race so we re-evaluate against the latest state.
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            var key = $"haip:vp-request:{requestId}";
-            var json = await _cache.GetStringAsync(key, ct);
-            if (json != null)
+            var json = await _cache.GetAsync(key, ct);
+            if (json is null)
             {
-                var request = JsonSerializer.Deserialize<PresentationRequest>(json)!;
-                request.State = result.IsValid ? PresentationRequestState.Verified : PresentationRequestState.Denied;
-                request.Result = result;
-                await _cache.SetStringAsync(key, JsonSerializer.Serialize(request),
-                    new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(_ttlSeconds) },
-                    ct);
+                return; // expired or never created — nothing to complete
             }
-        }
-        else if (_memoryStore.TryGetValue(requestId, out var request))
-        {
-            request.State = result.IsValid ? PresentationRequestState.Verified : PresentationRequestState.Denied;
+
+            var request = JsonSerializer.Deserialize<PresentationRequest>(json)!;
+            if (request.State is PresentationRequestState.Verified or PresentationRequestState.Denied)
+            {
+                // Already completed by a concurrent callback (first-writer-wins) — idempotent no-op.
+                return;
+            }
+
+            request.State = newState;
             request.Result = result;
+            var newJson = JsonSerializer.Serialize(request);
+
+            if (await _cache.TryUpdateIfMatchAsync(key, json, newJson, ttl, ct))
+            {
+                return; // CAS succeeded — this callback completed the request
+            }
+            // CAS lost the race (value changed since the read); loop to re-read and re-evaluate.
         }
+
+        _logger.LogWarning(
+            "MarkCompletedAsync for request {RequestId} could not complete the compare-and-set after retries",
+            requestId);
     }
 }
