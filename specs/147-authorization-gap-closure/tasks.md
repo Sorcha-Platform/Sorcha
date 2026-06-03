@@ -123,7 +123,7 @@ Multi-service repo. Production code under `src/Services/Sorcha.{Wallet,Blueprint
 ## Phase 7: Polish & Cross-Cutting
 
 - [x] T020 [P] Doc sync: update the `jwt` skill policy catalogue (`.claude/skills/jwt/`) — add `CanRecoverSystemWallet`, note `CanManageBlueprints` is now tier-aware (service OR platform+org), and that Tenant `RequireSystemAdmin` is org-scoped (duplicate removed). Update `docs/guides/AUTHENTICATION-SETUP.md` if it enumerates these policies.
-- [ ] T021 Push branch `147-authorization-gap-closure`; open PR (`gh pr create`) referencing the design + spec; confirm `claude-review` is green (full-solution `build-and-test` stays red on the unrelated Refit cert infra issue — claude-review is the gate); merge on green.
+- [x] T021 Push branch `147-authorization-gap-closure`; open PR (`gh pr create`) referencing the design + spec; confirm `claude-review` is green (full-solution `build-and-test` stays red on the unrelated Refit cert infra issue — claude-review is the gate); merge on green.
 
 ---
 
