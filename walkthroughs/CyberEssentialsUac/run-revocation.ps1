@@ -89,7 +89,7 @@ if (-not $isN1) {
     Write-WtInfo "  • CredentialStatus__EnableEmbedding=true must be set on the issuing node."
     Write-WtInfo "  • The issuance guard forbids plain-HTTP status-list URLs, and Schannel"
     Write-WtInfo "    cannot verify self-signed container certificates."
-    Write-WtInfo ""
+    Write-Host ""
     Write-WtInfo "Run against n1 once those are configured:"
     Write-WtInfo "  pwsh walkthroughs/CyberEssentialsUac/setup.ps1    -GatewayUrl https://n1.sorcha.dev"
     Write-WtInfo "  pwsh walkthroughs/CyberEssentialsUac/run-agents.ps1 -GatewayUrl https://n1.sorcha.dev"
