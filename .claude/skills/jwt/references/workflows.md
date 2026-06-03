@@ -58,6 +58,10 @@ public static class AuthenticationExtensions
     {
         services.AddAuthorization(options =>
         {
+            // NOTE: a consumer-tier (citizen) token also carries org_id (Feature 136), so this
+            // bare org_id/service check admits citizens. For a tier-sensitive (authoring/admin)
+            // resource, fold the tier audience in via a requirement + handler — see the jwt skill
+            // "Tier-aware policy (Feature 147)".
             options.AddPolicy("CanManageResources", policy =>
                 policy.RequireAssertion(context =>
                 {

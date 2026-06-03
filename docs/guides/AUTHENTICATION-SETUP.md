@@ -336,7 +336,7 @@ curl https://localhost:7083/api/registers \
 
 | Policy | Description | Required Claims |
 |--------|-------------|-----------------|
-| `CanManageBlueprints` | Create, update, delete blueprints | `org_id` OR `token_type=service` |
+| `CanManageBlueprints` | Create, update, delete blueprints | (`token_type=service` AND `:service` aud) OR (`org_id` AND `:platform` aud) — Feature 147 |
 | `CanExecuteBlueprints` | Execute actions | Authenticated user |
 | `CanPublishBlueprints` | Publish blueprints | `can_publish_blueprint=true` OR `role=Administrator` |
 | `RequireService` | Service operations | `token_type=service` |
@@ -974,7 +974,8 @@ The following table consolidates all authorization policies used across the plat
 | `RequireOrganizationMember` | `org_id` claim present | User must belong to an organization |
 | `RequireAdministrator` | `role=Administrator` | User must have the Administrator role |
 | `CanManageWallets` | `org_id` OR `token_type=service` | Create, list, and configure wallets (org members or services) |
-| `CanManageBlueprints` | `org_id` OR `token_type=service` | Create, update, and delete blueprints (org members or services) |
+| `CanManageBlueprints` | (`token_type=service` AND `:service` aud) OR (`org_id` AND `:platform` aud) | Authoring; consumer-tier tokens (which carry `org_id` under F136) are refused — Feature 147 |
+| `CanRecoverSystemWallet` | (`token_type=service` AND `:service` aud) OR (`role=Administrator`/`SystemAdmin` AND `:platform` aud) | Wallet Service system-wallet BIP39 import (genesis ceremony / service automation) — Feature 147 |
 | `CanManageRegisters` | `org_id` + (`role=Administrator` OR `role=SystemAdmin`) | Create and manage registers (tightened from org_id-only) |
 | `CanCreateSystemRegisters` | `org_id=00000000-0000-0000-0000-000000000001` + `role=SystemAdmin` | Set register purpose to System (SystemAdmin org only) |
 | `RequireDelegatedAuthority` | `token_type=service` AND `delegated_user_id` present | Service acting on behalf of a user; both identities must be present |

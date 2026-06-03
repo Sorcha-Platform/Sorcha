@@ -147,9 +147,11 @@ public static class AuthenticationExtensions
             options.AddPolicy("CanPublishBlueprint", policy =>
                 policy.RequireClaim("can_publish_blueprint", "true"));
 
-            // Policy for system administrators only (platform-level operations)
-            options.AddPolicy("RequireSystemAdmin", policy =>
-                policy.RequireRole("SystemAdmin"));
+            // NOTE (Feature 147 / review LOW): RequireSystemAdmin is intentionally NOT re-registered
+            // here. The shared, org-scoped definition from AddSorchaAuthorizationPolicies
+            // (system-admin org membership AND SystemAdmin role) is authoritative. A previous
+            // role-only override here dropped the org-scope (last-write-wins), letting a SystemAdmin
+            // in any org clear platform-administration routes.
         });
 
         return services;

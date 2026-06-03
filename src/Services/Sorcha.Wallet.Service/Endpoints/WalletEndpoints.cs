@@ -45,7 +45,9 @@ public static class WalletEndpoints
             .WithName("CreateOrRetrieveSystemWallet")
             .WithSummary("Create or retrieve system wallet")
             .WithDescription("Creates or retrieves a system wallet for a validator. Used by Validator Service for signing operations.")
-            .AllowAnonymous() // System wallets are service-to-service, use service auth
+            // Feature 147 / review H1: service-to-service only. Enforced in-code (not just at the
+            // gateway, which is RequireAuthenticated) so a direct internal-network call is also gated.
+            .RequireAuthorization(Microsoft.Extensions.Hosting.AuthorizationPolicies.RequireService)
             .Produces<SystemWalletResponse>(StatusCodes.Status200OK)
             .Produces<SystemWalletResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem();
@@ -58,7 +60,10 @@ public static class WalletEndpoints
                 "Used by 'sorcha system-register import-validator-key' to seat the genesis-ceremony validator wallet so " +
                 "the Validator Service can sign system register dockets. Idempotent only when the existing wallet's seed " +
                 "already matches the supplied mnemonic — otherwise returns 409 Conflict.")
-            .AllowAnonymous() // Service-to-service via the CLI's authenticated session; admin-only at the CLI layer
+            // Feature 147 / review H1: service-tier caller OR platform-tier administrator (the genesis
+            // ceremony operator). Enforced in-code so a direct internal-network call is gated too.
+            // The 409-on-exists guard in the handler remains as belt-and-braces.
+            .RequireAuthorization("CanRecoverSystemWallet")
             .Produces<SystemWalletResponse>(StatusCodes.Status200OK)
             .Produces<SystemWalletResponse>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status409Conflict)
