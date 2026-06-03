@@ -28,7 +28,7 @@ pwsh walkthroughs/ConstructionPermit/run.ps1
 | Foundation | AdminIntegration · McpServerBasics |
 | Single-Org | RegisterCreationFlow · WalletVerification · RegisterMongoDB · FormCoverage · HealthDeclaration |
 | Multi-Org Workflows | ConstructionPermit · SelfBuildHouse · PropertyInspection · PayloadTests |
-| Credential Issuance & Reuse | AssuredIdentity · ForestryCertification |
+| Credential Issuance & Reuse | AssuredIdentity · ForestryCertification · CyberEssentialsUac |
 | Agent-Driven | TradeFinance |
 | Distributed (Multi-Node) | DistributedRegister · PingPongN1 |
 | Performance | PerformanceBenchmark |
@@ -164,6 +164,16 @@ Walkthroughs whose primary purpose is issuing a verifiable credential and provin
 **Technical capabilities.** 2 orgs, 2 actions, single register; the Sales Manager is an **open participant** late-bound at submission; SD-JWT VC issuance with 12 selectively disclosable claims (9 of which are flagged `disclosable` so a downstream verifier presents only what it needs); auditor-overrides-supplier on safety-critical fields (e.g. embodied carbon); 365-day credential validity window; cross-walkthrough composition with TradeFinance via shared org subdomain (`highland-timber`).
 
 **Benefit.** Demonstrates the **Digital Product Passport** pattern: a credential that travels with goods through downstream commercial workflows, cryptographically proving sustainability claims without re-doing the audit. The smallest end-to-end VC walkthrough in the suite — a useful copy-paste starting point for new credential types.
+
+### [CyberEssentialsUac](./CyberEssentialsUac/)
+
+**Scenario.** A cyber assessor evaluates a subject organisation's User Access Control (UAC) posture against the IASME Requirements for IT Infrastructure v3.3, mints a **CyberEssentialsUacPosture** credential on a compliant result, and the subject organisation immediately presents that credential to an insurer to request cover. Three test runs cover the full threat model: **(1)** compliant evidence — posture credential issued, insurer quote returned; **(2)** non-compliant evidence (`adminMfaEnforced=false`) — route-gated issuance withheld, issue action unreachable; **(3)** mid-cycle revocation (n1-only) — revoking the credential after issuance blocks re-presentation via FailClosed (HTTP 400). A fourth run (`run-haip-sd.ps1`) exercises genuine OID4VCI issuance and OID4VP selective disclosure: 4 of 10 claims disclosed on the wire, 6 withheld; a negative test confirms the verifier rejects when a withheld claim is required.
+
+**NOT formal Cyber Essentials certification.** The credential attests that evidence was captured and evaluated by the assessor on the assessment date. It does not constitute, replace, or simulate the NCSC/IASME certification scheme.
+
+**Technical capabilities.** 3 organisations, 5 actions across 2 blueprints, 1 register; assessor-owned register with subject-org and insurer subscriptions; **open starting actions** (assessor on Blueprint A, subject-org on Blueprint B); JSON Logic compliance gate (`computedCompliant`) routing to credential issuance or terminal non-compliance record; **issuer-pinned trust policy** (`did-allowlist` with the assessor's `did:sorcha:org:<walletAddress>` substituted at publish time); **FailClosed revocation check**; HAIP service principal + `client_credentials` grant; `sorcha-agent` OID4VCI receive + OID4VP selective-disclosure present; script-injected credential presentation (the agent cannot auto-present `SorchaInternal` credentials — see `actors/README.md`).
+
+**Benefit.** Demonstrates the platform's posture-credential pattern in a regulated-sector context: a credential that attests evidence rather than a binary pass/fail, consumed downstream as an access gate with revocation as a live enforcement mechanism. The HAIP variant is the canonical proof that SD-JWT selective disclosure is wire-genuine, not a server-side filter.
 
 ---
 
@@ -426,6 +436,7 @@ walkthroughs/
 │
 ├── AssuredIdentity/                   # Credential — Feature 107 citizen identity + driving licence
 ├── ForestryCertification/             # Credential — Digital Product Passport (composes into TradeFinance)
+├── CyberEssentialsUac/                # Credential — UAC posture VC, route-gated issuance, FailClosed revocation, HAIP SD
 │
 ├── TradeFinance/                      # Agent-Driven — procurement-to-pay + invoice finance, FLE, MCP agents
 │
