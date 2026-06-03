@@ -181,11 +181,33 @@ public class TransactionRowTests
     [Fact]
     public void TransactionViewModel_TimeStampFormatted_ShowsTimeForToday()
     {
-        // Arrange - Transaction from 2 hours ago
-        var tx = CreateTestTransaction(timeStamp: DateTime.UtcNow.AddHours(-2));
+        // A transaction earlier the same day (>1h ago) shows HH:mm:ss.
+        // The clock is injected so this is deterministic — the previous version
+        // arranged DateTime.UtcNow.AddHours(-2) and was flaky in the first 2h of
+        // a UTC day, when "2 hours ago" fell on the previous calendar day and the
+        // formatter switched to the date format.
+        var now = new DateTime(2026, 1, 15, 14, 0, 0, DateTimeKind.Utc);
+        var earlierToday = new DateTime(2026, 1, 15, 9, 30, 15, DateTimeKind.Utc);
 
-        // Assert - Should show time in HH:mm:ss format
-        tx.TimeStampFormatted.Should().MatchRegex(@"\d{2}:\d{2}:\d{2}");
+        var result = TransactionViewModel.GetFormattedTime(earlierToday, now);
+
+        result.Should().Be("09:30:15");
+    }
+
+    [Fact]
+    public void TransactionViewModel_TimeStampFormatted_ShowsDateForPreviousDay()
+    {
+        // Regression for the midnight flake: a transaction >1h ago but on the
+        // previous calendar day shows the absolute date, not HH:mm:ss. This is
+        // exactly the state that intermittently broke the "today" test.
+        var now = new DateTime(2026, 1, 15, 1, 0, 0, DateTimeKind.Utc);          // 01:00 UTC
+        var lateYesterday = new DateTime(2026, 1, 14, 23, 0, 0, DateTimeKind.Utc); // 2h earlier, prev day
+
+        var result = TransactionViewModel.GetFormattedTime(lateYesterday, now);
+
+        // Date branch ("MMM dd, HH:mm") — culture-independent shape, and explicitly NOT the time-only format.
+        result.Should().MatchRegex(@"^\w{3} \d{2}, \d{2}:\d{2}$");
+        result.Should().NotMatchRegex(@"\d{2}:\d{2}:\d{2}");
     }
 
     [Theory]

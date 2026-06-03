@@ -109,7 +109,7 @@ public record TransactionViewModel
     /// <summary>
     /// Computed: Formatted timestamp (relative or absolute)
     /// </summary>
-    public string TimeStampFormatted => GetFormattedTime(TimeStamp);
+    public string TimeStampFormatted => GetFormattedTime(TimeStamp, DateTime.UtcNow);
 
     /// <summary>
     /// Computed: Whether this transaction is recent (within last 5 seconds)
@@ -149,9 +149,14 @@ public record TransactionViewModel
     /// </summary>
     public string DidUri => $"did:sorcha:register:{RegisterId}/tx/{TxId}";
 
-    private static string GetFormattedTime(DateTime dateTime)
+    // <c>now</c> is injected (rather than read from the clock inside) so the
+    // calendar-boundary branches below are deterministically unit-testable.
+    // Reading DateTime.UtcNow here made the "today" check flaky when a test ran
+    // in the first couple of hours of a UTC day (a "2 hours ago" timestamp fell
+    // on the previous calendar day). Callers pass DateTime.UtcNow.
+    internal static string GetFormattedTime(DateTime dateTime, DateTime now)
     {
-        var timeSpan = DateTime.UtcNow - dateTime;
+        var timeSpan = now - dateTime;
 
         // For recent transactions, show relative time
         if (timeSpan.TotalMinutes < 60)
@@ -162,7 +167,7 @@ public record TransactionViewModel
         }
 
         // For today's transactions, show time only
-        if (dateTime.Date == DateTime.UtcNow.Date)
+        if (dateTime.Date == now.Date)
         {
             return dateTime.ToString("HH:mm:ss");
         }

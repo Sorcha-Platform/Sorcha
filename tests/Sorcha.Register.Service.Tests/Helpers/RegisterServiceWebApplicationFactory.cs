@@ -44,14 +44,16 @@ namespace Sorcha.Register.Service.Tests.Helpers;
 /// </remarks>
 public class RegisterServiceWebApplicationFactory : WebApplicationFactory<Program>
 {
-    private static readonly string[] EnvironmentVariables =
-    [
-        "SystemWalletSigning__ValidatorId",
-        "ConnectionStrings__redis",
-        "RegisterStorage__Type"
-    ];
-
-    public RegisterServiceWebApplicationFactory()
+    // Required test config is set process-wide ONCE in the type initializer and
+    // never cleared. Previously each instance set these in its constructor and
+    // nulled them in Dispose; with xUnit running test classes in parallel, one
+    // instance's Dispose could clear SystemWalletSigning:ValidatorId while another
+    // instance's host was still starting, so AddSystemWalletSigning threw
+    // "SystemWalletSigning:ValidatorId configuration is required" intermittently
+    // (issue #904). These are test-only constants shared by every host in this
+    // assembly, so setting them once and leaving them set is both race-free and
+    // correct.
+    static RegisterServiceWebApplicationFactory()
     {
         Environment.SetEnvironmentVariable(
             "SystemWalletSigning__ValidatorId", "test-validator-001");
@@ -130,19 +132,6 @@ public class RegisterServiceWebApplicationFactory : WebApplicationFactory<Progra
             services.RemoveAll(typeof(HubLifetimeManager<RegisterHub>));
             services.AddSingleton<HubLifetimeManager<RegisterHub>, DefaultHubLifetimeManager<RegisterHub>>();
         });
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            foreach (var envVar in EnvironmentVariables)
-            {
-                Environment.SetEnvironmentVariable(envVar, null);
-            }
-        }
-
-        base.Dispose(disposing);
     }
 
     private static void ReplaceService<T>(IServiceCollection services, Func<IServiceProvider, T> factory)
