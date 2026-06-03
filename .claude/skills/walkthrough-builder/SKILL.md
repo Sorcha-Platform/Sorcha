@@ -229,6 +229,20 @@ Blueprint publishing requires `CanPublishBlueprints` = **Administrator role OR a
 
 The register's genesis control tx — which records the owner governance roster the F142 gate reads — seals **asynchronously after `New-SorchaRegister` returns**. A blueprint publish issued immediately reads an **empty** roster and fail-closes with the *same* `403 "You do not hold a publish-governance role"`. ConstructionPermit/Forestry got away with it by having other steps between register-create and publish; TradeFinance didn't and 403'd every time. **Poll `GET /api/registers/{id}/governance/roster` until `members.Count > 0` before publishing** (the register-genesis analogue of the F145 action-seal cadence).
 
+#### REQUIRED: a credential-ISSUING org must provision a Feature 083 master key
+
+Any org that issues a native SorchaLocalWallet SD-JWT VC **MUST** call `Set-SorchaOrgMasterKey` for that org in setup (after its session carries `wallet_address`). Without it, `IssuanceKeyService.GetActiveSigningMaterialAsync` returns null and the mint **silently falls back to the org's root wallet key** — producing a credential whose `iss` is a **bare wallet address** (not a `did:`), with **no `kid`** and **no `jwk`** in the JWS header. That credential is **unverifiable**: a cross-register / insurer trust check fails with `TrustEvaluator: issuer signature not verified` (looks like a platform bug; it's a missing setup step).
+
+```powershell
+# After the issuer org's session is re-logged with its wallet_address claim:
+Set-SorchaOrgMasterKey -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $issuerOrgId -Headers $issuerSession.Headers   # idempotent on 409
+```
+
+- **Do this:** `ForestryCertification`, `TradeFinance`, `SelfBuildHouse` (their issuer orgs provision master keys).
+- **Footgun (don't do this):** `CyberEssentialsUac` / `AssuredIdentity` historically provisioned only **HAIP** enrolment, not a master key — so their blueprint SorchaLocalWallet issuance fell to the bare-wallet `iss` path. HAIP enrolment is for the OID4VCI variant; it does **not** substitute for the F083 master key on the blueprint issuance path.
+- **Allowlist interaction:** the F083 master key makes `iss` become `did:sorcha:org:{DERIVED vc-issuance child address}` — which is **different** from the org's operational wallet address. A `trustPolicy.did-allowlist` pinning the *operational* `did:sorcha:org:{wallet}` will then NOT match (no `alsoKnownAs` bridge). See the **`verifiable-credentials` skill → "Org VC-Issuer Signing & DID Anchoring"** for the three-address model and the re-anchor fix; until that lands, pin the *derived* issuance DID (read it back from the issued credential / the org's `did.json` `id`), not the operational one.
+
 #### Cadence is now auto-retried in `Invoke-SorchaAction` (F145)
 
 `Invoke-SorchaAction` wraps its submit POST in `Invoke-SorchaActionPostWithCadenceRetry`, which **retries only the transient `400 "Action N is not a current action"`** (the projector hasn't folded the previous seal yet) up to 15×1s. So you no longer strictly need an explicit `Wait-SorchaActorReady -Mode AwaitingInbox` before every actor switch — the retry self-heals the cadence everywhere. Explicit `AwaitingInbox` gates remain valid (belt-and-braces) and are still clearer in setup.ps1 publish-seal waits. Any non-cadence 400 (schema, auth) is rethrown immediately.
