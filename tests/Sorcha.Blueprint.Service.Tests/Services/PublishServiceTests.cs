@@ -70,6 +70,7 @@ public class PublishServiceTests
         {
             Id = "bp-2",
             Title = "Incomplete",
+            Description = "Validation test blueprint.",
             Participants = [new ParticipantModel { Id = "p1", Name = "Alice" }],
             Actions = []
         };
@@ -81,6 +82,33 @@ public class PublishServiceTests
         result.IsValid.Should().BeFalse();
         result.ValidationResults.Should().Contain(i => i.Message.Contains("at least 2 participants"));
         result.ValidationResults.Should().Contain(i => i.Message.Contains("at least 1 action"));
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ShortTitleAndMissingDescription_ReturnsErrors()
+    {
+        // Bucket B: the publish path must enforce the model's [Required] + MinLength(3)/(5) on
+        // title/description (previously only the AI-chat tool did).
+        var blueprint = new BlueprintModel
+        {
+            Id = "bp-short",
+            Title = "ab",            // < 3 chars
+            Description = "x",        // < 5 chars
+            Participants =
+            [
+                new ParticipantModel { Id = "p1", Name = "Alice" },
+                new ParticipantModel { Id = "p2", Name = "Bob" }
+            ],
+            Actions = [new ActionModel { Id = 1, Title = "Start", Sender = "p1", IsStartingAction = true }]
+        };
+        _mockBlueprintStore.Setup(s => s.GetAsync("bp-short")).ReturnsAsync(blueprint);
+        var service = CreateService();
+
+        var result = await service.ValidateAsync("bp-short");
+
+        result.IsValid.Should().BeFalse();
+        result.ValidationResults.Should().Contain(i => i.Message.Contains("title must be at least 3"));
+        result.ValidationResults.Should().Contain(i => i.Message.Contains("description must be at least 5"));
     }
 
     [Fact]
@@ -147,6 +175,7 @@ public class PublishServiceTests
         {
             Id = "bp-invalid",
             Title = "Invalid",
+            Description = "Validation test blueprint.",
             Participants = [],
             Actions = []
         };
@@ -173,6 +202,7 @@ public class PublishServiceTests
         {
             Id = "bp-nostart",
             Title = "No Starting Action",
+            Description = "Validation test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -204,6 +234,7 @@ public class PublishServiceTests
         {
             Id = "bp-badroute",
             Title = "Bad Route Target",
+            Description = "Validation test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -237,6 +268,7 @@ public class PublishServiceTests
         {
             Id = "bp-badreject",
             Title = "Bad Rejection Target",
+            Description = "Validation test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -270,6 +302,7 @@ public class PublishServiceTests
         {
             Id = "bp-orphan",
             Title = "Orphan Action",
+            Description = "Validation test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -301,6 +334,7 @@ public class PublishServiceTests
         {
             Id = "bp-badsender",
             Title = "Bad Sender",
+            Description = "Validation test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -331,6 +365,7 @@ public class PublishServiceTests
         {
             Id = "bp-badpointer",
             Title = "Bad JSON Pointer",
+            Description = "Validation test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -364,6 +399,7 @@ public class PublishServiceTests
         {
             Id = "bp-goodpointer",
             Title = "Good JSON Pointers",
+            Description = "Validation test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -401,6 +437,7 @@ public class PublishServiceTests
         {
             Id = "bp-badlogic",
             Title = "Bad JSON Logic",
+            Description = "Validation test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -436,6 +473,7 @@ public class PublishServiceTests
         {
             Id = "bp-goodlogic",
             Title = "Good JSON Logic",
+            Description = "Validation test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -470,6 +508,7 @@ public class PublishServiceTests
     {
         Id = "bp-1",
         Title = "Test Blueprint",
+        Description = "A valid test blueprint for publish validation.",
         Participants =
         [
             new ParticipantModel { Id = "p1", Name = "Alice" },
@@ -491,6 +530,7 @@ public class PublishServiceTests
     {
         Id = "bp-cycle",
         Title = "Cyclic Blueprint",
+        Description = "Validation test blueprint.",
         Participants =
         [
             new ParticipantModel { Id = "p1", Name = "Alice" },

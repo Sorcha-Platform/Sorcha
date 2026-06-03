@@ -391,6 +391,7 @@ public class CycleDetectionTests
         {
             Id = "test-blueprint",
             Title = "Test Blueprint",
+            Description = "Cycle-detection test blueprint.",
             Participants =
             [
                 new ParticipantModel { Id = "p1", Name = "Participant 1" },
