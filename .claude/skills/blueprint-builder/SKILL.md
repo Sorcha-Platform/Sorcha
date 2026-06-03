@@ -378,6 +378,32 @@ Per-action computed values evaluated by the engine after schema validation, befo
 
 Key names are unrestricted; values are JSON Logic expressions referencing payload fields via `{ "var": "fieldName" }`. Calculations from prior actions listed in `requiredPriorActions` are merged into scope at routing time.
 
+### Engine + nested field access (verified 2026-06-02)
+
+The evaluator is **json-everything's `Json.Logic`** (`src/Core/Sorcha.Blueprint.Engine/Implementation/JsonLogicEvaluator.cs`), implementing jsonlogic.com semantics. Two consequences worth knowing when authoring gates:
+
+- **`var` supports nested dot-paths.** The submitted payload is serialised to a `JsonNode` preserving its object nesting, so `{ "var": "mfa.adminMfaEnforced" }` resolves against a nested `{ "mfa": { "adminMfaEnforced": true } }` payload — you do **not** need to flatten the schema for the gate. Array indices work too (`{ "var": "items.0.price" }`). This is the same nested resolution that `claimMappings` `sourceField` JSON Pointers use, just expressed in JSON Logic dot-notation rather than RFC 6901.
+- **Standard operators are available**, including `and`, `or`, `==`, `!=`, `>`, `>=`, `<`, `<=`, `if`, `in` (array membership / substring), and arithmetic. Compose multi-condition compliance gates directly — e.g. an issuance gate that ANDs several nested booleans and an OR'd password-policy branch:
+
+```jsonc
+"calculations": {
+  "computedCompliant": {
+    "and": [
+      { "==": [{ "var": "mfa.adminMfaEnforced" }, true] },
+      { "==": [{ "var": "offboarding.staleAccounts" }, 0] },
+      { "or": [
+        { "and": [{ "in": [{ "var": "passwordPolicy.approach" }, ["mfa+8","lockout+8"]] }, { ">=": [{ "var": "passwordPolicy.minLength" }, 8] }] },
+        { "and": [{ "==": [{ "var": "passwordPolicy.approach" }, "denylist+12"] }, { ">=": [{ "var": "passwordPolicy.minLength" }, 12] }] }
+      ] }
+    ]
+  }
+}
+```
+
+**Gating credential issuance on a computed value:** there is no `condition` field on `credentialIssuanceConfig` — minting runs *before* routing, so an action that declares `credentialIssuanceConfig` **always mints when reached** (validation codes `VAL_BP_011`/`VAL_BP_012` are unrelated). To *withhold* a credential on a computed-false gate, compute the value in `calculations`, then **route-gate**: a `condition`-guarded route reaches the issuing action only when the gate is true; the default route goes to a terminal action with no issuance. (`computedCompliant` true → issue action; else → record/terminal action.) The submitted-vs-computed distinction matters for integrity: route on the *computed* value, not a submitter-supplied flag, so a payload can't claim compliance it didn't earn.
+
+A nested-var gate flowing into a route condition is exercised end-to-end by the **CyberEssentialsUac** walkthrough (`walkthroughs/CyberEssentialsUac/ce-uac-assessment-template.json`).
+
 ## Required Prior Actions
 
 By default, the engine reconstructs accumulated state from only the immediately preceding action. To make data from earlier actions available for routing or `outputMapping`, list them in `requiredPriorActions`:

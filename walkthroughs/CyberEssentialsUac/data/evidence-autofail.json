@@ -1,0 +1,48 @@
+{
+  "assessment": {
+    "orgDid": "did:sorcha:org:REPLACED_AT_RUNTIME",
+    "scopeName": "Whole organisation",
+    "scopeDeviceCount": 42,
+    "date": "2026-06-02",
+    "assessorType": "consultant",
+    "infraVersion": "v3.3"
+  },
+  "provisioning": {
+    "processDocumented": true,
+    "uniquePerUser": true,
+    "accountsInScope": 58,
+    "policyHash": "sha256:9f2c1a4b7e8d3f60a1c2b3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e6f7081"
+  },
+  "offboarding": {
+    "processDocumented": true,
+    "revocationSla": "P1D",
+    "staleAccounts": 0,
+    "lastReviewDate": "2026-05-28"
+  },
+  "mfa": {
+    "cloudServicesTotal": 6,
+    "cloudServicesWithMfa": 6,
+    "adminMfaEnforced": false,
+    "userMfaEnforced": true,
+    "hardwareTokenWhereSupported": true
+  },
+  "privilegedAccess": {
+    "adminAccountsCount": 4,
+    "separateAdminAccounts": true,
+    "leastPrivilege": true,
+    "staleAdminPrivileges": 0,
+    "lastReviewDate": "2026-05-28"
+  },
+  "passwordPolicy": {
+    "approach": "denylist+12",
+    "minLength": 12,
+    "lockoutThreshold": 10,
+    "lockoutDurationMins": 15,
+    "denyListEnabled": true
+  },
+  "uac": {
+    "compliant": false,
+    "requirementsMet": ["A", "B", "D", "E"],
+    "autoFailTriggered": ["C"]
+  }
+}

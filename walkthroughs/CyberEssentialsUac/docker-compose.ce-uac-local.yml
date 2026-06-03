@@ -1,0 +1,19 @@
+# Local-only override for the CyberEssentialsUac walkthrough.
+# Turns OFF status-list embedding so scenarios 1 (happy) and 2 (auto-fail)
+# pass under FailClosed without a TLS-reachable status list. The signed
+# credential then carries no credentialStatus claim, and TrustEvaluator
+# short-circuits to "active" (verified: CredentialVerifierRevocationTests).
+# Scenario 3 (revocation) hard-skips locally; it needs embedding ON + a
+# reachable HTTPS status list, which n1.sorcha.dev provides.
+services:
+  blueprint-service:
+    environment:
+      CredentialStatus__EnableEmbedding: "false"
+
+  haip-service:
+    environment:
+      # HAIP/OID4VP selective-disclosure variant (run-haip-sd.ps1):
+      # The IssuerUrl is embedded in credential offer URIs and verifier request URIs.
+      # Default is https://sorcha.example/haip (unreachable). Override to the local
+      # gateway so the host-run sorcha-agent CLI can reach the OID4VCI/OID4VP endpoints.
+      Haip__IssuerUrl: "http://127.0.0.1"
