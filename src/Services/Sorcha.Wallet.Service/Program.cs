@@ -174,6 +174,15 @@ builder.Services.AddHostedService<
 // Replaces the v1 EmptyCitizenCredentialEventStream placeholder.
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenCredentialEventStream,
     Sorcha.Wallet.Service.Services.Implementation.EfCoreCitizenCredentialEventStream>();
+// M2 (review): ICitizenCredentialEventStream is on the F113 audited list
+// (AuditedStorageInterfaces) but was registered with a bare AddScoped, so the storage-
+// registration log, the `storage-providers` health check, and the OTel gauges never saw it —
+// its audited status was inert. It has only an EF-backed implementation, so record it as
+// persistent (visible to the audit; never trips the in-memory fail-fast).
+builder.Services.GetStorageRegistrationLog().RegisterPersistent(
+    typeof(Sorcha.Wallet.Service.Services.Interfaces.ICitizenCredentialEventStream).FullName!,
+    typeof(Sorcha.Wallet.Service.Services.Implementation.EfCoreCitizenCredentialEventStream).FullName!,
+    "postgres");
 // Scoped (was Singleton) because it now consumes the Scoped EfCoreCitizenCredentialEventStream.
 // CitizenSyncService is stateless apart from its signing key, so per-request creation is cheap.
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ICitizenSyncService,
