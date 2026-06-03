@@ -90,12 +90,12 @@ Multi-service repo. Production code under `src/Services/Sorcha.{Wallet,Blueprint
 
 ### Tests for User Story 3 (write first, must FAIL) ⚠️
 
-- [ ] T014 [P] [US3] Endpoint-metadata test in `tests/Sorcha.Wallet.Service.Tests/Endpoints/PendingApplicationAuthorizationTests.cs` — assert the `/api/v1/wallet/pending-applications` group endpoints carry an `IAuthorizeData` with policy `RequireConsumerAudience`. (Fails: currently plain `RequireAuthorization()`.)
+- [x] T014 [P] [US3] Endpoint-metadata test in `tests/Sorcha.Wallet.Service.Tests/Endpoints/PendingApplicationAuthorizationTests.cs` — assert the `/api/v1/wallet/pending-applications` group endpoints carry an `IAuthorizeData` with policy `RequireConsumerAudience`. (Fails: currently plain `RequireAuthorization()`.)
 
 ### Implementation for User Story 3
 
-- [ ] T015 [US3] In `src/Services/Sorcha.Wallet.Service/Endpoints/PendingApplicationEndpoints.cs`: change the group `.RequireAuthorization()` to `.RequireAuthorization(AuthorizationPolicies.RequireConsumerAudience)`.
-- [ ] T016 [US3] Build + run `tests/Sorcha.Wallet.Service.Tests` to green; commit `fix(147): F124 require consumer audience on pending-applications`.
+- [x] T015 [US3] In `src/Services/Sorcha.Wallet.Service/Endpoints/PendingApplicationEndpoints.cs`: change the group `.RequireAuthorization()` to `.RequireAuthorization(AuthorizationPolicies.RequireConsumerAudience)`.
+- [x] T016 [US3] Build + run `tests/Sorcha.Wallet.Service.Tests` to green; commit `fix(147): F124 require consumer audience on pending-applications`.
 
 **Checkpoint**: Pending-application notice is consumer-only.
 
