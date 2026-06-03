@@ -13,17 +13,17 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Create the client folder `src/Common/Sorcha.ServiceClients.Http/OrgInfo/` and confirm the touched test projects build (`Sorcha.Wallet.Service.Tests`, `Sorcha.Tenant.Service.Tests`, `Sorcha.Blueprint.Service.Tests`) so subsequent tasks compile against a green baseline.
+- [X] T001 Create the client folder `src/Common/Sorcha.ServiceClients.Http/OrgInfo/` and confirm the touched test projects build (`Sorcha.Wallet.Service.Tests`, `Sorcha.Tenant.Service.Tests`, `Sorcha.Blueprint.Service.Tests`) so subsequent tasks compile against a green baseline.
 
 ---
 
 ## Phase 2: Foundational (blocking prerequisites for the user stories)
 
-- [ ] T002 [P] Add `Task<OrgDidDocument?> GetByPrimaryDidAsync(string did, CancellationToken)` to `src/Services/Sorcha.Tenant.Service/Services/OrgDidDocumentService.cs` (single indexed lookup on `PrimaryDid`; the doc `id` is already the DID — opaque).
-- [ ] T003 [P] Add internal endpoint `GET /api/internal/orgs/{orgId:guid}/wallet-address` to `src/Services/Sorcha.Tenant.Service/Endpoints/InternalEndpoints.cs` (`RequireService`); returns `{ walletAddress }` from `Organization.WalletAddress`, **404 when org missing or `WalletAddress` is null** (per `contracts/org-wallet-address.internal.md`).
-- [ ] T004 Add public endpoint `GET /orgs/by-did/{did}/did.json` to `src/Services/Sorcha.Tenant.Service/Endpoints/OrgDidDocumentEndpoints.cs` (anonymous, `application/did+json`), backed by `GetByPrimaryDidAsync` (per `contracts/org-did-by-did.public.md`). Depends on T002.
-- [ ] T005 [P] Add `IOrgInfoClient` + `OrgInfoClient` in `src/Common/Sorcha.ServiceClients.Http/OrgInfo/` with `Task<string?> ResolveCanonicalWalletAddressAsync(Guid orgId, CancellationToken)` (GET the T003 endpoint; 200→address, 404/transport→null), mirroring `OrgDidDocumentClient`.
-- [ ] T006 Register `IOrgInfoClient` against the Tenant base address (`ServiceClients:TenantService:Address`) with service-principal auth in the ServiceClients DI extension that registers `IOrgDidDocumentClient`. Depends on T005.
+- [X] T002 [P] Add `Task<OrgDidDocument?> GetByPrimaryDidAsync(string did, CancellationToken)` to `src/Services/Sorcha.Tenant.Service/Services/OrgDidDocumentService.cs` (single indexed lookup on `PrimaryDid`; the doc `id` is already the DID — opaque).
+- [X] T003 [P] Add internal endpoint `GET /api/internal/orgs/{orgId:guid}/wallet-address` to `src/Services/Sorcha.Tenant.Service/Endpoints/InternalEndpoints.cs` (`RequireService`); returns `{ walletAddress }` from `Organization.WalletAddress`, **404 when org missing or `WalletAddress` is null** (per `contracts/org-wallet-address.internal.md`).
+- [X] T004 Add public endpoint `GET /orgs/by-did/{did}/did.json` to `src/Services/Sorcha.Tenant.Service/Endpoints/OrgDidDocumentEndpoints.cs` (anonymous, `application/did+json`), backed by `GetByPrimaryDidAsync` (per `contracts/org-did-by-did.public.md`). Depends on T002.
+- [X] T005 [P] Add `IOrgInfoClient` + `OrgInfoClient` in `src/Common/Sorcha.ServiceClients.Http/OrgInfo/` with `Task<string?> ResolveCanonicalWalletAddressAsync(Guid orgId, CancellationToken)` (GET the T003 endpoint; 200→address, 404/transport→null), mirroring `OrgDidDocumentClient`.
+- [X] T006 Register `IOrgInfoClient` against the Tenant base address (`ServiceClients:TenantService:Address`) with service-principal auth in the ServiceClients DI extension that registers `IOrgDidDocumentClient`. Depends on T005.
 
 **Checkpoint:** Tenant exposes both new routes; the Wallet Service can resolve an org's canonical wallet address and fetch a published doc by DID.
 

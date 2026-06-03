@@ -35,6 +35,20 @@ public static class OrgDidDocumentEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .RequireRateLimiting(RateLimitPolicies.Api);
 
+        // Feature 149 — resolve by DID (verifier holds did:sorcha:org:{A}, not the org GUID).
+        app.MapGet("/orgs/by-did/{did}/did.json", ResolveDocumentByDid)
+            .WithName("ResolveOrgDidDocumentByDid")
+            .WithSummary("Resolve the published DID document for an organisation by its DID")
+            .WithDescription(
+                "Returns the published W3C DID document whose canonical id equals the supplied " +
+                "did:sorcha:org:{walletAddress}. Lets a verifier fetch the document from the issuer " +
+                "DID alone — the by-orgId route requires the GUID, which a verifier does not hold. " +
+                "Backed by the existing PrimaryDid index. Anonymous, cacheable for 6h.")
+            .AllowAnonymous()
+            .Produces(StatusCodes.Status200OK, contentType: "application/did+json")
+            .Produces(StatusCodes.Status404NotFound)
+            .RequireRateLimiting(RateLimitPolicies.Api);
+
         // Internal regenerate endpoint — wallet → tenant trigger after a key event.
         app.MapPost("/orgs/{orgId:guid}/did-document/regenerate", RegenerateDocument)
             .WithName("RegenerateOrgDidDocument")
@@ -59,6 +73,25 @@ public static class OrgDidDocumentEndpoints
         if (doc is null) return Results.NotFound();
 
         // 6 hours per FR-007 — DID documents change infrequently and cache aggressively.
+        http.Response.Headers.CacheControl = "public, max-age=21600";
+
+        return Results.Content(
+            content: doc.DocumentJson,
+            contentType: "application/did+json",
+            contentEncoding: System.Text.Encoding.UTF8,
+            statusCode: StatusCodes.Status200OK);
+    }
+
+    private static async Task<IResult> ResolveDocumentByDid(
+        HttpContext http,
+        [FromRoute] string did,
+        [FromServices] IOrgDidDocumentService service,
+        CancellationToken ct)
+    {
+        var doc = await service.GetByPrimaryDidAsync(did, ct);
+        if (doc is null) return Results.NotFound();
+
+        // 6 hours — matches the by-orgId route; DID documents change infrequently.
         http.Response.Headers.CacheControl = "public, max-age=21600";
 
         return Results.Content(

@@ -31,6 +31,16 @@ public static class InternalEndpoints
                 + "Used internally by the API Gateway for domain-based routing.")
             .RequireAuthorization("RequireService");
 
+        // Feature 149: resolve an org's canonical operational wallet address (A) so the
+        // Wallet Service can anchor the issuer DID on did:sorcha:org:{A}.
+        group.MapGet("/orgs/{orgId:guid}/wallet-address", ResolveOrgWalletAddress)
+            .WithName("ResolveOrgWalletAddress")
+            .WithSummary("Resolve an organisation's canonical operational wallet address")
+            .WithDescription("Returns Organization.WalletAddress — the canonical did:sorcha:org anchor. "
+                + "404 when the org is unknown OR has no provisioned wallet; the caller treats 404 as "
+                + "'no resolvable issuer identity' and fails credential issuance closed.")
+            .RequireAuthorization("RequireService");
+
         // Feature 114: Citizen wallet device enrolment bridge.
         group.MapPost("/platform-user-devices", RegisterPlatformUserDevice)
             .WithName("RegisterPlatformUserDevice")
@@ -260,6 +270,25 @@ public static class InternalEndpoints
     }
 
     internal record DomainResolutionResponse(string Subdomain);
+
+    /// <summary>Wire shape for <see cref="ResolveOrgWalletAddress"/> (Feature 149).</summary>
+    public sealed record OrgWalletAddressResponse(string WalletAddress);
+
+    private static async Task<Results<Ok<OrgWalletAddressResponse>, NotFound>> ResolveOrgWalletAddress(
+        Guid orgId,
+        IOrganizationRepository organizationRepository,
+        CancellationToken cancellationToken)
+    {
+        var org = await organizationRepository.GetByIdAsync(orgId, cancellationToken);
+        if (org is null || string.IsNullOrWhiteSpace(org.WalletAddress))
+        {
+            // 404 covers both "unknown org" and "no provisioned wallet" — the caller
+            // fails issuance closed rather than minting an unverifiable credential.
+            return TypedResults.NotFound();
+        }
+
+        return TypedResults.Ok(new OrgWalletAddressResponse(org.WalletAddress));
+    }
 
     /// <summary>Wire shape for <see cref="ResolvePlatformUserByIdentity"/>.</summary>
     public sealed record PlatformUserResolution(Guid UserIdentityId, Guid PlatformUserId);
