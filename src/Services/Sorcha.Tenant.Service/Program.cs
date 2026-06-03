@@ -183,6 +183,10 @@ builder.Services.AddSorchaAddressLookup(builder.Configuration);
 
 var app = builder.Build();
 
+// Feature 146 — fail closed at startup if no at-rest secret-protection key can be resolved
+// (resolves the singleton, which runs TenantSecretKeyResolver.ResolveProtectionKey()).
+_ = app.Services.GetRequiredService<Sorcha.Tenant.Service.Services.ISecretProtectionProvider>();
+
 // Run database migrations and seeding BEFORE app.Run() to prevent race conditions
 // with background services (AuditCleanupService, EventCleanupService, etc.)
 // that query the database immediately on startup.

@@ -21,10 +21,16 @@ public class TotpConfiguration
     public Guid UserId { get; set; }
 
     /// <summary>
-    /// Encrypted TOTP shared secret (Base32-encoded, encrypted at rest).
-    /// Used with OtpNet to generate/validate time-based codes.
+    /// The TOTP shared secret (Base32 form) protected at rest with AES-256-GCM via
+    /// <c>ISecretProtectionProvider</c>. Stored as the ciphertext envelope (nonce ∥ ciphertext ∥ tag).
+    /// Used with OtpNet to generate/validate time-based codes after decryption.
     /// </summary>
-    public string EncryptedSecret { get; set; } = string.Empty;
+    public byte[] EncryptedSecret { get; set; } = [];
+
+    /// <summary>
+    /// Identifier of the key that protected <see cref="EncryptedSecret"/> (e.g. "jwt-derived-v1").
+    /// </summary>
+    public string EncryptionKeyId { get; set; } = string.Empty;
 
     /// <summary>
     /// JSON array of SHA-256 hashed backup codes.
