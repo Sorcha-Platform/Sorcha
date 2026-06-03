@@ -250,4 +250,55 @@ public class BlueprintServiceClientRehearsalTests
 
         Assert.Null(result);
     }
+
+    // Bucket B: PublishBlueprintAsync was a NotImplementedException stub; now it calls the endpoint.
+
+    [Fact]
+    public async Task PublishBlueprintAsync_Ok_ReturnsResult()
+    {
+        var body = new
+        {
+            blueprintId = "bp-1",
+            version = 3,
+            registerId = "reg-1",
+            publishedAt = DateTimeOffset.UtcNow,
+            overridden = true
+        };
+        var handler = CreateMockHandler(HttpStatusCode.OK, body);
+        var client = CreateClient(handler);
+
+        var result = await client.PublishBlueprintAsync("bp-1", new PublishBlueprintRequest { RegisterId = "reg-1" });
+
+        Assert.NotNull(result);
+        Assert.NotNull(result.Result);
+        Assert.False(result.IsRehearsalRequired);
+        Assert.Equal(3, result.Result!.Version);
+        Assert.True(result.Result.Overridden);
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_Conflict_ReturnsRehearsalRequired()
+    {
+        var body = new { code = "REHEARSAL_REQUIRED", execDefHash = "abc123", message = "Rehearse first." };
+        var handler = CreateMockHandler(HttpStatusCode.Conflict, body);
+        var client = CreateClient(handler);
+
+        var result = await client.PublishBlueprintAsync("bp-1", new PublishBlueprintRequest { RegisterId = "reg-1" });
+
+        Assert.NotNull(result);
+        Assert.True(result.IsRehearsalRequired);
+        Assert.Equal("abc123", result.RehearsalRequired!.ExecDefHash);
+    }
+
+    [Fact]
+    public async Task PublishBlueprintAsync_Forbidden_ReturnsNull()
+    {
+        // 403 governance-hard gate — the outcome type models success vs rehearsal-required only.
+        var handler = CreateMockHandler(HttpStatusCode.Forbidden);
+        var client = CreateClient(handler);
+
+        var result = await client.PublishBlueprintAsync("bp-1", new PublishBlueprintRequest { RegisterId = "reg-1" });
+
+        Assert.Null(result);
+    }
 }

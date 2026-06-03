@@ -129,6 +129,18 @@ public class Transaction : ITransaction
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Review M1 (DEFERRED — see the security-hardening backlog): this verify is a placeholder —
+    /// it computes the signing hash but never compares it against the signature (public-key
+    /// extraction is a "return success as placeholder" TODO), so it returns
+    /// <see cref="TransactionStatus.Success"/> for any signed transaction with valid payloads.
+    /// It is NOT on any live path (the V1 <c>TransactionFactory</c> is not DI-registered; the real
+    /// validator verifies via <c>ICryptoModule.VerifyAsync</c>) and has no non-test callers, so the
+    /// risk is purely latent. Making it fail loud is the right fix, but V1 is the module's only
+    /// implemented transaction version and an entire signing/verification test suite asserts this
+    /// behaviour — resolving it needs a decision (implement real V1 verification vs excise the V1
+    /// verify path + its no-op tests), which is out of scope for the mechanical Bucket-B pass.
+    /// </remarks>
     public async Task<TransactionStatus> VerifyAsync(
         CancellationToken cancellationToken = default)
     {

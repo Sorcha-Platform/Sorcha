@@ -3177,6 +3177,20 @@ public class PublishService(
         var errors = new List<string>();
         var warnings = new List<string>();
 
+        // Rule 0: Title and description must meet the model's required minimum lengths
+        // (BlueprintModel declares [Required] + MinLength(3)/(5), but DataAnnotations are not
+        // evaluated on the publish path — only the AI-chat tool enforced this. Mirror it here so
+        // a directly-authored blueprint can't be published with a missing/too-short title/description.)
+        if (string.IsNullOrWhiteSpace(blueprint.Title) || blueprint.Title.Length < 3)
+        {
+            errors.Add("Blueprint title must be at least 3 characters");
+        }
+
+        if (string.IsNullOrWhiteSpace(blueprint.Description) || blueprint.Description.Length < 5)
+        {
+            errors.Add("Blueprint description must be at least 5 characters");
+        }
+
         // Rule 1: Must have at least 2 participants
         if (blueprint.Participants.Count < 2)
         {

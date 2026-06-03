@@ -110,15 +110,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IVerifierEngine, RealVerifierEngine>();
 
         // Feature 125 / PR-D — application-from-phone (US2). PortraitCaptureControl
-        // routes through IWebCameraService; the file-upload fallback is the
-        // v1 path until webcamera-bridge.js + native camera land in a
-        // follow-up. IApplicationSubmissionService signs payloads through
-        // IUserSigner under the active context and surfaces the in-progress
-        // state via F124's pending-application notice; the real HTTP
-        // submission to the blueprint endpoints lands alongside the
-        // application catalogue API.
+        // routes through IWebCameraService; the file-upload fallback is the v1 path
+        // until webcamera-bridge.js + native camera land in a follow-up.
         services.AddSingleton<IWebCameraService, FileFallbackWebCameraService>();
-        services.AddSingleton<IApplicationSubmissionService, StubApplicationSubmissionService>();
+        // Bucket B (review §4): the F125 StubApplicationSubmissionService no-op is NOT registered
+        // for production — it faked submission success and is superseded by the F137
+        // IApplicationActionClient path (ApplicationInstance.razor). The class + its tests are
+        // retained as a test-only seam; it is no longer injectable into the running app.
 
         // Server-clock observer (T101) — populated by the ServerClockHandler on
         // every outbound HTTP call; read by Pages/Index.razor to surface a

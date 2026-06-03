@@ -573,8 +573,45 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     }
 
     /// <inheritdoc />
-    public Task<PublishBlueprintOutcome?> PublishBlueprintAsync(string blueprintId, PublishBlueprintRequest request, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("TODO(US2/US3): governance-hard / rehearsal-soft publish — Feature 142.");
+    public async Task<PublishBlueprintOutcome?> PublishBlueprintAsync(string blueprintId, PublishBlueprintRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/blueprints/{Uri.EscapeDataString(blueprintId)}/publish", request, JsonOptions, cancellationToken);
+
+            // 409 = rehearsal soft-gate (Feature 142): the executable-definition hash was not rehearsed.
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                var rehearsal = await response.Content
+                    .ReadFromJsonAsync<RehearsalRequiredError>(JsonOptions, cancellationToken);
+                return new PublishBlueprintOutcome { RehearsalRequired = rehearsal ?? new RehearsalRequiredError() };
+            }
+
+            // 403 = governance-hard gate (caller lacks Owner/Admin/Designer on the register) and any
+            // other non-success: surface as null (the outcome type models success vs rehearsal-required only).
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Blueprint publish failed: {StatusCode} (blueprint {BlueprintId}, register {RegisterId})",
+                    response.StatusCode, blueprintId, request.RegisterId);
+                return null;
+            }
+
+            var result = await response.Content
+                .ReadFromJsonAsync<PublishBlueprintResult>(JsonOptions, cancellationToken);
+            return result is null ? null : new PublishBlueprintOutcome { Result = result };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Blueprint publish request failed for {BlueprintId}", blueprintId);
+            return null;
+        }
+    }
 
     /// <inheritdoc />
     public async Task<CloneFromPublishedResult?> CloneFromPublishedAsync(CloneFromPublishedRequest request, CancellationToken cancellationToken = default)
