@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.AspNetCore.Authorization;
+
+using Sorcha.Blueprint.Service.Authorization;
 using Sorcha.ServiceClients.Auth;
 
 namespace Sorcha.Blueprint.Service.Extensions;
@@ -21,16 +24,19 @@ public static class AuthenticationExtensions
         // RequireOrganizationMember, RequireDelegatedAuthority, RequireAdministrator, CanWriteDockets)
         services.AddSorchaAuthorizationPolicies();
 
+        // Feature 147 / review H2: blueprint authoring must exclude consumer-tier tokens (which carry
+        // an org_id under Feature 136). The tier gate lives in the policy itself (via the handler) so it
+        // cannot be omitted per-endpoint.
+        services.AddSingleton<IAuthorizationHandler, BlueprintManagementAuthorizationHandler>();
+
         services.AddAuthorization(options =>
         {
-            // Blueprint management (create, update, delete) - requires org member or service token
+            // Blueprint management (create, update, delete) — service-tier caller OR platform-tier
+            // org member. The previous `org_id OR service` assertion admitted consumer/citizen tokens
+            // (which carry org_id); the requirement folds in the platform-audience check so the gap
+            // is closed for every endpoint using this policy, current and future (review H2).
             options.AddPolicy("CanManageBlueprints", policy =>
-                policy.RequireAssertion(context =>
-                {
-                    var hasOrgId = context.User.Claims.Any(c => c.Type == TokenClaimConstants.OrgId && !string.IsNullOrEmpty(c.Value));
-                    var isService = context.User.Claims.Any(c => c.Type == TokenClaimConstants.TokenType && c.Value == TokenClaimConstants.TokenTypeService);
-                    return hasOrgId || isService;
-                }));
+                policy.AddRequirements(new BlueprintManagementRequirement()));
 
             // Blueprint execution - any authenticated user
             options.AddPolicy("CanExecuteBlueprints", policy =>

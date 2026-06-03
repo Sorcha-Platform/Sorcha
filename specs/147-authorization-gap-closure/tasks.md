@@ -69,14 +69,14 @@ Multi-service repo. Production code under `src/Services/Sorcha.{Wallet,Blueprint
 
 ### Tests for User Story 2 (write first, must FAIL) ⚠️
 
-- [ ] T009 [P] [US2] Policy-evaluation tests for `CanManageBlueprints` in `tests/Sorcha.Blueprint.Service.Tests/Authorization/BlueprintManagementPolicyTests.cs` — build a provider via `services.AddLogging(); services.AddBlueprintAuthorization();` and assert: consumer(`org_id`+`sorcha:consumer`)→deny; platform(`org_id`+`sorcha:platform`)→allow; service(`token_type=service`+`sorcha:service`)→allow; platform no-`org_id`→deny; `org_id` but no tier audience→deny. (Fails: current policy allows consumer-with-org.)
+- [x] T009 [P] [US2] Policy-evaluation tests for `CanManageBlueprints` in `tests/Sorcha.Blueprint.Service.Tests/Authorization/BlueprintManagementPolicyTests.cs` — build a provider via `services.AddLogging(); services.AddBlueprintAuthorization();` and assert: consumer(`org_id`+`sorcha:consumer`)→deny; platform(`org_id`+`sorcha:platform`)→allow; service(`token_type=service`+`sorcha:service`)→allow; platform no-`org_id`→deny; `org_id` but no tier audience→deny. (Fails: current policy allows consumer-with-org.)
 
 ### Implementation for User Story 2
 
-- [ ] T010 [P] [US2] Create `BlueprintManagementRequirement : IAuthorizationRequirement` (marker, XML-documented) in `src/Services/Sorcha.Blueprint.Service/Authorization/BlueprintManagementRequirement.cs`.
-- [ ] T011 [US2] Create `BlueprintManagementAuthorizationHandler : AuthorizationHandler<BlueprintManagementRequirement>` in `src/Services/Sorcha.Blueprint.Service/Authorization/BlueprintManagementAuthorizationHandler.cs` — inject `SorchaAudiences`; succeed iff (`token_type==service` AND `HasTierAudience(Service)`) OR (non-empty `org_id` AND `HasTierAudience(Platform)`); never `Fail()`. (Depends on T010.)
-- [ ] T012 [US2] In `src/Services/Sorcha.Blueprint.Service/Extensions/AuthenticationExtensions.cs`: register the handler and redefine `CanManageBlueprints` to `policy.AddRequirements(new BlueprintManagementRequirement())` (replacing the `hasOrgId OR isService` assertion). Leave `RehearsalEndpoints`/`BlueprintFromPublishedEndpoint` (which also compose `RequirePlatformAudience`) untouched. (Depends on T010, T011.)
-- [ ] T013 [US2] Build + run `tests/Sorcha.Blueprint.Service.Tests` to green; commit `feat(147): H2 fold platform-audience gate into CanManageBlueprints`.
+- [x] T010 [P] [US2] Create `BlueprintManagementRequirement : IAuthorizationRequirement` (marker, XML-documented) in `src/Services/Sorcha.Blueprint.Service/Authorization/BlueprintManagementRequirement.cs`.
+- [x] T011 [US2] Create `BlueprintManagementAuthorizationHandler : AuthorizationHandler<BlueprintManagementRequirement>` in `src/Services/Sorcha.Blueprint.Service/Authorization/BlueprintManagementAuthorizationHandler.cs` — inject `SorchaAudiences`; succeed iff (`token_type==service` AND `HasTierAudience(Service)`) OR (non-empty `org_id` AND `HasTierAudience(Platform)`); never `Fail()`. (Depends on T010.)
+- [x] T012 [US2] In `src/Services/Sorcha.Blueprint.Service/Extensions/AuthenticationExtensions.cs`: register the handler and redefine `CanManageBlueprints` to `policy.AddRequirements(new BlueprintManagementRequirement())` (replacing the `hasOrgId OR isService` assertion). Leave `RehearsalEndpoints`/`BlueprintFromPublishedEndpoint` (which also compose `RequirePlatformAudience`) untouched. (Depends on T010, T011.)
+- [x] T013 [US2] Build + run `tests/Sorcha.Blueprint.Service.Tests` to green; commit `feat(147): H2 fold platform-audience gate into CanManageBlueprints`.
 
 **Checkpoint**: Consumer tokens cannot reach blueprint/schema/credential/status-list authoring; service + platform-admin unchanged.
 
