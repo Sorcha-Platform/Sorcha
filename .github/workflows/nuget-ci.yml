@@ -27,6 +27,17 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # Central Package Management without lockfiles, so key on the version
+      # manifest + every csproj. restore-keys lets a partial cache seed a cold
+      # restore instead of starting from empty.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Restore
         run: dotnet restore
 

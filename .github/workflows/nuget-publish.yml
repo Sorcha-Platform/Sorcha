@@ -129,8 +129,13 @@ jobs:
           echo "Bumped ${{ matrix.library }} from $CURRENT to $NEW_VERSION"
 
       - name: Restore and Build
+        # Restore only the library being published (transitively pulls its
+        # ProjectReferences). A blanket `dotnet restore` would pull the whole
+        # solution — including Sorcha.Cli's unrelated packages — which is both
+        # wasteful and couples library publishing to dependencies the libs don't
+        # use (e.g. a revoked upstream signing cert on a CLI-only package).
         run: |
-          dotnet restore
+          dotnet restore ${{ steps.version.outputs.lib_dir }}/
           dotnet build ${{ steps.version.outputs.lib_dir }}/ --configuration Release --no-restore
 
       - name: Pack
