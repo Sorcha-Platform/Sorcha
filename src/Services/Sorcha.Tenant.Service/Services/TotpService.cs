@@ -36,25 +36,22 @@ public class TotpService : ITotpService
     private readonly IIdentityRepository _identityRepository;
     private readonly ITenantSecurityInboxWriter _securityInbox;
     private readonly ISecretProtectionProvider _secretProtection;
+    private readonly byte[] _loginTokenSigningKey;
     private readonly ILogger<TotpService> _logger;
-
-    /// <summary>
-    /// HMAC key for signing login tokens. Derived from a stable source per process lifetime.
-    /// In production, this should be sourced from key management (Azure Key Vault, etc.).
-    /// </summary>
-    private static readonly byte[] LoginTokenSigningKey = GenerateStableKey();
 
     public TotpService(
         TenantDbContext db,
         IIdentityRepository identityRepository,
         ITenantSecurityInboxWriter securityInbox,
         ISecretProtectionProvider secretProtection,
+        LoginTokenSigningKey loginTokenSigningKey,
         ILogger<TotpService> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _securityInbox = securityInbox ?? throw new ArgumentNullException(nameof(securityInbox));
         _secretProtection = secretProtection ?? throw new ArgumentNullException(nameof(secretProtection));
+        _loginTokenSigningKey = (loginTokenSigningKey ?? throw new ArgumentNullException(nameof(loginTokenSigningKey))).Key;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -397,24 +394,14 @@ public class TotpService : ITotpService
     }
 
     /// <summary>
-    /// Computes HMAC-SHA256 signature for login token payload.
+    /// Computes the HMAC-SHA256 signature for a login-token payload using the deployment-stable,
+    /// JWT-derived signing key (Feature 146 — stable across replicas and restarts).
     /// </summary>
-    private static string ComputeHmac(string payload)
+    private string ComputeHmac(string payload)
     {
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
-        var hash = HMACSHA256.HashData(LoginTokenSigningKey, payloadBytes);
+        var hash = HMACSHA256.HashData(_loginTokenSigningKey, payloadBytes);
         return Convert.ToHexStringLower(hash);
-    }
-
-    /// <summary>
-    /// Generates a stable signing key for login tokens.
-    /// Uses RandomNumberGenerator for cryptographic randomness.
-    /// </summary>
-    private static byte[] GenerateStableKey()
-    {
-        var key = new byte[32];
-        RandomNumberGenerator.Fill(key);
-        return key;
     }
 
     /// <summary>

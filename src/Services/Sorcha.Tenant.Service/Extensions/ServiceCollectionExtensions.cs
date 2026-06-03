@@ -198,6 +198,8 @@ public static class ServiceCollectionExtensions
             var (key, keyId) = sp.GetRequiredService<TenantSecretKeyResolver>().ResolveProtectionKey();
             return new SoftwareSecretProtectionProvider(key, keyId);
         });
+        // Feature 146 — login-token HMAC key, derived once from the JWT signing key (stable across replicas/restarts).
+        services.AddSingleton<LoginTokenSigningKey>();
         services.AddScoped<IPasskeyService, PasskeyService>();
         services.AddScoped<IRegisterSubscriptionService, RegisterSubscriptionService>();
         services.AddScoped<IRegisterInvitationService, RegisterInvitationService>();

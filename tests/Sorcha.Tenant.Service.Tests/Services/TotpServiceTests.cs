@@ -27,6 +27,7 @@ public sealed class TotpServiceTests : IDisposable
     private readonly Mock<IIdentityRepository> _identity = new();
     private readonly Mock<ITenantSecurityInboxWriter> _securityInbox = new();
     private readonly ISecretProtectionProvider _protection;
+    private readonly byte[] _loginKey;
     private readonly TotpService _sut;
     private readonly Guid _userId = Guid.NewGuid();
 
@@ -51,8 +52,11 @@ public sealed class TotpServiceTests : IDisposable
             .Setup(s => s.WriteTwoFactorEnabledAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
+        _loginKey = new byte[32];
+        for (var i = 0; i < _loginKey.Length; i++) _loginKey[i] = (byte)(i + 100);
+
         _sut = new TotpService(_db, _identity.Object, _securityInbox.Object, _protection,
-            NullLogger<TotpService>.Instance);
+            new LoginTokenSigningKey(_loginKey), NullLogger<TotpService>.Instance);
     }
 
     public void Dispose()
@@ -112,4 +116,35 @@ public sealed class TotpServiceTests : IDisposable
 
         validated.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task LoginToken_GeneratedOnOneInstance_ValidatesOnAnotherWithSameDerivedKey()
+    {
+        // Two "replicas" sharing the same derived login-token key (different array instances).
+        var replicaA = NewServiceWithLoginKey(_loginKey);
+        var replicaB = NewServiceWithLoginKey((byte[])_loginKey.Clone());
+
+        var token = await replicaA.GenerateLoginTokenAsync(_userId);
+        var validated = await replicaB.ValidateLoginTokenAsync(token);
+
+        validated.Should().Be(_userId); // stable across replicas/restarts (was per-process random pre-F146)
+    }
+
+    [Fact]
+    public async Task LoginToken_ValidatedWithDifferentKey_ReturnsNull()
+    {
+        var replicaA = NewServiceWithLoginKey(_loginKey);
+        var differentKey = new byte[32];
+        differentKey[0] = 0xAB;
+        var replicaWrongKey = NewServiceWithLoginKey(differentKey);
+
+        var token = await replicaA.GenerateLoginTokenAsync(_userId);
+        var validated = await replicaWrongKey.ValidateLoginTokenAsync(token);
+
+        validated.Should().BeNull();
+    }
+
+    private TotpService NewServiceWithLoginKey(byte[] loginKey) =>
+        new(_db, _identity.Object, _securityInbox.Object, _protection,
+            new LoginTokenSigningKey(loginKey), NullLogger<TotpService>.Instance);
 }

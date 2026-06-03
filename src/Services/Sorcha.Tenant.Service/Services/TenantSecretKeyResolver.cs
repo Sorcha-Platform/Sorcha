@@ -136,3 +136,22 @@ public sealed class TenantSecretKeyResolver
             salt: null,
             info: Encoding.UTF8.GetBytes(info));
 }
+
+/// <summary>
+/// Singleton holder for the HMAC key used to sign the 2FA intermediate (login) token (Feature 146).
+/// Derived once from the JWT signing key via <see cref="TenantSecretKeyResolver"/> so the key is
+/// stable across replicas and restarts — replacing the previous per-process random key.
+/// </summary>
+public sealed class LoginTokenSigningKey
+{
+    /// <summary>The 32-byte HMAC-SHA256 signing key.</summary>
+    public byte[] Key { get; }
+
+    /// <summary>Constructs the holder with an already-derived key (used by tests).</summary>
+    public LoginTokenSigningKey(byte[] key) =>
+        Key = key ?? throw new ArgumentNullException(nameof(key));
+
+    /// <summary>DI constructor — derives the key from the resolver.</summary>
+    public LoginTokenSigningKey(TenantSecretKeyResolver resolver)
+        : this((resolver ?? throw new ArgumentNullException(nameof(resolver))).ResolveLoginTokenSigningKey()) { }
+}
