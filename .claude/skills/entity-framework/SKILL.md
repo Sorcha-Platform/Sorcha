@@ -8,14 +8,14 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-libra
 
 # Entity Framework Core Skill
 
-Sorcha uses EF Core 9+ with PostgreSQL (Npgsql) as the primary relational data store. The codebase implements a layered repository pattern with generic and specialized repositories, soft delete via query filters, and automatic migrations on startup.
+Sorcha uses EF Core 9+ with PostgreSQL (Npgsql) as the primary relational data store. The codebase uses **service-specific** repositories (each a focused interface + a concrete EF Core implementation — there is no generic `IRepository<T>` base), soft delete via query filters, and automatic migrations on startup.
 
 ## Quick Start
 
 ### Register DbContext with PostgreSQL
 
 ```csharp
-// src/Common/Sorcha.Storage.EFCore/Extensions/EFCoreServiceExtensions.cs
+// src/Services/Sorcha.Wallet.Service/Extensions/WalletServiceExtensions.cs (AddWalletDatabase)
 services.AddDbContext<WalletDbContext>((sp, options) =>
 {
     var dataSource = sp.GetRequiredService<NpgsqlDataSource>();

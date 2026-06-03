@@ -172,14 +172,14 @@ var result = schema.Evaluate(element);
 ```
 
 ### 5. Storage Abstraction Pattern
+Depend on a **service-specific repository interface** (e.g. `IWalletRepository`, `IRegisterRepository`, `IInstanceStore`, `IActionStore`) — there is **no** generic `IRepository<T>`. The concrete backend (EF Core / MongoDB / Redis / in-memory) is chosen at registration time and recorded via `IStorageRegistrationLog` (Pattern #10/#13).
 ```csharp
-// Use IRepository<T> from Sorcha.Storage.Abstractions
-public class WalletService
+public class WalletService(IWalletRepository repository)
 {
-    private readonly IRepository<Wallet> _repository;
-    public WalletService(IRepository<Wallet> repository) => _repository = repository;
+    // domain logic delegates persistence to the injected repository
 }
 ```
+For tiered / cache storage the seams live in `Sorcha.Storage.Abstractions`: `ICacheStore`, `IDocumentStore`, `IWormStore`, `IVerifiedCache`.
 
 ### 6. Instance Reference Configuration
 Blueprints should define an `instanceReference` to generate human-readable identifiers for workflow instances (e.g., "CP-RIV-14-A7K3"). The reference is auto-generated from first-action payload fields and stored as public metadata on the instance.

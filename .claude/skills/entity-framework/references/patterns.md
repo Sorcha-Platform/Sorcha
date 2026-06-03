@@ -116,25 +116,20 @@ entity.HasIndex(e => e.ExternalIdpUserId)
 
 ## Repository Patterns
 
-### Generic Repository Base
+### Concrete repository (no generic base)
+
+There is **no** generic `IRepository<T>` / `EFCoreRepository<T>` base in Sorcha. Each service defines a
+focused repository interface and a concrete EF Core implementation over its own `DbContext`. The audited
+storage interfaces (`IWalletRepository`, `IRegisterRepository`, …) are registered via
+`IStorageRegistrationLog` (Feature 113), so the backend choice (EF Core / Mongo / Redis / in-memory) is
+visible at startup and fails closed in Production/Staging on an in-memory fallback.
 
 ```csharp
-// src/Common/Sorcha.Storage.EFCore/EFCoreRepository.cs
-public class EFCoreRepository<TEntity, TId, TContext> : IRepository<TEntity, TId>
-    where TEntity : class
-    where TContext : DbContext
+// src/Core/Sorcha.Wallet.Core/Repositories/EfCoreWalletRepository.cs
+public sealed class EfCoreWalletRepository(WalletDbContext context) : IWalletRepository
 {
-    protected readonly TContext _context;
-
-    public async Task<IEnumerable<TEntity>> GetAllAsync()
-    {
-        return await _context.Set<TEntity>().AsNoTracking().ToListAsync();
-    }
-
-    public async Task<TEntity?> GetByIdAsync(TId id)
-    {
-        return await _context.Set<TEntity>().FindAsync(id);
-    }
+    // Focused, domain-specific query methods over WalletDbContext — not a generic CRUD surface.
+    // (See "Specialized Repository with Eager Loading" below for the include/AsNoTracking idiom.)
 }
 ```
 
