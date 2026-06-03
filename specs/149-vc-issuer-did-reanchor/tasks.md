@@ -38,7 +38,7 @@
 ### Tests (write first)
 
 - [ ] T007 [P] [US1] Tenant test: `GET /orgs/by-did/{did}/did.json` returns the published doc for a known `PrimaryDid` and 404 for an unknown DID — `tests/Sorcha.Tenant.Service.Tests/`.
-- [ ] T008 [P] [US1] Wallet test: `IssuanceKeyService.GetActiveSigningMaterialAsync` (mock `IOrgInfoClient` → A) emits `iss = did:sorcha:org:{A}`, `kid = did:sorcha:org:{A}#vc-issuance-{n}`, and the regenerate snapshot carries A while the VM JWK is the derived child C's key — `tests/Sorcha.Wallet.Service.Tests/`.
+- [X] T008 [P] [US1] Wallet test: `IssuanceKeyService.GetActiveSigningMaterialAsync` (mock `IOrgInfoClient` → A) emits `iss = did:sorcha:org:{A}`, `kid = did:sorcha:org:{A}#vc-issuance-{n}`, and the regenerate snapshot carries A while the VM JWK is the derived child C's key — `tests/Sorcha.Wallet.Service.Tests/`.
 - [ ] T009 [P] [US1] Blueprint/engine test: `DidX5cIssuerKeyResolver` resolves a published doc anchored on A and verifies an **EdDSA** credential signed by C; a `did-allowlist` pinned to `did:sorcha:org:{A}` matches `iss` — `tests/Sorcha.Blueprint.Service.Tests/` (pins the OKP raw-32 key-shape, D5).
 
 ### Implementation

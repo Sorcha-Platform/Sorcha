@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.ServiceClients.OrgDidDocument;
+using Sorcha.ServiceClients.OrgInfo;
 using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.Enums;
@@ -27,10 +28,14 @@ public sealed class IssuanceKeyServiceLifecycleTests : IDisposable
     private readonly WalletDbContext _db;
     private readonly Mock<IOrgKeyDerivationService> _orgKey = new();
     private readonly Mock<IOrgDidDocumentClient> _didClient = new();
+    private readonly Mock<IOrgInfoClient> _orgInfo = new();
     private readonly Mock<IOrgKeyProtectionProvider> _protection = new();
     private readonly IssuanceKeyService _sut;
     private readonly Guid _orgId = Guid.NewGuid();
     private readonly string _walletAddress = "ws11qpdemoissuancewallet";
+    // Feature 149: the canonical operational wallet (A) the issuer DID anchors on —
+    // distinct from the derived vc-issuance child wallet (_walletAddress = C).
+    private readonly string _canonicalAddress = "ws11qpcanonicaloperationalwallet";
 
     public IssuanceKeyServiceLifecycleTests()
     {
@@ -55,8 +60,12 @@ public sealed class IssuanceKeyServiceLifecycleTests : IDisposable
         _didClient.Setup(x => x.RegenerateAsync(It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
+        // Feature 149: resolve the org's canonical operational wallet (A) for DID anchoring.
+        _orgInfo.Setup(x => x.ResolveCanonicalWalletAddressAsync(_orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_canonicalAddress);
+
         _sut = new IssuanceKeyService(
-            _db, _orgKey.Object, _didClient.Object, _protection.Object,
+            _db, _orgKey.Object, _didClient.Object, _orgInfo.Object, _protection.Object,
             NullLogger<IssuanceKeyService>.Instance);
     }
 
@@ -127,11 +136,31 @@ public sealed class IssuanceKeyServiceLifecycleTests : IDisposable
     {
         SeedActiveKey();
         await _sut.RotateAsync(_orgId, Guid.NewGuid());
+        // Feature 149: the published document is anchored on the canonical operational wallet (A),
+        // NOT the derived vc-issuance child wallet (C, == _walletAddress).
         _didClient.Verify(x => x.RegenerateAsync(
             It.Is<OrgDidRegenerateRequest>(r => r.KeyEventReason == "IssuanceKeyRotated"
-                                             && r.OrganizationId == _orgId),
+                                             && r.OrganizationId == _orgId
+                                             && r.WalletAddress == _canonicalAddress),
             It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task RotateAsync_NoCanonicalAddress_SkipsDidDocumentRegeneration()
+    {
+        // Feature 149: with no resolvable canonical operational wallet (A), the published
+        // document cannot be anchored — skip regeneration (issuance fails closed elsewhere).
+        SeedActiveKey();
+        _orgInfo.Setup(x => x.ResolveCanonicalWalletAddressAsync(_orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var newRow = await _sut.RotateAsync(_orgId, Guid.NewGuid());
+
+        newRow.Should().NotBeNull(); // rotation itself still succeeds
+        _didClient.Verify(x => x.RegenerateAsync(
+            It.IsAny<OrgDidRegenerateRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
