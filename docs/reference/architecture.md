@@ -643,7 +643,6 @@ Provide blockchain consensus and validation in a secured environment with access
 
 **Related Documentation:**
 - [Validator Service Design](validator-service-design.md)
-- [Validator Service Quick Reference](VALIDATOR-SERVICE-QUICK-REFERENCE.md)
 
 **Architectural Note (Updated 2025-11-16):**
 DocketManager and ChainValidator were permanently moved from `Sorcha.Register.Core` to `Sorcha.Validator.Service` to ensure they run in a secured environment with proper access to encryption keys and cryptographic operations.

@@ -144,15 +144,30 @@ The response includes a JWT `access_token`. Save this for subsequent API calls.
 
 **Important:** Change the default admin password immediately after first login.
 
+Password rotation is a **step-up operation** (Feature 116): you must complete a fresh
+re-authentication challenge and present the resulting one-shot token in the `X-Auth-Challenge`
+header. The change request body carries only the **new** password (current-password proof happens
+in the challenge, not the body).
+
 ```bash
-curl -X POST http://localhost/tenant/api/auth/change-password \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <your-token>" \
-  -d '{
-    "currentPassword": "Dev_Pass_2025!",
-    "newPassword": "YourSecurePassword123!"
-  }'
+# 1. Begin a challenge for the ChangePassword operation
+curl -X POST http://localhost/api/auth/challenge/initiate \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <your-token>" \
+  -d '{ "operation": "ChangePassword" }'
+
+# 2. Verify it (prove the current password) — returns a one-shot challenge token
+curl -X POST http://localhost/api/auth/challenge/verify \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <your-token>" \
+  -d '{ "challengeId": "<from step 1>", "password": "Dev_Pass_2025!" }'
+
+# 3. Rotate the password (204 No Content on success)
+curl -X POST http://localhost/api/auth/password/change \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <your-token>" \
+  -H "X-Auth-Challenge: <token from step 2>" \
+  -d '{ "password": "YourSecurePassword123!" }'
 ```
+
+See [Authentication Setup](../guides/AUTHENTICATION-SETUP.md) for the full challenge flow.
 
 ## Step 6: Fix Wallet Encryption Permissions
 
