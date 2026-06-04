@@ -8,9 +8,12 @@
     <PackageVersion Include="Anthropic.SDK" Version="5.10.0" />
     <PackageVersion Include="Azure.Communication.Email" Version="1.1.0" />
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="10.0.8" />
+    <!-- ModelContextProtocol 1.1.0 → 1.3.0 available; held (pre-stable SDK, breaking-change risk) for a dedicated bump. -->
     <PackageVersion Include="ModelContextProtocol" Version="1.1.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.1.0" />
-    <!-- .NET Aspire -->
+    <!-- .NET Aspire. 13.4.2 available but transitively requires ModelContextProtocol ≥ 1.3.0,
+         which would force the deferred MCP major (used directly by Sorcha.McpServer). Held at 13.3.3 —
+         bump Aspire + ModelContextProtocol together in the deferred follow-up. -->
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.3.3" />
     <PackageVersion Include="Aspire.Hosting.MongoDB" Version="13.3.3" />
     <PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="13.3.3" />
@@ -26,10 +29,10 @@
     <PackageVersion Include="AutoFixture" Version="4.18.1" />
     <PackageVersion Include="AutoFixture.Xunit3" Version="4.19.0" />
     <!-- Azure -->
-    <PackageVersion Include="Azure.Identity" Version="1.19.0" />
-    <PackageVersion Include="Azure.Security.KeyVault.Keys" Version="4.9.0" />
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+    <PackageVersion Include="Azure.Security.KeyVault.Keys" Version="4.10.0" />
     <!-- Security -->
-    <PackageVersion Include="BCrypt.Net-Next" Version="4.1.0" />
+    <PackageVersion Include="BCrypt.Net-Next" Version="4.2.0" />
     <!-- Benchmarking -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.7" />
     <!-- Blazor -->
@@ -40,26 +43,29 @@
     <PackageVersion Include="System.Formats.Cbor" Version="10.0.8" />
     <PackageVersion Include="System.Security.Cryptography.Cose" Version="10.0.8" />
     <!-- Testing - Blazor -->
-    <PackageVersion Include="bunit" Version="2.6.2" />
+    <PackageVersion Include="bunit" Version="2.7.2" />
     <!-- Testing - Coverage -->
-    <PackageVersion Include="coverlet.collector" Version="8.0.1" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <!-- Authentication -->
-    <PackageVersion Include="Fido2.AspNet" Version="4.0.0" />
+    <PackageVersion Include="Fido2.AspNet" Version="4.0.1" />
     <!-- Testing - Assertions -->
     <PackageVersion Include="FluentAssertions" Version="8.10.0" />
     <!-- Validation -->
     <PackageVersion Include="FluentValidation" Version="12.1.1" />
     <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <!-- gRPC -->
-    <PackageVersion Include="Google.Protobuf" Version="3.34.1" />
+    <PackageVersion Include="Google.Protobuf" Version="3.35.0" />
+    <!-- Grpc.AspNetCore / Net.Client / ClientFactory / Server.Reflection have no 2.81.0 (top out at 2.80.0);
+         only Grpc.Tools ships 2.81.0. Keep the runtime gRPC packages at 2.80.0. -->
     <PackageVersion Include="Grpc.AspNetCore" Version="2.80.0" />
     <PackageVersion Include="Grpc.AspNetCore.Server.Reflection" Version="2.80.0" />
     <PackageVersion Include="Grpc.Net.Client" Version="2.80.0" />
     <PackageVersion Include="Grpc.Net.ClientFactory" Version="2.80.0" />
-    <PackageVersion Include="Grpc.Tools" Version="2.80.0" />
+    <PackageVersion Include="Grpc.Tools" Version="2.81.0" />
     <!-- SD-JWT -->
     <PackageVersion Include="HeroSD-JWT" Version="1.1.7" />
-    <!-- JSON Processing -->
+    <!-- JSON Processing. JsonLogic 6.1.0 / JsonSchema.Net 9.2.1 / JsonSchema.Net.Generation 7.3.9 available;
+         held for a dedicated bump — JsonSchema.Net evaluation is sensitive (CLAUDE.md Pattern #4). -->
     <PackageVersion Include="JsonE.Net" Version="3.0.1" />
     <PackageVersion Include="JsonLogic" Version="6.0.1" />
     <PackageVersion Include="JsonPath.Net" Version="3.0.2" />
@@ -116,38 +122,39 @@
     <!-- Microsoft Extensions - Service Discovery -->
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.6.0" />
     <!-- Microsoft Extensions - Time Provider (test fakes) -->
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.10.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.6.0" />
     <!-- Microsoft JSInterop -->
     <PackageVersion Include="Microsoft.JSInterop" Version="10.0.8" />
     <!-- Testing - SDK -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
     <!-- Testing - Playwright -->
-    <PackageVersion Include="Microsoft.Playwright.NUnit" Version="1.58.0" />
+    <PackageVersion Include="Microsoft.Playwright.NUnit" Version="1.60.0" />
     <!-- Source Link -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.300" />
-    <!-- MongoDB -->
-    <PackageVersion Include="MongoDB.Driver" Version="3.7.1" />
+    <!-- MongoDB. Bumped 3.7.1 → 3.9.0 to pull patched Snappier (≥1.1.6, NU1903 GHSA-pggp-6c3x-2xmx)
+         and SharpCompress (≥0.36.0, NU1902 GHSA-6c8g-7p36-r338) transitively. -->
+    <PackageVersion Include="MongoDB.Driver" Version="3.9.0" />
     <!-- Testing - Mocking -->
     <PackageVersion Include="Moq" Version="4.20.72" />
-    <!-- Blazor UI -->
+    <!-- Blazor UI. MudBlazor 9.5.0 available; held for a dedicated bump (UI minor, breaking-change prone). -->
     <PackageVersion Include="MudBlazor" Version="9.2.0" />
-    <!-- Crypto - Bitcoin -->
+    <!-- Crypto - Bitcoin. NBitcoin 10.0.4 available; held — major bump on the wallet crypto core, needs dedicated validation. -->
     <PackageVersion Include="NBitcoin" Version="9.0.5" />
     <!-- Load Testing -->
-    <PackageVersion Include="NBomber" Version="6.3.0" />
+    <PackageVersion Include="NBomber" Version="6.4.1" />
     <PackageVersion Include="NBomber.Http" Version="6.2.0" />
     <!-- Crypto - BLS -->
     <PackageVersion Include="Nethermind.MclBindings" Version="1.0.5" />
     <!-- Email -->
-    <PackageVersion Include="MailKit" Version="4.16.0" />
+    <PackageVersion Include="MailKit" Version="4.17.0" />
     <!-- JSON Serialization -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- PostgreSQL -->
-    <PackageVersion Include="Npgsql.DependencyInjection" Version="10.0.2" />
-    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+    <PackageVersion Include="Npgsql.DependencyInjection" Version="10.0.3" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
     <!-- Testing - NUnit -->
-    <PackageVersion Include="NUnit" Version="4.5.1" />
-    <PackageVersion Include="NUnit.Analyzers" Version="4.12.0" />
+    <PackageVersion Include="NUnit" Version="4.6.1" />
+    <PackageVersion Include="NUnit.Analyzers" Version="4.14.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="6.2.0" />
     <!-- OpenTelemetry -->
     <PackageVersion Include="OpenTelemetry" Version="1.15.3" />
@@ -157,23 +164,28 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.14.0-beta.1" />
+    <!-- Bumped 1.14.0-beta.1 → 1.15.1-beta.2: the old beta was unlisted ("not found at sources") and
+         transitively pinned OpenTelemetry.Api 1.14.0 (NU1902 GHSA-g94r-2vxg-569j). 1.15.1-beta.2 aligns
+         with the rest of the OTel stack (1.15.x) and pulls a vuln-free Api. Only beta builds exist for this package. -->
+    <PackageVersion Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.15.1-beta.2" />
     <!-- OTP -->
     <PackageVersion Include="Otp.NET" Version="1.4.1" />
     <!-- Resilience -->
     <PackageVersion Include="Polly" Version="8.6.6" />
     <PackageVersion Include="Polly.Extensions" Version="8.6.6" />
     <!-- QR Code -->
-    <PackageVersion Include="QRCoder" Version="1.7.0" />
+    <PackageVersion Include="QRCoder" Version="1.8.0" />
     <!-- Console -->
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <!-- HTTP Client -->
-    <PackageVersion Include="Refit" Version="11.0.0" />
-    <PackageVersion Include="Refit.HttpClientFactory" Version="11.0.0" />
+    <PackageVersion Include="Refit" Version="11.0.1" />
+    <PackageVersion Include="Refit.HttpClientFactory" Version="11.0.1" />
     <!-- OpenAPI -->
     <PackageVersion Include="Scalar.AspNetCore" Version="2.14.14" />
-    <!-- Email Templates -->
-    <PackageVersion Include="Scriban" Version="5.12.0" />
+    <!-- Email Templates. Bumped 5.12.0 → 7.2.3 — 5.12.0 carries NU1904 CRITICAL (GHSA-5wr9-m6jw-xx44)
+         plus multiple high/moderate template-injection advisories. Major bump; email template snapshot
+         tests (tests/Sorcha.Tenant.Service.Tests Fixtures/Emails) gate any rendering change. -->
+    <PackageVersion Include="Scriban" Version="7.2.3" />
     <!-- Logging -->
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageVersion Include="Serilog.Enrichers.Environment" Version="3.0.1" />
@@ -181,30 +193,30 @@
     <!-- Encoding -->
     <PackageVersion Include="SimpleBase" Version="5.6.0" />
     <!-- Crypto - Sodium -->
-    <PackageVersion Include="Sodium.Core" Version="1.4.0" />
+    <PackageVersion Include="Sodium.Core" Version="1.4.1" />
     <!-- Console UI -->
-    <PackageVersion Include="Spectre.Console" Version="0.54.0" />
+    <PackageVersion Include="Spectre.Console" Version="0.55.2" />
     <!-- Redis -->
-    <PackageVersion Include="StackExchange.Redis" Version="2.13.1" />
+    <PackageVersion Include="StackExchange.Redis" Version="2.13.17" />
     <!-- CLI -->
-    <PackageVersion Include="System.CommandLine" Version="2.0.5" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.8" />
     <!-- JWT -->
-    <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.16.0" />
+    <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
     <!-- Security -->
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.8" />
     <!-- Rate Limiting -->
     <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.8" />
     <!-- Testing - Containers -->
-    <PackageVersion Include="Testcontainers" Version="4.11.0" />
-    <PackageVersion Include="Testcontainers.MongoDb" Version="4.11.0" />
-    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.11.0" />
-    <PackageVersion Include="Testcontainers.Redis" Version="4.11.0" />
+    <PackageVersion Include="Testcontainers" Version="4.12.0" />
+    <PackageVersion Include="Testcontainers.MongoDb" Version="4.12.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.12.0" />
+    <PackageVersion Include="Testcontainers.Redis" Version="4.12.0" />
     <!-- Testing - xUnit -->
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.v3.extensibility.core" Version="3.2.2" />
-    <!-- YAML -->
+    <!-- YAML. YamlDotNet 18.0.0 available; held — major bump (16 → 18), needs dedicated validation. -->
     <PackageVersion Include="YamlDotNet" Version="16.3.0" />
     <!-- Reverse Proxy -->
     <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
