@@ -76,8 +76,8 @@ public interface ISdJwtService
     /// <summary>
     /// External-signer overload for sign-on-behalf flows (Feature 120 HAIP kid-swap).
     /// The caller supplies an <paramref name="externalSigner"/> that produces the
-    /// signature for the unsigned JWS bytes; <paramref name="signingKey"/> may be
-    /// null/empty when the external signer is supplied. Used by HAIP service to
+    /// signature for the unsigned JWS bytes; this overload carries no signing key
+    /// (unlike the key-based overload) — the external signer holds it. Used by HAIP service to
     /// delegate signing to wallet without holding private key material.
     /// </summary>
     Task<SdJwtToken> CreateTokenAsync(

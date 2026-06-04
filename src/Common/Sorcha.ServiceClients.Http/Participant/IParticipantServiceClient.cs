@@ -70,7 +70,7 @@ public interface IParticipantServiceClient
     /// <param name="walletAddress">Newly created wallet address</param>
     /// <param name="userId">Authenticated user ID</param>
     /// <param name="organizationId">User's current organisation</param>
-    /// <param name="publicKey">Wallet public key bytes (Base64)</param>
+    /// <param name="publicKeyBase64">Wallet public key bytes (Base64)</param>
     /// <param name="algorithm">Wallet signing algorithm</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Auto-link result</returns>

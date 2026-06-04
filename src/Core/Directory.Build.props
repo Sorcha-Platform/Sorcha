@@ -16,7 +16,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- CS1591 (missing doc) + CS1573 (missing <param>) are doc-completeness nags; suppressing
+         CS1573 while CS1591 is already off keeps the policy consistent. Cref-correctness warnings
+         stay enabled for shipped libraries. -->
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
 
     <!-- NuGet Packaging -->
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>

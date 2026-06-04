@@ -7,7 +7,7 @@ namespace Sorcha.AtomicCache;
 
 /// <summary>
 /// Redis-backed <see cref="IAtomicDistributedCache"/> using
-/// <see cref="IDatabase.StringGetDeleteAsync"/> (GETDEL) for atomic
+/// <c>IDatabase.StringGetDeleteAsync</c> (GETDEL) for atomic
 /// get-and-remove and a Lua script for compare-and-set with TTL refresh.
 /// </summary>
 /// <remarks>

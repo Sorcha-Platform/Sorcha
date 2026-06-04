@@ -16,6 +16,19 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
+    <!--
+      Doc-file generation stays on (parity with src/Common and src/Core, and so any future
+      OpenAPI XML-comment integration has the file available), but the XML-doc warning family is
+      suppressed for service projects. Service projects are applications, not published NuGet
+      libraries — their external contract is the OpenAPI surface, which CLAUDE.md mandates
+      separately via .WithSummary()/.WithDescription() on every endpoint. Enforcing per-member
+      C# XML docs on an app assembly with no doc consumer is noise (~1,250 warnings), not signal.
+        CS1591 missing doc on a public member        CS1573 missing <param>
+        CS1572 unmatched <param>                      CS1574/CS1734/CS0419 unresolved/ambiguous cref
+        CS1587 XML comment on a non-doc element
+      (CS1591 is already suppressed in Common/Core/tests/bench; this is the same intent.)
+    -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573;CS1572;CS1574;CS1734;CS0419;CS1587</NoWarn>
   </PropertyGroup>
 </Project>

@@ -236,9 +236,9 @@ public sealed class PresentationEngineTests
         var credentialJwt = $"{headerSeg}.{payloadSeg}.{sig}";
 
         var allDisclosures = new List<string>();
+        Span<byte> salt = stackalloc byte[16]; // reused per iteration (refilled below) — avoids stackalloc-in-loop (CA2014)
         foreach (var (name, value) in claims)
         {
-            Span<byte> salt = stackalloc byte[16];
             RandomNumberGenerator.Fill(salt);
             var disc = JsonSerializer.SerializeToUtf8Bytes(new object[]
             {

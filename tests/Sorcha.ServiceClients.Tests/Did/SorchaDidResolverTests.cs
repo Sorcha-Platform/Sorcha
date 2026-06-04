@@ -81,7 +81,7 @@ public class SorchaDidResolverTests
         multibase.Should().NotBeNull();
         multibase!.Should().StartWith("z", because: "W3C base58btc multibase prefix");
 
-        var decoded = Base58.Bitcoin.Decode(multibase[1..]);
+        var decoded = Base58.Bitcoin.Decode(multibase.AsSpan(1));
         decoded[0].Should().Be(0xed, because: "Ed25519 multicodec varint first byte");
         decoded[1].Should().Be(0x01, because: "Ed25519 multicodec varint second byte");
         decoded.Skip(2).Should().Equal(Ed25519KeyBytes);
@@ -189,7 +189,7 @@ public class SorchaDidResolverTests
         multibase.Should().NotBeNull();
         multibase!.Should().StartWith("z");
 
-        var decoded = Base58.Bitcoin.Decode(multibase[1..]);
+        var decoded = Base58.Bitcoin.Decode(multibase.AsSpan(1));
         decoded[0].Should().Be(0xed);
         decoded[1].Should().Be(0x01);
         decoded.Skip(2).Should().Equal(Ed25519KeyBytes);
@@ -260,7 +260,7 @@ public class SorchaDidResolverTests
         multibase.Should().NotBeNull();
         multibase!.Should().StartWith("z");
 
-        var decoded = Base58.Bitcoin.Decode(multibase[1..]);
+        var decoded = Base58.Bitcoin.Decode(multibase.AsSpan(1));
         decoded[0].Should().Be(0x80);
         decoded[1].Should().Be(0x24);
         decoded.Skip(2).Should().Equal(P256KeyBytes);

@@ -61,7 +61,7 @@ public static class VerificationKeyMaterialComparer
 
         try
         {
-            var decoded = Base58.Bitcoin.Decode(multibase[1..]);
+            var decoded = Base58.Bitcoin.Decode(multibase.AsSpan(1));
             // Strip the multicodec varint prefix — the first byte's high bit indicates
             // continuation. For the codecs we care about (ed25519=0xed varint, p256=0x1200,
             // rsa=0x1205) the varint is 1-2 bytes; we strip until we find a byte without
