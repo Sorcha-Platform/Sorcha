@@ -100,6 +100,27 @@ src/Apps/Sorcha.Agent/             # Actor agent CLI
 tests/Sorcha.Agent.Tests/          # Agent unit tests
 ```
 
+### Working files stay in the walkthrough/demo directory (REQUIRED)
+
+Every runtime artefact a walkthrough or demo produces — `state.json`, `*-state.json`, logs
+(`*.log`), generated `wallet/` / `agent-wallet/` dirs, rendered actor configs, deploy outputs —
+MUST be written **inside that walkthrough's / demo's own directory** (or the gitignored `/deploy/`
+folder), **never the repo root**. Resolve output paths relative to `$PSScriptRoot` (the script's own
+dir), not the current working directory:
+
+```powershell
+# WRONG — writes to wherever the operator invoked from (often repo root):
+param([string]$StateFile = "./state.json")
+# RIGHT — always lands in the demo/walkthrough dir, whatever the CWD:
+param([string]$StateFile = (Join-Path $PSScriptRoot "state.json"))
+```
+
+Then make sure the path is gitignored (the root `.gitignore` already covers
+`walkthroughs/**/state.json`, `walkthroughs/*/wallet/`, `*.log`, `/deploy/`; add a rule if a new
+tool's output isn't covered). Runtime files dumped at the repo root are a **bug in the producing
+script**, not just something to delete — fix the path resolution. (Reasoning: keeps the working tree
+clean, avoids committing runtime state/secrets, and behaves identically on every machine.)
+
 ## Creating a New Walkthrough
 
 ### Step 1: Design the Blueprint

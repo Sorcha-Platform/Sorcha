@@ -92,8 +92,8 @@ function ConvertTo-DemoSlug {
 function New-IssuingAuthority {
     [CmdletBinding()]
     param(
-        [string]$NodesFile = "./demo-nodes.json",
-        [string]$StateFile = "./state.json",
+        [string]$NodesFile = (Join-Path $script:DemoRoot "demo-nodes.json"),
+        [string]$StateFile = (Join-Path $script:DemoRoot "state.json"),
         [string]$IssuerNode,
         [string]$AgencyName = "Strathcarron Identity Authority",
         [ValidateSet('rules', 'ai', 'human')][string]$AgentMode = 'rules',
@@ -251,8 +251,8 @@ function Start-DemoAgent {
 function Connect-Subscriber {
     [CmdletBinding()]
     param(
-        [string]$NodesFile = "./demo-nodes.json",
-        [string]$StateFile = "./state.json",
+        [string]$NodesFile = (Join-Path $script:DemoRoot "demo-nodes.json"),
+        [string]$StateFile = (Join-Path $script:DemoRoot "state.json"),
         [string]$SubscriberNode,
         [string]$RegisterId,
         [int]$TimeoutSeconds = 120
@@ -349,8 +349,8 @@ function Connect-Subscriber {
 function Reset-Demo {
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        [string]$NodesFile = "./demo-nodes.json",
-        [string]$StateFile = "./state.json",
+        [string]$NodesFile = (Join-Path $script:DemoRoot "demo-nodes.json"),
+        [string]$StateFile = (Join-Path $script:DemoRoot "state.json"),
         [ValidateSet('issuer', 'subscriber', 'all')][string]$Scope = 'all',
         [string]$Node
     )
@@ -400,8 +400,8 @@ function Reset-Demo {
 function Get-DemoStatus {
     [CmdletBinding()]
     param(
-        [string]$NodesFile = "./demo-nodes.json",
-        [string]$StateFile = "./state.json"
+        [string]$NodesFile = (Join-Path $script:DemoRoot "demo-nodes.json"),
+        [string]$StateFile = (Join-Path $script:DemoRoot "state.json")
     )
 
     $state = Read-DemoState -Path $StateFile
