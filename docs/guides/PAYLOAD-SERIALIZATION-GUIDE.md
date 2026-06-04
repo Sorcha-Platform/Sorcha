@@ -204,13 +204,15 @@ public async Task<bool> SubmitTransactionAsync(
         priority = 1
     };
 
-    // 7. Submit to validator
+    // 7. Submit to the Validator
     var validateJson = JsonSerializer.Serialize(validateRequest);
-    var validateResponse = await httpClient.PostAsync(
-        $"{baseUrl}/api/validator/transactions/validate",
-        new StringContent(validateJson, Encoding.UTF8, "application/json"),
-        new Dictionary<string, string> { ["Authorization"] = $"Bearer {token}" }
-    );
+    using var validateMessage = new HttpRequestMessage(
+        HttpMethod.Post, $"{baseUrl}/api/v1/transactions/validate")
+    {
+        Content = new StringContent(validateJson, Encoding.UTF8, "application/json")
+    };
+    validateMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    var validateResponse = await httpClient.SendAsync(validateMessage);
 
     return validateResponse.IsSuccessStatusCode;
 }
@@ -263,7 +265,7 @@ async function submitTransaction(baseUrl, registerId, walletAddress, token) {
         priority: 1
     };
 
-    const response = await fetch(`${baseUrl}/api/validator/transactions/validate`, {
+    const response = await fetch(`${baseUrl}/api/v1/transactions/validate`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -320,7 +322,7 @@ def submit_transaction(base_url, register_id, wallet_address, token):
     }
 
     response = requests.post(
-        f"{base_url}/api/validator/transactions/validate",
+        f"{base_url}/api/v1/transactions/validate",
         json=validate_request,
         headers={"Authorization": f"Bearer {token}"}
     )

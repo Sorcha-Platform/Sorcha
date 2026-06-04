@@ -697,11 +697,14 @@ public record VerificationResult(
 
 ### Phase 3: PostgreSQL Implementation (Week 3-4)
 
-1. Create `Sorcha.Storage.EFCore` library
-2. Implement generic `EFCoreRepository<T, TId>`
-3. Enable Tenant Service EF Core (already designed)
-4. Implement Wallet Service EF Core repositories
-5. Add migrations infrastructure
+> Implemented differently from the original plan: EF Core persistence lives in
+> **service-specific assemblies** (e.g. `Sorcha.Wallet.Core`'s `EfCoreWalletRepository`), keyed by a
+> **service-specific repository interface** (`IWalletRepository`, …). There is **no**
+> `Sorcha.Storage.EFCore` library and **no** generic `EFCoreRepository<T, TId>` — the backend is
+> chosen at registration and recorded via `IStorageRegistrationLog` (see the storage note above).
+
+1. Implement service-specific EF Core repositories (Wallet, Tenant)
+2. Add migrations infrastructure
 
 ### Phase 4: MongoDB Implementation (Week 5-6)
 

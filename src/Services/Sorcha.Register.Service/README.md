@@ -57,13 +57,13 @@ Register Service
 ├── Storage Abstraction
 │   ├── IRegisterRepository (interface)
 │   ├── InMemoryRegisterRepository (testing)
-│   ├── MongoRegisterRepository (production - pending)
-│   └── PostgreSQLRegisterRepository (production - pending)
+│   ├── MongoRegisterRepository (production)
+│   └── PostgreSQLRegisterRepository (production)
 ├── Event System
 │   ├── IEventPublisher (event abstraction)
 │   ├── IEventSubscriber (subscription abstraction)
 │   ├── InMemoryEventPublisher (testing)
-│   └── AspireEventPublisher (production - pending)
+│   └── AspireEventPublisher (production)
 └── External Integrations
     ├── Validator Service (chain validation, consensus)
     └── Wallet Service (address verification)
@@ -931,9 +931,8 @@ Recovery runs as a `BackgroundService` and reports status via the `/health/sync`
 - .NET Aspire 13.0+ for orchestration
 
 **Storage:**
-- **Primary (Planned)**: MongoDB 7.0+ for document storage
-- **Alternative (Planned)**: PostgreSQL 16+ with EF Core
-- **Testing**: In-memory provider
+- **Primary**: MongoDB 7.0+ for document storage (`IRegisterRepository` is F113-audited — fails fast on an in-memory backend in Production/Staging)
+- **Testing**: in-memory provider (non-production only)
 - **Caching**: Redis for distributed caching
 
 **Observability:**

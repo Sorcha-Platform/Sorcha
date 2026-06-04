@@ -466,7 +466,7 @@ YARP-based API Gateway for routing and aggregation.
 - `GET /api/files/{wallet}/{register}/{tx}/{fileId}` - Download file
 
 *SignalR Hubs (Feature 118 — five-hub topology):*
-- `/hubs/blueprint` (alias `/actionshub`) — BlueprintHub (Blueprint Service): action lifecycle + encryption progress
+- `/hubs/blueprint` — BlueprintHub (Blueprint Service): action lifecycle + encryption progress
 - `/hubs/wallet` — WalletHub (Wallet Service): citizen-wallet device + credential events
 - `/hubs/register` — RegisterHub (Register Service): register lifecycle + docket sealing + sync state
 - `/hubs/tenant` — TenantHub (Tenant Service): durable inbox events
