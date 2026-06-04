@@ -250,8 +250,12 @@
         Array.Empty<NeedsAttentionBand.NeedsAttentionItem>();
     private IReadOnlyList<RecentActivityFeed.RecentActivityEntry> _recentActivityEntries =
         Array.Empty<RecentActivityFeed.RecentActivityEntry>();
+    // Placeholders for the multi-context peek footer — not yet populated (the footer renders the
+    // default "no other contexts" state). Assigned once multi-context support lands.
+#pragma warning disable CS0649
     private int _otherContextCount;
     private string? _otherContextName;
+#pragma warning restore CS0649
 
     // Feature 124 (US3/US4/US5). The takeover fires exactly once per wallet
     // per device. _flagsLoaded gates eligibility until the IndexedDB flags

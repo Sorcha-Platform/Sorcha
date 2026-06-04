@@ -59,7 +59,7 @@ public class SmtpEmailSender : IEmailSender
 
             if (!string.IsNullOrEmpty(_settings.SmtpUsername))
             {
-                await client.AuthenticateAsync(_settings.SmtpUsername, _settings.SmtpPassword, cancellationToken);
+                await client.AuthenticateAsync(_settings.SmtpUsername, _settings.SmtpPassword ?? string.Empty, cancellationToken);
             }
 
             await client.SendAsync(message, cancellationToken);

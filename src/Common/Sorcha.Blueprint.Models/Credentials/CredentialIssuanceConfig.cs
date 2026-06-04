@@ -89,7 +89,13 @@ public class CredentialIssuanceConfig
     /// </summary>
     [JsonPropertyName("targetAudience")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    // Default retained as SorchaInternal for backward compatibility with existing serialised
+    // configs. Flipping the default to SorchaLocalWallet is a deliberate behavioural change
+    // (alters credential delivery for configs that omit the field) tracked separately, not a
+    // warning-cleanup edit.
+#pragma warning disable CS0618
     public TargetAudience TargetAudience { get; set; } = TargetAudience.SorchaInternal;
+#pragma warning restore CS0618
 
     /// <summary>
     /// Credential format to mint (feature 135). Default <see cref="CredentialFormat.SdJwtVc"/>.

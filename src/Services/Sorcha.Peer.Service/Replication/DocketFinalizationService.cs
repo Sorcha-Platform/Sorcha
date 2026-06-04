@@ -265,9 +265,12 @@ public class DocketFinalizationService
                 return;
 
             // Fall back to legacy ProposerSignature extraction for pre-086 registers
-            _validatorKeyCache.ExtractFromGenesisDocket(registerId, genesisDocket.Data);
-            if (_validatorKeyCache.HasKey(registerId))
-                return;
+            if (genesisDocket.Data is { } genesisData)
+            {
+                _validatorKeyCache.ExtractFromGenesisDocket(registerId, genesisData);
+                if (_validatorKeyCache.HasKey(registerId))
+                    return;
+            }
 
             _logger.LogDebug(
                 "Strategy 1 did not yield a validator roster for register {RegisterId}; falling through to Register Service",

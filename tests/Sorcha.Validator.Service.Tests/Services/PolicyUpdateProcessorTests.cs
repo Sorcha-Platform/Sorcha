@@ -88,7 +88,7 @@ public class PolicyUpdateProcessorTests
         var controlTx = result[0];
         controlTx.Payload.Should().BeOfType<PolicyUpdatePayload>();
         var policyPayload = (PolicyUpdatePayload)controlTx.Payload;
-        policyPayload.Policy.Version.Should().Be(2);
+        policyPayload.Policy!.Version.Should().Be(2);
         policyPayload.UpdatedBy.Should().Be("did:sorcha:admin-001");
     }
 

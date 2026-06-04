@@ -34,7 +34,11 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
     private bool _isDragging;
     private string? _sessionId;
     private bool _initialised;
+#if DEBUG || E2E_TEST_HOOKS
+    // Only assigned under the same directive (see InitializeAsync); scoped here so it isn't a
+    // never-assigned field (CS0649) in Release builds without the E2E test hooks.
     private DotNetObjectReference<AiDesignerPane>? _testHookRef;
+#endif
     private DotNetObjectReference<AiDesignerPane>? _dropZoneRef;
 
     private const string MessagesElementId = "ai-pane-messages";
@@ -740,7 +744,9 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
             // Ignore cleanup errors.
         }
 
+#if DEBUG || E2E_TEST_HOOKS
         _testHookRef?.Dispose();
+#endif
         _dropZoneRef?.Dispose();
     }
 }

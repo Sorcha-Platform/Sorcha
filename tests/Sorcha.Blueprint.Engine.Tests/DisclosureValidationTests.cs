@@ -524,7 +524,7 @@ public class DisclosureValidationTests
         // Arrange
         var blueprint = CreateValidBlueprint();
         var action = blueprint.Actions[0];
-        action.Sender = blueprint.Participants[0].WalletAddress;
+        action.Sender = blueprint.Participants[0].WalletAddress!;
         action.Disclosures = new List<BpModels.Disclosure>
         {
             // Sender can see their own data

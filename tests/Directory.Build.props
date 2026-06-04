@@ -2,7 +2,15 @@
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
   <PropertyGroup>
     <LangVersion>14</LangVersion>
-    <NoWarn>$(NoWarn);xUnit1051;CS1591</NoWarn>
+    <!--
+      NU1608: aggregating test projects pull both Fido2.AspNet (→ NSec.Cryptography, which pins
+      native libsodium < 1.0.21) and Sodium.Core 1.4.1 (→ libsodium 1.0.22) into one closure, so
+      the unified libsodium 1.0.22 trips NSec's conservative upper bound. libsodium keeps ABI
+      compatibility within 1.0.x and both crypto libs run against 1.0.22 (suites pass). The
+      conflict is unresolvable here (NSec is transitive via Fido2, can't be re-pinned), and only
+      surfaces in test closures — never in a shipped service — so it is suppressed for tests only.
+    -->
+    <NoWarn>$(NoWarn);xUnit1051;CS1591;NU1608</NoWarn>
     <!--
       Pin every test project to Microsoft.Testing.Platform so `dotnet test` dispatches the
       same way for all projects. Without this, MSBuild's heuristic on Linux dotnet 10 SDK
