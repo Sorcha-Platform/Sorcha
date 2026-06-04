@@ -147,6 +147,50 @@ Shared across all services via the `x-otel-env` YAML anchor:
 | `ASPNETCORE_ENVIRONMENT` | `Development` | Runtime environment (`Development`, `Docker`, `Production`) |
 | `ASPNETCORE_URLS` | `http://+:8080` | Listening URLs inside containers |
 
+## Production Hardening (fail-fast gates)
+
+Setting `ASPNETCORE_ENVIRONMENT=Production` (or `Staging`) turns on three **startup gates** — a host
+that isn't configured for them **refuses to start** (by design). Plan for these before your first
+production boot.
+
+### Storage provider audit (Feature 113)
+
+Six storage interfaces are **audited** and must be backed by a **persistent** provider in
+Production/Staging — `IWalletRepository`, `IRegisterRepository`, `IInstanceStore`, `IActionStore`,
+`IVerifiedTransactionQueue`, `IAtomicDistributedCache`. If any is left on an in-memory backend the
+host **fails fast at startup**. Provide the relevant connection strings (Postgres for wallet,
+MongoDB for register, Redis for the atomic cache).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `Storage__AllowInMemoryInProduction` | `false` | Escape hatch to bypass the fail-fast (CI smoke tests, ephemeral debugging). Logs at `LogCritical`. **Leave unset/false for real production.** |
+
+The `storage-providers` health check reports `Degraded` when any audited interface is in-memory; the
+`Sorcha.Storage` meter (`sorcha_storage_provider_info`, `sorcha_storage_fallback_active`) surfaces the
+same for dashboards.
+
+### SignalR Redis backplane (Feature 118)
+
+Every hub-hosting service (Tenant, Blueprint, Wallet, Register) **requires a Redis backplane** in
+Production/Staging — without it, multi-replica fan-out silently drops events, so the host **refuses
+to start**. Ensure the Redis connection string is set (`ConnectionStrings__Redis` /
+`ConnectionStrings__Sorcha__Redis`); the channel prefix is isolated per service automatically.
+
+### Rate limiting (SEC-002)
+
+Centralised rate limiting is bound from the `RateLimiting` section (`RateLimitSettings`). The
+shipped defaults are **deliberately relaxed (~100k/min)** for pre-release development — **tighten
+them in `appsettings.Production.json`** (policies: `Api`, `PlatformAuth`, `TotpValidation`,
+`Strict`). Do not ship the dev defaults to production.
+
+### Other production switches
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_PASSWORD` | (empty) | Set a Redis auth password for production (see Databases → Redis). |
+| `JWT_SIGNING_KEY` | dev key in `docker-compose.yml` | Replace with a real key from a secret store in any non-dev environment. |
+| `Platform__AllowAdminVerifiedUserCreation` | `false` | Must stay `false`/unset in production (admin-verified user creation is a dev convenience). |
+
 ## Feature Flags
 
 | Variable | Default | Description |
@@ -212,7 +256,7 @@ Additional seed nodes follow the same pattern with incrementing index (`__1__`, 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `Validator__ValidatorId` | `docker-validator-1` | Unique validator node identifier |
+| `Validator__ValidatorId` | `local-validator` | Unique validator node identifier. **MUST equal `SystemWalletSigning__ValidatorId` on the Register Service** — if they differ, docket sealing never starts. |
 | `Validator__SystemWalletAddress` | (empty) | System wallet address (auto-created if empty) |
 | `VALIDATOR_HTTP_PORT` | `5800` | Host port for HTTP REST API |
 | `VALIDATOR_GRPC_PORT` | `5801` | Host port for gRPC endpoint |
