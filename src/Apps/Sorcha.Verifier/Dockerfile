@@ -6,6 +6,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY ["Directory.Packages.props", "."]
+COPY ["Directory.Build.props", "."]
 COPY ["src/Apps/Directory.Build.props", "src/Apps/"]
 COPY ["src/Common/Directory.Build.props", "src/Common/"]
 

@@ -7,6 +7,7 @@ WORKDIR /src
 
 # Copy build property files for central package management
 COPY ["Directory.Packages.props", "."]
+COPY ["Directory.Build.props", "."]
 COPY ["src/Apps/Directory.Build.props", "Apps/"]
 COPY ["src/Common/Directory.Build.props", "Common/"]
 COPY ["src/Core/Directory.Build.props", "Core/"]
