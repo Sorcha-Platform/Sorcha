@@ -405,46 +405,31 @@ Subscribe to real-time notifications for workflow actions, chat messages, and sy
 
 | Hub | Path | Purpose |
 |-----|------|---------|
-| Actions | `/actionshub` | Workflow action notifications |
-| Chat | `/hubs/chat` | Participant messaging |
-| Events | `/hubs/events` | System events |
+| Blueprint | `/hubs/blueprint` | Action lifecycle / workflow notifications (BlueprintHub) |
+| Chat | `/hubs/chat` | Participant messaging (ChatHub) |
 
-### Connect to the Actions hub
+> Notification hubs follow a **thin-signal** contract (Feature 118): events carry only opaque IDs and
+> timestamps, never domain payload. On an event, call the authenticated REST detail endpoint to fetch
+> the data. See the [API documentation](../reference/API-DOCUMENTATION.md) for the typed event list.
+
+### Connect to the Blueprint hub
 
 ```csharp
 var connection = new HubConnectionBuilder()
-    .WithUrl("https://sorcha.example.com/actionshub", options =>
+    .WithUrl("https://sorcha.example.com/hubs/blueprint", options =>
     {
         options.AccessTokenProvider = () => Task.FromResult(token);
     })
     .WithAutomaticReconnect()
     .Build();
 
-connection.On<ActionNotification>("ActionCompleted", notification =>
+// Thin signal — the handler receives IDs/timestamps; fetch detail via REST.
+connection.On<string>("InstanceAdvanced", instanceId =>
 {
-    Console.WriteLine($"Action {notification.ActionId} completed on blueprint {notification.BlueprintId}");
+    Console.WriteLine($"Instance {instanceId} advanced — GET /api/blueprints/instances/{instanceId}");
 });
 
 await connection.StartAsync();
-```
-
-### Connect to the Events hub
-
-```csharp
-var eventsConnection = new HubConnectionBuilder()
-    .WithUrl("https://sorcha.example.com/hubs/events", options =>
-    {
-        options.AccessTokenProvider = () => Task.FromResult(token);
-    })
-    .WithAutomaticReconnect()
-    .Build();
-
-eventsConnection.On<EventNotification>("EventReceived", notification =>
-{
-    Console.WriteLine($"Event: {notification.EventType} - {notification.Description}");
-});
-
-await eventsConnection.StartAsync();
 ```
 
 ## 9. End-to-End Example Script

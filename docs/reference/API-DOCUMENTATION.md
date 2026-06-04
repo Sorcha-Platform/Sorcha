@@ -2254,7 +2254,7 @@ Five canonical hubs — every notification hub other than ChatHub conforms to th
 
 | Hub | Route | Service | Purpose |
 |---|---|---|---|
-| BlueprintHub | `/hubs/blueprint` (alias `/actionshub`) | Blueprint | Action lifecycle, workflow completion, encryption progress |
+| BlueprintHub | `/hubs/blueprint` | Blueprint | Action lifecycle, workflow completion, encryption progress |
 | WalletHub | `/hubs/wallet` | Wallet | Citizen-wallet device + credential events; future home for transaction-tick + org-credential events |
 | RegisterHub | `/hubs/register` | Register | Register lifecycle, docket sealing, sync-state changes |
 | TenantHub | `/hubs/tenant` | Tenant | User inbox events (entry added, unread count) |
@@ -2481,42 +2481,27 @@ Console.WriteLine($"Transaction Hash: {result.transactionHash}");
 
 ### SignalR Real-time Notifications (JavaScript)
 
+Connect to a hub from the table above (here, BlueprintHub). JWT goes in the `access_token` query
+parameter because browsers can't set an `Authorization` header on the WebSocket upgrade. Events are
+**thin signals** (opaque IDs + timestamps); on receipt, fetch the detail from the authenticated REST
+endpoint linked from the typed-client interface.
+
 ```javascript
 const connection = new signalR.HubConnectionBuilder()
-  .withUrl("http://localhost:5000/actionshub")
+  .withUrl(`/hubs/blueprint?access_token=${token}`)
   .withAutomaticReconnect()
   .build();
 
-// Handle disconnection
-connection.onclose(async () => {
-  console.log("Connection closed. Attempting to reconnect...");
-});
+connection.onclose(() => console.log("Connection closed; auto-reconnect will retry."));
 
-// Subscribe to actions
 await connection.start();
-await connection.invoke("SubscribeToActions", "wallet-789", "register-101");
 
-// Listen for notifications
-connection.on("ActionConfirmed", (notification) => {
-  console.log("Action confirmed:", notification);
-  updateUI(notification);
-});
-
-connection.on("ActionPending", (notification) => {
-  console.log("Action pending:", notification);
-});
-
-// Encryption progress events (sent to wallet:{address} group)
-connection.on("EncryptionProgress", (notification) => {
-  console.log(`Step ${notification.step}/${notification.totalSteps}: ${notification.stepName} (${notification.percentComplete}%)`);
-});
-
-connection.on("EncryptionComplete", (notification) => {
-  console.log("Encryption complete, tx:", notification.transactionHash);
-});
-
-connection.on("EncryptionFailed", (notification) => {
-  console.error("Encryption failed:", notification.error);
+// Thin signal: the payload is an instance id + timestamp. Pull full detail via REST.
+connection.on("InstanceAdvanced", async (instanceId) => {
+  const res = await fetch(`/api/blueprints/instances/${instanceId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  updateUI(await res.json());
 });
 ```
 

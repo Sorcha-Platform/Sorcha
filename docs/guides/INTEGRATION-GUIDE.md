@@ -121,48 +121,50 @@ cd Sorcha
 dotnet run --project src/Apps/Sorcha.AppHost
 ```
 
-The platform will start with:
-- API Gateway: http://localhost:5000
-- Swagger/Scalar UI: http://localhost:5000/scalar/v1
+The platform is reached through the **API Gateway at `http://localhost`** (port 80; under Aspire the
+gateway is `https://localhost:7082`). Scalar API docs are served per service via the gateway.
+
+> **Every request requires a JWT** — `Authorization: Bearer <token>`. Obtain one via
+> `POST /api/auth/login` (user) or `POST /api/service-auth/token` (service). See
+> [Authentication Setup](AUTHENTICATION-SETUP.md). The examples below assume `$TOKEN` is set.
 
 ### Step 2: Create Your First Wallet
 
 ```bash
-curl -X POST http://localhost:5000/api/wallets \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost/api/v1/wallets \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
   -d '{
-    "title": "Integration Test Wallet",
-    "keyType": "ED25519"
+    "name": "Integration Test Wallet",
+    "algorithm": "ED25519",
+    "wordCount": 24
   }'
 ```
 
 **Response:**
 ```json
 {
-  "id": "wallet-abc123",
-  "walletAddress": "0x1234567890abcdef",
-  "title": "Integration Test Wallet",
-  "keyType": "ED25519"
+  "id": "…",
+  "address": "ws1q…",
+  "name": "Integration Test Wallet",
+  "algorithm": "ED25519"
 }
 ```
 
-**Save the `id` - you'll need it for subsequent operations.**
+**Save the wallet `address` — you'll need it for subsequent operations.**
 
 ### Step 3: Create a Register
 
 ```bash
-curl -X POST http://localhost:5000/api/registers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Integration Test Register"
-  }'
+curl -X POST http://localhost/api/registers \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d '{ "name": "Integration Test Register" }'
 ```
 
 **Response:**
 ```json
 {
-  "id": "register-xyz789",
-  "title": "Integration Test Register"
+  "id": "…",
+  "name": "Integration Test Register"
 }
 ```
 
@@ -170,7 +172,7 @@ curl -X POST http://localhost:5000/api/registers \
 
 ```bash
 # Create blueprint
-curl -X POST http://localhost:5000/api/blueprints \
+curl -X POST http://localhost/api/blueprints \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Hello World Workflow",
@@ -188,13 +190,13 @@ curl -X POST http://localhost:5000/api/blueprints \
   }'
 
 # Publish it
-curl -X POST http://localhost:5000/api/blueprints/{blueprint-id}/publish
+curl -X POST http://localhost/api/blueprints/{blueprint-id}/publish
 ```
 
 ### Step 5: Submit Your First Action
 
 ```bash
-curl -X POST http://localhost:5000/api/actions \
+curl -X POST http://localhost/api/actions \
   -H "Content-Type: application/json" \
   -d '{
     "blueprintId": "{blueprint-id}",
@@ -325,7 +327,7 @@ var blueprint = BlueprintBuilder.Create()
 
 ```javascript
 async function signTransaction(walletId, data) {
-  const response = await fetch(`http://localhost:5000/api/wallets/${walletId}/sign`, {
+  const response = await fetch(`http://localhost/api/wallets/${walletId}/sign`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -343,7 +345,7 @@ async function signTransaction(walletId, data) {
 
 ```javascript
 async function encryptPayload(walletId, data, recipientWalletId) {
-  const response = await fetch(`http://localhost:5000/api/wallets/${walletId}/encrypt`, {
+  const response = await fetch(`http://localhost/api/wallets/${walletId}/encrypt`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -361,7 +363,7 @@ async function encryptPayload(walletId, data, recipientWalletId) {
 
 ```javascript
 async function decryptPayload(walletId, encryptedData) {
-  const response = await fetch(`http://localhost:5000/api/wallets/${walletId}/decrypt`, {
+  const response = await fetch(`http://localhost/api/wallets/${walletId}/decrypt`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ encryptedData })
@@ -401,7 +403,7 @@ def submit_transaction(register_id, wallet_address, payload_data):
     payload_base64 = base64.b64encode(payload_json.encode()).decode()
 
     response = requests.post(
-        f"http://localhost:5000/api/registers/{register_id}/transactions",
+        f"http://localhost/api/registers/{register_id}/transactions",
         json={
             "transactionType": "Action",
             "senderAddress": wallet_address,
@@ -422,7 +424,7 @@ def submit_transaction(register_id, wallet_address, payload_data):
 
 ```javascript
 async function getTransactionsByTimeRange(registerId, startTime, endTime) {
-  const url = new URL(`http://localhost:5000/api/registers/${registerId}/transactions`);
+  const url = new URL(`http://localhost/api/registers/${registerId}/transactions`);
   url.searchParams.set('startTime', startTime.toISOString());
   url.searchParams.set('endTime', endTime.toISOString());
 
@@ -442,7 +444,7 @@ const transactions = await getTransactionsByTimeRange(
 
 ```javascript
 // Filter by sender and transaction type
-const url = `http://localhost:5000/api/registers/${registerId}/transactions?$filter=senderAddress eq 'wallet-abc123' and transactionType eq 'Action'&$top=10`;
+const url = `http://localhost/api/registers/${registerId}/transactions?$filter=senderAddress eq 'wallet-abc123' and transactionType eq 'Action'&$top=10`;
 
 const response = await fetch(url);
 const results = await response.json();
@@ -452,7 +454,7 @@ const results = await response.json();
 
 ```javascript
 async function validateChain(registerId) {
-  const response = await fetch(`http://localhost:5000/api/registers/${registerId}/chain`);
+  const response = await fetch(`http://localhost/api/registers/${registerId}/chain`);
   const validation = await response.json();
 
   if (!validation.isValid) {
@@ -515,20 +517,10 @@ class SorchaNotificationClient {
     }
   }
 
-  async subscribeToActions(walletAddress, registerAddress) {
-    await this.connection.invoke('SubscribeToActions', walletAddress, registerAddress);
-  }
-
-  async unsubscribeFromActions(walletAddress, registerAddress) {
-    await this.connection.invoke('UnsubscribeFromActions', walletAddress, registerAddress);
-  }
-
-  onActionConfirmed(callback) {
-    this.connection.on('ActionConfirmed', callback);
-  }
-
-  onActionPending(callback) {
-    this.connection.on('ActionPending', callback);
+  // Thin-signal events (Feature 118): handlers receive opaque IDs + timestamps;
+  // group membership is server-side, so there is no client-side "subscribe" call.
+  on(event, callback) {
+    this.connection.on(event, callback);
   }
 
   async stop() {
@@ -536,21 +528,18 @@ class SorchaNotificationClient {
   }
 }
 
-// Usage
-const client = new SorchaNotificationClient('http://localhost:5000/actionshub');
+// Usage — connect to a hub from the API docs (here, BlueprintHub). JWT goes in the query string.
+const client = new SorchaNotificationClient(`http://localhost/hubs/blueprint?access_token=${token}`);
 
-client.onActionConfirmed((notification) => {
-  console.log('Action confirmed:', notification);
-  updateUIWithConfirmation(notification);
-});
-
-client.onActionPending((notification) => {
-  console.log('Action pending:', notification);
-  showPendingIndicator(notification);
+client.on('InstanceAdvanced', async (instanceId) => {
+  // Pull full detail via the authenticated REST endpoint.
+  const res = await fetch(`http://localhost/api/blueprints/instances/${instanceId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  updateUI(await res.json());
 });
 
 await client.start();
-await client.subscribeToActions('wallet-abc123', 'register-xyz789');
 ```
 
 ### SignalR Integration (C#)
@@ -574,10 +563,11 @@ public class SorchaNotificationClient : IAsyncDisposable
 
     private void SetupHandlers()
     {
-        _connection.On<ActionNotification>("ActionConfirmed", notification =>
+        // Thin-signal (Feature 118): the payload is an id; fetch full detail via REST.
+        _connection.On<string>("InstanceAdvanced", instanceId =>
         {
-            Console.WriteLine($"Action confirmed: {notification.TransactionHash}");
-            OnActionConfirmed?.Invoke(notification);
+            Console.WriteLine($"Instance advanced: {instanceId}");
+            OnInstanceAdvanced?.Invoke(instanceId);
         });
 
         _connection.Reconnecting += error =>
@@ -587,16 +577,11 @@ public class SorchaNotificationClient : IAsyncDisposable
         };
     }
 
-    public event Action<ActionNotification>? OnActionConfirmed;
+    public event Action<string>? OnInstanceAdvanced;
 
     public async Task StartAsync()
     {
         await _connection.StartAsync();
-    }
-
-    public async Task SubscribeToActionsAsync(string walletAddress, string registerAddress)
-    {
-        await _connection.InvokeAsync("SubscribeToActions", walletAddress, registerAddress);
     }
 
     public async ValueTask DisposeAsync()
@@ -654,7 +639,7 @@ public class SorchaApiClient
 {
     private static readonly HttpClient _httpClient = new HttpClient
     {
-        BaseAddress = new Uri("http://localhost:5000"),
+        BaseAddress = new Uri("http://localhost"),
         Timeout = TimeSpan.FromSeconds(30)
     };
 
@@ -678,7 +663,7 @@ class BlueprintCache {
       return cached.data;
     }
 
-    const response = await fetch(`http://localhost:5000/api/blueprints/${blueprintId}`);
+    const response = await fetch(`http://localhost/api/blueprints/${blueprintId}`);
     const blueprint = await response.json();
 
     this.cache.set(blueprintId, {
@@ -699,7 +684,7 @@ async function submitActionIdempotent(actionData) {
   // Generate a deterministic instance ID
   const instanceId = generateInstanceId(actionData);
 
-  const response = await fetch('http://localhost:5000/api/actions', {
+  const response = await fetch('http://localhost/api/actions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -725,10 +710,10 @@ async function submitActionIdempotent(actionData) {
 **Solution:**
 ```bash
 # List all blueprints
-curl http://localhost:5000/api/blueprints
+curl http://localhost/api/blueprints
 
 # Publish blueprint
-curl -X POST http://localhost:5000/api/blueprints/{id}/publish
+curl -X POST http://localhost/api/blueprints/{id}/publish
 ```
 
 #### 2. Connection Refused
@@ -741,7 +726,7 @@ curl -X POST http://localhost:5000/api/blueprints/{id}/publish
 dotnet run --project src/Apps/Sorcha.AppHost
 
 # Check health
-curl http://localhost:5000/api/health
+curl http://localhost/api/health
 ```
 
 #### 3. SignalR Connection Drops
@@ -760,7 +745,7 @@ curl http://localhost:5000/api/health
 
 ```javascript
 // Register webhook for transaction confirmations
-await fetch('http://localhost:5000/api/webhooks', {
+await fetch('http://localhost/api/webhooks', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -775,19 +760,19 @@ await fetch('http://localhost:5000/api/webhooks', {
 
 ```bash
 # Health check with metrics
-curl http://localhost:5000/api/health
+curl http://localhost/api/health
 
 # Service-specific health
-curl http://localhost:5000/api/blueprint/health
-curl http://localhost:5000/api/wallet/health
-curl http://localhost:5000/api/register/health
+curl http://localhost/api/blueprint/health
+curl http://localhost/api/wallet/health
+curl http://localhost/api/register/health
 ```
 
 ---
 
 ## Next Steps
 
-1. **Explore the API:** Visit http://localhost:5000/scalar/v1
+1. **Explore the API:** Visit http://localhost/scalar/v1
 2. **Read API Documentation:** See [API-DOCUMENTATION.md](../reference/API-DOCUMENTATION.md)
 3. **Review Examples:** Check `/examples` directory
 4. **Join Community:** GitHub Discussions
