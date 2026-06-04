@@ -4,6 +4,10 @@
 .claude/worktrees/
 .worktrees/
 .superpowers/
+# Per-machine auto-generated skill state (embeds absolute paths)
+**/.dotnet-skills-auto-state.json
+# GSD local planning/workflow state (roadmaps, phase plans, debug traces) — local only
+.planning/
 
 # Genesis ceremony private key material (never commit)
 genesis-validator-key.json
