@@ -78,8 +78,7 @@
                            Color="Color.Inherit"
                            OnClick="@ToggleInboxPanel"
                            data-testid="topbar-inbox-button"
-                           aria-label="Inbox"
-                           Title="Inbox">
+                           aria-label="Inbox">
                 @if (_inboxUnreadCount > 0)
                 {
                     <MudBadge Content="@_inboxUnreadCount"

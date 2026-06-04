@@ -10,7 +10,6 @@ using Sorcha.Blueprint.Fluent;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Models.Chat;
 using Sorcha.Blueprint.Service.Services;
-using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Templates;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.IO;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -34,6 +35,7 @@ namespace Sorcha.Wallet.Core.Encryption.Providers;
 /// - Machine-specific (encrypted DEKs tied to Windows machine identity)
 /// - No built-in key rotation (manual via CreateKeyAsync)
 /// </summary>
+[SupportedOSPlatform("windows")] // DPAPI ProtectedData is Windows-only; availability is gated at runtime via IsAvailable.
 public sealed class WindowsDpapiEncryptionProvider : EncryptionProviderBase
 {
     private readonly string _keyStorePath;

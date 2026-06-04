@@ -60,7 +60,7 @@ public class BlueprintVersionTests
     public void MajorBump_ResetsMinor()
     {
         // v3.5 → structural change → v4.0
-        int prevMajor = 3, prevMinor = 5;
+        int prevMajor = 3;
         var newMajor = prevMajor + 1;
         var newMinor = 0; // reset on major bump
 

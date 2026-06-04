@@ -116,7 +116,7 @@ public static class KidThumbprintHelper
     /// <summary>
     /// RFC 7638 SHA-256 JWK thumbprint, base64url, no padding. Inlined here to keep
     /// <c>Sorcha.ServiceClients.Http</c> free of a project reference to
-    /// <c>Sorcha.Cryptography</c> (Sodium/BouncyCastle) — see <see cref="Utilities.Multicodec"/>
+    /// <c>Sorcha.Cryptography</c> (Sodium/BouncyCastle) — see the <c>Multicodec</c> helper
     /// for the same architectural rationale.
     /// </summary>
     internal static bool TryComputeThumbprint(JsonElement jwk, [NotNullWhen(true)] out string? thumbprint)
