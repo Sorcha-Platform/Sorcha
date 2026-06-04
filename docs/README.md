@@ -148,7 +148,6 @@ Architecture, API documentation, and technical specifications.
 | Document | Description |
 |----------|-------------|
 | [Validator Design](reference/validator-service-design.md) | Validator Service architecture and design |
-| [Validator Quick Reference](reference/VALIDATOR-SERVICE-QUICK-REFERENCE.md) | Validator Service API cheat sheet |
 | [Architecture Decisions](reference/architecture/) | ADRs (Architecture Decision Records) |
 | [Service Status Reports](reference/status/) | Per-service detailed status |
 
