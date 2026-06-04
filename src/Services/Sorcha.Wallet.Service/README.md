@@ -68,12 +68,12 @@ Wallet Service
 │   ├── Sorcha.Cryptography (multi-algorithm)
 │   ├── NBitcoin (BIP32/BIP39/BIP44)
 │   └── AES-256-GCM (key encryption)
-├── Repositories
-│   ├── Wallet Repository (in-memory, EF Core pending)
-│   └── Address Repository (in-memory)
+├── Repositories (F113-audited — persistent in Prod/Staging)
+│   ├── IWalletRepository → EfCoreWalletRepository (PostgreSQL)
+│   └── IHolderAddressLookup (citizen address ↔ platform user)
 └── External Integrations
-    ├── Azure Key Vault (planned for production)
-    └── Tenant Service (authentication - planned)
+    ├── Azure Key Vault (envelope encryption + KMS-resident signing, Feature 082)
+    └── Tenant Service (JWT issuer; tiered audiences, Feature 136)
 ```
 
 ### Data Flow
@@ -587,8 +587,9 @@ Three access levels:
 
 ### Authentication
 
-- **Current**: Development mode (no authentication required)
-- **Production**: JWT bearer token authentication (issued by Tenant Service)
+JWT Bearer authentication (issued by the Tenant Service) is enforced in **all** environments. Citizen
+wallet surfaces (`/api/v1/wallet`) require the **consumer** tier audience (`RequireConsumerAudience`);
+key-management / admin surfaces require the **platform** or **service** tier (Feature 136).
 
 ### Best Practices
 

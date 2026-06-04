@@ -23,7 +23,7 @@ This service acts as the central hub for:
 - **Publishing & Versioning**: Publish blueprints to specific registers with immutable version tracking
 - **Action Workflows**: Submit, retrieve, validate, and reject actions with state management
 - **Portable Execution Engine**: Client-side and server-side execution of JSON Logic calculations, routing rules, and disclosure policies
-- **Real-time Notifications**: SignalR hub (`/actionshub`) for live action status updates with Redis backplane
+- **Real-time Notifications**: SignalR hub (`/hubs/blueprint`) for live action status updates with Redis backplane
 - **Wallet Integration**: Automatic transaction signing and payload encryption/decryption
 - **Register Integration**: Blockchain transaction storage with distributed ledger guarantees
 - **File Attachments**: Upload and download support for action-related documents
@@ -67,15 +67,17 @@ Blueprint Service
 │   ├── Execution API (helpers)
 │   └── Files API (attachments)
 ├── SignalR Hubs
-│   └── ActionsHub (/actionshub)
+│   ├── BlueprintHub (/hubs/blueprint — thin-signal notifications, F118)
+│   └── ChatHub (/hubs/chat — AI designer streaming)
 ├── Execution Engine
 │   ├── Sorcha.Blueprint.Engine (portable library)
 │   ├── JSON Schema validator
 │   ├── JSON Logic evaluator
 │   └── Disclosure processor
-├── Repositories
-│   ├── Blueprint Repository (in-memory)
-│   └── Action Repository (in-memory)
+├── Stores (pluggable backend; persistent in Production)
+│   ├── IBlueprintStore / IPublishedBlueprintStore
+│   ├── IActionStore (F113-audited — fails fast on in-memory in Prod/Staging)
+│   └── IInstanceStore (ledger-derived projections, F145)
 └── External Integrations
     ├── Wallet Service (signing, encryption)
     └── Register Service (transaction storage)
@@ -141,10 +143,10 @@ dotnet run
 ```
 
 Service will start at:
-- **HTTPS**: `https://localhost:7081`
-- **HTTP**: `http://localhost:5081`
-- **Scalar API Docs**: `https://localhost:7081/scalar`
-- **SignalR Hub**: `https://localhost:7081/actionshub`
+- **HTTPS (Aspire)**: `https://localhost:7000`
+- **HTTP (Docker)**: `http://localhost:5000`
+- **Scalar API Docs**: `https://localhost:7000/scalar`
+- **SignalR Hub**: `/hubs/blueprint` (reached via the gateway / service host)
 
 ---
 
@@ -255,7 +257,8 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 
 | Hub | Endpoint | Events |
 |-----|----------|--------|
-| ActionsHub | `/actionshub` | `TransactionConfirmed`, `ActionRejected` |
+| BlueprintHub | `/hubs/blueprint` | Thin-signal (Feature 118): opaque IDs + timestamps only (e.g. action lifecycle, instance advanced) — fetch detail via REST; see `IBlueprintHubClient` |
+| ChatHub | `/hubs/chat` | AI designer streaming (exempt from thin-signal) |
 
 ### Pending Action Notifications (Feature 062)
 
@@ -373,7 +376,7 @@ Sorcha.Blueprint.Service/
 │   ├── ExecutionEndpoints.cs       # Execution helpers
 │   └── FileEndpoints.cs            # File attachments
 ├── Hubs/
-│   └── ActionsHub.cs               # SignalR real-time notifications
+│   └── BlueprintHub.cs               # SignalR real-time notifications
 ├── Services/
 │   ├── BlueprintService.cs         # Business logic
 │   ├── ActionService.cs            # Action orchestration
@@ -453,7 +456,7 @@ The Blueprint Service integrates with the Register Service for:
 import * as signalR from "@microsoft/signalr";
 
 const connection = new signalR.HubConnectionBuilder()
-    .withUrl("https://localhost:7081/actionshub")
+    .withUrl("https://localhost:7081/hubs/blueprint")
     .build();
 
 connection.on("TransactionConfirmed", (transactionId, status) => {
