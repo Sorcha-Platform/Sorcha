@@ -149,20 +149,21 @@ Add to `appsettings.json` or `appsettings.Development.json`:
 ```json
 {
   "JwtSettings": {
-    "Issuer": "https://tenant.sorcha.io",
-    "Audience": "https://api.sorcha.io",
+    "InstallationName": "localhost",
     "SigningKey": "your-secret-key-min-32-characters-REPLACE-THIS-IN-PRODUCTION",
     "AccessTokenLifetimeMinutes": 60,
     "RefreshTokenLifetimeHours": 24,
     "ServiceTokenLifetimeHours": 8,
-    "ClockSkewMinutes": 5,
-    "ValidateIssuer": true,
-    "ValidateAudience": true,
-    "ValidateIssuerSigningKey": true,
-    "ValidateLifetime": true
+    "ClockSkewMinutes": 5
   }
 }
 ```
+
+> **Issuer and audiences are derived, not hand-set (Feature 136).** `InstallationName` drives both:
+> the issuer resolves to `urn:sorcha:{InstallationName}` (fail-closed in Production/Staging) and the
+> audiences are the four tier strings `{InstallationName}:consumer|platform|service|enrol-session`.
+> Do **not** set `JwtSettings:Issuer`/`Audience` here (the audience config is ignored). See
+> [JWT Configuration](JWT-CONFIGURATION.md) for the full tiered-audience model.
 
 ### Environment Variables (Recommended for Production)
 
@@ -237,34 +238,38 @@ Content-Type: application/json
 
 ## Token Claims
 
-### User Tokens
+The `aud` claim is the **trust tier** (`{installation}:consumer|platform|service|enrol-session`) and
+`iss` is `urn:sorcha:{installation}` — see [JWT Configuration](JWT-CONFIGURATION.md). Examples use the
+`localhost` installation.
+
+### User Tokens (Platform tier — admin / designer / org operator)
 ```json
 {
   "sub": "user-id-guid",
   "email": "user@organization.com",
-  "name": "User Name",
+  "platform_user_id": "platform-user-guid",
   "org_id": "organization-id-guid",
-  "role": "Administrator",
+  "org_name": "Example Org",
+  "roles": ["Administrator"],
   "token_type": "user",
-  "iss": "https://tenant.sorcha.io",
-  "aud": "https://api.sorcha.io",
-  "exp": 1735891200,
-  "iat": 1735887600
+  "iss": "urn:sorcha:localhost",
+  "aud": "localhost:platform"
 }
 ```
+
+> A **Consumer**-tier token (citizen / wallet holder) has the same shape **minus `roles` and
+> `wallet_address`**, with `aud": "localhost:consumer"`.
 
 ### Service Tokens
 ```json
 {
   "sub": "service-principal-id",
-  "client_id": "blueprint-service",
-  "org_id": "organization-id-guid",
+  "client_id": "service-blueprint",
+  "service_name": "Blueprint Service",
   "token_type": "service",
-  "scope": "blueprints:write registers:read",
-  "iss": "https://tenant.sorcha.io",
-  "aud": "https://api.sorcha.io",
-  "exp": 1735920000,
-  "iat": 1735887600
+  "scope": ["blueprints:write", "registers:read"],
+  "iss": "urn:sorcha:localhost",
+  "aud": "localhost:service"
 }
 ```
 
@@ -920,9 +925,9 @@ Authorization: Bearer <service-token>
   "delegated_user_id": "user-guid-here",
   "delegated_user_email": "user@organization.com",
   "org_id": "organization-id-guid",
-  "scope": "wallets:sign registers:write",
-  "iss": "https://tenant.sorcha.io",
-  "aud": "https://api.sorcha.io",
+  "scope": ["wallets:sign", "registers:write"],
+  "iss": "urn:sorcha:localhost",
+  "aud": "localhost:service",
   "exp": 1735891200,
   "iat": 1735887600
 }

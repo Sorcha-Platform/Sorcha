@@ -22,6 +22,32 @@ The Sorcha decentralised register platform demonstrates **strong foundational se
 
 ---
 
+## Remediation status (updated 2026-06-04)
+
+> This audit is a **point-in-time snapshot from 2026-03-19** and is **superseded** by the
+> 2026-06-02 architecture review and the June 2026 security-hardening initiative
+> (Features 146 / 147 / 148). The findings below are accurate as of the audit date; their
+> current status is:
+
+**✅ Remediated since this audit**
+
+- **§4.1 Consensus votes unsigned (CRITICAL)** — the Validator now verifies vote signatures during consensus (`ConsensusEngine` calls `VerifySignatureAsync`); votes with invalid/absent signatures are rejected.
+- **§4.2 Replay protection missing (CRITICAL)** — per-sender sequence enforcement shipped (`WalletSequence` / `WalletSequenceRepository`, error code `VAL_REPLAY`).
+- **Application-layer at-rest secrets** — TOTP secrets, OIDC client secrets, and login tokens are now encrypted with AES-256-GCM via `ISecretProtectionProvider` (Feature 146), replacing reversible/per-process storage.
+- **Authorization gaps (Feature 147)** — system-wallet endpoints gated, `CanManageBlueprints` tier-folded, consumer-audience added to citizen surfaces.
+- **Verification correctness (Feature 148)** — honest issuer-signature status in the PWA verifier, OIDC ID-token JWS verified against provider JWKS, recovery paths fail-loud.
+
+**⚠️ Still open — production blockers**
+
+- **§5.2 Redis has no `requirepass`** — set an auth password before production.
+- **§5.4 Default development JWT signing key** ships in `docker-compose.yml` — supply a real `JWT_SIGNING_KEY` (secret store) in any non-dev environment.
+- **§5.7 CORS `AllowAnyOrigin`** in `CorsExtensions.cs` — restrict to known origins for production.
+
+See also the production hardening gates in [Admin → Configuration Reference](../admin/configuration-reference.md)
+(storage fail-fast audit, rate limiting, SignalR Redis backplane).
+
+---
+
 ## Table of Contents
 
 1. [Authentication & Authorization](#1-authentication--authorization)
