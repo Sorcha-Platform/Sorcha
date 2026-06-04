@@ -177,8 +177,7 @@ gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });`],
                 collapsed: true,
                 items: [
                   { text: 'Validator Design', link: '/reference/validator-service-design' },
-                  { text: 'Validator Quick Ref', link: '/reference/VALIDATOR-SERVICE-QUICK-REFERENCE' },
-                  { text: 'Architecture Decisions', link: '/reference/architecture/ADR-005-Validator-Service-Security-Boundary' },
+                    { text: 'Architecture Decisions', link: '/reference/architecture/ADR-005-Validator-Service-Security-Boundary' },
                 ],
               },
               {
