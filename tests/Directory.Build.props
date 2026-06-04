@@ -17,8 +17,23 @@
       picks VSTest invocation for some xunit.v3 projects whose exe entry point is MTP-only,
       producing "The argument …Tests.dll is invalid" at host startup. Forcing MTP makes the
       runner choice deterministic across the suite.
+
+      NOTE: this is correct only for the xunit.v3 projects, which ship an MTP entry point.
+      NUnit / VSTest projects (e.g. Sorcha.UI.E2E.Tests) have no MTP runner, so forcing MTP
+      makes a filtered "dotnet test" run silently match nothing and exit 0 (issue #818). Those
+      projects opt back out locally by setting UseMicrosoftTestingPlatformRunner=false in
+      their own .csproj.
     -->
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <!--
+      MTP0001 (issue #587): when MTP is the runner, the "dotnet test" CLI still injects its
+      own VSTest-only properties (VSTestTestAdapterPath, plus VSTestTestCaseFilter when a
+      filter is passed). The MTP MSBuild target then warns that they are ignored, on every
+      test build. The properties are the SDK driver's, not ours (there is no offending file
+      in this repo), so the only lever is to demote the warning to a message until the SDK
+      stops emitting them for MTP projects. See https://aka.ms/mtp0001.
+    -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MTP0001</MSBuildWarningsAsMessages>
   </PropertyGroup>
 </Project>

@@ -168,6 +168,14 @@ dotnet test tests/Sorcha.UI.E2E.Tests --filter "Category=Smoke"
 dotnet test tests/Sorcha.UI.E2E.Tests --filter "Category=Docker"
 ```
 
+> **`--filter` gotcha (issue #818):** these filtered runs only work because `Sorcha.UI.E2E.Tests.csproj`
+> sets `UseMicrosoftTestingPlatformRunner=false`. The shared `tests/Directory.Build.props` forces
+> Microsoft.Testing.Platform on every test project (correct for the xunit.v3 suite), but this project
+> is NUnit/VSTest with no MTP runner — under forced MTP a `--filter` run silently matched nothing and
+> exited 0, so a broken test could "pass" without executing. If you ever see a filtered E2E run report
+> success while running 0 tests, that opt-out has been lost. Confirm discovery with
+> `dotnet test tests/Sorcha.UI.E2E.Tests --list-tests`.
+
 ### Step 5: Check Artifacts on Failure
 
 Screenshots are saved to `tests/Sorcha.UI.E2E.Tests/bin/Debug/net10.0/screenshots/` on any test failure. Console errors and network failures are reported in the test output.
