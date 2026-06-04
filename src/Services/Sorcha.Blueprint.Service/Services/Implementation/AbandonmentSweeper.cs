@@ -80,10 +80,28 @@ public sealed class AbandonmentSweeper : BackgroundService
     // direct invocation outside the BackgroundService timer loop.
     internal async Task TickAsync(TimeSpan lockTtl, CancellationToken ct)
     {
+        // Redis may be absent or not yet connected — a node configured without a
+        // backplane, a transient disconnect, or a test host with a stubbed
+        // multiplexer. Skip the tick quietly rather than NRE on a null database
+        // handle or throw a connection exception on every timer fire. Abandonment
+        // sweeping is Redis-backed (the pending store lives in Redis), so there is
+        // nothing to do when Redis is unavailable.
+        if (!_redis.IsConnected)
+        {
+            _logger.LogTrace("AbandonmentSweeper tick skipped — Redis not connected");
+            return;
+        }
+
         // Leader election via SET NX — only the replica that acquires the lock
         // runs the scan this tick. Lock TTL is longer than the tick interval so
         // the leader's lock survives across ticks.
         var db = _redis.GetDatabase();
+        if (db is null)
+        {
+            _logger.LogTrace("AbandonmentSweeper tick skipped — no Redis database handle");
+            return;
+        }
+
         var acquired = await db.StringSetAsync(
             LeaderLockKey, _instanceId, lockTtl, When.NotExists);
         if (!acquired)

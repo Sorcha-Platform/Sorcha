@@ -200,20 +200,34 @@ public class PeerServiceTests : IDisposable
     public async Task StartAsync_ShouldNotStart_WhenServiceIsDisabled()
     {
         _configuration.Enabled = false;
+
+        // The "disabled" message is logged from ExecuteAsync, which BackgroundService runs
+        // as a fire-and-forget task — StartAsync returns before it necessarily executes, so
+        // a Moq Verify immediately after races the background log (flaky in CI). Capture log
+        // output and poll until the message lands, which is deterministic regardless of timing.
+        var loggedMessages = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        _loggerMock.Setup(x => x.Log(
+                It.IsAny<LogLevel>(),
+                It.IsAny<EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()))
+            .Callback(new InvocationAction(invocation =>
+                loggedMessages.Enqueue(invocation.Arguments[2]?.ToString() ?? string.Empty)));
+
         var service = CreateService();
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
 
         await service.StartAsync(cts.Token);
 
+        // Wait (bounded) for the background ExecuteAsync to emit the disabled-path log.
+        for (var i = 0; i < 200 && !loggedMessages.Any(m => m.Contains("disabled", StringComparison.OrdinalIgnoreCase)); i++)
+        {
+            await Task.Delay(25);
+        }
+
         service.Status.Should().Be(PeerServiceStatus.Offline);
-        _loggerMock.Verify(
-            x => x.Log(
-                LogLevel.Information,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("disabled")),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.AtLeastOnce);
+        loggedMessages.Should().Contain(m => m.Contains("disabled", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

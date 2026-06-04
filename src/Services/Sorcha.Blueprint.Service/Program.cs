@@ -566,19 +566,39 @@ builder.Services.AddSingleton<IExternalSchemaProvider>(sp =>
 builder.Services.AddSingleton<IExternalSchemaProvider>(sp =>
     new DppSchemaProvider(sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DppSchemaProvider>>()));
 
-// Add Schema Library services (034-schema-library)
-builder.Services.AddSingleton<Sorcha.Blueprint.Schemas.Repositories.ISchemaIndexRepository>(sp =>
+// Add Schema Library services (034-schema-library).
+// F113 storage gate: only construct the Mongo-backed index when a real Mongo
+// connection string is configured. Without one (local dev / infra-free test
+// hosts) fall back to an in-memory index — otherwise the SchemaIndexRefreshService
+// would call into a MongoClient pointed at a non-existent localhost:27017 and spam
+// 30s connection-timeout warnings on every startup/refresh.
+// SorchaConnections cascade: ConnectionStrings:Blueprint:Mongo → ConnectionStrings:Sorcha:Mongo.
+var schemaIndexMongoConnStr = builder.Configuration["ConnectionStrings:Blueprint:Mongo"]
+                           ?? builder.Configuration["ConnectionStrings:Sorcha:Mongo"];
+if (!string.IsNullOrWhiteSpace(schemaIndexMongoConnStr))
 {
-    // SorchaConnections cascade: ConnectionStrings:Blueprint:Mongo → ConnectionStrings:Sorcha:Mongo.
-    // Mongo connection strings carry credentials/host only; database is selected via GetDatabase.
-    var mongoConnStr = builder.Configuration["ConnectionStrings:Blueprint:Mongo"]
-                    ?? builder.Configuration["ConnectionStrings:Sorcha:Mongo"]
-                    ?? "mongodb://localhost:27017";
-    var mongoClient = new MongoDB.Driver.MongoClient(mongoConnStr);
-    var database = mongoClient.GetDatabase("sorcha-blueprints");
-    var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Sorcha.Blueprint.Schemas.Repositories.MongoSchemaIndexRepository>>();
-    return new Sorcha.Blueprint.Schemas.Repositories.MongoSchemaIndexRepository(database, logger);
-});
+    builder.Services.AddSingleton<Sorcha.Blueprint.Schemas.Repositories.ISchemaIndexRepository>(sp =>
+    {
+        // Mongo connection strings carry credentials/host only; database is selected via GetDatabase.
+        var mongoClient = new MongoDB.Driver.MongoClient(schemaIndexMongoConnStr);
+        var database = mongoClient.GetDatabase("sorcha-blueprints");
+        var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Sorcha.Blueprint.Schemas.Repositories.MongoSchemaIndexRepository>>();
+        return new Sorcha.Blueprint.Schemas.Repositories.MongoSchemaIndexRepository(database, logger);
+    });
+    storageLog.RegisterPersistent(
+        typeof(Sorcha.Blueprint.Schemas.Repositories.ISchemaIndexRepository).FullName!,
+        typeof(Sorcha.Blueprint.Schemas.Repositories.MongoSchemaIndexRepository).FullName!,
+        "mongo");
+}
+else
+{
+    builder.Services.AddSingleton<Sorcha.Blueprint.Schemas.Repositories.ISchemaIndexRepository,
+        Sorcha.Blueprint.Schemas.Repositories.InMemorySchemaIndexRepository>();
+    storageLog.RegisterInMemory(
+        typeof(Sorcha.Blueprint.Schemas.Repositories.ISchemaIndexRepository).FullName!,
+        typeof(Sorcha.Blueprint.Schemas.Repositories.InMemorySchemaIndexRepository).FullName!,
+        "no Mongo connection string in ConnectionStrings:Blueprint:Mongo or ConnectionStrings:Sorcha:Mongo");
+}
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.ISchemaIndexService,
     Sorcha.Blueprint.Service.Services.SchemaIndexService>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.SchemaIndexRefreshService>();

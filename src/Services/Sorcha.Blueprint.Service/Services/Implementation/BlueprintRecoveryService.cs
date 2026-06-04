@@ -252,8 +252,11 @@ public class BlueprintRecoveryService : BackgroundService
     {
         try
         {
+            // The typed client returns null on failure (network error / non-success status).
+            // Guard before LINQ so a null result degrades to "no registers" rather than an
+            // ArgumentNullException('source') logged as an error on every recovery pass.
             var registers = await registerClient.GetInternalRegistersAsync(cancellationToken);
-            return registers.Select(r => (r.Id, r.Name)).ToList();
+            return registers?.Select(r => (r.Id, r.Name)).ToList() ?? [];
         }
         catch (Exception ex)
         {
