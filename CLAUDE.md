@@ -496,3 +496,8 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 ---
 
 **Version:** 3.0 | **Updated:** 2026-04-21 | Built with .NET 10 and .NET Aspire
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
