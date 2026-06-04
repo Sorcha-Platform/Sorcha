@@ -81,7 +81,8 @@ public class ReceiptValidator
             try
             {
                 var receiptData = BuildReceiptSigningData(receipt);
-                signatureValid = _verifySignature(
+                // Reached only when signatureCheckApplicable (_verifySignature != null) — see guard above.
+                signatureValid = _verifySignature!(
                     Convert.FromBase64String(validatorPublicKey),
                     receiptData,
                     sig.SignatureValue,

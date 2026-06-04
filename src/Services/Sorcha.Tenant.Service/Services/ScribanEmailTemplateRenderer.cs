@@ -151,7 +151,7 @@ public sealed class ScribanEmailTemplateRenderer : IEmailTemplateRenderer
                 $"Available: {string.Join(", ", _sources.Keys)}");
         }
 
-        public ValueTask<string> LoadAsync(TemplateContext context, SourceSpan callerSpan, string templatePath)
+        public ValueTask<string?> LoadAsync(TemplateContext context, SourceSpan callerSpan, string templatePath)
             => new(Load(context, callerSpan, templatePath));
     }
 }

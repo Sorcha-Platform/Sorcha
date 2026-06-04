@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+// This contract suite intentionally targets the deprecated IEncryptionProvider until it is
+// removed; new code uses IKeyProtectionProvider. Suppress the obsolete-usage warning file-wide.
+#pragma warning disable CS0618
 using FluentAssertions;
 using Sorcha.Wallet.Core.Encryption.Interfaces;
 

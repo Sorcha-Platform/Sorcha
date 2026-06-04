@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+// These tests intentionally serialise/deserialise the deprecated TargetAudience.SorchaInternal
+// value to guarantee backward-compatible wire behaviour for pre-migration blueprints.
+#pragma warning disable CS0618
 using System.Text.Json;
 
 using FluentAssertions;

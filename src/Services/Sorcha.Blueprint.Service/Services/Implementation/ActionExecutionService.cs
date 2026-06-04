@@ -600,9 +600,13 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // and SorchaLocalWallet path).
         var issuerOrgName = callerIssuerOrgName;
         var issuerTenantId = callerIssuerTenantId;
+        // Accept the deprecated SorchaInternal alongside SorchaLocalWallet so pre-migration
+        // blueprints still resolve to the local-wallet delivery path.
+#pragma warning disable CS0618
         if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience is TargetAudience.SorchaLocalWallet
                 or TargetAudience.SorchaInternal)
+#pragma warning restore CS0618
         {
             var recipientId = actionDef.CredentialIssuanceConfig.RecipientParticipantId;
             if (string.IsNullOrWhiteSpace(recipientId)
@@ -2222,7 +2226,9 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                 statusListUrl: preAllocatedStatusListUrl,
                 statusListIndex: preAllocatedStatusListIndex,
                 statusListPurpose: preAllocatedStatusListUrl != null ? "revocation" : null,
+#pragma warning disable CS0618 // accept deprecated SorchaInternal for backward-compat (treated as local-wallet delivery)
                 skipRecipientStore: config.TargetAudience is TargetAudience.SorchaLocalWallet or TargetAudience.SorchaInternal,
+#pragma warning restore CS0618
                 issuerOrgName: issuerOrgName,
                 tenantId: issuerTenantId,
                 holderJwk: holderJwk,

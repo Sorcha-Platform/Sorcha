@@ -76,7 +76,7 @@ public class SignalRHubTests : IClassFixture<RegisterServiceWebApplicationFactor
 
         // Act
         var exception = await Record.ExceptionAsync(async () =>
-            await _hubConnection.InvokeAsync("UnsubscribeFromRegister", registerId));
+            await _hubConnection!.InvokeAsync("UnsubscribeFromRegister", registerId));
 
         // Assert
         exception.Should().BeNull();
@@ -163,7 +163,7 @@ public class SignalRHubTests : IClassFixture<RegisterServiceWebApplicationFactor
         });
 
         // Subscribe only to register 1
-        await _hubConnection.InvokeAsync("SubscribeToRegister", reg1.Id);
+        await _hubConnection!.InvokeAsync("SubscribeToRegister", reg1.Id);
 
         // Act - Submit transaction to register 1
         var tx = CreateValidTransaction(reg1.Id);

@@ -1434,12 +1434,16 @@ actionsGroup.MapPost("/", async (
         var disclosureResults = new Dictionary<string, object>();
         var participantWalletMap = new Dictionary<string, string>();
 
+        // Disclosure processing and the sender's full-payload entry both require a non-null map;
+        // a null payload is treated as an empty payload.
+        var payloadData = request.PayloadData ?? new Dictionary<string, object>();
+
         var actionDisclosures = actionDef.Disclosures?.ToList();
         if (actionDisclosures != null && actionDisclosures.Count > 0)
         {
             // Apply disclosure rules: each participant gets only their authorized fields
             var engineDisclosures = disclosureProcessor.CreateDisclosures(
-                request.PayloadData,
+                payloadData,
                 actionDisclosures);
 
             foreach (var disclosure in engineDisclosures)
@@ -1456,7 +1460,7 @@ actionsGroup.MapPost("/", async (
         // Ensure sender always receives the full payload
         if (!disclosureResults.ContainsKey(request.SenderWallet))
         {
-            disclosureResults[request.SenderWallet] = request.PayloadData;
+            disclosureResults[request.SenderWallet] = payloadData;
             participantWalletMap[request.SenderWallet] = request.SenderWallet;
         }
 
@@ -3514,6 +3518,9 @@ public class PublishService(
             var issuance = action.CredentialIssuanceConfig;
             if (issuance is null) continue;
 
+            // This block is the deprecation handler for SorchaInternal — it references the obsolete
+            // value deliberately, to warn authors and to treat it as SorchaLocalWallet at runtime.
+#pragma warning disable CS0618
             // SorchaInternal is deprecated — warn blueprint authors to migrate
             if (issuance.TargetAudience == Sorcha.Blueprint.Models.Credentials.TargetAudience.SorchaInternal)
             {
@@ -3526,7 +3533,10 @@ public class PublishService(
             // Apply SorchaLocalWallet validation to both SorchaLocalWallet and deprecated SorchaInternal
             if (issuance.TargetAudience is not (Sorcha.Blueprint.Models.Credentials.TargetAudience.SorchaLocalWallet
                 or Sorcha.Blueprint.Models.Credentials.TargetAudience.SorchaInternal))
+            {
+#pragma warning restore CS0618
                 continue;
+            }
 
             // VAL_BP_CRED_001 — recipientParticipantId must resolve
             var recipientId = issuance.RecipientParticipantId;

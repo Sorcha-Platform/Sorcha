@@ -1,3 +1,6 @@
+// These tests intentionally exercise the deprecated IEncryptionProvider contract until it is
+// removed; new code uses IKeyProtectionProvider. Suppress the obsolete-usage warning file-wide.
+#pragma warning disable CS0618
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Wallet.Core.Encryption.Configuration;

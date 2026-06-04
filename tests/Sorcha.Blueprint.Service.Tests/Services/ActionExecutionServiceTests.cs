@@ -644,9 +644,9 @@ public class ActionExecutionServiceTests
         var instance = CreateTestInstance(instanceId, "blueprint-1");
         var blueprint = CreateTestBlueprint();
         var action = blueprint.Actions!.First(a => a.Id == actionId);
-        action.Calculations = new Dictionary<string, System.Text.Json.Nodes.JsonNode?>
+        action.Calculations = new Dictionary<string, System.Text.Json.Nodes.JsonNode>
         {
-            ["total"] = System.Text.Json.Nodes.JsonNode.Parse("""{"+":[{"var":"a"},{"var":"b"}]}""")
+            ["total"] = System.Text.Json.Nodes.JsonNode.Parse("""{"+":[{"var":"a"},{"var":"b"}]}""")!
         };
 
         SetupCommonMocks(instanceId, instance, blueprint, action);

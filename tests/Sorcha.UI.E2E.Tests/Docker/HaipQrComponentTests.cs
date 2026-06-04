@@ -43,7 +43,7 @@ public class HaipQrComponentTests : MultiUserTestBase
 
     [Test]
     [Order(1)]
-    [Timeout(120_000)]
+    [CancelAfter(120_000)]
     public async Task CredentialOfferQrCard_RendersQrCode_AndShowsMetadata()
     {
         // Arrange — create a credential offer via the HAIP Service API
@@ -72,7 +72,7 @@ public class HaipQrComponentTests : MultiUserTestBase
 
     [Test]
     [Order(2)]
-    [Timeout(60_000)]
+    [CancelAfter(60_000)]
     public async Task CredentialOfferStatus_ReturnsPendingState()
     {
         // Arrange — create an offer
@@ -98,7 +98,7 @@ public class HaipQrComponentTests : MultiUserTestBase
 
     [Test]
     [Order(3)]
-    [Timeout(120_000)]
+    [CancelAfter(120_000)]
     public async Task PresentationRequestQrCard_RendersQrCode_AndShowsMetadata()
     {
         // Arrange — create a presentation request via the HAIP Service API
@@ -128,7 +128,7 @@ public class HaipQrComponentTests : MultiUserTestBase
 
     [Test]
     [Order(4)]
-    [Timeout(60_000)]
+    [CancelAfter(60_000)]
     public async Task VerificationResult_ReturnsPendingState()
     {
         // Arrange — create a request
