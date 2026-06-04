@@ -17,40 +17,103 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Only the images whose sources changed in this PR are validated. A shared library change
+  # (src/Common, src/Core), docker-compose, or the central package manifest still fans out to
+  # every image (they can affect all of them). Mirrors detect-changes in docker-publish.yml so
+  # PR validation and the post-merge publish select the same set — just push:false here.
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed services
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway","mcp-server","ui-web","wallet-pwa","verifier","sample-strathcarron-portal"]'
+
+          # Three-dot: changes on the PR branch since its merge-base with the target, so commits
+          # landed on master after the branch point don't spuriously fan out the matrix.
+          CHANGED_FILES="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}" || true)"
+
+          # Shared libraries / compose / central packages affect every image.
+          if echo "$CHANGED_FILES" | grep -qE "^src/(Common|Core)/" \
+             || echo "$CHANGED_FILES" | grep -qE "^(docker-compose\.yml|Directory\.Packages\.props)$"; then
+            echo "Common/Core/infrastructure changed — validating all images"
+            echo "services=$ALL_SERVICES" >> "$GITHUB_OUTPUT"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          declare -A SERVICE_PATHS
+          SERVICE_PATHS["blueprint-service"]="src/Services/Sorcha.Blueprint.Service/"
+          SERVICE_PATHS["wallet-service"]="src/Services/Sorcha.Wallet.Service/"
+          SERVICE_PATHS["register-service"]="src/Services/Sorcha.Register.Service/"
+          SERVICE_PATHS["tenant-service"]="src/Services/Sorcha.Tenant.Service/"
+          SERVICE_PATHS["peer-service"]="src/Services/Sorcha.Peer.Service/"
+          SERVICE_PATHS["validator-service"]="src/Services/Sorcha.Validator.Service/"
+          SERVICE_PATHS["api-gateway"]="src/Services/Sorcha.ApiGateway/"
+          SERVICE_PATHS["mcp-server"]="src/Apps/Sorcha.McpServer/"
+          SERVICE_PATHS["ui-web"]="src/Apps/Sorcha.UI/"
+          SERVICE_PATHS["wallet-pwa"]="src/Apps/Sorcha.Wallet.Pwa/"
+          SERVICE_PATHS["verifier"]="src/Apps/Sorcha.Verifier/"
+          SERVICE_PATHS["sample-strathcarron-portal"]="samples/strathcarron-portal/"
+
+          CHANGED="["
+          FIRST=true
+          for SVC in "${!SERVICE_PATHS[@]}"; do
+            if echo "$CHANGED_FILES" | grep -q "^${SERVICE_PATHS[$SVC]}"; then
+              if [ "$FIRST" = true ]; then FIRST=false; else CHANGED="$CHANGED,"; fi
+              CHANGED="$CHANGED\"$SVC\""
+            fi
+          done
+          CHANGED="$CHANGED]"
+
+          echo "services=$CHANGED" >> "$GITHUB_OUTPUT"
+          if [ "$CHANGED" = "[]" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Changed images to validate: $CHANGED"
+
   build-images:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - service: blueprint-service
-            dockerfile: src/Services/Sorcha.Blueprint.Service/Dockerfile
-          - service: wallet-service
-            dockerfile: src/Services/Sorcha.Wallet.Service/Dockerfile
-          - service: register-service
-            dockerfile: src/Services/Sorcha.Register.Service/Dockerfile
-          - service: tenant-service
-            dockerfile: src/Services/Sorcha.Tenant.Service/Dockerfile
-          - service: peer-service
-            dockerfile: src/Services/Sorcha.Peer.Service/Dockerfile
-          - service: validator-service
-            dockerfile: src/Services/Sorcha.Validator.Service/Dockerfile
-          - service: api-gateway
-            dockerfile: src/Services/Sorcha.ApiGateway/Dockerfile
-          - service: mcp-server
-            dockerfile: src/Apps/Sorcha.McpServer/Dockerfile
-          - service: ui-web
-            dockerfile: src/Apps/Sorcha.UI/Sorcha.UI.Web/Dockerfile
-          - service: wallet-pwa
-            dockerfile: src/Apps/Sorcha.Wallet.Pwa/Dockerfile
-          - service: verifier
-            dockerfile: src/Apps/Sorcha.Verifier/Dockerfile
-          - service: sample-strathcarron-portal
-            dockerfile: samples/strathcarron-portal/Dockerfile
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
 
     name: Build ${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve Dockerfile path
+        id: resolve
+        run: |
+          declare -A DOCKERFILES
+          DOCKERFILES["blueprint-service"]="src/Services/Sorcha.Blueprint.Service/Dockerfile"
+          DOCKERFILES["wallet-service"]="src/Services/Sorcha.Wallet.Service/Dockerfile"
+          DOCKERFILES["register-service"]="src/Services/Sorcha.Register.Service/Dockerfile"
+          DOCKERFILES["tenant-service"]="src/Services/Sorcha.Tenant.Service/Dockerfile"
+          DOCKERFILES["peer-service"]="src/Services/Sorcha.Peer.Service/Dockerfile"
+          DOCKERFILES["validator-service"]="src/Services/Sorcha.Validator.Service/Dockerfile"
+          DOCKERFILES["api-gateway"]="src/Services/Sorcha.ApiGateway/Dockerfile"
+          DOCKERFILES["mcp-server"]="src/Apps/Sorcha.McpServer/Dockerfile"
+          DOCKERFILES["ui-web"]="src/Apps/Sorcha.UI/Sorcha.UI.Web/Dockerfile"
+          DOCKERFILES["wallet-pwa"]="src/Apps/Sorcha.Wallet.Pwa/Dockerfile"
+          DOCKERFILES["verifier"]="src/Apps/Sorcha.Verifier/Dockerfile"
+          DOCKERFILES["sample-strathcarron-portal"]="samples/strathcarron-portal/Dockerfile"
+          echo "dockerfile=${DOCKERFILES[${{ matrix.service }}]}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -59,8 +122,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: ${{ steps.resolve.outputs.dockerfile }}
           push: false
           tags: sorchadev/${{ matrix.service }}:pr-${{ github.event.pull_request.number }}
+          # Reads the gha cache, including layers populated by docker-publish.yml on the base
+          # branch (GitHub scopes caches so a PR can read base-branch entries), so unchanged
+          # base layers are reused instead of rebuilt from scratch.
           cache-from: type=gha
           cache-to: type=gha,mode=max

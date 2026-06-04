@@ -67,6 +67,24 @@ jobs:
         if: steps.changes.outputs.code == 'true'
         run: dotnet build --no-restore --configuration Release
 
+      # Validate that every publishable library actually PACKS before merge. nuget-publish.yml
+      # only runs `dotnet pack` post-merge on master, so packaging breakages (bad metadata,
+      # missing license/readme, pack-time NU errors, version issues) used to surface only after
+      # the change had already landed. Pack here (reusing the Release build) so they gate the PR.
+      # Mirrors how docker-ci validates the image build without pushing.
+      - name: Validate NuGet packaging (pack, no push)
+        if: steps.changes.outputs.code == 'true'
+        shell: bash
+        run: |
+          set -e
+          rm -rf ./nupkg-validate
+          shopt -s nullglob
+          for proj in src/Common/*/*.csproj src/Core/*/*.csproj; do
+            echo "📦 Packing $proj"
+            dotnet pack "$proj" --configuration Release --no-build -o ./nupkg-validate
+          done
+          echo "Packed $(ls ./nupkg-validate/*.nupkg 2>/dev/null | wc -l) package(s) successfully."
+
       - name: Test (unit + in-memory integration)
         if: steps.changes.outputs.code == 'true'
         shell: bash
