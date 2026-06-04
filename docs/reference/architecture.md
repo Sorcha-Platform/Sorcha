@@ -4,10 +4,18 @@
 
 Sorcha is a modern .NET 10 platform for defining, designing, and executing multi-participant data flow orchestration workflows (called "Blueprints"). Built on .NET Aspire for cloud-native orchestration, Sorcha provides a flexible and scalable solution for workflow automation with selective data disclosure and conditional routing.
 
-**Last Updated:** 2025-11-16
-**Version:** 2.3.0
-**Status:** Active Development
-**Recent Changes:** Added Validator.Service for secured docket validation and chain integrity
+**Status:** Active development
+
+> **Currency note (this document is mid-refresh).** Several capabilities marked "(planned)" below
+> have **shipped** and should be read as current: **JWT authentication** with tiered audiences
+> (Feature 136), **role-based access control**, **Entity Framework Core** persistence (service-specific
+> repositories, no generic `Sorcha.Storage.EFCore`), **encryption at rest** (wallet envelope
+> encryption + Azure KMS F082; Tenant AES-256-GCM F146), **centralised rate limiting** (SEC-002), and
+> **audit logging**. Current stack: **C# 14 / .NET 10**, **.NET Aspire 13.3.x**. The designer is the
+> rail-driven `/designer/blueprint` (Feature 142) in `Sorcha.UI` — there is no
+> `Sorcha.Blueprint.Designer.Client` project. The peer list is persisted in **PostgreSQL** (the SQLite
+> reference is historical). Authoritative service status: [development-status.md](development-status.md);
+> source tree: [project-structure.md](project-structure.md).
 
 ## High-Level Architecture
 
@@ -374,7 +382,7 @@ builder.AddProject<Projects.Sorcha_Blueprint_Designer_Client>("blueprint-designe
 ```
 
 **Technology:**
-- .NET Aspire 13.0.0
+- .NET Aspire 13.3.x
 - Service discovery
 - Health checks
 
@@ -821,7 +829,7 @@ Build Pipeline:
 
 ### Runtime
 - .NET 10 (10.0.100)
-- C# 13
+- C# 14
 - ASP.NET Core
 
 ### Frameworks

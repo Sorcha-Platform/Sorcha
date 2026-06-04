@@ -1,8 +1,8 @@
 # Sorcha
 
+[![NuGet CI](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/nuget-ci.yml/badge.svg)](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/nuget-ci.yml)
 [![Docker CI](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/docker-ci.yml/badge.svg)](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/docker-ci.yml)
 [![CodeQL](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/codeql.yml/badge.svg)](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/codeql.yml)
-[![Playwright Tests](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/playwright.yml/badge.svg)](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/playwright.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A decentralised register platform for secure, multi-participant data flow orchestration.
@@ -20,7 +20,7 @@ Sorcha lets organizations define structured workflows — called **blueprints** 
 | **Multi-Tenant Identity** | JWT authentication with OAuth2 client credentials, participant identity registry, and wallet address linking |
 | **Peer Network** | gRPC-based P2P topology for register replication across nodes |
 | **Real-Time Notifications** | SignalR hubs for live action notifications, inbound transaction alerts, and workflow state changes |
-| **AI Integration** | MCP Server for AI assistant interaction + AI-assisted blueprint design with unified chat / diagram / preview shell |
+| **AI Integration** | MCP Server for AI assistant interaction + AI-assisted blueprint design in the rail-driven Describe → Understand → Rehearse → Go-live designer |
 
 ### The DAD Security Model
 
@@ -67,7 +67,7 @@ On success the script prints `[sorcha-setup] success — gateway reachable at ht
 | Service | URL | Description |
 |---------|-----|-------------|
 | **Sorcha UI** | http://localhost/app | Main application interface |
-| **Blueprint Designer** | http://localhost/app/designer/blueprint | Unified designer — AI / Diagram / Preview tabs |
+| **Blueprint Designer** | http://localhost/app/designer/blueprint | Rail-driven designer — Describe → Understand → Rehearse → Go live (Feature 142) |
 | **API Gateway** | http://localhost/ | REST API entry point |
 | **API Documentation** | http://localhost/scalar/ | Interactive Scalar API docs |
 | **Health Check** | http://localhost/api/health | Aggregated service health |
@@ -93,24 +93,40 @@ Blueprints are JSON documents that describe multi-party workflows:
 ```json
 {
   "title": "Invoice Approval",
+  "description": "Two-party invoice submission and approval",
   "participants": [
-    { "role": "submitter", "description": "Submits invoices" },
-    { "role": "approver", "description": "Reviews and approves" }
+    { "id": "submitter", "name": "Submitter" },
+    { "id": "approver", "name": "Approver" }
   ],
   "actions": [
     {
+      "id": 0,
       "title": "Submit Invoice",
-      "assignedTo": "submitter",
-      "schema": { "type": "object", "properties": { "amount": { "type": "number" } } }
+      "sender": "submitter",
+      "isStartingAction": true,
+      "dataSchemas": [
+        { "type": "object", "properties": { "amount": { "type": "number" } }, "required": ["amount"] }
+      ],
+      "routes": [{ "id": "to-review", "nextActionIds": [1], "isDefault": true }],
+      "disclosures": [{ "participantAddress": "submitter", "dataPointers": ["/*"] }]
     },
     {
+      "id": 1,
       "title": "Review Invoice",
-      "assignedTo": "approver",
-      "routing": { "conditions": [{ "if": { ">": [{ "var": "amount" }, 1000] }, "then": "escalate" }] }
+      "sender": "approver",
+      "dataSchemas": [
+        { "type": "object", "properties": { "decision": { "type": "string", "enum": ["approved", "rejected"] } }, "required": ["decision"] }
+      ],
+      "routes": [{ "id": "done", "nextActionIds": [], "isDefault": true }],
+      "disclosures": [{ "participantAddress": "approver", "dataPointers": ["/*"] }]
     }
   ]
 }
 ```
+
+> Flow uses `routes[]` (`nextActionIds` → action ids; `[]` ends the workflow); one action is the
+> open `isStartingAction`; every action declares `disclosures`. See the
+> [Blueprint Designer](docs/guides/designer.md) and `blueprint-builder` skill.
 
 See the [blueprints/](blueprints/) directory for ready-to-use templates across finance, healthcare, supply chain, and government domains.
 
