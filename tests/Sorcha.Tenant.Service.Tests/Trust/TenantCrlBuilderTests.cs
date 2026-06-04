@@ -58,6 +58,58 @@ public class TenantCrlBuilderTests
     }
 
     [Fact]
+    public void Build_SerialWithRedundantLeadingZero_DoesNotThrow()
+    {
+        // Regression for #817. Org-cert serials are stored as the raw 16-byte
+        // buffer (X509CertificateBuilder.BuildOrgCert), so a serial whose first
+        // byte is 0x00 carries a redundant leading zero. CertificateRevocation
+        // ListBuilder.AddEntry demands a minimal DER INTEGER and threw
+        // "serial number is invalid ... redundant leading bytes" on those serials
+        // — an intermittent CI flake whenever the RNG produced a leading zero.
+        var (rootDer, rootKey) = BuildRoot();
+        var rawSerial = "000A0B0C0D0E0F1011121314151617";   // leading 0x00, next byte high-bit clear
+        var minimalSerial = "0A0B0C0D0E0F1011121314151617";  // what a normalised DER INTEGER carries
+
+        var act = () => TenantCrlBuilder.Build(
+            rootDer, rootKey,
+            new[] { (rawSerial, DateTimeOffset.UtcNow) },
+            crlNumber: 3);
+
+        act.Should().NotThrow("redundant leading zeros must be normalised before AddEntry");
+
+        var (crlDer, _) = act();
+        _ = CertificateRevocationListBuilder.Load(crlDer, out var crlNumber);
+        crlNumber.Should().Be(3);
+        IndexOfSequence(crlDer, Convert.FromHexString(minimalSerial)).Should().BeGreaterThanOrEqualTo(0,
+            "the CRL must embed the minimally-encoded serial so it matches the certificate's own DER INTEGER");
+    }
+
+    [Fact]
+    public void Build_SerialWithHighBitSet_EmbedsPositiveInteger()
+    {
+        // Regression for #817. A serial whose first byte has the high bit set is a
+        // valid minimal encoding of a *negative* integer, so AddEntry accepts it
+        // silently and would embed a negative serial that never matches the
+        // certificate's positive serial. Builder must prepend a 0x00 sign byte.
+        var (rootDer, rootKey) = BuildRoot();
+        var rawSerial = "80AABBCCDDEEFF00112233445566";      // high bit set => looks negative
+        var positiveSerial = "0080AABBCCDDEEFF00112233445566"; // DER positive INTEGER with sign byte
+
+        var act = () => TenantCrlBuilder.Build(
+            rootDer, rootKey,
+            new[] { (rawSerial, DateTimeOffset.UtcNow) },
+            crlNumber: 4);
+
+        act.Should().NotThrow();
+
+        var (crlDer, _) = act();
+        _ = CertificateRevocationListBuilder.Load(crlDer, out var crlNumber);
+        crlNumber.Should().Be(4);
+        IndexOfSequence(crlDer, Convert.FromHexString(positiveSerial)).Should().BeGreaterThanOrEqualTo(0,
+            "the CRL must embed the serial as a positive DER INTEGER (leading 0x00 sign byte)");
+    }
+
+    [Fact]
     public void Build_Signature_VerifiesUnderRootPublicKey()
     {
         // The CRL must be signed by the root CA — a verifier that fetches it and
