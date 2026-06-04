@@ -1,0 +1,40 @@
+<Project>
+
+  <!--
+    ============================================================================
+    Unified version scheme (single source of truth for EVERY component:
+    services, web/app clients, NuGet libraries, executables, agent).
+
+    Build-time DERIVED — no committed version bumps. Format: Major.Minor.Patch
+      Major  = manual "big decision"      → SorchaMajor below.
+      Minor  = GitHub Actions run number   → monotonic, increments every CI run.
+      Patch  = GitHub Actions run attempt  → PR retries / workflow re-runs.
+
+    Local (non-CI) builds are <Major>.0.0-dev so they never collide with CI
+    builds and are obviously not release artefacts.
+
+    Every per-area Directory.Build.props (src/Common, src/Core, src/Apps,
+    src/Services, tests, samples, bench) imports THIS file, so the version flows
+    to all projects. Do NOT hard-code <Version>/<AssemblyVersion>/<FileVersion>
+    in individual .csproj — they would override this and re-fragment versioning.
+    ============================================================================
+  -->
+  <PropertyGroup>
+    <SorchaMajor>2</SorchaMajor>
+
+    <SorchaMinor>0</SorchaMinor>
+    <SorchaMinor Condition="'$(GITHUB_RUN_NUMBER)' != ''">$(GITHUB_RUN_NUMBER)</SorchaMinor>
+
+    <SorchaPatch>0</SorchaPatch>
+    <SorchaPatch Condition="'$(GITHUB_RUN_ATTEMPT)' != ''">$(GITHUB_RUN_ATTEMPT)</SorchaPatch>
+
+    <!-- Package / NuGet version (allows the -dev prerelease suffix locally). -->
+    <Version>$(SorchaMajor).$(SorchaMinor).$(SorchaPatch)</Version>
+    <Version Condition="'$(GITHUB_RUN_NUMBER)' == ''">$(SorchaMajor).0.0-dev</Version>
+
+    <!-- Assembly identity must be purely numeric (x.x.x.x). -->
+    <AssemblyVersion>$(SorchaMajor).$(SorchaMinor).$(SorchaPatch).0</AssemblyVersion>
+    <FileVersion>$(SorchaMajor).$(SorchaMinor).$(SorchaPatch).0</FileVersion>
+  </PropertyGroup>
+
+</Project>

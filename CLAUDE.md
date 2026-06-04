@@ -335,6 +335,23 @@ internalGroup.RequireAuthorization("RequireService");   // token_type==service A
 
 Full reference: the **`jwt` skill** ("Tiered audiences + issuer hardening"). Metrics: `sorcha_token_minted_total{tier}` + `sorcha_tier_request_rejected_total{requested,reason}` on the `Sorcha.Identity` meter.
 
+### 14. Unified versioning (build-time derived)
+
+**Every component shares ONE version**, defined once in the **root `Directory.Build.props`** —
+`Major.Minor.Patch` where **Major** is a manual `<SorchaMajor>` (currently `2`), **Minor** =
+`GITHUB_RUN_NUMBER` (increments every CI run), **Patch** = `GITHUB_RUN_ATTEMPT` (PR retries). Local
+(non-CI) builds are `2.0.0-dev`. The 7 per-area `Directory.Build.props` import the root via
+`GetPathOfFileAbove`, so services, web/app clients, NuGet libs, the CLI, and the agent all inherit it.
+
+```xml
+<!-- DON'T do this in any .csproj — it overrides the root and re-fragments versioning: -->
+<Version>2.0.0</Version>
+```
+
+- **NEVER hard-code `<Version>` / `<AssemblyVersion>` / `<FileVersion>` in a `.csproj`.** New projects inherit automatically.
+- Publish workflows **derive** the version (`dotnet pack`/`build` reads the env in CI) — do **not** reintroduce "bump `<Version>` + commit" steps. Docker images are tagged `:2.<run>.<attempt>`.
+- A **Major** bump is a deliberate edit to `<SorchaMajor>` in the root `Directory.Build.props`.
+
 ---
 
 ## Key Documentation

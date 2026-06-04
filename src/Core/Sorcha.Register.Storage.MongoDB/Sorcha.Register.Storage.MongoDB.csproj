@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <PackageId>Sorcha.Register.Storage.MongoDB</PackageId>
-    <Version>2.0.0</Version>
     <Description>MongoDB register repository implementation</Description>
   </PropertyGroup>
 

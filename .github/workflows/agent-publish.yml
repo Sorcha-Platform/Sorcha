@@ -7,63 +7,25 @@ on:
       - 'src/Apps/Sorcha.Agent/**'
 
   workflow_dispatch:
-    inputs:
-      force_publish:
-        description: 'Force publish Agent tool'
-        required: false
-        type: boolean
-        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: Bump patch version
-        id: version
-        run: |
-          CSPROJ="src/Apps/Sorcha.Agent/Sorcha.Agent.csproj"
-          CURRENT=$(grep -oP '<Version>\K[^<]+' "$CSPROJ")
-
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-
-          sed -i "s|<Version>$CURRENT</Version>|<Version>$NEW_VERSION</Version>|" "$CSPROJ"
-          sed -i "s|<AssemblyVersion>[^<]*</AssemblyVersion>|<AssemblyVersion>$MAJOR.$MINOR.$NEW_PATCH.0</AssemblyVersion>|" "$CSPROJ"
-          sed -i "s|<FileVersion>[^<]*</FileVersion>|<FileVersion>$MAJOR.$MINOR.$NEW_PATCH.0</FileVersion>|" "$CSPROJ"
-
-          echo "old_version=$CURRENT" >> "$GITHUB_OUTPUT"
-          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Bumped Sorcha.Agent from $CURRENT to $NEW_VERSION"
-
-      - name: Restore and Build
-        run: |
-          dotnet restore
-          dotnet build src/Apps/Sorcha.Agent/ --configuration Release --no-restore
-
+      # Version is derived at build time by the unified scheme in the root
+      # Directory.Build.props — 2.<run_number>.<run_attempt> in CI. No bump/commit.
       - name: Pack
-        run: dotnet pack src/Apps/Sorcha.Agent/ --configuration Release --no-build -o ./nupkg
+        run: dotnet pack src/Apps/Sorcha.Agent/ --configuration Release -o ./nupkg
 
       - name: Publish to NuGet.org
         run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-
-      - name: Commit version bump
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "src/Apps/Sorcha.Agent/Sorcha.Agent.csproj"
-          git commit -m "chore: bump Sorcha.Agent to ${{ steps.version.outputs.new_version }}" || true
-          git push || true

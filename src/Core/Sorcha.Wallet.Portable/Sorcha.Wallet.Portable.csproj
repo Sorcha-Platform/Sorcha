@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <PackageId>Sorcha.Wallet.Portable</PackageId>
-    <Version>1.0.0</Version>
     <Description>Portable wallet library for Sorcha — HD derivation, key types, enums. No server dependencies.</Description>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>

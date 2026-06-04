@@ -12,6 +12,7 @@ WORKDIR /src
 
 # Central package management + build-prop hierarchies.
 COPY ["Directory.Packages.props", "."]
+COPY ["Directory.Build.props", "."]
 COPY ["samples/Directory.Build.props", "samples/"]
 
 # The sample's ProjectReferences (and their transitive ProjectReferences)

@@ -110,9 +110,12 @@ public class OpenApiExtensionsTests : IAsyncLifetime
         // Act
         var doc = await GetOpenApiDocumentAsync();
 
-        // Assert
+        // Assert — the transformer sets info.version from the assembly's derived
+        // version (unified scheme, root Directory.Build.props). Assert the shape
+        // (Major.Minor.Patch), not a hardcoded value, since it changes per build.
         var version = doc.GetProperty("info").GetProperty("version").GetString();
-        version.Should().Be("1.0.0");
+        version.Should().NotBeNullOrEmpty();
+        version.Should().MatchRegex(@"^\d+\.\d+\.\d+");
     }
 
     [Fact]

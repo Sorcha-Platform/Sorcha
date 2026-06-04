@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <PackageId>Sorcha.Storage.Abstractions</PackageId>
-    <Version>2.0.0</Version>
     <Description>Core storage abstraction interfaces for multi-tier storage</Description>
     <PackageTags>sorcha;storage;abstractions;repository</PackageTags>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>

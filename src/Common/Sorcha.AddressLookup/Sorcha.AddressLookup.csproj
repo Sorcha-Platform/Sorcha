@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <PackageId>Sorcha.AddressLookup</PackageId>
-    <Version>1.0.0</Version>
     <Description>Pluggable address lookup providers for Sorcha (postcode validation and full-address autocomplete). Hosted in Tenant Service; consumed via the /api/address-lookup/* endpoints and the PostcodeLookupField form control.</Description>
     <PackageTags>sorcha;address-lookup;postcode;paf</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>

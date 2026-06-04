@@ -141,9 +141,12 @@ jobs:
           file: ${{ steps.resolve.outputs.dockerfile }}
           push: true
           platforms: linux/amd64
+          # Unified version scheme: 2.<run_number>.<run_attempt> (matches the
+          # .NET assembly version derived in the root Directory.Build.props).
           tags: |
             sorchadev/${{ matrix.service }}:latest
             sorchadev/${{ matrix.service }}:master
             sorchadev/${{ matrix.service }}:master-${{ github.sha }}
+            sorchadev/${{ matrix.service }}:2.${{ github.run_number }}.${{ github.run_attempt }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -1,4 +1,5 @@
 <Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
   <!--
     Bench projects do not inherit the test-platform settings from tests/.
     Each bench project sets its own TargetFramework and SDK.

@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <PackageId>Sorcha.PresentationLifecycle.Abstractions</PackageId>
-    <Version>1.0.0</Version>
     <Description>Consumer-agnostic primitive for Sorcha's Timebound Presentation Lifecycle (Feature 111). Contains the IPresentationConsumer contract and lifecycle event records. No HAIP-specific types — consumers (HAIP verifier, future file-upload-by-deadline, step-up MFA, etc.) implement against this abstractions package.</Description>
     <PackageTags>sorcha;presentation;lifecycle;abstractions</PackageTags>
     <RootNamespace>Sorcha.PresentationLifecycle.Abstractions</RootNamespace>
