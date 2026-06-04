@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <PackageId>Sorcha.ServiceClients.Http</PackageId>
-    <Version>1.0.0</Version>
     <Description>HTTP REST clients and SignalR hub helper for Sorcha services. No gRPC dependencies.</Description>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>

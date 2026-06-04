@@ -3,7 +3,6 @@
   <!-- Client-side schema library for Blazor WASM UI: browsing, caching, local storage -->
   <PropertyGroup>
     <PackageId>Sorcha.Blueprint.Schemas.Client</PackageId>
-    <Version>2.0.0</Version>
     <RootNamespace>Sorcha.Blueprint.Schemas.Client</RootNamespace>
     <Description>Client-side schema library for Blazor WASM: schema browsing, caching, and local storage</Description>
   </PropertyGroup>

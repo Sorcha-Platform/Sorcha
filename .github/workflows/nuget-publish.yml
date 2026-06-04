@@ -16,7 +16,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   detect-changes:
@@ -31,44 +31,34 @@ jobs:
 
       - name: Detect changed libraries
         id: detect
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          FORCE: ${{ github.event.inputs.force_publish_all }}
         run: |
-          ALL_LIBS='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Blueprint.Schemas.Client","Sorcha.Storage.InMemory","Sorcha.Storage.EFCore","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.Wallet.Portable","Sorcha.ServiceClients","Sorcha.ServiceClients.Http","Sorcha.ServiceDefaults","Sorcha.Blueprint.Engine","Sorcha.Blueprint.Fluent","Sorcha.Register.Core","Sorcha.Register.Storage","Sorcha.Register.Storage.InMemory","Sorcha.Register.Storage.MongoDB","Sorcha.Register.Storage.Redis"]'
+          ALL_LIBS='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Blueprint.Schemas.Client","Sorcha.Storage.InMemory","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.Wallet.Portable","Sorcha.ServiceClients","Sorcha.ServiceClients.Http","Sorcha.ServiceDefaults","Sorcha.Blueprint.Engine","Sorcha.Blueprint.Fluent","Sorcha.Register.Core","Sorcha.Register.Storage","Sorcha.Register.Storage.InMemory","Sorcha.Register.Storage.MongoDB","Sorcha.Register.Storage.Redis"]'
 
-          if [ "${{ github.event.inputs.force_publish_all }}" == "true" ]; then
-            echo "Force publishing all libraries"
+          if [ "$FORCE" == "true" ]; then
             CHANGED="$ALL_LIBS"
           else
-            # Compare each library against its last version-bump commit.
-            # This catches accumulated drift — not just the latest commit.
+            # Diff the pushed range. Version is now derived at build time (no
+            # version-bump commits to anchor on), so change-detection is a plain
+            # git diff of each library's directory.
+            BASE="$BEFORE"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              BASE="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"
+            fi
+            CHANGED_FILES="$(git diff --name-only "$BASE" "$SHA" -- src/Common src/Core || true)"
+
             CHANGED="["
             FIRST=true
-            for dir in src/Common/*/ src/Core/*/; do
-              [ ! -d "$dir" ] && continue
-              LIB=$(basename "$dir")
-              CSPROJ="$dir$LIB.csproj"
-              [ ! -f "$CSPROJ" ] && continue
-
-              # Find the commit that last bumped the version (CI version commits)
-              LAST_BUMP=$(git log --oneline --all -1 --grep="chore: bump $LIB to" --format="%H" 2>/dev/null || true)
-
-              if [ -z "$LAST_BUMP" ]; then
-                # No version-bump commit found — library was never published via CI
-                HAS_CHANGES=true
-              else
-                # Check if any source files changed since the last version bump
-                if git diff --name-only "$LAST_BUMP" HEAD -- "$dir" | grep -qv '\.csproj$'; then
-                  HAS_CHANGES=true
-                else
-                  HAS_CHANGES=false
-                fi
-              fi
-
-              if [ "$HAS_CHANGES" = true ]; then
-                if [ "$FIRST" = true ]; then
-                  FIRST=false
-                else
-                  CHANGED="$CHANGED,"
-                fi
+            for LIB in $(echo "$ALL_LIBS" | jq -r '.[]'); do
+              DIR=""
+              [ -d "src/Common/$LIB" ] && DIR="src/Common/$LIB"
+              [ -d "src/Core/$LIB" ] && DIR="src/Core/$LIB"
+              [ -z "$DIR" ] && continue
+              if echo "$CHANGED_FILES" | grep -q "^$DIR/"; then
+                if [ "$FIRST" = true ]; then FIRST=false; else CHANGED="$CHANGED,"; fi
                 CHANGED="$CHANGED\"$LIB\""
               fi
             done
@@ -89,65 +79,36 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 1
+      fail-fast: false
       matrix:
         library: ${{ fromJson(needs.detect-changes.outputs.changed_libraries) }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: Bump minor version
-        id: version
+      - name: Resolve library directory
+        id: lib
         run: |
-          if [ -f "src/Common/${{ matrix.library }}/${{ matrix.library }}.csproj" ]; then
-            CSPROJ="src/Common/${{ matrix.library }}/${{ matrix.library }}.csproj"
-          elif [ -f "src/Core/${{ matrix.library }}/${{ matrix.library }}.csproj" ]; then
-            CSPROJ="src/Core/${{ matrix.library }}/${{ matrix.library }}.csproj"
+          if [ -d "src/Common/${{ matrix.library }}" ]; then
+            echo "dir=src/Common/${{ matrix.library }}" >> "$GITHUB_OUTPUT"
+          elif [ -d "src/Core/${{ matrix.library }}" ]; then
+            echo "dir=src/Core/${{ matrix.library }}" >> "$GITHUB_OUTPUT"
           else
-            echo "ERROR: Cannot find csproj for ${{ matrix.library }}"
-            exit 1
+            echo "ERROR: cannot find directory for ${{ matrix.library }}"; exit 1
           fi
-          echo "csproj_path=$CSPROJ" >> "$GITHUB_OUTPUT"
-          LIB_DIR=$(dirname "$CSPROJ")
-          echo "lib_dir=$LIB_DIR" >> "$GITHUB_OUTPUT"
-          CURRENT=$(grep -oP '<Version>\K[^<]+' "$CSPROJ")
 
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-          NEW_MINOR=$((MINOR + 1))
-          NEW_VERSION="$MAJOR.$NEW_MINOR.0"
-
-          sed -i "s|<Version>$CURRENT</Version>|<Version>$NEW_VERSION</Version>|" "$CSPROJ"
-
-          echo "old_version=$CURRENT" >> "$GITHUB_OUTPUT"
-          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Bumped ${{ matrix.library }} from $CURRENT to $NEW_VERSION"
-
-      - name: Restore and Build
-        # Restore only the library being published (transitively pulls its
-        # ProjectReferences). A blanket `dotnet restore` would pull the whole
-        # solution — including Sorcha.Cli's unrelated packages — which is both
-        # wasteful and couples library publishing to dependencies the libs don't
-        # use (e.g. a revoked upstream signing cert on a CLI-only package).
-        run: |
-          dotnet restore ${{ steps.version.outputs.lib_dir }}/
-          dotnet build ${{ steps.version.outputs.lib_dir }}/ --configuration Release --no-restore
-
+      # Version is derived at build time by the root Directory.Build.props —
+      # 2.<run_number>.<run_attempt> in CI. Restore is scoped to the library
+      # (transitively pulls its ProjectReferences) so library publishing isn't
+      # coupled to unrelated packages.
       - name: Pack
-        run: dotnet pack ${{ steps.version.outputs.lib_dir }}/ --configuration Release --no-build -o ./nupkg
+        run: |
+          dotnet restore "${{ steps.lib.outputs.dir }}/"
+          dotnet pack "${{ steps.lib.outputs.dir }}/" --configuration Release --no-restore -o ./nupkg
 
       - name: Publish to NuGet.org
         run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-
-      - name: Commit version bump
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${{ steps.version.outputs.csproj_path }}"
-          git commit -m "chore: bump ${{ matrix.library }} to ${{ steps.version.outputs.new_version }}" || true
-          git push || true
