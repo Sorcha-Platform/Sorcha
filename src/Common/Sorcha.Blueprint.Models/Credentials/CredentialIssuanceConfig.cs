@@ -83,19 +83,20 @@ public class CredentialIssuanceConfig
     public CredentialDisplayConfig? DisplayConfig { get; set; }
 
     /// <summary>
-    /// Where the issued credential is delivered. Default: <see cref="TargetAudience.SorchaInternal"/>.
+    /// Where the issued credential is delivered. Default: <see cref="TargetAudience.SorchaLocalWallet"/>.
     /// Set to <see cref="TargetAudience.HaipExternalWallet"/> to issue via the HAIP OpenID4VCI
     /// path (spec 097) instead of writing to a Sorcha participant's wallet.
     /// </summary>
+    /// <remarks>
+    /// Defaults to <see cref="TargetAudience.SorchaLocalWallet"/> (was the deprecated
+    /// <see cref="TargetAudience.SorchaInternal"/>). The runtime already maps SorchaInternal to
+    /// SorchaLocalWallet, so configs that omit this field — previously defaulting to the
+    /// deprecated value — keep identical delivery behaviour; they just resolve to the
+    /// non-deprecated value directly.
+    /// </remarks>
     [JsonPropertyName("targetAudience")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    // Default retained as SorchaInternal for backward compatibility with existing serialised
-    // configs. Flipping the default to SorchaLocalWallet is a deliberate behavioural change
-    // (alters credential delivery for configs that omit the field) tracked separately, not a
-    // warning-cleanup edit.
-#pragma warning disable CS0618
-    public TargetAudience TargetAudience { get; set; } = TargetAudience.SorchaInternal;
-#pragma warning restore CS0618
+    public TargetAudience TargetAudience { get; set; } = TargetAudience.SorchaLocalWallet;
 
     /// <summary>
     /// Credential format to mint (feature 135). Default <see cref="CredentialFormat.SdJwtVc"/>.
