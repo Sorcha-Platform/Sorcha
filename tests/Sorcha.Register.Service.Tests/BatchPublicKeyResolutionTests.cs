@@ -18,6 +18,7 @@ namespace Sorcha.Register.Service.Tests;
 /// Integration tests for the batch public key resolution endpoint (T011).
 /// Tests the POST /api/registers/{registerId}/participants/resolve-public-keys endpoint.
 /// </summary>
+[Collection("RegisterWebApp")]
 public class BatchPublicKeyResolutionTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly RegisterServiceWebApplicationFactory _factory;

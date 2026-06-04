@@ -17,6 +17,7 @@ namespace Sorcha.Register.Service.Tests.Endpoints;
 /// Integration tests for verification bundle endpoints (T044).
 /// Covers GET bundle export and POST bundle verification.
 /// </summary>
+[Collection("RegisterWebApp")]
 public class VerificationBundleTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly RegisterServiceWebApplicationFactory _factory;

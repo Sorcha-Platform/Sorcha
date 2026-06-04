@@ -11,6 +11,7 @@ using Xunit;
 
 namespace Sorcha.Register.Service.Tests;
 
+[Collection("RegisterWebApp")]
 public class SignalRHubTests : IClassFixture<RegisterServiceWebApplicationFactory>, IAsyncLifetime
 {
     private readonly RegisterServiceWebApplicationFactory _factory;

@@ -15,6 +15,7 @@ namespace Sorcha.Register.Service.Tests;
 /// Tests for the GET /api/registers/{registerId}/participants/resolve endpoint.
 /// Verifies participant resolution by blueprint role ID and organisation name.
 /// </summary>
+[Collection("RegisterWebApp")]
 public class ParticipantResolveEndpointTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly HttpClient _client;

@@ -17,6 +17,7 @@ namespace Sorcha.Register.Service.Tests.Endpoints;
 /// Integration tests for Merkle inclusion proof endpoints (T031).
 /// Covers GET inclusion proof generation and POST proof verification.
 /// </summary>
+[Collection("RegisterWebApp")]
 public class InclusionProofEndpointTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly RegisterServiceWebApplicationFactory _factory;
