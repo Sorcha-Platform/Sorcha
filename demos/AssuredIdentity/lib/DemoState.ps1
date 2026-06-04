@@ -12,7 +12,7 @@ $script:DemoStateSchemaVersion = 1
 #>
 function Read-DemoState {
     [CmdletBinding()]
-    param([string]$Path = "./state.json")
+    param([string]$Path = (Join-Path $script:DemoRoot "state.json"))
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     try {
         return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
@@ -31,7 +31,7 @@ function Write-DemoState {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][object]$State,
-        [string]$Path = "./state.json"
+        [string]$Path = (Join-Path $script:DemoRoot "state.json")
     )
     $obj = [ordered]@{}
     if ($State -is [hashtable]) {

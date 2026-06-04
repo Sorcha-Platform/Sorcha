@@ -19,7 +19,7 @@ $script:DemoNodeRoles = @('issuer', 'subscriber')
 #>
 function Get-DemoNodeInventory {
     [CmdletBinding()]
-    param([string]$Path = "./demo-nodes.json")
+    param([string]$Path = (Join-Path $script:DemoRoot "demo-nodes.json"))
 
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Node inventory not found at '$Path'. Copy demo-nodes.example.json and edit it for your installations."
