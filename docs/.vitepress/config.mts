@@ -35,6 +35,11 @@ gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });`],
       'archive/**',
       'plans/**',
       'superpowers/**',
+      // Retired: per-service "% MVD" status snapshots are inherently
+      // perpetually-stale. Files kept in-repo (so inbound links still resolve)
+      // but not built/navigated. Live status lives in development-status.md and
+      // the service READMEs.
+      'reference/status/**',
     ],
 
     // TODO: Remove after PR 2 fixes broken links
@@ -179,20 +184,6 @@ gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });`],
                 items: [
                   { text: 'Validator Design', link: '/reference/validator-service-design' },
                     { text: 'Architecture Decisions', link: '/reference/architecture/ADR-005-Validator-Service-Security-Boundary' },
-                ],
-              },
-              {
-                text: 'Service Status',
-                collapsed: true,
-                items: [
-                  { text: 'Authentication', link: '/reference/status/authentication' },
-                  { text: 'Blueprint Service', link: '/reference/status/blueprint-service' },
-                  { text: 'Core Libraries', link: '/reference/status/core-libraries' },
-                  { text: 'Peer Service', link: '/reference/status/peer-service' },
-                  { text: 'Register Service', link: '/reference/status/register-service' },
-                  { text: 'Tenant Service', link: '/reference/status/tenant-service' },
-                  { text: 'Validator Service', link: '/reference/status/validator-service' },
-                  { text: 'Wallet Service', link: '/reference/status/wallet-service' },
                 ],
               },
             ],

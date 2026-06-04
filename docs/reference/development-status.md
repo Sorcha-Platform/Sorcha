@@ -1,14 +1,21 @@
 # Sorcha Platform - Development Status Report
 
-**Date:** 2026-04-22
-**Version:** 4.6 (Updated after Feature 109 AI Designer Unified Shell)
 **Overall Completion:** 100% MVD
+
+> **Currency note.** This snapshot was last comprehensively updated for ~Feature 109/145. Work has
+> continued since — notably tiered JWT audiences + issuer hardening (**Feature 136**), the
+> June 2026 security-hardening initiative (**Features 146/147/148** — Tenant at-rest secret
+> protection, authorization-gap closure, verification correctness), and the 2026-06-02 architecture
+> review. The current per-service completion figures live in the [CLAUDE.md](../../CLAUDE.md) service
+> table. The previous per-service `reference/status/*` "% MVD" pages have been **retired** (they were
+> perpetually-stale point-in-time snapshots) — this document plus the service READMEs are the live
+> status source.
 
 ---
 
 ## Executive Summary
 
-This document provides an accurate, evidence-based assessment of the Sorcha platform's development status. Updated after Feature 058 (Platform Organisation Topology, 10 phases, 81 tasks) on 2026-03-16.
+This document provides an accurate, evidence-based assessment of the Sorcha platform's development status.
 
 **Key Findings:**
 - Blueprint-Action Service is 100% complete with full orchestration and JWT authentication (123 tests)

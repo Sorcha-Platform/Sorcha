@@ -1,10 +1,16 @@
 # Sorcha Security Requirements
 
 **Document Type:** Security Requirements Specification
-**Version:** 1.0
-**Date:** 2025-11-16
-**Status:** Active
-**Last Updated:** 2025-11-16
+**Status:** Partial / superseded in scope
+
+> **Superseded in scope.** This v1.0 (2025-11-16) document captures only the early DocketManager /
+> ChainValidator component-placement rules. It **predates** the platform's security model and does
+> not yet cover: JWT authentication + tiered audiences (Feature 136), at-rest secret protection
+> (Feature 146), authorization gates (Feature 147), verification correctness (Feature 148), encrypted
+> payloads, and post-quantum cryptography (Feature 040). For the current posture see the
+> [2026-03-19 Security Audit](../security/SECURITY-AUDIT-2026-03-19.md) (with its remediation-status
+> banner), [Authentication Setup](../guides/AUTHENTICATION-SETUP.md), [JWT Configuration](../guides/JWT-CONFIGURATION.md),
+> and the production gates in [Configuration Reference](../admin/configuration-reference.md).
 
 ## Overview
 
