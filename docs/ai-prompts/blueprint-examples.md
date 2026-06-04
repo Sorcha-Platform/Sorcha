@@ -2,6 +2,12 @@
 
 These examples show how an LLM should interact with users when helping them build Sorcha blueprints.
 
+> **Model corrections** (these conversational examples predate the current schema). When generating a
+> blueprint: use **`dataSchemas`** (an array) not `dataSchema`; route via **`routes[]`**
+> (`nextActionIds` → action ids, JSON-Logic `condition`, `isDefault`) not a `routing`/`condition`
+> block returning a participant; participants have **no `type`** field. The authoritative model is the
+> `blueprint-builder` skill and [Blueprint Format](../guides/blueprints/blueprint-format.md).
+
 ---
 
 ### Example 1: Simple Purchase Order

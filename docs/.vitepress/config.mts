@@ -115,6 +115,7 @@ gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });`],
                   { text: 'JSON Logic Guide', link: '/guides/blueprints/json-logic-guide' },
                 ],
               },
+              { text: 'Blueprint Designer', link: '/guides/designer' },
               {
                 text: 'Integration',
                 collapsed: true,
