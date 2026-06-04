@@ -18,6 +18,7 @@ namespace Sorcha.Register.Service.Tests;
 /// <summary>
 /// Integration tests for register creation API endpoints (two-phase initiate/finalize flow).
 /// </summary>
+[Collection("RegisterWebApp")]
 public class RegisterCreationApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly RegisterServiceWebApplicationFactory _factory;

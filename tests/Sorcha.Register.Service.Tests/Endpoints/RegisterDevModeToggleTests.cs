@@ -16,6 +16,7 @@ namespace Sorcha.Register.Service.Tests.Endpoints;
 /// Tests for the DevMode toggle endpoint (PUT /api/registers/{registerId}/devmode).
 /// Verifies enabling, disabling, 404 for unknown registers, and authorization requirements.
 /// </summary>
+[Collection("RegisterWebApp")]
 public class RegisterDevModeToggleTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly RegisterServiceWebApplicationFactory _factory;

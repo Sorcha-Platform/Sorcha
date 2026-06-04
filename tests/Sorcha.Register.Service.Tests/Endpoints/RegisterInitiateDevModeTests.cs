@@ -15,6 +15,7 @@ namespace Sorcha.Register.Service.Tests.Endpoints;
 /// Verifies that the DevMode property on InitiateRegisterCreationRequest is correctly
 /// propagated to the pending registration.
 /// </summary>
+[Collection("RegisterWebApp")]
 public class RegisterInitiateDevModeTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly RegisterServiceWebApplicationFactory _factory;

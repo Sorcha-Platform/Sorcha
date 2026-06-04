@@ -11,6 +11,7 @@ using Xunit;
 
 namespace Sorcha.Register.Service.Tests;
 
+[Collection("RegisterWebApp")]
 public class QueryApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly HttpClient _client;

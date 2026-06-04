@@ -15,6 +15,7 @@ namespace Sorcha.Register.Service.Tests.Endpoints;
 /// Integration tests for revocation and transaction status endpoints (T039).
 /// Covers POST revoke transaction, and GET transaction lifecycle status.
 /// </summary>
+[Collection("RegisterWebApp")]
 public class RevocationEndpointTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly RegisterServiceWebApplicationFactory _factory;

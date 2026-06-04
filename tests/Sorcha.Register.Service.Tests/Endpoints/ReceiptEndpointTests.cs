@@ -18,6 +18,7 @@ namespace Sorcha.Register.Service.Tests.Endpoints;
 /// Covers GET receipt by txId, GET docket receipts with pagination,
 /// POST batch receipts, and POST receipt verification.
 /// </summary>
+[Collection("RegisterWebApp")]
 public class ReceiptEndpointTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly RegisterServiceWebApplicationFactory _factory;
