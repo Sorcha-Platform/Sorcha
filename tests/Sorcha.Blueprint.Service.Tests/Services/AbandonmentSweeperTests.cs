@@ -27,6 +27,9 @@ public class AbandonmentSweeperTests
 
     public AbandonmentSweeperTests()
     {
+        // These tests exercise the connected path — the sweeper now skips the tick
+        // when Redis is not connected, so the mock must report a live connection.
+        _redisMock.Setup(r => r.IsConnected).Returns(true);
         _redisMock.Setup(r => r.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
             .Returns(_dbMock.Object);
     }
@@ -89,6 +92,25 @@ public class AbandonmentSweeperTests
             It.Is<RedisKey>(k => k.ToString() == "sorcha:presentation:sweeper-lock"),
             It.IsAny<CommandFlags>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task TickAsync_RedisNotConnected_SkipsQuietlyWithoutTouchingDatabase()
+    {
+        // Regression: a node without a backplane (or a test host with a stubbed
+        // multiplexer) must not NRE/throw on every tick. When Redis is not
+        // connected the sweeper skips entirely — no leader lock, no scan.
+        _redisMock.Setup(r => r.IsConnected).Returns(false);
+
+        await Make().TickAsync(TimeSpan.FromSeconds(60), CancellationToken.None);
+
+        _dbMock.Verify(d => d.StringSetAsync(
+            It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
+            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()),
+            Times.Never);
+        _storeMock.Verify(s => s.ListPendingNearExpiryAsync(
+            It.IsAny<TimeSpan>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
