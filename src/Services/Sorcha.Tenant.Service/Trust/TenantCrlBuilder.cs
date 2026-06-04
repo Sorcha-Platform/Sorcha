@@ -65,8 +65,13 @@ public static class TenantCrlBuilder
                 continue;
             var serialBytes = Convert.FromHexString(serialHex);
             // The builder takes serial bytes in big-endian form — the same order
-            // X509CertificateBuilder emits them, so no reversal is needed.
-            builder.AddEntry(serialBytes, revokedAt);
+            // X509CertificateBuilder emits them, so no reversal is needed. They
+            // MUST, however, be a minimal DER INTEGER: org-cert serials are stored
+            // as the raw 16-byte RNG buffer, so a leading 0x00 (redundant positive
+            // padding) makes AddEntry throw "invalid serial number ... redundant
+            // leading bytes", and a leading high-bit byte would be silently encoded
+            // as a negative integer that never matches the certificate (#817).
+            builder.AddEntry(NormalizeSerial(serialBytes), revokedAt);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -91,5 +96,38 @@ public static class TenantCrlBuilder
             authorityKeyIdentifier: aki);
 
         return (crlDer, nextUpdate);
+    }
+
+    /// <summary>
+    /// Normalises a big-endian serial number to the minimal, positive DER INTEGER
+    /// encoding required by <see cref="CertificateRevocationListBuilder.AddEntry(System.ReadOnlySpan{byte}, System.DateTimeOffset)"/>.
+    /// Strips redundant leading <c>0x00</c> / <c>0xFF</c> padding and prepends a
+    /// single <c>0x00</c> sign byte when the high bit is set, so the encoded serial
+    /// matches the certificate's own (always-positive) serial. See issue #817.
+    /// </summary>
+    internal static byte[] NormalizeSerial(byte[] serial)
+    {
+        var start = 0;
+        // Drop redundant leading 0x00 (positive padding) — a leading zero is only
+        // permitted when the next byte's high bit is set (to keep the value positive).
+        while (start < serial.Length - 1 && serial[start] == 0x00 && (serial[start + 1] & 0x80) == 0)
+            start++;
+        // Drop redundant leading 0xFF (negative padding) — defensive; serials are
+        // generated positive, but normalise faithfully if one ever arrives signed.
+        while (start < serial.Length - 1 && serial[start] == 0xFF && (serial[start + 1] & 0x80) != 0)
+            start++;
+
+        var trimmed = serial.AsSpan(start);
+
+        // A high bit on the leading byte would be read as a negative integer.
+        // Certificate serials are positive, so prepend a 0x00 sign byte.
+        if ((trimmed[0] & 0x80) != 0)
+        {
+            var prefixed = new byte[trimmed.Length + 1];
+            trimmed.CopyTo(prefixed.AsSpan(1));
+            return prefixed;
+        }
+
+        return trimmed.ToArray();
     }
 }
