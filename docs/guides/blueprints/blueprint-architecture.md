@@ -1,5 +1,14 @@
 # Sorcha Blueprint Architecture: Integration with JSON-LD, JSON-e, and JSON Logic
 
+> **Execution model has moved on (Feature 145).** Sections below describe an imperative
+> instance/advancement model with transaction-chaining and routing off `Action.Participants`. The
+> current engine is: routing via **`routes[]`** (which take precedence over the legacy participant
+> conditions, `RoutingEngine.DetermineNextWithMappingAsync`), and workflow **instances are
+> ledger-derived projections** — an `InstanceProjector` advances an instance from a signed
+> `RoutingDecision` sealed on the register, rather than imperatively mutating instance state. Treat
+> the code line-number citations below as illustrative; grep the methods if they miss. See the
+> [Blueprint Designer](../designer.md) and the `blueprint-builder` skill for the current model.
+
 ## Table of Contents
 
 1. [Overview](#overview)

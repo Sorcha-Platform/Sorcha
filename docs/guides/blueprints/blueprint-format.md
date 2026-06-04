@@ -4,6 +4,16 @@
 
 Blueprints are the core workflow definitions in Sorcha. They define multi-party, data-driven workflows with conditional routing, selective data disclosure, and JSON Logic-based business rules.
 
+> **Current model (read this first).** Sorcha blueprints use:
+> - **`routes[]`** for flow — each route has `nextActionIds` (target **action ids**), an optional JSON-Logic `condition`, and `isDefault`; `nextActionIds: []` ends the workflow. Routes **supersede** the legacy participant-condition routing some sections below still show.
+> - **`dataSchemas`** — an **array** of JSON Schemas per action (not a singular `dataSchema`).
+> - **`isStartingAction: true`** on exactly one action; its sender participant is **open** — leave `walletAddress` null so the first submitter is late-bound (gate it with `credentialRequirements`). A baked-in wallet there fails publish (`VAL_BP_010`).
+> - **`disclosures`** on every action (the sender always needs `/*` on their own data).
+> - **Form layout** via schema `x-` extensions (`x-pages`, `x-sections`, `x-persona`, `x-file`, `x-review`) — not a separate `form` control tree.
+> - Workflow **instances are ledger-derived projections** (Feature 145), not imperatively advanced.
+>
+> The authoritative worked reference is the **`blueprint-builder` skill**; build visually with the [Blueprint Designer](../designer.md).
+
 ## Primary Blueprint Format: JSON/YAML
 
 **IMPORTANT**: Blueprints should **always** be created as JSON or YAML documents. This is the primary and recommended format for:

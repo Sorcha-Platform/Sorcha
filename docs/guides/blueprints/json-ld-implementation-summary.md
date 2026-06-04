@@ -187,7 +187,7 @@ Actions automatically get appropriate ActivityStreams types based on title.
 
 ### 5. API Content Negotiation
 
-#### JSON-LD Middleware ([JsonLdMiddleware.cs](../src/Apps/Services/Sorcha.Blueprint.Api/JsonLd/JsonLdMiddleware.cs))
+#### JSON-LD Middleware ([JsonLdMiddleware.cs](../src/Services/Sorcha.Blueprint.Service/JsonLd/JsonLdMiddleware.cs))
 
 Implemented content negotiation for `application/ld+json`:
 
@@ -202,7 +202,7 @@ JsonLdHelper.EnsureJsonLdContext(blueprint) // Add context if missing
 JsonLdResults.Ok(context, blueprint)        // Smart response helper
 ```
 
-#### API Updates ([Program.cs](../src/Apps/Services/Sorcha.Blueprint.Api/Program.cs))
+#### API Updates ([Program.cs](../src/Services/Sorcha.Blueprint.Service/Program.cs))
 
 Updated endpoints to support JSON-LD:
 - `GET /api/blueprints` - List with JSON-LD support
@@ -445,7 +445,7 @@ Currently contexts are embedded in code. For production:
 ### New Files
 - `src/Common/Sorcha.Blueprint.Models/JsonLd/JsonLdContext.cs`
 - `src/Common/Sorcha.Blueprint.Models/JsonLd/JsonLdType.cs`
-- `src/Apps/Services/Sorcha.Blueprint.Api/JsonLd/JsonLdMiddleware.cs`
+- `src/Services/Sorcha.Blueprint.Service/JsonLd/JsonLdMiddleware.cs`
 - `tests/Sorcha.Blueprint.Models.Tests/JsonLd/JsonLdContextTests.cs`
 - `tests/Sorcha.Blueprint.Models.Tests/JsonLd/JsonLdTypeHelperTests.cs`
 - `tests/Sorcha.Blueprint.Fluent.Tests/JsonLd/BlueprintBuilderJsonLdTests.cs`
@@ -459,7 +459,7 @@ Currently contexts are embedded in code. For production:
 - `src/Core/Sorcha.Blueprint.Fluent/BlueprintBuilder.cs` - Added JSON-LD methods
 - `src/Core/Sorcha.Blueprint.Fluent/ParticipantBuilder.cs` - Added type methods
 - `src/Core/Sorcha.Blueprint.Fluent/ActionBuilder.cs` - Added ActivityStreams methods
-- `src/Apps/Services/Sorcha.Blueprint.Api/Program.cs` - Added content negotiation
+- `src/Services/Sorcha.Blueprint.Service/Program.cs` - Added content negotiation
 
 ---
 

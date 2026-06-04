@@ -1,5 +1,14 @@
 # Blueprint Quick Start Guide
 
+> **Current model (read this first).** Flow uses **`routes[]`** (`nextActionIds` → target **action
+> ids**, optional JSON-Logic `condition`, `isDefault`; `[]` ends the workflow) — not the legacy
+> participant-condition routing shown in places below. Action payloads use **`dataSchemas`** (an
+> array). One action has **`isStartingAction: true`** with an **open** sender (`walletAddress` null,
+> late-bound on first submit). Forms use schema **`x-` extensions** (`x-pages`/`x-sections`/`x-persona`),
+> not a `form` control tree. See the [Blueprint Designer](../guides/designer.md),
+> [Blueprint Format](../guides/blueprints/blueprint-format.md), and the `blueprint-builder` skill for
+> the authoritative model.
+
 ## Table of Contents
 
 1. [What Are Blueprints?](#what-are-blueprints)
