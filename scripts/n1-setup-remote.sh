@@ -15,8 +15,10 @@
 # --import-validator-key-file=PATH    Recover the system wallet from a
 #   genesis-validator-key.json BEFORE the rest of the stack comes up. The
 #   wallet-service is the only container brought up first; the mnemonic is
-#   POSTed to /api/v1/wallets/system/recover; then the rest of the stack
-#   starts. Implies --reset. The key file is shredded after import.
+#   POSTed to /api/v1/wallets/system/recover (authenticated with a short-lived
+#   service-tier token the script mints from $SORCHA_DIR/.env JWT_SIGNING_KEY —
+#   the endpoint requires it since Feature 147 / PR #930); then the rest of the
+#   stack starts. Implies --reset. The key file is shredded after import.
 #   This is the safe ordering for federation seed nodes — without it,
 #   validator-service may auto-generate the wrong system wallet (issue #461 trap).
 #
@@ -169,6 +171,34 @@ if [ -n "$IMPORT_KEY_FILE" ]; then
     RECOVER_BODY=$(python3 -c "import json,sys; print(json.dumps({'validatorId':sys.argv[1],'mnemonic':sys.argv[2],'algorithm':'ED25519'}))" "$VALIDATOR_ID" "$MNEMONIC")
     unset MNEMONIC  # zeroize the shell var, the body is what we pass on
 
+    # /api/v1/wallets/system/recover is NO LONGER AllowAnonymous — Feature 147 / review H1
+    # (PR #930) gated it behind the CanRecoverSystemWallet policy: a service-tier token
+    # (token_type=service + the installation's :service audience) OR a platform admin. An
+    # unauthenticated POST now returns 401 and recovers nothing, so we mint a short-lived
+    # service token from the node's own JWT signing key. (Sending a Bearer to an older,
+    # still-anonymous image is harmless — it's ignored — so no version detection is needed.)
+    # Key bytes are UTF8 (JwtAuthenticationExtensions: Encoding.UTF8.GetBytes(signingKey));
+    # issuer urn:sorcha:{installation}, audience {installation}:service (SorchaIssuer/SorchaAudiences).
+    SIGNING_KEY=$(grep -E '^JWT_SIGNING_KEY=' "$SORCHA_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+    INSTALLATION=$(grep -E '^INSTALLATION_NAME=' "$SORCHA_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+    if [ -z "$SIGNING_KEY" ]; then
+        err "JWT_SIGNING_KEY not found in $SORCHA_DIR/.env — cannot mint the service token that"
+        err "/api/v1/wallets/system/recover now requires (Feature 147 / PR #930). Aborting."
+        exit 1
+    fi
+    RECOVER_TOKEN=$(SK="$SIGNING_KEY" INST="${INSTALLATION:-sorcha}" python3 -c "
+import os,hmac,hashlib,base64,json,time
+k=os.environ['SK'].encode()
+inst=os.environ['INST'].strip().lower()
+b=lambda x: base64.urlsafe_b64encode(x).rstrip(b'=')
+n=int(time.time())
+h=b(json.dumps({'alg':'HS256','typ':'JWT'},separators=(',',':')).encode())
+p=b(json.dumps({'iss':'urn:sorcha:'+inst,'aud':inst+':service','token_type':'service','sub':'genesis-bootstrap','iat':n,'nbf':n-5,'exp':n+900},separators=(',',':')).encode())
+seg=h+b'.'+p
+print((seg+b'.'+b(hmac.new(k,seg,hashlib.sha256).digest())).decode())
+")
+    unset SIGNING_KEY  # zeroize once the token is minted
+
     # One-shot curl on the compose network — wallet-service image has no shell.
     # The body is fed on stdin (-d @-) so it doesn't appear in process args.
     # Response body lands in a host-side /tmp file (mounted into the container)
@@ -186,10 +216,11 @@ if [ -n "$IMPORT_KEY_FILE" ]; then
         -sk -o /recover-resp -w '%{http_code}' \
         -X POST http://wallet-service:8080/api/v1/wallets/system/recover \
         -H 'Content-Type: application/json' \
+        -H "Authorization: Bearer $RECOVER_TOKEN" \
         -d @- 2>/dev/null)
     CURL_EXIT=$?
     set -e
-    unset RECOVER_BODY  # zeroize once curl has consumed it
+    unset RECOVER_BODY RECOVER_TOKEN  # zeroize once curl has consumed them
     if [ "$CURL_EXIT" -ne 0 ]; then
         HTTP_STATUS="000"
     fi
@@ -203,6 +234,13 @@ if [ -n "$IMPORT_KEY_FILE" ]; then
         rm -f "$RECOVER_RESP_FILE"
         err "System wallet already exists (HTTP 409). validator-service may have raced ahead and auto-generated the wrong wallet."
         err "Recovery requires manual SQL surgery — see .claude/skills/network-bootstrap/SKILL.md Step 5 trailer."
+        exit 1
+    elif [ "$HTTP_STATUS" = "401" ] || [ "$HTTP_STATUS" = "403" ]; then
+        rm -f "$RECOVER_RESP_FILE"
+        err "Wallet recovery rejected (HTTP $HTTP_STATUS) — the minted service token was not accepted."
+        err "Check that $SORCHA_DIR/.env JWT_SIGNING_KEY + INSTALLATION_NAME match the running"
+        err "wallet-service (docker exec sorcha-wallet-service printenv JwtSettings__SigningKey),"
+        err "and that this image enforces CanRecoverSystemWallet (Feature 147 / PR #930)."
         exit 1
     else
         rm -f "$RECOVER_RESP_FILE"
