@@ -100,7 +100,7 @@ public class HaipWalkthroughScreenshotTests : DockerTestBase
             Path = path,
             FullPage = true
         });
-        TestContext.WriteLine($"Screenshot: {path}");
+        TestContext.Out.WriteLine($"Screenshot: {path}");
     }
 
     // ========================================================================

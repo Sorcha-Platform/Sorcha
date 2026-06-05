@@ -164,8 +164,18 @@ April 2026; see issue #461.)
 **The endpoint to use:** `POST /api/v1/wallets/system/recover` — added in
 PR #465. Recovers a wallet directly into `tenant=system,
 owner=validator:{validatorId}, name=system-wallet-{validatorId}` so
-validator-service finds it. Currently `AllowAnonymous`, so no auth
-header needed.
+validator-service finds it.
+
+> **⚠ NO LONGER `AllowAnonymous` (Feature 147 / review H1, PR #930).** The endpoint now requires
+> the `CanRecoverSystemWallet` policy — a **service-tier token** (`token_type=service` + the
+> installation's `:service` audience) OR a platform-tier Administrator. An unauthenticated POST
+> (as `n1-setup-remote.sh` and the manual curl below still do) returns **HTTP 401** and recovers
+> nothing → genesis can't seal. Until the tooling is fixed, mint a short-lived service token
+> offline from the node's `JWT_SIGNING_KEY` (UTF8 key bytes; issuer `urn:sorcha:{installation}`,
+> audience `{installation}:service`) and send it as `Authorization: Bearer` — see the n1-deploy
+> skill's "Import genesis validator key" note for the copy-paste HS256 mint recipe (verified live
+> 2026-06-04: 401 anonymous → 201 with the service token). The `HTTP 000` note below still applies
+> to genuinely-anonymous *older* images; on current images a 401 is the auth gate, not a lost reply.
 
 **Procedure (automated — preferred):**
 
