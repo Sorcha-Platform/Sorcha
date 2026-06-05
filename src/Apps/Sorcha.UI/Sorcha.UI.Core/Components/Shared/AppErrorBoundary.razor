@@ -1,0 +1,84 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Routing
+@inject NavigationManager Navigation
+
+@*
+    Application-wide error boundary. Wraps the routed @Body in each host's
+    MainLayout so an unhandled exception in any page renders a friendly
+    recovery panel instead of blanking the whole layout (Blazor's default
+    behaviour for an unhandled render/lifecycle exception).
+
+    - Auto-recovers on navigation, so moving away from a broken page clears
+      the error UI without a full reload.
+    - "Try again" re-renders the current page (cheap retry for transient
+      failures); "Reload" performs a hard reload for a clean slate.
+
+    The built-in <ErrorBoundary> already logs the exception via the framework
+    logger, so this wrapper does not re-log.
+*@
+
+<ErrorBoundary @ref="_boundary">
+    <ChildContent>
+        @ChildContent
+    </ChildContent>
+    <ErrorContent Context="exception">
+        <MudPaper Class="pa-8 my-4 mx-auto text-center"
+                  Elevation="2"
+                  Style="max-width: 560px;"
+                  role="alert"
+                  data-testid="app-error-boundary">
+            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Color="Color.Error" Size="Size.Large" Class="mb-3" />
+            <MudText Typo="Typo.h5" Class="mb-2">Something went wrong</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+                This page hit an unexpected error. You can try again, or reload the app.
+            </MudText>
+            <MudStack Row="true" Justify="Justify.Center" Spacing="2">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="Recover"
+                           data-testid="app-error-retry">
+                    Try again
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           StartIcon="@Icons.Material.Filled.RestartAlt"
+                           OnClick="Reload"
+                           data-testid="app-error-reload">
+                    Reload
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    </ErrorContent>
+</ErrorBoundary>
+
+@code {
+    private ErrorBoundary? _boundary;
+
+    /// <summary>The routed content to guard (typically <c>@Body</c>).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // Recover so navigating away from a broken page restores normal
+        // rendering instead of leaving the error panel pinned in place.
+        _boundary?.Recover();
+    }
+
+    private void Recover() => _boundary?.Recover();
+
+    private void Reload() => Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

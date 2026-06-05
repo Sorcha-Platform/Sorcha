@@ -119,7 +119,14 @@
                                 }
                                 <MudIconButton Icon="@Icons.Material.Filled.QrCode2" Size="Size.Small" Title="Show QR Code" OnClick="() => OnShowQrCode.InvokeAsync(context)" />
                                 <MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" Title="Copy Address" OnClick="() => OnCopyAddress.InvokeAsync(context)" />
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" Title="Delete" OnClick="() => OnDelete.InvokeAsync(context)" />
+                                @if (DeletingAddress == context.Address)
+                                {
+                                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Error" Class="mx-2" />
+                                }
+                                else
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" Title="Delete" aria-label="@($"Delete wallet {context.Name}")" Disabled="@(DeletingAddress != null)" OnClick="() => OnDelete.InvokeAsync(context)" />
+                                }
                             </MudStack>
                         </MudTd>
                     </RowTemplate>
@@ -199,7 +206,14 @@
                                 </MudButton>
                             </span>
                             <span @onclick:stopPropagation="true">
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => OnDelete.InvokeAsync(wallet)" />
+                                @if (DeletingAddress == wallet.Address)
+                                {
+                                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Error" Class="mx-2" />
+                                }
+                                else
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" Title="Delete" aria-label="@($"Delete wallet {wallet.Name}")" Disabled="@(DeletingAddress != null)" OnClick="() => OnDelete.InvokeAsync(wallet)" />
+                                }
                             </span>
                         </MudCardActions>
                     </MudCard>
@@ -250,6 +264,12 @@
     [Parameter] public bool IsLoading { get; set; }
     [Parameter] public string? Error { get; set; }
     [Parameter] public string? DefaultWalletAddress { get; set; }
+    /// <summary>
+    /// Address of the wallet currently being deleted. While set, that row shows
+    /// an in-progress spinner and every delete button is disabled to prevent a
+    /// double-submit. Null when no delete is in flight.
+    /// </summary>
+    [Parameter] public string? DeletingAddress { get; set; }
     [Parameter] public bool ShowDefaultIndicator { get; set; } = true;
     [Parameter] public bool ShowOwnerColumn { get; set; }
     [Parameter] public bool ShowCreateButton { get; set; } = true;

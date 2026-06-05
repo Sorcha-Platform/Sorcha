@@ -26,6 +26,7 @@
                      ShowRecoverButton="true"
                      EmptyTitle="No Organisation Wallets"
                      EmptyDescription="No wallets found in this organisation"
+                     DeletingAddress="@_deletingAddress"
                      OnShowQrCode="ShowQrCode"
                      OnCopyAddress="CopyAddress"
                      OnDelete="ConfirmDelete"
@@ -36,6 +37,7 @@
     private List<WalletDto> wallets = new();
     private bool isLoading = true;
     private string? error;
+    private string? _deletingAddress;
 
     protected override async Task OnInitializedAsync()
     {
@@ -124,6 +126,10 @@
 
     private async Task DeleteWalletAsync(WalletDto wallet)
     {
+        // Guard against a re-entrant delete while one is already in flight.
+        if (_deletingAddress != null) return;
+
+        _deletingAddress = wallet.Address;
         try
         {
             var success = await WalletService.DeleteWalletAsync(wallet.Address);
@@ -140,6 +146,10 @@
         catch (Exception ex)
         {
             Feedback.ShowError($"Failed to delete wallet: {ex.Message}", autoDismissMs: 0);
+        }
+        finally
+        {
+            _deletingAddress = null;
         }
     }
 }

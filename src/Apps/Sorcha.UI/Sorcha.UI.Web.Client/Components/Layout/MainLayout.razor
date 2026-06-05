@@ -29,7 +29,7 @@
 <CascadingAuthenticationState>
 <MudLayout>
     <MudAppBar Elevation="1">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" aria-label="Toggle navigation menu" />
         <MudText Typo="Typo.h5" Class="ml-3" Style="cursor: pointer;" @onclick="@(() => Navigation.NavigateTo("dashboard"))">Sorcha</MudText>
         <MudSpacer />
         <AuthorizeView>
@@ -39,6 +39,7 @@
                    after retirement of the legacy ActivityLogPanel + PendingActionInbox
                    in PRs #538 / this PR. *@
                 <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="@ToggleInboxPanel" Title="Inbox"
+                               aria-label="@($"Inbox{(_inboxUnreadCount > 0 ? $", {_inboxUnreadCount} unread" : string.Empty)}")"
                                Class="@(_badgeWiggle ? "inbox-bell-wiggle" : null)">
                     @if (_inboxUnreadCount > 0)
                     {
@@ -270,7 +271,11 @@
                occupies no vertical space) until a page surfaces a message
                via IInlineFeedback. *@
             <Sorcha.UI.Core.Components.Feedback.InlineFeedbackHost />
-            @Body
+            @* Guard the routed page so an unhandled error renders a recovery
+               panel instead of blanking the layout. Auto-recovers on nav. *@
+            <Sorcha.UI.Core.Components.Shared.AppErrorBoundary>
+                @Body
+            </Sorcha.UI.Core.Components.Shared.AppErrorBoundary>
         </MudContainer>
     </MudMainContent>
     <StatusFooter />
