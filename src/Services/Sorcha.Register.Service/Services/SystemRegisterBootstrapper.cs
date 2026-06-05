@@ -25,6 +25,10 @@ public class SystemRegisterBootstrapper : BackgroundService
     private const int AutoMaxRetries = 3;
     private static readonly TimeSpan GenesisTimeout = TimeSpan.FromSeconds(30);
 
+    // #917: each seed blueprint must be sealed before the next is published, so the
+    // chain head is fresh when the next publish reads it. Mirrors GenesisTimeout.
+    private static readonly TimeSpan BlueprintSealTimeout = TimeSpan.FromSeconds(30);
+
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemRegisterBootstrapper"/> class.
     /// </summary>
@@ -475,23 +479,64 @@ public class SystemRegisterBootstrapper : BackgroundService
 
         foreach (var blueprintId in blueprints)
         {
-            if (!await systemRegisterService.BlueprintExistsAsync(blueprintId, cancellationToken))
-            {
-                _logger.LogInformation("Seeding blueprint: {BlueprintId}", blueprintId);
-                var blueprint = LoadBlueprintFromCatalog(blueprintId);
-                await systemRegisterService.PublishBlueprintAsync(
-                    blueprintId,
-                    blueprint,
-                    "system",
-                    new Dictionary<string, string> { ["seedReason"] = "bootstrap" },
-                    cancellationToken);
-                _logger.LogInformation("Blueprint {BlueprintId} seeded successfully", blueprintId);
-            }
-            else
+            if (await systemRegisterService.BlueprintExistsAsync(blueprintId, cancellationToken))
             {
                 _logger.LogInformation("Blueprint {BlueprintId} already exists — skipping", blueprintId);
+                continue;
             }
+
+            _logger.LogInformation("Seeding blueprint: {BlueprintId}", blueprintId);
+            var blueprint = LoadBlueprintFromCatalog(blueprintId);
+            await systemRegisterService.PublishBlueprintAsync(
+                blueprintId,
+                blueprint,
+                "system",
+                new Dictionary<string, string> { ["seedReason"] = "bootstrap" },
+                cancellationToken);
+
+            // #917: wait for this publish to SEAL before submitting the next. Blueprint
+            // publishes chain via previousTxId = the latest *sealed* transaction
+            // (SystemRegisterService.GetLatestTransactionIdAsync reads the register, which
+            // only holds sealed txs). Firing the four seeds back-to-back meant the second
+            // publish read a stale head while the first was still in the validator pool, so
+            // two txs claimed the same predecessor; the validator can only seal one linear
+            // successor and silently dropped the forked sibling, leaving the owner SSR
+            // missing register-governance-v1. Sealing each seed first keeps the head fresh.
+            await WaitForBlueprintSealedAsync(systemRegisterService, blueprintId, cancellationToken);
+            _logger.LogInformation("Blueprint {BlueprintId} seeded and sealed", blueprintId);
         }
+    }
+
+    /// <summary>
+    /// Polls until <paramref name="blueprintId"/> is sealed into the system register
+    /// (visible via <see cref="SystemRegisterService.BlueprintExistsAsync"/>) or the
+    /// timeout elapses. Keeps the chain head fresh between sequential seed publishes
+    /// so they cannot fork on a stale predecessor (issue #917).
+    /// </summary>
+    private async Task WaitForBlueprintSealedAsync(
+        SystemRegisterService systemRegisterService,
+        string blueprintId,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.Add(BlueprintSealTimeout);
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (await systemRegisterService.BlueprintExistsAsync(blueprintId, cancellationToken))
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        _logger.LogWarning(
+            "Timed out after {Timeout}s waiting for seed blueprint {BlueprintId} to seal. " +
+            "Subsequent seeds may chain off a stale head and be dropped by the validator, " +
+            "leaving the system register incomplete.",
+            BlueprintSealTimeout.TotalSeconds, blueprintId);
     }
 
     /// <summary>
