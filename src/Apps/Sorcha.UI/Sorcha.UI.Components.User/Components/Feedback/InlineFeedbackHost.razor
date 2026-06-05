@@ -20,7 +20,11 @@
     responsibility (wrap in a div with appropriate Class).
 *@
 
-<div class="inline-feedback-host" data-testid="inline-feedback-host">
+@* aria-live="polite" + aria-atomic="false" so assistive tech announces each
+   feedback message as it is added without interrupting the user. Error alerts
+   additionally carry role="alert" (assertive) so failures are announced
+   immediately. *@
+<div class="inline-feedback-host" data-testid="inline-feedback-host" aria-live="polite" aria-atomic="false">
     @foreach (var entry in _snapshot)
     {
         <MudAlert Severity="@MapSeverity(entry.Severity)"
@@ -28,6 +32,7 @@
                   CloseIconClicked="@(() => Feedback.Dismiss(entry.Id))"
                   Dense="true"
                   Class="mb-2"
+                  role="@(entry.Severity == InlineFeedbackSeverity.Error ? "alert" : "status")"
                   data-testid="@($"inline-feedback-{entry.Id:N}")">
             @if (!string.IsNullOrWhiteSpace(entry.DetailHref))
             {
