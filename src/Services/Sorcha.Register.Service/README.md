@@ -465,7 +465,7 @@ Open `coverage/index.html` in your browser.
 The Register Service integrates with the Validator Service for:
 - **Docket Write-Back**: Validator builds dockets from mempool transactions and writes sealed dockets (with transactions) back to the Register via `POST /api/registers/{id}/dockets`
 - **Register Height Tracking**: Height is updated on each docket write (count-based: height = number of dockets written)
-- **Idempotent Writes**: Duplicate docket/transaction inserts are handled gracefully for retry safety
+- **Idempotent Writes**: A duplicate docket/transaction insert (same docket number or transaction id) is treated as a successful idempotent retry **only when the persisted record matches** — the docket hash (or transaction signature) is compared before returning success. A same-number/different-hash docket (or same-id/different-signature transaction) is a genuine integrity divergence: the write is rejected with `409 Conflict` and a `LogCritical` entry rather than silently dropping the incoming docket's transactions (issue #814)
 - **Register Monitoring**: Validator queries register height and latest docket to determine next docket number and chain from previous hash
 
 **Communication**: HTTP REST API (Validator → Register for writes, Register → Validator for genesis submission)
