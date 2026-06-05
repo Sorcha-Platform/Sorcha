@@ -1596,9 +1596,37 @@ docketsGroup.MapPost("/", async (
             }
             catch (MongoDB.Driver.MongoWriteException ex) when (ex.WriteError?.Category == MongoDB.Driver.ServerErrorCategory.DuplicateKey)
             {
-                logger.LogWarning("[TRACKDIAG register] tx {TxId} ALREADY EXISTS — docket write-back skipped (pre-persisted version kept)", tx.TxId);
-                // Transaction already exists (e.g., genesis transactions stored during register creation).
-                // This is expected for docket write-back of transactions that were pre-persisted.
+                // A transaction with this TxId already exists. This is legitimate for an idempotent
+                // docket write-back (genesis transactions pre-persisted during register creation, or a
+                // validator retry after a lost response) — but ONLY when the persisted transaction is
+                // the same one. A same-TxId / different-signature collision is a real integrity
+                // divergence; masking it as success silently drops the incoming transaction (#814), so
+                // verify the signature matches before treating the duplicate as a no-op.
+                var existingTx = await repository.GetTransactionAsync(registerId, tx.TxId);
+                if (DocketWriteReconciliation.ReconcileTransaction(existingTx, tx)
+                    == DocketWriteReconciliation.Verdict.IdempotentMatch)
+                {
+                    logger.LogDebug(
+                        "[register] tx {TxId} already persisted with matching signature — idempotent write-back, re-insert skipped",
+                        tx.TxId);
+                }
+                else
+                {
+                    logger.LogCritical(
+                        "[register] INTEGRITY DIVERGENCE writing docket {DocketNumber} for register {RegisterId}: " +
+                        "transaction {TxId} already exists with a different signature " +
+                        "(existing={ExistingSignature}, incoming={IncomingSignature}). Rejecting the docket write " +
+                        "rather than silently dropping the transaction (#814).",
+                        request.DocketNumber, registerId, tx.TxId,
+                        existingTx?.Signature ?? "<missing>", tx.Signature);
+                    return Results.Conflict(new
+                    {
+                        error = "Transaction integrity divergence",
+                        registerId,
+                        docketNumber = request.DocketNumber,
+                        txId = tx.TxId,
+                    });
+                }
             }
 
             // Index participant transactions for fast address/ID lookups
@@ -1628,8 +1656,35 @@ docketsGroup.MapPost("/", async (
     }
     catch (MongoDB.Driver.MongoWriteException ex) when (ex.WriteError?.Category == MongoDB.Driver.ServerErrorCategory.DuplicateKey)
     {
-        // Docket already written (idempotent retry from Validator). Return success.
-        inserted = docket;
+        // A docket already occupies this number (the docket number is the Mongo _id). Treat it as a
+        // successful idempotent retry ONLY when the persisted docket is the SAME docket — i.e. its
+        // hash matches. A same-number / different-hash collision means a divergent docket was built
+        // on a stale chain head; masking it as success silently drops this docket's transactions
+        // (#814), so verify the hash before returning success and reject on divergence.
+        var existingDocket = await repository.GetDocketAsync(registerId, (ulong)request.DocketNumber);
+        if (DocketWriteReconciliation.ReconcileDocket(existingDocket, docket)
+            == DocketWriteReconciliation.Verdict.IdempotentMatch)
+        {
+            logger.LogInformation(
+                "Docket {DocketNumber} for register {RegisterId} already written with matching hash — idempotent retry, treating as success",
+                request.DocketNumber, registerId);
+            inserted = existingDocket!;
+        }
+        else
+        {
+            logger.LogCritical(
+                "[register] INTEGRITY DIVERGENCE writing docket {DocketNumber} for register {RegisterId}: " +
+                "a different docket already occupies this number (existing hash={ExistingHash}, incoming hash={IncomingHash}). " +
+                "Rejecting rather than silently dropping this docket's transactions (#814).",
+                request.DocketNumber, registerId,
+                existingDocket?.Hash ?? "<missing>", docket.Hash);
+            return Results.Conflict(new
+            {
+                error = "Docket integrity divergence",
+                registerId,
+                docketNumber = request.DocketNumber,
+            });
+        }
     }
 
     // Update register height (height = number of dockets written, i.e., DocketNumber + 1)
@@ -1775,6 +1830,7 @@ docketsGroup.MapPost("/", async (
 
     return Results.Created($"/api/registers/{registerId}/dockets/{inserted.Id}", inserted);
 })
+.Produces(StatusCodes.Status409Conflict)
 .WithName("WriteDocket")
 .WithSummary("Write a confirmed docket")
 .WithDescription("Writes a consensus-confirmed docket to the register. Used by Validator Service.")
