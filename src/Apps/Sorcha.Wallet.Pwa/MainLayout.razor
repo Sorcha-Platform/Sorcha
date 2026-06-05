@@ -99,7 +99,11 @@
            at the top of the content region. Stays empty (and occupies no
            vertical space) until a page surfaces a message via IInlineFeedback. *@
         <Sorcha.UI.Core.Components.Feedback.InlineFeedbackHost />
-        @Body
+        @* Guard the routed page so an unhandled error renders a recovery
+           panel instead of blanking the wallet shell. Auto-recovers on nav. *@
+        <Sorcha.UI.Core.Components.Shared.AppErrorBoundary>
+            @Body
+        </Sorcha.UI.Core.Components.Shared.AppErrorBoundary>
     </MudMainContent>
     @* Feature 141 — floating pill nav replaces the flush bottom rail. Shell-
        level, so it appears on every primary wallet screen. *@
