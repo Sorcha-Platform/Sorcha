@@ -5,7 +5,10 @@
 @using Sorcha.UI.Core.Components.Participants
 @using Sorcha.UI.Core.Models.Participants
 @using Sorcha.UI.Core.Services.Participants
+@using Sorcha.UI.Core.Services.Feedback
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
 @attribute [Authorize(Roles = "Administrator,SystemAdmin,Auditor")]
 
 <PageTitle>Participants</PageTitle>
@@ -85,11 +88,16 @@
     [Inject] private IParticipantApiService ParticipantService { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
     [Inject] private NavigationManager Navigation { get; set; } = default!;
+    [Inject] private IInlineFeedback Feedback { get; set; } = default!;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationState { get; set; }
 
     private Sorcha.UI.Core.Components.Participants.ParticipantList? _participantList;
     private List<ParticipantDetailViewModel>? _myProfiles;
 
-    // TODO: Get from user context or configuration
+    // Resolved from the active org_id claim on the user's token (the org the
+    // user is currently scoped to), falling back to the org of their first
+    // participant profile when the claim is absent.
     private Guid _organizationId = Guid.Empty;
 
     private List<BreadcrumbItem> _breadcrumbs = new()
@@ -100,7 +108,21 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ResolveOrganizationIdAsync();
         await LoadMyProfilesAsync();
+    }
+
+    private async Task ResolveOrganizationIdAsync()
+    {
+        if (AuthenticationState == null) return;
+
+        var authState = await AuthenticationState;
+        var orgIdClaim = authState.User.Claims
+            .FirstOrDefault(c => c.Type == "org_id" || c.Type == "organization_id");
+        if (orgIdClaim != null && Guid.TryParse(orgIdClaim.Value, out var orgId))
+        {
+            _organizationId = orgId;
+        }
     }
 
     private async Task LoadMyProfilesAsync()
@@ -109,15 +131,19 @@
         {
             _myProfiles = await ParticipantService.GetMyProfilesAsync();
 
-            // If user has profiles, use the first organization
-            if (_myProfiles.Count > 0)
+            // Fall back to the first profile's organization only when the token
+            // did not carry an active org_id claim.
+            if (_organizationId == Guid.Empty && _myProfiles.Count > 0)
             {
                 _organizationId = _myProfiles[0].OrganizationId;
             }
         }
-        catch
+        catch (Exception)
         {
             _myProfiles = new();
+            Feedback.ShowError(
+                "Failed to load your participant profiles. Please refresh to try again.",
+                autoDismissMs: 0);
         }
     }
 
@@ -141,7 +167,11 @@
     private async Task ShowEditDialog(ParticipantListItemViewModel participant)
     {
         var detail = await ParticipantService.GetParticipantAsync(_organizationId, participant.Id);
-        if (detail == null) return;
+        if (detail == null)
+        {
+            Feedback.ShowError("Could not load that participant's details. Please try again.");
+            return;
+        }
 
         var parameters = new DialogParameters
         {
