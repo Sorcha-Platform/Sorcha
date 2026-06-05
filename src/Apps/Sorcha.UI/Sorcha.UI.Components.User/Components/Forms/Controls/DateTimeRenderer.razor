@@ -7,6 +7,7 @@
 @using Sorcha.UI.Core.Services.Forms
 
 @inject IFormSchemaService SchemaService
+@implements IDisposable
 
 <MudDatePicker Label="@Control.Title"
                Date="@_dateValue"
@@ -25,6 +26,31 @@
     [CascadingParameter] public FormContext? FormContext { get; set; }
     [Parameter, EditorRequired] public Control Control { get; set; } = new();
     [Parameter] public bool IsDisabled { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (FormContext is not null)
+        {
+            FormContext.OnValidationChanged += HandleValidationChanged;
+        }
+    }
+
+    // GAP-030: refresh the inline error UI when an external validation pass (e.g. a wizard's
+    // HandleNext / final HandleSubmit) raises OnValidationChanged on a field the user never
+    // touched. Previously the error UI only refreshed via OnParametersSet (parent re-render).
+    private void HandleValidationChanged()
+    {
+        UpdateErrors();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        if (FormContext is not null)
+        {
+            FormContext.OnValidationChanged -= HandleValidationChanged;
+        }
+    }
 
     private DateTime? _dateValue;
     private DateTime? _minDate;
