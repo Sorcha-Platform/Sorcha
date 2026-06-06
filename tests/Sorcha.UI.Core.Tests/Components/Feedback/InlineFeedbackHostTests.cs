@@ -35,4 +35,16 @@ public sealed class InlineFeedbackHostTests : BunitContext
         cut.Find("[data-testid='inline-feedback-host']").TextContent.Trim()
             .Should().BeEmpty();
     }
+
+    [Fact]
+    public void Host_Container_IsAPoliteLiveRegion()
+    {
+        // The host is the platform-wide feedback surface; without a live region
+        // screen-reader users never hear success/error messages.
+        var cut = Render<InlineFeedbackHost>();
+
+        var host = cut.Find("[data-testid='inline-feedback-host']");
+        host.GetAttribute("aria-live").Should().Be("polite");
+        host.GetAttribute("aria-atomic").Should().Be("false");
+    }
 }
