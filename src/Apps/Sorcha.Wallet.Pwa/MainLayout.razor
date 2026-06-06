@@ -11,6 +11,7 @@
     active organisational context is always visible. The chip is non-
     interactive when the user only holds the Personal context.
 *@
+@using System.Reflection
 @using Microsoft.AspNetCore.Components.Authorization
 @using Sorcha.UI.Components.User.Components.Context
 @using Sorcha.UI.Components.User.Components.Onboarding
@@ -62,7 +63,12 @@
 <MudLayout>
     @* Feature 141 — the top app bar is suppressed on Home: there the gradient
        hero owns the header row (org switcher + bell + scan). Every other
-       wallet page keeps the standard app bar. *@
+       wallet page keeps the standard app bar.
+       Gated on auth: the bar's affordances (org/context picker, inbox bell,
+       Present) are all signed-in surfaces, so the whole bar must NOT render on
+       /signin or other unauthenticated screens. *@
+    <AuthorizeView>
+        <Authorized>
     @if (!_isHome)
     {
         <MudAppBar Elevation="1">
@@ -96,6 +102,8 @@
                            aria-label="Present a credential" />
         </MudAppBar>
     }
+        </Authorized>
+    </AuthorizeView>
     <MudMainContent Class="@(_isHome ? "wallet-content wallet-content--home" : "wallet-content")">
         @* Shell-level connectivity strip. Renders only when the device is
            offline so the citizen knows cached cards may be stale and that
@@ -130,9 +138,21 @@
 @* Feature 141 — floating pill nav. Rendered OUTSIDE <MudLayout> so no element
    in the Mud tree (which sets transform/contain on its content region) becomes
    the containing block for the bar's position:fixed and pushes it off-screen on
-   the app-bar-less Home page. Shell-level — appears on every primary screen. *@
-<FloatingTabBar ActiveRoute="@_activeRoute" Dark="@_isDark" OnNavigate="HandleTabNavigate" />
+   the app-bar-less Home page. Gated on auth: the tabs (Home/Cards/Activity/
+   Settings) are signed-in navigation, so they must NOT show on /signin or other
+   unauthenticated screens. Same AuthorizeView gate the PairingTakeover uses. *@
+<AuthorizeView>
+    <Authorized>
+        <FloatingTabBar ActiveRoute="@_activeRoute" Dark="@_isDark" OnNavigate="HandleTabNavigate" />
+    </Authorized>
+</AuthorizeView>
 </CascadingValue>
+
+@* Build-version badge — fixed bottom-right, shown on every screen (including the
+   sign-in page) so the running build is verifiable at a glance after a deploy.
+   Decorative + non-interactive; the version is stamped at build time by the
+   unified-versioning standard (root Directory.Build.props). *@
+<div class="sorcha-build-badge" aria-hidden="true">v@AppVersion</div>
 
 @code {
     private IReadOnlyList<UserOrgMembership> _memberships = Array.Empty<UserOrgMembership>();
@@ -152,6 +172,21 @@
     private bool _isDark;
     private bool _isHome = true;
     private string _activeRoute = "";
+
+    // Build version for the bottom-right badge. Stamped at build time by the unified
+    // versioning standard (root Directory.Build.props): 2.<run>.<attempt> on CI images,
+    // 2.0.0-dev locally. InformationalVersion may carry a "+<commit>" suffix — trim it.
+    private static readonly string AppVersion = ResolveAppVersion();
+
+    private static string ResolveAppVersion()
+    {
+        var asm = typeof(MainLayout).Assembly;
+        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var trimmed = info?.Split('+')[0];
+        return string.IsNullOrWhiteSpace(trimmed)
+            ? (asm.GetName().Version?.ToString() ?? "dev")
+            : trimmed;
+    }
 
     // ── Shell surface for the Home hero (Feature 141) ──────────────────────
     // The Home page cascades to this layout instance so its gradient hero can
@@ -312,10 +347,13 @@
 
     private async Task EvaluateTourEligibilityAsync()
     {
-        // Tour fires once per device — gated on TourDismissedAt being null.
-        // The flag is reset to null by Settings → Replay tour.
-        var flags = await WalletFlags.GetAsync();
-        _tourShouldRun = flags?.TourDismissedAt is null;
+        // Guided tour SUPPRESSED in the PWA for now. Wallet creation happens only in
+        // the full web app today, so a first-run "set up your wallet" tour here fires
+        // before the citizen has anything to tour and is confusing. Re-enable when the
+        // PWA can create wallets — see backlog (pwa-reenable-onboarding-tour). The flag
+        // load is kept (cheap, keeps the wiring warm) so re-enabling is a one-line revert.
+        _ = await WalletFlags.GetAsync();
+        _tourShouldRun = false;   // re-enable: = (await WalletFlags.GetAsync())?.TourDismissedAt is null
         StateHasChanged();
     }
 
