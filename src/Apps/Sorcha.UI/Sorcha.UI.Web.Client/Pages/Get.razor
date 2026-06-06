@@ -21,7 +21,9 @@
    layout's AuthorizeView keeps the nav chrome minimal for cold
    visitors. *@
 
+@using Sorcha.UI.Core.Services
 @inject NavigationManager Nav
+@inject IQrPresentationService Qr
 
 <PageTitle>Get started with Sorcha</PageTitle>
 
@@ -31,37 +33,42 @@
             Welcome to Sorcha
         </MudText>
 
-        <MudText Typo="Typo.body1" Class="mb-4">
-            Sorcha is a wallet for services that use the Sorcha platform.
-            Your credentials live on your phone — when a council, service,
-            or organisation issues you a credential, it arrives directly
-            in your wallet.
-        </MudText>
-
         <MudText Typo="Typo.body1" Class="mb-6">
-            To get started, sign up at the council or service that asked
-            you to install the wallet, then come back here to sign in.
+            The Sorcha Wallet keeps your credentials on your own device.
+            When a council, service, or organisation issues you a
+            credential, it arrives directly in your wallet — ready to
+            present whenever you need to prove something.
         </MudText>
 
-        <MudDivider Class="my-4" />
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Size="Size.Large"
+                   FullWidth="true"
+                   StartIcon="@Icons.Material.Filled.AccountBalanceWallet"
+                   OnClick="@(() => Nav.NavigateTo(_walletUrl, forceLoad: true))"
+                   data-testid="get-landing-open-wallet">
+            Open Wallet
+        </MudButton>
 
-        <MudText Typo="Typo.h6" Class="mb-2">
-            Find services that use Sorcha
+        <MudDivider Class="my-6" />
+
+        <MudText Typo="Typo.h6" Class="mb-3">
+            Install on your phone
         </MudText>
-        <MudList T="string" Class="mb-6">
-            <MudListItem T="string" Icon="@Icons.Material.Filled.AccountBalance"
-                         OnClick="@(() => Nav.NavigateTo("https://strathcarron.gov", forceLoad: true))"
-                         data-testid="get-landing-strathcarron">
-                Strathcarron Council
-            </MudListItem>
-        </MudList>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Scan this code with your phone's camera to open the wallet,
+            then use "Add to Home Screen" to install it.
+        </MudText>
+        <div class="d-flex justify-center mb-2" data-testid="get-landing-qr">
+            @((MarkupString)_walletQrSvg)
+        </div>
 
-        <MudDivider Class="my-4" />
+        <MudDivider Class="my-6" />
 
         <MudText Typo="Typo.h6" Class="mb-3">
             Already have an account?
         </MudText>
-        <MudButton Variant="Variant.Filled"
+        <MudButton Variant="Variant.Outlined"
                    Color="Color.Primary"
                    Size="Size.Large"
                    FullWidth="true"
@@ -79,6 +86,18 @@
 </MudContainer>
 
 @code {
+    private string _walletUrl = "/wallet/";
+    private string _walletQrSvg = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        // The wallet PWA lives at origin-root /wallet/ (a separate WASM
+        // app behind the gateway), not under this app's base path — so
+        // resolve an absolute origin URL for both the CTA and the QR.
+        _walletUrl = new Uri(new Uri(Nav.BaseUri), "/wallet/").ToString();
+        _walletQrSvg = Qr.GenerateSvgFromUri(_walletUrl, pixelsPerModule: 6);
+    }
+
     private void HandleSignIn()
     {
         // F128 US4 — sign-in returnUrl pinned to the F128 handoff so a
