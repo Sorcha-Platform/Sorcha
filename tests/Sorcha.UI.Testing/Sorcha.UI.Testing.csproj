@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!--
+    Shared bUnit test-support library for the Sorcha web + wallet PWA front-end
+    test suites. Provides ComponentTestFixture (MudBlazor + loose JSInterop +
+    mock helpers) and test-data builders so a new component test is a few lines.
+    NOT a test project itself (no test SDK / Exe) — it is referenced by
+    Sorcha.UI.Core.Tests and Sorcha.Wallet.Pwa.Tests.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Support lib, not a test host. -->
+    <IsTestProject>false</IsTestProject>
+    <UseMicrosoftTestingPlatformRunner>false</UseMicrosoftTestingPlatformRunner>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="bunit" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Moq" />
+    <PackageReference Include="MudBlazor" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Apps\Sorcha.UI\Sorcha.UI.Core\Sorcha.UI.Core.csproj" />
+  </ItemGroup>
+
+</Project>
