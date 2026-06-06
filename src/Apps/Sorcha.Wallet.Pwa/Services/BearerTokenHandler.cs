@@ -12,11 +12,12 @@ namespace Sorcha.Wallet.Pwa.Services;
 /// Attaches the wallet's bearer token to every outbound request. On a 401 for a
 /// request that carried a token, transparently refreshes once when a refresh
 /// token is held (POST /api/auth/token/refresh — re-mints the same tier per F136,
-/// so a Consumer refresh stays Consumer) and retries. If there is no refresh
-/// token, or the refresh fails, the stored session is dead: it is cleared and
+/// so a Consumer refresh stays Consumer) and retries. Only a <em>failed refresh</em>
+/// is treated as session death: the token is cleared and
 /// <see cref="ISessionExpiryNotifier.NotifyExpired"/> fires so the shell sends the
-/// citizen to /signin immediately, rather than leaving the page running against a
-/// dead session (failing hub, empty preferences, repeated 401s in the console).
+/// citizen to /signin. A 401 with no refresh token is left untouched — it may be a
+/// per-endpoint authorization gap, not an expired session, so the token must NOT be
+/// cleared (doing so nukes good sessions); the auth gate handles true clock expiry.
 /// </summary>
 public sealed class BearerTokenHandler : DelegatingHandler
 {
@@ -57,20 +58,28 @@ public sealed class BearerTokenHandler : DelegatingHandler
             return response;
         }
 
-        // One-shot refresh when we hold a refresh token.
-        if (!string.IsNullOrEmpty(record.RefreshToken))
+        // With no refresh token we CANNOT conclude the session is dead: a 401 from a
+        // single endpoint can be a per-endpoint authorization gap (e.g. a consumer-tier
+        // token hitting a platform-only resource), and the token may still be valid for
+        // the wallet's own surfaces. Leave it untouched — the auth gate
+        // (WalletAuthenticationStateProvider) already redirects to /signin once the
+        // token expires by clock. Clearing here on every 401 nukes good sessions.
+        if (string.IsNullOrEmpty(record.RefreshToken))
         {
-            var refreshed = await TryRefreshAsync(record.RefreshToken, record.Email, ct);
-            if (refreshed is not null)
-            {
-                response.Dispose();
-                var retry = await CloneAsync(request, ct);
-                retry.Headers.Authorization = new AuthenticationHeaderValue("Bearer", refreshed.AccessToken);
-                return await base.SendAsync(retry, ct);
-            }
+            return response;
         }
 
-        // No refresh token, or the refresh failed → the stored session is dead.
+        // We hold a refresh token: a 401 means the access token should be re-minted.
+        var refreshed = await TryRefreshAsync(record.RefreshToken, record.Email, ct);
+        if (refreshed is not null)
+        {
+            response.Dispose();
+            var retry = await CloneAsync(request, ct);
+            retry.Headers.Authorization = new AuthenticationHeaderValue("Bearer", refreshed.AccessToken);
+            return await base.SendAsync(retry, ct);
+        }
+
+        // Refresh failed → the token can't be renewed, so the session really is dead.
         // Clear it and signal the shell to redirect to /signin now.
         await _store.ClearAsync(ct);
         _sessionExpiry.NotifyExpired();
