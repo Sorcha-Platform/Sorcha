@@ -21,6 +21,7 @@ public class WalletHomeResponsiveTests : AuthenticatedCitizenWalletTestBase
     {
         get
         {
+            yield return new TestCaseData(360, 780).SetName("Phone 360x780 — no horizontal overflow");
             yield return new TestCaseData(375, 740).SetName("Phone 375x740 — no horizontal overflow");
             yield return new TestCaseData(768, 1024).SetName("Tablet 768x1024 — no horizontal overflow");
         }
@@ -42,6 +43,34 @@ public class WalletHomeResponsiveTests : AuthenticatedCitizenWalletTestBase
 
         Assert.That(overflow, Is.LessThanOrEqualTo(1),
             $"Home overflows horizontally by {overflow}px at {width}x{height}.");
+    }
+
+    [Test]
+    [Retry(2)]
+    public async Task Home_FloatingTabBar_VisibleWithoutScrolling_AfterRefresh()
+    {
+        await Page.SetViewportSizeAsync(360, 780);
+        await NavigateToWalletAndWaitForBlazorAsync();
+        await Wallet.WaitForReadyAsync();
+        // Hard-refresh: the bar's position:fixed must resolve against the
+        // viewport, not a transformed Mud ancestor (which pushed it off-screen
+        // on the app-bar-less Home page).
+        await Page.ReloadAsync();
+        await Wallet.WaitForReadyAsync();
+
+        var bar = Page.Locator("[data-testid='floating-tab-bar']");
+        Assert.That(await bar.IsVisibleAsync(), Is.True, "Floating tab bar should be present.");
+
+        var box = await bar.BoundingBoxAsync();
+        var innerHeight = await Page.EvaluateAsync<int>("() => window.innerHeight");
+        var scrollY = await Page.EvaluateAsync<int>("() => Math.round(window.scrollY)");
+
+        Assert.That(box, Is.Not.Null);
+        Assert.That(scrollY, Is.EqualTo(0), "Home should not be scrolled on first paint.");
+        // The bar's bottom edge sits within the viewport (small tolerance for
+        // the safe-area inset margin).
+        Assert.That(box!.Y + box.Height, Is.LessThanOrEqualTo(innerHeight + 2),
+            "Floating tab bar bottom edge is below the fold without scrolling.");
     }
 
     [Test]
