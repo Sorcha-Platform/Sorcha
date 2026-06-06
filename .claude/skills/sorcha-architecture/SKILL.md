@@ -1263,6 +1263,7 @@ Four citizen routes outside the F126 council-page gate, all sharing the existing
 | `POST /api/auth/enrol-session/short-code` | bearer | Mint a 6-digit numeric short code wrapping a standalone enrol-session token. 5-min TTL, single-use, 5-attempts-per-code rate-limit. Used by the takeover sub-affordance + mobile-web install fallback. |
 | `POST /api/auth/enrol-session/redeem-short-code` | anonymous | Redeem a 6-digit code → underlying enrol-session redeem result. |
 | `GET /api/v1/me/devices/has-any` | bearer | Aggregate read returning `{ hasAnyDevice, latestEnrolledAt }`. Drives the takeover trigger + nag-banner trigger. |
+| `GET /api/v1/wallet/exists` | consumer-tier | **(F149)** Aggregate read returning `{ hasWallet }`. ALWAYS 200 for an authenticated consumer (no 401/404 ambiguity). Drives the wallet-aware branch of `PairingTakeover`. |
 | `POST /api/auth/pairing-resumption-email` | bearer, rate-limited | Dispatches the "Email me a link" magic-link to the caller's account email. |
 | `GET /api/auth/pairing-resumption/redeem?token={id}` | anonymous | Redeems the magic-link → 302 to `/auth/login?returnUrl=/setup/add-device&email=...&reason=pairing-resumption`. Single-use. |
 
@@ -1277,7 +1278,7 @@ Four citizen routes outside the F126 council-page gate, all sharing the existing
 
 ### Components (Sorcha.UI.Components.User)
 
-- **`PairingTakeover`** (`Sorcha.Wallet.Pwa/Components/PairingTakeover.razor` — **PWA-local, NOT in Components.User**) — full-page overlay mounted in `Sorcha.Wallet.Pwa/MainLayout.razor` outside `MudLayout`. Renders when `HasAnyDevice == false`. Primary action invokes `IEnrolmentService.EnrolAsync` against the existing PWA session; secondary disclosure accepts a 6-digit code for cross-device-to-this-device pairing. Auto-dismisses on probe-change OR `CitizenWalletHubConnection.OnDeviceEnrolled`.
+- **`PairingTakeover`** (`Sorcha.Wallet.Pwa/Components/PairingTakeover.razor` — **PWA-local, NOT in Components.User**) — full-page overlay mounted in `Sorcha.Wallet.Pwa/MainLayout.razor` outside `MudLayout`. Renders when `HasAnyDevice == false`. **(F149) Wallet-aware:** when there is no device here it runs a one-shot `IHasWalletProbe.HasWalletAsync`; a walletless citizen sees a "Create your wallet first" body that force-loads the web `/wallets/create` handoff (companion-first), while a wallet owner gets the pair body below. The overlay stays hidden until both the device check and the wallet check resolve (no flash). Pair-body primary action invokes `IEnrolmentService.EnrolAsync` against the existing PWA session; secondary disclosure accepts a 6-digit code for cross-device-to-this-device pairing. Auto-dismisses on probe-change OR `CitizenWalletHubConnection.OnDeviceEnrolled`.
 - **`PairingHandoffSurface`** (`Components/Pairing/`) — hosted at `/setup/add-device`. Switches on `IPwaInstallabilityProbe` verdict between the QR variant (desktop) and the install variant (mobile, with always-visible short code). Common Skip + "Email me a link" affordances.
 - **`PairingNagBanner`** (`Components/Pairing/`) — persistent dismissable banner mounted in `Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`. Renders when `HasAnyDevice == false`. CTA → `/setup/add-device`.
 
@@ -1299,6 +1300,31 @@ Four citizen routes outside the F126 council-page gate, all sharing the existing
 - Wallet PWA: `Components/PairingTakeover.razor`; `Services/CitizenWalletHubConnection.cs` (OnDeviceEnrolled); `Services/Enrolment/{IPairingShortCodeRedeemer,PairingShortCodeRedeemer}.cs`
 - Sorcha.UI.Components.User: `Components/Pairing/{PairingHandoffSurface,PairingNagBanner}.razor`; `Services/User/Devices/{IHasPairedDeviceProbe,HasPairedDeviceProbe}.cs`; `Services/User/Pairing/{IPwaInstallabilityProbe,PwaInstallabilityProbe}.cs` (`PairingTakeover.razor` is PWA-local — listed under Wallet PWA above)
 - Sorcha.UI.Web.Client: `Pages/Setup/AddDevice.razor`; `Pages/Get.razor`; `wwwroot/js/pwa-install-probe.js`
+
+### Feature 149 — wallet-aware PairingTakeover (companion-first P0)
+
+Closes the cold-start dead-end where a signed-in but walletless citizen tapped "Set up this
+device" → enrol 404. Companion-first: the web app owns wallet creation, so the PWA routes the
+citizen there instead of building in-PWA wallet creation.
+
+- **Endpoint:** `GET /api/v1/wallet/exists` → `200 { hasWallet }` (consumer-tier, always 200) in
+  `Sorcha.Wallet.Service/Endpoints/CitizenWalletEndpoints.cs` (`WalletExists` handler; projects
+  `ResolveCitizenContextAsync` → `walletAddress is not null`). DTO `WalletExistsResponse` in
+  `Sorcha.CitizenWallet.Abstractions/Models/`.
+- **Why not reuse holder-keys/enrol 404:** `holder-keys` 401s on no-wallet and 404s on
+  *wallet-but-no-key* (the opposite signal); the no-wallet status is inconsistent across the
+  citizen surface. A dedicated boolean endpoint is unambiguous.
+- **Client:** `IHasWalletProbe` + `HasWalletProbe` (`Sorcha.Wallet.Pwa/Services/Wallet/`,
+  PWA-local). **One-shot** (`Task<bool> HasWalletAsync` only — no `Changed`/`Refresh`): walletless
+  is a terminal cold-start state (false→true once, never back). **Fail-safe `true`** on any
+  transient failure (network / non-2xx / empty / malformed body) so a real wallet owner is never
+  routed to create a second wallet. Registered with the Bearer + ServerClock handler chain.
+- **State machine** (`PairingTakeover`): hidden while `HasAnyDevice == null` OR `_hasWallet ==
+  null`; `HasAnyDevice == true` → hidden; `false`+`_hasWallet == false` → create-wallet body;
+  `false`+`_hasWallet == true` → existing pair body (unchanged). The wallet check runs once, only
+  when there is no device here.
+- **Tests:** `CitizenWalletExistsEndpointTests` (Wallet Service, reflection handler invocation);
+  `HasWalletProbeTests` + `PairingTakeoverTests` (PWA, bUnit).
 
 ---
 

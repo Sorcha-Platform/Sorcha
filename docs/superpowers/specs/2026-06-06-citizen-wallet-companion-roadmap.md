@@ -89,10 +89,11 @@ this proven spine.
 ## 4. Companion-first roadmap
 
 ### P0 — correctness / safety (do first)
-1. **Make PairingTakeover wallet-aware.** Detect "has a wallet?" (not just "has a device?") and
-   route a walletless citizen to the web wallet-creation handoff instead of offering "Set up this
-   device" (which dead-ends). Same pattern as the tour suppression + signup link. *(This is the
-   PairingTakeover discussion item.)*
+1. **Make PairingTakeover wallet-aware.** ✅ **DONE (Feature 149).** Detect "has a wallet?" (not
+   just "has a device?") via `GET /api/v1/wallet/exists` + one-shot `IHasWalletProbe`, and route a
+   walletless citizen to the web `/wallets/create` handoff instead of offering "Set up this device"
+   (which dead-ended at the enrol 404). Same companion-first pattern as the tour suppression +
+   signup link. Design: `docs/superpowers/specs/2026-06-06-pwa-pairing-takeover-wallet-aware-design.md`.
 2. **Make recovery honest.** Decide: implement passkey-recovery verification, OR explicitly scope
    recovery to the web app for now and make the PWA's messaging/affordances match (no dead
    recovery paths, a clear "recover on the web" route). Companion-first leans toward the latter
