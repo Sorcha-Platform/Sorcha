@@ -579,11 +579,11 @@
     // Card accent — brand blue today; later, pull from issuer registry / theme.
     private static string AccentFor(CachedCredential c) => "#667eea";
 
-    // The bottom meta line. Issuer eyebrow / name / type chip are derived by the
-    // shared CredentialDisplay helper (unit-tested); the demo meta callout stays
-    // here as it is purely presentational.
+    // The bottom meta line. The card name already carries the (humanized) type
+    // and the eyebrow the issuer, so a real credential needs no meta — only the
+    // demo callout is surfaced (echoing the raw VCT here was redundant + ugly).
     private static string MetaFor(CachedCredential c) =>
-        CredentialDisplay.IsDemo(c) ? "Demo · For testing only" : c.Vct;
+        CredentialDisplay.IsDemo(c) ? "Demo · For testing only" : "";
 
     /// <summary>
     /// Coarse "x ago" rendering for the last-synced hint. Computed at render
