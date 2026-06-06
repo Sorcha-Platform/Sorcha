@@ -48,12 +48,7 @@
                 <MudText Typo="Typo.body1">Auth methods</MudText>
                 <MudText Typo="Typo.caption" Class="mud-text-secondary">Passkeys, social logins, and recovery email.</MudText>
             </MudListItem>
-            <MudListItem T="string" Icon="@Icons.Material.Filled.History"
-                         OnClick="@GoActivity"
-                         data-testid="settings-link-activity">
-                <MudText Typo="Typo.body1">Activity</MudText>
-                <MudText Typo="Typo.caption" Class="mud-text-secondary">Recent credential and verification events.</MudText>
-            </MudListItem>
+            @* Activity lives in its own floating-nav tab — no duplicate row here. *@
         </MudList>
     </MudPaper>
 
@@ -156,7 +151,6 @@
     private void GoProfile() => Nav.NavigateTo("profile");
     private void GoDevices() => Nav.NavigateTo("devices");
     private void GoAuthMethods() => Nav.NavigateTo("auth-methods");
-    private void GoActivity() => Nav.NavigateTo("activity");
 
     private bool _replayConfirmed;
 
