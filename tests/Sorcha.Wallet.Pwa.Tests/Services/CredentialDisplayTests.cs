@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
+using Sorcha.UI.Core.Components.Wallet;
 using Sorcha.UI.Core.Models.Presentation;
 using Sorcha.Wallet.Pwa.Services;
 using Xunit;
@@ -92,5 +93,37 @@ public sealed class CredentialDisplayTests
         CredentialDisplay.TypeChip(Cred(vct: "DrivingLicenceCredential")).Should().Be("DL");
         // Unknown type → no chip (a wrong-looking chip is worse than none).
         CredentialDisplay.TypeChip(Cred(vct: "SomeObscureThing")).Should().BeNull();
+    }
+
+    [Fact]
+    public void ExpiryStatus_NoExpiry_IsValid()
+    {
+        var now = DateTimeOffset.UtcNow;
+        CredentialDisplay.ExpiryStatus(null, now).Should().Be((CredentialStatus.Valid, (string?)null));
+    }
+
+    [Fact]
+    public void ExpiryStatus_FarFuture_IsValid()
+    {
+        var now = DateTimeOffset.UtcNow;
+        CredentialDisplay.ExpiryStatus(now.AddDays(90), now).Status.Should().Be(CredentialStatus.Valid);
+    }
+
+    [Fact]
+    public void ExpiryStatus_WithinTwoWeeks_IsExpiringSoon_WithText()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var (status, text) = CredentialDisplay.ExpiryStatus(now.AddDays(3), now);
+        status.Should().Be(CredentialStatus.ExpiringSoon);
+        text.Should().Be("Expires in 3 days");
+    }
+
+    [Fact]
+    public void ExpiryStatus_Past_IsRevokedExpired()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var (status, text) = CredentialDisplay.ExpiryStatus(now.AddDays(-1), now);
+        status.Should().Be(CredentialStatus.Revoked);
+        text.Should().Be("Expired");
     }
 }
