@@ -3,6 +3,7 @@
 
 using System;
 using System.Text;
+using Sorcha.UI.Core.Components.Wallet;
 using Sorcha.UI.Core.Models.Presentation;
 
 namespace Sorcha.Wallet.Pwa.Services;
@@ -71,6 +72,25 @@ public static class CredentialDisplay
             spaced = spaced[..^" Credential".Length];
 
         return spaced.Length == 0 ? "Credential" : spaced;
+    }
+
+    /// <summary>
+    /// Derive a card status pill from a credential's expiry. No expiry known →
+    /// presumed Valid (a held credential works until a status check says
+    /// otherwise — revocation is a separate, status-list concern). Within
+    /// 14 days → ExpiringSoon; already past → Revoked/"Expired".
+    /// </summary>
+    public static (CredentialStatus Status, string? Text) ExpiryStatus(
+        DateTimeOffset? expiry, DateTimeOffset nowUtc)
+    {
+        if (expiry is null) return (CredentialStatus.Valid, null);
+        if (expiry.Value <= nowUtc) return (CredentialStatus.Revoked, "Expired");
+
+        var days = (int)Math.Ceiling((expiry.Value - nowUtc).TotalDays);
+        if (days <= 14)
+            return (CredentialStatus.ExpiringSoon, days <= 1 ? "Expires today" : $"Expires in {days} days");
+
+        return (CredentialStatus.Valid, null);
     }
 
     /// <summary>

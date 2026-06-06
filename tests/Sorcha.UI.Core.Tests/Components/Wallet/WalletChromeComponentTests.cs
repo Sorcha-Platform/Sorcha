@@ -167,7 +167,7 @@ public sealed class WalletChromeComponentTests : BunitContext
     [Fact]
     public void FloatingTabBar_ActiveTab_IsHighlightedAndLabelled_OthersIconOnly()
     {
-        var cut = Render<FloatingTabBar>(ps => ps.Add(p => p.ActiveRoute, "devices"));
+        var cut = Render<FloatingTabBar>(ps => ps.Add(p => p.ActiveRoute, "cards"));
 
         var cards = cut.Find("[data-testid='footer-nav-cards']");
         cards.ClassList.Should().Contain("tab-pill--active");

@@ -1,0 +1,109 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors
+   Cards listing screen. Single thumb-scrollable column of full credential
+   cards. Surfaces/text follow the active MudBlazor palette (light/dark). */
+
+.cards-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.cards-header__count {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--mud-palette-text-secondary, #5a607a);
+}
+
+.cards-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* The shared card insets -24px to sit into the Home hero; there's no hero here,
+   so neutralise it (::deep pierces into the child component). */
+.cards-list ::deep .credential-wallet-card {
+    margin-top: 0;
+}
+
+/* ── Skeleton ─────────────────────────────────────────────────────────── */
+.credential-card-skeleton {
+    height: 158px;
+    border-radius: 16px;
+    background: linear-gradient(100deg,
+        var(--mud-palette-action-default-hover, rgba(120, 130, 170, .10)) 30%,
+        var(--mud-palette-lines-default, rgba(120, 130, 170, .18)) 50%,
+        var(--mud-palette-action-default-hover, rgba(120, 130, 170, .10)) 70%);
+    background-size: 200% 100%;
+    animation: cards-shimmer 1.3s ease-in-out infinite;
+}
+
+@keyframes cards-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+.cards-empty {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.cards-empty__ghost {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 2px;
+    padding: 32px 20px;
+    border-radius: 16px;
+    border: 2px dashed var(--mud-palette-lines-default, rgba(120, 130, 170, .35));
+    color: var(--mud-palette-text-secondary, #5a607a);
+}
+
+/* ── Add affordances ──────────────────────────────────────────────────── */
+.cards-add-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 46px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--sorcha-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+}
+
+.cards-add-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 56px;
+    border-radius: 16px;
+    border: 2px dashed var(--mud-palette-lines-default, rgba(120, 130, 170, .35));
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--mud-palette-text-secondary, #5a607a);
+}
+
+.cards-add-tile:hover,
+.cards-add-cta:hover {
+    filter: brightness(1.03);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .credential-card-skeleton {
+        animation: none;
+    }
+}

@@ -64,7 +64,7 @@ public class CitizenWalletNavigationTests : AuthenticatedCitizenWalletTestBase
     {
         get
         {
-            yield return new TestCaseData("footer-nav-devices", "devices").SetName("Footer Devices → /wallet/devices");
+            yield return new TestCaseData("footer-nav-cards", "cards").SetName("Footer Cards → /wallet/cards");
             yield return new TestCaseData("footer-nav-activity", "activity").SetName("Footer Activity → /wallet/activity");
             yield return new TestCaseData("footer-nav-settings", "settings").SetName("Footer Settings → /wallet/settings");
         }
