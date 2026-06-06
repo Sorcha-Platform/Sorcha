@@ -57,6 +57,13 @@
     [Parameter] public EventCallback OnDismissedEarly { get; set; }
 
     private bool _open;
+    // Latched true once the tour has opened for the current ShouldRun activation, so a
+    // parent re-render (MainLayout re-renders constantly — theme, inbox, context) can't
+    // reopen the tour after the user finished or skipped it. Without this, completing the
+    // tour reset StepIndex to 0 with ShouldRun still briefly true (the host persists the
+    // dismissal flag asynchronously), so OnParametersSet re-opened it at step 1 in a loop.
+    // Reset when the host lowers ShouldRun (e.g. Settings → Replay tour), allowing a re-run.
+    private bool _hasRun;
     private int StepIndex { get; set; }
 
     private GuidedTourStep? CurrentStep =>
@@ -74,13 +81,17 @@
 
     protected override void OnParametersSet()
     {
-        if (ShouldRun && Steps is { Count: > 0 } && !_open && StepIndex == 0)
+        if (ShouldRun && Steps is { Count: > 0 } && !_open && !_hasRun)
         {
             _open = true;
+            _hasRun = true;
         }
         else if (!ShouldRun)
         {
+            // Host reset the dismissal flag (e.g. Settings → Replay tour) → allow a fresh run.
             _open = false;
+            _hasRun = false;
+            StepIndex = 0;
         }
     }
 

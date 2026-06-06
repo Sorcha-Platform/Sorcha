@@ -60,6 +60,22 @@
                        OnClick="SignInWithPasswordAsync" Disabled="@_busy" data-testid="signin-password-submit">
                 @(_busy ? "Signing in…" : "Sign in")
             </MudButton>
+
+            @* Signup isn't available in the PWA yet (wallets are created on the web).
+               Send new users to the web signup page, then they come back to sign in. *@
+            <MudDivider Class="my-2" />
+            <div class="d-flex flex-column align-center">
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mb-1">New to Sorcha?</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Primary"
+                           EndIcon="@Icons.Material.Filled.OpenInNew"
+                           OnClick="GoToWebSignup" Disabled="@_busy"
+                           data-testid="signin-signup-link">
+                    Create an account
+                </MudButton>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1" Align="Align.Center">
+                    You'll sign up on the Sorcha website, then come back here to sign in.
+                </MudText>
+            </div>
         }
         else
         {
@@ -137,6 +153,16 @@
     {
         var target = string.IsNullOrEmpty(ReturnUrl) ? "" : ReturnUrl!;
         Nav.NavigateTo(target);
+    }
+
+    // Signup lives on the web host at origin-root /auth/signup (the PWA is mounted
+    // under /wallet/, so build the absolute origin URL rather than a leading-slash
+    // path — leading slashes are the exact PWA nav ambiguity PR #698 fixed). forceLoad
+    // because it leaves the PWA for the web app entirely.
+    private void GoToWebSignup()
+    {
+        var origin = new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
+        Nav.NavigateTo($"{origin}/auth/signup", forceLoad: true);
     }
 
     private async Task SignInWithPasskeyAsync()

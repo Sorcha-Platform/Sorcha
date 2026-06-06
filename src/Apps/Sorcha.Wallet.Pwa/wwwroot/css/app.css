@@ -32,6 +32,25 @@ html, body {
     padding-bottom: calc(116px + env(safe-area-inset-bottom, 0px));
 }
 
+/* Build-version badge — fixed bottom-right corner on every screen so the running
+   build is verifiable after a deploy. Tiny, muted, non-interactive; sits in the
+   corner clear of the centred floating tab bar. */
+.sorcha-build-badge {
+    position: fixed;
+    right: 6px;
+    bottom: calc(3px + env(safe-area-inset-bottom, 0px));
+    z-index: 1300;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: .02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--mud-palette-text-disabled, rgba(0, 0, 0, .45));
+    opacity: .6;
+    pointer-events: none;
+    user-select: none;
+}
+
 /* On Home the gradient hero is the header (no app bar), so content starts at
    the very top — drop MudMainContent's app-bar top padding. */
 .wallet-content--home {
