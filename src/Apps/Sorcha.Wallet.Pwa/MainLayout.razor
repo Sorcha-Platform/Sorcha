@@ -109,9 +109,6 @@
             @Body
         </Sorcha.UI.Core.Components.Shared.AppErrorBoundary>
     </MudMainContent>
-    @* Feature 141 — floating pill nav replaces the flush bottom rail. Shell-
-       level, so it appears on every primary wallet screen. *@
-    <FloatingTabBar ActiveRoute="@_activeRoute" Dark="@_isDark" OnNavigate="HandleTabNavigate" />
 
     @* Feature 125 / PR-F (T104-T108) — guided tour on first wallet open
        after enrolment. WalletFlagsRecord.TourDismissedAt is the per-device
@@ -127,6 +124,12 @@
        OnInboxUnreadCountUpdated wired up below. *@
     <InboxPanel @bind-IsOpen="_inboxPanelOpen" />
 </MudLayout>
+
+@* Feature 141 — floating pill nav. Rendered OUTSIDE <MudLayout> so no element
+   in the Mud tree (which sets transform/contain on its content region) becomes
+   the containing block for the bar's position:fixed and pushes it off-screen on
+   the app-bar-less Home page. Shell-level — appears on every primary screen. *@
+<FloatingTabBar ActiveRoute="@_activeRoute" Dark="@_isDark" OnNavigate="HandleTabNavigate" />
 </CascadingValue>
 
 @code {

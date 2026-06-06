@@ -51,6 +51,11 @@
     margin-top: 10px;
 }
 
+/* Sync is now the sole secondary action (demo-mint button removed). */
+.wallet-secondary-pair--single {
+    grid-template-columns: 1fr;
+}
+
 /* Ghost button surface follows the active MudBlazor palette so the chrome
    is visible on both light and dark page backgrounds. mud-palette-action-
    default-hover sits ~6% on top of the surface in both themes, which matches

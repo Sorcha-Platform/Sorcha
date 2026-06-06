@@ -39,9 +39,6 @@ public class CitizenWalletPage
     /// <summary>"Sync now" button on Home.</summary>
     public ILocator SyncNowButton => _page.Locator("button:has-text('Sync now')");
 
-    /// <summary>"Load demo credential" button on Home (US4 dev-seed path).</summary>
-    public ILocator LoadDemoButton => _page.Locator("button:has-text('Load demo credential')");
-
     /// <summary>"Present a credential" button on Home.</summary>
     public ILocator PresentButton => _page.Locator("button:has-text('Present a credential')");
 

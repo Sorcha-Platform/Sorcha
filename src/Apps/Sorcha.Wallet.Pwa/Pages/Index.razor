@@ -11,9 +11,6 @@
 @layout MainLayout
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
-@using System.Net.Http
-@using System.Net.Http.Json
-@using System.Text.Json
 @using Sorcha.UI.Components.User.Components.Context
 @using Sorcha.UI.Components.User.Components.Home
 @using Sorcha.UI.Core.Components.Wallet
@@ -21,13 +18,10 @@
 @using Sorcha.Wallet.Pwa.Services.Context
 @using Sorcha.Wallet.Pwa.Services.Presentation
 @inject ICredentialCache Credentials
-@inject IDelegationStore Delegation
-@inject IDeviceKeyService DeviceKey
 @inject ISyncService Sync
 @inject IDelegationRenewalClient Renewal
 @inject IServerClockObserver ServerClock
 @inject CitizenWalletHubConnection Hub
-@inject HttpClient Http
 @inject IPendingApplicationClient PendingApplications
 @inject IWalletFlagsStore WalletFlags
 @inject IUserContext UserContext
@@ -142,9 +136,9 @@
                 var top = _credentials[0];
                 var topAccent = AccentFor(top);
             }
-            <CredentialWalletCard Issuer="@IssuerFor(top)"
-                                  Name="@(top.DisplayLabel ?? top.Vct)"
-                                  TypeLabel="@TypeLabelFor(top)"
+            <CredentialWalletCard Issuer="@CredentialDisplay.Issuer(top)"
+                                  Name="@CredentialDisplay.Name(top)"
+                                  TypeLabel="@CredentialDisplay.TypeChip(top)"
                                   Meta="@MetaFor(top)"
                                   Accent="@topAccent"
                                   TestId="@($"credential-card-{top.Id}")"
@@ -156,12 +150,12 @@
                 {
                     <div class="credential-peek"
                          role="button" tabindex="0"
-                         aria-label="@($"Open {IssuerFor(c)} {c.DisplayLabel ?? c.Vct}")"
+                         aria-label="@($"Open {CredentialDisplay.Issuer(c)} {CredentialDisplay.Name(c)}")"
                          style="@($"background: linear-gradient(135deg, {AccentFor(c)} 0%, color-mix(in srgb, {AccentFor(c)} 82%, black) 100%);")"
                          @onclick="@(() => Nav.NavigateTo($"credentials/{c.Id}"))"
                          @onkeydown="@(e => OnPeekKeyDown(e, c.Id))"
                          data-testid="@($"credential-card-{c.Id}")">
-                        <span class="credential-peek__eyebrow">@IssuerFor(c) · @(c.DisplayLabel ?? c.Vct)</span>
+                        <span class="credential-peek__eyebrow">@CredentialDisplay.Issuer(c) · @CredentialDisplay.Name(c)</span>
                     </div>
                 }
             }
@@ -196,22 +190,17 @@
     <RecentActivityFeed Events="@_recentActivityEntries"
                        OnSeeAll="@(() => Nav.NavigateTo("activity"))" />
 
-    @* FOLLOWUP #4 — matched ghost-button pair, title case. Replaces the
-       mismatched outlined-green Sync + uppercase-purple Load demo combo. *@
-    <div class="wallet-secondary-pair">
+    @* Sync is the single secondary action — refreshes credentials from the
+       server. (The former dual-label "Load demo / Add" button was removed: it
+       called the demo-mint endpoint in both states, so a citizen with real
+       credentials tapping "Add" got a demo credential injected.) *@
+    <div class="wallet-secondary-pair wallet-secondary-pair--single">
         <button type="button" class="wallet-ghost-button"
                 disabled="@_syncing"
                 data-testid="home-sync-button"
                 @onclick="@(() => SyncNowAsync(false))">
             <MudIcon Icon="@Icons.Material.Filled.Sync" Size="Size.Small" />
             <span>@(_syncing ? "Syncing…" : "Sync")</span>
-        </button>
-        <button type="button" class="wallet-ghost-button"
-                disabled="@_seeding"
-                data-testid="home-load-demo-button"
-                @onclick="LoadDemoAsync">
-            <MudIcon Icon="@(hasCreds ? Icons.Material.Filled.Add : Icons.Material.Filled.Download)" Size="Size.Small" />
-            <span>@(_seeding ? "Loading…" : (hasCreds ? "Add" : "Load demo"))</span>
         </button>
     </div>
 
@@ -233,10 +222,6 @@
     {
         <MudAlert Severity="@_syncSeverity" Dense="true" Class="mt-3" data-testid="sync-banner">@_syncStatus</MudAlert>
     }
-    @if (!string.IsNullOrEmpty(_seedError))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_seedError</MudAlert>
-    }
 </MudContainer>
 
 @code {
@@ -247,9 +232,7 @@
 
     private IReadOnlyList<CachedCredential>? _credentials;
     private PendingApplicationView? _pendingNotice;
-    private bool _seeding;
     private bool _syncing;
-    private string? _seedError;
     private string? _syncStatus;
     private Severity _syncSeverity = Severity.Info;
     // Wall-clock of the last successful sync — drives the "Last synced …" hint
@@ -576,7 +559,7 @@
         {
             _syncSeverity = Severity.Warning;
             _syncStatus = ex.StatusCode == System.Net.HttpStatusCode.Unauthorized
-                ? "Sync needs sign-in. Enrolment wizard arrives with US2."
+                ? "Sync needs sign-in. Enrol this device to continue."
                 : $"Sync failed: {ex.Message}";
             Logger.LogWarning(ex, "Wallet sync failed");
         }
@@ -593,56 +576,14 @@
         }
     }
 
-    private async Task LoadDemoAsync()
-    {
-        _seedError = null;
-        _seeding = true;
-        try
-        {
-            var deviceJwk = await DeviceKey.GetPublicJwkAsync();
-            var mintUri = new Uri(new Uri(Nav.BaseUri), "../verify/demo/mint");
-            var resp = await Http.PostAsJsonAsync(mintUri, new { deviceJwk });
-            resp.EnsureSuccessStatusCode();
-            var minted = await resp.Content.ReadFromJsonAsync<DemoMintShape>();
-            if (minted is null) throw new InvalidOperationException("Empty mint response.");
+    // Card accent — brand blue today; later, pull from issuer registry / theme.
+    private static string AccentFor(CachedCredential c) => "#667eea";
 
-            await Credentials.UpsertAsync(new CachedCredential
-            {
-                Id = minted.CredentialId,
-                Vct = minted.Vct,
-                RawSdJwt = minted.RawSdJwt,
-                AvailableClaimNames = minted.AvailableClaimNames,
-                DisplayLabel = minted.DisplayLabel,
-                IssuerDid = "did:sorcha:org:demo",
-            });
-            await Delegation.SetAsync(minted.DelegationJwt);
-            _credentials = await Credentials.ListAsync();
-        }
-        catch (Exception ex) { _seedError = ex.Message; }
-        finally { _seeding = false; }
-    }
-
-    // ── FOLLOWUP #1 (27 May 2026) credential card field derivation ──────────
-    // CachedCredential carries IssuerDid + Vct + DisplayLabel but no issuer
-    // display name or accent today. Until the issuer registry exposes those,
-    // derive readable defaults here. The demo VC (issued by did:sorcha:org:demo)
-    // gets the sorcha.dev eyebrow + EU-ID type chip + the "Demo · For testing
-    // only" meta line called out explicitly in the followup.
-    private static bool IsDemo(CachedCredential c) =>
-        string.Equals(c.IssuerDid, "did:sorcha:org:demo", StringComparison.OrdinalIgnoreCase);
-
-    private static string IssuerFor(CachedCredential c) =>
-        IsDemo(c) ? "sorcha.dev" : (c.IssuerDid ?? "Sorcha");
-
-    private static string AccentFor(CachedCredential c) =>
-        // Default to brand blue; later: pull from issuer registry / theme.
-        "#667eea";
-
-    private static string TypeLabelFor(CachedCredential c) =>
-        IsDemo(c) ? "EU-ID" : ShortVct(c.Vct);
-
+    // The bottom meta line. Issuer eyebrow / name / type chip are derived by the
+    // shared CredentialDisplay helper (unit-tested); the demo meta callout stays
+    // here as it is purely presentational.
     private static string MetaFor(CachedCredential c) =>
-        IsDemo(c) ? "Demo · For testing only" : c.Vct;
+        CredentialDisplay.IsDemo(c) ? "Demo · For testing only" : c.Vct;
 
     /// <summary>
     /// Coarse "x ago" rendering for the last-synced hint. Computed at render
@@ -661,20 +602,4 @@
         };
     }
 
-    private static string ShortVct(string vct)
-    {
-        // Last URI segment, uppercased, capped at 6 chars — readable as a chip.
-        var slash = vct.LastIndexOfAny(new[] { '/', ':' });
-        var tail = slash >= 0 ? vct[(slash + 1)..] : vct;
-        return tail.Length <= 6 ? tail.ToUpperInvariant() : tail[..6].ToUpperInvariant();
-    }
-
-    private sealed record DemoMintShape(
-        Guid CredentialId,
-        string Vct,
-        string DisplayLabel,
-        string RawSdJwt,
-        IReadOnlyList<string> AvailableClaimNames,
-        string DelegationJwt,
-        JsonElement HolderPublicJwk);
 }
