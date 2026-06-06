@@ -46,14 +46,13 @@
 
     private sealed record Tab(string Route, string Label, string Icon, string TestId);
 
-    // FOLLOWUP #3 (27 May 2026) — tab 2 is "Cards" with a CreditCard icon
-    // (was "Devices" with a PhoneIphone). Route stays /devices for now since
-    // that's the existing destination page; rename / split lands when a
-    // dedicated cards listing page exists.
+    // Tab 2 "Cards" routes to the dedicated /cards listing page. (It briefly
+    // pointed at /devices before that page existed; Devices is now reached via
+    // Settings → Devices, resolving the tab→destination IA mismatch.)
     private static readonly Tab[] Tabs =
     [
         new("", "Home", Icons.Material.Filled.Home, "footer-nav-home"),
-        new("devices", "Cards", Icons.Material.Filled.CreditCard, "footer-nav-cards"),
+        new("cards", "Cards", Icons.Material.Filled.CreditCard, "footer-nav-cards"),
         new("activity", "Activity", Icons.Material.Filled.History, "footer-nav-activity"),
         new("settings", "Settings", Icons.Material.Filled.Settings, "footer-nav-settings"),
     ];

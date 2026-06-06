@@ -92,7 +92,7 @@ public class WalletHomeResponsiveTests : AuthenticatedCitizenWalletTestBase
         foreach (var (id, name) in new[]
                  {
                      ("footer-nav-home", "Home"),
-                     ("footer-nav-devices", "Devices"),
+                     ("footer-nav-cards", "Cards"),
                      ("footer-nav-activity", "Activity"),
                      ("footer-nav-settings", "Settings"),
                  })

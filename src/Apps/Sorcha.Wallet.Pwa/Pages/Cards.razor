@@ -1,0 +1,94 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Cards (Feature 141 follow-on). The "manage all my cards" destination behind
+    the floating-nav Cards tab. Shows every held credential full-size in a single
+    thumb-scrollable column (vs. Home's glanceable peek/fan), each leading with a
+    plain-language status pill. Devices is reached from Settings, not here —
+    this resolves the prior tab→/devices IA mismatch.
+*@
+@page "/cards"
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@using Sorcha.UI.Core.Components.Wallet
+@using Sorcha.Wallet.Pwa.Services
+@inject ICredentialCache Credentials
+@inject NavigationManager Nav
+
+<PageTitle>Your cards · Sorcha Wallet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="pt-4">
+    <div class="cards-header">
+        <MudText Typo="Typo.h5">Your cards</MudText>
+        @if (_credentials is { Count: > 0 })
+        {
+            <span class="cards-header__count" data-testid="cards-count">@_credentials.Count</span>
+        }
+    </div>
+
+    @if (_credentials is null)
+    {
+        @* Shape-matched skeletons so the layout doesn't jump on load. *@
+        <div class="cards-list" data-testid="cards-loading">
+            @for (var i = 0; i < 3; i++)
+            {
+                <div class="credential-card-skeleton" aria-hidden="true"></div>
+            }
+        </div>
+    }
+    else if (_credentials.Count == 0)
+    {
+        <div class="cards-empty" data-testid="cards-empty">
+            <div class="cards-empty__ghost">
+                <MudIcon Icon="@Icons.Material.Filled.CreditCard" Size="Size.Large" />
+                <MudText Typo="Typo.subtitle1" Class="mt-2">No cards yet</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    Credentials you're issued will appear here as cards.
+                </MudText>
+            </div>
+            <button type="button" class="cards-add-cta" data-testid="cards-add-empty"
+                    @onclick="@(() => Nav.NavigateTo("applications"))">
+                <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Small" />
+                <span>Add a credential</span>
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="cards-list" data-testid="cards-list">
+            @foreach (var c in _credentials)
+            {
+                var (status, statusText) =
+                    CredentialDisplay.ExpiryStatus(SdJwtReader.ReadExpiry(c.RawSdJwt), DateTimeOffset.UtcNow);
+                <CredentialWalletCard Issuer="@CredentialDisplay.Issuer(c)"
+                                      Name="@CredentialDisplay.Name(c)"
+                                      TypeLabel="@CredentialDisplay.TypeChip(c)"
+                                      Meta="@MetaFor(c)"
+                                      Status="@status"
+                                      StatusText="@statusText"
+                                      TestId="@($"cards-card-{c.Id}")"
+                                      OnActivated="@(() => Nav.NavigateTo($"credentials/{c.Id}"))" />
+            }
+            @* Dashed "add" affordance after the list. *@
+            <button type="button" class="cards-add-tile" data-testid="cards-add-tile"
+                    @onclick="@(() => Nav.NavigateTo("applications"))">
+                <MudIcon Icon="@Icons.Material.Filled.Add" />
+                <span>Add a card</span>
+            </button>
+        </div>
+    }
+</MudContainer>
+
+@code {
+    private IReadOnlyList<CachedCredential>? _credentials;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _credentials = await Credentials.ListAsync();
+    }
+
+    private static string MetaFor(CachedCredential c) =>
+        CredentialDisplay.IsDemo(c) ? "Demo · For testing only" : c.Vct;
+}
