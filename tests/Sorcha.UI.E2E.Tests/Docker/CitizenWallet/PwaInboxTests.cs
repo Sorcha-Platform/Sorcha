@@ -104,6 +104,32 @@ public class PwaInboxTests : AuthenticatedCitizenWalletTestBase
             new() { Timeout = 3000 });
     }
 
+    [Test]
+    [Retry(2)]
+    public async Task InboxDrawer_AtPhoneWidth_DoesNotClipLeftEdge()
+    {
+        // The 420px drawer used to push its left edge off a ~360px phone,
+        // clipping the header, chips, and entry timestamps. It's now capped to
+        // min(420px, 100vw).
+        await Page.SetViewportSizeAsync(360, 780);
+        await NavigateToWalletAndWaitForBlazorAsync();
+        await Wallet.WaitForReadyAsync();
+        await Wallet.TopBarInboxButton.ClickAsync();
+
+        var drawer = Page.Locator("[data-testid='inbox-drawer']").First;
+        await Assertions.Expect(drawer).ToBeVisibleAsync(new() { Timeout = 3000 });
+
+        // No descendant of the drawer bleeds off the left edge of the viewport.
+        var minLeft = await drawer.EvaluateAsync<double>(
+            "el => Math.min(...[el, ...el.querySelectorAll('*')].map(n => n.getBoundingClientRect().left))");
+        Assert.That(minLeft, Is.GreaterThanOrEqualTo(-0.5),
+            $"Inbox drawer content clips off the left edge ({minLeft}px).");
+
+        var overflow = await Page.EvaluateAsync<int>(
+            "() => document.documentElement.scrollWidth - window.innerWidth");
+        Assert.That(overflow, Is.LessThanOrEqualTo(1), $"Page overflows horizontally by {overflow}px.");
+    }
+
     /// <summary>
     /// Placeholder for the realtime sync test. Asserts that a server-issued
     /// credential lands in the PWA inbox panel within 3 seconds via the

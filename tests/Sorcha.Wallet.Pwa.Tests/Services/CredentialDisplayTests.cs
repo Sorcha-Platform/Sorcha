@@ -126,4 +126,26 @@ public sealed class CredentialDisplayTests
         status.Should().Be(CredentialStatus.Revoked);
         text.Should().Be("Expired");
     }
+
+    [Fact]
+    public void HumanizeCredentialMentions_HumanizesTokenAndFixesArticle()
+    {
+        CredentialDisplay.HumanizeCredentialMentions(
+                "Acme Verification Co. issued you a AssuredIdentityCredential")
+            .Should().Be("Acme Verification Co. issued you an Assured Identity credential");
+    }
+
+    [Fact]
+    public void HumanizeCredentialMentions_NoArticle_StillHumanizes()
+    {
+        CredentialDisplay.HumanizeCredentialMentions("New: DrivingLicenceCredential")
+            .Should().Be("New: Driving Licence credential");
+    }
+
+    [Fact]
+    public void HumanizeCredentialMentions_FriendlyTitle_Unchanged()
+    {
+        const string friendly = "Your council application was approved";
+        CredentialDisplay.HumanizeCredentialMentions(friendly).Should().Be(friendly);
+    }
 }
