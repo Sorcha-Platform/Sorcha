@@ -74,9 +74,19 @@
     else if (_devices is null || _devices.Count == 0)
     {
         <MudAlert Severity="Severity.Info" data-testid="my-devices-empty">
-            No wallet devices enrolled yet. Once you enrol from the citizen
-            wallet PWA, devices will appear here.
+            No wallet devices enrolled yet. Open the citizen wallet on your
+            device to enrol it, then it will appear here.
         </MudAlert>
+        @* The citizen wallet PWA is a separate app at origin-root /wallet/,
+           so this is a full-page navigation (forceLoad), not client routing. *@
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   Class="mt-3"
+                   StartIcon="@Icons.Material.Filled.AccountBalanceWallet"
+                   OnClick="@(() => Nav.NavigateTo("/wallet/", forceLoad: true))"
+                   data-testid="my-devices-open-wallet">
+            Open the wallet
+        </MudButton>
     }
     else
     {
