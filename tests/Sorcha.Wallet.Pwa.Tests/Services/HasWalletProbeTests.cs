@@ -66,6 +66,20 @@ public sealed class HasWalletProbeTests
     }
 
     [Fact]
+    public async Task HasWalletAsync_MalformedJson_FailsSafeTrue()
+    {
+        var handler = new StubHandler((_, _) =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("<html>not json</html>", Encoding.UTF8, "application/json")
+            });
+
+        var result = await Create(handler).HasWalletAsync();
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task HasWalletAsync_EmptyBody_FailsSafeTrue()
     {
         var handler = new StubHandler((_, _) =>

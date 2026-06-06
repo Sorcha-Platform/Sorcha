@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Moq;
 using Sorcha.CitizenWallet.Abstractions.Models;
+using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Endpoints;
 using Xunit;
@@ -56,6 +57,36 @@ public sealed class CitizenWalletExistsEndpointTests
     public async Task WalletExists_WhenWalletAddressClaimPresent_ReturnsOkTrue()
     {
         var ctx = BuildHttpContext(PlatformUserId, CitizenWallet);
+
+        var result = await InvokeAsync(ctx);
+
+        var ok = result.Should().BeOfType<Ok<WalletExistsResponse>>().Subject;
+        ok.Value!.HasWallet.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task WalletExists_WhenRepositoryOwnsWallet_ReturnsOkTrue()
+    {
+        // Production path: F136 consumer tokens omit the wallet_address claim, so
+        // a real "has wallet" result is reached via the GetByOwnerAsync fallback.
+        _walletRepository
+            .Setup(r => r.GetByOwnerAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new WalletEntity
+                {
+                    Address = CitizenWallet,
+                    EncryptedPrivateKey = "k",
+                    EncryptionKeyId = "kid",
+                    Algorithm = "ED25519",
+                    Owner = PlatformUserId.ToString(),
+                    Tenant = "default",
+                    Name = "citizen",
+                    Status = WalletStatus.Active
+                }
+            });
+
+        var ctx = BuildHttpContext(PlatformUserId, walletAddress: null);
 
         var result = await InvokeAsync(ctx);
 
