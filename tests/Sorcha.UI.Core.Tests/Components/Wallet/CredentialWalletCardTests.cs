@@ -52,4 +52,48 @@ public sealed class CredentialWalletCardTests : ComponentTestFixture
 
         cut.Find(".credential-wallet-card__type-chip").TextContent.Trim().Should().Be("ID");
     }
+
+    [Fact]
+    public void StatusNone_RendersNoPill()
+    {
+        var cut = Render<CredentialWalletCard>(ps => ps
+            .Add(p => p.Issuer, "sorcha.dev").Add(p => p.Name, "Assured Identity"));
+
+        cut.FindAll(".credential-wallet-card__status").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidStatus_RendersValidPill()
+    {
+        var cut = Render<CredentialWalletCard>(ps => ps
+            .Add(p => p.Issuer, "sorcha.dev").Add(p => p.Name, "Assured Identity")
+            .Add(p => p.Status, CredentialStatus.Valid));
+
+        var pill = cut.Find(".credential-wallet-card__status");
+        pill.ClassList.Should().Contain("credential-wallet-card__status--valid");
+        pill.TextContent.Trim().Should().Be("Valid");
+    }
+
+    [Fact]
+    public void ExpiringStatus_UsesStatusTextOverride()
+    {
+        var cut = Render<CredentialWalletCard>(ps => ps
+            .Add(p => p.Issuer, "sorcha.dev").Add(p => p.Name, "Assured Identity")
+            .Add(p => p.Status, CredentialStatus.ExpiringSoon)
+            .Add(p => p.StatusText, "Expires in 3 days"));
+
+        cut.Find(".credential-wallet-card__status").TextContent.Trim().Should().Be("Expires in 3 days");
+    }
+
+    [Fact]
+    public void RevokedStatus_DimsCard_AndShowsRevokedPill()
+    {
+        var cut = Render<CredentialWalletCard>(ps => ps
+            .Add(p => p.Issuer, "sorcha.dev").Add(p => p.Name, "Assured Identity")
+            .Add(p => p.Status, CredentialStatus.Revoked));
+
+        cut.Find(".credential-wallet-card").ClassList.Should().Contain("credential-wallet-card--revoked");
+        cut.Find(".credential-wallet-card__status").ClassList
+            .Should().Contain("credential-wallet-card__status--revoked");
+    }
 }
