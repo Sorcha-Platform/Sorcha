@@ -1,0 +1,59 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Slim, shell-level connectivity banner. A wallet should never silently show
+    stale cached data, so when the browser goes offline we surface a persistent
+    (non-dismissable) strip telling the citizen what they're looking at and
+    which actions need a connection. Driven by the window online/offline events
+    via js/connectivity.js. Renders nothing while online — zero layout cost.
+*@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@if (!_online)
+{
+    <div class="offline-banner" role="status" aria-live="polite" data-testid="offline-banner">
+        <MudIcon Icon="@Icons.Material.Filled.CloudOff" Size="Size.Small" />
+        <span>Offline — showing your saved cards. Presenting and syncing need a connection.</span>
+    </div>
+}
+
+@code {
+    private bool _online = true;
+    private DotNetObjectReference<OfflineBanner>? _ref;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _ref = DotNetObjectReference.Create(this);
+        try
+        {
+            // register() returns the current navigator.onLine so we paint the
+            // correct initial state without waiting for an event.
+            _online = await JS.InvokeAsync<bool>("SorchaConnectivity.register", _ref);
+        }
+        catch
+        {
+            // Interop unavailable (prerender / blocked) — assume online so we
+            // never falsely tell a connected user they're offline.
+            _online = true;
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>Invoked from connectivity.js on each window online/offline event.</summary>
+    [JSInvokable]
+    public Task OnConnectivityChanged(bool online)
+    {
+        _online = online;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("SorchaConnectivity.unregister"); } catch { /* ignore */ }
+        _ref?.Dispose();
+    }
+}

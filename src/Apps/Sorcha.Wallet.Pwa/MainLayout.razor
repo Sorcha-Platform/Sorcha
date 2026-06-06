@@ -95,6 +95,10 @@
         </MudAppBar>
     }
     <MudMainContent Class="@(_isHome ? "wallet-content wallet-content--home" : "wallet-content")">
+        @* Shell-level connectivity strip. Renders only when the device is
+           offline so the citizen knows cached cards may be stale and that
+           presenting/syncing needs a connection. *@
+        <OfflineBanner />
         @* Phase 1 of the Snackbar retirement — inline feedback host renders
            at the top of the content region. Stays empty (and occupies no
            vertical space) until a page surfaces a message via IInlineFeedback. *@

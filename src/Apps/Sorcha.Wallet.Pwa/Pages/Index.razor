@@ -156,8 +156,10 @@
                 {
                     <div class="credential-peek"
                          role="button" tabindex="0"
+                         aria-label="@($"Open {IssuerFor(c)} {c.DisplayLabel ?? c.Vct}")"
                          style="@($"background: linear-gradient(135deg, {AccentFor(c)} 0%, color-mix(in srgb, {AccentFor(c)} 82%, black) 100%);")"
                          @onclick="@(() => Nav.NavigateTo($"credentials/{c.Id}"))"
+                         @onkeydown="@(e => OnPeekKeyDown(e, c.Id))"
                          data-testid="@($"credential-card-{c.Id}")">
                         <span class="credential-peek__eyebrow">@IssuerFor(c) · @(c.DisplayLabel ?? c.Vct)</span>
                     </div>
@@ -213,6 +215,15 @@
         </button>
     </div>
 
+    @* Freshness hint — tells the citizen whether the cards on screen are
+       up to date. Hidden until the first successful sync this session. *@
+    @if (_lastSyncedAt is { } syncedAt)
+    {
+        <div class="wallet-sync-meta" data-testid="home-last-synced">
+            Last synced @RelativeSince(syncedAt)
+        </div>
+    }
+
     @* Feature 125 / PR-B — Peek footer for other-context content. *@
     <ContextPeekFooter OtherCount="@_otherContextCount"
                       OtherContextName="@_otherContextName"
@@ -241,6 +252,9 @@
     private string? _seedError;
     private string? _syncStatus;
     private Severity _syncSeverity = Severity.Info;
+    // Wall-clock of the last successful sync — drives the "Last synced …" hint
+    // so the citizen knows whether the cards on screen are fresh or stale.
+    private DateTimeOffset? _lastSyncedAt;
 
     // Feature 125 / PR-B — Home band state. NeedsAttention is derived from
     // the pending-application notice today; RecentActivity + ContextPeek
@@ -340,6 +354,17 @@
         else
         {
             _needsAttentionItems = Array.Empty<NeedsAttentionBand.NeedsAttentionItem>();
+        }
+    }
+
+    // Keyboard activation for the credential "peek" lips, which are
+    // role="button" divs (not native buttons). Enter or Space opens the card,
+    // matching native button semantics for keyboard-only users.
+    private void OnPeekKeyDown(KeyboardEventArgs e, Guid credentialId)
+    {
+        if (e.Key is "Enter" or " " or "Spacebar")
+        {
+            Nav.NavigateTo($"credentials/{credentialId}");
         }
     }
 
@@ -518,6 +543,7 @@
         {
             var outcome = await Sync.SyncAsync();
             _credentials = await Credentials.ListAsync();
+            _lastSyncedAt = DateTimeOffset.UtcNow;
 
             // Feature 124 (US2, FR-003): the waiting state drops as soon as a
             // credential is visible. Server-side clearing is the walkthrough
@@ -617,6 +643,23 @@
 
     private static string MetaFor(CachedCredential c) =>
         IsDemo(c) ? "Demo · For testing only" : c.Vct;
+
+    /// <summary>
+    /// Coarse "x ago" rendering for the last-synced hint. Computed at render
+    /// time, so it refreshes whenever Home re-renders (sync, context switch,
+    /// hub push) — precise enough for a freshness cue without a ticking timer.
+    /// </summary>
+    private static string RelativeSince(DateTimeOffset at)
+    {
+        var delta = DateTimeOffset.UtcNow - at;
+        return delta.TotalSeconds switch
+        {
+            < 60 => "just now",
+            < 3600 => $"{(int)delta.TotalMinutes} min ago",
+            < 86400 => $"{(int)delta.TotalHours} h ago",
+            _ => at.ToLocalTime().ToString("d MMM")
+        };
+    }
 
     private static string ShortVct(string vct)
     {

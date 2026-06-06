@@ -79,23 +79,52 @@
     cursor: default;
 }
 
-/* FOLLOWUP #1 — credential stack: top card is full, rest peek as 32px strips. */
+/* Freshness hint under the Sync / Add row. Quiet, secondary, centred. */
+.wallet-sync-meta {
+    margin-top: 8px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mud-palette-text-secondary, rgba(255, 255, 255, .55));
+}
+
+/* FOLLOWUP #1 — credential stack: top card is full; the rest fan out beneath
+   it as overlapping card lips so a multi-credential wallet reads as a deck,
+   not a list of thin strips. */
 .credential-stack {
     display: flex;
     flex-direction: column;
 }
 
 .credential-peek {
-    height: 32px;
-    border-radius: 16px;
-    margin-top: -10px;
-    padding: 0 16px;
+    height: 40px;
+    border-radius: 18px;
+    /* Pull each lip up under the card above so only its top edge shows, and
+       inset progressively so the deck tapers — the classic fanned-cards read.
+       The negative top margin grows on later cards via :nth-of-type below. */
+    margin-top: -22px;
+    padding: 0 18px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    padding-top: 7px;
     color: #fff;
     cursor: pointer;
     border: none;
-    box-shadow: 0 8px 18px rgba(80, 90, 150, .18);
+    box-shadow: 0 10px 22px rgba(80, 90, 150, .22);
+    transition: margin-top .15s ease, transform .15s ease;
+}
+
+/* Each successive lip insets slightly so the deck tapers toward the back. */
+.credential-peek:nth-of-type(3) { width: 96%; margin-left: 2%; }
+.credential-peek:nth-of-type(4) { width: 92%; margin-left: 4%; }
+.credential-peek:nth-of-type(n+5) { width: 88%; margin-left: 6%; }
+
+/* Hover/focus lifts the lip a touch so it's clear it's an independent card. */
+.credential-peek:hover,
+.credential-peek:focus-visible {
+    margin-top: -16px;
+    transform: translateY(-1px);
+    outline: none;
 }
 
 .credential-peek__eyebrow {
