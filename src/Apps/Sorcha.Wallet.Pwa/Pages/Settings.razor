@@ -107,19 +107,9 @@
         </MudCardContent>
     </MudCard>
 
-    <MudCard Class="mb-3">
-        <MudCardHeader>
-            <CardHeaderContent>
-                <MudText Typo="Typo.subtitle1">Session</MudText>
-            </CardHeaderContent>
-        </MudCardHeader>
-        <MudCardContent>
-            <MudButton StartIcon="@Icons.Material.Filled.Lock"
-                       Variant="Variant.Outlined" Disabled="true">
-                Lock now (biometric gate — tier 4 polish)
-            </MudButton>
-        </MudCardContent>
-    </MudCard>
+    @* The "Lock now (biometric gate)" placeholder card was removed — it was a
+       permanently-disabled dev-copy button. The biometric lock surfaces here
+       again when the feature ships. *@
 
     @* Feature 125 / PR-F (T108) — Replay tour. Resets the per-device
        TourDismissedAt flag so MainLayout fires the guided tour again on
