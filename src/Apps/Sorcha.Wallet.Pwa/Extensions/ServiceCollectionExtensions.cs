@@ -134,12 +134,17 @@ public static class ServiceCollectionExtensions
         // instead of mocking IJSRuntime (brittle — F114 lesson).
         services.AddSingleton<IPasskeyInterop, PasskeyInterop>();
 
+        // Raised by BearerTokenHandler when an unrecoverable 401 clears the
+        // session; MainLayout subscribes and redirects to /signin.
+        services.AddSingleton<ISessionExpiryNotifier, SessionExpiryNotifier>();
+
         // Unauthenticated client used ONLY by BearerTokenHandler to refresh — must NOT carry the
         // bearer handler (no recursion).
         services.AddHttpClient("AuthRefresh", c => c.BaseAddress = new Uri(gatewayBaseAddress));
         services.AddTransient(sp => new BearerTokenHandler(
             sp.GetRequiredService<IAccessTokenStore>(),
-            sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh")));
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh"),
+            sp.GetRequiredService<ISessionExpiryNotifier>()));
 
         // Auth surface: a separate HttpClient that does NOT inject the bearer token
         // (so sign-in requests don't carry stale tokens). Still observes the server

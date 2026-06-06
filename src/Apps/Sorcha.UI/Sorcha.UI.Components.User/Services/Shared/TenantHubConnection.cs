@@ -163,8 +163,40 @@ public sealed class TenantHubConnection : IAsyncDisposable
         catch (Exception ex)
         {
             UpdateConnectionState(ConnectionStatus.Disconnected, ex.Message);
-            _logger.LogError(ex, "Failed to connect to TenantHub at {HubUrl}", _hubUrl);
+
+            // A signed-out / expired-session caller fails the negotiate with a
+            // 401 — which the WASM fetch handler surfaces as an OperationCanceled.
+            // Auto-reconnect and the REST polling fallback recover this, so it is
+            // an expected state, not an error: log it quietly so it doesn't alarm
+            // the browser console. Genuine connect failures still log at Error.
+            if (IsExpectedAuthOrTransientFailure(ex, cancellationToken))
+            {
+                _logger.LogInformation(
+                    "TenantHub not connected at {HubUrl} (no valid session or transient negotiate failure): {Reason}",
+                    _hubUrl, ex.Message);
+            }
+            else
+            {
+                _logger.LogError(ex, "Failed to connect to TenantHub at {HubUrl}", _hubUrl);
+            }
         }
+    }
+
+    // Classifies a connect failure as the expected "no usable session yet" case
+    // (signed out / token expired) rather than a real fault. A 401/403 anywhere
+    // in the chain, or a cancellation we did NOT request (the WASM representation
+    // of an aborted negotiate), both mean "couldn't authenticate the hub" — which
+    // reconnect + the polling fallback already handle.
+    private static bool IsExpectedAuthOrTransientFailure(Exception ex, CancellationToken ct)
+    {
+        for (var e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden })
+                return true;
+            if (e is OperationCanceledException && !ct.IsCancellationRequested)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Stops and disposes the connection.</summary>

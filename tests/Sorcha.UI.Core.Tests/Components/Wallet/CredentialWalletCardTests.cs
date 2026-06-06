@@ -32,6 +32,34 @@ public sealed class CredentialWalletCardTests : ComponentTestFixture
     }
 
     [Fact]
+    public void Heading_WrapsEyebrowAndName_LeftAlignContract()
+    {
+        // The centre-crunch fix left-aligns the card via scoped CSS that targets
+        // .credential-wallet-card__heading and its __eyebrow / __name children
+        // (the <button> default is text-align:center). bUnit (AngleSharp) has no
+        // layout/CSS engine, so the *computed* text-align can't be asserted here —
+        // that lives in the Playwright Home@360px coverage once the #700 card
+        // fixture lands. What we CAN pin is the markup the scoped selectors bind
+        // to: a single heading wrapper containing both the eyebrow and the name,
+        // so a refactor can't rename the nodes out from under the left-align CSS.
+        var cut = Render<CredentialWalletCard>(ps => ps
+            .Add(p => p.Issuer, "sorcha.dev")
+            .Add(p => p.Name, "Assured Identity"));
+
+        var heading = cut.Find(".credential-wallet-card__heading");
+        heading.QuerySelector(".credential-wallet-card__eyebrow")
+            .Should().NotBeNull("the eyebrow must live inside the heading the left-align CSS targets");
+        heading.QuerySelector(".credential-wallet-card__name")
+            .Should().NotBeNull("the name must live inside the heading the left-align CSS targets");
+
+        // The chip is a sibling of the heading (the space-between top row), not a
+        // child — so the heading text stays flush-left rather than centring.
+        var top = cut.Find(".credential-wallet-card__top");
+        top.QuerySelector(":scope > .credential-wallet-card__heading")
+            .Should().NotBeNull("the heading must be a direct child of the space-between top row");
+    }
+
+    [Fact]
     public void EmptyMeta_OmitsMetaLine()
     {
         // The card name carries the type and the eyebrow the issuer, so a real

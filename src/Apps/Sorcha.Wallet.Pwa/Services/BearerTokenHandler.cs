@@ -9,16 +9,20 @@ using System.Text.Json.Serialization;
 namespace Sorcha.Wallet.Pwa.Services;
 
 /// <summary>
-/// Attaches the wallet's bearer token to every outbound request. On a 401 with a
-/// stored refresh token, transparently refreshes once (POST /api/auth/token/refresh —
-/// re-mints the same tier per F136, so a Consumer refresh stays Consumer) and
-/// retries. A failed refresh clears the session so the gate sends the citizen to
-/// /signin on the next navigation.
+/// Attaches the wallet's bearer token to every outbound request. On a 401 for a
+/// request that carried a token, transparently refreshes once when a refresh
+/// token is held (POST /api/auth/token/refresh — re-mints the same tier per F136,
+/// so a Consumer refresh stays Consumer) and retries. If there is no refresh
+/// token, or the refresh fails, the stored session is dead: it is cleared and
+/// <see cref="ISessionExpiryNotifier.NotifyExpired"/> fires so the shell sends the
+/// citizen to /signin immediately, rather than leaving the page running against a
+/// dead session (failing hub, empty preferences, repeated 401s in the console).
 /// </summary>
 public sealed class BearerTokenHandler : DelegatingHandler
 {
     private readonly IAccessTokenStore _store;
     private readonly HttpClient _refreshHttp;
+    private readonly ISessionExpiryNotifier _sessionExpiry;
 
     /// <summary>Initialises a new instance.</summary>
     /// <param name="store">The token store that holds the citizen's JWT and refresh token.</param>
@@ -27,10 +31,12 @@ public sealed class BearerTokenHandler : DelegatingHandler
     /// for the refresh call. This client MUST NOT have <see cref="BearerTokenHandler"/>
     /// in its pipeline — adding it would create infinite recursion on 401.
     /// </param>
-    public BearerTokenHandler(IAccessTokenStore store, HttpClient refreshHttp)
+    /// <param name="sessionExpiry">Raised when an unrecoverable 401 clears the stored session.</param>
+    public BearerTokenHandler(IAccessTokenStore store, HttpClient refreshHttp, ISessionExpiryNotifier sessionExpiry)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _refreshHttp = refreshHttp ?? throw new ArgumentNullException(nameof(refreshHttp));
+        _sessionExpiry = sessionExpiry ?? throw new ArgumentNullException(nameof(sessionExpiry));
     }
 
     /// <inheritdoc />
@@ -43,23 +49,32 @@ public sealed class BearerTokenHandler : DelegatingHandler
 
         var response = await base.SendAsync(request, ct);
 
+        // Only react to auth failures on requests that actually carried a token —
+        // an anonymous call getting a 401 has no session to refresh or clear.
         if (response.StatusCode != HttpStatusCode.Unauthorized
-            || string.IsNullOrEmpty(record?.RefreshToken))
+            || record is null || string.IsNullOrEmpty(record.AccessToken))
         {
             return response;
         }
 
-        var refreshed = await TryRefreshAsync(record.RefreshToken, record.Email, ct);
-        if (refreshed is null)
+        // One-shot refresh when we hold a refresh token.
+        if (!string.IsNullOrEmpty(record.RefreshToken))
         {
-            await _store.ClearAsync(ct); // gate redirects to /signin on next navigation
-            return response;
+            var refreshed = await TryRefreshAsync(record.RefreshToken, record.Email, ct);
+            if (refreshed is not null)
+            {
+                response.Dispose();
+                var retry = await CloneAsync(request, ct);
+                retry.Headers.Authorization = new AuthenticationHeaderValue("Bearer", refreshed.AccessToken);
+                return await base.SendAsync(retry, ct);
+            }
         }
 
-        response.Dispose();
-        var retry = await CloneAsync(request, ct);
-        retry.Headers.Authorization = new AuthenticationHeaderValue("Bearer", refreshed.AccessToken);
-        return await base.SendAsync(retry, ct);
+        // No refresh token, or the refresh failed → the stored session is dead.
+        // Clear it and signal the shell to redirect to /signin now.
+        await _store.ClearAsync(ct);
+        _sessionExpiry.NotifyExpired();
+        return response;
     }
 
     // No refresh lock: WASM is single-threaded. Concurrent 401s can interleave across awaits and

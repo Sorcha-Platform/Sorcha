@@ -185,7 +185,7 @@ public sealed class AuthAndBearerTests
         });
         var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
             { BaseAddress = new Uri("https://localhost/") };
-        var bearer = new BearerTokenHandler(store, noRefreshHttp) { InnerHandler = inner };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier()) { InnerHandler = inner };
         var http = new HttpClient(bearer) { BaseAddress = new Uri("https://localhost/") };
 
         await http.GetAsync("api/v1/wallet/sync");
@@ -205,7 +205,7 @@ public sealed class AuthAndBearerTests
         });
         var noRefreshHttp = new HttpClient(new StubHttpHandler((_, _) => new HttpResponseMessage()))
             { BaseAddress = new Uri("https://localhost/") };
-        var bearer = new BearerTokenHandler(store, noRefreshHttp) { InnerHandler = inner };
+        var bearer = new BearerTokenHandler(store, noRefreshHttp, new SpySessionExpiryNotifier()) { InnerHandler = inner };
         var http = new HttpClient(bearer) { BaseAddress = new Uri("https://localhost/") };
 
         await http.GetAsync("api/v1/wallet/sync");
@@ -286,6 +286,17 @@ public sealed class AuthAndBearerTests
         {
             PurgeCount++;
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class SpySessionExpiryNotifier : ISessionExpiryNotifier
+    {
+        public int ExpiredCount { get; private set; }
+        public event Action? SessionExpired;
+        public void NotifyExpired()
+        {
+            ExpiredCount++;
+            SessionExpired?.Invoke();
         }
     }
 
@@ -370,7 +381,7 @@ public sealed class AuthAndBearerTests
             Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
             { BaseAddress = new Uri("https://gw.test/") };
 
-        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var handler = new BearerTokenHandler(store, refreshHttp, new SpySessionExpiryNotifier()) { InnerHandler = inner };
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
 
         var resp = await client.GetAsync("api/v1/wallet/credentials");
@@ -380,24 +391,28 @@ public sealed class AuthAndBearerTests
     }
 
     [Fact]
-    public async Task BearerTokenHandler_On401_WithNoRefreshToken_Returns401Untouched()
+    public async Task BearerTokenHandler_On401_WithNoRefreshToken_ClearsSessionAndSignalsExpiry()
     {
         var store = new InMemoryAccessTokenStore();
         await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", null));
 
         var inner = new SequencedHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized));
+        // Refresh must NOT be attempted when there is no refresh token.
         var refreshHttp = new HttpClient(new CapturingHandler(_ =>
-            Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
+            Task.FromException<HttpResponseMessage>(new InvalidOperationException("refresh must not be called"))))
             { BaseAddress = new Uri("https://gw.test/") };
+        var notifier = new SpySessionExpiryNotifier();
 
-        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var handler = new BearerTokenHandler(store, refreshHttp, notifier) { InnerHandler = inner };
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
 
         var resp = await client.GetAsync("api/v1/wallet/credentials");
 
         resp.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
-        // Token should be unchanged (no refresh attempted, no clear)
-        (await store.GetAsync())!.AccessToken.Should().Be("old");
+        // A 401 on a request that carried a token, with no refresh token, means the
+        // stored session is dead — clear it and signal the shell to redirect to /signin.
+        (await store.GetAsync()).Should().BeNull("a 401 with no refresh token clears the dead session");
+        notifier.ExpiredCount.Should().Be(1, "the shell must be told to send the citizen to /signin");
     }
 
     [Fact]
@@ -427,7 +442,7 @@ public sealed class AuthAndBearerTests
             Task.FromResult(JsonOk("{\"access_token\":\"new\",\"refresh_token\":\"rt2\",\"expires_in\":3600}"))))
             { BaseAddress = new Uri("https://gw.test/") };
 
-        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var handler = new BearerTokenHandler(store, refreshHttp, new SpySessionExpiryNotifier()) { InnerHandler = inner };
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
 
         var resp = await client.PostAsync("api/v1/wallet/something",
@@ -448,14 +463,16 @@ public sealed class AuthAndBearerTests
         var refreshHttp = new HttpClient(new CapturingHandler(_ =>
             Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized))))
             { BaseAddress = new Uri("https://gw.test/") };
+        var notifier = new SpySessionExpiryNotifier();
 
-        var handler = new BearerTokenHandler(store, refreshHttp) { InnerHandler = inner };
+        var handler = new BearerTokenHandler(store, refreshHttp, notifier) { InnerHandler = inner };
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://gw.test/") };
 
         var resp = await client.GetAsync("api/v1/wallet/credentials");
 
         resp.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
         (await store.GetAsync()).Should().BeNull("failed refresh must clear the session");
+        notifier.ExpiredCount.Should().Be(1, "a failed refresh must signal the shell to redirect to /signin");
     }
 
     private sealed class CapturingHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler
