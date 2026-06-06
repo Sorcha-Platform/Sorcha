@@ -72,6 +72,19 @@ public static class CitizenWalletEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapGet("/exists", WalletExists)
+            .WithName("CitizenWalletExists")
+            .WithSummary("Does the signed-in citizen have a wallet?")
+            .WithDescription(
+                "Feature 149. Reports whether a wallet resolves for the caller so the Citizen " +
+                "Wallet PWA's pairing takeover can route a walletless citizen to web wallet " +
+                "creation instead of dead-ending at the device-enrol 404. ALWAYS returns 200 " +
+                "with an explicit boolean for an authenticated consumer (no 401/404 ambiguity); " +
+                "an unauthenticated or non-consumer caller is rejected at the audience gate. " +
+                "Carries a boolean only — never a wallet address or other PII.")
+            .Produces<WalletExistsResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         group.MapPost("/devices/renew-delegation", RenewDelegation)
             .WithName("RenewCitizenDeviceDelegation")
             .WithSummary("Renew the device delegation credential")
@@ -385,6 +398,15 @@ public static class CitizenWalletEndpoints
         var holderKeyId = await holderKeys.GetHolderJwkThumbprintAsync(citizenWallet, ct);
         var snapshot = await sync.ListAllCredentialsAsync(platformUserId.Value, holderKeyId, ct);
         return Results.Ok(snapshot);
+    }
+
+    private static async Task<IResult> WalletExists(
+        HttpContext context,
+        IWalletRepository walletRepository,
+        CancellationToken ct)
+    {
+        var (_, walletAddress, _) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
+        return Results.Ok(new WalletExistsResponse { HasWallet = walletAddress is not null });
     }
 
     private static async Task<IResult> GetHolderKeys(

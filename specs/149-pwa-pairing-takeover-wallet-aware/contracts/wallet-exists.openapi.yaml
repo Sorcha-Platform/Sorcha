@@ -1,0 +1,54 @@
+openapi: 3.1.0
+info:
+  title: Citizen Wallet — Wallet Existence
+  version: "1.0.0"
+  description: >
+    Feature 149. Reports whether the signed-in citizen has a wallet, so the
+    Citizen Wallet PWA's PairingTakeover can route a walletless citizen to web
+    wallet creation instead of dead-ending at the device-enrol 404.
+
+paths:
+  /api/v1/wallet/exists:
+    get:
+      operationId: CitizenWalletExists
+      summary: Does the signed-in citizen have a wallet?
+      description: >
+        Consumer-tier. Resolves the caller's wallet via the standard citizen
+        context resolution and returns an explicit boolean. ALWAYS returns 200
+        for an authenticated consumer (no 401/404 ambiguity) so the PWA gets a
+        clean signal. An unauthenticated or non-consumer caller is rejected at
+        the RequireConsumerAudience gate (401/403). Leaks no wallet address/PII.
+      tags: [Citizen Wallet]
+      security:
+        - consumerBearer: []
+      responses:
+        "200":
+          description: Wallet existence resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletExistsResponse"
+              examples:
+                hasWallet:
+                  value: { hasWallet: true }
+                walletless:
+                  value: { hasWallet: false }
+        "401":
+          description: Not authenticated / not a consumer-tier token.
+
+components:
+  securitySchemes:
+    consumerBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Installation consumer-tier token ({installation}:consumer).
+  schemas:
+    WalletExistsResponse:
+      type: object
+      additionalProperties: false
+      required: [hasWallet]
+      properties:
+        hasWallet:
+          type: boolean
+          description: true when a wallet resolves for the calling citizen.
