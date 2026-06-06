@@ -202,6 +202,15 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Feature 149 — one-shot "does this citizen have a wallet?" probe that
+        // drives the wallet-aware branch of the PairingTakeover. Same handler
+        // chain as the device probe (BearerTokenHandler + ServerClockHandler).
+        services.AddHttpClient<Sorcha.Wallet.Pwa.Services.Wallet.IHasWalletProbe,
+                               Sorcha.Wallet.Pwa.Services.Wallet.HasWalletProbe>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 128 US1 — PWA-side short-code redeemer for the PairingTakeover
         // sub-affordance ("Already started on another device?"). Anonymous
         // call: the 6-digit code is the credential for this single endpoint.
