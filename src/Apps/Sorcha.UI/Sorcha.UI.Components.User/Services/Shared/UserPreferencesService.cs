@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models;
@@ -39,9 +40,35 @@ public class UserPreferencesService : IUserPreferencesService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get user preferences");
+            LogPreferenceFailure(ex, "get user preferences");
             return new UserPreferencesDto();
         }
+    }
+
+    // A signed-out (or expired-session) caller gets a 401/403 here. That is an
+    // expected, fully-handled outcome — we return defaults — so it must not log
+    // at Error and alarm the browser console. Genuine failures (5xx, network)
+    // still surface at Error. See also TenantHubConnection.StartAsync.
+    private void LogPreferenceFailure(Exception ex, string action)
+    {
+        if (IsExpectedAuthFailure(ex))
+        {
+            _logger.LogDebug(ex, "Skipping {Action}: no valid session (auth failure).", action);
+        }
+        else
+        {
+            _logger.LogError(ex, "Failed to {Action}", action);
+        }
+    }
+
+    private static bool IsExpectedAuthFailure(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden })
+                return true;
+        }
+        return false;
     }
 
     public async Task<UserPreferencesDto> UpdateUserPreferencesAsync(UpdateUserPreferencesRequest request)
@@ -55,7 +82,7 @@ public class UserPreferencesService : IUserPreferencesService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to update user preferences");
+            LogPreferenceFailure(ex, "update user preferences");
             return new UserPreferencesDto();
         }
     }
@@ -69,7 +96,7 @@ public class UserPreferencesService : IUserPreferencesService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get default wallet");
+            LogPreferenceFailure(ex, "get default wallet");
             return null;
         }
     }
@@ -84,7 +111,7 @@ public class UserPreferencesService : IUserPreferencesService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to set default wallet");
+            LogPreferenceFailure(ex, "set default wallet");
         }
     }
 
@@ -97,7 +124,7 @@ public class UserPreferencesService : IUserPreferencesService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to clear default wallet");
+            LogPreferenceFailure(ex, "clear default wallet");
         }
     }
 }

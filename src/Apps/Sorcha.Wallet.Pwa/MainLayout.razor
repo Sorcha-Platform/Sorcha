@@ -31,6 +31,8 @@
 @inject TenantHubConnection TenantHub
 @inject IAccessTokenStore AccessTokens
 @inject IThemeService ThemeService
+@inject WalletAuthenticationStateProvider AuthState
+@inject ISessionExpiryNotifier SessionExpiry
 
 @* Feature 141 — dark mode now follows IThemeService (previously the provider
    was unbound, so the wallet never rendered dark). *@
@@ -174,6 +176,7 @@
         // suppression, and resolve dark mode from the user's theme preference.
         UpdateRoute();
         Nav.LocationChanged += HandleLocationChanged;
+        SessionExpiry.SessionExpired += HandleSessionExpired;
         ThemeService.OnThemeChanged += HandleThemeChanged;
         await ThemeService.InitializeAsync();
         _isDark = ThemeService.IsDarkMode;
@@ -208,6 +211,21 @@
         _isDark = ThemeService.IsDarkMode;
         InvokeAsync(StateHasChanged);
     }
+
+    /// <summary>
+    /// The stored token was rejected and could not be refreshed (BearerTokenHandler
+    /// cleared it). Re-evaluate the gate and send the citizen to sign-in rather than
+    /// leaving the shell running against a dead session. Preserves where they were
+    /// via returnUrl; no-ops if already on the sign-in screen.
+    /// </summary>
+    private void HandleSessionExpired() => InvokeAsync(() =>
+    {
+        AuthState.NotifyChanged();
+        var rel = Nav.ToBaseRelativePath(Nav.Uri);
+        var path = rel.Split('?', '#')[0].Trim('/');
+        if (path.Equals("signin", StringComparison.OrdinalIgnoreCase)) return;
+        Nav.NavigateTo($"signin?returnUrl={Uri.EscapeDataString(rel)}");
+    });
 
     /// <summary>Feature 141 — floating-bar navigation (base-relative; Home = "").</summary>
     private void HandleTabNavigate(string route) => Nav.NavigateTo(route);
@@ -351,6 +369,7 @@
     {
         UserContext.OnContextChanged -= HandleContextChanged;
         Nav.LocationChanged -= HandleLocationChanged;
+        SessionExpiry.SessionExpired -= HandleSessionExpired;
         ThemeService.OnThemeChanged -= HandleThemeChanged;
         if (_inboxHubStarted)
         {
