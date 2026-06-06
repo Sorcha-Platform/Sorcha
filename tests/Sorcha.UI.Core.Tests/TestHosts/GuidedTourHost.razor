@@ -1,0 +1,28 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@*
+    bUnit test host for GuidedTourScaffold. The scaffold renders its step content
+    through an inline MudDialog, which MudBlazor renders via the popover/dialog
+    providers — so the scaffold can't be rendered in isolation; it needs the
+    providers present in the tree. This host supplies them and forwards the
+    parameters the tests drive.
+*@
+@using System.Collections.Generic
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using Sorcha.UI.Components.User.Components.Onboarding
+
+<MudPopoverProvider />
+<MudDialogProvider />
+<GuidedTourScaffold Steps="Steps"
+                    ShouldRun="ShouldRun"
+                    OnCompleted="OnCompleted"
+                    OnDismissedEarly="OnDismissedEarly" />
+
+@code {
+    [Parameter] public IReadOnlyList<GuidedTourScaffold.GuidedTourStep> Steps { get; set; }
+        = System.Array.Empty<GuidedTourScaffold.GuidedTourStep>();
+    [Parameter] public bool ShouldRun { get; set; }
+    [Parameter] public EventCallback OnCompleted { get; set; }
+    [Parameter] public EventCallback OnDismissedEarly { get; set; }
+}
