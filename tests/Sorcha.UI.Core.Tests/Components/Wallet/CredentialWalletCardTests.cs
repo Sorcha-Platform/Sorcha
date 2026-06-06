@@ -32,6 +32,20 @@ public sealed class CredentialWalletCardTests : ComponentTestFixture
     }
 
     [Fact]
+    public void EmptyMeta_OmitsMetaLine()
+    {
+        // The card name carries the type and the eyebrow the issuer, so a real
+        // credential passes no meta — it must not render an empty meta node
+        // (and certainly never the raw VCT).
+        var cut = Render<CredentialWalletCard>(ps => ps
+            .Add(p => p.Issuer, "sorcha.dev")
+            .Add(p => p.Name, "Assured Identity")
+            .Add(p => p.Meta, ""));
+
+        cut.FindAll(".credential-wallet-card__meta").Should().BeEmpty();
+    }
+
+    [Fact]
     public void NullTypeLabel_OmitsChip()
     {
         var cut = Render<CredentialWalletCard>(ps => ps

@@ -8,6 +8,7 @@
 @inject ILogger<InboxPanel> Logger
 @using Microsoft.Extensions.Logging
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Components.Wallet
 @using MudBlazor
 
 @*
@@ -22,7 +23,7 @@
     from MainLayout. Future Phase-10 work consolidates them.
 *@
 
-<MudDrawer @bind-Open="IsOpen" Anchor="Anchor.End" Elevation="4" Width="420px" Variant="@DrawerVariant.Temporary">
+<MudDrawer @bind-Open="IsOpen" Anchor="Anchor.End" Elevation="4" Width="420px" Variant="@DrawerVariant.Temporary" data-testid="inbox-drawer">
     <MudDrawerHeader>
         <MudText Typo="Typo.h6">Inbox</MudText>
         <MudSpacer />
@@ -77,7 +78,9 @@
                                      Color="@SeverityColor(entry.Severity)"
                                      Size="Size.Small" />
                             <MudText Typo="Typo.body2">
-                                <strong>@entry.Title</strong>
+                                @* Fallback humanizer: a server-written friendly title passes through;
+                                   a raw VCT token (e.g. AssuredIdentityCredential) is humanized. *@
+                                <strong>@CredentialDisplay.HumanizeCredentialMentions(entry.Title)</strong>
                             </MudText>
                             @if (isUnread)
                             {

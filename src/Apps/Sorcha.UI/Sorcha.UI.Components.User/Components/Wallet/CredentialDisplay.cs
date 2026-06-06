@@ -3,10 +3,10 @@
 
 using System;
 using System.Text;
-using Sorcha.UI.Core.Components.Wallet;
+using System.Text.RegularExpressions;
 using Sorcha.UI.Core.Models.Presentation;
 
-namespace Sorcha.Wallet.Pwa.Services;
+namespace Sorcha.UI.Core.Components.Wallet;
 
 /// <summary>
 /// Derives the human-readable text shown on a wallet credential card / peek
@@ -91,6 +91,35 @@ public static class CredentialDisplay
             return (CredentialStatus.ExpiringSoon, days <= 1 ? "Expires today" : $"Expires in {days} days");
 
         return (CredentialStatus.Valid, null);
+    }
+
+    // Matches a PascalCase credential-type token (ending in "Credential"),
+    // optionally preceded by the article "a"/"an" so we can correct it.
+    private static readonly Regex CredentialMention =
+        new(@"\b(?:(a|an)\s+)?([A-Z][A-Za-z0-9]+Credential)\b",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Humanize any raw PascalCase credential-type tokens embedded in a free-text
+    /// string (e.g. a server-composed inbox title), fixing the preceding article.
+    /// "…issued you a AssuredIdentityCredential" → "…issued you an Assured Identity
+    /// credential". A no-op when the text carries no such token, so a friendly
+    /// title written by the issuer passes through unchanged.
+    /// </summary>
+    public static string HumanizeCredentialMentions(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text ?? string.Empty;
+
+        return CredentialMention.Replace(text, m =>
+        {
+            var humanized = Humanize(m.Groups[2].Value);
+            var phrase = $"{humanized} credential";
+            if (!m.Groups[1].Success) return phrase;
+
+            var startsVowel = humanized.Length > 0 && "aeiouAEIOU".IndexOf(humanized[0]) >= 0;
+            var article = startsVowel ? "an" : "a";
+            return $"{article} {phrase}";
+        });
     }
 
     /// <summary>
