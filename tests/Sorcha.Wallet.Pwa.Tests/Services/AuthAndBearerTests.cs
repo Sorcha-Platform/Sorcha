@@ -391,7 +391,7 @@ public sealed class AuthAndBearerTests
     }
 
     [Fact]
-    public async Task BearerTokenHandler_On401_WithNoRefreshToken_ClearsSessionAndSignalsExpiry()
+    public async Task BearerTokenHandler_On401_WithNoRefreshToken_LeavesSessionUntouched()
     {
         var store = new InMemoryAccessTokenStore();
         await store.SetAsync(new AccessTokenRecord("old", DateTimeOffset.UtcNow.AddHours(1), "a@b.test", null));
@@ -409,10 +409,12 @@ public sealed class AuthAndBearerTests
         var resp = await client.GetAsync("api/v1/wallet/credentials");
 
         resp.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
-        // A 401 on a request that carried a token, with no refresh token, means the
-        // stored session is dead — clear it and signal the shell to redirect to /signin.
-        (await store.GetAsync()).Should().BeNull("a 401 with no refresh token clears the dead session");
-        notifier.ExpiredCount.Should().Be(1, "the shell must be told to send the citizen to /signin");
+        // A 401 with no refresh token may be a per-endpoint authorization gap, NOT an
+        // expired session — so the token must stay put (clearing it nukes good sessions
+        // and caused the post-login "Authorizing…" loop). The clock-expiry gate handles
+        // genuinely dead sessions.
+        (await store.GetAsync())!.AccessToken.Should().Be("old", "a per-endpoint 401 must not clear the session");
+        notifier.ExpiredCount.Should().Be(0, "no refresh token + single 401 is not proof of session death");
     }
 
     [Fact]
