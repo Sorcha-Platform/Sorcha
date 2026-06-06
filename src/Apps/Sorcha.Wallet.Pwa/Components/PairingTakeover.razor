@@ -35,11 +35,14 @@
 @using Sorcha.UI.Core.Services.User.Devices
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Enrolment
+@using Sorcha.Wallet.Pwa.Services.Wallet
 @inject IHasPairedDeviceProbe Probe
+@inject IHasWalletProbe HasWallet
 @inject IEnrolmentService Enrolment
 @inject IPairingShortCodeRedeemer ShortCodeRedeemer
 @inject IAccessTokenStore TokenStore
 @inject CitizenWalletHubConnection Hub
+@inject NavigationManager Nav
 @inject ILogger<PairingTakeover> Logger
 @implements IDisposable
 
@@ -48,69 +51,95 @@
     <div class="sorcha-welcome-overlay" role="dialog" aria-modal="true"
          aria-labelledby="sorcha-pair-headline" data-testid="pairing-takeover">
         <div class="sorcha-welcome-content">
-            <h2 id="sorcha-pair-headline" class="sorcha-welcome-headline">
-                Set up this device
-            </h2>
-            <p class="sorcha-welcome-subhead">
-                This phone hasn't been paired to your Sorcha account yet.
-                Pair it now so it can hold your credentials.
-            </p>
-
-            @if (_error is not null)
+            @if (_hasWallet == false)
             {
-                <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="pairing-takeover-error">
-                    @_error
-                </MudAlert>
-            }
-
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
-                       FullWidth="true" Class="mt-2"
-                       OnClick="HandlePrimaryAsync"
-                       Disabled="@_busy"
-                       data-testid="pairing-takeover-primary-button">
-                @if (_busy && _busyReason == BusyReason.LocalPair)
-                {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                    <span>Setting up…</span>
-                }
-                else
-                {
-                    <span>Set up this device</span>
-                }
-            </MudButton>
-
-            <MudExpansionPanel Class="mt-3" data-testid="pairing-takeover-shortcode-panel">
-                <TitleContent>
-                    <span>Already started on another device?</span>
-                </TitleContent>
-                <ChildContent>
-                    <p class="mud-typography-body2 mb-2">
-                        Enter the 6-digit pairing code shown on your other device.
+                @* Feature 149 — walletless cold-start. The web app owns wallet
+                   creation (companion-first), so route the citizen there rather
+                   than offer device enrolment (which 404s without a wallet). *@
+                <div data-testid="pairing-takeover-create-wallet">
+                    <h2 id="sorcha-pair-headline" class="sorcha-welcome-headline">
+                        Create your wallet first
+                    </h2>
+                    <p class="sorcha-welcome-subhead">
+                        Your Sorcha wallet lives in your account on the web. Create it
+                        there, then come back here to pair this phone and hold your
+                        credentials.
                     </p>
-                    <MudTextField @bind-Value="_shortCode"
-                                  Label="Pairing code"
-                                  Variant="Variant.Outlined"
-                                  MaxLength="6"
-                                  InputType="InputType.Number"
-                                  Disabled="@_busy"
-                                  data-testid="pairing-takeover-shortcode-input" />
-                    <MudButton Variant="Variant.Filled" Color="Color.Secondary"
-                               Class="mt-2"
-                               OnClick="HandleShortCodeAsync"
-                               Disabled="@(_busy || string.IsNullOrWhiteSpace(_shortCode))"
-                               data-testid="pairing-takeover-shortcode-submit">
-                        @if (_busy && _busyReason == BusyReason.ShortCode)
-                        {
-                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                            <span>Redeeming…</span>
-                        }
-                        else
-                        {
-                            <span>Pair with code</span>
-                        }
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                               FullWidth="true" Class="mt-2"
+                               OnClick="GoToWebWalletCreation"
+                               data-testid="pairing-takeover-create-wallet-button">
+                        <span>Create your wallet</span>
                     </MudButton>
-                </ChildContent>
-            </MudExpansionPanel>
+                </div>
+            }
+            else
+            {
+                <h2 id="sorcha-pair-headline" class="sorcha-welcome-headline">
+                    Set up this device
+                </h2>
+                <p class="sorcha-welcome-subhead">
+                    This phone hasn't been paired to your Sorcha account yet.
+                    Pair it now so it can hold your credentials.
+                </p>
+
+                @if (_error is not null)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="pairing-takeover-error">
+                        @_error
+                    </MudAlert>
+                }
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                           FullWidth="true" Class="mt-2"
+                           OnClick="HandlePrimaryAsync"
+                           Disabled="@_busy"
+                           data-testid="pairing-takeover-primary-button">
+                    @if (_busy && _busyReason == BusyReason.LocalPair)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Setting up…</span>
+                    }
+                    else
+                    {
+                        <span>Set up this device</span>
+                    }
+                </MudButton>
+
+                <MudExpansionPanel Class="mt-3" data-testid="pairing-takeover-shortcode-panel">
+                    <TitleContent>
+                        <span>Already started on another device?</span>
+                    </TitleContent>
+                    <ChildContent>
+                        <p class="mud-typography-body2 mb-2">
+                            Enter the 6-digit pairing code shown on your other device.
+                        </p>
+                        <MudTextField @bind-Value="_shortCode"
+                                      Label="Pairing code"
+                                      Variant="Variant.Outlined"
+                                      MaxLength="6"
+                                      InputType="InputType.Number"
+                                      Disabled="@_busy"
+                                      data-testid="pairing-takeover-shortcode-input" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                                   Class="mt-2"
+                                   OnClick="HandleShortCodeAsync"
+                                   Disabled="@(_busy || string.IsNullOrWhiteSpace(_shortCode))"
+                                   data-testid="pairing-takeover-shortcode-submit">
+                            @if (_busy && _busyReason == BusyReason.ShortCode)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                <span>Redeeming…</span>
+                            }
+                            else
+                            {
+                                <span>Pair with code</span>
+                            }
+                        </MudButton>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
         </div>
     </div>
 }
@@ -122,6 +151,11 @@
     private string? _error;
     private string _shortCode = string.Empty;
 
+    // Feature 149 — one-shot wallet existence. null = not yet resolved (keep
+    // the overlay hidden, no flash); false = create-wallet state; true = pair.
+    private bool? _hasWallet;
+    private bool _walletCheckStarted;
+
     private enum BusyReason { None, LocalPair, ShortCode }
 
     protected override async Task OnInitializedAsync()
@@ -131,12 +165,31 @@
 
         await Probe.EnsureLoadedAsync();
         UpdateVisibility();
+        await EnsureWalletCheckedAsync();
     }
 
     private void HandleProbeChanged()
     {
         UpdateVisibility();
         InvokeAsync(StateHasChanged);
+        // A late device-probe resolution to "no device" still needs the wallet
+        // check before we choose which body to show.
+        _ = InvokeAsync(EnsureWalletCheckedAsync);
+    }
+
+    // Resolve wallet existence exactly once, only when there is no device on
+    // this hardware (the only state in which the takeover renders a body).
+    private async Task EnsureWalletCheckedAsync()
+    {
+        if (_walletCheckStarted || Probe.HasAnyDevice != false)
+        {
+            return;
+        }
+
+        _walletCheckStarted = true;
+        _hasWallet = await HasWallet.HasWalletAsync();
+        UpdateVisibility();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async void HandleHubDeviceEnrolled(Guid _)
@@ -155,11 +208,22 @@
 
     private void UpdateVisibility()
     {
-        // Show only when the probe has resolved AND reports no paired device.
-        // While HasAnyDevice == null (initial fetch in flight) keep the
-        // takeover hidden — flashing the takeover for ~100ms during signup
-        // is a worse UX than briefly missing it.
-        _isVisible = Probe.HasAnyDevice == false;
+        // Show only when the device probe reports no paired device AND the
+        // one-shot wallet check has resolved. While either is in flight
+        // (HasAnyDevice == null, or _hasWallet == null) keep the takeover
+        // hidden — flashing the wrong body is a worse UX than briefly missing
+        // the overlay.
+        _isVisible = Probe.HasAnyDevice == false && _hasWallet is not null;
+    }
+
+    // Feature 149 — wallet creation lives on the web host at origin-root
+    // /wallets/create (the PWA is mounted under /wallet/, so build the absolute
+    // origin URL rather than a leading-slash path). forceLoad because it leaves
+    // the PWA for the web app entirely. Mirrors SignIn.razor GoToWebSignup.
+    private void GoToWebWalletCreation()
+    {
+        var origin = new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
+        Nav.NavigateTo($"{origin}/wallets/create", forceLoad: true);
     }
 
     private async Task HandlePrimaryAsync()
