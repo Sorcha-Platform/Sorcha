@@ -1278,7 +1278,7 @@ Four citizen routes outside the F126 council-page gate, all sharing the existing
 
 ### Components (Sorcha.UI.Components.User)
 
-- **`PairingTakeover`** (`Sorcha.Wallet.Pwa/Components/PairingTakeover.razor` — **PWA-local, NOT in Components.User**) — full-page overlay mounted in `Sorcha.Wallet.Pwa/MainLayout.razor` outside `MudLayout`. Renders when `HasAnyDevice == false`. **(F149) Wallet-aware:** when there is no device here it runs a one-shot `IHasWalletProbe.HasWalletAsync`; a walletless citizen sees a "Create your wallet first" body that force-loads the web `/wallets/create` handoff (companion-first), while a wallet owner gets the pair body below. The overlay stays hidden until both the device check and the wallet check resolve (no flash). Pair-body primary action invokes `IEnrolmentService.EnrolAsync` against the existing PWA session; secondary disclosure accepts a 6-digit code for cross-device-to-this-device pairing. Auto-dismisses on probe-change OR `CitizenWalletHubConnection.OnDeviceEnrolled`.
+- **`PairingTakeover`** (`Sorcha.Wallet.Pwa/Components/PairingTakeover.razor` — **PWA-local, NOT in Components.User**) — full-page overlay mounted in `Sorcha.Wallet.Pwa/MainLayout.razor` outside `MudLayout`. Renders when `HasAnyDevice == false`. **(F149) Wallet-aware:** when there is no device here it runs a one-shot `IHasWalletProbe.HasWalletAsync`; a walletless citizen sees a "Create your wallet first" body that force-loads the web `/app/wallets/create` handoff (the web Blazor client is under the /app base path — NOT origin-root) (companion-first), while a wallet owner gets the pair body below. The overlay stays hidden until both the device check and the wallet check resolve (no flash). Pair-body primary action invokes `IEnrolmentService.EnrolAsync` against the existing PWA session; secondary disclosure accepts a 6-digit code for cross-device-to-this-device pairing. Auto-dismisses on probe-change OR `CitizenWalletHubConnection.OnDeviceEnrolled`.
 - **`PairingHandoffSurface`** (`Components/Pairing/`) — hosted at `/setup/add-device`. Switches on `IPwaInstallabilityProbe` verdict between the QR variant (desktop) and the install variant (mobile, with always-visible short code). Common Skip + "Email me a link" affordances.
 - **`PairingNagBanner`** (`Components/Pairing/`) — persistent dismissable banner mounted in `Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`. Renders when `HasAnyDevice == false`. CTA → `/setup/add-device`.
 
@@ -1324,7 +1324,13 @@ citizen there instead of building in-PWA wallet creation.
   `false`+`_hasWallet == true` → existing pair body (unchanged). The wallet check runs once, only
   when there is no device here.
 - **Tests:** `CitizenWalletExistsEndpointTests` (Wallet Service, reflection handler invocation);
-  `HasWalletProbeTests` + `PairingTakeoverTests` (PWA, bUnit).
+  `HasWalletProbeTests` + `PairingTakeoverTests` (PWA, bUnit — incl. a nav-target assertion for
+  `/app/wallets/create`).
+- **Web-base-path gotcha (fix PR after #978):** the create-wallet CTA must target
+  `{origin}/app/wallets/create`, not origin-root `/wallets/create` (404 on n1) — the web Blazor
+  client is mounted under `/app`. This differs from `SignIn.razor` `GoToWebSignup`, whose
+  `/auth/signup` IS a root-level tenant-service Razor page. Don't assume web routes are at origin
+  root just because a sibling handoff is.
 
 ---
 
