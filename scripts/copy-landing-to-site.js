@@ -33,6 +33,41 @@ const linkRewrites = [
 // Injected into <head> so the public page advertises the canonical URL.
 const canonicalTag = '    <link rel="canonical" href="https://www.sorcha.dev">\n'
 
+// Standalone redirect stubs emitted into the published site. The landing page
+// links to /wallet/ (the live citizen wallet PWA), but www.sorcha.dev is a
+// static GitHub Pages host with no such path — it 404s. Bounce both the
+// in-page links and anyone typing the URL directly to the deployed app on n1.
+const redirects = [
+  { path: 'wallet', to: 'https://n1.sorcha.dev/wallet' },
+]
+
+function redirectHtml(to) {
+  // location.replace preserves any query/hash and keeps the stub out of history;
+  // the meta-refresh is the no-JS fallback. noindex so the stub isn't indexed.
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting to the Sorcha Wallet…</title>
+  <meta name="robots" content="noindex">
+  <link rel="canonical" href="${to}">
+  <meta http-equiv="refresh" content="0; url=${to}">
+  <script>location.replace(${JSON.stringify(to)} + location.search + location.hash)</script>
+</head>
+<body>
+  <p>Redirecting to <a href="${to}">${to}</a>…</p>
+</body>
+</html>
+`
+}
+
+function writeRedirect({ path: routePath, to }) {
+  const destPath = path.join(destDir, routePath, 'index.html')
+  fs.mkdirSync(path.dirname(destPath), { recursive: true })
+  fs.writeFileSync(destPath, redirectHtml(to))
+  console.log(`Wrote redirect /${routePath}/ -> ${to}`)
+}
+
 function rewriteIndex(html) {
   let out = html
   for (const { from, to } of linkRewrites) {
@@ -64,3 +99,4 @@ function copy(file, transform) {
 
 copy('index.html', rewriteIndex)
 for (const file of verbatim) copy(file)
+for (const redirect of redirects) writeRedirect(redirect)

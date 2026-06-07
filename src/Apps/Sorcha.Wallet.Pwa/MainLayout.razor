@@ -152,7 +152,10 @@
    sign-in page) so the running build is verifiable at a glance after a deploy.
    Decorative + non-interactive; the version is stamped at build time by the
    unified-versioning standard (root Directory.Build.props). *@
-<div class="sorcha-build-badge" aria-hidden="true">v@AppVersion</div>
+@* NB: v@(AppVersion) — the explicit @(...) form is required. The implicit
+   "v@AppVersion" reads as an email address to Razor's @-heuristic and renders
+   literally (the bug this fixes). *@
+<div class="sorcha-build-badge" aria-hidden="true">v@(AppVersion)</div>
 
 @code {
     private IReadOnlyList<UserOrgMembership> _memberships = Array.Empty<UserOrgMembership>();

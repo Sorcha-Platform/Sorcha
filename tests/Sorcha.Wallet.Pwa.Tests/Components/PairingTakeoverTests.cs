@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Bunit;
@@ -59,6 +60,23 @@ public sealed class PairingTakeoverTests : ComponentTestFixture
         cut.FindAll(CreateWallet).Should().NotBeEmpty("a walletless citizen must be routed to create a wallet");
         cut.FindAll(CreateWalletButton).Should().NotBeEmpty();
         cut.FindAll(PrimaryButton).Should().BeEmpty("the dead-ending enrol button must not be offered when there is no wallet");
+    }
+
+    // US1 — the create-wallet CTA force-loads the web host's wallet-creation
+    // page, which lives under the WASM client base path /app (NOT origin-root;
+    // that distinction is what the on-n1 browser check caught).
+    [Fact]
+    public void CreateWalletButton_NavigatesToWebAppWalletCreation()
+    {
+        _deviceProbe.HasAnyDevice = false;
+        _walletProbe.Result = false;
+        var nav = Services.GetRequiredService<Bunit.TestDoubles.BunitNavigationManager>();
+
+        var cut = Render<PairingTakeover>();
+        cut.Find(CreateWalletButton).Click();
+
+        nav.History.Should().NotBeEmpty();
+        nav.History.Last().Uri.Should().EndWith("/app/wallets/create");
     }
 
     // US2 — citizen with a wallet but no device here sees the existing pair flow.

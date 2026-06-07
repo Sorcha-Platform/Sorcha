@@ -2,6 +2,13 @@
 
 **Date:** 2026-06-06
 **Status:** Approved — ready for implementation plan
+
+> **Correction (2026-06-07, fix after #978):** the create-wallet CTA target below is written as
+> `{origin}/wallets/create`, mirroring `GoToWebSignup`. That was wrong — on-n1 browser validation
+> showed it 404s because the web Blazor client is mounted under the **`/app`** base path. The
+> shipped code targets **`{origin}/app/wallets/create`**. (`/auth/signup` had no `/app` prefix
+> because it is a root-level tenant-service Razor page, not an `/app` WASM route — a distinction I
+> missed.) Read every `/wallets/create` below as `/app/wallets/create`.
 **Feature area:** Citizen Wallet PWA (Feature 128 cold-start onboarding)
 **Roadmap item:** P0 #1 in `docs/superpowers/specs/2026-06-06-citizen-wallet-companion-roadmap.md`
 **Decision owner:** Stuart Fraser
