@@ -1,0 +1,48 @@
+{
+  "$schema": "./membership.config.schema.json",
+  "schemeName": "Acme Rewards",
+  "schemeSlug": "loyalty-discount",
+  "sector": "Retail",
+  "issuerOrg": {
+    "name": "Acme Retail",
+    "walletAddress": "ws1issueracmeretail000000000000000000000000",
+    "did": "did:sorcha:org:ws1issueracmeretail000000000000000000000000"
+  },
+  "credentialType": "MembershipCredential/v1",
+  "identityCredentialType": "AssuredIdentityCredential",
+  "requiredIdentityClaims": ["givenName", "familyName", "dateOfBirth"],
+  "trustPolicy": {
+    "sources": [
+      {
+        "kind": "did-allowlist",
+        "allowedIssuers": ["did:sorcha:org:ws1identityissuer0000000000000000000000"],
+        "confersAssurance": "low"
+      }
+    ],
+    "combinator": "anyOf",
+    "minAssuranceLevel": "low"
+  },
+  "tiers": ["standard", "gold"],
+  "defaultTier": "standard",
+  "applicantFields": {
+    "consentToMembershipTerms": {
+      "type": "boolean",
+      "title": "I agree to the membership terms",
+      "description": "Confirm you accept the Acme Rewards membership terms and conditions."
+    },
+    "marketingOptIn": {
+      "type": "boolean",
+      "title": "Keep me updated about offers",
+      "description": "Optional — receive offers and rewards news."
+    }
+  },
+  "applicantRequired": ["consentToMembershipTerms"],
+  "disclosable": ["givenName", "familyName", "dateOfBirth", "memberNumber", "tier"],
+  "expiryDuration": "P2Y",
+  "verifierProfile": {
+    "tierDiscountMap": {
+      "standard": 5,
+      "gold": 15
+    }
+  }
+}

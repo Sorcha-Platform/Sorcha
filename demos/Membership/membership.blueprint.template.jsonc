@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+//
+// Generic, parameterised MEMBERSHIP credential blueprint.
+//
+// This is the reusable platform primitive: a credential proving a subject
+// belongs to a scheme and carrying a `tier`. Loyalty / discount / payments-rate
+// are CONFIGURED PROFILES over this same primitive (see membership.config.*).
+// The discount percentage is NEVER minted into the credential — the credential
+// proves `member: true` + `tier`; the verifier applies a policy to a tier.
+//
+// Shape cloned verbatim from the F127 credential-gated-service (Blue Badge)
+// pattern: a three-action chain
+//     verify-membership-identity (citizen, open/late-bound, SorchaWallet gate)
+//   → submit-membership-application (citizen, scheme-specific gap fields)
+//   → issue-membership-credential (issuer, SorchaLocalWallet issuance)
+// on the F111 presentation-lifecycle substrate, with claims-fetch → form
+// pre-population via `x-persona.presentation`.
+//
+// {{TOKENS}} are substituted by Render-MembershipBlueprint.ps1 from a
+// membership.config.json. Scalar tokens are string-replaced; *_JSON tokens are
+// replaced with a JSON fragment computed from config. See README.md.
+{
+  "id": "{{SCHEME_SLUG}}-v1",
+  "title": "{{SCHEME_NAME}} membership signup",
+  "description": "Join {{SCHEME_NAME}} by proving your identity from your Sorcha Wallet, then receive a membership credential carrying your tier.",
+  "version": 1,
+  "category": "membership",
+  "tags": ["membership", "credential-gated", "sorcha-wallet"],
+  "author": "Sorcha",
+  "published": true,
+  "template": {
+    "id": "{{SCHEME_SLUG}}-v1",
+    "title": "{{SCHEME_NAME}} membership signup",
+    "description": "Join {{SCHEME_NAME}} by proving your identity from your Sorcha Wallet, then receive a membership credential carrying your tier.",
+    "version": 1,
+    "metadata": {
+      "category": "Membership",
+      "complexity": "Standard",
+      "actions": "3",
+      "features": "SorchaWallet presentation gate, F111 lifecycle, autofill via x-persona, SorchaLocalWallet credential issuance",
+      "sector": "{{SECTOR}}"
+    },
+    "participants": [
+      {
+        // OPEN participant — late-bound (F103). walletAddress is intentionally
+        // OMITTED. Baking a wallet here trips VAL_BP_010 at publish time.
+        "id": "applicant",
+        "name": "Applicant",
+        "organisation": "Public"
+      },
+      {
+        // Pre-bound issuer/officer. Its wallet is supplied by the render step
+        // from config (issuerOrg.walletAddress) so the published blueprint
+        // carries a resolvable sender for the issue action (avoids VAL_BP_002).
+        "id": "issuer",
+        "name": "{{ISSUER_NAME}}",
+        "organisation": "{{ISSUER_NAME}}",
+        "walletAddress": "{{ISSUER_WALLET_ADDRESS}}"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Verify your identity from your Sorcha Wallet",
+        "sender": "applicant",
+        "isStartingAction": true,
+        // Identity gate only — no form schema. The disclosed claims flow
+        // forward to pre-populate later actions (F127 claims-fetch).
+        "credentialRequirements": [
+          {
+            "type": "{{IDENTITY_CREDENTIAL_TYPE}}",
+            "presentationSource": "SorchaWallet",
+            // trustPolicy (F135) is REQUIRED here so OPEN_CREDENTIAL_ISSUER does
+            // not fire (the Blue Badge reference omits it and would warn). The
+            // render step injects a did-allowlist pinning the identity issuer.
+            "trustPolicy": {{TRUST_POLICY_JSON}},
+            "requiredClaims": {{REQUIRED_CLAIMS_JSON}},
+            "revocationCheckPolicy": "FailClosed",
+            "description": "Prove your identity from a credential already in your Sorcha Wallet so you don't re-type details {{ISSUER_NAME}} can already see."
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "applicant", "dataPointers": ["/*"] },
+          { "participantAddress": "issuer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          { "id": "to-submit", "nextActionIds": [2], "isDefault": true }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Confirm your {{SCHEME_NAME}} membership",
+        "sender": "applicant",
+        "requiredPriorActions": [1],
+        // Scheme-specific applicant fields ONLY. Identity comes from the
+        // presented credential — do NOT re-collect it here.
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {{APPLICANT_FIELDS_JSON}},
+            "required": {{APPLICANT_REQUIRED_JSON}},
+            // Autofill: pull the disclosed claims from action 1's presentation.
+            "x-persona": { "presentation": 1 }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "applicant", "dataPointers": ["/*"] },
+          { "participantAddress": "issuer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          { "id": "to-issue", "nextActionIds": [3], "isDefault": true }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Issue {{SCHEME_NAME}} membership credential",
+        "sender": "issuer",
+        "requiredPriorActions": [2],
+        // The issuer assigns memberNumber + tier; identity fields are
+        // materialised from the carried presentation/submission state.
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {{ISSUE_PROPERTIES_JSON}},
+            "required": {{ISSUE_REQUIRED_JSON}}
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "{{CREDENTIAL_TYPE}}",
+          "targetAudience": "SorchaLocalWallet",
+          "recipientParticipantId": "applicant",
+          "claimMappings": {{CLAIM_MAPPINGS_JSON}},
+          // Every claim is selectively-disclosable so the POS verifier can
+          // request memberNumber+tier and withhold identity. Withholding is
+          // the verifier's request (limit_disclosure), not a credential flag.
+          "disclosable": {{DISCLOSABLE_JSON}},
+          "expiryDuration": "{{EXPIRY_DURATION}}"
+        },
+        "disclosures": [
+          { "participantAddress": "issuer", "dataPointers": ["/*"] },
+          { "participantAddress": "applicant", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          { "id": "issued-terminal", "nextActionIds": [], "isDefault": true }
+        ]
+      }
+    ]
+  }
+}

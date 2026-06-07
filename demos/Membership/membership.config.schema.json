@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.sorcha.dev/membership/membership-config/v1",
+  "title": "Membership scheme deploy config",
+  "description": "Validates the config an operator edits to stand up a new membership scheme. Render-MembershipBlueprint.ps1 consumes this + membership.blueprint.template.jsonc and emits a lint-clean instance blueprint. An operator should never hand-edit the blueprint.",
+  "type": "object",
+  "properties": {
+    "schemeName": { "type": "string", "minLength": 1, "description": "Human-readable scheme name, e.g. 'Acme Rewards'." },
+    "schemeSlug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Lowercase kebab id used for the blueprint id ('{slug}-v1') and output filename."
+    },
+    "sector": { "type": "string", "minLength": 1 },
+    "issuerOrg": {
+      "type": "object",
+      "description": "The organisation that issues the membership credential and owns the issue action.",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "walletAddress": {
+          "type": "string",
+          "pattern": "^ws1[a-z0-9]+$",
+          "description": "Issuer wallet address, baked into the issue action's participant so the published blueprint has a resolvable sender (avoids VAL_BP_002)."
+        },
+        "did": {
+          "type": "string",
+          "pattern": "^did:sorcha:org:",
+          "description": "Issuer org DID. Informational here; the trust pin for the IDENTITY issuer lives in trustPolicy below."
+        }
+      },
+      "required": ["name", "walletAddress"],
+      "additionalProperties": false
+    },
+    "credentialType": {
+      "type": "string",
+      "default": "MembershipCredential/v1",
+      "description": "Becomes the credential's vct verbatim. Keep 'MembershipCredential/vN' for the generic primitive — loyalty/payments-rate are profiles, NOT new types."
+    },
+    "identityCredentialType": {
+      "type": "string",
+      "default": "AssuredIdentityCredential",
+      "description": "The upstream credential the citizen presents to prove identity at the gate."
+    },
+    "requiredIdentityClaims": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "default": ["givenName", "familyName", "dateOfBirth"]
+    },
+    "trustPolicy": {
+      "type": "object",
+      "description": "F135 trust policy for the identity gate. MUST have at least one source or OPEN_CREDENTIAL_ISSUER fires. did-allowlist pins the identity issuer's org DID.",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "enum": ["register", "x509-tenant", "trustlist", "did-allowlist"] },
+              "allowedIssuers": { "type": "array", "items": { "type": "string" } },
+              "trustListId": { "type": "string" },
+              "confersAssurance": { "type": "string", "enum": ["low", "substantial", "high"] }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          }
+        },
+        "combinator": { "type": "string", "enum": ["anyOf", "allOf"], "default": "anyOf" },
+        "minAssuranceLevel": { "type": "string", "enum": ["low", "substantial", "high"], "default": "low" }
+      },
+      "required": ["sources"],
+      "additionalProperties": false
+    },
+    "tiers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "The parameterised tier set carried on the credential."
+    },
+    "defaultTier": { "type": "string" },
+    "applicantFields": {
+      "type": "object",
+      "description": "JSON Schema 'properties' object for the action-2 form (scheme-specific gap fields only — never identity, never memberNumber/tier)."
+    },
+    "applicantRequired": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "disclosable": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Claims the issued credential makes selectively-disclosable. Include identity + memberNumber + tier so a POS can request a subset.",
+      "default": ["givenName", "familyName", "dateOfBirth", "memberNumber", "tier"]
+    },
+    "expiryDuration": {
+      "type": "string",
+      "pattern": "^P",
+      "description": "ISO-8601 duration, e.g. P2Y. Omit for non-expiring.",
+      "default": "P2Y"
+    },
+    "verifierProfile": {
+      "type": "object",
+      "description": "VERIFIER-SIDE ONLY. Never minted into the credential. Maps a tier to the policy the verifier applies (e.g. discount %).",
+      "properties": {
+        "tierDiscountMap": {
+          "type": "object",
+          "additionalProperties": { "type": "number" },
+          "description": "tier -> discount percentage, used only by the POS verifier."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["schemeName", "schemeSlug", "issuerOrg", "tiers", "defaultTier", "trustPolicy"],
+  "additionalProperties": false
+}

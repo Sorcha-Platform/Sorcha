@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.sorcha.dev/membership/membership-pos-presentation/v1",
+  "title": "Membership POS presentation request + response",
+  "description": "Validates the off-register POS verification exchange against the membership credential. The request mirrors the inputs to Sorcha.Verifier PresentationRequestBuilder.CreateAsync; the response is the verifier outcome carrying ONLY the disclosed memberNumber + tier.",
+  "type": "object",
+  "properties": {
+    "request": {
+      "type": "object",
+      "description": "POS verifier inputs. requiredClaims must be a subset of the credential's disclosable claims; identity claims must NOT appear here (they stay withheld).",
+      "properties": {
+        "requiredVct": { "type": "string", "const": "MembershipCredential/v1" },
+        "requiredClaims": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["memberNumber", "tier"] },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "optionalClaims": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "purpose": { "type": "string" }
+      },
+      "required": ["requiredVct", "requiredClaims"],
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "description": "Verifier outcome. claims carries the disclosed subset only. identitySuppressed records the claims that were present in the credential but never requested.",
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "declined", "abandoned"] },
+        "vct": { "type": "string", "const": "MembershipCredential/v1" },
+        "claims": {
+          "type": "object",
+          "properties": {
+            "memberNumber": { "type": "string" },
+            "tier": { "type": "string" }
+          },
+          "required": ["memberNumber", "tier"],
+          "additionalProperties": false
+        },
+        "identitySuppressed": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Claims withheld by the holder because the POS never requested them.",
+          "default": ["givenName", "familyName", "dateOfBirth"]
+        }
+      },
+      "required": ["status"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["request"],
+  "additionalProperties": false
+}

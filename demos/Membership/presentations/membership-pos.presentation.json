@@ -1,0 +1,36 @@
+{
+  "$comment": "POS (point-of-sale) presentation request for the membership credential. Off-register verification via Sorcha.Verifier (PresentationRequestBuilder.CreateAsync). The verifier requests ONLY memberNumber + tier; identity (name, DOB) is withheld by omission because limit_disclosure is 'required'. The discount a tier earns is the verifier's policy (verifierProfile.tierDiscountMap) and is NEVER read from the credential. This file documents both the builder inputs and the exact DIF PEX definition the builder emits.",
+  "verifierRequest": {
+    "requiredVct": "MembershipCredential/v1",
+    "requiredClaims": ["memberNumber", "tier"],
+    "optionalClaims": [],
+    "purpose": "Verify membership at point of sale",
+    "$comment": "These are the arguments passed to Sorcha.Verifier PresentationRequestBuilder.CreateAsync. No code change is required — this is pure configuration of the existing reference verifier."
+  },
+  "presentationDefinition": {
+    "id": "membership-pos",
+    "input_descriptors": [
+      {
+        "id": "primary",
+        "name": "MembershipCredential/v1",
+        "purpose": "Verify membership at point of sale",
+        "constraints": {
+          "limit_disclosure": "required",
+          "fields": [
+            {
+              "path": ["$.vct"],
+              "filter": { "type": "string", "const": "MembershipCredential/v1" }
+            },
+            { "path": ["$.memberNumber"], "optional": false },
+            { "path": ["$.tier"], "optional": false }
+          ]
+        }
+      }
+    ]
+  },
+  "consentSurface": {
+    "$comment": "What the holder's consent sheet shows. disclosedFields are released; withheldFields are present in the credential but NOT requested, so they render as withheld (— — —) and never leave the wallet.",
+    "disclosedFields": ["memberNumber", "tier"],
+    "withheldFields": ["givenName", "familyName", "dateOfBirth"]
+  }
+}

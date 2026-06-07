@@ -1,0 +1,155 @@
+{
+  "id": "loyalty-discount-v1",
+  "title": "Acme Rewards membership signup",
+  "description": "Join Acme Rewards by proving your identity from your Sorcha Wallet, then receive a membership credential carrying your tier.",
+  "version": 1,
+  "category": "membership",
+  "tags": ["membership", "credential-gated", "sorcha-wallet", "loyalty"],
+  "author": "Sorcha",
+  "published": true,
+  "template": {
+    "id": "loyalty-discount-v1",
+    "title": "Acme Rewards membership signup",
+    "description": "Join Acme Rewards by proving your identity from your Sorcha Wallet, then receive a membership credential carrying your tier.",
+    "version": 1,
+    "metadata": {
+      "category": "Membership",
+      "complexity": "Standard",
+      "actions": "3",
+      "features": "SorchaWallet presentation gate, F111 lifecycle, autofill via x-persona, SorchaLocalWallet credential issuance",
+      "sector": "Retail"
+    },
+    "participants": [
+      {
+        "id": "applicant",
+        "name": "Applicant",
+        "organisation": "Public"
+      },
+      {
+        "id": "issuer",
+        "name": "Acme Retail",
+        "organisation": "Acme Retail",
+        "walletAddress": "ws1issueracmeretail000000000000000000000000"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Verify your identity from your Sorcha Wallet",
+        "sender": "applicant",
+        "isStartingAction": true,
+        "credentialRequirements": [
+          {
+            "type": "AssuredIdentityCredential",
+            "presentationSource": "SorchaWallet",
+            "trustPolicy": {
+              "sources": [
+                {
+                  "kind": "did-allowlist",
+                  "allowedIssuers": ["did:sorcha:org:ws1identityissuer0000000000000000000000"],
+                  "confersAssurance": "low"
+                }
+              ],
+              "combinator": "anyOf",
+              "minAssuranceLevel": "low"
+            },
+            "requiredClaims": [
+              { "claimName": "givenName" },
+              { "claimName": "familyName" },
+              { "claimName": "dateOfBirth" }
+            ],
+            "revocationCheckPolicy": "FailClosed",
+            "description": "Prove your identity from a credential already in your Sorcha Wallet so you don't re-type details Acme Retail can already see."
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "applicant", "dataPointers": ["/*"] },
+          { "participantAddress": "issuer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          { "id": "to-submit", "nextActionIds": [2], "isDefault": true }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Confirm your Acme Rewards membership",
+        "sender": "applicant",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "consentToMembershipTerms": {
+                "type": "boolean",
+                "title": "I agree to the membership terms",
+                "description": "Confirm you accept the Acme Rewards membership terms and conditions."
+              },
+              "marketingOptIn": {
+                "type": "boolean",
+                "title": "Keep me updated about offers",
+                "description": "Optional — receive offers and rewards news."
+              }
+            },
+            "required": ["consentToMembershipTerms"],
+            "x-persona": { "presentation": 1 }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "applicant", "dataPointers": ["/*"] },
+          { "participantAddress": "issuer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          { "id": "to-issue", "nextActionIds": [3], "isDefault": true }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Issue Acme Rewards membership credential",
+        "sender": "issuer",
+        "requiredPriorActions": [2],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "givenName": { "type": "string", "title": "Given name" },
+              "familyName": { "type": "string", "title": "Family name" },
+              "dateOfBirth": { "type": "string", "format": "date", "title": "Date of birth" },
+              "memberNumber": {
+                "type": "string",
+                "title": "Member number",
+                "description": "Assigned by Acme Rewards."
+              },
+              "tier": {
+                "type": "string",
+                "enum": ["standard", "gold"],
+                "title": "Membership tier"
+              }
+            },
+            "required": ["givenName", "familyName", "dateOfBirth", "memberNumber", "tier"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "MembershipCredential/v1",
+          "targetAudience": "SorchaLocalWallet",
+          "recipientParticipantId": "applicant",
+          "claimMappings": [
+            { "claimName": "givenName", "sourceField": "/givenName" },
+            { "claimName": "familyName", "sourceField": "/familyName" },
+            { "claimName": "dateOfBirth", "sourceField": "/dateOfBirth" },
+            { "claimName": "memberNumber", "sourceField": "/memberNumber" },
+            { "claimName": "tier", "sourceField": "/tier" }
+          ],
+          "disclosable": ["givenName", "familyName", "dateOfBirth", "memberNumber", "tier"],
+          "expiryDuration": "P2Y"
+        },
+        "disclosures": [
+          { "participantAddress": "issuer", "dataPointers": ["/*"] },
+          { "participantAddress": "applicant", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          { "id": "issued-terminal", "nextActionIds": [], "isDefault": true }
+        ]
+      }
+    ]
+  }
+}
