@@ -241,6 +241,8 @@ docs/services/peer-service.md
 docs/site/index.html
 docs/site/landing.css
 docs/site/landing.js
+docs/site/consent-banner.js
+docs/site/wallet/
 
 # Playwright
 /test-results/
