@@ -141,6 +141,13 @@ jobs:
           file: ${{ steps.resolve.outputs.dockerfile }}
           push: true
           platforms: linux/amd64
+          # Pass the run identifiers into the build so the published assembly's
+          # version matches the :2.<run>.<attempt> image tag below (the root
+          # Directory.Build.props derives the version from these env vars).
+          # Dockerfiles that don't declare the matching ARG simply ignore these.
+          build-args: |
+            GITHUB_RUN_NUMBER=${{ github.run_number }}
+            GITHUB_RUN_ATTEMPT=${{ github.run_attempt }}
           # Unified version scheme: 2.<run_number>.<run_attempt> (matches the
           # .NET assembly version derived in the root Directory.Build.props).
           tags: |
