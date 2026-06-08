@@ -48,7 +48,7 @@
 .tab-pill--active {
     padding: 8px 12px;
     background: linear-gradient(135deg, rgba(102, 126, 234, .13), rgba(118, 75, 162, .13));
-    color: var(--mud-palette-primary, #667eea);
+    color: var(--mud-palette-primary, #4F46E5);
 }
 
 .tab-pill__label {

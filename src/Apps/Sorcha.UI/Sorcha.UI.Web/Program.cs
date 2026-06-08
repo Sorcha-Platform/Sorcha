@@ -95,6 +95,32 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// Marketing sub-pages (website-overhaul §D2) ship as static .html siblings of
+// index.html but are linked with clean, extensionless URLs (e.g. /solutions).
+// UseStaticFiles only serves the literal /solutions.html, and GitHub Pages
+// resolves the extensionless form for us — this middleware gives the container
+// the same behaviour so both hosts answer the same links.
+var marketingPages = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "/wallet-info", "/designer-overview", "/solutions", "/compare", "/developers"
+};
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value;
+    if (path is not null && marketingPages.Contains(path.TrimEnd('/')))
+    {
+        var fileName = path.Trim('/') + ".html";
+        var filePath = Path.Combine(app.Environment.WebRootPath, fileName);
+        if (File.Exists(filePath))
+        {
+            context.Response.ContentType = "text/html";
+            await context.Response.SendFileAsync(filePath);
+            return;
+        }
+    }
+    await next();
+});
+
 // URL rewriting: map /app/* to root for static web assets.
 // The Blazor WASM client (Sorcha.UI.Web.Client) is served under /app/ while
 // the marketing landing page lives at /. Files like the framework bundle,
