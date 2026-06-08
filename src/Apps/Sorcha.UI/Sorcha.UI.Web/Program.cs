@@ -57,11 +57,12 @@ app.Use(async (context, next) =>
     var csp = string.Join("; ", new[]
     {
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+        // googletagmanager: Google Analytics (Consent Mode v2) loaded by the landing page.
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "img-src 'self' data: https:",
         "font-src 'self' data: https://fonts.gstatic.com",
-        "connect-src 'self' https://localhost:* http://localhost:* wss://localhost:* ws://localhost:* https://www.schemastore.org",
+        "connect-src 'self' https://localhost:* http://localhost:* wss://localhost:* ws://localhost:* https://www.schemastore.org https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com",
         "worker-src 'self' blob:",
         "frame-ancestors 'none'",
         "base-uri 'self'",
