@@ -1,825 +1,438 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light" data-accent="violet">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sorcha — Trust Infrastructure for the Multi-Party World</title>
-    <meta name="description" content="Open-source cryptographic proof that your workflows happened, your data is intact, and every participant can verify it — without trusting the platform. Post-quantum ready, HAIP-compliant, MIT licensed.">
-    <meta name="keywords" content="trust infrastructure, verifiable credentials, SD-JWT VC, HAIP, OpenID4VCI, selective disclosure, post-quantum cryptography, ML-DSA, distributed ledger, multi-party workflows, .NET 10, open source">
-    <meta property="og:title" content="Sorcha — Trust Infrastructure for the Multi-Party World">
-    <meta property="og:description" content="Open-source cryptographic proof that your workflows happened, your data is intact, and every participant can verify it — without trusting the platform.">
+    <!-- Apply the stored theme before first paint to avoid a flash. -->
+    <script>(function(){try{var t=localStorage.getItem('sorcha-theme');if(t!=='light'&&t!=='dark')t='light';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+    <!-- D6 SEO -->
+    <title>Sorcha — Cryptographic proof infrastructure</title>
+    <meta name="description" content="Replace asserted trust with proof. Open-source infrastructure for multi-party workflows where every party can verify the evidence themselves.">
+    <meta name="keywords" content="cryptographic proof platform, post-quantum verifiable credentials, multi-party workflow orchestration, self-hosted verifiable credentials, OpenID4VCI, OpenID4VP, SD-JWT VC, ML-DSA, ML-KEM, .NET">
+    <link rel="canonical" href="https://www.sorcha.dev/">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://www.sorcha.dev">
+    <meta property="og:site_name" content="Sorcha">
+    <meta property="og:title" content="Sorcha — Cryptographic proof infrastructure">
+    <meta property="og:description" content="Replace asserted trust with proof. Open-source infrastructure for multi-party workflows where every party can verify the evidence themselves.">
+    <meta property="og:url" content="https://www.sorcha.dev/">
+    <meta property="og:image" content="https://www.sorcha.dev/og-default.png">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="robots" content="index, follow, max-snippet:-1">
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
+        "@type": "Organization",
         "name": "Sorcha",
-        "description": "Open-source trust infrastructure for multi-party workflows. Cryptographic proof, selective disclosure, post-quantum signatures, and HAIP-compliant credential issuance.",
-        "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "Cross-platform",
-        "license": "https://opensource.org/licenses/MIT",
-        "programmingLanguage": "C#",
-        "runtimePlatform": ".NET 10"
+        "url": "https://www.sorcha.dev/",
+        "logo": "https://www.sorcha.dev/sorcha-icon.svg",
+        "description": "Cryptographic proof infrastructure for multi-party workflows.",
+        "sameAs": ["https://github.com/Sorcha-Platform/Sorcha"]
     }
     </script>
     <link rel="icon" type="image/svg+xml" href="sorcha-icon.svg">
     <link rel="icon" type="image/png" sizes="512x512" href="sorcha-icon-512.png">
     <link rel="icon" type="image/png" sizes="256x256" href="sorcha-icon-256.png">
     <link rel="icon" type="image/png" sizes="128x128" href="sorcha-icon-128.png">
-    <link rel="icon" type="image/png" href="favicon.png">
     <link rel="shortcut icon" href="sorcha.ico">
     <link rel="apple-touch-icon" sizes="256x256" href="sorcha-icon-256.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="landing.css">
 
-    <!-- Google Analytics gtag.js — measurement ID is public.
-         Configured in Consent Mode v2 default-denied; banner.js
-         flips analytics_storage to 'granted' on user opt-in. -->
+    <!-- Google Analytics gtag.js — Consent Mode v2, default-denied.
+         consent-banner.js flips analytics_storage to 'granted' on opt-in. -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-B2MKVEP45T"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
         function gtag(){dataLayer.push(arguments);}
         gtag('consent', 'default', {
-            ad_storage: 'denied',
-            ad_user_data: 'denied',
-            ad_personalization: 'denied',
-            analytics_storage: 'denied',
-            wait_for_update: 500
+            ad_storage: 'denied', ad_user_data: 'denied',
+            ad_personalization: 'denied', analytics_storage: 'denied', wait_for_update: 500
         });
         gtag('js', new Date());
         gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });
     </script>
 </head>
 <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
     <!-- Navigation -->
-    <nav class="nav">
+    <nav class="nav" aria-label="Primary">
         <div class="nav-container">
-            <a href="/" class="nav-brand">
-                <span class="brand-icon">S</span>
-                <span class="brand-text">Sorcha</span>
-            </a>
-            <div class="nav-links">
-                <a href="#why" class="nav-link">Why Sorcha</a>
-                <a href="#how" class="nav-link">How It Works</a>
-                <a href="#sectors" class="nav-link">Sectors</a>
-                <a href="#toolkit" class="nav-link">Toolkit</a>
-                <a href="#developers" class="nav-link">Developers</a>
-                <a href="/wallet/" class="nav-link">Wallet</a>
-                <a href="/app/help" class="nav-link">Help</a>
-                <a href="/auth/login" class="btn btn-primary">Sign In</a>
+            <a href="/" class="nav-brand"><span class="brand-icon">S</span><span>Sorcha</span></a>
+            <div class="nav-links" id="navLinks">
+                <a href="/designer-overview" class="nav-link">For organisations</a>
+                <a href="/wallet-info" class="nav-link">For citizens</a>
+                <a href="/developers" class="nav-link">Developers</a>
+                <a href="#open-standards" class="nav-link">Standards</a>
+                <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle light or dark theme" title="Toggle light or dark theme">
+                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
+                <a href="https://github.com/Sorcha-Platform/Sorcha" class="nav-icon" target="_blank" rel="noopener" aria-label="Sorcha on GitHub — MIT licensed, open source" title="Sorcha on GitHub — MIT licensed, open source">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                </a>
+                <a href="/wallet/" class="btn btn-primary">Open Wallet</a>
             </div>
-            <button class="nav-toggle" aria-label="Toggle navigation">
+            <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navLinks">
                 <span></span><span></span><span></span>
             </button>
         </div>
     </nav>
 
-    <!-- ============================================================ -->
-    <!-- SECTION 1: HERO — Lead with the business outcome             -->
-    <!-- ============================================================ -->
-    <section class="hero">
-        <canvas id="heroCanvas"></canvas>
-        <div class="hero-content">
-            <div class="hero-badge">Open-Source Trust Infrastructure</div>
-            <h1 class="hero-title">
-                Trust infrastructure for the
-                <span class="hero-highlight">multi-party world.</span>
-            </h1>
-            <p class="hero-subtitle">
-                Open-source cryptographic proof that your workflows happened,
-                your data is intact, and every participant can verify it
-                — without trusting the platform.
+    <main id="main">
+    <!-- ====================== 1. HERO ====================== -->
+    <header class="hero">
+        <canvas id="heroCanvas" aria-hidden="true"></canvas>
+        <div class="hero-grid" aria-hidden="true"></div>
+        <div class="hero-bloom" aria-hidden="true"></div>
+        <div class="hero-inner">
+            <div class="hero-mark" aria-hidden="true"><span>S</span></div>
+            <span class="hero-eyebrow">Cryptographic proof infrastructure</span>
+            <h1>Stop asking who to trust. <span class="hero-highlight">Start verifying.</span></h1>
+            <p class="hero-sub">
+                Sorcha replaces asserted trust with cryptographic proof. Every action is signed by
+                the participant who took it, every record is immutable, and every party can check the
+                evidence for themselves — without trusting the platform.
             </p>
             <div class="hero-actions">
-                <a href="/wallet/" class="btn btn-primary btn-lg">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
-                    Open Wallet
+                <a href="#three-doors" class="btn btn-primary btn-lg">I run workflows →</a>
+                <a href="/wallet/" class="btn btn-on-dark btn-lg">I hold credentials →</a>
+                <a href="https://github.com/Sorcha-Platform/Sorcha" class="btn btn-text" style="color:#c3c9ff" target="_blank" rel="noopener">Building with it? Start on GitHub →</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- ====================== 2. THREE DOORS ====================== -->
+    <section id="three-doors" class="section" aria-labelledby="doors-h">
+        <div class="container">
+            <div class="section-head"><h2 id="doors-h">Three ways in.</h2></div>
+            <nav class="doors" aria-label="Choose your path">
+                <a class="door reveal" href="/wallet/">
+                    <span class="door-icon" aria-hidden="true">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 13a2 2 0 1 0 0-.01"/><path d="M2 10h20"/></svg>
+                    </span>
+                    <h3>I hold credentials</h3>
+                    <p>Receive credentials on your phone and present exactly what's asked for — nothing more. Anyone can check they're genuine.</p>
+                    <span class="door-cta">Get the Sorcha Wallet →</span>
                 </a>
-                <a href="https://github.com/Sorcha-Platform" class="btn btn-outline btn-lg" target="_blank" rel="noopener">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                    View on GitHub
+                <a class="door reveal" href="/designer-overview">
+                    <span class="door-icon" aria-hidden="true">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3z"/><path d="M14 3h7v7h-7z"/><path d="M14 14h7v7h-7z"/><path d="M3 14h7v7H3z"/></svg>
+                    </span>
+                    <h3>I run workflows</h3>
+                    <p>Design multi-party processes, issue verifiable credentials, and run a tamper-evident register your counterparties and regulators can verify.</p>
+                    <span class="door-cta">See the Designer →</span>
                 </a>
-                <a href="#how" class="btn btn-outline btn-lg">Read the Architecture</a>
-            </div>
-            <div class="hero-stats">
-                <div class="stat-item">
-                    <span class="stat-value">8</span>
-                    <span class="stat-label">Microservices</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">3000+</span>
-                    <span class="stat-label">Tests Passing</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">PQC</span>
-                    <span class="stat-label">Quantum-Safe</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">MIT</span>
-                    <span class="stat-label">Licensed</span>
-                </div>
-            </div>
-        </div>
-        <div class="hero-visual">
-            <div class="visual-card">
-                <div class="visual-header">
-                    <span class="visual-dot"></span>
-                    <span class="visual-dot"></span>
-                    <span class="visual-dot"></span>
-                    <span class="visual-title">HAIP Credential Flow</span>
-                </div>
-                <div class="visual-content">
-                    <div class="visual-flow">
-                        <div class="flow-node flow-node-start">
-                            <span class="flow-icon">1</span>
-                            Issue Credential
-                        </div>
-                        <div class="flow-arrow"></div>
-                        <div class="flow-node flow-node-middle">
-                            <span class="flow-icon">2</span>
-                            Hold &amp; Present
-                        </div>
-                        <div class="flow-arrow"></div>
-                        <div class="flow-node flow-node-end">
-                            <span class="flow-icon">3</span>
-                            Verify Proof
-                        </div>
-                    </div>
-                    <div class="visual-disclosure">
-                        <div class="disclosure-label">Selective Disclosure (SD-JWT VC)</div>
-                        <div class="disclosure-row">
-                            <span class="disclosure-party">Verifier sees:</span>
-                            <span class="disclosure-field visible">Name</span>
-                            <span class="disclosure-field visible">Licence</span>
-                            <span class="disclosure-field hidden">Address</span>
-                        </div>
-                        <div class="disclosure-row">
-                            <span class="disclosure-party">Bound by:</span>
-                            <span class="disclosure-field visible">cnf</span>
-                            <span class="disclosure-field visible">KB-JWT</span>
-                            <span class="disclosure-field visible">x5c</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 2: THE OPPORTUNITY                                   -->
-    <!-- ============================================================ -->
-    <section id="why" class="opportunity-section">
-        <div class="container">
-            <div class="section-badge">The Opportunity</div>
-            <h2 class="section-title">You Already Share Sensitive Data Across Boundaries</h2>
-            <p class="section-subtitle">
-                Purchase orders, patient referrals, compliance reports, credentials —
-                your most valuable data crosses organisational lines every day.
-                What if every exchange was provable, private, and permanent?
-            </p>
-
-            <!-- Data Journey Diagram -->
-            <div class="journey-diagram">
-                <div class="journey-label">How data moves between organisations today</div>
-                <div class="journey-flow">
-                    <div class="journey-org">
-                        <div class="journey-org-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-                        </div>
-                        <span class="journey-org-name">Your Organisation</span>
-                    </div>
-
-                    <div class="journey-gap">
-                        <div class="journey-gap-line"></div>
-                        <div class="journey-gap-risk">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            Who sees what?
-                        </div>
-                    </div>
-
-                    <div class="journey-org">
-                        <div class="journey-org-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        </div>
-                        <span class="journey-org-name">Partner</span>
-                    </div>
-
-                    <div class="journey-gap">
-                        <div class="journey-gap-line"></div>
-                        <div class="journey-gap-risk">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                            Did they change it?
-                        </div>
-                    </div>
-
-                    <div class="journey-org">
-                        <div class="journey-org-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                        </div>
-                        <span class="journey-org-name">Regulator</span>
-                    </div>
-                </div>
-
-                <!-- Protected journey -->
-                <div class="journey-protected-label">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
-                    The same journey, with Sorcha
-                </div>
-                <div class="journey-flow journey-flow-protected">
-                    <div class="journey-org journey-org-protected">
-                        <div class="journey-org-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-                        </div>
-                        <span class="journey-org-name">Your Organisation</span>
-                    </div>
-
-                    <div class="journey-gap journey-gap-protected">
-                        <div class="journey-gap-line journey-gap-line-protected"></div>
-                        <div class="journey-gap-solution">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
-                            Selective disclosure
-                        </div>
-                    </div>
-
-                    <div class="journey-org journey-org-protected">
-                        <div class="journey-org-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        </div>
-                        <span class="journey-org-name">Partner</span>
-                    </div>
-
-                    <div class="journey-gap journey-gap-protected">
-                        <div class="journey-gap-line journey-gap-line-protected"></div>
-                        <div class="journey-gap-solution">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
-                            Signed &amp; immutable
-                        </div>
-                    </div>
-
-                    <div class="journey-org journey-org-protected">
-                        <div class="journey-org-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                        </div>
-                        <span class="journey-org-name">Regulator</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Risk/Opportunity Cards -->
-            <div class="risk-grid">
-                <div class="risk-card">
-                    <div class="risk-scenario">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        Data gets shared more broadly than intended
-                    </div>
-                    <p class="risk-context">You send a spreadsheet to a partner. They only need three columns, but they can see all twenty. Every forwarded email, every shared drive link — it widens the exposure.</p>
-                    <div class="risk-pivot">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
-                        Field-level disclosure means each party sees only their authorised view. The data itself enforces the boundary — not a policy document.
-                    </div>
-                </div>
-                <div class="risk-card">
-                    <div class="risk-scenario">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                        You can't prove who changed what, or when
-                    </div>
-                    <p class="risk-context">A supplier disputes the terms. A regulator asks for the original. Version control says "last modified by: unknown". The audit trail is a folder of attachments with no chain of custody.</p>
-                    <div class="risk-pivot">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
-                        Every action is cryptographically signed by the participant's wallet and hash-linked into an immutable chain. The maths proves it.
-                    </div>
-                </div>
-                <div class="risk-card">
-                    <div class="risk-scenario">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                        Records disappear when you need them most
-                    </div>
-                    <p class="risk-context">A server fails. A retention policy expires. A departing employee deletes a mailbox. The records you need for a dispute, an audit, or a compliance review are gone — and no one noticed until it mattered.</p>
-                    <div class="risk-pivot">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
-                        Peer-to-peer replication across the network means records are immutable and distributed. No single failure can destroy them.
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 3: BENEFITS — Business outcomes                      -->
-    <!-- ============================================================ -->
-    <section class="benefits-section">
-        <div class="container">
-            <div class="section-badge">Business Outcomes</div>
-            <h2 class="section-title">Why Organisations Choose Sorcha</h2>
-            <p class="section-subtitle">
-                Four guarantees that transform how you collaborate across organisational boundaries.
-            </p>
-            <div class="benefits-grid">
-                <div class="benefit-card">
-                    <div class="benefit-icon benefit-icon-prove">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
-                    </div>
-                    <h3>Provable Actions</h3>
-                    <p class="benefit-tagline">Every action signed. Every claim verifiable.</p>
-                    <p>Participant wallets cryptographically sign every transaction. You can prove exactly who did what, when, and what data they submitted — no he-said-she-said disputes.</p>
-                </div>
-                <div class="benefit-card">
-                    <div class="benefit-icon benefit-icon-privacy">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    </div>
-                    <h3>Privacy by Design</h3>
-                    <p class="benefit-tagline">Share what's needed. Nothing more.</p>
-                    <p>JSON Schema-driven selective disclosure ensures each participant sees only the fields they need. A buyer sees product and quantity. A supplier sees product and price. Neither sees the other's sensitive data.</p>
-                </div>
-                <div class="benefit-card">
-                    <div class="benefit-icon benefit-icon-tamper">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    </div>
-                    <h3>Tamper-Proof Records</h3>
-                    <p class="benefit-tagline">No one can rewrite history.</p>
-                    <p>SHA-256 chain-linked transactions sealed into dockets. Validator consensus before finalization. Any attempt to alter a record breaks the chain and triggers detection.</p>
-                </div>
-                <div class="benefit-card">
-                    <div class="benefit-icon benefit-icon-resilient">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                    </div>
-                    <h3>Resilient by Default</h3>
-                    <p class="benefit-tagline">Data survives because the network does.</p>
-                    <p>Peer-to-peer replication means no single point of failure can destroy records. If one node goes down, others maintain the complete ledger. No vendor lock-in, no central authority.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 4: HOW — The DAD Model                               -->
-    <!-- ============================================================ -->
-    <section id="how" class="dad-section">
-        <div class="container">
-            <div class="section-badge">How Sorcha Protects You</div>
-            <h2 class="section-title">The DAD Security Framework</h2>
-            <p class="section-subtitle">
-                Three pillars that address the three ways data is compromised in multi-party processes:
-                unwanted exposure, undetected changes, and permanent loss.
-            </p>
-            <div class="dad-grid">
-                <div class="dad-card dad-disclosure">
-                    <div class="dad-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    </div>
-                    <h3>Disclosure</h3>
-                    <p class="dad-tagline">Every party sees only what they should</p>
-                    <p>JSON Schema-driven selective disclosure controls exactly which fields each participant can access. SD-JWT Verifiable Credentials enable selective claim presentation without revealing your full identity.</p>
-                    <ul class="dad-features">
-                        <li>Field-level access control via JSON Pointers (RFC 6901)</li>
-                        <li>Schema-validated data at every step</li>
-                        <li>Zero-knowledge proofs for privacy-preserving audits</li>
-                    </ul>
-                </div>
-                <div class="dad-card dad-alteration">
-                    <div class="dad-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    </div>
-                    <h3>Alteration</h3>
-                    <p class="dad-tagline">Every change is permanent and provable</p>
-                    <p>All actions are cryptographically signed by participant wallets and hash-linked into an immutable chain. You cannot alter history without detection — the maths won't allow it.</p>
-                    <ul class="dad-features">
-                        <li>SHA-256 chain-linked transactions with docket sealing</li>
-                        <li>Hybrid classical + post-quantum signatures</li>
-                        <li>Validator consensus before finalization</li>
-                    </ul>
-                </div>
-                <div class="dad-card dad-destruction">
-                    <div class="dad-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                    </div>
-                    <h3>Destruction</h3>
-                    <p class="dad-tagline">Data survives because the network does</p>
-                    <p>Peer-to-peer replication across the network means no single point of failure. If one node goes down, others maintain the complete ledger state with automatic sync and recovery.</p>
-                    <ul class="dad-features">
-                        <li>gRPC gossip protocol for efficient replication</li>
-                        <li>Automatic sync and recovery for offline nodes</li>
-                        <li>Bloom filter deduplication prevents flooding</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 5: OPEN STANDARDS                                    -->
-    <!-- ============================================================ -->
-    <section id="standards" class="standards-section">
-        <div class="container">
-            <div class="section-badge">Open Trust Frameworks</div>
-            <h2 class="section-title">Built on Standards You Can Verify</h2>
-            <p class="section-subtitle">
-                Not a proprietary black box. Sorcha implements internationally recognised standards
-                so your data and credentials are portable, verifiable, and future-proof.
-            </p>
-            <div class="standards-grid">
-                <div class="standard-card">
-                    <div class="standard-header"><span class="standard-badge">HAIP 1.0</span></div>
-                    <h3>OpenID4VCI &amp; OpenID4VP</h3>
-                    <p>Full HAIP-compliant credential issuance and verification. External wallets (GOV.UK Wallet, EUDI Wallet) can receive and present Sorcha-issued credentials via standard protocols.</p>
-                </div>
-                <div class="standard-card">
-                    <div class="standard-header"><span class="standard-badge">IETF RFC 9901</span></div>
-                    <h3>SD-JWT VC with Key Binding</h3>
-                    <p>Holder key binding (cnf), Key Binding JWTs, nested selective disclosure via JSON Pointer. Credentials are proof-of-possession tokens, not bearer tokens.</p>
-                </div>
-                <div class="standard-card">
-                    <div class="standard-header"><span class="standard-badge">W3C Specification</span></div>
-                    <h3>Decentralized Identifiers</h3>
-                    <p>Self-sovereign <code>did:sorcha</code> identifiers give every wallet a globally resolvable identity without a central authority.</p>
-                </div>
-                <div class="standard-card">
-                    <div class="standard-header"><span class="standard-badge">Bitcoin Standard</span></div>
-                    <h3>BIP32 / BIP39 / BIP44</h3>
-                    <p>Hierarchical deterministic wallets derived from a single seed phrase. Create unlimited addresses from one recovery phrase.</p>
-                </div>
-                <div class="standard-card">
-                    <div class="standard-header"><span class="standard-badge">NIST / FIPS</span></div>
-                    <h3>FIPS 186-4 &amp; 180-4</h3>
-                    <p>Government-grade cryptography: NIST P-256 for signing, SHA-256 for hashing, AES-256-GCM for encryption at rest.</p>
-                </div>
-                <div class="standard-card">
-                    <div class="standard-header"><span class="standard-badge">NIST / CNSA 2.0</span></div>
-                    <h3>FIPS 203, 204 &amp; 205</h3>
-                    <p>Post-quantum cryptography deployed today: ML-DSA-65 signatures, ML-KEM-768 key encapsulation, SLH-DSA-128s hash-based signatures.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 6: QUANTUM-SAFE                                      -->
-    <!-- ============================================================ -->
-    <section class="quantum-section">
-        <div class="container">
-            <div class="section-badge">Future-Proof Your Records</div>
-            <h2 class="section-title">Quantum-Safe by Design</h2>
-            <p class="section-subtitle">
-                Records you create today must survive threats that don't exist yet.
-                Sorcha's CNSA 2.0 compliant cryptography protects against both current
-                and future quantum computer attacks.
-            </p>
-            <div class="quantum-grid">
-                <div class="quantum-card">
-                    <div class="quantum-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 22s-8-4-8-10V5l8-3" opacity="0.4"/></svg>
-                    </div>
-                    <h3>Hybrid Signing</h3>
-                    <p>Classical + PQC dual signatures. Protected today by proven algorithms and tomorrow by quantum-resistant ones — simultaneously.</p>
-                </div>
-                <div class="quantum-card">
-                    <div class="quantum-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    </div>
-                    <h3>Post-Quantum Encryption</h3>
-                    <p>ML-KEM-768 key encapsulation with AES-256-GCM. Confidential payloads stay confidential even against future quantum computers.</p>
-                </div>
-                <div class="quantum-card">
-                    <div class="quantum-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    </div>
-                    <h3>Threshold Signatures</h3>
-                    <p>BLS12-381 t-of-n distributed validation. No single validator holds the complete signing key — consensus requires a threshold of participants.</p>
-                </div>
-                <div class="quantum-card">
-                    <div class="quantum-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                    </div>
-                    <h3>Zero-Knowledge Proofs</h3>
-                    <p>Pedersen commitments with Schnorr proofs. Auditors verify transaction properties without seeing underlying data.</p>
-                </div>
-            </div>
-            <div class="quantum-compliance">
-                CNSA 2.0 Compliant &middot; FIPS 203/204/205 &middot; NIST Level 3 &middot; Per-Register Crypto Policy
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 7: SECTORS                                           -->
-    <!-- ============================================================ -->
-    <section id="sectors" class="sectors-section">
-        <div class="container">
-            <div class="section-badge">Real-World Applications</div>
-            <h2 class="section-title">Where Trust Meets Workflow</h2>
-            <p class="section-subtitle">
-                Any process involving multiple organisations, sensitive data, and the need for an
-                auditable record is a fit for Sorcha.
-            </p>
-            <div class="sector-grid">
-                <div class="sector-card sector-featured">
-                    <div class="sector-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-                    </div>
-                    <h3>Supply Chain</h3>
-                    <div class="sector-problem"><strong>The problem:</strong> Competitors on the same network can see each other's pricing. Provenance claims are unverifiable. Disputes take weeks to resolve.</div>
-                    <div class="sector-solution"><strong>How Sorcha helps:</strong> Selective disclosure ensures each party sees only their authorised fields. Every handoff is cryptographically signed. The audit trail is immutable.</div>
-                    <div class="sector-benefits">
-                        <span>Selective Disclosure</span>
-                        <span>Multi-Party Signing</span>
-                        <span>Provenance Proof</span>
-                    </div>
-                </div>
-                <div class="sector-card">
-                    <div class="sector-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                    </div>
-                    <h3>Healthcare</h3>
-                    <div class="sector-problem"><strong>The problem:</strong> Sharing patient data between providers, insurers, and labs creates liability. Consent is hard to enforce. PHI breaches are costly.</div>
-                    <div class="sector-solution"><strong>How Sorcha helps:</strong> Field-level encryption and schema-controlled access ensure only authorised parties see protected health information. Consent is enforced by the workflow, not by policy alone.</div>
-                    <div class="sector-benefits">
-                        <span>Data Privacy</span>
-                        <span>Consent Enforcement</span>
-                        <span>HIPAA/GDPR Aligned</span>
-                    </div>
-                </div>
-                <div class="sector-card">
-                    <div class="sector-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    </div>
-                    <h3>Financial Services</h3>
-                    <div class="sector-problem"><strong>The problem:</strong> Settlement disputes, compliance reporting burden, and cross-border payment opacity drain resources and slow transactions.</div>
-                    <div class="sector-solution"><strong>How Sorcha helps:</strong> Immutable audit trail with cryptographic proof of every step. Regulators get read access to the trail without accessing transaction content via zero-knowledge proofs.</div>
-                    <div class="sector-benefits">
-                        <span>Immutable Records</span>
-                        <span>Regulatory Access</span>
-                        <span>Faster Settlement</span>
-                    </div>
-                </div>
-                <div class="sector-card">
-                    <div class="sector-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                    </div>
-                    <h3>Education &amp; Credentials</h3>
-                    <div class="sector-problem"><strong>The problem:</strong> Credential fraud is rampant. Verification is manual and slow. Sharing a transcript reveals far more than what's needed.</div>
-                    <div class="sector-solution"><strong>How Sorcha helps:</strong> SD-JWT Verifiable Credentials let graduates prove specific qualifications to employers without exposing their full academic record.</div>
-                    <div class="sector-benefits">
-                        <span>Verifiable Credentials</span>
-                        <span>eIDAS Aligned</span>
-                        <span>Selective Presentation</span>
-                    </div>
-                </div>
-                <div class="sector-card">
-                    <div class="sector-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-                    </div>
-                    <h3>Government &amp; Regulation</h3>
-                    <div class="sector-problem"><strong>The problem:</strong> Paper-based processes, redundant paperwork across agencies, citizen data exposed to unnecessary parties.</div>
-                    <div class="sector-solution"><strong>How Sorcha helps:</strong> Digital attestations with quorum governance. Citizens present verifiable proofs to any service without re-submitting documents.</div>
-                    <div class="sector-benefits">
-                        <span>Governance</span>
-                        <span>Digital Identity</span>
-                        <span>Paperless</span>
-                    </div>
-                </div>
-                <div class="sector-card">
-                    <div class="sector-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    </div>
-                    <h3>Consortium Operations</h3>
-                    <div class="sector-problem"><strong>The problem:</strong> Industry groups need a shared record but no single entity should control it. Governance deadlocks stall progress.</div>
-                    <div class="sector-solution"><strong>How Sorcha helps:</strong> Decentralized register governance with quorum-based voting. Democratic control with no vendor lock-in or central authority.</div>
-                    <div class="sector-benefits">
-                        <span>Quorum Voting</span>
-                        <span>Decentralized</span>
-                        <span>No Lock-In</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 8: THE TOOLKIT                                       -->
-    <!-- ============================================================ -->
-    <section id="toolkit" class="toolkit-section">
-        <div class="container">
-            <div class="section-badge">The Toolkit</div>
-            <h2 class="section-title">Everything You Need to Orchestrate Trust</h2>
-            <p class="section-subtitle">
-                Your intellectual property lives in the blueprint. The platform handles
-                the cryptography, the ledger, and the workflow execution.
-            </p>
-            <div class="toolkit-grid">
-                <div class="toolkit-card toolkit-featured">
-                    <div class="toolkit-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                    </div>
-                    <h3>Blueprints</h3>
-                    <p class="toolkit-tagline">Your workflow, defined and versioned</p>
-                    <p>Blueprints define participants, actions, data schemas, routes, conditions, and disclosure rules. They are the intellectual property of your process — reusable, composable, and publishable to any register.</p>
-                </div>
-                <div class="toolkit-card">
-                    <div class="toolkit-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    </div>
-                    <h3>AI Blueprint Builder</h3>
-                    <p class="toolkit-tagline">Describe your process. We'll build it.</p>
-                    <p>Chat with the AI assistant to design workflows in natural language. It understands schema standards, disclosure patterns, and routing logic — and generates production-ready blueprints.</p>
-                </div>
-                <div class="toolkit-card">
-                    <div class="toolkit-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-                    </div>
-                    <h3>Visual Designer</h3>
-                    <p class="toolkit-tagline">Drag, drop, deploy.</p>
-                    <p>For non-technical users: a visual workflow builder with live preview. Define actions, connect participants, set disclosure rules, and deploy directly to the ledger — no code required.</p>
-                </div>
-                <div class="toolkit-card">
-                    <div class="toolkit-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    </div>
-                    <h3>HD Wallets</h3>
-                    <p class="toolkit-tagline">Your identity. Your keys.</p>
-                    <p>Hierarchical deterministic wallets with classical and post-quantum algorithm support. BIP32/39/44 compliant with quantum-safe ws2 Bech32m addresses alongside standard ws1 addresses.</p>
-                </div>
-                <div class="toolkit-card">
-                    <div class="toolkit-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    </div>
-                    <h3>Verifiable Credentials</h3>
-                    <p class="toolkit-tagline">Issue. Hold. Present. Verify.</p>
-                    <p>HAIP-compliant SD-JWT VCs with holder key binding (cnf), Key Binding JWTs, nested selective disclosure, and X.509 trust chains. Issue to external wallets via OpenID4VCI. Verify presentations via OpenID4VP direct_post.</p>
-                </div>
-                <div class="toolkit-card">
-                    <div class="toolkit-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    </div>
-                    <h3>Real-Time Collaboration</h3>
-                    <p class="toolkit-tagline">Know instantly when it's your turn.</p>
-                    <p>SignalR-powered live notifications for action submissions, workflow progress, and transaction confirmations. Push notifications across all connected clients.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 9: HOW IT WORKS — 4-step flow                        -->
-    <!-- ============================================================ -->
-    <section class="how-it-works">
-        <div class="container">
-            <div class="section-badge">Workflow</div>
-            <h2 class="section-title">From Design to Verification in Four Steps</h2>
-            <div class="steps-grid">
-                <div class="step-card">
-                    <div class="step-number">01</div>
-                    <h3>Design Your Blueprint</h3>
-                    <p>Use the visual designer, AI chat, or JSON/YAML to define participants, actions, schemas, routes, and disclosure rules.</p>
-                </div>
-                <div class="step-card">
-                    <div class="step-number">02</div>
-                    <h3>Publish to the Ledger</h3>
-                    <p>The blueprint is validated for correctness, cycle-free routing is confirmed, then it's published to a register. Participants are notified in real time.</p>
-                </div>
-                <div class="step-card">
-                    <div class="step-number">03</div>
-                    <h3>Execute Actions</h3>
-                    <p>Each participant submits their data, signs with their wallet, and the engine validates, routes, and discloses — all in a single atomic operation.</p>
-                </div>
-                <div class="step-card">
-                    <div class="step-number">04</div>
-                    <h3>Verify &amp; Audit</h3>
-                    <p>Every step recorded on the immutable ledger. Verifiable credentials issued as proof. The full audit trail is always available to authorised parties.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 10: TECHNOLOGY                                       -->
-    <!-- ============================================================ -->
-    <section class="tech-section">
-        <div class="container">
-            <div class="section-badge">Technology</div>
-            <h2 class="section-title">Cloud-Native. Enterprise-Ready.</h2>
-            <p class="section-subtitle">
-                Built on .NET 10 with .NET Aspire orchestration. Seven microservices
-                with full observability, health checks, and horizontal scaling.
-            </p>
-            <div class="tech-grid">
-                <div class="tech-item"><div class="tech-label">.NET 10</div><div class="tech-desc">LTS Runtime</div></div>
-                <div class="tech-item"><div class="tech-label">Aspire</div><div class="tech-desc">Orchestration</div></div>
-                <div class="tech-item"><div class="tech-label">PostgreSQL</div><div class="tech-desc">Relational Data</div></div>
-                <div class="tech-item"><div class="tech-label">MongoDB</div><div class="tech-desc">Document Store</div></div>
-                <div class="tech-item"><div class="tech-label">Redis</div><div class="tech-desc">Cache &amp; Sync</div></div>
-                <div class="tech-item"><div class="tech-label">gRPC</div><div class="tech-desc">P2P Network</div></div>
-                <div class="tech-item"><div class="tech-label">SignalR</div><div class="tech-desc">Real-Time</div></div>
-                <div class="tech-item"><div class="tech-label">Blazor</div><div class="tech-desc">WASM UI</div></div>
-                <div class="tech-item"><div class="tech-label">BouncyCastle</div><div class="tech-desc">PQC Algorithms</div></div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- SECTION 11: DEVELOPERS                                       -->
-    <!-- ============================================================ -->
-    <section id="developers" class="developer-section">
-        <div class="container">
-            <div class="section-badge">Open Source</div>
-            <h2 class="section-title">Built in the Open. MIT Licensed.</h2>
-            <p class="section-subtitle">
-                Sorcha is open source. Explore the code, file issues, read the API docs,
-                or contribute to the platform.
-            </p>
-            <div class="developer-grid">
-                <a href="https://github.com/Sorcha-Platform/Sorcha" target="_blank" rel="noopener" class="developer-card">
-                    <div class="developer-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-                    </div>
-                    <h3>Source Code</h3>
-                    <p>45 projects, 32 test projects, 3000+ tests. Browse the full codebase on GitHub.</p>
+                <a class="door reveal" href="/developers">
+                    <span class="door-icon" aria-hidden="true">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    </span>
+                    <h3>I build with it</h3>
+                    <p>Open-source proof infrastructure on .NET. Self-host it, read every line, build on published standards.</p>
+                    <span class="door-cta">Explore the code →</span>
                 </a>
-                <a href="https://github.com/Sorcha-Platform/Sorcha/issues" target="_blank" rel="noopener" class="developer-card">
-                    <div class="developer-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                    </div>
-                    <h3>Issues &amp; Roadmap</h3>
-                    <p>Report bugs, request features, or follow the development roadmap.</p>
-                </a>
-                <a href="/scalar/v1" target="_blank" rel="noopener" class="developer-card">
-                    <div class="developer-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                    </div>
-                    <h3>API Documentation</h3>
-                    <p>Interactive OpenAPI docs powered by Scalar. Try endpoints directly from your browser.</p>
-                </a>
-                <a href="https://github.com/Sorcha-Platform/Sorcha#quick-start" target="_blank" rel="noopener" class="developer-card">
-                    <div class="developer-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    </div>
-                    <h3>Quick Start</h3>
-                    <p>Docker Compose, .NET Aspire, or CLI — get running in under 5 minutes.</p>
-                </a>
+            </nav>
+        </div>
+    </section>
+
+    <!-- ====================== 3. THE PROBLEM ====================== -->
+    <section class="section section-alt" aria-labelledby="problem-h">
+        <div class="container">
+            <div class="section-head">
+                <span class="section-eyebrow">The problem</span>
+                <h2 id="problem-h">Digital systems run on assertion. AI just made assertion cheap to fake.</h2>
+                <p class="section-sub">
+                    A document <em>says</em> it's real. A platform <em>claims</em> its data came from a
+                    trusted source. None of it is cryptographically anchored — so when forgery becomes
+                    fast and cheap, the whole edifice becomes unreliable. The systems that run society
+                    were built assuming the data they consume is honest. That assumption is breaking.
+                </p>
+            </div>
+            <div class="statband">
+                <div class="stat reveal">
+                    <p>Deepfaked-selfie attacks rose <strong>58% in 2025</strong> — assertion-based identity checks have no defence against high-quality forgery.</p>
+                    <cite>Entrust, 2026 Identity Fraud Report</cite>
+                </div>
+                <div class="stat reveal">
+                    <p>By 2028, <strong>at least 80% of governments</strong> will deploy AI agents to automate routine decision-making — decisions that need inputs they can trust.</p>
+                    <cite>Gartner, 17 Mar 2026</cite>
+                </div>
+                <div class="stat reveal">
+                    <p>Cryptographic proof defends against forgery. Assertion does not. That is the gap Sorcha closes.</p>
+                    <cite>The Sorcha thesis</cite>
+                </div>
             </div>
         </div>
     </section>
 
-    <!-- ============================================================ -->
-    <!-- SECTION 12: CTA                                              -->
-    <!-- ============================================================ -->
-    <section class="cta">
+    <!-- ====================== 4. HOW IT WORKS ====================== -->
+    <section class="section" aria-labelledby="how-h">
         <div class="container">
-            <h2>Ready to Build Trust Into Your Workflows?</h2>
-            <p>Design secure, multi-party processes with cryptographic guarantees and verifiable credentials — no blockchain expertise required.</p>
-            <div class="cta-actions">
-                <a href="/auth/login" class="btn btn-primary btn-lg">
-                    Get Started
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </a>
-                <a href="https://github.com/Sorcha-Platform/Sorcha" class="btn btn-outline-light btn-lg">View on GitHub</a>
+            <div class="section-head"><h2 id="how-h">Proof, in four steps.</h2></div>
+            <div class="steps">
+                <div class="step reveal">
+                    <div class="step-num">01</div><h3>Sign</h3>
+                    <p>Each participant holds their own keys. Every action is signed by the person or organisation who took it — accountability is built in, not bolted on.</p>
+                </div>
+                <div class="step reveal">
+                    <div class="step-num">02</div><h3>Record</h3>
+                    <p>Signed actions are written to an append-only register, each entry Merkle-chained to the last. Nothing can be altered or quietly removed.</p>
+                </div>
+                <div class="step reveal">
+                    <div class="step-num">03</div><h3>Disclose</h3>
+                    <p>Each party sees only the fields they're entitled to — and each party's data is encrypted to a key only they hold (per-recipient key wrapping). The platform cannot read what it was not given access to.</p>
+                </div>
+                <div class="step reveal">
+                    <div class="step-num">04</div><h3>Verify</h3>
+                    <p>Any party can check the signatures and the chain themselves. Trust comes from the evidence, not from us.</p>
+                </div>
             </div>
         </div>
     </section>
+
+    <!-- ====================== 5. DAD MODEL ====================== -->
+    <section class="section section-alt" aria-labelledby="dad-h">
+        <div class="container">
+            <div class="section-head"><h2 id="dad-h">The DAD model: Disclosure, Alteration, Destruction.</h2></div>
+            <div class="grid-3">
+                <div class="dad reveal"><h3>Disclosure</h3><p>Managed by schema. What each participant can see is defined and bounded.</p></div>
+                <div class="dad reveal"><h3>Alteration</h3><p>Recorded on an immutable ledger. Every change is signed and chained; history can't be rewritten.</p></div>
+                <div class="dad reveal"><h3>Destruction</h3><p>Eliminated by replication. Records are replicated across the peer network, so no single party can erase them.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====================== 6. FOR ORGANISATIONS: THE DESIGNER ====================== -->
+    <section class="section" aria-labelledby="designer-h">
+        <div class="container">
+            <div class="section-head">
+                <span class="section-eyebrow">For organisations</span>
+                <h2 id="designer-h">Design a workflow. Rehearse it. Then go live.</h2>
+                <p class="section-sub">The Designer walks you from a plain-language description to a running, signed workflow in four stages — and lets you test against sample data before anything goes live.</p>
+            </div>
+            <div class="stages">
+                <div class="stage reveal"><span class="stage-label">Describe</span><p>Say what the process does, in plain language.</p></div>
+                <div class="stage reveal"><span class="stage-label">Understand</span><p>See the participants, actions and disclosures the platform derived.</p></div>
+                <div class="stage reveal"><span class="stage-label">Rehearse</span><p>Run it against sample data; nothing is committed.</p></div>
+                <div class="stage reveal"><span class="stage-label">Go live</span><p>Publish only once rehearsal passes — gated server-side, so you can't skip it.</p></div>
+            </div>
+            <div class="section-head" style="margin-top:var(--space-5);margin-bottom:0">
+                <a href="/designer-overview" class="btn btn-primary">See how the Designer works →</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====================== 7. FOR CITIZENS: THE WALLET ====================== -->
+    <section class="section section-alt" aria-labelledby="wallet-h">
+        <div class="container">
+            <div class="grid-2" style="align-items:center">
+                <div>
+                    <span class="section-eyebrow">For citizens</span>
+                    <h2 id="wallet-h">Your credentials, on your device, in your control.</h2>
+                    <p class="section-sub">
+                        The Sorcha Wallet is an app you install on your phone. It holds the credentials
+                        organisations issue to you, and lets you present exactly what's asked for — and
+                        only that. Whoever you show them to can check they're genuine, without phoning
+                        anyone to confirm.
+                    </p>
+                    <div class="hero-actions" style="margin-top:var(--space-4)">
+                        <a href="/wallet/" class="btn btn-primary">Open the Wallet →</a>
+                        <a href="/get" class="btn btn-outline">Install on your phone</a>
+                    </div>
+                </div>
+                <ul style="list-style:none;display:flex;flex-direction:column;gap:var(--space-3)">
+                    <li class="card reveal"><h3 style="font-size:1.1rem">Hold credentials offline</h3><p>On your device, not a server you have to trust.</p></li>
+                    <li class="card reveal"><h3 style="font-size:1.1rem">Present only what's requested</h3><p>Selective disclosure by design — show one field, keep the rest private.</p></li>
+                    <li class="card reveal"><h3 style="font-size:1.1rem">Built on open standards</h3><p>OpenID4VP and SD-JWT VC — not a walled garden.</p></li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====================== 8. OPEN STANDARDS ====================== -->
+    <section id="open-standards" class="section" aria-labelledby="std-h">
+        <div class="container">
+            <div class="section-head">
+                <span class="section-eyebrow">Open standards</span>
+                <h2 id="std-h">Nothing proprietary. Everything inspectable.</h2>
+                <p class="section-sub">Every protocol, format and cryptographic primitive Sorcha uses is a published standard.</p>
+            </div>
+            <div class="chips">
+                <span class="chip mono">OpenID4VCI</span>
+                <span class="chip mono">OpenID4VP</span>
+                <span class="chip mono">SD-JWT VC</span>
+                <span class="chip mono">W3C VC 2.0</span>
+                <span class="chip mono">did:sorcha</span>
+                <span class="chip mono">BIP-32/39/44</span>
+                <span class="chip mono">FIPS-204 (ML-DSA)</span>
+                <span class="chip mono">FIPS-203 (ML-KEM)</span>
+                <span class="chip mono">Merkle / SHA-256</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====================== 9. QUANTUM-SAFE ====================== -->
+    <section class="section section-ink" aria-labelledby="pqc-h">
+        <div class="container">
+            <div class="section-head">
+                <span class="section-eyebrow">Quantum-safe</span>
+                <h2 id="pqc-h">Built for records that outlive today's cryptography.</h2>
+                <p class="section-sub">
+                    Some records have to stay verifiable for decades — a product passport, a property
+                    history, a regulatory audit trail. Sorcha uses <strong>ML-DSA (FIPS 204)</strong>
+                    post-quantum signatures and <strong>ML-KEM (FIPS 203)</strong> key encapsulation as
+                    a core part of the platform, not a side feature.
+                </p>
+            </div>
+            <div class="grid-2">
+                <div class="card reveal">
+                    <h3>The honest boundary</h3>
+                    <p>The HAIP wallet boundary still requires classical signatures today; Sorcha bridges this with a classical co-key derived alongside the post-quantum keys.</p>
+                </div>
+                <div class="card reveal">
+                    <h3>What's on the roadmap</h3>
+                    <p>Zero-knowledge selective disclosure (BBS+) is on the roadmap, not shipped — today's selective disclosure is show/hide. We tell you what exists and what doesn't.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====================== 10. SECTORS ====================== -->
+    <section class="section" aria-labelledby="sectors-h">
+        <div class="container">
+            <div class="section-head">
+                <span class="section-eyebrow">Solutions</span>
+                <h2 id="sectors-h">Where proof beats "trust me".</h2>
+                <p class="section-sub">Sorcha fits domains where multiple parties must share data they each need to trust, under regulation that won't accept an operator's word for it.</p>
+            </div>
+            <div class="grid-4">
+                <div class="sector reveal">
+                    <h3>Government-aligned identity</h3>
+                    <div class="when">eIDAS 2 wallets by Dec 2026</div>
+                    <p>The same standards the EU Digital Identity Wallet and GOV.UK Wallet are converging on — Sorcha is the workflow and verifier layer above them.</p>
+                </div>
+                <div class="sector reveal">
+                    <h3>Digital Product Passports</h3>
+                    <div class="when">Battery Passport from 18 Feb 2027</div>
+                    <p>Tamper-evident, multi-party, selectively-disclosed lifecycle records — the proof substrate underneath DPP platforms, with signatures built to last a product's lifetime.</p>
+                </div>
+                <div class="sector reveal">
+                    <h3>AI-decision audit trails</h3>
+                    <div class="when">EU AI Act from 2 Aug 2026</div>
+                    <p>High-risk systems must document data provenance and log automatically. Signed, immutable register entries are exactly what an auditor needs.</p>
+                </div>
+                <div class="sector reveal">
+                    <h3>SME trade finance</h3>
+                    <div class="when">UK Electronic Trade Documents Act</div>
+                    <p>A buyer's wallet signature on an invoice is the trust anchor for a lender — no intermediary needs to vouch for the data, and no blockchain token is required.</p>
+                </div>
+            </div>
+            <div class="section-head" style="margin-top:var(--space-5);margin-bottom:0">
+                <a href="/solutions" class="btn btn-outline">Explore solutions →</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====================== 11. FOR DEVELOPERS ====================== -->
+    <section class="section section-alt" aria-labelledby="dev-h">
+        <div class="container">
+            <div class="section-head">
+                <span class="section-eyebrow">Open source</span>
+                <h2 id="dev-h">Open source. Standards-based. Yours to run.</h2>
+                <p class="section-sub">
+                    Sorcha is built on .NET 10 and .NET Aspire, MIT-licensed, and self-hostable with
+                    Docker. Eight single-responsibility services, a documented API, and more than
+                    10,000 tests. Read it, run it, build on it.
+                </p>
+            </div>
+            <div class="chips" style="margin-bottom:var(--space-5)">
+                <span class="chip mono">.NET 10</span>
+                <span class="chip mono">.NET Aspire</span>
+                <span class="chip mono">MIT</span>
+                <span class="chip mono">PostgreSQL / MongoDB / Redis</span>
+                <span class="chip mono">Minimal APIs + OpenAPI</span>
+                <span class="chip mono">8 services</span>
+                <span class="chip mono">10,000+ tests</span>
+            </div>
+            <div class="section-head" style="margin-bottom:0">
+                <div class="hero-actions" style="justify-content:center">
+                    <a href="https://github.com/Sorcha-Platform/Sorcha" class="btn btn-primary" target="_blank" rel="noopener">View on GitHub →</a>
+                    <a href="/developers" class="btn btn-outline">Read the docs →</a>
+                    <a href="https://github.com/Sorcha-Platform/Sorcha#quick-start" class="btn btn-text" target="_blank" rel="noopener">Self-hosting guide →</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====================== 12. MATURITY & OPENNESS ====================== -->
+    <section class="section" aria-labelledby="maturity-h">
+        <div class="container container-prose" style="text-align:center">
+            <span class="section-eyebrow">Honest status</span>
+            <h2 id="maturity-h">Where we are — honestly.</h2>
+            <p class="section-sub">
+                Sorcha's core feature set is complete. It is <strong>not yet production-hardened</strong>
+                — it's open source, standards-based, and ready to evaluate and pilot. If you want to test
+                proof-based infrastructure for a regulated, multi-party workflow, this is the point to
+                start a conversation.
+            </p>
+            <div class="hero-actions" style="justify-content:center;margin-top:var(--space-4)">
+                <!-- TODO(contact): /contact endpoint not yet decided (spec D7 item 7). Wire to the real
+                     destination — form or mailto — before launch. Placeholder route for now. -->
+                <a href="/contact" class="btn btn-primary">Start evaluating →</a>
+                <a href="https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/reference/development-status.md" class="btn btn-text" target="_blank" rel="noopener">Read the development status →</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ====================== 13. FINAL CTA ====================== -->
+    <section class="section section-alt cta-band" aria-labelledby="cta-h">
+        <div class="container">
+            <div class="section-head"><h2 id="cta-h">Pick your way in.</h2></div>
+            <nav class="doors" aria-label="Choose your path">
+                <a class="door" href="/wallet/"><h3>I hold credentials</h3><p>Get the Sorcha Wallet and hold your credentials on your device.</p><span class="door-cta">Get the Sorcha Wallet →</span></a>
+                <a class="door" href="/designer-overview"><h3>I run workflows</h3><p>Design, rehearse and publish a signed multi-party workflow.</p><span class="door-cta">See the Designer →</span></a>
+                <a class="door" href="/developers"><h3>I build with it</h3><p>Self-host the open-source platform and build on published standards.</p><span class="door-cta">Explore the code →</span></a>
+            </nav>
+        </div>
+    </section>
+    </main>
 
     <!-- Footer -->
     <footer class="footer">
-        <div class="container">
-            <div class="footer-grid">
-                <div class="footer-brand-col">
-                    <div class="footer-brand">
-                        <span class="brand-icon">S</span>
-                        <span class="brand-text">Sorcha</span>
-                    </div>
-                    <p class="footer-tagline">Trust infrastructure for multi-party collaboration. Open source under the MIT License.</p>
-                </div>
-                <div class="footer-col">
-                    <h4>Platform</h4>
-                    <a href="#why">Why Sorcha</a>
-                    <a href="#how">How It Works</a>
-                    <a href="#sectors">Sectors</a>
-                    <a href="#toolkit">Toolkit</a>
-                </div>
-                <div class="footer-col">
-                    <h4>Developers</h4>
-                    <a href="https://github.com/Sorcha-Platform/Sorcha" target="_blank" rel="noopener">GitHub</a>
-                    <a href="https://github.com/Sorcha-Platform/Sorcha/issues" target="_blank" rel="noopener">Issues</a>
-                    <a href="/scalar/v1" target="_blank" rel="noopener">API Docs</a>
-                    <a href="/app/help" target="_blank" rel="noopener">Help</a>
-                </div>
-                <div class="footer-col">
-                    <h4>Standards</h4>
-                    <a href="#standards">HAIP 1.0</a>
-                    <a href="#standards">SD-JWT VC / KB-JWT</a>
-                    <a href="#standards">OpenID4VCI / OpenID4VP</a>
-                    <a href="#standards">W3C DID / X.509</a>
-                    <a href="#standards">ML-DSA / ML-KEM</a>
-                </div>
+        <div class="footer-grid">
+            <div>
+                <div class="footer-brand"><span class="brand-icon">S</span><span>Sorcha</span></div>
+                <p class="footer-tagline">Cryptographic proof infrastructure for multi-party workflows. Open source, MIT licensed.</p>
             </div>
-            <div class="footer-bottom">
-                <div class="footer-copyright">
-                    MIT License &middot; Copyright &copy; 2026 Sorcha Contributors &middot; Built with .NET 10 and .NET Aspire
-                </div>
+            <div class="footer-col">
+                <h4>Product</h4>
+                <a href="/designer-overview">For organisations</a>
+                <a href="/wallet-info">For citizens</a>
+                <a href="/designer-overview">The Designer</a>
+                <a href="/wallet/">The Wallet</a>
+                <a href="/solutions">Solutions</a>
+            </div>
+            <div class="footer-col">
+                <h4>Developers</h4>
+                <a href="https://github.com/Sorcha-Platform/Sorcha" target="_blank" rel="noopener">GitHub</a>
+                <a href="/developers">Documentation</a>
+                <a href="/compare">Compare</a>
+                <a href="#open-standards">Standards</a>
+                <a href="https://github.com/Sorcha-Platform/Sorcha#quick-start" target="_blank" rel="noopener">Self-hosting</a>
+            </div>
+            <div class="footer-col">
+                <h4>Project</h4>
+                <a href="/developers">About</a>
+                <a href="https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/reference/development-status.md" target="_blank" rel="noopener">Maturity status</a>
+                <a href="https://github.com/Sorcha-Platform/Sorcha/blob/master/LICENSE" target="_blank" rel="noopener">Licence (MIT)</a>
+                <!-- TODO(contact): replace with the real /contact destination once decided (spec D7). -->
+                <a href="/contact">Contact</a>
+                <button type="button" onclick="if(window.openConsent)window.openConsent()">Cookie settings</button>
             </div>
         </div>
+        <div class="footer-base">© Sorcha · Open source, MIT licensed · Built with .NET 10 and .NET Aspire</div>
     </footer>
 
     <script src="landing.js"></script>

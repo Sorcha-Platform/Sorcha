@@ -2,7 +2,7 @@
    Copyright (c) 2026 Sorcha Contributors
    Feature 141 — BigActionButton. 27-May FOLLOWUP #0: Present + Verify are now
    mirrored saturated gradient tiles of equal weight — Present blue-base
-   (#667eea), Verify purple-base (#764ba2), mirrored content alignment. Same
+   (#4F46E5), Verify purple-base (#818CF8), mirrored content alignment. Same
    translucent white icon chip on both. */
 
 .big-action {
@@ -70,9 +70,9 @@
     align-items: flex-start;
     text-align: left;
     background: linear-gradient(135deg,
-        color-mix(in srgb, #667eea 88%, white) 0%,
-        #667eea 45%,
-        color-mix(in srgb, #667eea 72%, black) 100%);
+        color-mix(in srgb, #4F46E5 88%, white) 0%,
+        #4F46E5 45%,
+        color-mix(in srgb, #4F46E5 72%, black) 100%);
     box-shadow: 0 10px 22px rgba(102, 126, 234, .40), 0 2px 4px rgba(0, 0, 0, .12);
 }
 
@@ -81,9 +81,9 @@
     align-items: flex-end;
     text-align: right;
     background: linear-gradient(135deg,
-        color-mix(in srgb, #764ba2 88%, white) 0%,
-        #764ba2 45%,
-        color-mix(in srgb, #764ba2 72%, black) 100%);
+        color-mix(in srgb, #818CF8 88%, white) 0%,
+        #818CF8 45%,
+        color-mix(in srgb, #818CF8 72%, black) 100%);
     box-shadow: 0 10px 22px rgba(118, 75, 162, .40), 0 2px 4px rgba(0, 0, 0, .12);
 }
 

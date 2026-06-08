@@ -11,13 +11,13 @@ namespace Sorcha.UI.Core.Components.Wallet;
 public enum BigActionKind
 {
     /// <summary>
-    /// Blue-base saturated gradient (<c>#667eea</c>), content left-aligned.
+    /// Blue-base saturated gradient (<c>#4F46E5</c>), content left-aligned.
     /// The leading action — typically Present.
     /// </summary>
     Primary,
 
     /// <summary>
-    /// Purple-base saturated gradient (<c>#764ba2</c>), content right-aligned —
+    /// Purple-base saturated gradient (<c>#818CF8</c>), content right-aligned —
     /// the mirror peer of <see cref="Primary"/>. Historically named "Ghost" when
     /// it was a surface-fill variant; kept for API stability. The mirror pairing
     /// is intentional: icons in opposite corners, text reading toward the seam.
