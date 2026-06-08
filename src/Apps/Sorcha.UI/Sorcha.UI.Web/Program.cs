@@ -102,7 +102,7 @@ app.Use(async (context, next) =>
 // the same behaviour so both hosts answer the same links.
 var marketingPages = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 {
-    "/wallet-info", "/designer-overview", "/solutions", "/compare", "/developers"
+    "/wallet-info", "/designer-overview", "/solutions", "/compare", "/developers", "/contact"
 };
 app.Use(async (context, next) =>
 {

@@ -85,7 +85,6 @@
     <!-- ====================== 1. HERO ====================== -->
     <header class="hero">
         <canvas id="heroCanvas" aria-hidden="true"></canvas>
-        <div class="hero-grid" aria-hidden="true"></div>
         <div class="hero-bloom" aria-hidden="true"></div>
         <div class="hero-inner">
             <div class="hero-mark" aria-hidden="true"><span>S</span></div>
@@ -378,8 +377,6 @@
                 start a conversation.
             </p>
             <div class="hero-actions" style="justify-content:center;margin-top:var(--space-4)">
-                <!-- TODO(contact): /contact endpoint not yet decided (spec D7 item 7). Wire to the real
-                     destination — form or mailto — before launch. Placeholder route for now. -->
                 <a href="/contact" class="btn btn-primary">Start evaluating →</a>
                 <a href="https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/reference/development-status.md" class="btn btn-text" target="_blank" rel="noopener">Read the development status →</a>
             </div>
@@ -427,7 +424,6 @@
                 <a href="/developers">About</a>
                 <a href="https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/reference/development-status.md" target="_blank" rel="noopener">Maturity status</a>
                 <a href="https://github.com/Sorcha-Platform/Sorcha/blob/master/LICENSE" target="_blank" rel="noopener">Licence (MIT)</a>
-                <!-- TODO(contact): replace with the real /contact destination once decided (spec D7). -->
                 <a href="/contact">Contact</a>
                 <button type="button" onclick="if(window.openConsent)window.openConsent()">Cookie settings</button>
             </div>
