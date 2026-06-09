@@ -133,8 +133,10 @@ cryptographic primitive is a published standard. Nothing is proprietary.
 
 ## Cryptographic Posture — What to Highlight
 
-Sorcha's PQC posture is ahead of most competitors and genuinely relevant for long-lived
-records:
+Sorcha's PQC posture is genuinely relevant for long-lived records. Do **not** frame it as
+unique or first — other VC platforms ship PQC too (e.g. Procivis One ships ML-DSA-65; IOTA
+Identity ships ML-DSA / SLH-DSA / FALCON in beta). The defensible edge is *core, default PQC
+combined with open, self-hostable workflow orchestration*, not PQC alone.
 - ML-DSA (NIST FIPS 204) and ML-KEM (NIST FIPS 203) are core, not branch-feature
 - BIP32/39/44 hierarchical deterministic wallets for portable, self-sovereign key management
 - JSON Pointer selective disclosure with per-recipient symmetric key wrapping — the platform
@@ -145,7 +147,11 @@ records:
 Known honest gaps (do not overclaim):
 - HAIP 1.0 mandates classical signatures (ES256/EdDSA) at the wallet boundary — Sorcha
   bridges this with a classical co-key derived alongside PQC primary keys
-- SLH-DSA (hash-based, CNSA 2.0 diversity primitive) is not yet implemented
+- SLH-DSA (FIPS 205, hash-based, CNSA 2.0 diversity primitive) is implemented in the
+  cryptography library but is **not the default signing path** — ML-DSA-65 is the default.
+  Public line: "ML-DSA (FIPS 204) is the core, default post-quantum signature; additional
+  FIPS-205 (SLH-DSA) primitives are present in the cryptography library." Never publish
+  "SLH-DSA not implemented."
 - BBS+ zero-knowledge proofs are not yet implemented (current selective disclosure is
   show/hide, not zero-knowledge predicate proofs)
 

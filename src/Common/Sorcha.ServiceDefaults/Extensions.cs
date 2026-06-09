@@ -310,13 +310,17 @@ public static class Extensions
                 // UI apps (Blazor WASM, Scalar) require scripts and styles to function
                 // Blazor WebAssembly specifically needs 'unsafe-eval' for .NET runtime
                 // Allow connections to localhost on any port for Aspire development scenarios
+                // googletagmanager / google-analytics: the marketing landing page (served at "/"
+                // through the gateway) loads Google Analytics under Consent Mode v2. The gateway and
+                // ui-web both emit a CSP, and browsers enforce the intersection — so GA must be
+                // allow-listed here too, not only in Sorcha.UI.Web.
                 context.Response.Headers["Content-Security-Policy"] =
                     "default-src 'self'; " +
-                    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; " +
+                    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://www.googletagmanager.com; " +
                     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
                     "img-src 'self' data: https:; " +
                     "font-src 'self' data: https://fonts.gstatic.com; " +
-                    "connect-src 'self' https://localhost:* http://localhost:* wss://localhost:* ws://localhost:* https://www.schemastore.org https://json.schemastore.org; " +
+                    "connect-src 'self' https://localhost:* http://localhost:* wss://localhost:* ws://localhost:* https://www.schemastore.org https://json.schemastore.org https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; " +
                     "worker-src 'self' blob:; " +
                     "manifest-src 'self'; " +
                     "frame-ancestors 'none'";

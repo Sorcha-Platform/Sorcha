@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 Sorcha Contributors -->
+<html lang="en" data-theme="light" data-accent="violet">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>(function(){try{var t=localStorage.getItem('sorcha-theme');if(t!=='light'&&t!=='dark')t='light';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+    <title>How Sorcha compares — openness and workflow</title>
+    <meta name="description" content="An honest look at where Sorcha sits in the verifiable-credentials field: fully open, self-hostable, and built around multi-party workflow orchestration.">
+    <link rel="canonical" href="https://www.sorcha.dev/compare">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Sorcha">
+    <meta property="og:title" content="How Sorcha compares — openness and workflow">
+    <meta property="og:description" content="Where Sorcha sits in the verifiable-credentials field: fully open, self-hostable, and built around multi-party workflow orchestration.">
+    <meta property="og:url" content="https://www.sorcha.dev/compare">
+    <meta property="og:image" content="https://www.sorcha.dev/og-default.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/svg+xml" href="sorcha-icon.svg">
+    <link rel="shortcut icon" href="sorcha.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="landing.css">
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-B2MKVEP45T"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',wait_for_update:500});
+        gtag('js', new Date()); gtag('config','G-B2MKVEP45T',{anonymize_ip:true});
+    </script>
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <nav class="nav" aria-label="Primary">
+        <div class="nav-container">
+            <a href="/" class="nav-brand"><span class="brand-icon">S</span><span>Sorcha</span></a>
+            <div class="nav-links" id="navLinks">
+                <a href="/designer-overview" class="nav-link">For organisations</a>
+                <a href="/wallet-info" class="nav-link">For citizens</a>
+                <a href="/developers" class="nav-link">Developers</a>
+                <a href="/#open-standards" class="nav-link">Standards</a>
+                <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle light or dark theme" title="Toggle light or dark theme">
+                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
+                <a href="/wallet/" class="btn btn-primary">Open Wallet</a>
+            </div>
+            <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navLinks"><span></span><span></span><span></span></button>
+        </div>
+    </nav>
+
+    <main id="main" class="prose">
+        <div class="container-prose">
+            <span class="section-eyebrow">Compare</span>
+            <h1>Where Sorcha sits in the field.</h1>
+            <p class="lead">
+                There are good, capable tools for issuing and verifying credentials. The honest
+                difference with Sorcha is two things together: it is <strong>fully open and
+                self-hostable</strong>, and it <strong>orchestrates the multi-party workflow around the
+                credentials</strong> — not just the issue-and-verify step. Most tools do one or the other.
+            </p>
+
+            <h2>The two things to weigh</h2>
+            <ul>
+                <li><strong>Credentials <em>and</em> the workflow.</strong> Sorcha issues and verifies credentials and runs the signed, multi-party process around them — participants, routing, disclosure, and a tamper-evident register. Credential-only tools leave the workflow to you.</li>
+                <li><strong>Fully open, no enterprise paywall.</strong> Sorcha is MIT-licensed and self-hostable end to end. Several other open projects exist too — this is a field with genuine open options, not a Sorcha-only claim.</li>
+            </ul>
+            <p>
+                Be clear-eyed about the trade-offs: some platforms ship <strong>BBS+ / zero-knowledge
+                selective disclosure</strong>, which is stronger than Sorcha's show/hide disclosure today.
+                And post-quantum signatures are no longer unique — others ship them too. Sorcha's edge is
+                core, default post-quantum signing <em>combined with</em> open, self-hostable workflow
+                orchestration.
+            </p>
+        </div>
+
+        <div class="container" style="margin-top:var(--space-4)">
+            <table class="compare-table">
+                <caption class="compare-note" style="text-align:left;margin-bottom:var(--space-2)">Sorcha's reading of the field, June 2026. Vendor capabilities change — verify directly with each project.</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Capability</th>
+                        <th scope="col">Sorcha</th>
+                        <th scope="col">walt.id</th>
+                        <th scope="col">Procivis One</th>
+                        <th scope="col">MATTR</th>
+                        <th scope="col">Entra Verified ID</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th scope="row">Credential issuance &amp; verification (OpenID4VCI/VP, SD-JWT VC)</th>
+                        <td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Multi-party workflow orchestration</th>
+                        <td>Yes — core</td><td>Credential-focused</td><td>Credential-focused</td><td>Credential-focused</td><td>Credential-focused</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Fully open source &amp; self-hostable</th>
+                        <td>Yes (MIT)</td><td>Open core</td><td>Open core</td><td>Commercial service</td><td>Managed cloud service</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Post-quantum signatures</th>
+                        <td>Yes — ML-DSA core/default</td><td>Verify with vendor</td><td>Yes (ML-DSA-65)</td><td>Verify with vendor</td><td>Verify with vendor</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Selective disclosure approach</th>
+                        <td>Schema show/hide + per-recipient encryption (BBS+/ZK on roadmap)</td>
+                        <td>SD-JWT</td><td>SD-JWT</td><td>BBS+ / ZK (stronger)</td><td>SD-JWT / mdoc</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="compare-note">
+                This is a positioning summary, not a feature-by-feature audit. "Verify with vendor" means
+                we won't assert a capability we haven't confirmed for that project. If you spot something
+                out of date, the comparison lives in the open-source repository — tell us.
+            </p>
+        </div>
+
+        <div class="container-prose">
+            <div class="actions">
+                <a href="/developers" class="btn btn-primary btn-lg">See how it's built →</a>
+                <a href="/designer-overview" class="btn btn-outline btn-lg">See the workflow layer →</a>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-base">© Sorcha · Open source, MIT licensed · <a href="/" style="color:inherit">Home</a> · <a href="/developers" style="color:inherit">Developers</a> · <button type="button" onclick="if(window.openConsent)window.openConsent()" style="background:none;border:none;color:inherit;cursor:pointer;font:inherit">Cookie settings</button></div>
+    </footer>
+
+    <script src="landing.js"></script>
+    <script src="consent-banner.js"></script>
+</body>
+</html>
