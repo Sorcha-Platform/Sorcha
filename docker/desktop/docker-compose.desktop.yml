@@ -1,0 +1,552 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# ============================================================================
+# Sorcha — Desktop Node (standalone, pull-only)
+# ============================================================================
+# A self-contained Sorcha node for a single desktop, sized for ~10-20 users.
+#
+# This file is INTENTIONALLY standalone — it references only published images
+# (sorchadev/*) and has NO `build:` keys, so it runs on a machine that has the
+# container runtime but NONE of the Sorcha source tree. Copy this whole
+# `docker/desktop/` folder to the target machine and run the deploy script.
+#
+# Differences from the developer docker-compose.yml:
+#   - Image-only (no build context) — pulls from a registry.
+#   - Scope = "core + citizen wallet": drops aspire-dashboard (observability UI)
+#     and mcp-server-http (AI agent surface) to save ~1.5 GB RAM.
+#   - Telemetry export is OFF (OTEL_EXPORTER_OTLP_ENDPOINT omitted →
+#     ServiceDefaults Extensions.cs:139 leaves the OTLP exporter unwired).
+#   - API Gateway is HTTP-only on a HIGH host port (8880) so it works under
+#     ROOTLESS Podman, which cannot bind ports < 1024 without extra privilege.
+#   - Databases publish NO host ports — the only ingress is the gateway.
+#
+# Runtime: tested against Rancher Desktop (dockerd/moby) and `podman compose`
+# with the docker-compose provider. Plain `podman-compose` may not honour the
+# long-form `depends_on: { condition: service_healthy }` gates below.
+#
+# Usage (via the deploy script — recommended):
+#   pwsh ./scripts/deploy-desktop.ps1
+#   ./scripts/deploy-desktop.sh
+#
+# Usage (manual):
+#   cp .env.desktop.example .env && edit secrets
+#   docker compose -f docker-compose.desktop.yml --env-file .env pull
+#   docker compose -f docker-compose.desktop.yml --env-file .env up -d
+# ============================================================================
+
+# ---- Shared config anchors -------------------------------------------------
+
+# JWT identity. ${INSTALLATION_NAME} drives the token issuer (urn:sorcha:{name})
+# and tier audiences; every service MUST agree on it and on the signing key, or
+# tokens self-reject on issuer/audience. Set both in .env.
+x-jwt-env: &jwt-env
+  JwtSettings__InstallationName: ${INSTALLATION_NAME:-desktop}
+  JwtSettings__SigningKey: "${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env — generate with openssl rand -base64 32}"
+
+# Platform-default connection strings (SorchaConnections cascade). Per-service
+# code appends Database={name} for Postgres at resolve time.
+x-sorcha-connections: &sorcha-connections
+  ConnectionStrings__Sorcha__Postgres: Host=postgres;Username=${POSTGRES_USER:-sorcha};Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  ConnectionStrings__Sorcha__Mongo: &sorcha-mongo mongodb://${MONGO_USERNAME:-sorcha}:${MONGO_PASSWORD:?set MONGO_PASSWORD in .env}@mongodb:27017
+  ConnectionStrings__Sorcha__Redis: &sorcha-redis redis:6379
+  ConnectionStrings__mongodb: *sorcha-mongo
+  ConnectionStrings__redis: *sorcha-redis
+
+# Container hardening for every .NET service (immutable rootfs + drop all caps).
+# Chiseled .NET images need no Linux capabilities; named volumes + tmpfs stay
+# writable. Works under rootless Podman.
+x-app-hardening: &app-hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 200
+  tmpfs:
+    - /tmp:rw,size=64m,mode=1777
+
+# Lighter profile for stateful infra (their init scripts chown as root, so
+# read_only / cap_drop:ALL would break them).
+x-infra-hardening: &infra-hardening
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  # ===========================
+  # Infrastructure
+  # ===========================
+  redis:
+    image: redis:8-alpine
+    container_name: sorcha-redis
+    restart: unless-stopped
+    <<: *infra-hardening
+    mem_limit: 512m
+    pids_limit: 100
+    command: ["redis-server", "--maxmemory", "384mb", "--maxmemory-policy", "volatile-lru", "--save", "3600", "1", "300", "100", "60", "10000"]
+    volumes:
+      - redis-data:/data
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: sorcha-postgres
+    restart: unless-stopped
+    <<: *infra-hardening
+    mem_limit: 1g
+    pids_limit: 200
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sorcha}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: sorcha
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sorcha}"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+
+  mongodb:
+    image: mongo:8
+    container_name: sorcha-mongodb
+    restart: unless-stopped
+    <<: *infra-hardening
+    mem_limit: 1g
+    pids_limit: 200
+    command: ["mongod", "--auth", "--bind_ip_all", "--wiredTigerCacheSizeGB", "0.5"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-sorcha}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?set MONGO_PASSWORD in .env}
+    volumes:
+      - mongodb-data:/data/db
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ===========================
+  # Application services
+  # ===========================
+  wallet-service:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/wallet-service:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-wallet-service
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
+    environment:
+      <<: [*jwt-env, *sorcha-connections]
+      OTEL_SERVICE_NAME: wallet-service
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+      ServiceAuth__ClientId: service-wallet
+      ServiceAuth__ClientSecret: wallet-service-secret
+      ServiceAuth__Scopes: "registers:write registers:read"
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+      ServiceClients__RegisterService__Address: http://register-service:8080
+      ServiceClients__RegisterService__GrpcAddress: http://register-service:5001
+      ServiceClients__BlueprintService__Address: http://blueprint-service:8080
+      OrgKeyProtection__EncryptionKey: ${ORG_KEY_ENCRYPTION_KEY:-OVL5NaJzR/Hpy2H5YgjYBX51Sws+q8oQXDG234SYnQw=}
+      EncryptionProvider__Type: LinuxSecretService
+      EncryptionProvider__DefaultKeyId: wallet-master-key-2025
+      EncryptionProvider__LinuxSecretService__ServiceName: sorcha-wallet-service
+      EncryptionProvider__LinuxSecretService__FallbackKeyStorePath: /var/lib/sorcha/wallet-keys
+      EncryptionProvider__LinuxSecretService__MachineKeyMaterial: ${WALLET_MACHINE_KEY:-sorcha-desktop-wallet-stable-key-v1}
+    volumes:
+      - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
+      - wallet-encryption-keys:/var/lib/sorcha/wallet-keys
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  tenant-service:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/tenant-service:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-tenant-service
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
+    environment:
+      <<: [*jwt-env, *sorcha-connections]
+      OTEL_SERVICE_NAME: tenant-service
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      JwtSettings__SigningKeySource: Configuration
+      # Lets the bootstrap step provision a pre-verified admin without the email loop.
+      # MUST stay false in a true production deployment.
+      Platform__AllowAdminVerifiedUserCreation: "true"
+      ServiceAuth__ClientId: tenant-service
+      ServiceAuth__ClientSecret: tenant-service-secret
+      ServiceAuth__Scopes: "wallets:sign wallets:verify persona:crypto"
+      ServiceClients__WalletService__Address: http://wallet-service:8080
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+      ServiceClients__RegisterService__Address: http://register-service:8080
+      ServiceClients__ValidatorService__Address: http://validator-service:8080
+      # Relaxed lockout so a burst of self-registrations isn't throttled.
+      RateLimiting__PlatformAuthPermitLimit: ${PLATFORM_AUTH_LIMIT:-500}
+      RateLimiting__PlatformAuthQueueLimit: 100
+      Email__AcsConnectionString: ${ACS_EMAIL_CONNECTION_STRING:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@sorcha.dev}
+      Email__FromName: ${EMAIL_FROM_NAME:-Sorcha Platform}
+      Email__BaseUrl: ${EMAIL_BASE_URL:-http://localhost:8880}
+    volumes:
+      - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      wallet-service: { condition: service_healthy }
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  register-service:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/register-service:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-register-service
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
+    environment:
+      <<: [*jwt-env, *sorcha-connections]
+      OTEL_SERVICE_NAME: register-service
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Redis: redis:6379
+      ConnectionStrings__MongoDB: *sorcha-mongo
+      # First boot seeds the system register via the genesis-ingest path.
+      SystemRegister__BootstrapMode: Auto
+      RegisterStorage__Type: MongoDB
+      RegisterStorage__MongoDB__ConnectionString: *sorcha-mongo
+      RegisterStorage__MongoDB__DatabaseName: sorcha_register_registry
+      RegisterStorage__MongoDB__DatabaseNamePrefix: sorcha_register_
+      RegisterStorage__MongoDB__UseDatabasePerRegister: "true"
+      RegisterStorage__MongoDB__RegisterCollectionName: registers
+      RegisterStorage__MongoDB__TransactionCollectionName: transactions
+      RegisterStorage__MongoDB__DocketCollectionName: dockets
+      RegisterStorage__MongoDB__CreateIndexesOnStartup: "true"
+      ServiceClients__WalletService__Address: http://wallet-service:8080
+      ServiceClients__WalletService__UseGrpc: "false"
+      ServiceClients__WalletService__GrpcAddress: http://wallet-service:5001
+      ServiceClients__ValidatorService__Address: http://validator-service:8080
+      ServiceClients__ValidatorService__UseGrpc: "false"
+      ServiceClients__PeerService__Address: http://peer-service:5000
+      ServiceClients__PeerService__HttpAddress: http://peer-service:8080
+      ServiceClients__PeerService__GrpcAddress: http://peer-service:5000
+      # MUST equal validator-service Validator__ValidatorId (shared system wallet).
+      SystemWalletSigning__ValidatorId: local-validator
+      ServiceAuth__ClientId: register-service
+      ServiceAuth__ClientSecret: register-service-secret
+      ServiceAuth__Scopes: "wallets:sign validator:write"
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+    volumes:
+      - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      redis: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+      wallet-service: { condition: service_healthy }
+      tenant-service: { condition: service_healthy }
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  validator-service:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/validator-service:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-validator-service
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
+    environment:
+      <<: [*jwt-env, *sorcha-connections]
+      OTEL_SERVICE_NAME: validator-service
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Redis: redis:6379
+      ServiceAuth__ClientId: validator-service
+      ServiceAuth__ClientSecret: validator-service-secret
+      ServiceAuth__Scopes: "registers:write registers:read blueprints:read"
+      # MUST equal register-service SystemWalletSigning__ValidatorId.
+      Validator__ValidatorId: local-validator
+      Validator__SystemWalletAddress: ""
+      ServiceClients__BlueprintService__Address: http://blueprint-service:8080
+      ServiceClients__WalletService__Address: http://wallet-service:8080
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+      ServiceClients__RegisterService__Address: http://register-service:8080
+      ServiceClients__PeerService__Address: http://peer-service:5000
+      RegisterStorage__Type: MongoDB
+      RegisterStorage__MongoDB__ConnectionString: *sorcha-mongo
+      RegisterStorage__MongoDB__DatabaseName: sorcha_register_registry
+      RegisterStorage__MongoDB__DatabaseNamePrefix: sorcha_register_
+      RegisterStorage__MongoDB__UseDatabasePerRegister: "true"
+      RegisterStorage__MongoDB__RegisterCollectionName: registers
+      RegisterStorage__MongoDB__TransactionCollectionName: transactions
+      RegisterStorage__MongoDB__DocketCollectionName: dockets
+      RegisterStorage__MongoDB__CreateIndexesOnStartup: "false"
+      DocketBuild__TimeThreshold: "00:00:03"
+      DocketBuild__SizeThreshold: "5"
+    volumes:
+      - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      redis: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+      wallet-service: { condition: service_healthy }
+      tenant-service: { condition: service_healthy }
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  haip-service:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/haip-service:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-haip-service
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 512m
+    environment:
+      <<: [*jwt-env, *sorcha-connections]
+      OTEL_SERVICE_NAME: haip-service
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Redis: redis:6379
+      Haip__IssuerUrl: http://127.0.0.1
+      ServiceClients__BlueprintService__Address: http://blueprint-service:8080
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+      ServiceAuth__ClientId: service-haip
+      ServiceAuth__ClientSecret: haip-service-secret
+      ServiceAuth__Scopes: "blueprints:read"
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  peer-service:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/peer-service:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-peer-service
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
+    # gRPC P2P port published so this node can later federate with others.
+    ports:
+      - "${PEER_GRPC_PORT:-50051}:5000"
+    environment:
+      <<: [*jwt-env, *sorcha-connections]
+      OTEL_SERVICE_NAME: peer-service
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+      MongoDB__DatabaseName: sorcha_system_register
+      ServiceAuth__ClientId: service-peer
+      ServiceAuth__ClientSecret: peer-service-secret
+      ServiceAuth__Scopes: "registers:write registers:read"
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+      ServiceClients__RegisterService__Address: http://register-service:8080
+      ServiceClients__ValidatorService__Address: http://validator-service:8080
+      PeerService__NodeId: ${PEER_NODE_ID:-desktop-node.local}
+      PeerService__NetworkAddress__ExternalAddress: ${PEER_PUBLIC_ADDRESS:-}
+      PeerService__Port: "5000"
+      PeerService__EnableTls: "false"
+      # Point these at an existing node's seed to join a network; empty = standalone.
+      PeerService__SeedNodes__SeedNodes__0__NodeId: ${SEED_PEER_NODE_ID:-}
+      PeerService__SeedNodes__SeedNodes__0__Hostname: ${SEED_PEER_HOST:-}
+      PeerService__SeedNodes__SeedNodes__0__Port: ${SEED_PEER_PORT:-50051}
+      PeerService__SeedNodes__SeedNodes__0__EnableTls: ${SEED_PEER_ENABLE_TLS:-false}
+    volumes:
+      - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      redis: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  blueprint-service:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/blueprint-service:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-blueprint-service
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
+    environment:
+      <<: [*jwt-env, *sorcha-connections]
+      OTEL_SERVICE_NAME: blueprint-service
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      AIProvider__ApiKey: ${ANTHROPIC_API_KEY:-}
+      AIProvider__Model: claude-sonnet-4-5-20250929
+      ServiceClients__RegisterService__Address: http://register-service:8080
+      ServiceClients__WalletService__Address: http://wallet-service:8080
+      ServiceClients__ValidatorService__Address: http://validator-service:8080
+      ServiceClients__TenantService__Address: http://tenant-service:8080
+      ServiceClients__HaipService__Address: http://haip-service:8080
+      ServiceClients__PeerService__Address: http://peer-service:5000
+      ServiceClients__PeerService__HttpAddress: http://peer-service:8080
+      ServiceAuth__ClientId: service-blueprint
+      ServiceAuth__ClientSecret: blueprint-service-secret
+      ServiceAuth__Scopes: "wallets:sign registers:write blueprints:manage"
+      TransactionConfirmation__TimeoutSeconds: "60"
+      TransactionConfirmation__PollIntervalSeconds: "1"
+      PresentationLifecycle__DefaultValidityWindowSeconds: "600"
+      PresentationLifecycle__SweeperIntervalSeconds: "30"
+      PresentationLifecycle__SweeperLeaderLockTtlSeconds: "60"
+      PresentationLifecycle__RateLimit__Threshold: "10"
+      PresentationLifecycle__RateLimit__WindowSeconds: "600"
+    volumes:
+      - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      redis: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+      wallet-service: { condition: service_healthy }
+      tenant-service: { condition: service_healthy }
+      register-service: { condition: service_healthy }
+      validator-service: { condition: service_healthy }
+      haip-service: { condition: service_healthy }
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ===========================
+  # UI / citizen-wallet surfaces
+  # ===========================
+  sorcha-ui-web:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/ui-web:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-ui-web
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 1g
+    environment:
+      <<: *jwt-env
+      OTEL_SERVICE_NAME: ui-web
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ApiGateway__BaseUrl: http://api-gateway:8080
+      services__api-gateway__http__0: http://api-gateway:8080
+    volumes:
+      - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
+    networks: [sorcha-network]
+
+  sorcha-wallet-pwa:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/wallet-pwa:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-wallet-pwa
+    restart: unless-stopped
+    mem_limit: 128m
+    # Reachable via the gateway /wallet route.
+    networks: [sorcha-network]
+    depends_on:
+      - api-gateway
+
+  sorcha-verifier:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/verifier:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-verifier
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 256m
+    ports:
+      - "${VERIFIER_PORT:-7401}:8080"
+    environment:
+      <<: *jwt-env
+      OTEL_SERVICE_NAME: verifier
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+      ApiGateway__BaseUrl: http://api-gateway:8080
+    networks: [sorcha-network]
+    depends_on:
+      - api-gateway
+
+  # ===========================
+  # Ingress
+  # ===========================
+  api-gateway:
+    image: ${SORCHA_IMAGE_REPO:-sorchadev}/api-gateway:${SORCHA_IMAGE_TAG:-latest}
+    container_name: sorcha-api-gateway
+    restart: unless-stopped
+    <<: *app-hardening
+    mem_limit: 512m
+    # HTTP-only on a high host port so rootless Podman can bind it.
+    # The single public ingress for the whole node: UI at /app, wallet at /wallet,
+    # APIs at /api/*. Front with a reverse proxy (Caddy/nginx) for TLS in production.
+    ports:
+      - "${SORCHA_HTTP_PORT:-8880}:8080"
+    environment:
+      <<: *jwt-env
+      OTEL_SERVICE_NAME: api-gateway
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Services__Blueprint__Url: http://blueprint-service:8080
+      Services__Wallet__Url: http://wallet-service:8080
+      Services__Register__Url: http://register-service:8080
+      Services__Tenant__Url: http://tenant-service:8080
+      Services__Peer__Url: http://peer-service:8080
+      Services__Validator__Url: http://validator-service:8080
+      Services__Haip__Url: http://haip-service:8080
+      Services__UI__Url: http://sorcha-ui-web:8080
+      ConnectionStrings__Redis: redis:6379
+      OpenApi__RequireAuth: ${OPENAPI_REQUIRE_AUTH:-true}
+    volumes:
+      - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      blueprint-service: { condition: service_healthy }
+      wallet-service: { condition: service_healthy }
+      register-service: { condition: service_healthy }
+      tenant-service: { condition: service_healthy }
+      peer-service: { condition: service_healthy }
+      validator-service: { condition: service_healthy }
+      haip-service: { condition: service_healthy }
+      sorcha-ui-web: { condition: service_started }
+    networks: [sorcha-network]
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+networks:
+  sorcha-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:
+  mongodb-data:
+  dataprotection-keys:
+  wallet-encryption-keys:
