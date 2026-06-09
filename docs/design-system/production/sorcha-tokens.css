@@ -1,0 +1,151 @@
+/* ============================================================================
+   SORCHA REFINED VISUAL SYSTEM — production tokens
+   Drop into landing.css (replace the old :root block) and/or import globally.
+   Themes resolve via [data-theme="dark"|"light"]; the verification accent
+   resolves via [data-accent="violet"|"gold"] (ship VIOLET — gold is optional).
+   All hex values are the single source of truth, reconciled to sorcha-icon.svg.
+   ============================================================================ */
+
+:root {
+  /* Type */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Shape */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Spacing — 4px base */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px; --sp-9: 96px;
+
+  /* Grid motif */
+  --grid-size: 56px;
+
+  /* Brand constants (do not vary by theme) */
+  --brand-indigo: #6366F1;       /* glow / large display / borders / icon strokes */
+  --brand-indigo-deep: #4F46E5;  /* actionable fill — white text passes AA (6.3:1) */
+  --brand-violet: #818CF8;       /* violet step — particles, accents */
+  --brand-lilac: #A5B4FC;        /* luminous step — verification on dark */
+  --ground-1: #090A14;
+  --ground-2: #0F1020;
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+
+/* ===========================  DARK THEME  ================================== */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg:            #0A0B14;
+  --surface:       #14162B;
+  --surface-alt:   #0E1020;
+  --surface-sunk:  #070810;
+  --border:        #282C46;
+  --border-strong: #3A3F63;
+
+  --text:        #EDEEF8;  /* 16.98:1 on --bg */
+  --text-muted:  #9A9FBC;  /* 7.53:1  */
+  --text-faint:  #6B7095;  /* 4.09:1 — large/decorative only */
+
+  --primary:        #6366F1; /* large / icons / borders — NOT small body */
+  --primary-strong: #818CF8;
+  --link:           #A5B4FC; /* 9.84:1 — safe body link */
+
+  --btn-primary-bg:    #4F46E5;  /* white label = 6.3:1 */
+  --btn-primary-text:  #FFFFFF;
+  --btn-primary-hover: #5A52EA;
+
+  --verify:        #A5B4FC;  /* verified / proof text — 9.84:1 */
+  --verify-quiet:  #818CF8;
+
+  --border-grid:  rgba(99,102,241,0.10);
+  --particle:     #818CF8;
+  --bloom:        rgba(99,102,241,0.16);
+  --bloom-strong: rgba(99,102,241,0.32);
+
+  --success: #34D399;  /* ~10.2:1 */
+  --warning: #FBBF24;  /* ~11.8:1 */
+  --error:   #F87171;  /* ~7.1:1  */
+  --success-bg: rgba(52,211,153,0.12);
+  --warning-bg: rgba(251,191,36,0.12);
+  --error-bg:   rgba(248,113,113,0.12);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.6);
+  --shadow:    0 10px 34px rgba(0,0,0,0.55);
+  --shadow-lg: 0 28px 60px rgba(0,0,0,0.6);
+  --bloom-shadow: 0 0 0 1px rgba(99,102,241,0.35), 0 10px 44px rgba(79,70,229,0.40);
+
+  --focus-ring: #A5B4FC;
+  --focus-ring-offset: #0A0B14;
+}
+[data-theme="dark"][data-accent="gold"] { --verify: #F4C04E; --verify-quiet: #E0A93A; }
+
+/* ===========================  LIGHT THEME  ================================= */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:            #FCFCFE;
+  --surface:       #FFFFFF;
+  --surface-alt:   #F3F4FB;  /* faint-indigo banding (replaces #f7fafc) */
+  --surface-sunk:  #F0F1F8;
+  --border:        #E4E5F1;
+  --border-strong: #CDD0E4;
+
+  --text:        #14162B;  /* 17.38:1 on --bg */
+  --text-muted:  #585E7C;  /* 6.20:1  */
+  --text-faint:  #8A8FA8;  /* 3.12:1 — decorative ONLY; do NOT use on --surface-alt (2.91:1) */
+
+  --primary:        #6366F1; /* large / icons / borders — NOT small body */
+  --primary-strong: #4F46E5;
+  --link:           #4F46E5; /* 6.14:1 — safe body link */
+
+  --btn-primary-bg:    #4F46E5;
+  --btn-primary-text:  #FFFFFF;
+  --btn-primary-hover: #4338CA;
+
+  --verify:        #4338CA;  /* verified / proof text — 7.71:1 */
+  --verify-quiet:  #4F46E5;
+
+  --border-grid:  rgba(99,102,241,0.08);
+  --particle:     #6366F1;
+  --bloom:        rgba(99,102,241,0.10);
+  --bloom-strong: rgba(99,102,241,0.18);
+
+  --success: #047857;  /* ~5.4:1 */
+  --warning: #B45309;  /* ~5.0:1 */
+  --error:   #C81E1E;  /* ~5.7:1 (nudged from #DC2626 to clear AA on banding) */
+  --success-bg: rgba(4,120,87,0.10);
+  --warning-bg: rgba(180,83,9,0.10);
+  --error-bg:   rgba(200,30,30,0.08);
+
+  --shadow-sm: 0 1px 2px rgba(20,22,43,0.06);
+  --shadow:    0 10px 30px rgba(79,70,229,0.08);
+  --shadow-lg: 0 24px 50px rgba(79,70,229,0.12);
+  --bloom-shadow: 0 0 0 1px rgba(99,102,241,0.30), 0 10px 36px rgba(79,70,229,0.18);
+
+  --focus-ring: #4F46E5;
+  --focus-ring-offset: #FCFCFE;
+}
+[data-theme="light"][data-accent="gold"] { --verify: #92560B; --verify-quiet: #B45309; }
+
+/* ===========================  ACCENT / CTA FAMILY  ======================== */
+/* Bright fill with near-black label (≥10:1) in both themes. Ship "violet". */
+[data-accent="violet"] { --accent-fill: #A5B4FC; --accent-hover: #B7C2FD; --accent-text: #0A0B14; }
+[data-accent="gold"]   { --accent-fill: #F4C04E; --accent-hover: #F7CD6E; --accent-text: #1A1405; }
+
+/* ===========================  PRIMITIVES  ================================= */
+.surface-grid {
+  background-image:
+    linear-gradient(var(--border-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-grid) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+}
+:where(a, button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+/* Suppress transitions for one frame during a theme/accent swap (see system.js swap()). */
+html.swapping, html.swapping * { transition: none !important; }

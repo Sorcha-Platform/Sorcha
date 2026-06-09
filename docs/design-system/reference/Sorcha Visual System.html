@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="violet">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sorcha — Refined Visual System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="page.css" />
+</head>
+<body>
+
+<!-- ============================ NAV ============================ -->
+<nav class="nav">
+  <div class="nav__in">
+    <a class="nav__brand" href="#top"><span class="mark"><span>S</span></span> Sorcha</a>
+    <div class="nav__links">
+      <a class="nav__link" href="#decisions">Decisions</a>
+      <a class="nav__link" href="#colour">Colour</a>
+      <a class="nav__link" href="#type">Type</a>
+      <a class="nav__link" href="#components">Components</a>
+      <a class="nav__link" href="#motif">Imagery &amp; motion</a>
+      <a class="nav__link" href="#build">Implement</a>
+    </div>
+    <div class="row" style="gap:8px">
+      <div class="seg" role="group" aria-label="Theme">
+        <button data-theme-btn="dark" aria-pressed="true">Dark</button>
+        <button data-theme-btn="light" aria-pressed="false">Light</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================ HERO (example composition) ============================ -->
+<header class="hero" id="top">
+  <canvas class="hero__canvas" id="heroCanvas" aria-hidden="true"></canvas>
+  <div class="hero__grid" aria-hidden="true"></div>
+  <div class="hero__bloom" aria-hidden="true"></div>
+  <div class="hero__in">
+    <div class="hero__mark"><span>S</span></div>
+    <p class="t-eyebrow" style="color:var(--brand-lilac)">Cryptographic-proof infrastructure · MIT · self-hostable</p>
+    <h1 class="t-h1">Stop asking <span class="accent">who</span> to trust.<br />Start <span class="accent">verifying</span>.</h1>
+    <p class="hero__sub t-body-l">Sorcha issues and verifies digital credentials and orchestrates the multi-party
+      workflow around them — with post-quantum signatures built in. Every party checks the evidence themselves.
+      No platform operator to trust. No token.</p>
+    <div class="hero__cta">
+      <a class="btn btn--accent" href="#colour">Read the proof model</a>
+      <a class="btn btn--outline" href="#build" style="color:#EDEEF8;border-color:rgba(99,102,241,.4)">View the code</a>
+    </div>
+
+    <div class="router" aria-label="Audience router">
+      <a class="door" href="#components">
+        <svg class="door__icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 16 20 7l15 9"/><path d="M8 16v15M32 16v15M14 16v15M26 16v15M20 16v15"/><path d="M5 31h30"/></svg>
+        <span class="door__role">Organisations</span>
+        <h4 class="t-h4">Issue &amp; orchestrate</h4>
+        <p>Run a blueprint, issue verifiable credentials, and coordinate every counterparty — on your own infrastructure.</p>
+        <span class="door__go">Start a register <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M9 4l4 4-4 4"/></svg></span>
+      </a>
+      <a class="door" href="#components">
+        <svg class="door__icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 5l12 4v8c0 8-5.5 13-12 16C13.5 30 8 25 8 17V9z"/><path d="M14.5 19.5l4 4 7-8"/></svg>
+        <span class="door__role">Verifiers &amp; citizens</span>
+        <h4 class="t-h4">Verify independently</h4>
+        <p>Check a credential's evidence yourself — signatures, schema, and provenance — without trusting the issuer or us.</p>
+        <span class="door__go">Verify a proof <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M9 4l4 4-4 4"/></svg></span>
+      </a>
+      <a class="door" href="#build">
+        <svg class="door__icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 13l-7 7 7 7M26 13l7 7-7 7M22 9l-4 22"/></svg>
+        <span class="door__role">Developers</span>
+        <h4 class="t-h4">Read the code</h4>
+        <p>Open source, .NET, MIT-licensed. Audit the cryptography, run it locally, and integrate against documented APIs.</p>
+        <span class="door__go">Browse the repo <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M9 4l4 4-4 4"/></svg></span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main>
+<!-- ============================ DECISIONS ============================ -->
+<section class="section" id="decisions">
+  <div class="wrap">
+    <div class="section__head">
+      <span class="t-eyebrow">Brief → System · what I changed and why</span>
+      <h2 class="t-h2">A refinement, not a rebrand</h2>
+      <p>The palette and the "S" mark are kept. I reconciled everything to the values inside the icon — the real
+        source of truth — and retired the lighter drift the landing page had wandered into. Five decisions worth
+        your sign-off before the detail:</p>
+    </div>
+    <div class="grid2">
+      <div class="note"><div class="note__b"></div><div>
+        <h5 class="t-h5">Retired the lighter <code>#667eea&nbsp;/&nbsp;#764ba2</code> drift</h5>
+        <p>The icon's true ground is <code>#090A14→#0F1020</code> with primary <code>#6366F1</code> and a deep
+          <code>#4F46E5</code> in the S's shadow. The landing's lighter pair is gone; the system is anchored to the mark.</p>
+      </div></div>
+      <div class="note"><div class="note__b" style="background:var(--success)"></div><div>
+        <h5 class="t-h5">The green <code>#48bb78</code> accent is demoted to <code>success</code> only</h5>
+        <p>It read as a second brand colour and fought the indigo. It now appears solely as the harmonised success
+          state — never as a brand or CTA accent.</p>
+      </div></div>
+      <div class="note"><div class="note__b" style="background:var(--brand-indigo-deep)"></div><div>
+        <h5 class="t-h5"><code>#6366F1</code> is a glow colour, <code>#4F46E5</code> is the action colour</h5>
+        <p>White on <code>#6366F1</code> is only <b>4.47:1</b> — it fails AA for normal text. So filled buttons and
+          links use <code>#4F46E5</code> (white = <b>6.3:1</b>), and <code>#6366F1</code> is reserved for large
+          display, icons, borders and bloom.</p>
+      </div></div>
+      <div class="note"><div class="note__b" style="background:var(--accent-fill)"></div><div>
+        <h5 class="t-h5">Verification accent = a luminous violet <i>step</i> (my recommendation)</h5>
+        <p>You asked me to weigh a complementary hue. I recommend staying in-family: <code>#A5B4FC</code> for
+          "verified / proof". Restraint signals seriousness; a fourth hue reads consumer-SaaS. A
+          <b>"hallmark gold"</b> alternate is wired in — toggle it below to judge.</p>
+      </div></div>
+    </div>
+
+    <div class="row" style="margin-top:24px;gap:14px">
+      <span class="pill-label">Try the verification accent</span>
+      <div class="seg" role="group" aria-label="Verification accent">
+        <button data-accent-btn="violet" aria-pressed="true">Violet step · recommended</button>
+        <button data-accent-btn="gold" aria-pressed="false">Hallmark gold · alternate</button>
+      </div>
+      <span class="muted t-caption">Also flips the live components, chips and hero CTA.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ COLOUR ============================ -->
+<section class="section section--alt" id="colour">
+  <div class="wrap">
+    <div class="section__head">
+      <span class="t-eyebrow">Deliverable 1 · Colour tokens</span>
+      <h2 class="t-h2">Tokens &amp; contrast, both themes</h2>
+      <p>Every ratio below is computed live in this page from the hex values — not typed by hand. Pairings are tested
+        against both <code>--bg</code> and the <code>--surface-alt</code> banding. AA needs 4.5:1 for normal text
+        (3:1 for large ≥24px / bold ≥18.66px).</p>
+    </div>
+
+    <div class="grid2">
+      <!-- DARK -->
+      <div class="stack">
+        <div class="tbl-card">
+          <div class="tbl-card__cap"><span class="mark" style="width:22px;height:22px;border-radius:6px"><span style="font-size:12px">S</span></span> Dark theme · surfaces &amp; lines</div>
+          <table class="tokens"><tbody id="surf-dark"></tbody></table>
+        </div>
+        <div class="tbl-card">
+          <div class="tbl-card__cap">Dark theme · foreground &amp; semantic</div>
+          <table class="tokens"><tbody id="fg-dark"></tbody></table>
+        </div>
+        <div class="tbl-card">
+          <div class="tbl-card__cap">Dark theme · action pairings</div>
+          <table class="tokens"><tbody id="act-dark"></tbody></table>
+        </div>
+      </div>
+      <!-- LIGHT -->
+      <div class="stack">
+        <div class="tbl-card">
+          <div class="tbl-card__cap">Light theme · surfaces &amp; lines</div>
+          <table class="tokens"><tbody id="surf-light"></tbody></table>
+        </div>
+        <div class="tbl-card">
+          <div class="tbl-card__cap">Light theme · foreground &amp; semantic</div>
+          <table class="tokens"><tbody id="fg-light"></tbody></table>
+        </div>
+        <div class="tbl-card">
+          <div class="tbl-card__cap">Light theme · action pairings</div>
+          <table class="tokens"><tbody id="act-light"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ TYPE ============================ -->
+<section class="section" id="type">
+  <div class="wrap">
+    <div class="section__head">
+      <span class="t-eyebrow">Deliverable 2 · Type system</span>
+      <h2 class="t-h2">Inter for voice, IBM&nbsp;Plex&nbsp;Mono for proof</h2>
+      <p>Inter stays for UI and body — neutral, technical, calm. IBM&nbsp;Plex&nbsp;Mono carries the verifiable
+        details: standards names, hashes, DIDs, code chips. It has the institutional, instrument-panel tone and a
+        slashed zero (JetBrains&nbsp;Mono is a fine drop-in alternate). Payload: Inter 400/500/600/700, Plex&nbsp;Mono 400/500/600.</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="spec"><div class="spec__meta"><b>H1 · Hero</b>56 / 38px<br>700 · 1.05 · −0.022em</div><div class="t-h1">Proof, not assertion</div></div>
+        <div class="spec"><div class="spec__meta"><b>H2 · Section</b>40 / 30px<br>700 · 1.12 · −0.018em</div><div class="t-h2">Verify the evidence</div></div>
+        <div class="spec"><div class="spec__meta"><b>H3</b>28 / 24px<br>600 · 1.2 · −0.012em</div><div class="t-h3">Post-quantum signatures</div></div>
+        <div class="spec"><div class="spec__meta"><b>H4</b>22 / 20px<br>600 · 1.3</div><div class="t-h4">Multi-party workflow</div></div>
+        <div class="spec"><div class="spec__meta"><b>H5</b>18 / 17px<br>600 · 1.4</div><div class="t-h5">Issue a credential</div></div>
+      </div>
+      <div class="card">
+        <div class="spec"><div class="spec__meta"><b>Body-L</b>19 / 17px<br>400 · 1.6</div><div class="t-body-l">Every party can verify the evidence themselves, without trusting the platform operator.</div></div>
+        <div class="spec"><div class="spec__meta"><b>Body</b>16px<br>400 · 1.6</div><div class="t-body">Sorcha is self-hostable open-source infrastructure. There is no blockchain token, and the cryptography is open to audit.</div></div>
+        <div class="spec"><div class="spec__meta"><b>Caption</b>13px<br>500 · 1.45</div><div class="t-caption muted">Issued 2026-06-08 · schema v2 · 3 signatures verified</div></div>
+        <div class="spec"><div class="spec__meta"><b>Eyebrow</b>12px<br>600 · 0.14em · UPPER<br>mono</div><div class="t-eyebrow">Standards · verifiable</div></div>
+        <div class="spec"><div class="spec__meta"><b>Mono</b>14px<br>400 · 1.5<br>IBM Plex Mono</div><div class="t-mono" style="color:var(--verify)">did:sorcha:7f3a…b21c<br>sha256:9c1f4e…0a8d</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ COMPONENTS ============================ -->
+<section class="section section--alt" id="components">
+  <div class="wrap">
+    <div class="section__head">
+      <span class="t-eyebrow">Deliverable 3 · Component kit</span>
+      <h2 class="t-h2">Themed for both modes</h2>
+      <p>All controls below respond to the theme and accent toggles. Focus rings are always visible — tab through to
+        check. Hover states extend the icon's bloom rather than shifting lightness past the contrast line.</p>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h4 class="t-h4" style="margin:0 0 16px">Buttons</h4>
+        <div class="row" style="margin-bottom:14px">
+          <button class="btn btn--primary">Issue credential</button>
+          <button class="btn btn--accent">Verify proof</button>
+          <button class="btn btn--outline">View schema</button>
+          <button class="btn btn--text">Cancel</button>
+        </div>
+        <div class="row">
+          <button class="btn btn--primary btn--sm" disabled>Disabled</button>
+          <button class="btn btn--outline btn--sm">Focus me (Tab)</button>
+          <span class="muted t-caption">Primary fill = <code>#4F46E5</code>, white label = 6.3:1.</span>
+        </div>
+      </div>
+      <div class="card">
+        <h4 class="t-h4" style="margin:0 0 16px">Standards &amp; credential chips</h4>
+        <p class="muted t-caption" style="margin:0 0 12px">Honest by design: solid = implemented, dashed = roadmap.</p>
+        <div class="chip-row" style="margin-bottom:14px">
+          <span class="chip chip--impl"><span class="chip__dot"></span>ML-DSA (FIPS 204)<span class="chip__tag">Live</span></span>
+          <span class="chip chip--impl"><span class="chip__dot"></span>W3C VC 2.0<span class="chip__tag">Live</span></span>
+          <span class="chip chip--impl"><span class="chip__dot"></span>SLH-DSA<span class="chip__tag">Live</span></span>
+        </div>
+        <div class="chip-row">
+          <span class="chip chip--roadmap"><span class="chip__dot"></span>eIDAS 2.0<span class="chip__tag">Roadmap</span></span>
+          <span class="chip chip--roadmap"><span class="chip__dot"></span>ISO mDL<span class="chip__tag">Roadmap</span></span>
+          <span class="chip chip--roadmap"><span class="chip__dot"></span>OpenID4VC<span class="chip__tag">Roadmap</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:24px">
+      <h4 class="t-h4" style="margin:0 0 16px">Audience router · three doors</h4>
+      <div class="router">
+        <div class="door">
+          <svg class="door__icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16 20 7l15 9"/><path d="M8 16v15M32 16v15M14 16v15M26 16v15M20 16v15"/><path d="M5 31h30"/></svg>
+          <span class="door__role">Organisations</span><h4 class="t-h4">Issue &amp; orchestrate</h4>
+          <p>Run a blueprint and coordinate counterparties on your own infrastructure.</p>
+          <span class="door__go">Start a register <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M9 4l4 4-4 4"/></svg></span>
+        </div>
+        <div class="door">
+          <svg class="door__icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 5l12 4v8c0 8-5.5 13-12 16C13.5 30 8 25 8 17V9z"/><path d="M14.5 19.5l4 4 7-8"/></svg>
+          <span class="door__role">Verifiers &amp; citizens</span><h4 class="t-h4">Verify independently</h4>
+          <p>Check signatures, schema and provenance yourself — no trust required.</p>
+          <span class="door__go">Verify a proof <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M9 4l4 4-4 4"/></svg></span>
+        </div>
+        <div class="door">
+          <svg class="door__icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13l-7 7 7 7M26 13l7 7-7 7M22 9l-4 22"/></svg>
+          <span class="door__role">Developers</span><h4 class="t-h4">Read the code</h4>
+          <p>Open source, .NET, MIT. Audit the cryptography and run it locally.</p>
+          <span class="door__go">Browse the repo <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M9 4l4 4-4 4"/></svg></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ IMAGERY & MOTION ============================ -->
+<section class="section" id="motif">
+  <div class="wrap">
+    <div class="section__head">
+      <span class="t-eyebrow">Deliverable 4 · Imagery &amp; motion</span>
+      <h2 class="t-h2">Grid, particle, bloom — extended</h2>
+      <p>One visual language carried through the whole site: a faint 56px grid, slow-drifting glow-squares, and a soft
+        violet bloom. Line-based, geometric, monochrome with a single accent. No photography, no 3D, no clichés.</p>
+    </div>
+
+    <div class="divider"><span></span></div>
+    <p class="muted t-caption" style="text-align:center;margin:-16px 0 32px">Section divider — a grid baseline fading to a single bloom particle</p>
+
+    <h4 class="t-h4" style="margin:0 0 16px">How it works · four line icons</h4>
+    <div class="steps">
+      <div class="step"><span class="step__n">01</span>
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="7" width="26" height="34" rx="3"/><path d="M17 16h14M17 23h14M17 30h8"/><circle cx="33" cy="34" r="6" fill="var(--bloom)"/><path d="M30.5 34l2 2 3-3.5"/></svg>
+        <h5 class="t-h5">Issue</h5><p>A credential is minted against an agreed schema.</p></div>
+      <div class="step"><span class="step__n">02</span>
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="19" cy="24" r="8"/><path d="M19 24h20M33 24v6M39 24v8"/><path d="M16 24h6"/></svg>
+        <h5 class="t-h5">Sign</h5><p>Post-quantum signatures (ML-DSA / SLH-DSA) seal it.</p></div>
+      <div class="step"><span class="step__n">03</span>
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="12" r="4"/><circle cx="12" cy="34" r="4"/><circle cx="36" cy="34" r="4"/><path d="M22 15l-7 16M26 15l7 16M16 34h16"/></svg>
+        <h5 class="t-h5">Distribute</h5><p>Each party receives the credential and its evidence.</p></div>
+      <div class="step"><span class="step__n">04</span>
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M24 7l14 5v9c0 9-6 15-14 19-8-4-14-10-14-19v-9z"/><path d="M17 23l5 5 9-11"/></svg>
+        <h5 class="t-h5">Verify</h5><p>Anyone re-checks the math — no operator in the loop.</p></div>
+    </div>
+
+    <div class="grid2" style="margin-top:32px">
+      <div class="note"><div class="note__b"></div><div>
+        <h5 class="t-h5">Motion — calm by mandate</h5>
+        <p>The hero <code>&lt;canvas&gt;</code> drifts particles at ~0.12px/frame, twinkling between
+          <code>#6366F1</code> and <code>#818CF8</code> at 18–48% opacity. It snaps to the 56px grid, blurs softly,
+          and never loops attention-grabbing motion.</p>
+      </div></div>
+      <div class="note"><div class="note__b" style="background:var(--success)"></div><div>
+        <h5 class="t-h5">Off-screen + reduced-motion</h5>
+        <p>An <code>IntersectionObserver</code> pauses the loop when the hero scrolls away.
+          <code>prefers-reduced-motion</code> renders a single static frame — no animation, full contrast,
+          content always visible.</p>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ IMPLEMENT ============================ -->
+<section class="section section--alt" id="build">
+  <div class="wrap">
+    <div class="section__head">
+      <span class="t-eyebrow">Deliverable 5 · Implementation</span>
+      <h2 class="t-h2">Plain CSS variables &amp; a MudBlazor palette</h2>
+      <p>No build step, no framework. The marketing page consumes the CSS custom properties; the Blazor app maps the
+        same hexes into a <code>MudTheme</code>. One source of truth, two surfaces.</p>
+    </div>
+    <div class="grid2">
+      <div class="code">
+        <div class="code__bar">tokens.css — dark theme (excerpt)<button class="code__copy">Copy</button></div>
+<pre><span class="tok-c">/* the brand ground */</span>
+<span class="tok-p">--bg</span>:            <span class="tok-v">#0A0B14</span>;
+<span class="tok-p">--surface</span>:       <span class="tok-v">#14162B</span>;
+<span class="tok-p">--surface-alt</span>:   <span class="tok-v">#0E1020</span>;
+<span class="tok-p">--border</span>:        <span class="tok-v">#282C46</span>;
+<span class="tok-p">--text</span>:          <span class="tok-v">#EDEEF8</span>;  <span class="tok-c">/* 15.9:1 */</span>
+<span class="tok-p">--text-muted</span>:    <span class="tok-v">#9A9FBC</span>;  <span class="tok-c">/* 6.6:1  */</span>
+<span class="tok-p">--primary</span>:       <span class="tok-v">#6366F1</span>;  <span class="tok-c">/* glow/large */</span>
+<span class="tok-p">--btn-primary-bg</span>: <span class="tok-v">#4F46E5</span>;  <span class="tok-c">/* white 6.3:1 */</span>
+<span class="tok-p">--verify</span>:        <span class="tok-v">#A5B4FC</span>;  <span class="tok-c">/* 9.0:1  */</span>
+<span class="tok-p">--success</span>:       <span class="tok-v">#34D399</span>;
+<span class="tok-p">--warning</span>:       <span class="tok-v">#FBBF24</span>;
+<span class="tok-p">--error</span>:         <span class="tok-v">#F87171</span>;</pre>
+      </div>
+      <div class="code">
+        <div class="code__bar">MainLayout.razor — MudTheme<button class="code__copy">Copy</button></div>
+<pre><span class="tok-p">PaletteDark</span> = <span class="tok-v">new</span> PaletteDark()
+{
+  Primary          = <span class="tok-v">"#4F46E5"</span>, <span class="tok-c">// action</span>
+  PrimaryDarken    = <span class="tok-v">"#4338CA"</span>,
+  Secondary        = <span class="tok-v">"#6366F1"</span>, <span class="tok-c">// glow</span>
+  Tertiary         = <span class="tok-v">"#A5B4FC"</span>, <span class="tok-c">// verify</span>
+  Background       = <span class="tok-v">"#0A0B14"</span>,
+  Surface          = <span class="tok-v">"#14162B"</span>,
+  DrawerBackground = <span class="tok-v">"#0E1020"</span>,
+  AppbarBackground = <span class="tok-v">"#0E1020"</span>,
+  AppbarText       = <span class="tok-v">"#EDEEF8"</span>,
+  TextPrimary      = <span class="tok-v">"#EDEEF8"</span>,
+  TextSecondary    = <span class="tok-v">"#9A9FBC"</span>,
+  LinesDefault     = <span class="tok-v">"#282C46"</span>,
+  Success = <span class="tok-v">"#34D399"</span>, Warning = <span class="tok-v">"#FBBF24"</span>,
+  Error   = <span class="tok-v">"#F87171"</span>, Info = <span class="tok-v">"#A5B4FC"</span>,
+};</pre>
+      </div>
+    </div>
+    <p class="muted t-caption" style="margin-top:16px">Light theme swaps <code>Background #FCFCFE</code>,
+      <code>Surface #FFFFFF</code>, <code>TextPrimary #14162B</code>, <code>TextSecondary #585E7C</code>,
+      <code>Tertiary/Info #4338CA</code>, <code>Success #047857</code>, <code>Warning #B45309</code>,
+      <code>Error #C81E1E</code>. <code>Primary</code> stays <code>#4F46E5</code> so white labels hold AA on the AppBar.</p>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer__in">
+    <span class="mark" style="width:26px;height:26px;border-radius:7px"><span style="font-size:14px">S</span></span>
+    <span>Sorcha refined visual system · proof, not assertion</span>
+    <span class="muted" style="margin-left:auto">WCAG 2.2 AA verified · MIT · self-hostable</span>
+  </div>
+</footer>
+
+<script src="system.js"></script>
+</body>
+</html>

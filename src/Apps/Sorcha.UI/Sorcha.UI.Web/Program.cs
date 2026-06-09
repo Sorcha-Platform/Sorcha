@@ -57,11 +57,12 @@ app.Use(async (context, next) =>
     var csp = string.Join("; ", new[]
     {
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+        // googletagmanager: Google Analytics (Consent Mode v2) loaded by the landing page.
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "img-src 'self' data: https:",
         "font-src 'self' data: https://fonts.gstatic.com",
-        "connect-src 'self' https://localhost:* http://localhost:* wss://localhost:* ws://localhost:* https://www.schemastore.org",
+        "connect-src 'self' https://localhost:* http://localhost:* wss://localhost:* ws://localhost:* https://www.schemastore.org https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com",
         "worker-src 'self' blob:",
         "frame-ancestors 'none'",
         "base-uri 'self'",
@@ -91,6 +92,32 @@ app.Use(async (context, next) =>
         var landingPath = Path.Combine(app.Environment.WebRootPath, "index.html");
         await context.Response.SendFileAsync(landingPath);
         return;
+    }
+    await next();
+});
+
+// Marketing sub-pages (website-overhaul §D2) ship as static .html siblings of
+// index.html but are linked with clean, extensionless URLs (e.g. /solutions).
+// UseStaticFiles only serves the literal /solutions.html, and GitHub Pages
+// resolves the extensionless form for us — this middleware gives the container
+// the same behaviour so both hosts answer the same links.
+var marketingPages = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "/wallet-info", "/designer-overview", "/solutions", "/compare", "/developers", "/contact"
+};
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value;
+    if (path is not null && marketingPages.Contains(path.TrimEnd('/')))
+    {
+        var fileName = path.Trim('/') + ".html";
+        var filePath = Path.Combine(app.Environment.WebRootPath, fileName);
+        if (File.Exists(filePath))
+        {
+            context.Response.ContentType = "text/html";
+            await context.Response.SendFileAsync(filePath);
+            return;
+        }
     }
     await next();
 });

@@ -7,11 +7,10 @@ namespace Sorcha.UI.Core.Theme;
 
 /// <summary>
 /// Canonical Sorcha <see cref="MudTheme"/> — single source of truth for
-/// palette, surfaces, and (eventually) typography shared by every host
-/// that mounts MudBlazor. Web (<c>Sorcha.UI.Web.Client</c>) and PWA
-/// (<c>Sorcha.Wallet.Pwa</c>) both bind their <c>MudThemeProvider</c> to
-/// <see cref="Default"/> so the citizen sees a consistent identity moving
-/// between the multi-tenant app and the wallet.
+/// palette, typography, and shape shared by every host that mounts MudBlazor.
+/// Web (<c>Sorcha.UI.Web.Client</c>) and PWA (<c>Sorcha.Wallet.Pwa</c>) both
+/// bind their <c>MudThemeProvider</c> to <see cref="Default"/> so the citizen
+/// sees a consistent identity moving between the multi-tenant app and the wallet.
 /// </summary>
 /// <remarks>
 /// The instance is built once at type-init and exposed read-only. Do not
@@ -21,41 +20,113 @@ namespace Sorcha.UI.Core.Theme;
 /// </remarks>
 public static class SorchaMudTheme
 {
-    /// <summary>
-    /// The default theme. Lifted verbatim from the original
-    /// <c>Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor</c>
-    /// private field so existing Web appearance is byte-identical.
-    /// </summary>
+    /// <summary>The default theme.</summary>
     public static MudTheme Default { get; } = Build();
 
+    // Carries the Sorcha Refined Visual System tokens (docs/design-system).
+    // This is a refinement of the indigo/violet identity, not a rebrand:
+    //   • Primary = #4F46E5 (the deep "action" indigo) so white text / AppBar
+    //     pass WCAG AA. The brand glow #6366F1 moves to Secondary (large / icon
+    //     / border use only). Tertiary = the verification step
+    //     (#A5B4FC dark / #4338CA light).
+    //   • The lighter legacy indigo/violet drift and the old green accent are
+    //     gone — green survives only as Success.
+    //   • Adds the Inter / IBM Plex Mono typography scale and a 12px shape scale.
     private static MudTheme Build() => new()
     {
-        // Light + dark palettes carry the Feature 141 "Bolder" design tokens
-        // (docs/mockups/design_handoff_wallet_home/) so MudBlazor surfaces,
-        // backgrounds, and text follow the wallet design without per-component
-        // overrides. Primary/Secondary are the long-standing brand colours.
         PaletteLight = new PaletteLight
         {
-            Primary = "#667eea",
-            Secondary = "#764ba2",
-            AppbarBackground = "#667eea",
-            Background = "#f4f5fb",
-            Surface = "#ffffff",
-            TextPrimary = "#0f1024",
-            TextSecondary = "#5a607a",
-            LinesDefault = "#e5e7ef",
+            Primary          = "#4F46E5",   // action indigo (white text = 6.3:1)
+            PrimaryDarken    = "#4338CA",
+            PrimaryLighten   = "#6366F1",
+            Secondary        = "#6366F1",   // brand glow — large / icon / border only
+            Tertiary         = "#4338CA",   // verification / proof (text-safe on light)
+            TertiaryDarken   = "#3730A3",
+            Background       = "#FCFCFE",
+            BackgroundGray   = "#F3F4FB",   // section banding
+            Surface          = "#FFFFFF",
+            DrawerBackground = "#FFFFFF",
+            DrawerText       = "#14162B",
+            AppbarBackground = "#FFFFFF",
+            AppbarText       = "#14162B",
+            TextPrimary      = "#14162B",   // 17.4:1 on bg
+            TextSecondary    = "#585E7C",   // 6.2:1
+            TextDisabled     = "rgba(20,22,43,0.38)",
+            ActionDefault    = "#585E7C",
+            ActionDisabled   = "rgba(20,22,43,0.26)",
+            Divider          = "#E4E5F1",
+            DividerLight     = "#EEEFF6",
+            LinesDefault     = "#E4E5F1",
+            LinesInputs      = "#CDD0E4",
+            TableLines       = "#E4E5F1",
+            Success          = "#047857",   // ~5.4:1
+            Warning          = "#B45309",   // ~5.0:1
+            Error            = "#C81E1E",   // ~5.7:1
+            Info             = "#4F46E5",
         },
+
         PaletteDark = new PaletteDark
         {
-            Primary = "#667eea",
-            Secondary = "#764ba2",
-            AppbarBackground = "#181928",
-            Surface = "#181928",
-            Background = "#0a0b14",
-            DrawerBackground = "#181928",
-            TextPrimary = "#f3f4fa",
-            TextSecondary = "#9a9cb3",
-            LinesDefault = "#252638",
-        }
+            Primary          = "#4F46E5",   // action indigo (white text = 6.3:1)
+            PrimaryDarken    = "#4338CA",
+            PrimaryLighten   = "#6366F1",
+            Secondary        = "#6366F1",   // brand glow — large / icon / border only
+            Tertiary         = "#A5B4FC",   // verification / proof (text-safe on dark, 9.8:1)
+            TertiaryDarken   = "#818CF8",
+            Background       = "#0A0B14",   // the brand ground
+            BackgroundGray   = "#0E1020",   // section banding
+            Surface          = "#14162B",
+            DrawerBackground = "#0E1020",
+            DrawerText       = "#EDEEF8",
+            AppbarBackground = "#0E1020",
+            AppbarText       = "#EDEEF8",
+            TextPrimary      = "#EDEEF8",   // 16.98:1 on bg
+            TextSecondary    = "#9A9FBC",   // 7.5:1
+            TextDisabled     = "rgba(237,238,248,0.38)",
+            ActionDefault    = "#9A9FBC",
+            ActionDisabled   = "rgba(237,238,248,0.26)",
+            Divider          = "#282C46",
+            DividerLight     = "#1E2138",
+            LinesDefault     = "#282C46",
+            LinesInputs      = "#3A3F63",
+            TableLines       = "#282C46",
+            Success          = "#34D399",   // ~10.2:1
+            Warning          = "#FBBF24",   // ~11.8:1
+            Error            = "#F87171",   // ~7.1:1
+            Info             = "#A5B4FC",
+        },
+
+        Typography = new Typography
+        {
+            Default = new DefaultTypography
+            {
+                FontFamily = ["Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
+                FontSize = "16px", FontWeight = "400", LineHeight = "1.6", LetterSpacing = "normal"
+            },
+            H1 = new H1Typography { FontSize = "56px", FontWeight = "700", LineHeight = "1.05", LetterSpacing = "-0.022em" },
+            H2 = new H2Typography { FontSize = "40px", FontWeight = "700", LineHeight = "1.12", LetterSpacing = "-0.018em" },
+            H3 = new H3Typography { FontSize = "28px", FontWeight = "600", LineHeight = "1.2",  LetterSpacing = "-0.012em" },
+            H4 = new H4Typography { FontSize = "22px", FontWeight = "600", LineHeight = "1.3" },
+            H5 = new H5Typography { FontSize = "18px", FontWeight = "600", LineHeight = "1.4" },
+            H6 = new H6Typography { FontSize = "16px", FontWeight = "600", LineHeight = "1.5" },
+            Subtitle1 = new Subtitle1Typography { FontSize = "19px", FontWeight = "400", LineHeight = "1.6" },
+            Subtitle2 = new Subtitle2Typography { FontSize = "15px", FontWeight = "500", LineHeight = "1.5" },
+            Body1 = new Body1Typography { FontSize = "16px", FontWeight = "400", LineHeight = "1.6" },
+            Body2 = new Body2Typography { FontSize = "14px", FontWeight = "400", LineHeight = "1.5" },
+            Button = new ButtonTypography { FontSize = "15px", FontWeight = "600", LineHeight = "1", LetterSpacing = "normal", TextTransform = "none" },
+            Caption = new CaptionTypography { FontSize = "13px", FontWeight = "500", LineHeight = "1.45" },
+            Overline = new OverlineTypography
+            {
+                FontFamily = ["IBM Plex Mono", "JetBrains Mono", "ui-monospace", "monospace"],
+                FontSize = "12px", FontWeight = "600", LineHeight = "1.4", LetterSpacing = "0.14em", TextTransform = "uppercase"
+            },
+        },
+
+        LayoutProperties = new LayoutProperties
+        {
+            DefaultBorderRadius = "12px",
+            DrawerWidthLeft = "260px",
+            AppbarHeight = "64px",
+        },
     };
 }

@@ -15,13 +15,13 @@
 .wallet-hero__bg {
     position: absolute;
     inset: 0;
-    background: linear-gradient(160deg, #667eea 0%, #764ba2 70%, #3d2c6b 100%);
+    background: linear-gradient(160deg, #4F46E5 0%, #818CF8 70%, #3d2c6b 100%);
     clip-path: polygon(0 0, 100% 0, 100% 78%, 0 100%);
     z-index: 0;
 }
 
 .wallet-hero--dark .wallet-hero__bg {
-    background: linear-gradient(160deg, #667eea 0%, #764ba2 70%, #1a0d2e 100%);
+    background: linear-gradient(160deg, #4F46E5 0%, #818CF8 70%, #1a0d2e 100%);
 }
 
 .wallet-hero__grid {
