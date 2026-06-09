@@ -58,7 +58,9 @@ const canonicalTag = '    <link rel="canonical" href="https://www.sorcha.dev">\n
 // Standalone redirect stubs for app-only routes the static host doesn't have.
 const redirects = [
   { path: 'wallet', to: 'https://n1.sorcha.dev/wallet' },
-  { path: 'get', to: 'https://n1.sorcha.dev/get' },
+  // The wallet "get started" page is the Blazor route under /app/ (the app's base
+  // href), not an origin-root path. Links use /app/get; bounce the static host there.
+  { path: 'app/get', to: 'https://n1.sorcha.dev/app/get' },
 ]
 
 function redirectHtml(to) {
