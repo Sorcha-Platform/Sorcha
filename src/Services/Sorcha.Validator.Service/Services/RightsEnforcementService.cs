@@ -188,6 +188,19 @@ public class RightsEnforcementService : IRightsEnforcementService
     /// </summary>
     private static bool IsGovernanceTransaction(Transaction transaction)
     {
+        // A blueprint PUBLISH (transactionType "BlueprintPublish") is a system seed, never a
+        // governance roster-operation — even when the blueprint being published IS
+        // register-governance-v1. Genuine governance operations carry transactionType
+        // "GovernanceOperation" with a ControlTransactionPayload, not a blueprint body, and
+        // an empty BlueprintId. Without this guard the one-time bootstrap publish of the
+        // governance blueprint matches the GovernanceBlueprintId check below and is rejected
+        // VAL_PERM_002 (the system blueprint-publish key is not a roster member), silently
+        // dropping register-governance-v1 from the system register. (#917 — real root cause;
+        // the prior seal-wait fix targeted a stale-head fork that was never the actual cause.)
+        if (transaction.Metadata.TryGetValue("transactionType", out var seedType) &&
+            string.Equals(seedType, "BlueprintPublish", StringComparison.OrdinalIgnoreCase))
+            return false;
+
         // Check if the blueprint ID matches the governance blueprint
         if (string.Equals(transaction.BlueprintId, GovernanceBlueprintId, StringComparison.OrdinalIgnoreCase))
             return true;

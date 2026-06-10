@@ -232,6 +232,54 @@ public class RightsEnforcementServiceTests
         result.Errors.Should().Contain(e => e.Message.Contains("Auditor"));
     }
 
+    // --- Governance BLUEPRINT publish is NOT a governance operation (#917) ---
+
+    [Fact]
+    public async Task ValidateGovernanceRightsAsync_GovernanceBlueprintPublish_NotTreatedAsGovernanceOp()
+    {
+        // The one-time bootstrap publish of the register-governance-v1 *blueprint* carries
+        // BlueprintId == register-governance-v1, but it is a system seed (transactionType
+        // "BlueprintPublish"), signed by the system blueprint-publish key which is NOT a roster
+        // member. It must NOT be misclassified as a governance roster-operation and rejected
+        // VAL_PERM_002 — that drops the governance blueprint from the system register at bootstrap.
+        var roster = CreateRoster(
+            (OwnerPublicKey, RegisterRole.Owner, "did:sorcha:w:owner1"));
+        _rosterServiceMock
+            .Setup(r => r.GetCurrentRosterAsync("test-register", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(roster);
+
+        var payloadElement = JsonSerializer.Deserialize<JsonElement>("{\"title\":\"Register Governance\"}");
+        var tx = new Transaction
+        {
+            TransactionId = Guid.NewGuid().ToString(),
+            RegisterId = "test-register",
+            BlueprintId = RightsEnforcementService.GovernanceBlueprintId,
+            ActionId = "blueprint-publish",
+            Payload = payloadElement,
+            PayloadHash = "hash",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Signatures =
+            [
+                new Signature
+                {
+                    PublicKey = UnknownPublicKey, // system blueprint-publish key — not a roster member
+                    SignatureValue = new byte[64],
+                    Algorithm = "ED25519",
+                    SignedAt = DateTimeOffset.UtcNow
+                }
+            ],
+            Metadata = new Dictionary<string, string> { ["transactionType"] = "BlueprintPublish" }
+        };
+
+        var result = await _service.ValidateGovernanceRightsAsync(tx);
+
+        result.IsValid.Should().BeTrue();
+        result.Errors.Should().NotContain(e => e.Code == "VAL_PERM_002");
+        _rosterServiceMock.Verify(
+            r => r.GetCurrentRosterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     // --- Metadata-based Control detection ---
 
     [Fact]
