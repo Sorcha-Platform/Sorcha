@@ -1,0 +1,10 @@
+{{ capture content -}}
+Hi {{ display_name }} — {{ summary }}
+
+Review your security settings:
+{{ manage_url }}
+
+If this was you, no action is needed. If it wasn't, open your security settings now
+and remove anything you don't recognise.
+{{- end -}}
+{{- include 'base.txt' -}}

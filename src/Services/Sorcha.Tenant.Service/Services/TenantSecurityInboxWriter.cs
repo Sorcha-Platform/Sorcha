@@ -34,6 +34,19 @@ public interface ITenantSecurityInboxWriter
     /// entry (timestamp folded into the SourceEventId).
     /// </summary>
     Task WriteBackupCodeUsedAsync(Guid platformUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Write a Feature-150 security-change entry with caller-supplied copy. The single
+    /// generic entry point used by <c>ISecurityChangeNotifier</c> so every account-security
+    /// mutation (password / social / passkey / 2FA channel) lands in the bell drawer.
+    /// </summary>
+    Task WriteSecurityChangeAsync(
+        Guid platformUserId,
+        string eventKey,
+        string title,
+        string summary,
+        InboxSeverity severity = InboxSeverity.Warning,
+        CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -93,6 +106,23 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             summary: "A 2FA backup code was just consumed during sign-in. If this wasn't you, change your password and review your backup codes immediately.",
             iconKey: "security.backup-code-used",
             severity: InboxSeverity.Warning,
+            ct);
+
+    /// <inheritdoc />
+    public Task WriteSecurityChangeAsync(
+        Guid platformUserId,
+        string eventKey,
+        string title,
+        string summary,
+        InboxSeverity severity = InboxSeverity.Warning,
+        CancellationToken ct = default) =>
+        WriteAsync(
+            platformUserId,
+            eventKey,
+            title: title,
+            summary: summary,
+            iconKey: $"security.{eventKey}",
+            severity: severity,
             ct);
 
     private async Task WriteAsync(

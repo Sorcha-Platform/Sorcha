@@ -1,0 +1,10 @@
+{{ capture content -}}
+Hi {{ display_name }} — enter this code to finish signing in to your {{ branding.sender_name }} account:
+
+    {{ code }}
+
+The code works for {{ expires_in_minutes }} minutes and can be used once. If you
+didn't just try to sign in, someone may know your password — change it and review
+your sign-in methods.
+{{- end -}}
+{{- include 'base.txt' -}}

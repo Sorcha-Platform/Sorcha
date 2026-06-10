@@ -49,3 +49,18 @@ public sealed record PairingResumptionTemplateModel(
     string ResumptionUrl,
     int ExpiresInHours,
     EmailBranding Branding);
+
+/// <summary>Model for the <c>twofactor-code</c> template (Feature 150) — always Sorcha-branded.</summary>
+public sealed record TwoFactorCodeTemplateModel(
+    string DisplayName,
+    string Code,
+    int ExpiresInMinutes,
+    EmailBranding Branding);
+
+/// <summary>Model for the <c>security-change</c> always-notify template (Feature 150) — always Sorcha-branded.</summary>
+public sealed record SecurityChangeTemplateModel(
+    string DisplayName,
+    string Title,
+    string Summary,
+    string ManageUrl,
+    EmailBranding Branding);

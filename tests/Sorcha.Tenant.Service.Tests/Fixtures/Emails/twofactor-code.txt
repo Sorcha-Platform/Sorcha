@@ -1,0 +1,11 @@
+Hi Stuart Fraser — enter this code to finish signing in to your Sorcha account:
+
+    123456
+
+The code works for 10 minutes and can be used once. If you
+didn't just try to sign in, someone may know your password — change it and review
+your sign-in methods.
+
+— the Sorcha team
+Decentralised registers for secure data flow
+Questions? Write to help@sorcha.dev.

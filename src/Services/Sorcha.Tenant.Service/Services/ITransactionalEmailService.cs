@@ -40,4 +40,13 @@ public interface ITransactionalEmailService
     /// /setup/add-device handoff in an authenticated session.
     /// </summary>
     Task SendPairingResumptionAsync(PairingResumptionDispatch dispatch, CancellationToken ct = default);
+
+    /// <summary>Sends a two-factor one-time code (Feature 150). Always Sorcha-branded.</summary>
+    Task SendTwoFactorCodeAsync(TwoFactorCodeDispatch dispatch, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a security-change alert (Feature 150 always-notify). Always Sorcha default branding —
+    /// a security notification must never carry org branding.
+    /// </summary>
+    Task SendSecurityChangeAsync(SecurityChangeDispatch dispatch, CancellationToken ct = default);
 }

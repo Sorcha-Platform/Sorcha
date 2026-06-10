@@ -214,6 +214,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITenantMembershipInboxWriter, TenantMembershipInboxWriter>();
         // Feature 118 — Tenant-side inbox writer for security events (2FA enable/disable).
         services.AddScoped<ITenantSecurityInboxWriter, TenantSecurityInboxWriter>();
+        // Feature 150 — always-notify: composes the inbox writer + a Sorcha-branded email.
+        services.AddScoped<ISecurityChangeNotifier, SecurityChangeNotifier>();
         services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
         services.AddScoped<IOrgProvisioningService, OrgProvisioningService>();
         services.AddScoped<IPlatformUserProvisioningService, PlatformUserProvisioningService>();
