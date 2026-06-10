@@ -739,4 +739,4 @@ Add comments in the blueprint metadata:
 - [JSON Logic Official Documentation](https://jsonlogic.com)
 - [Blueprint Architecture](./blueprint-architecture.md)
 - [JSON-e Templates Guide](./json-e-templates.md)
-- [Fluent Builder API](../src/Core/Sorcha.Blueprint.Fluent/)
+- [Fluent Builder API](https://github.com/Sorcha-Platform/Sorcha/tree/master/src/Core/Sorcha.Blueprint.Fluent)

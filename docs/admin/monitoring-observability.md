@@ -228,6 +228,24 @@ Services --> OTEL Collector --> Aspire Dashboard
                             --> External Platform
 ```
 
+## Grafana Dashboards
+
+A pre-built Grafana dashboard for SignalR observability is included at `ops/grafana/dashboards/sorcha-signalr.json`.
+
+**What it shows** (Feature 118, source meter `Sorcha.SignalR`):
+
+| Panel | Metric |
+|-------|--------|
+| SignalR connections open vs closed | `sorcha_signalr_connections_total` by hub and state |
+| Hub events sent | `sorcha_signalr_messages_sent_total` by hub and event type |
+| Backplane state per service | `sorcha_signalr_backplane_state` (0=down, 1=degraded, 2=up) |
+| Client reconnect attempts | `sorcha_signalr_reconnects_total` by hub and reason |
+| EventsHub decommission gauge | `sorcha_signalr_events_hub_subscribers` (must reach zero before EventsHub retirement) |
+
+**Requirement:** Grafana must have a Prometheus datasource with UID `prometheus` that scrapes the OTel metrics endpoint exposed by each Sorcha service. Point Prometheus at the OTLP HTTP exporter (port 4318 in the default compose) or configure the services to push to a Prometheus-compatible remote-write endpoint.
+
+**To import:** In Grafana, go to Dashboards → Import → Upload JSON file → select `ops/grafana/dashboards/sorcha-signalr.json`. The dashboard auto-refreshes every 30 seconds and defaults to a 1-hour window.
+
 ## Alerting Recommendations
 
 For production deployments, configure alerts on:

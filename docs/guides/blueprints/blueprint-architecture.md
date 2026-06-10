@@ -166,9 +166,9 @@ var blueprint = BlueprintBuilder.Create()
 ```
 
 **Key Files:**
-- Models: [Blueprint.cs](../src/Common/Sorcha.Blueprint.Models/Blueprint.cs)
-- Builders: [BlueprintBuilder.cs](../src/Core/Sorcha.Blueprint.Fluent/BlueprintBuilder.cs)
-- API: [Program.cs](../src/Apps/Services/Sorcha.Blueprint.Api/Program.cs)
+- Models: [Blueprint.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Common/Sorcha.Blueprint.Models/Blueprint.cs)
+- Builders: [BlueprintBuilder.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Core/Sorcha.Blueprint.Fluent/BlueprintBuilder.cs)
+- API: [Program.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Services/Sorcha.Blueprint.Service/Program.cs)
 
 ---
 
@@ -2939,8 +2939,8 @@ The blueprint architecture positions Sorcha as a leader in declarative, blockcha
 
 ## References
 
-- **Sorcha Blueprint Models**: [Blueprint.cs](../src/Common/Sorcha.Blueprint.Models/Blueprint.cs)
-- **Fluent Builders**: [BlueprintBuilder.cs](../src/Core/Sorcha.Blueprint.Fluent/BlueprintBuilder.cs)
+- **Sorcha Blueprint Models**: [Blueprint.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Common/Sorcha.Blueprint.Models/Blueprint.cs)
+- **Fluent Builders**: [BlueprintBuilder.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Core/Sorcha.Blueprint.Fluent/BlueprintBuilder.cs)
 - **JSON Logic**: https://jsonlogic.com
 - **JSON-e**: https://json-e.js.org
 - **JSON-LD**: https://json-ld.org

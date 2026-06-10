@@ -95,7 +95,7 @@ ssh sorcha@n1.sorcha.dev
 cd /opt/sorcha
 
 # If .env does not exist, copy from the template:
-# scp .env.example sorcha@51.105.7.135:/opt/sorcha/.env
+# scp .env.example <ssh-user>@<n1-host>:/opt/sorcha/.env
 
 nano .env
 # Set the four values:

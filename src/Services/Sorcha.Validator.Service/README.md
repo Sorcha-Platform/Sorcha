@@ -813,16 +813,16 @@ src/Common/Sorcha.Validator.Core/
 
 ### Related Documents
 
-- **Specification:** [.specify/specs/sorcha-validator-service.md](./../../../.specify/specs/sorcha-validator-service.md)
-- **Design:** [docs/validator-service-design.md](./../../../docs/reference/validator-service-design.md)
-- **Architecture:** [docs/architecture.md](./../../../docs/reference/architecture.md)
+- **Specification:** [.specify/specs/sorcha-validator-service.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/.specify/specs/sorcha-validator-service.md)
+- **Design:** [docs/validator-service-design.md](../../../docs/reference/validator-service-design.md)
+- **Architecture:** [docs/architecture.md](../../../docs/reference/architecture.md)
 - **API Documentation:** [https://localhost:7087/scalar/v1](https://localhost:7087/scalar/v1) (when running)
 
 ### Quick Links
 
-- **GitHub Repository:** [https://github.com/sorcha-platform/sorcha](https://github.com/sorcha-platform/sorcha)
-- **Issue Tracker:** [https://github.com/sorcha-platform/sorcha/issues](https://github.com/sorcha-platform/sorcha/issues)
-- **Spec-Kit Guide:** [.specify/README.md](./../../../.specify/README.md)
+- **GitHub Repository:** [https://github.com/Sorcha-Platform/Sorcha](https://github.com/Sorcha-Platform/Sorcha)
+- **Issue Tracker:** [https://github.com/Sorcha-Platform/Sorcha/issues](https://github.com/Sorcha-Platform/Sorcha/issues)
+- **Spec-Kit Guide:** [.specify/README.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/.specify/README.md)
 
 ---
 
@@ -830,16 +830,16 @@ src/Common/Sorcha.Validator.Core/
 
 ### Getting Help
 
-- Review [TROUBLESHOOTING.md](./../../../docs/guides/TROUBLESHOOTING.md) for common issues
-- Check [CLAUDE.md](./../../../CLAUDE.md) for AI assistant guidelines
+- Review [TROUBLESHOOTING.md](../../../docs/guides/TROUBLESHOOTING.md) for common issues
+- Check [CLAUDE.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/CLAUDE.md) for AI assistant guidelines
 - Create a GitHub issue with the `validator-service` label
 
 ### Contributing
 
-- Follow [CONTRIBUTING.md](./../../../CONTRIBUTING.md) guidelines
+- Follow [CONTRIBUTING.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/CONTRIBUTING.md) guidelines
 - Run tests before submitting: `dotnet test`
 - Update documentation for API changes
-- Follow [constitutional principles](./../../../.specify/constitution.md)
+- Follow [constitutional principles](https://github.com/Sorcha-Platform/Sorcha/blob/master/.specify/constitution.md)
 
 ---
 

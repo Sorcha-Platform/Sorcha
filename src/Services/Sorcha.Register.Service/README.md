@@ -141,7 +141,7 @@ This enables:
 ### 1. Clone and Navigate
 
 ```bash
-git clone https://github.com/yourusername/Sorcha.git
+git clone https://github.com/Sorcha-Platform/Sorcha.git
 cd Sorcha/src/Services/Sorcha.Register.Service
 ```
 
@@ -908,7 +908,7 @@ Recovery runs as a `BackgroundService` and reports status via the `/health/sync`
 
 ## Resources
 
-- **Specification**: [.specify/specs/sorcha-register-service.md](../../../.specify/specs/sorcha-register-service.md)
+- **Specification**: [.specify/specs/sorcha-register-service.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/.specify/specs/sorcha-register-service.md)
 - **API Reference**: [Scalar UI](https://localhost:7085/scalar)
 - **Architecture**: [docs/architecture.md](../../../docs/reference/architecture.md)
 - **Development Status**: [docs/development-status.md](../../../docs/reference/development-status.md)
@@ -949,7 +949,7 @@ Recovery runs as a `BackgroundService` and reports status via the `/health/sync`
 
 ## License
 
-Apache License 2.0 - See [LICENSE](../../../LICENSE) for details.
+Apache License 2.0 - See [LICENSE](https://github.com/Sorcha-Platform/Sorcha/blob/master/LICENSE) for details.
 
 ---
 

@@ -40,10 +40,17 @@ gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });`],
       // but not built/navigated. Live status lives in development-status.md and
       // the service READMEs.
       'reference/status/**',
+      // Internal security audit findings and code-review artefacts — not user
+      // documentation. Excluded to prevent publishing sensitive internal material
+      // to docs.sorcha.dev.
+      'audits/**',
+      'reviews/**',
+      'strategic-context.md',
+      'strategic-context-for-claude.md',
     ],
 
-    // TODO: Remove after PR 2 fixes broken links
-    ignoreDeadLinks: true,
+    // Dead links fixed in the pre-v1 docs sweep (2026-06-10); the build now
+    // fails on any new dead link. Keep it that way.
 
     themeConfig: {
       search: {
@@ -66,6 +73,20 @@ gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });`],
 
       sidebar: {
         '/': [
+          {
+            text: 'Platform',
+            collapsed: false,
+            items: [
+              { text: 'Quickstart', link: '/quickstart' },
+              { text: 'Architecture Overview', link: '/architecture' },
+              { text: 'Security Model', link: '/security-model' },
+              { text: 'Applicability', link: '/applicability' },
+              { text: 'Privacy', link: '/privacy' },
+              { text: 'MCP Server', link: '/mcp-server' },
+              { text: 'MCP Registry Publishing', link: '/mcp-registry-publishing' },
+              { text: 'API Explorer', link: '/api/' },
+            ],
+          },
           {
             text: 'Getting Started',
             collapsed: false,
@@ -106,6 +127,7 @@ gtag('config', 'G-B2MKVEP45T', { anonymize_ip: true });`],
                 items: [
                   { text: 'Authentication Setup', link: '/guides/AUTHENTICATION-SETUP' },
                   { text: 'JWT Configuration', link: '/guides/JWT-CONFIGURATION' },
+                  { text: 'Social Login Setup', link: '/guides/SOCIAL-LOGIN-SETUP' },
                 ],
               },
               {

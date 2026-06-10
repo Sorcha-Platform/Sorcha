@@ -68,7 +68,7 @@ The exact `http+sse` URL is in the manifest's `transports[1].url` field.
 Every tool call requires a JWT. The Tenant Service is the JWT authority; obtain a token via the service-auth endpoint:
 
 ```bash
-curl -X POST https://<your-host>/api/tenant/api/service-auth/token \
+curl -X POST https://<your-host>/api/service-auth/token \
   -H "Content-Type: application/json" \
   -d '{
     "clientId": "<your-client-id>",

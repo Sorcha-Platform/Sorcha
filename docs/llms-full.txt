@@ -57,7 +57,7 @@ calls to the services behind it.
 The **MCP Server** exposes 36 tools across three role slices (admin, designer,
 participant) so AI agents can drive the platform end-to-end.
 
-Full architecture diagrams: `docs/architecture.md` (when published — Phase 8).
+Full architecture diagrams: `docs/architecture.md`.
 Service-to-service reference: `docs/reference/architecture.md`. Port assignments:
 `docs/getting-started/PORT-CONFIGURATION.md`.
 
@@ -65,7 +65,7 @@ Service-to-service reference: `docs/reference/architecture.md`. Port assignments
 
 ## Quickstart pointer
 
-Setup is documented in `docs/quickstart.md` (lands with Phase 7 of spec 117). For now:
+Setup is documented in `docs/quickstart.md`. For now:
 
 ```
 docker-compose up -d
@@ -101,11 +101,11 @@ Tool catalogue (36 tools across three role slices):
   list, transaction history, register query, wallet info/sign, disclosed data,
   workflow status. Use these to drive a running workflow on behalf of a participant.
 
-The manifest at `/.well-known/mcp.json` (lands with Phase 4 of spec 117) names every
-transport, the JWT acquisition flow, and the per-slice tool count.
+The manifest at `/.well-known/mcp.json` names every transport, the JWT acquisition
+flow, and the per-slice tool count.
 
 A worked example session driving the TradeFinance walkthrough end-to-end via MCP
-will land in `docs/mcp-server.md` (Phase 4).
+is in `docs/mcp-server.md`.
 
 ---
 
@@ -203,14 +203,14 @@ Be precise about scope. Sorcha is not:
 ## Where to read more
 
 - `STANDARDS.md` — full standards compliance table at the repo root.
-- `docs/architecture.md` — full architecture document (Phase 8 of spec 117).
+- `docs/architecture.md` — full architecture document.
 - `docs/openid4vc-haip-integration.md` — how Sorcha sits beside GOV.UK Wallet and
-  EUDIW (Phase 8).
+  EUDIW.
 - `docs/applicability.md` — domain coverage: DPP, trade finance, IPC-1782, municipal
-  governance (Phase 8).
+  governance.
 - `docs/security-model.md` — selective disclosure, aggregate inference threat model,
-  PQC posture, mTLS gap, trust anchor model (Phase 8).
-- `docs/mcp-server.md` — MCP connection guide and worked example (Phase 4).
-- `docs/quickstart.md` — agent-runnable setup (Phase 7).
+  PQC posture, mTLS gap, trust anchor model.
+- `docs/mcp-server.md` — MCP connection guide and worked example.
+- `docs/quickstart.md` — agent-runnable setup.
 - `walkthroughs/TradeFinance/` and `walkthroughs/AssuredIdentity/` — runnable
   end-to-end demonstrations.

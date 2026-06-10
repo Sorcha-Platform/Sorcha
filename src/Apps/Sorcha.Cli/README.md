@@ -1,27 +1,39 @@
-# Sorcha CLI - Administrative Tool
+# Sorcha CLI - Developer / Preview Tool
 
-**Version:** 1.0.5-build.2153+08a162d9ce
-**Status:** 🟡 **In Active Development** (60% Feature Complete)
-**Last Updated:** 2026-01-05
+**Version:** see root `Directory.Build.props` (build-time derived, `2.<run>.<attempt>`)
+**Status:** Developer preview — substantially complete for platform administration and walkthroughs
+**Last Updated:** 2026-06-10
 
-The Sorcha CLI is a cross-platform command-line interface for managing the Sorcha decentralised register platform. It provides comprehensive commands for authentication, organization management, wallet operations, transaction handling, register administration, and peer network monitoring.
+> **Note:** The CLI is a developer and operator tool, not the primary user-facing interface for v1. For end-user onboarding and day-to-day wallet operations the supported path is the Sorcha web UI and the Citizen Wallet PWA. See the [documentation site](https://docs.sorcha.io) and the [quick-start guide](../../../docs/getting-started/) for the recommended setup path.
 
-## 📊 **Current Implementation Status**
+The Sorcha CLI is a cross-platform command-line interface for managing the Sorcha decentralised register platform. It provides commands for authentication, configuration, wallet operations, blueprint management, transaction handling, register administration, credential operations, validator management, and peer network monitoring.
 
-| Component | Status | Completion |
-|-----------|--------|-----------|
-| **Foundation** (Config, Auth, Token Cache) | ✅ Complete | 100% |
-| **Authentication Commands** | ✅ Complete | 100% |
-| **Configuration Commands** | ✅ Complete | 100% |
-| **List/Get Operations** | 🟢 Implemented | 80% |
-| **Create/Update/Delete Operations** | 🟡 Partial | 20% |
-| **Advanced Features** (Export, Crypto, Monitoring) | 🔴 Not Started | 0% |
-| **Interactive REPL Mode** | 🔴 Not Started | 0% |
+## Current Implementation Status
 
-**What works:** Authentication, configuration, viewing organizations/users/registers/wallets/transactions
-**What doesn't work yet:** Creating/updating entities, transaction export, wallet signing, peer monitoring
-
-See [CLI-CAPABILITIES-AUDIT.md](CLI-CAPABILITIES-AUDIT.md) for detailed status.
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **Foundation** (config, auth, token cache) | Complete | Multi-profile, DPAPI/Keychain/Linux encryption |
+| **Authentication commands** | Complete | Login, logout, status; user + service-principal flows |
+| **Configuration commands** | Complete | Init, list, set-active |
+| **Org / User / Service-principal** | Complete | Full CRUD |
+| **Wallet commands** | Complete | Create, get, list, sign, verify, delete |
+| **Register commands** | Complete | Create, get, list, delete |
+| **Transaction commands** | Complete | List, get, submit, query |
+| **Blueprint commands** | Complete | CRUD, publish, list instances |
+| **Credential commands** | Complete | Issue, list, revoke |
+| **Schema commands** | Complete | List, get |
+| **Docket commands** | Complete | List, get, verify |
+| **Validator commands** | Complete | List, register, deregister, status |
+| **Audit commands** | Complete | Query audit log |
+| **System register commands** | Complete | Genesis, import-validator-key, status |
+| **Platform / admin commands** | Complete | Platform settings, bootstrap |
+| **Participant commands** | Complete | List, get |
+| **Invitation commands** | Complete | Create, list, redeem |
+| **Verify commands** | Complete | Verify a credential or presentation |
+| **Health command** | Complete | Check service health |
+| **Event-watch command** | Complete | Stream SignalR events to console |
+| **Peer commands** | Partial | List, topology, stats, health — live gRPC client integration; some stats endpoints stub |
+| **Interactive REPL mode** | Not started | Not planned for v1 |
 
 ## Table of Contents
 
@@ -393,7 +405,79 @@ This is useful for:
 | `sorcha tx submit` | Submit new transaction |
 | `sorcha tx query` | Query transactions with filters |
 
-### Peer Commands (Sprint 4 - Stub Implementation)
+### Blueprint Commands
+
+| Command | Description |
+|---------|-------------|
+| `sorcha blueprint list` | List blueprints |
+| `sorcha blueprint get` | Get blueprint details |
+| `sorcha blueprint create` | Create a blueprint from a JSON/YAML file |
+| `sorcha blueprint publish` | Publish a blueprint |
+| `sorcha blueprint delete` | Delete a blueprint |
+| `sorcha blueprint instances` | List workflow instances for a blueprint |
+
+### Credential Commands
+
+| Command | Description |
+|---------|-------------|
+| `sorcha credential issue` | Issue a verifiable credential |
+| `sorcha credential list` | List credentials |
+| `sorcha credential revoke` | Revoke a credential |
+
+### Schema Commands
+
+| Command | Description |
+|---------|-------------|
+| `sorcha schema list` | List schemas |
+| `sorcha schema get` | Get schema details |
+
+### Docket Commands
+
+| Command | Description |
+|---------|-------------|
+| `sorcha docket list` | List dockets for a register |
+| `sorcha docket get` | Get docket details |
+| `sorcha docket verify` | Verify a docket's Merkle proof |
+
+### Validator Commands
+
+| Command | Description |
+|---------|-------------|
+| `sorcha validator list` | List registered validators |
+| `sorcha validator register` | Register a validator |
+| `sorcha validator deregister` | Deregister a validator |
+| `sorcha validator status` | Get validator status |
+
+### System Register Commands
+
+| Command | Description |
+|---------|-------------|
+| `sorcha system-register genesis` | Run the genesis ceremony |
+| `sorcha system-register import-validator-key` | Seat a validator signing wallet from a BIP39 mnemonic |
+| `sorcha system-register status` | Show system register status |
+
+### Audit Commands
+
+| Command | Description |
+|---------|-------------|
+| `sorcha audit query` | Query the platform audit log with filters |
+
+### Verify Commands
+
+| Command | Description |
+|---------|-------------|
+| `sorcha verify credential` | Verify a verifiable credential |
+| `sorcha verify presentation` | Verify a verifiable presentation |
+
+### Other Commands
+
+| Command | Description |
+|---------|-------------|
+| `sorcha health` | Check health of all services |
+| `sorcha event-watch` | Stream real-time SignalR events to the console |
+| `sorcha completion` | Generate shell completion scripts |
+
+### Peer Commands
 
 | Command | Description |
 |---------|-------------|
@@ -403,7 +487,7 @@ This is useful for:
 | `sorcha peer stats` | Network statistics |
 | `sorcha peer health` | Health checks |
 
-**Note:** Peer commands currently provide stub output. Full gRPC client integration planned for future sprint.
+**Note:** Peer topology, stats, and health use the live gRPC client; some stats sub-endpoints may return partial data until the full Peer Service gRPC surface is finalised.
 
 ### Global Options
 
@@ -431,14 +515,20 @@ All commands support these global options:
 
 ```
 Sorcha.Cli/
-├── Commands/                # Command implementations
-│   ├── AuthCommands.cs     # Authentication commands
+├── Commands/                # Command implementations (one file per command group)
+│   ├── AuthCommands.cs
+│   ├── BlueprintCommands.cs
+│   ├── CredentialCommands.cs
+│   ├── DocketCommands.cs
 │   ├── OrganizationCommands.cs
-│   ├── UserCommands.cs
-│   ├── WalletCommands.cs
 │   ├── RegisterCommands.cs
+│   ├── SchemaCommands.cs
+│   ├── SystemRegisterCommands.cs
 │   ├── TransactionCommands.cs
-│   └── PeerCommands.cs
+│   ├── UserCommands.cs
+│   ├── ValidatorCommands.cs
+│   ├── WalletCommands.cs
+│   └── ... (see Commands/ directory for full list)
 ├── Services/               # Business logic services
 │   ├── AuthenticationService.cs
 │   ├── ConfigurationService.cs

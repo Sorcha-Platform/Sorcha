@@ -114,7 +114,7 @@ This guide provides step-by-step instructions for integrating applications with 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/Sorcha.git
+git clone https://github.com/Sorcha-Platform/Sorcha.git
 cd Sorcha
 
 # Run with .NET Aspire
@@ -781,7 +781,7 @@ curl http://localhost/api/register/health
 
 **Need Help?**
 
-- GitHub Issues: https://github.com/yourusername/Sorcha/issues
+- GitHub Issues: https://github.com/Sorcha-Platform/Sorcha/issues
 - Documentation: https://docs.sorcha.io
 - Email: support@sorcha.io
 

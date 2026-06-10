@@ -91,7 +91,7 @@ The desired shape (subject to the connectivity decision below):
 2. **`tiny` is NAT'd** (outbound-only: public `81.111.103.112`, LAN
    `192.168.51.11`; no Tailscale/WireGuard; has a Calico/k8s install but Sorcha
    runs on plain Docker — 20 cores / 62 GB / Docker 28 + Compose v2). **n1** is a
-   public Azure VM (`51.105.7.135`). So a `tiny`-as-owner topology needs the
+   public Azure VM (`<n1-host>`). So a `tiny`-as-owner topology needs the
    reverse data plane; an `n1`-as-owner topology works today.
 3. **The relay that would solve this is RETIRED.** `Sorcha.PeerRouter` +
    `RelayCommunicationService.EstablishReverseStreamAsync` (NAT'd peer holds an

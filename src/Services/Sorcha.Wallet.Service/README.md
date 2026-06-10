@@ -103,7 +103,7 @@ Transaction Signing → Wallet Service → [Sign Transaction] → Return Signatu
 ### 1. Clone and Navigate
 
 ```bash
-git clone https://github.com/yourusername/Sorcha.git
+git clone https://github.com/Sorcha-Platform/Sorcha.git
 cd Sorcha/src/Services/Sorcha.Wallet.Service
 ```
 
@@ -576,7 +576,7 @@ wallet-service:
 - [ ] Confirm private keys are never logged
 - [ ] Set up key rotation policies in your HSM provider
 
-For detailed HSM configuration, see: [Hardware Cryptographic Storage Feature Spec](../../../specs/001-hardware-crypto-enclaves/spec.md)
+For detailed HSM configuration, see: [Hardware Cryptographic Storage Feature Spec](https://github.com/Sorcha-Platform/Sorcha/blob/master/specs/001-hardware-crypto-enclaves/spec.md)
 
 ### Access Control
 
@@ -1002,7 +1002,7 @@ JWT Bearer required. The calling wallet must be the owner or hold a delegated ac
 
 ## Resources
 
-- **Specification**: [.specify/specs/sorcha-wallet-service.md](../../../.specify/specs/sorcha-wallet-service.md)
+- **Specification**: [.specify/specs/sorcha-wallet-service.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/.specify/specs/sorcha-wallet-service.md)
 - **API Reference**: [Scalar UI](https://localhost:7084/scalar)
 - **Development Status**: [docs/development-status.md](../../../docs/reference/development-status.md)
 - **Architecture**: [docs/architecture.md](../../../docs/reference/architecture.md)
@@ -1014,7 +1014,7 @@ JWT Bearer required. The calling wallet must be the owner or hold a delegated ac
 
 ## License
 
-Apache License 2.0 - See [LICENSE](../../../LICENSE) for details.
+Apache License 2.0 - See [LICENSE](https://github.com/Sorcha-Platform/Sorcha/blob/master/LICENSE) for details.
 
 ---
 

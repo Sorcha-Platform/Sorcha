@@ -163,7 +163,7 @@ Resume normal operation
 ### 1. Clone and Navigate
 
 ```bash
-git clone https://github.com/yourusername/Sorcha.git
+git clone https://github.com/Sorcha-Platform/Sorcha.git
 cd Sorcha/src/Services/Sorcha.Peer.Service
 ```
 
@@ -1079,7 +1079,7 @@ Enable detailed logging:
 
 ## License
 
-Apache License 2.0 - See [LICENSE](../../../LICENSE) for details.
+Apache License 2.0 - See [LICENSE](https://github.com/Sorcha-Platform/Sorcha/blob/master/LICENSE) for details.
 
 ---
 

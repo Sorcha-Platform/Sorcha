@@ -46,6 +46,24 @@ The Sorcha decentralised register platform demonstrates **strong foundational se
 See also the production hardening gates in [Admin → Configuration Reference](../admin/configuration-reference.md)
 (storage fail-fast audit, rate limiting, SignalR Redis backplane).
 
+### Subsequent findings — 2026-06-02 architecture review
+
+An internal architecture review on [2026-06-02](https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/reviews/2026-06-02-architecture-review.md) identified additional security findings in three categories. Status as of 2026-06-10:
+
+**C1 — TOTP secrets stored as reversible Base64 (doc-comment claimed AES-256-GCM) — ✅ FIXED (Feature 146)**
+`TotpService.cs` stored TOTP seeds as `v1:{base64}` while the method's own XML doc-comment stated AES-256-GCM encryption, actively misleading any reviewer. Anyone with database read access could recover every user's 2FA seed and generate valid codes. Feature 146 (Tenant At-Rest Secret Protection) replaced the reversible encoding with real AES-256-GCM via `ISecretProtectionProvider`; the `v1:` prefix is retained as a migration discriminator for existing rows. OIDC client secrets and the 2FA intermediate-token signing key were also hardened in the same feature.
+
+**H1 — System-wallet create/recover endpoints were `AllowAnonymous` — ✅ FIXED (Feature 147)**
+`POST /api/v1/wallets/system` and `POST /api/v1/wallets/system/recover` (which imports a BIP39 mnemonic to seat a validator signing wallet) carried only `.AllowAnonymous()`. Feature 147 (Authorization-Gap Closure) gates `/system` with `RequireService` and `/system/recover` with `CanRecoverSystemWallet` (service-tier OR platform-tier administrator), enforced at the endpoint level so a direct internal-network call is also gated.
+
+**H2 — Consumer tokens could reach blueprint and schema authoring — ✅ FIXED (Feature 147)**
+`CanManageBlueprints` admitted any token carrying an `org_id` claim; consumer/citizen tokens carry one (Feature 136), so a citizen could reach blueprint CRUD, schema, credential-definition, and status-list authoring. Feature 147 replaced the policy gate with `BlueprintManagementAuthorizationHandler`, which requires a platform-tier audience (`Tier.Platform`) or a service-tier caller — consumer-tier tokens are explicitly refused.
+
+**H3 — PWA local verifier accepted unverified issuer signatures — ⚠️ PARTIALLY ADDRESSED (Feature 148)**
+The citizen wallet's on-device verifier defaulted `requireIssuerSignature:false` via `OptOutIssuerKeyResolver`, presenting a plain "valid" result when the issuer signature was never checked. Feature 148 (Verification Correctness) made the citizen-facing result surface honest about what was and was not verified (holder chain vs issuer signature). The `OptOutIssuerKeyResolver` remains registered for the offline/doorstep path (a citizen device cannot always reach the issuer's JWKS endpoint), but the result is now explicitly labelled as holder-verified-only rather than fully verified. The authoritative server-side verifiers (Blueprint Service, `Sorcha.Verifier`) were already `requireIssuerSignature:true` and are unchanged.
+
+Additional medium findings from the review (dual VC verification stacks, `MarkCompletedAsync` TOCTOU, `ICitizenCredentialEventStream` audit-log gap, `BlueprintServiceClient.PublishBlueprintAsync` `NotImplementedException`) remain **open** as pre-production hygiene items.
+
 ---
 
 ## Table of Contents

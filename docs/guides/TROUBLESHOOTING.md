@@ -323,7 +323,7 @@ dotnet --list-sdks
 If issues persist:
 
 1. **Check Logs**: Look in Aspire dashboard for detailed error messages
-2. **GitHub Issues**: https://github.com/yourusername/sorcha/issues
+2. **GitHub Issues**: https://github.com/Sorcha-Platform/Sorcha/issues
 3. **Aspire Docs**: https://learn.microsoft.com/dotnet/aspire/
 4. **Clean Slate**: Delete `bin/`, `obj/`, restart Docker, rebuild
 

@@ -149,7 +149,7 @@ Architecture, API documentation, and technical specifications.
 |----------|-------------|
 | [Validator Design](reference/validator-service-design.md) | Validator Service architecture and design |
 | [Architecture Decisions](reference/architecture/) | ADRs (Architecture Decision Records) |
-| [Service Status Reports](reference/status/) | Per-service detailed status |
+| [Development Status](reference/development-status.md) | Platform completion and service status (per-service status snapshots retired; superseded by this page) |
 
 ---
 
@@ -164,7 +164,7 @@ Architecture, API documentation, and technical specifications.
 
 ## Archive
 
-Historical implementation plans, session summaries, and completion reports are preserved in [archive/](archive/).
+Historical implementation plans, session summaries, and completion reports are preserved in [archive/](https://github.com/Sorcha-Platform/Sorcha/tree/master/docs/archive).
 
 ---
 

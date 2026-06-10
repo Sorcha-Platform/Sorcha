@@ -7,8 +7,8 @@
 ## Prerequisites
 
 - **Docker Desktop** 20.10+ with Docker Compose 2.0+
-- **.NET 10 SDK** (for generating HTTPS certificates)
 - **Git** (to clone the repository)
+- **.NET 10 SDK** (optional — only needed if you want HTTPS on port 443)
 
 ---
 
@@ -21,23 +21,25 @@ git clone https://github.com/sorcha-platform/sorcha.git
 cd Sorcha
 ```
 
-### 2. Generate HTTPS Certificate (Required)
+### 2. Generate HTTPS Certificate (Optional)
 
-The API Gateway requires an HTTPS certificate to start. Generate it using the .NET SDK:
+The API Gateway listens on **HTTP port 80** by default. HTTPS on port 443 is also configured but requires a certificate. If you skip this step, HTTP works normally and the HTTPS listener is the only thing that fails to bind.
+
+To enable HTTPS, generate a development certificate before starting services:
 
 ```bash
 # Create certificates directory
 mkdir -p docker/certs
 
-# Generate development certificate
+# Generate development certificate (requires .NET 10 SDK)
 dotnet dev-certs https -ep docker/certs/aspnetapp.pfx -p SorchaDev2025 --trust
-
-# Verify certificate was created
-ls docker/certs/
-# Expected output: aspnetapp.pfx
 ```
 
-**Important:** If you skip this step, the API Gateway will fail to start with an error about a missing certificate file.
+Or use the provided script (Windows):
+
+```powershell
+.\scripts\generate-dev-cert.ps1
+```
 
 ### 3. Start Services
 
@@ -54,14 +56,17 @@ docker-compose logs -f
 Wait 30-60 seconds for all services to start, then access:
 
 ```bash
-# Landing page with system dashboard
-open http://localhost/
-
 # Health check (should return healthy status)
-curl http://localhost/api/health
+curl http://localhost/health
+
+# Main UI
+open http://localhost/app
 
 # API documentation
-open http://localhost/scalar/
+open http://localhost/openapi
+
+# Aspire observability dashboard
+open http://localhost:18888
 ```
 
 ---
@@ -72,11 +77,12 @@ open http://localhost/scalar/
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| **Landing Page** | `http://localhost/` | System dashboard with statistics |
-| **API Gateway (HTTPS)** | `https://localhost/` | Secure API access |
-| **API Documentation** | `http://localhost/scalar/` | Interactive Scalar API docs |
-| **Health Check** | `http://localhost/api/health` | Aggregated service health |
-| **Dashboard Stats** | `http://localhost/api/dashboard` | Platform statistics |
+| **Main UI** | `http://localhost/app` | Sorcha web UI |
+| **API Gateway** | `http://localhost/` | Primary HTTP entry point (port 80) |
+| **API Gateway (HTTPS)** | `https://localhost/` | HTTPS entry point — requires certificate (see Step 2) |
+| **API Documentation** | `http://localhost/openapi` | OpenAPI / Scalar docs |
+| **Health Check** | `http://localhost/health` | Aggregated gateway health |
+| **Aspire Dashboard** | `http://localhost:18888` | Traces, logs, and metrics |
 
 ### Infrastructure
 
@@ -155,16 +161,15 @@ docker-compose down -v
 
 ## Troubleshooting
 
-### Certificate Missing Error
+### HTTPS Certificate Missing
 
-**Error:** `Could not find certificate at /https/aspnetapp.pfx`
+**Error:** API Gateway logs show it cannot bind HTTPS (certificate not found at `/https/aspnetapp.pfx`)
 
-**Solution:**
+This only affects port 443. HTTP on port 80 continues to work. If you need HTTPS:
+
 ```bash
-# Generate the certificate
+mkdir -p docker/certs
 dotnet dev-certs https -ep docker/certs/aspnetapp.pfx -p SorchaDev2025 --trust
-
-# Restart the API Gateway
 docker-compose restart api-gateway
 ```
 
@@ -241,14 +246,8 @@ docker network inspect sorcha_sorcha-network
 ### API Gateway Endpoints
 
 ```bash
-# Landing page
-curl http://localhost/
-
 # Health check
-curl http://localhost/api/health
-
-# Dashboard statistics
-curl http://localhost/api/dashboard
+curl http://localhost/health
 
 # OpenAPI schema
 curl http://localhost/openapi/v1.json
@@ -399,15 +398,11 @@ See [DEPLOYMENT.md](../guides/DEPLOYMENT.md) for full production deployment guid
 
 **Quick Commands:**
 ```bash
-# Setup
-mkdir -p docker/certs
-dotnet dev-certs https -ep docker/certs/aspnetapp.pfx -p SorchaDev2025 --trust
-
-# Start
+# Start (HTTP only — no certificate needed)
 docker-compose up -d
 
 # Access
-open http://localhost/
+open http://localhost/app
 
 # Logs
 docker-compose logs -f
@@ -417,9 +412,9 @@ docker-compose down
 ```
 
 **Access Points:**
-- Landing Page: `http://localhost/`
-- API Docs: `http://localhost/scalar/`
-- Health: `http://localhost/api/health`
+- Main UI: `http://localhost/app`
+- API Docs: `http://localhost/openapi`
+- Health: `http://localhost/health`
 - Aspire Dashboard: `http://localhost:18888`
 
 **Need Help?**

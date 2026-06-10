@@ -99,39 +99,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Port binding permission errors (changed to safer port range)
 - Cryptography library updates for .NET 10 compatibility
 
-## [Unreleased]
+## [Unreleased] — v0.8.1 → June 2026 (Feature 128 / ~F149)
+
+Highlights from the eighteen months of development between the last tagged release (v0.8.1, November 2025) and the current pre-v1 codebase. Grouped by Keep-a-Changelog conventions; exhaustive per-sprint detail lives in the individual feature specs under `specs/`.
 
 ### Added
-- Initial project structure with .NET 10
-- .NET Aspire orchestration for cloud-native development
-- Blueprint Engine service with minimal APIs
-- Blueprint Designer web UI with Blazor Server
-- Service Defaults for shared configurations
-- OpenTelemetry integration for observability
-- Health check endpoints
-- Service discovery support
-- GitHub Actions CI/CD workflows
-  - Build and test workflow
-  - Release workflow with NuGet and Docker support
-  - CodeQL security analysis
-- Comprehensive documentation
-  - Architecture overview
-  - Getting started guide
-  - Blueprint schema specification
-  - Contributing guidelines
-- MIT License
-- .gitignore and .gitattributes for repository hygiene
+
+- **Verifiable Credentials (F031/F039/F093/F094/F103/F107)** — SD-JWT VC format, selective disclosure with JSON Pointer paths, credential gating on blueprint actions, blueprint-as-issuer, holder key binding, cross-blueprint composability, revocation via IETF Token Status List. The `AssuredIdentityCredential` is the canonical identity primitive replacing earlier split credentials.
+- **OpenID4VCI / OpenID4VP (HAIP) issuer and verifier (F097/F098/F101/F102)** — HAIP 1.0-conformant credential issuance and presentation endpoints; both SD-JWT VC and ISO mso_mdoc formats (F135). OID4VP `direct_post` callback with DCQL query.
+- **Post-quantum cryptography (F040)** — ML-DSA-65 (FIPS 204), ML-KEM-768 (FIPS 203), and SLH-DSA-128s implemented in `Sorcha.Cryptography`; used for internal action signatures, docket signatures, and per-recipient key encapsulation. PQC is core, not a branch feature.
+- **Trust hardening — receipts, Merkle proofs, revocation (F079)** — transaction receipts with Merkle inclusion proofs; revocation transactions on the distributed ledger; cross-tenant register interaction guards.
+- **Tiered JWT audiences + issuer hardening (F136)** — installation-namespaced, tier-scoped audiences (`consumer | platform | service | enrol-session`) from `SorchaAudiences`; `SorchaIssuer.Resolve` fails closed in Production/Staging; per-endpoint tier policies (`RequireConsumerAudience`, `RequirePlatformAudience`, `RequireService`).
+- **Notifications architecture (F118)** — `AddSorchaHub<THub,TClient>` unified hub registration; Redis backplane with per-service channel-prefix isolation; thin-signal contract (opaque IDs + timestamps, no domain payload); `TenantHub`, `BlueprintHub`, `WalletHub`, `RegisterHub`. Snackbar retired from all user-facing and PWA surfaces; replaced by `IInlineFeedback` + server-side inbox writer.
+- **Transactional email (F112)** — `ITransactionalEmailService` facade; Scriban templates (`verify`, `invite`, `reset`, `welcome-public`, `welcome-invited`, shared `base`); per-org branding on invitations; `WelcomeEmailDispatcher` (one-shot, non-throwing).
+- **Storage registration audit + fail-fast (F113)** — `IStorageRegistrationLog` records every storage-interface binding at startup; six audited interfaces fail-fast in Production/Staging if on an in-memory backend; `storage-providers` health check and OTel meter surface the same state.
+- **Citizen Wallet PWA (F114)** — Blazor WASM progressive web app; holder/device delegation; status-list publisher + worker; enrolment endpoint; Tenant device registry (`PlatformUserDevice`).
+- **Enrolment session + council-page gate (F126)** — `EnrolGateComponent`, `IEnrolPairingSignal`, short-lived enrol-session JWT (scope `enrol`), QR code surface, `ReturnToAllowlist` open-redirect guard.
+- **Credential-gated service (F127)** — `SorchaWalletPresentationConsumer`, `CredentialGateComponent`, claims-fetch endpoint; extends F111's timebound presentation lifecycle with the first non-HAIP consumer.
+- **Cold-start onboarding + pairing resumption (F128)** — `PairingTakeover`, `PairingHandoffSurface`, `PairingNagBanner`, `IHasPairedDeviceProbe`, `has-any-device` aggregate endpoint; pairing short-code API (6-digit human-typeable token, 5-minute TTL); "Email me a link" resumption flow (magic-link → re-authenticate → `/setup/add-device`); `PairingHandoffSurface` enrol-session `mode` discriminator.
+- **EUDI credential format + unified trust (F135)** — `ITrustEvaluator`; `TrustPolicy` replaces flat `acceptedIssuers`; `mso_mdoc` format handler (ES256/P-256-only, issuer `x5chain`, MSO verification, COSE_Sign1 DeviceAuth); trust-list snapshot management endpoints (`PUT/GET /api/v1/trust/trustlists/{id}`).
+- **Assured Identity demo environment (F144)** — n1 deployment bootstrapped through genesis ceremony; reference walkthrough at `walkthroughs/AssuredIdentity/`.
+- **Unified versioning (build-time derived)** — single `Major.Minor.Patch` from root `Directory.Build.props`; Minor = `GITHUB_RUN_NUMBER`, Patch = `GITHUB_RUN_ATTEMPT`; local builds are `2.0.0-dev`. No per-csproj `<Version>` tags.
+- Device management API (`GET/DELETE /api/v1/me/devices`, `GET /api/v1/me/devices/has-any`) for citizen-initiated wallet-device revocation from the web UI.
+- Consensus vote-signature verification (`ConsensusEngine` calls `VerifySignatureAsync`; unsigned votes rejected).
+- Per-sender sequence numbers for transaction replay protection (`WalletSequence` / `WalletSequenceRepository`, error code `VAL_REPLAY`).
+- `SorchaHub`-backed system register governance (F087/F099/F121) — genesis ceremony CLI, programmable validation rule-set (genesis-embedded, governance-updateable).
+- MCP server (F139/F140) — AI tool surface for blueprints, registers, wallets, and citizen tools.
+- CLI modernisation (F080/F133) — full command coverage: `blueprint`, `credential`, `docket`, `validator`, `audit`, `schema`, `platform`, `system-register`, `participant`, `invitation`, `verify`, `event-watch` groups added alongside the original `auth`/`config`/`org`/`wallet`/`register`/`tx`/`peer` commands.
 
 ### Changed
-- Built from the Sorcha AI Development spike
-- Modernized to .NET 10 from .NET 8/9
-- Simplified microservices to focus on core blueprint execution
-- Adopted minimal API pattern for REST endpoints
-- Replaced custom orchestration with .NET Aspire
 
-### Removed
-- Legacy dependencies (IdentityServer4, Dapr)
-- Domain-specific services (to be re-added as needed)
+- Blueprint designer consolidated to `/designer/blueprint` (F109/F142) — Describe → Understand → Rehearse → Go Live shell; Rehearsal Pass gate on go-live; legacy `/designer` and `/designer/chat` routes are redirect shims.
+- `Sorcha.UI.Core` partitioned into `Services/User/`, `Services/Admin/`, `Services/Shared/` (F123); shared user-facing components extracted to `Sorcha.UI.Components.User` (F122).
+- Centralised rate limiting via `ServiceDefaults.AddRateLimiting()` across all services (SEC-002); no per-service `AddRateLimiter`.
+- `SorchaAudiences` and `SorchaIssuer` are the single source of truth for token minting and validation; hand-built audience strings are a build error.
+- `Sorcha.PeerRouter` standalone app retired (F143); capability folded into `Sorcha.Peer.Service` via reverse-stream rendezvous.
+- Blueprint publish pipeline produces coded validation errors aligned with the AI-chat tool validator (D3 / F147 follow-up; in progress).
+
+### Security
+
+- **F146 — Tenant at-rest secret protection** — TOTP secrets (previously reversible Base64, doc-comment claimed AES-256-GCM) are now encrypted with real AES-256-GCM via `ISecretProtectionProvider`; OIDC client secrets and the 2FA intermediate-token signing key also hardened. Resolves CRITICAL finding C1 from the 2026-06-02 architecture review.
+- **F147 — Authorization-gap closure** — system-wallet create/recover endpoints gated (`RequireService` / `CanRecoverSystemWallet`); `CanManageBlueprints` policy now enforces platform-tier audience, closing the citizen→blueprint-authoring privilege escalation path. Resolves HIGH findings H1 and H2 from the 2026-06-02 architecture review.
+- **F148 — Verification correctness** — OIDC ID-token JWS verified against provider JWKS on every social-login exchange; PWA on-device verifier now distinguishes holder-verified-only from fully-issuer-verified results rather than returning a flat "valid". Resolves HIGH finding H3 (partially) and MEDIUM M3a from the 2026-06-02 architecture review.
+
+### Fixed
+
+- Wallet service `WalletSequence` closes transaction replay vulnerability (§4.2 of the March 2026 audit).
+- Validator vote-signature verification closes unsigned-consensus-vote vulnerability (§4.1 of the March 2026 audit).
 
 ## [0.1.0] - TBD
 
@@ -165,5 +179,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/yourusername/sorcha/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourusername/sorcha/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Sorcha-Platform/Sorcha/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/Sorcha-Platform/Sorcha/releases/tag/v0.8.1
+[0.8.0]: https://github.com/Sorcha-Platform/Sorcha/releases/tag/v0.8.0
+[0.1.0]: https://github.com/Sorcha-Platform/Sorcha/releases/tag/v0.1.0

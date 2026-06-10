@@ -2,6 +2,26 @@
 
 Step-by-step guide to deploy Sorcha using Docker Compose.
 
+## Production Pre-Flight Checklist
+
+> **The default compose is a development deployment.** Every item below is a known gap between the
+> shipped configuration and a production-ready installation. These are tracked for the v1 hardening
+> milestone. Do not skip them.
+
+| # | Risk | What the default does | What to do for production |
+|---|------|-----------------------|--------------------------|
+| 1 | **Shared JWT signing key** | `.env.example` ships a concrete Base64 key (`c29yY2hh...`). Any deployment that copies `.env.example` without replacing this value shares the same secret as every other default deployment. | Generate a unique 256-bit key per deployment (see Step 2). See [JWT & Authentication](configuration-reference.md#jwt--authentication). |
+| 2 | **Development database passwords** | `.env.example` uses `sorcha_dev_password` for both PostgreSQL and MongoDB. | Replace `POSTGRES_PASSWORD` and `MONGO_INITDB_ROOT_PASSWORD` in `.env` before first start. See [Databases](configuration-reference.md#databases). |
+| 3 | **`ASPNETCORE_ENVIRONMENT` per-service override required** | Seven services hardcode `ASPNETCORE_ENVIRONMENT: Development` directly in the compose service blocks. Setting `ASPNETCORE_ENVIRONMENT` once in `.env` does **not** override these per-service values — each service block must be individually overridden in a production compose override file. Affected services: `blueprint-service`, `register-service`, `tenant-service`, `peer-service`, `validator-service`, `sorcha-ui-web`, `api-gateway`. (`wallet-service` and `haip-service` ship as `Docker`, not `Development`.) | Create a compose override file (e.g. `docker-compose.prod.yml`) and add `ASPNETCORE_ENVIRONMENT: Production` under each affected service's `environment` block. See [Scaling & High Availability](scaling-high-availability.md) for overlay patterns. |
+| 4 | **Redis has no password** | Redis is started without `--requirepass`. Setting `REDIS_PASSWORD` in `.env` is **not sufficient** — the compose does not pass `--requirepass` to the `redis-server` command. | Override the Redis `command` in a production compose overlay to add `--requirepass ${REDIS_PASSWORD}` and add `REDIS_PASSWORD` to all service connection strings. See [Redis](configuration-reference.md#redis). |
+| 5 | **gRPC peer TLS disabled** | `PeerService__EnableTls: "false"` is set on `peer-service`. The API gateway also serves HTTP on port 80 by default (TLS termination is expected to be handled by an upstream reverse proxy such as Caddy). | For internet-exposed peer nodes, configure TLS at the reverse-proxy layer (see `docker-compose.n1.yml` / `docker-compose.ports.yml` for the Caddy-with-port-offset pattern). |
+| 6 | **Admin-verified user creation is enabled** | `Platform__AllowAdminVerifiedUserCreation: "true"` is set on `tenant-service`. This allows a SystemAdmin to provision pre-verified org-scoped users, bypassing email verification. It is intentionally on for local dev and walkthroughs. | Remove or set to `"false"` in your production override. This is a correctness gate — leaving it enabled in production undermines the verification audit trail. |
+
+These six items are the minimum pre-flight for a production or publicly accessible deployment.
+Detailed remediation for each is in [Configuration Reference](configuration-reference.md).
+
+---
+
 ## Installation Flow
 
 ```

@@ -776,9 +776,9 @@ section); any standard-org membership → `welcome-invited` with the earliest-
 joined standard org as the "inviting" org.
 
 **Design-history reference**:
-[`docs/superpowers/specs/2026-04-24-email-sweep-design.md`](../../../docs/superpowers/specs/2026-04-24-email-sweep-design.md)
+[`docs/superpowers/specs/2026-04-24-email-sweep-design.md`](https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/superpowers/specs/2026-04-24-email-sweep-design.md)
 carries the full design rationale. The feature spec, plan, tasks, and contracts
-live under [`specs/112-email-sweep/`](../../../specs/112-email-sweep/).
+live under [`specs/112-email-sweep/`](https://github.com/Sorcha-Platform/Sorcha/blob/master/specs/112-email-sweep/).
 
 **Snapshot fixtures** for every template pair are committed under
 `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/`. When a deliberate copy
@@ -1009,22 +1009,22 @@ key is derived from the same JWT signing key (info `sorcha:tenant:login-token-hm
 
 > The seam intentionally mirrors the Wallet `IOrgKeyProtectionProvider`; the two converge onto a
 > shared provider (and gain a KMS/HSM implementation) during the Hardware Key Storage initiative.
-> Design: `docs/superpowers/specs/2026-06-03-tenant-secret-protection-design.md`.
+> Design: [docs/superpowers/specs/2026-06-03-tenant-secret-protection-design.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/superpowers/specs/2026-06-03-tenant-secret-protection-design.md).
 
 ---
 
 ## License
 
-This project is licensed under the Apache License 2.0. See [LICENSE](../../../LICENSE) for details.
+This project is licensed under the Apache License 2.0. See [LICENSE](https://github.com/Sorcha-Platform/Sorcha/blob/master/LICENSE) for details.
 
 ---
 
 ## Support
 
 For issues, questions, or contributions:
-- **GitHub Issues**: [Sorcha Issues](https://github.com/your-org/sorcha/issues)
+- **GitHub Issues**: [Sorcha Issues](https://github.com/Sorcha-Platform/Sorcha/issues)
 - **Documentation**: [Sorcha Docs](../../../docs/)
-- **CLAUDE.md**: [AI Assistant Guide](../../../CLAUDE.md)
+- **CLAUDE.md**: [AI Assistant Guide](https://github.com/Sorcha-Platform/Sorcha/blob/master/CLAUDE.md)
 
 ---
 

@@ -120,7 +120,7 @@ InstanceProjector (every node) → [Fold sealed docket → advance instance] →
 ### 1. Clone and Navigate
 
 ```bash
-git clone https://github.com/yourusername/Sorcha.git
+git clone https://github.com/Sorcha-Platform/Sorcha.git
 cd Sorcha/src/Services/Sorcha.Blueprint.Service
 ```
 
@@ -655,7 +655,7 @@ Enable detailed logging:
 
 ## Resources
 
-- **Specification**: [.specify/specs/](../../../.specify/specs/)
+- **Specification**: [.specify/specs/](https://github.com/Sorcha-Platform/Sorcha/tree/master/.specify/specs)
 - **API Reference**: [Scalar UI](https://localhost:7081/scalar)
 - **Architecture**: [docs/architecture.md](../../../docs/reference/architecture.md)
 - **Development Status**: [docs/development-status.md](../../../docs/reference/development-status.md)
@@ -666,7 +666,7 @@ Enable detailed logging:
 
 ## License
 
-Apache License 2.0 - See [LICENSE](../../../LICENSE) for details.
+Apache License 2.0 - See [LICENSE](https://github.com/Sorcha-Platform/Sorcha/blob/master/LICENSE) for details.
 
 ---
 
