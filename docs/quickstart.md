@@ -94,7 +94,7 @@ curl -s http://localhost/llms.txt
 
 - **Agent integration.** Read `docs/mcp-server.md` for the MCP connection guide. The 36 tools across admin / designer / participant slices are how an AI agent drives the platform.
 - **Walkthroughs.** `walkthroughs/TradeFinance/run.ps1` and `walkthroughs/AssuredIdentity/run-agents.ps1` are runnable end-to-end demonstrations of the cryptographic-proof workflows the platform is designed for.
-- **Deeper reading.** `STANDARDS.md` for the standards posture, `docs/architecture.md` (Phase 8 of spec 117) for the system architecture, `llms.txt` for the LLM-led entry point.
+- **Deeper reading.** `STANDARDS.md` for the standards posture, [the architecture overview](./architecture.md) for the system architecture, `llms.txt` for the LLM-led entry point.
 
 ## Reporting setup-script issues
 
