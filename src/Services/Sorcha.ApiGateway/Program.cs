@@ -339,6 +339,13 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sorcha API Gateway Status</title>
     <style>
+        :root {
+            /* Production brand palette (matches docs/design-system + SorchaMudTheme) */
+            --brand-indigo: #4F46E5;
+            --brand-violet: #818CF8;
+            --brand-gradient: linear-gradient(135deg, #4F46E5 0%, #818CF8 100%);
+            --success: #047857;
+        }
         * {
             margin: 0;
             padding: 0;
@@ -346,7 +353,7 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--brand-gradient);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -362,7 +369,7 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
             overflow: hidden;
         }
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--brand-gradient);
             color: white;
             padding: 40px;
             text-align: center;
@@ -388,10 +395,10 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
             background: #f8f9fa;
             padding: 24px;
             border-radius: 12px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid var(--brand-indigo);
         }
         .stat-card h3 {
-            color: #667eea;
+            color: var(--brand-indigo);
             font-size: 0.875rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -424,7 +431,7 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
             border-left: 4px solid #e2e8f0;
         }
         .service-item.healthy {
-            border-left-color: #48bb78;
+            border-left-color: var(--success);
         }
         .service-item.unhealthy {
             border-left-color: #f56565;
@@ -463,20 +470,20 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
             transition: all 0.2s;
         }
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--brand-gradient);
             color: white;
         }
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 10px 20px rgba(79, 70, 229, 0.4);
         }
         .btn-secondary {
             background: white;
-            color: #667eea;
-            border: 2px solid #667eea;
+            color: var(--brand-indigo);
+            border: 2px solid var(--brand-indigo);
         }
         .btn-secondary:hover {
-            background: #667eea;
+            background: var(--brand-indigo);
             color: white;
         }
         .footer {

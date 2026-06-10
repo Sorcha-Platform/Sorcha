@@ -31,6 +31,7 @@ const pages = [
   { file: 'solutions.html' },
   { file: 'compare.html' },
   { file: 'developers.html' },
+  { file: 'docs.html' },
   { file: 'contact.html' },
 ]
 

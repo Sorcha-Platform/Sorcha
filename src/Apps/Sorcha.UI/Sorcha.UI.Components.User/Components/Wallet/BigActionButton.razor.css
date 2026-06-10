@@ -73,7 +73,7 @@
         color-mix(in srgb, #4F46E5 88%, white) 0%,
         #4F46E5 45%,
         color-mix(in srgb, #4F46E5 72%, black) 100%);
-    box-shadow: 0 10px 22px rgba(102, 126, 234, .40), 0 2px 4px rgba(0, 0, 0, .12);
+    box-shadow: 0 10px 22px rgba(79, 70, 229, .40), 0 2px 4px rgba(0, 0, 0, .12);
 }
 
 /* ── Ghost: PURPLE saturated gradient, content RIGHT-aligned (mirror) ───── */
@@ -84,7 +84,7 @@
         color-mix(in srgb, #818CF8 88%, white) 0%,
         #818CF8 45%,
         color-mix(in srgb, #818CF8 72%, black) 100%);
-    box-shadow: 0 10px 22px rgba(118, 75, 162, .40), 0 2px 4px rgba(0, 0, 0, .12);
+    box-shadow: 0 10px 22px rgba(129, 140, 248, .40), 0 2px 4px rgba(0, 0, 0, .12);
 }
 
 /* Reduced motion: no press scaling (handoff a11y note + FR-023). */
