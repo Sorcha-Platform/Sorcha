@@ -364,3 +364,73 @@ h5 { font-size: 18px; font-weight: 600; line-height: 1.4; }
   .compare-table td { border: none; padding-top: var(--sp-1); }
   .compare-table tbody tr { border-bottom: 1px solid var(--border); padding: var(--sp-3) 0; }
 }
+
+/* =====================================================================
+   STACKING DECK — used only by index.html (guarded by `.deck`).
+   Each top-level section becomes a sticky, full-viewport panel; the next
+   panel scrolls up and over it. JS adds the recede (scale+dim) and a
+   per-panel sticky `top` so panels taller than the viewport scroll fully
+   into view before they pin. Reduced-motion falls back to normal flow.
+   ===================================================================== */
+.deck { position: relative; z-index: 1; }
+.deck > .panel {
+  position: sticky; top: 0; min-height: 100svh; overflow: hidden;
+  display: grid; place-items: center;
+  border-top: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -24px 60px rgba(9, 10, 20, .28);
+  transform-origin: 50% 0%; will-change: transform;
+}
+.deck > .panel:first-child { border-radius: 0; box-shadow: none; }
+/* neutralise .section's own vertical padding (sp-9) and 28px sides — the
+   panel centres its .container, which already has its own 28px padding. */
+.deck > .panel.section { padding: var(--nav-h) 0 0; }
+/* hero carries its own inner padding, so it needs no nav-clearance pad. */
+.deck > .panel.hero { padding-top: 0; }
+/* the recede dim veil — opacity driven by a CSS var the JS sets per panel */
+.deck > .panel::after {
+  content: ""; position: absolute; inset: 0; background: #05060c;
+  opacity: var(--veil, 0); pointer-events: none;
+  transition: opacity .15s linear; z-index: 40;
+}
+
+/* Right-edge progress dots (built by JS; safe to keep even if JS is off). */
+.deck-dots { position: fixed; right: 18px; top: 50%; transform: translateY(-50%); z-index: 60; display: flex; flex-direction: column; gap: 12px; }
+.deck-dots button { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--primary); background: transparent; cursor: pointer; padding: 0; opacity: .5; transition: .2s var(--ease); }
+.deck-dots button:hover { opacity: 1; }
+.deck-dots button.is-active { background: var(--primary); opacity: 1; transform: scale(1.25); box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent); }
+@media (max-width: 820px) { .deck-dots { display: none; } }
+
+/* Hook-card footer: the single "exit" + where it leads. Theme-aware. */
+.panel-foot { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: var(--sp-7); }
+.panel-foot.start { align-items: flex-start; }
+.foot-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center; }
+.leads-to { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--text-faint); }
+.leads-to svg { width: 15px; height: 15px; flex: none; opacity: .8; }
+.leads-to code { font-family: var(--font-mono); color: var(--verify); background: color-mix(in srgb, var(--primary) 9%, transparent); border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent); padding: 2px 8px; border-radius: 6px; }
+.section-ink .leads-to { color: #8388ad; }
+.section-ink .leads-to code { color: var(--brand-lilac); background: rgba(99, 102, 241, .14); border-color: rgba(165, 180, 252, .28); }
+
+/* Cross-page push/pop via the View Transitions API. Shared across all
+   marketing pages (this stylesheet is global). landing.js tags each
+   navigation 'forward' (going deeper) or 'back' (returning). */
+@view-transition { navigation: auto; }
+@media (prefers-reduced-motion: no-preference) {
+  html:active-view-transition-type(forward)::view-transition-old(root) { animation: .5s var(--ease) both vt-out-left; }
+  html:active-view-transition-type(forward)::view-transition-new(root) { animation: .5s var(--ease) both vt-in-right; z-index: 2; }
+  html:active-view-transition-type(back)::view-transition-old(root)    { animation: .5s var(--ease) both vt-out-right; z-index: 2; }
+  html:active-view-transition-type(back)::view-transition-new(root)    { animation: .5s var(--ease) both vt-in-left; }
+}
+@keyframes vt-out-left  { to   { transform: translateX(-24%); filter: brightness(.62); } }
+@keyframes vt-in-right  { from { transform: translateX(100%); } }
+@keyframes vt-out-right { to   { transform: translateX(100%); } }
+@keyframes vt-in-left   { from { transform: translateX(-24%); filter: brightness(.62); } to { transform: translateX(0); filter: none; } }
+
+/* Reduced motion: no stacking, no recede, no slide — plain readable flow. */
+@media (prefers-reduced-motion: reduce) {
+  .deck > .panel { position: static; min-height: 0; border-radius: 0; box-shadow: none; transform: none !important; }
+  .deck > .panel.section { padding: var(--sp-9) 0; }
+  .deck > .panel.hero { padding-top: 0; }
+  .deck > .panel::after { display: none; }
+  .deck-dots { display: none; }
+}
