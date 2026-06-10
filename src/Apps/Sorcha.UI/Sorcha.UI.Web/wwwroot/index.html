@@ -83,8 +83,9 @@
     </nav>
 
     <main id="main">
+    <div class="deck" id="deck">
     <!-- ====================== 1. HERO ====================== -->
-    <header class="hero">
+    <header class="hero panel">
         <canvas id="heroCanvas" aria-hidden="true"></canvas>
         <div class="hero-bloom" aria-hidden="true"></div>
         <div class="hero-inner">
@@ -105,7 +106,7 @@
     </header>
 
     <!-- ====================== 2. THREE DOORS ====================== -->
-    <section id="three-doors" class="section" aria-labelledby="doors-h">
+    <section id="three-doors" class="section panel" aria-labelledby="doors-h">
         <div class="container">
             <div class="section-head"><h2 id="doors-h">Three ways in.</h2></div>
             <nav class="doors" aria-label="Choose your path">
@@ -138,7 +139,7 @@
     </section>
 
     <!-- ====================== 3. THE PROBLEM ====================== -->
-    <section class="section section-alt" aria-labelledby="problem-h">
+    <section class="section section-alt panel" aria-labelledby="problem-h">
         <div class="container">
             <div class="section-head">
                 <span class="section-eyebrow">The problem</span>
@@ -164,11 +165,17 @@
                     <cite>The Sorcha thesis</cite>
                 </div>
             </div>
+            <div class="panel-foot">
+                <div class="foot-actions">
+                    <a href="#how" class="btn btn-primary btn-lg">See how Sorcha closes the gap →</a>
+                </div>
+                <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Continues to <code>How it works</code></span>
+            </div>
         </div>
     </section>
 
     <!-- ====================== 4. HOW IT WORKS ====================== -->
-    <section class="section" aria-labelledby="how-h">
+    <section id="how" class="section panel" aria-labelledby="how-h">
         <div class="container">
             <div class="section-head"><h2 id="how-h">Proof, in four steps.</h2></div>
             <div class="steps">
@@ -189,11 +196,17 @@
                     <p>Any party can check the signatures and the chain themselves. Trust comes from the evidence, not from us.</p>
                 </div>
             </div>
+            <div class="panel-foot">
+                <div class="foot-actions">
+                    <a href="/docs" class="btn btn-primary btn-lg">Read the technical architecture →</a>
+                </div>
+                <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Opens <code>sorcha.dev/docs</code></span>
+            </div>
         </div>
     </section>
 
     <!-- ====================== 5. DAD MODEL ====================== -->
-    <section class="section section-alt" aria-labelledby="dad-h">
+    <section class="section section-alt panel" aria-labelledby="dad-h">
         <div class="container">
             <div class="section-head"><h2 id="dad-h">The DAD model: Disclosure, Alteration, Destruction.</h2></div>
             <div class="grid-3">
@@ -201,11 +214,17 @@
                 <div class="dad reveal"><h3>Alteration</h3><p>Recorded on an immutable ledger. Every change is signed and chained; history can't be rewritten.</p></div>
                 <div class="dad reveal"><h3>Destruction</h3><p>Eliminated by replication. Records are replicated across the peer network, so no single party can erase them.</p></div>
             </div>
+            <div class="panel-foot">
+                <div class="foot-actions">
+                    <a href="/developers" class="btn btn-primary btn-lg">How the register resists tampering →</a>
+                </div>
+                <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Opens <code>sorcha.dev/developers</code></span>
+            </div>
         </div>
     </section>
 
     <!-- ====================== 6. FOR ORGANISATIONS: THE DESIGNER ====================== -->
-    <section class="section" aria-labelledby="designer-h">
+    <section class="section panel" aria-labelledby="designer-h">
         <div class="container">
             <div class="section-head">
                 <span class="section-eyebrow">For organisations</span>
@@ -218,14 +237,17 @@
                 <div class="stage reveal"><span class="stage-label">Rehearse</span><p>Run it against sample data; nothing is committed.</p></div>
                 <div class="stage reveal"><span class="stage-label">Go live</span><p>Publish only once rehearsal passes — gated server-side, so you can't skip it.</p></div>
             </div>
-            <div class="section-head" style="margin-top:var(--sp-5);margin-bottom:0">
-                <a href="/designer-overview" class="btn btn-primary">See how the Designer works →</a>
+            <div class="panel-foot">
+                <div class="foot-actions">
+                    <a href="/designer-overview" class="btn btn-primary btn-lg">See how the Designer works →</a>
+                </div>
+                <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Opens <code>sorcha.dev/designer-overview</code></span>
             </div>
         </div>
     </section>
 
     <!-- ====================== 7. FOR CITIZENS: THE WALLET ====================== -->
-    <section class="section section-alt" aria-labelledby="wallet-h">
+    <section class="section section-alt panel" aria-labelledby="wallet-h">
         <div class="container">
             <div class="grid-2" style="align-items:center">
                 <div>
@@ -237,9 +259,12 @@
                         only that. Whoever you show them to can check they're genuine, without phoning
                         anyone to confirm.
                     </p>
-                    <div class="hero-actions" style="margin-top:var(--sp-4)">
-                        <a href="/wallet/" class="btn btn-primary">Open the Wallet →</a>
-                        <a href="/app/get" class="btn btn-outline">Install on your phone</a>
+                    <div class="panel-foot start">
+                        <div class="foot-actions">
+                            <a href="/wallet/" class="btn btn-primary btn-lg">Open the Wallet →</a>
+                            <a href="/app/get" class="btn btn-outline">Install on your phone</a>
+                        </div>
+                        <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Opens <code>sorcha.dev/wallet</code></span>
                     </div>
                 </div>
                 <ul style="list-style:none;display:flex;flex-direction:column;gap:var(--sp-3)">
@@ -252,7 +277,7 @@
     </section>
 
     <!-- ====================== 8. OPEN STANDARDS ====================== -->
-    <section id="open-standards" class="section" aria-labelledby="std-h">
+    <section id="open-standards" class="section panel" aria-labelledby="std-h">
         <div class="container">
             <div class="section-head">
                 <span class="section-eyebrow">Open standards</span>
@@ -270,11 +295,17 @@
                 <span class="chip mono">FIPS-203 (ML-KEM)</span>
                 <span class="chip mono">Merkle / SHA-256</span>
             </div>
+            <div class="panel-foot">
+                <div class="foot-actions">
+                    <a href="/developers" class="btn btn-primary btn-lg">Read the standards in the docs →</a>
+                </div>
+                <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Opens <code>sorcha.dev/developers</code></span>
+            </div>
         </div>
     </section>
 
     <!-- ====================== 9. QUANTUM-SAFE ====================== -->
-    <section class="section section-ink" aria-labelledby="pqc-h">
+    <section class="section section-ink panel" aria-labelledby="pqc-h">
         <div class="container">
             <div class="section-head">
                 <span class="section-eyebrow">Quantum-safe</span>
@@ -296,11 +327,17 @@
                     <p>Zero-knowledge selective disclosure (BBS+) is on the roadmap, not shipped — today's selective disclosure is show/hide. We tell you what exists and what doesn't.</p>
                 </div>
             </div>
+            <div class="panel-foot">
+                <div class="foot-actions">
+                    <a href="/developers" class="btn btn-primary btn-lg">How the cryptography works →</a>
+                </div>
+                <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Opens <code>sorcha.dev/developers</code></span>
+            </div>
         </div>
     </section>
 
     <!-- ====================== 10. SECTORS ====================== -->
-    <section class="section" aria-labelledby="sectors-h">
+    <section class="section panel" aria-labelledby="sectors-h">
         <div class="container">
             <div class="section-head">
                 <span class="section-eyebrow">Solutions</span>
@@ -329,14 +366,18 @@
                     <p>A buyer's wallet signature on an invoice is the trust anchor for a lender — no intermediary needs to vouch for the data, and no blockchain token is required.</p>
                 </div>
             </div>
-            <div class="section-head" style="margin-top:var(--sp-5);margin-bottom:0">
-                <a href="/solutions" class="btn btn-outline">Explore solutions →</a>
+            <div class="panel-foot">
+                <div class="foot-actions">
+                    <a href="/solutions" class="btn btn-primary btn-lg">Explore solutions →</a>
+                    <a href="/contact" class="btn btn-outline">Talk to us about a pilot →</a>
+                </div>
+                <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Opens <code>sorcha.dev/solutions</code></span>
             </div>
         </div>
     </section>
 
     <!-- ====================== 11. FOR DEVELOPERS ====================== -->
-    <section class="section section-alt" aria-labelledby="dev-h">
+    <section class="section section-alt panel" aria-labelledby="dev-h">
         <div class="container">
             <div class="section-head">
                 <span class="section-eyebrow">Open source</span>
@@ -356,18 +397,19 @@
                 <span class="chip mono">8 services</span>
                 <span class="chip mono">10,000+ tests</span>
             </div>
-            <div class="section-head" style="margin-bottom:0">
-                <div class="hero-actions" style="justify-content:center">
-                    <a href="https://github.com/Sorcha-Platform/Sorcha" class="btn btn-primary" target="_blank" rel="noopener">View on GitHub →</a>
+            <div class="panel-foot">
+                <div class="foot-actions">
+                    <a href="https://github.com/Sorcha-Platform/Sorcha" class="btn btn-primary btn-lg" target="_blank" rel="noopener">View on GitHub →</a>
                     <a href="/docs" class="btn btn-outline">Read the docs →</a>
                     <a href="https://github.com/Sorcha-Platform/Sorcha#quick-start" class="btn btn-text" target="_blank" rel="noopener">Self-hosting guide →</a>
                 </div>
+                <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Opens <code>github.com/Sorcha-Platform/Sorcha</code></span>
             </div>
         </div>
     </section>
 
     <!-- ====================== 12. MATURITY & OPENNESS ====================== -->
-    <section class="section" aria-labelledby="maturity-h">
+    <section class="section panel" aria-labelledby="maturity-h">
         <div class="container container-prose" style="text-align:center">
             <span class="section-eyebrow">Honest status</span>
             <h2 id="maturity-h">Where we are — honestly.</h2>
@@ -377,15 +419,18 @@
                 proof-based infrastructure for a regulated, multi-party workflow, this is the point to
                 start a conversation.
             </p>
-            <div class="hero-actions" style="justify-content:center;margin-top:var(--sp-4)">
-                <a href="/contact" class="btn btn-primary">Start evaluating →</a>
-                <a href="https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/reference/development-status.md" class="btn btn-text" target="_blank" rel="noopener">Read the development status →</a>
+            <div class="panel-foot">
+                <div class="foot-actions">
+                    <a href="/contact" class="btn btn-primary btn-lg">Start evaluating →</a>
+                    <a href="https://github.com/Sorcha-Platform/Sorcha/blob/master/docs/reference/development-status.md" class="btn btn-text" target="_blank" rel="noopener">Read the development status →</a>
+                </div>
+                <span class="leads-to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6"/><path d="M3 12h12"/><path d="m11 8 4 4-4 4"/></svg>Opens <code>sorcha.dev/contact</code></span>
             </div>
         </div>
     </section>
 
     <!-- ====================== 13. FINAL CTA ====================== -->
-    <section class="section section-alt cta-band" aria-labelledby="cta-h">
+    <section class="section section-alt cta-band panel" aria-labelledby="cta-h">
         <div class="container">
             <div class="section-head"><h2 id="cta-h">Pick your way in.</h2></div>
             <nav class="doors" aria-label="Choose your path">
@@ -395,6 +440,7 @@
             </nav>
         </div>
     </section>
+    </div>
     </main>
 
     <!-- Footer -->

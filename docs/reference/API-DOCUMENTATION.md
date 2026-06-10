@@ -1,7 +1,7 @@
 # Sorcha Platform - API Documentation
 
-**Version:** 2.3.0
-**Last Updated:** 2026-04-04
+**Version:** 2.4.0
+**Last Updated:** 2026-06-10
 **Status:** MVD Complete
 
 ---
@@ -35,7 +35,6 @@ The Sorcha Platform provides a comprehensive REST API for building distributed l
 
 **Base URLs:**
 - **Development (Local):** `http://localhost:5000`
-- **Staging (Azure):** `https://api-gateway.livelydune-b02bab51.uksouth.azurecontainerapps.io`
 - **Production:** `https://sorcha.dev/api`
 
 **API Gateway:**
@@ -60,7 +59,7 @@ All services are accessed through the API Gateway which provides:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/Sorcha.git
+   git clone https://github.com/Sorcha-Platform/Sorcha.git
    cd Sorcha
    ```
 
@@ -1341,7 +1340,7 @@ Downloads a decrypted file attachment from a stored data transaction. The wallet
 
 A small, citizen-scoped surface that drives the Citizen Wallet PWA's waiting-state UX. The notice carries only a human-readable label — no credential content. Set by the walkthrough script (or a future application-submission flow) when a citizen submits a credential application; the PWA reads it on every Home render to decide whether to show the waiting card; cleared on credential delivery (or auto-expires after 24 hours).
 
-All three endpoints require the citizen-wallet audience JWT (`sorcha:citizen-wallet`) and are scoped to the caller's `PlatformUserId`. Rate-limited by `RateLimitPolicies.Strict`. Contract: [`specs/124-assured-identity-pwa/contracts/pending-application-notice.openapi.yaml`](../../specs/124-assured-identity-pwa/contracts/pending-application-notice.openapi.yaml).
+All three endpoints require the citizen-wallet audience JWT (`sorcha:citizen-wallet`) and are scoped to the caller's `PlatformUserId`. Rate-limited by `RateLimitPolicies.Strict`. Contract: [`specs/124-assured-identity-pwa/contracts/pending-application-notice.openapi.yaml`](https://github.com/Sorcha-Platform/Sorcha/tree/master/specs/124-assured-identity-pwa/contracts/pending-application-notice.openapi.yaml).
 
 ##### GET /api/v1/wallet/pending-applications
 
@@ -1377,7 +1376,7 @@ Clear the citizen's notice. Idempotent — returns `204 No Content` whether or n
 
 #### 10b. Holder Keys — cross-node delivery keys (Feature 137)
 
-Returns the signed-in citizen's **public** delivery keys so a blueprint `sorcha-holder-key` form field can auto-fill the cross-node submission. Consumer-tier (`RequireConsumerAudience`). Public material only — never a private key. Contract: [`specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml`](../../specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml).
+Returns the signed-in citizen's **public** delivery keys so a blueprint `sorcha-holder-key` form field can auto-fill the cross-node submission. Consumer-tier (`RequireConsumerAudience`). Public material only — never a private key. Contract: [`specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml`](https://github.com/Sorcha-Platform/Sorcha/tree/master/specs/137-cross-node-submission/contracts/holder-keys-endpoint.openapi.yaml).
 
 ##### GET /api/v1/wallet/holder-keys
 
@@ -1398,7 +1397,7 @@ Resolves the caller's slot-108 holder public JWK (for the SD-JWT `cnf` binding) 
 
 The citizen's durable, cross-device record of presentations they have made. Reported presentations (via `POST /api/v1/wallet/presentations/log`) are persisted to a per-citizen Wallet Service store so the same history appears on any device the citizen pairs. **There is no register/ledger write** — a free-standing offline presentation has no originating register; these are citizen-owned convenience records carrying disclosed claim **names only**, never values.
 
-Both endpoints require the citizen-wallet audience JWT (`sorcha:citizen-wallet`), are scoped to the caller's `PlatformUserId`, and are rate-limited by `RateLimitPolicies.Strict`. Contract: [`specs/134-presentation-history/contracts/presentation-history.openapi.yaml`](../../specs/134-presentation-history/contracts/presentation-history.openapi.yaml).
+Both endpoints require the citizen-wallet audience JWT (`sorcha:citizen-wallet`), are scoped to the caller's `PlatformUserId`, and are rate-limited by `RateLimitPolicies.Strict`. Contract: [`specs/134-presentation-history/contracts/presentation-history.openapi.yaml`](https://github.com/Sorcha-Platform/Sorcha/tree/master/specs/134-presentation-history/contracts/presentation-history.openapi.yaml).
 
 ##### GET /api/v1/wallet/presentations
 
@@ -2346,6 +2345,146 @@ Errors map 1:1 to status: `400` (malformed_token / invalid_signature / scope_mis
 
 ---
 
+## Pairing Short-Code API (Feature 128)
+
+Short codes are human-typeable 6-digit tokens that wrap a standalone enrol-session token. They allow the F128 cold-start "Already started on another device?" flow and the mobile-web install fallback path.
+
+### `POST /api/auth/enrol-session/short-code` — mint
+
+**Auth:** bearer token required (any tier). Rate-limited (`PlatformAuth` policy).
+
+Request body is optional. When supplied:
+
+```json
+{ "route": "DesktopHandoff" }
+```
+
+`route` is one of `DesktopHandoff` (default), `MobilewebHandoff`, `PwaTakeover`, `ColdLanding` — used for telemetry only.
+
+Response `200 OK`:
+
+```json
+{
+  "code": "482917",
+  "expiresAt": "2026-06-10T10:35:00Z"
+}
+```
+
+`code` is a 6-digit numeric string. TTL is 5 minutes.
+
+### `POST /api/auth/enrol-session/redeem-short-code` — redeem
+
+**Auth:** anonymous — the code is the credential for this call. Single-use, rate-limited (`PlatformAuth` policy; 5 per code).
+
+Request body:
+
+```json
+{ "code": "482917" }
+```
+
+Success `200 OK` — returns the same shape as `POST /api/auth/enrol-session/redeem` (access token + user info):
+
+```json
+{
+  "accessToken": "<citizen access token>",
+  "expiresIn": 3600,
+  "displayName": "Sarah Example",
+  "email": "sarah@example.test"
+}
+```
+
+Error responses — body shape `{ "code": "<errorCode>", "message": "<human readable>" }`:
+
+| Status | `code` | Meaning |
+|--------|--------|---------|
+| `400` | `MalformedCode` | Code is absent or not 6 digits |
+| `409` | `AlreadyUsedCode` | Code was already redeemed |
+| `410` | `ExpiredCode` | Code has passed its 5-minute TTL |
+| `429` | `RateLimited` | Too many redeem attempts for this code |
+
+---
+
+## Pairing Resumption API (Feature 128 US2)
+
+The "Email me a link" affordance on the desktop handoff page. Sends the signed-in citizen a magic-link to reopen `/setup/add-device` when they cannot complete pairing in the same browser session.
+
+### `POST /api/auth/pairing-resumption-email` — send
+
+**Auth:** bearer token required. Rate-limited (`PlatformAuth` policy).
+
+Request body: empty. The recipient email is derived from the authenticated principal — the body is intentionally ignored to prevent email enumeration.
+
+Response `202 Accepted` (no body). Returns `401` if the authenticated principal cannot be resolved to a platform user.
+
+### `GET /api/auth/pairing-resumption/redeem` — redeem
+
+**Auth:** anonymous. Rate-limited (`PlatformAuth` policy). Single-use token.
+
+Query parameter: `?token=<signed resumption token>`
+
+Response: `302 Found` redirect. On valid token, redirects to `/auth/login?returnUrl=%2Fapp%2Fsetup%2Fadd-device&email=<hint>&reason=pairing-resumption` so the citizen re-authenticates (the link is a navigation convenience, not a credential bypass) and lands on the handoff page. On expired or consumed token, redirects to `/auth/login?reason=resumption-expired`.
+
+Token lifetime: 24 hours, single-use.
+
+---
+
+## Device Management API (Feature 114 / Feature 128)
+
+The Tenant Service exposes a recovery-path surface for citizens to list and revoke their enrolled wallet devices from the main Sorcha web UI — useful when the device is lost or compromised.
+
+All endpoints are under `/api/v1/me/devices` and require a bearer token (any tier that resolves to a platform user). Auth tier: no per-endpoint policy name — the group-level `.RequireAuthorization()` gate admits any authenticated caller; the platform-user identity is resolved from the JWT claims.
+
+### `GET /api/v1/me/devices` — list devices
+
+Response `200 OK`:
+
+```json
+{
+  "devices": [
+    {
+      "deviceId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "label": "Stuart's iPhone 16",
+      "platform": "iOS 19 / Safari 19",
+      "status": "Active",
+      "enrolledAt": "2026-05-01T09:00:00Z",
+      "revokedAt": null,
+      "lastSeenAt": "2026-06-09T14:22:00Z",
+      "delegationExpiresAt": "2026-06-11T09:00:00Z"
+    }
+  ]
+}
+```
+
+`status` is `"Active"` or `"Revoked"`. Devices are ordered by enrolment date descending and include both active and revoked entries.
+
+### `DELETE /api/v1/me/devices/{deviceId}` — revoke device
+
+Path parameter: `deviceId` (GUID).
+
+- `204 No Content` — device revoked (or was already revoked — idempotent on the Tenant side).
+- `401 Unauthorized` — unauthenticated.
+- `404 Not Found` — device does not exist or is not owned by the caller (the two cases are intentionally indistinguishable).
+- `502 Bad Gateway` — Tenant row was revoked but the Wallet Service status-list flip failed. The Tenant revocation is committed; retry the request to complete the Wallet-side flip.
+
+When revocation succeeds end-to-end, the Wallet Service flips the credential-status-list bit and broadcasts a `DeviceRevoked` SignalR event to the device (causing the wallet PWA to lock itself).
+
+### `GET /api/v1/me/devices/has-any` — aggregate probe
+
+Used by F128 cold-start surfaces (nag banner, pairing takeover) to check whether the citizen has ever paired a device without leaking the full device list.
+
+Response `200 OK`:
+
+```json
+{
+  "hasAnyDevice": true,
+  "latestEnrolledAt": "2026-05-01T09:00:00Z"
+}
+```
+
+`hasAnyDevice` is `true` only when at least one ACTIVE (non-revoked) device exists. `latestEnrolledAt` is the enrolment timestamp of the most recent active device, or `null` when `hasAnyDevice` is `false`.
+
+---
+
 ## EUDI Credential Format & Unified Trust API (Feature 135)
 
 Adds the ISO `mso_mdoc` credential format beside SD-JWT VC and a single `ITrustEvaluator` consulted by every verification path. Most of the surface is internal (the trust evaluator + format handlers); two externally-visible touch-points:
@@ -2519,12 +2658,12 @@ connection.on("InstanceAdvanced", async (instanceId) => {
 
 ## Support and Resources
 
-- **GitHub:** https://github.com/yourusername/Sorcha
+- **GitHub:** https://github.com/Sorcha-Platform/Sorcha
 - **Documentation:** https://docs.sorcha.io
 - **API Explorer:** http://localhost:5000/scalar/v1
 
 ---
 
-**Last Updated:** 2026-03-16
-**Document Version:** 2.2.0
-**Feature:** 058 - Platform Organisation Topology
+**Last Updated:** 2026-06-10
+**Document Version:** 2.4.0
+**Feature:** 128 - Cold-start onboarding and device pairing UX

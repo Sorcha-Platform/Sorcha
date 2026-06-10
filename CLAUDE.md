@@ -45,7 +45,7 @@ dotnet restore && dotnet build && dotnet test
 | Databases | PostgreSQL / MongoDB / Redis | Relational, document, cache |
 | Auth | JWT Bearer | Service-to-service and user authentication |
 | Crypto | NBitcoin + Sorcha.Cryptography | HD wallets (BIP32/39/44), ED25519, P-256, RSA-4096 |
-| Testing | xUnit + FluentAssertions + Moq | 10,000+ tests across 45+ projects |
+| Testing | xUnit + FluentAssertions + Moq | 11,000+ tests across 50+ projects |
 
 ---
 
@@ -73,7 +73,7 @@ dotnet restore && dotnet build && dotnet test
 | Wallet | 98% | internal / 7001 | Crypto operations, HD wallets |
 | Tenant | 98% | 5110 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity, Platform Identity, Register Invitations |
 | Validator | 95% | internal / 7004 | Consensus, chain integrity |
-| Peer | 70% | 5002 / 7002 | P2P network, gRPC |
+| Peer | 95% | 5002 / 7002 | P2P network, gRPC |
 | API Gateway | 95% | 80 / 7082 | YARP reverse proxy |
 
 **Designer UI:** `/designer/blueprint` is the canonical route (replaces legacy `/designer` and `/designer/chat`). The page is a rail-driven Describe → Understand → Rehearse → Go live shell (Feature 142); Go-live is gated by a server-side `RehearsalPass` on the executable-definition hash.

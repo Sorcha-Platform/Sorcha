@@ -23,7 +23,7 @@ If the merge hasn't happened yet: confirm PR #840 `build-and-test` + `claude-rev
 Changed services to rebuild/redeploy: **register, validator, blueprint, peer** (wallet unchanged this phase).
 
 ### Deployment state at handoff
-- **n1** (`sorcha@51.105.7.135`, install `n1.sorcha.dev`) and **local** (SyncOnly replica, install `phaethon`) are both still on the PRE-fix images. They MUST be reseeded with the new images.
+- **n1** (`<ssh-user>@<n1-host>`, install `n1.sorcha.dev`) and **local** (SyncOnly replica, install `phaethon`) are both still on the PRE-fix images. They MUST be reseeded with the new images.
 - The existing AssuredIdentity register `deccbf4dc9ad4edebe5d6a3651da80b9` predates DevMode-in-genesis and has the old genesis — it will be recreated by the reseed.
 
 ## The reseed plan (this machine has all the scripts)

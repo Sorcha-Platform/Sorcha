@@ -63,7 +63,7 @@ At runtime, provide template context:
 
 ## JSON Schema
 
-The complete JSON Schema is available at [`src/Common/blueprint.schema.json`](../src/Common/blueprint.schema.json).
+The complete JSON Schema is available at [`src/Common/blueprint.schema.json`](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Common/blueprint.schema.json).
 
 ## Core Concepts
 
@@ -552,7 +552,7 @@ var blueprint = BlueprintBuilder.Create()
 
 ## See Also
 
-- [Fluent API Documentation](./fluent-api.md)
+- Fluent API Documentation (see [Blueprint Architecture](./blueprint-architecture.md))
 - [JSON Logic Reference](https://jsonlogic.com/)
 - [JSON Schema Reference](https://json-schema.org/)
 - [JSON Pointer (RFC 6901)](https://tools.ietf.org/html/rfc6901)

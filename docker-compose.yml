@@ -5,8 +5,8 @@
 #   gateway          :80    YARP API gateway, /.well-known/* + Scalar /openapi
 #   blueprint        :5000  Workflow management, SignalR notifications
 #   wallet           (int)  Crypto operations, HD wallets (BIP32/39/44)
-#   register         :5290  Distributed ledger, OData query surface
-#   tenant           :5110  Multi-tenant auth, JWT issuer, Participant Identity
+#   register         :5380  Distributed ledger, OData query surface
+#   tenant           :5450  Multi-tenant auth, JWT issuer, Participant Identity
 #   peer             :5002  P2P network, gRPC inter-peer transport
 #   validator        (int)  Consensus, chain integrity
 #   mcp-server       (int)  MCP tool surface (36 tools across 3 categories)

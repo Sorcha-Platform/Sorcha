@@ -711,9 +711,9 @@ steps:
 
 ## Additional Resources
 
-- **Full Test Documentation**: [tests/Sorcha.Peer.Service.Integration.Tests/README.md](../../tests/Sorcha.Peer.Service.Integration.Tests/README.md)
-- **Quick Start Guide**: [tests/Sorcha.Peer.Service.Integration.Tests/QUICKSTART.md](../../tests/Sorcha.Peer.Service.Integration.Tests/QUICKSTART.md)
-- **Peer Service Documentation**: [src/Apps/Services/Sorcha.Peer.Service/README.md](../../src/Apps/Services/Sorcha.Peer.Service/README.md)
+- **Full Test Documentation**: [tests/Sorcha.Peer.Service.Integration.Tests/README.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/tests/Sorcha.Peer.Service.Integration.Tests/README.md)
+- **Quick Start Guide**: [tests/Sorcha.Peer.Service.Integration.Tests/QUICKSTART.md](https://github.com/Sorcha-Platform/Sorcha/blob/master/tests/Sorcha.Peer.Service.Integration.Tests/QUICKSTART.md)
+- **Peer Service Documentation**: [Peer Service](../../services/peer-service.md)
 - **Architecture Overview**: [docs/architecture.md](../../reference/architecture.md)
 - **ASP.NET Core Testing**: https://learn.microsoft.com/en-us/aspnet/core/test/integration-tests
 - **xUnit Documentation**: https://xunit.net/

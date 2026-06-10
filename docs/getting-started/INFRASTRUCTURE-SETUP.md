@@ -1,7 +1,7 @@
 # Infrastructure Setup Guide
 
-**Version:** 1.0
-**Last Updated:** 2025-12-12
+**Version:** 1.1
+**Last Updated:** 2026-06-10
 **Purpose:** Local development infrastructure setup for Sorcha platform
 
 ---
@@ -75,12 +75,13 @@ docker-compose down
 
 **Services started:**
 - Infrastructure (PostgreSQL, Redis, MongoDB)
-- Tenant Service on `localhost:5110`
+- Tenant Service on `localhost:5450`
 - Blueprint Service on `localhost:5000`
-- Wallet Service on `localhost:5001`
-- Register Service on `localhost:5290`
-- Peer Service on `localhost:5002`
-- API Gateway on `localhost:8080`
+- Wallet Service — no published port (internal only, accessed via API Gateway)
+- Register Service on `localhost:5380`
+- Peer Service on `localhost:50051` (gRPC)
+- Validator Service on `localhost:5800` (HTTP) / `localhost:5801` (gRPC)
+- API Gateway on `localhost:80` (HTTP)
 - Aspire Dashboard on `localhost:18888`
 
 ---
@@ -384,7 +385,7 @@ After starting infrastructure:
 
 ---
 
-**Document Version:** 1.1
-**Last Updated:** 2025-12-13
+**Document Version:** 1.2
+**Last Updated:** 2026-06-10
 **Owner:** Sorcha Architecture Team
 **Status:** ✅ Infrastructure deployed, tested, and bootstrap seeding verified

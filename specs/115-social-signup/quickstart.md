@@ -87,7 +87,7 @@ narrates next steps.
 Once the four OAuth values are in hand:
 
 ```bash
-ssh sorcha@51.105.7.135
+ssh <ssh-user>@<n1-host>
 cd /opt/sorcha
 nano .env
 # Paste:
@@ -173,7 +173,7 @@ If the deploy regresses:
 
 ```bash
 # Revert to the previous master tag
-ssh sorcha@51.105.7.135
+ssh <ssh-user>@<n1-host>
 cd /opt/sorcha
 docker compose -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml \
   pull tenant-service:<previous-tag>

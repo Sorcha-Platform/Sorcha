@@ -21,7 +21,7 @@ Optional:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/sorcha.git
+git clone https://github.com/Sorcha-Platform/Sorcha.git
 cd sorcha
 ```
 
@@ -231,8 +231,8 @@ Now that you have Sorcha running, explore:
 
 - Check the [Troubleshooting Guide](../guides/TROUBLESHOOTING.md)
 - Browse [Documentation](../README.md)
-- Search [GitHub Issues](https://github.com/yourusername/sorcha/issues)
-- Ask in [GitHub Discussions](https://github.com/yourusername/sorcha/discussions)
+- Search [GitHub Issues](https://github.com/Sorcha-Platform/Sorcha/issues)
+- Ask in [GitHub Discussions](https://github.com/Sorcha-Platform/Sorcha/discussions)
 
 ## Common Commands
 

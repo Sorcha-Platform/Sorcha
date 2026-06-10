@@ -56,7 +56,35 @@ Sorcha is a decentralised register platform for secure, multi-participant data f
 | Tenant Service | 5450 | Multi-tenant auth, JWT issuer |
 | Validator Service | 5800 / 5801 | Consensus, chain integrity |
 | Peer Service | 50051 (gRPC) | P2P network communication |
+| HAIP Service | internal | OpenID4VCI / HAIP credential issuance surface |
 | Aspire Dashboard | 18888 | Observability (traces, logs, metrics) |
+
+## Compose Files & Deployment Tooling
+
+### Repo-root compose files
+
+| File | Purpose | Use in production? |
+|------|---------|-------------------|
+| `docker-compose.yml` | Primary stack — all services, infrastructure, MCP server (profile `tools`). Development defaults throughout. | Base file; requires a production override. |
+| `docker-compose.debug.yml` | Overlay that raises log levels to `Debug` for auth, JWT, and per-service namespaces. | Dev/troubleshooting only. |
+| `docker-compose.federation.yml` | Two-peer federation overlay (Feature 107) — second full stack (`peer-b`) on the same Docker host for cross-peer smoke tests. | Dev/testing only. |
+| `docker-compose.infrastructure.yml` | Infrastructure only (Redis, PostgreSQL, MongoDB) — no application services. Useful for running services from IDE/Aspire against real databases. | Dev only. |
+| `docker-compose.localdev.yml` | Extends validator `GenesisMaxAge` to 30 days so a clean local start accepts an older genesis block without a rebuild. | Dev only. |
+| `docker-compose.multinode.yml` | Multi-replica overlay for Feature 118 cross-replica SignalR hub correctness tests. Brings up two Blueprint Service replicas behind YARP. | Testing only. |
+| `docker-compose.n1.yml` | Override for `n1.sorcha.dev` — sets `INSTALLATION_NAME`, pulls pre-built DockerHub images, configures peer identity. TLS handled by host Caddy. | Deployable (used in production for n1). |
+| `docker-compose.ports.yml` | Port override companion to `n1.yml` — moves gateway off 80/443 to 8880:8080 so Caddy can handle TLS on the standard ports. | Used with `n1.yml` in production. |
+| `docker-compose.seed.yml` | Switches `register-service` to `GenesisFile` bootstrap mode for the very first node of a new network. Drop after first successful start. | Deployable (seed node only, one-shot). |
+| `docker-compose.sync-from-n1.yml` | Configures `peer-service` to bootstrap from `n1.sorcha.dev:50051` and sets `register-service` to `SyncOnly` bootstrap so it waits for peer replication rather than self-seeding. | Deployable (secondary/replica nodes). |
+
+### deploy/ tree
+
+| Path | Purpose | Use in production? |
+|------|---------|-------------------|
+| `deploy/n1/docker-compose.n1.yml` | Two-installation demo variant (Feature 143) — n1 as public subscriber with its own genesis. | Demo / two-install scenario. |
+| `deploy/tiny/docker-compose.tiny.yml` | Two-installation demo variant — `tiny.sorcha.dev` as NAT'd register owner/issuer with separate installation. | Demo / two-install scenario. |
+| `deploy/tiny-fresh/` | Fresh genesis artefacts (genesis JSON + validator key) for a new `tiny` installation. | Setup artefacts only. |
+| `deploy/twoinstall-issuer.ps1` | PowerShell orchestration script — provisions the issuer side (Acme Verification Co., analyst, register, blueprint) against the `tiny` node. | Demo orchestration. |
+| `deploy/twoinstall-citizen-n1.ps1` | PowerShell orchestration script — runs the citizen/subscriber side against the `n1` node in the two-installation demo. | Demo orchestration. |
 
 ## Related Documentation
 

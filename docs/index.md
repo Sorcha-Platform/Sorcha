@@ -26,8 +26,8 @@ features:
   - title: DAD Security Model
     details: Disclosure, Alteration, Destruction — cryptographically secured registers with peer network replication.
     link: /reference/architecture
-  - title: 7 Microservices
-    details: Blueprint, Register, Wallet, Tenant, Validator, Peer, and API Gateway — orchestrated with .NET Aspire.
+  - title: 8 Services
+    details: Blueprint, Register, Wallet, Tenant, Validator, Peer, HAIP, and API Gateway — orchestrated with .NET Aspire.
     link: /services/
   - title: Real-time Notifications
     details: SignalR WebSocket notifications for action events and register changes with Redis backplane.

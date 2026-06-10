@@ -168,10 +168,11 @@ Add to `appsettings.json` or `appsettings.Development.json`:
 ### Environment Variables (Recommended for Production)
 
 ```bash
-# JWT Configuration
-export JwtSettings__Issuer="https://tenant.your-domain.com"
-export JwtSettings__Audience="https://api.your-domain.com"
+# JWT Configuration (Feature 136 — InstallationName drives issuer and all tier audiences)
+export JwtSettings__InstallationName="your-deployment-name"
 export JwtSettings__SigningKey="<strong-random-key-from-azure-key-vault>"
+# JwtSettings__Audience is intentionally absent — audiences are derived from InstallationName.
+# See docs/guides/JWT-CONFIGURATION.md for the full tiered-audience model.
 ```
 
 ### Azure Key Vault (Production)
@@ -435,9 +436,8 @@ echo "YOUR_TOKEN" | jwt decode -
 **Symptom**: Services cannot validate tokens from Tenant Service
 
 **Checklist:**
-- [ ] All services have same `JwtSettings:SigningKey`
-- [ ] All services have same `JwtSettings:Issuer`
-- [ ] All services have same `JwtSettings:Audience`
+- [ ] All services have same `JwtSettings__SigningKey`
+- [ ] All services have same `JwtSettings__InstallationName` (drives both issuer and audiences — `JwtSettings:Audience` is derived and must NOT be set separately)
 - [ ] JWT Bearer package installed on all services
 - [ ] `app.UseAuthentication()` called before `app.UseAuthorization()`
 
@@ -795,11 +795,11 @@ All services authenticate to the Tenant Service using OAuth2 client credentials.
 
 | Service | ClientId | ClientSecret | Scopes |
 |---------|----------|--------------|--------|
-| Blueprint | `service-blueprint` | `blueprint-service-secret` | `wallets:sign registers:write` |
-| Wallet | `service-wallet` | `wallet-service-secret` | `validators:notify` |
-| Register | `service-register` | `register-service-secret` | `validators:notify` |
-| Validator | `service-validator` | `validator-service-secret` | `registers:write registers:read` |
-| Peer | `service-peer` | `peer-service-secret` | `registers:read` |
+| Blueprint | `service-blueprint` | `blueprint-service-secret` | `wallets:sign registers:write blueprints:manage` |
+| Wallet | `service-wallet` | `wallet-service-secret` | `registers:write registers:read` |
+| Register | `register-service` | `register-service-secret` | `wallets:sign validator:write` |
+| Validator | `validator-service` | `validator-service-secret` | `registers:write registers:read blueprints:read` |
+| Peer | `service-peer` | `peer-service-secret` | `registers:write registers:read` |
 
 These values are configured in each service's `appsettings.json` or via environment variables in `docker-compose.yml`:
 

@@ -130,14 +130,14 @@ Services/Sorcha.*.Service/
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| Runtime | .NET 10 / C# 13 | LTS runtime |
+| Runtime | .NET 10 / C# 14 | LTS runtime |
 | Orchestration | .NET Aspire 13+ | Service discovery, health checks, telemetry |
 | API | Minimal APIs + Scalar | REST endpoints with OpenAPI docs |
 | Real-time | SignalR + Redis | WebSocket notifications |
 | Databases | PostgreSQL / MongoDB / Redis | Relational, document, cache |
 | Auth | JWT Bearer | Service-to-service and user authentication |
 | Crypto | NBitcoin + Sorcha.Cryptography | HD wallets, ED25519, P-256, RSA, ML-DSA, ML-KEM |
-| Testing | xUnit + FluentAssertions + Moq | 1,100+ tests across 30 projects |
+| Testing | xUnit + FluentAssertions + Moq | 11,000+ tests across 50+ projects |
 
 ## Testing
 

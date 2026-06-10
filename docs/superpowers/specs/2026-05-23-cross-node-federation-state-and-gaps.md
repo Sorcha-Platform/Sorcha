@@ -88,7 +88,7 @@ applying point-fixes. That is the purpose of the kickoff prompt.
   transfer via git — copy it to the new machine out-of-band before any n1 reset. Reuse it; never
   regenerate (it matches the committed embedded genesis roster:
   `ws11qzamquj62vk5…` / pubkey `u7ByW…` / fingerprint `6e6ec9f0…`).
-- **n1 access:** SSH `sorcha@51.105.7.135` (NSG is IP-restricted — update `AllowSSH` source for the
+- **n1 access:** SSH `<ssh-user>@<n1-host>` (NSG is IP-restricted — update `AllowSSH` source for the
   new machine's public IP). The `az` CLI has a TLS-trust issue from these shells, so use the SSH
   manual path for n1 resets (see the `n1-deploy` / `network-bootstrap` skills). n1 auto-shuts ~23:00 GMT.
 - **n1 genesis-clean reset (SSH path):** scp `genesis-validator-key.json`→`/tmp/gvk.json`; `down -v`;

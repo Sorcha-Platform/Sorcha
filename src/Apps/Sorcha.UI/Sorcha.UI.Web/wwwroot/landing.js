@@ -11,6 +11,34 @@
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     // ============================================================
+    // Cross-page push/pop direction for the View Transitions API.
+    // Home (path '/') is depth 0; every other page is depth 1. Going
+    // deeper => 'forward' (slide in from right); shallower => 'back'
+    // (pop). Same depth => default cross-fade. Registered synchronously
+    // so it's ready when pagereveal fires on the inbound document.
+    // ============================================================
+    (function setupPageTransitions() {
+        function depthOf(u) {
+            try { const p = new URL(u, location.href).pathname.replace(/index\.html$/, ''); return (p === '/' || p === '') ? 0 : 1; }
+            catch (e) { return 1; }
+        }
+        function swallow(vt) { if (!vt) return; ['ready', 'finished', 'updateCallbackDone'].forEach(k => { try { vt[k] && vt[k].catch && vt[k].catch(() => {}); } catch (e) {} }); }
+        window.addEventListener('pageswap', e => swallow(e.viewTransition));
+        window.addEventListener('pagereveal', e => {
+            if (!e.viewTransition) return;
+            const act = window.navigation && window.navigation.activation;
+            const from = act && act.from && act.from.url;
+            const to = (act && act.entry && act.entry.url) || location.href;
+            if (from) {
+                const df = depthOf(from), dt = depthOf(to);
+                if (dt > df) e.viewTransition.types.add('forward');
+                else if (dt < df) e.viewTransition.types.add('back');
+            }
+            swallow(e.viewTransition);
+        });
+    })();
+
+    // ============================================================
     // Theme toggle — persists to localStorage; suppresses transitions for one
     // frame on swap so var()-driven colours re-resolve instantly (Chromium).
     // ============================================================
@@ -240,10 +268,67 @@
         });
     }
 
+    // ============================================================
+    // Stacking deck (index.html). Per-panel sticky `top` so tall panels
+    // scroll fully into view before pinning; a scale+dim "recede" on the
+    // panel being covered; right-edge progress dots. Disabled (plain flow)
+    // under reduced motion — see landing.css.
+    // ============================================================
+    function setupDeck() {
+        const deck = document.getElementById('deck');
+        if (!deck) return;
+        const panels = Array.prototype.slice.call(deck.querySelectorAll(':scope > .panel'));
+        if (!panels.length) return;
+        const RECEDE = { scale: 0.05, dim: 0.5, lift: 12 };
+
+        // progress dots
+        const dotsWrap = document.createElement('div');
+        dotsWrap.className = 'deck-dots';
+        dotsWrap.setAttribute('aria-hidden', 'true');
+        const dotEls = panels.map((p, i) => {
+            const b = document.createElement('button');
+            const h = p.querySelector('h1, h2');
+            b.setAttribute('aria-label', 'Go to ' + (h ? h.textContent.trim() : 'section ' + (i + 1)));
+            b.addEventListener('click', () => window.scrollTo({ top: p.offsetTop, behavior: reduce ? 'auto' : 'smooth' }));
+            dotsWrap.appendChild(b);
+            return b;
+        });
+        if (!reduce) document.body.appendChild(dotsWrap);
+
+        function layoutTops() {
+            const vh = window.innerHeight;
+            panels.forEach(p => { p.style.top = Math.min(0, vh - p.offsetHeight) + 'px'; });
+        }
+        let ticking = false;
+        function onScroll() {
+            const vh = window.innerHeight, y = window.scrollY || window.pageYOffset;
+            for (let i = 0; i < panels.length - 1; i++) {
+                const el = panels[i];
+                if (reduce) { el.style.transform = ''; el.style.setProperty('--veil', 0); continue; }
+                const cover = Math.min(Math.max((y - (panels[i + 1].offsetTop - vh)) / vh, 0), 1);
+                el.style.transform = 'scale(' + (1 - RECEDE.scale * cover).toFixed(4) + ') translateY(' + (-RECEDE.lift * cover).toFixed(1) + 'px)';
+                el.style.setProperty('--veil', (RECEDE.dim * cover).toFixed(3));
+            }
+            const mid = y + vh * 0.5; let idx = 0;
+            for (let j = 0; j < panels.length; j++) if (panels[j].offsetTop <= mid) idx = j;
+            dotEls.forEach((b, k) => b.classList.toggle('is-active', k === idx));
+            ticking = false;
+        }
+        function requestTick() { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }
+
+        if (!reduce) layoutTops();
+        requestTick();
+        window.addEventListener('scroll', requestTick, { passive: true });
+        window.addEventListener('resize', () => { if (!reduce) layoutTops(); requestTick(); });
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (!reduce) layoutTops(); requestTick(); });
+        window.addEventListener('load', () => { if (!reduce) layoutTops(); requestTick(); });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         setupThemeToggle();
         setupHeroAnimation();
         setupReveal();
         setupMobileNav();
+        setupDeck();
     });
 })();

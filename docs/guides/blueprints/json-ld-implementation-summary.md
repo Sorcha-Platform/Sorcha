@@ -13,7 +13,7 @@ This document summarizes the implementation of JSON-LD (Linked Data) support for
 
 ### 1. Core Model Updates
 
-#### Blueprint Model ([Blueprint.cs](../src/Common/Sorcha.Blueprint.Models/Blueprint.cs))
+#### Blueprint Model ([Blueprint.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Common/Sorcha.Blueprint.Models/Blueprint.cs))
 
 Added JSON-LD properties:
 - `@context` (`JsonLdContext`) - JSON-LD context for semantic web integration
@@ -29,7 +29,7 @@ public JsonNode? JsonLdContext { get; set; }
 public string? JsonLdType { get; set; }
 ```
 
-#### Participant Model ([Participant.cs](../src/Common/Sorcha.Blueprint.Models/Participant.cs))
+#### Participant Model ([Participant.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Common/Sorcha.Blueprint.Models/Participant.cs))
 
 Added JSON-LD properties:
 - `@type` (`JsonLdType`) - Person or Organization
@@ -47,7 +47,7 @@ public JsonNode? VerifiableCredential { get; set; }
 public Dictionary<string, JsonNode>? AdditionalProperties { get; set; }
 ```
 
-#### Action Model ([Action.cs](../src/Common/Sorcha.Blueprint.Models/Action.cs))
+#### Action Model ([Action.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Common/Sorcha.Blueprint.Models/Action.cs))
 
 Added ActivityStreams properties:
 - `@type` (`JsonLdType`) - Activity type (Create, Accept, Reject, Update)
@@ -70,7 +70,7 @@ public DateTimeOffset? Published { get; set; }
 
 ### 2. JSON-LD Context Definitions
 
-Created comprehensive JSON-LD context support in [JsonLdContext.cs](../src/Common/Sorcha.Blueprint.Models/JsonLd/JsonLdContext.cs):
+Created comprehensive JSON-LD context support in [JsonLdContext.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Common/Sorcha.Blueprint.Models/JsonLd/JsonLdContext.cs):
 
 #### Default Context
 Maps blueprint fields to standard vocabularies:
@@ -104,7 +104,7 @@ Specialized context for financial workflows:
 
 ### 3. JSON-LD Type Helpers
 
-Created [JsonLdType.cs](../src/Common/Sorcha.Blueprint.Models/JsonLd/JsonLdType.cs) with:
+Created [JsonLdType.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Common/Sorcha.Blueprint.Models/JsonLd/JsonLdType.cs) with:
 
 #### Type Constants
 - `Blueprint`, `Action`, `Participant`
@@ -127,7 +127,7 @@ GetActionType("Approve Request")    // → "as:Accept"
 
 ### 4. Fluent Builder Enhancements
 
-#### BlueprintBuilder ([BlueprintBuilder.cs](../src/Core/Sorcha.Blueprint.Fluent/BlueprintBuilder.cs))
+#### BlueprintBuilder ([BlueprintBuilder.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Core/Sorcha.Blueprint.Fluent/BlueprintBuilder.cs))
 
 New methods for JSON-LD:
 ```csharp
@@ -151,7 +151,7 @@ var blueprint = BlueprintBuilder.Create()
     .Build();
 ```
 
-#### ParticipantBuilder ([ParticipantBuilder.cs](../src/Core/Sorcha.Blueprint.Fluent/ParticipantBuilder.cs))
+#### ParticipantBuilder ([ParticipantBuilder.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Core/Sorcha.Blueprint.Fluent/ParticipantBuilder.cs))
 
 New methods:
 ```csharp
@@ -167,7 +167,7 @@ New methods:
 - Organizations → `schema:Organization`
 - "Self", "Individual" → `schema:Person`
 
-#### ActionBuilder ([ActionBuilder.cs](../src/Core/Sorcha.Blueprint.Fluent/ActionBuilder.cs))
+#### ActionBuilder ([ActionBuilder.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Core/Sorcha.Blueprint.Fluent/ActionBuilder.cs))
 
 New methods:
 ```csharp
@@ -187,7 +187,7 @@ Actions automatically get appropriate ActivityStreams types based on title.
 
 ### 5. API Content Negotiation
 
-#### JSON-LD Middleware ([JsonLdMiddleware.cs](../src/Services/Sorcha.Blueprint.Service/JsonLd/JsonLdMiddleware.cs))
+#### JSON-LD Middleware ([JsonLdMiddleware.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Services/Sorcha.Blueprint.Service/JsonLd/JsonLdMiddleware.cs))
 
 Implemented content negotiation for `application/ld+json`:
 
@@ -202,7 +202,7 @@ JsonLdHelper.EnsureJsonLdContext(blueprint) // Add context if missing
 JsonLdResults.Ok(context, blueprint)        // Smart response helper
 ```
 
-#### API Updates ([Program.cs](../src/Services/Sorcha.Blueprint.Service/Program.cs))
+#### API Updates ([Program.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/src/Services/Sorcha.Blueprint.Service/Program.cs))
 
 Updated endpoints to support JSON-LD:
 - `GET /api/blueprints` - List with JSON-LD support
@@ -224,31 +224,31 @@ curl -H "Accept: application/ld+json" http://localhost:5000/api/blueprints/123
 
 Created comprehensive test suites:
 
-#### JsonLdContextTests ([JsonLdContextTests.cs](../tests/Sorcha.Blueprint.Models.Tests/JsonLd/JsonLdContextTests.cs))
+#### JsonLdContextTests ([JsonLdContextTests.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/tests/Sorcha.Blueprint.Models.Tests/JsonLd/JsonLdContextTests.cs))
 - Default context validation
 - Supply chain context
 - Finance context
 - Context merging
 - Context extraction
 
-#### JsonLdTypeHelperTests ([JsonLdTypeHelperTests.cs](../tests/Sorcha.Blueprint.Models.Tests/JsonLd/JsonLdTypeHelperTests.cs))
+#### JsonLdTypeHelperTests ([JsonLdTypeHelperTests.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/tests/Sorcha.Blueprint.Models.Tests/JsonLd/JsonLdTypeHelperTests.cs))
 - Participant type detection
 - Action type mapping
 - Auto type inference
 
-#### BlueprintBuilderJsonLdTests ([BlueprintBuilderJsonLdTests.cs](../tests/Sorcha.Blueprint.Fluent.Tests/JsonLd/BlueprintBuilderJsonLdTests.cs))
+#### BlueprintBuilderJsonLdTests ([BlueprintBuilderJsonLdTests.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/tests/Sorcha.Blueprint.Fluent.Tests/JsonLd/BlueprintBuilderJsonLdTests.cs))
 - Blueprint with JSON-LD
 - Category-based contexts
 - Custom contexts
 - Serialization validation
 
-#### ParticipantBuilderJsonLdTests ([ParticipantBuilderJsonLdTests.cs](../tests/Sorcha.Blueprint.Fluent.Tests/JsonLd/ParticipantBuilderJsonLdTests.cs))
+#### ParticipantBuilderJsonLdTests ([ParticipantBuilderJsonLdTests.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/tests/Sorcha.Blueprint.Fluent.Tests/JsonLd/ParticipantBuilderJsonLdTests.cs))
 - Person vs Organization types
 - Verifiable credentials
 - DID support
 - Custom properties
 
-#### ActionBuilderJsonLdTests ([ActionBuilderJsonLdTests.cs](../tests/Sorcha.Blueprint.Fluent.Tests/JsonLd/ActionBuilderJsonLdTests.cs))
+#### ActionBuilderJsonLdTests ([ActionBuilderJsonLdTests.cs](https://github.com/Sorcha-Platform/Sorcha/blob/master/tests/Sorcha.Blueprint.Fluent.Tests/JsonLd/ActionBuilderJsonLdTests.cs))
 - ActivityStreams types
 - Target participants
 - Published timestamps

@@ -45,21 +45,21 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 
 ## Detailed Status by Service
 
-For detailed implementation status, see the individual section files:
+Per-service status snapshots are retained in `docs/reference/status/` (not published to the docs site). Current status is summarised inline below.
 
 | Service | Status | Details |
 |---------|--------|---------|
-| [Blueprint-Action Service](status/blueprint-service.md) | 100% | Full orchestration, SignalR, JWT auth |
-| [Wallet Service](status/wallet-service.md) | 98% | EF Core, API complete, HD wallets, Azure Key Vault KMS (Feature 082), Org Key Derivation (Feature 083) |
-| [Register Service](status/register-service.md) | 100% | 20 REST endpoints, OData, SignalR |
-| [Peer Service](status/peer-service.md) | 95% | P2P, 7 gRPC RPCs, replication, circuit breaking, PostgreSQL queue |
+| Blueprint-Action Service | 100% | Full orchestration, SignalR, JWT auth |
+| Wallet Service | 98% | EF Core, API complete, HD wallets, Azure Key Vault KMS (Feature 082), Org Key Derivation (Feature 083) |
+| Register Service | 100% | 20 REST endpoints, OData, SignalR |
+| Peer Service | 95% | P2P, 7 gRPC RPCs, replication, circuit breaking, PostgreSQL queue |
 | **Sorcha.PeerRouter** | Retired (F143) | Standalone app removed — capability folded into Sorcha.Peer.Service (reverse-stream rendezvous) |
-| [Validator Service](status/validator-service.md) | 100% MVD | Consensus, mempool, dedup cross-check |
-| [Tenant Service](status/tenant-service.md) | 97% | Auth, orgs, OIDC, identity mgmt, admin console, platform org topology |
-| [Authentication (AUTH-002)](status/authentication.md) | 100% | JWT Bearer for all services |
-| [Core Libraries & Infrastructure](status/core-libraries.md) | 95% | Engine, Crypto, Gateway |
+| Validator Service | 100% MVD | Consensus, mempool, dedup cross-check |
+| Tenant Service | 97% | Auth, orgs, OIDC, identity mgmt, admin console, platform org topology |
+| Authentication (AUTH-002) | 100% | JWT Bearer for all services |
+| Core Libraries & Infrastructure | 95% | Engine, Crypto, Gateway |
 | **Sorcha.UI (Unified)** | 100% | Register management, designer, consumer pages |
-| [Issues & Actions](status/issues-actions.md) | - | Resolved issues, next steps |
+| Issues & Actions | - | Resolved issues, next steps |
 
 ---
 

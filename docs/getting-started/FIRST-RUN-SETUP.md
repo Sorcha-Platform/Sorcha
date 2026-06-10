@@ -153,32 +153,29 @@ Verifies all services are healthy and accessible.
 
 ## Post-Setup: Bootstrap
 
-After setup completes, run the bootstrap script to create the initial organization:
+After setup completes, the Tenant Service creates the default organization, admin user, and service principals automatically on first start. No separate bootstrap script is needed for the standard Docker flow.
 
-### Using the Bootstrap Script
-
-```powershell
-# PowerShell
-.\scripts\bootstrap-sorcha.ps1 -Profile docker
-
-# Bash
-./scripts/bootstrap-sorcha.sh --profile docker
-```
-
-### Using the CLI
+To confirm bootstrap succeeded, check the tenant-service logs:
 
 ```bash
-# Interactive mode
-sorcha bootstrap --profile docker
-
-# Non-interactive mode
-sorcha bootstrap --profile docker --non-interactive \
-  --org-name "My Organization" \
-  --subdomain "myorg" \
-  --admin-email "admin@myorg.com" \
-  --admin-name "Administrator" \
-  --admin-password "SecureP@ss123!"
+docker-compose logs tenant-service | grep -i "bootstrap\|principal\|admin"
 ```
+
+The default credentials are:
+- **Admin user:** `admin@sorcha.local` / `Dev_Pass_2025!`
+- **Service principal secrets** are logged at `WARNING` level on first boot (save them — they are not shown again).
+
+If you need to seed additional organizations or test data, use the seed scripts:
+
+```powershell
+# Windows — seed tenant service with sample data
+.\scripts\seed-tenant-service.ps1
+
+# Bash
+./scripts/seed-tenant-service.sh
+```
+
+See [Bootstrap Credentials](BOOTSTRAP-CREDENTIALS.md) for the full credential reference.
 
 ## Service URLs
 
@@ -249,14 +246,24 @@ docker-compose logs -f tenant-service
 
 ### HTTPS Not Working
 
-HTTPS requires a certificate. Generate one with:
+HTTPS requires a certificate mounted at `docker/certs/aspnetapp.pfx`. The `docker-compose.yml` mounts `./docker/certs:/https:ro` into the gateway. Generate a dev certificate with the existing script:
 
 ```powershell
-# PowerShell
-.\scripts\setup-https-docker.ps1
+# Windows
+.\scripts\generate-dev-cert.ps1
+```
 
-# Bash
-./scripts/setup-https-docker.sh
+Or manually:
+
+```bash
+mkdir -p docker/certs
+dotnet dev-certs https -ep docker/certs/aspnetapp.pfx -p SorchaDev2025 --trust
+```
+
+Restart the gateway after generating the certificate:
+
+```bash
+docker-compose restart api-gateway
 ```
 
 ## Environment Validation
@@ -264,7 +271,7 @@ HTTPS requires a certificate. Generate one with:
 Run the validation script to check environment health:
 
 ```powershell
-# Full validation
+# Windows — full validation
 .\scripts\validate-environment.ps1
 
 # Quick check (summary only)
@@ -272,6 +279,13 @@ Run the validation script to check environment health:
 
 # JSON output (for CI/CD)
 .\scripts\validate-environment.ps1 -JsonOutput
+```
+
+This script exists at `scripts/validate-environment.ps1`. There is no Bash equivalent; on Linux/macOS use `docker-compose ps` and the health endpoints directly:
+
+```bash
+curl -s http://localhost/health
+docker-compose ps
 ```
 
 ## Advanced Options

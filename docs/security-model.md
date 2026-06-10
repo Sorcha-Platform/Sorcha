@@ -6,7 +6,7 @@ standards:
   - HAIP 1.0
   - W3C Verifiable Credentials Data Model 2.0
   - OAuth 2.0
-last_updated: 2026-05-04
+last_updated: 2026-06-10
 ---
 
 # Sorcha Security Model
@@ -71,6 +71,10 @@ Naming what is *not* implemented, with the same precision as what is:
 - **mTLS at internal service hops** — the constitutional principle is in place. Wire enforcement is on the roadmap. Today, internal hops are JWT-authenticated but not mutually-TLS-authenticated. This is a defence-in-depth gap, not a cryptographic-evidence gap — the wallet signatures and docket signatures remain verifiable regardless of transport.
 - **mdoc / ISO 18013-5** — credential format used by mobile driving licences. Not implemented. Roadmap item; SD-JWT VC covers the same ground for HAIP-flow credentials today.
 - **DID method registration** — `did:sorcha:org:` and `did:sorcha:holder:` are implemented but not registered with the W3C DID method registry. Cross-platform DID resolution requires bilateral agreement; this is a network-effect gap, not a security one.
+
+## Security Audits and Review Cycle
+
+The platform has been subject to two formal security reviews. The March 2026 static-analysis audit (`docs/security/SECURITY-AUDIT-2026-03-19.md`) identified seven CRITICAL/HIGH findings across consensus integrity, replay protection, and infrastructure configuration; the consensus vote-signature and replay-protection gaps were closed before that report was published. A June 2026 architecture review (internal, 2026-06-02) identified three further findings — reversibly-encoded TOTP secrets, unauthenticated system-wallet endpoints, and consumer tokens reaching blueprint authoring — all of which were remediated in the concurrent security-hardening cycle (Features 146/147/148). Infrastructure items from the March audit (Redis password, CORS restriction, default JWT signing key) remain open production-deployment prerequisites and are documented in the admin configuration reference. The Honest Gaps section above names what is intentionally deferred, not what was overlooked.
 
 ## The Trust Anchor Model
 

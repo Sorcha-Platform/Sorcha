@@ -733,6 +733,6 @@ GET /api/templates/{id}/examples/{exampleName}
 ## See Also
 
 - [JSON-e Official Documentation](https://json-e.js.org/)
-- [Template Examples](../examples/templates/)
+- [Template Examples](https://github.com/Sorcha-Platform/Sorcha/tree/master/blueprints/templates)
 - [JSON Logic Guide](./json-logic-guide.md)
 - [Blueprint Architecture](./blueprint-architecture.md)

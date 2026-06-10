@@ -315,7 +315,7 @@ After this PR merges and Docker Publish completes (10–15 min):
 1. SSH to n1 once to seed `.env`:
 
    ```
-   ssh sorcha@51.105.7.135
+   ssh <ssh-user>@<n1-host>
    cd /opt/sorcha
    nano .env  # paste the four OAuth values
    chmod 600 .env
