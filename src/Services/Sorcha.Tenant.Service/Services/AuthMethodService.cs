@@ -128,13 +128,28 @@ public sealed class AuthMethodService : IAuthMethodService
         bool CanRemovePasskey(CredentialStatus status) =>
             status == CredentialStatus.Active ? totalActive - 1 > 0 : true;
 
+        // Feature 150 — assurance tier (badge) + the floor-rule proof tier each row needs to be
+        // removed. These are method-kind constants sourced from AssurancePolicy, the single
+        // server-authoritative source; the UI only reflects them, never decides.
+        var passwordTier = AssurancePolicy.TierOfMethod(AuthMethodKind.Password);
+        var passwordRequired = AssurancePolicy.RequiredProofTier(ScopedOperation.RemovePassword);
+        var socialTier = AssurancePolicy.TierOfMethod(AuthMethodKind.Social);
+        var socialRequired = AssurancePolicy.RequiredProofTier(ScopedOperation.RemoveAuthMethod, AuthMethodKind.Social);
+        var passkeyTier = AssurancePolicy.TierOfMethod(AuthMethodKind.Passkey);
+        var passkeyRequired = AssurancePolicy.RequiredProofTier(ScopedOperation.RemoveAuthMethod, AuthMethodKind.Passkey);
+
+        // SMS 2FA is configuration-gated (US3) — false until an ISmsSender provider is wired in.
+        const bool smsAvailable = false;
+
         return new AuthMethodsResponse(
             Email: user.Email,
             EmailVerified: user.EmailVerified,
             Password: new AuthMethodsPassword(
                 IsSet: user.HasPassword,
                 LastChangedAt: null, // Not currently tracked — future work.
-                CanRemove: CanRemovePassword()),
+                CanRemove: CanRemovePassword(),
+                AssuranceTier: passwordTier,
+                RequiredProofTier: passwordRequired),
             Socials: socials.Select(s => new AuthMethodsSocial(
                 LinkId: s.Id,
                 Provider: s.Provider,
@@ -142,7 +157,9 @@ public sealed class AuthMethodService : IAuthMethodService
                 DisplayName: s.DisplayName,
                 LinkedAt: s.LinkedAt,
                 LastUsedAt: s.LastUsedAt,
-                CanRemove: CanRemoveSocial())).ToList(),
+                CanRemove: CanRemoveSocial(),
+                AssuranceTier: socialTier,
+                RequiredProofTier: socialRequired)).ToList(),
             Passkeys: passkeys.Select(p => new AuthMethodsPasskey(
                 Id: p.Id,
                 DisplayName: string.IsNullOrWhiteSpace(p.DisplayName) ? "Unnamed passkey" : p.DisplayName,
@@ -152,6 +169,9 @@ public sealed class AuthMethodService : IAuthMethodService
                 CreatedAt: p.CreatedAt,
                 LastUsedAt: p.LastUsedAt,
                 CanRemove: CanRemovePasskey(p.Status),
-                CanRename: p.Status == CredentialStatus.Active)).ToList());
+                CanRename: p.Status == CredentialStatus.Active,
+                AssuranceTier: passkeyTier,
+                RequiredProofTier: passkeyRequired)).ToList(),
+            SmsAvailable: smsAvailable);
     }
 }

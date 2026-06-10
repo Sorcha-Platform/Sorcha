@@ -17,21 +17,27 @@ namespace Sorcha.Tenant.Service.Models.Requests;
 /// <param name="Password">The password.</param>
 /// <param name="Socials">Collection of socials associated with this resource.</param>
 /// <param name="Passkeys">Collection of passkeys associated with this resource.</param>
+/// <param name="SmsAvailable">True only when an operator has configured an SMS provider (Feature 150); gates whether the SMS 2FA option is offered.</param>
 public sealed record AuthMethodsResponse(
     string Email,
     bool EmailVerified,
     AuthMethodsPassword Password,
     IReadOnlyList<AuthMethodsSocial> Socials,
-    IReadOnlyList<AuthMethodsPasskey> Passkeys);
+    IReadOnlyList<AuthMethodsPasskey> Passkeys,
+    bool SmsAvailable);
 
 /// <summary>Password-section view model.</summary>
 /// <param name="IsSet">True when <c>PasswordHash</c> is non-null.</param>
 /// <param name="LastChangedAt">Best-effort last-changed timestamp; null if unknown.</param>
 /// <param name="CanRemove">False iff removing the password would leave zero sign-in methods.</param>
+/// <param name="AssuranceTier">Assurance tier of the password as a sign-in method (Feature 150) — Strong.</param>
+/// <param name="RequiredProofTier">Minimum step-up proof tier required to change or remove the password (Feature 150).</param>
 public sealed record AuthMethodsPassword(
     bool IsSet,
     DateTimeOffset? LastChangedAt,
-    bool CanRemove);
+    bool CanRemove,
+    AuthAssuranceTier AssuranceTier,
+    AuthAssuranceTier RequiredProofTier);
 
 /// <summary>Linked-social-provider row.</summary>
 /// <param name="LinkId">Identifier of the link.</param>
@@ -41,6 +47,8 @@ public sealed record AuthMethodsPassword(
 /// <param name="LinkedAt">Timestamp at which linked occurred (UTC).</param>
 /// <param name="LastUsedAt">Timestamp at which last used occurred (UTC).</param>
 /// <param name="CanRemove">Indicates whether remove.</param>
+/// <param name="AssuranceTier">Assurance tier of a linked social as a sign-in method (Feature 150) — Basic.</param>
+/// <param name="RequiredProofTier">Minimum step-up proof tier required to unlink this social (Feature 150).</param>
 public sealed record AuthMethodsSocial(
     Guid LinkId,
     string Provider,
@@ -48,7 +56,9 @@ public sealed record AuthMethodsSocial(
     string? DisplayName,
     DateTimeOffset LinkedAt,
     DateTimeOffset? LastUsedAt,
-    bool CanRemove);
+    bool CanRemove,
+    AuthAssuranceTier AssuranceTier,
+    AuthAssuranceTier RequiredProofTier);
 
 /// <summary>Registered-passkey row. Excludes Revoked passkeys; includes Disabled.</summary>
 /// <param name="Id">Unique identifier for the resource.</param>
@@ -60,6 +70,8 @@ public sealed record AuthMethodsSocial(
 /// <param name="LastUsedAt">Timestamp at which last used occurred (UTC).</param>
 /// <param name="CanRemove">Indicates whether remove.</param>
 /// <param name="CanRename">Indicates whether rename.</param>
+/// <param name="AssuranceTier">Assurance tier of a passkey as a sign-in method (Feature 150) — Strongest.</param>
+/// <param name="RequiredProofTier">Minimum step-up proof tier required to revoke this passkey (Feature 150) — Strongest.</param>
 public sealed record AuthMethodsPasskey(
     Guid Id,
     string DisplayName,
@@ -69,4 +81,6 @@ public sealed record AuthMethodsPasskey(
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastUsedAt,
     bool CanRemove,
-    bool CanRename);
+    bool CanRename,
+    AuthAssuranceTier AssuranceTier,
+    AuthAssuranceTier RequiredProofTier);
