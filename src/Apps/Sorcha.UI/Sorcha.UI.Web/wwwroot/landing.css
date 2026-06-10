@@ -374,8 +374,8 @@ h5 { font-size: 18px; font-weight: 600; line-height: 1.4; }
    ===================================================================== */
 .deck { position: relative; z-index: 1; }
 .deck > .panel {
-  position: sticky; top: 0; min-height: 100svh; overflow: hidden;
-  display: grid; place-items: center;
+  position: sticky; top: 0; min-height: 100svh; overflow: visible;
+  display: flex; flex-direction: column;
   border-top: none;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: 0 -24px 60px rgba(9, 10, 20, .28);
@@ -384,14 +384,18 @@ h5 { font-size: 18px; font-weight: 600; line-height: 1.4; }
 .deck > .panel:first-child { border-radius: 0; box-shadow: none; }
 /* neutralise .section's own vertical padding (sp-9) and 28px sides — the
    panel centres its .container, which already has its own 28px padding. */
-.deck > .panel.section { padding: var(--nav-h) 0 0; }
+.deck > .panel.section { padding: var(--nav-h) 0 var(--sp-6); }
+/* In the flex column, margin:auto centres the .container when there's room and
+   top-aligns it (never clipping) when the content is taller than the viewport. */
+.deck > .panel.section > .container { margin: auto; }
 /* hero carries its own inner padding, so it needs no nav-clearance pad. */
 .deck > .panel.hero { padding-top: 0; }
+.deck > .panel.hero .hero-inner { margin-block: auto; }
 /* the recede dim veil — opacity driven by a CSS var the JS sets per panel */
 .deck > .panel::after {
   content: ""; position: absolute; inset: 0; background: #05060c;
   opacity: var(--veil, 0); pointer-events: none;
-  transition: opacity .15s linear; z-index: 40;
+  z-index: 40;
 }
 
 /* Right-edge progress dots (built by JS; safe to keep even if JS is off). */
