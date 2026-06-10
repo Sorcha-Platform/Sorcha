@@ -305,6 +305,20 @@ public static class Extensions
                 path.StartsWith("/favicon", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/icon-", StringComparison.OrdinalIgnoreCase) ||
                 path.EndsWith(".css", StringComparison.OrdinalIgnoreCase) ||
+                // Static marketing pages served by ui-web at clean extensionless
+                // URLs (Sorcha.UI.Web `marketingPages`) plus the /docs landing.
+                // These are HTML that load landing.css/landing.js + GA, so they
+                // need the relaxed UI CSP, not the API default. (/wallet-info and
+                // /designer-overview also match the /wallet and /design prefixes
+                // above, but are listed here so the marketing set is explicit and
+                // not dependent on that overlap.)
+                path.Equals("/developers", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/solutions", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/compare", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/contact", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/docs", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/wallet-info", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/designer-overview", StringComparison.OrdinalIgnoreCase) ||
                 path.Equals("/", StringComparison.OrdinalIgnoreCase))
             {
                 // UI apps (Blazor WASM, Scalar) require scripts and styles to function
