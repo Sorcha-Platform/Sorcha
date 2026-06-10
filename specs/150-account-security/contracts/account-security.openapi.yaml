@@ -1,0 +1,208 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Account Security (Feature 150) — new & extended endpoints
+  version: "1.0"
+  description: >
+    New and extended REST endpoints for the Unified Account Security Surface.
+    All paths are served by the Tenant Service behind the API Gateway. New
+    endpoints follow the /me/* cross-tier convention (F136): plain
+    .RequireAuthorization() so one surface serves both consumer (citizen) and
+    platform tokens. Existing TOTP endpoints (/api/totp/*), passkey lifecycle,
+    social link/unlink, and password lifecycle are unchanged except where noted.
+servers:
+  - url: /api
+tags:
+  - name: auth-methods
+  - name: two-factor
+  - name: step-up
+
+paths:
+  /me/auth-methods:
+    get:
+      tags: [auth-methods]
+      summary: Aggregate of the caller's authentication methods (EXTENDED)
+      description: >
+        Returns password presence, linked socials, passkeys, and 2FA channel
+        state. EXTENDED for F150 with per-row AssuranceTier, RequiredProofTier,
+        Role, and the (now assurance-aware) CanRemove flag.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthMethodsResponse" }
+        "401": { description: Unauthenticated }
+
+  /me/2fa/email/enable:
+    post:
+      tags: [two-factor]
+      summary: Begin enabling the Email OTP second factor
+      description: >
+        Requires a verified email. Sends a confirmation code to the caller's
+        email to prove the inbox is currently reachable before activation.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "202": { description: Code sent, content: { application/json: { schema: { $ref: "#/components/schemas/EnableChannelResult" } } } }
+        "409": { description: Already enabled }
+        "412": { description: Email not verified }
+        "429": { description: Rate limited, headers: { Retry-After: { schema: { type: integer } } } }
+  /me/2fa/email/verify:
+    post:
+      tags: [two-factor]
+      summary: Confirm the Email OTP code and activate the factor
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/VerifyCodeRequest" } } } }
+      responses:
+        "200": { description: Enabled, content: { application/json: { schema: { $ref: "#/components/schemas/VerifyChannelResult" } } } }
+        "400": { description: invalid-code | expired | too-many-attempts }
+  /me/2fa/email:
+    delete:
+      tags: [two-factor]
+      summary: Disable the Email OTP second factor (always-notified)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Disabled (idempotent) }
+
+  /me/2fa/sms/phone:
+    post:
+      tags: [two-factor]
+      summary: Set + verify a mobile number for SMS OTP (CONFIG-GATED)
+      description: >
+        Available only when an operator has configured an SMS provider; returns
+        404 otherwise. Sends a verification code to the supplied E.164 number.
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SetPhoneRequest" } } } }
+      responses:
+        "202": { description: Verification code sent }
+        "400": { description: Invalid E.164 number }
+        "404": { description: SMS not available (no provider configured) }
+        "429": { description: Per-number send cap exceeded, headers: { Retry-After: { schema: { type: integer } } } }
+  /me/2fa/sms/phone/verify:
+    post:
+      tags: [two-factor]
+      summary: Confirm phone ownership (sets PhoneVerifiedAt)
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/VerifyCodeRequest" } } } }
+      responses:
+        "200": { description: Phone verified }
+        "400": { description: invalid-code | expired | too-many-attempts }
+  /me/2fa/sms/enable:
+    post:
+      tags: [two-factor]
+      summary: Activate the SMS OTP factor (requires a verified phone)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Enabled }
+        "404": { description: SMS not available }
+        "412": { description: Phone not verified }
+  /me/2fa/sms:
+    delete:
+      tags: [two-factor]
+      summary: Disable the SMS OTP second factor (always-notified)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Disabled (idempotent) }
+
+  /auth/challenge/initiate:
+    post:
+      tags: [step-up]
+      summary: Begin a step-up verification (EXTENDED)
+      description: >
+        EXTENDED for F150 — ChallengeMethod now includes EmailOtp and SmsOtp
+        (which trigger a code send) and the previously-stubbed Passkey and
+        ReOAuth proofs are completed. The server only offers methods whose
+        assurance tier satisfies the floor rule for the requested operation.
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ChallengeInitiateRequest" } } } }
+      responses:
+        "200": { description: Challenge started, content: { application/json: { schema: { $ref: "#/components/schemas/ChallengeInitiateResult" } } } }
+        "403": { description: No proof method meets the required tier (proof_tier_insufficient) }
+  /auth/challenge/verify:
+    post:
+      tags: [step-up]
+      summary: Submit a step-up proof, receive a one-shot challenge token (EXTENDED)
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ChallengeVerifyRequest" } } } }
+      responses:
+        "200": { description: Verified, content: { application/json: { schema: { $ref: "#/components/schemas/ChallengeVerifyResult" } } } }
+        "400": { description: invalid proof }
+        "403": { description: proof_tier_insufficient (server re-checks the floor) }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    AssuranceTier:
+      type: string
+      enum: [Basic, Strong, Strongest]
+    MethodRole:
+      type: string
+      enum: [SignIn, SecondFactor, Recovery]
+    AuthMethodsResponse:
+      type: object
+      properties:
+        methods:
+          type: array
+          items: { $ref: "#/components/schemas/AuthMethodRow" }
+        smsAvailable:
+          type: boolean
+          description: True only when an operator has configured an SMS provider.
+    AuthMethodRow:
+      type: object
+      required: [kind, role, canRemove, requiredProofTier]
+      properties:
+        kind: { type: string, enum: [Password, Passkey, Social, Totp, EmailOtp, SmsOtp, BackupCodes] }
+        role: { $ref: "#/components/schemas/MethodRole" }
+        label: { type: string, nullable: true }
+        enabled: { type: boolean }
+        assuranceTier: { oneOf: [{ $ref: "#/components/schemas/AssuranceTier" }, { type: "null" }] }
+        requiredProofTier: { $ref: "#/components/schemas/AssuranceTier" }
+        canRemove: { type: boolean }
+        removeBlockedReason: { type: string, enum: [last-method, needs-stronger-proof], nullable: true }
+    EnableChannelResult:
+      type: object
+      properties:
+        status: { type: string, enum: [code-sent, already-enabled, not-available] }
+        challengeId: { type: string }
+    VerifyCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, pattern: "^[0-9]{6}$" }
+    VerifyChannelResult:
+      type: object
+      properties:
+        status: { type: string, enum: [enabled, invalid-code, expired, too-many-attempts] }
+    SetPhoneRequest:
+      type: object
+      required: [phoneNumber]
+      properties:
+        phoneNumber: { type: string, description: E.164, example: "+447700900123" }
+    ChallengeInitiateRequest:
+      type: object
+      required: [operation]
+      properties:
+        operation: { type: string, description: The ScopedOperation being authorised (e.g. RemovePasskey, Disable2Fa, ChangePassword, UnlinkSocial). }
+        preferredMethod: { type: string, enum: [Totp, Password, Passkey, ReOAuth, EmailOtp, SmsOtp], nullable: true }
+    ChallengeInitiateResult:
+      type: object
+      properties:
+        challengeId: { type: string }
+        offeredMethods:
+          type: array
+          description: Only methods whose tier satisfies the floor rule for the operation.
+          items: { type: string, enum: [Totp, Password, Passkey, ReOAuth, EmailOtp, SmsOtp] }
+        requiredProofTier: { $ref: "#/components/schemas/AssuranceTier" }
+    ChallengeVerifyRequest:
+      type: object
+      required: [challengeId, method, proof]
+      properties:
+        challengeId: { type: string }
+        method: { type: string, enum: [Totp, Password, Passkey, ReOAuth, EmailOtp, SmsOtp] }
+        proof: { type: object, description: Method-specific proof (code, password, WebAuthn assertion, or OAuth result). }
+    ChallengeVerifyResult:
+      type: object
+      properties:
+        status: { type: string, enum: [verified, invalid, proof-tier-insufficient] }
+        challengeToken: { type: string, description: One-shot token consumed by the gated mutation via the X-Auth-Challenge header. }
