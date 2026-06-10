@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 Sorcha Contributors -->
+<html lang="en" data-theme="light" data-accent="violet">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>(function(){try{var t=localStorage.getItem('sorcha-theme');if(t!=='light'&&t!=='dark')t='light';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+    <title>Sorcha documentation — how it works, from first principles</title>
+    <meta name="description" content="A calm introduction to Sorcha: the core idea, the key concepts, the eight services, and the standards and cryptography underneath — before the API reference or self-hosting guide.">
+    <link rel="canonical" href="https://www.sorcha.dev/docs">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Sorcha">
+    <meta property="og:title" content="Sorcha documentation — how it works, from first principles">
+    <meta property="og:description" content="A calm introduction to Sorcha: the core idea, the key concepts, the eight services, and the standards and cryptography underneath — before the API reference or self-hosting guide.">
+    <meta property="og:url" content="https://www.sorcha.dev/docs">
+    <meta property="og:image" content="https://www.sorcha.dev/og-default.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/svg+xml" href="sorcha-icon.svg">
+    <link rel="shortcut icon" href="sorcha.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="landing.css">
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-B2MKVEP45T"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',wait_for_update:500});
+        gtag('js', new Date()); gtag('config','G-B2MKVEP45T',{anonymize_ip:true});
+    </script>
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <nav class="nav" aria-label="Primary">
+        <div class="nav-container">
+            <a href="/" class="nav-brand"><span class="brand-icon">S</span><span>Sorcha</span></a>
+            <div class="nav-links" id="navLinks">
+                <a href="/designer-overview" class="nav-link">For organisations</a>
+                <a href="/wallet-info" class="nav-link">For citizens</a>
+                <a href="/developers" class="nav-link">Developers</a>
+                <a href="/docs" class="nav-link" aria-current="page">Docs</a>
+                <a href="/#open-standards" class="nav-link">Standards</a>
+                <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle light or dark theme" title="Toggle light or dark theme">
+                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
+                <a href="/wallet/" class="btn btn-primary">Open Wallet</a>
+            </div>
+            <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navLinks"><span></span><span></span><span></span></button>
+        </div>
+    </nav>
+
+    <main id="main">
+        <section class="prose">
+            <div class="container-prose">
+                <span class="section-eyebrow">Documentation</span>
+                <h1>Sorcha, from first principles.</h1>
+                <p class="lead">
+                    A calm introduction to how Sorcha works — the core idea, the moving parts, and the
+                    standards underneath — before you head into the API reference or the self-hosting
+                    guide. Read this first; then go deeper.
+                </p>
+            </div>
+        </section>
+
+        <section class="section" aria-labelledby="what-h">
+            <div class="container-prose">
+                <h2 id="what-h">What Sorcha is</h2>
+                <p>
+                    Sorcha is open-source cryptographic proof infrastructure for multi-party workflows. It
+                    replaces asserted trust — an operator's word that something happened — with verifiable
+                    proof that anyone can check. It issues and verifies verifiable credentials and
+                    orchestrates the signed, tamper-evident workflow around them. It is built on .NET 10 and
+                    .NET Aspire, MIT-licensed, and self-hostable with Docker.
+                </p>
+            </div>
+        </section>
+
+        <section class="section section-alt" aria-labelledby="core-h">
+            <div class="container-prose">
+                <h2 id="core-h">The core idea</h2>
+                <p>
+                    Most systems ask you to trust the operator. Sorcha asks you to trust the evidence. Every
+                    action is signed by the participant who took it, recorded in an append-only,
+                    Merkle-linked register, disclosed only to the parties entitled to see it, and
+                    independently verifiable by anyone. The same four steps run under every workflow.
+                </p>
+            </div>
+            <div class="container" style="margin-top:var(--space-4)">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-num">01</div><h3>Sign</h3>
+                        <p>Each participant holds their own keys. Every action is signed by the person or organisation who took it — accountability is built in, not bolted on.</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">02</div><h3>Record</h3>
+                        <p>Signed actions are written to an append-only register, each entry Merkle-chained to the last. Nothing can be altered or quietly removed.</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">03</div><h3>Disclose</h3>
+                        <p>Each party sees only the fields they're entitled to — and each party's data is encrypted to a key only they hold (per-recipient key wrapping). The platform cannot read what it was not given access to.</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">04</div><h3>Verify</h3>
+                        <p>Any party can check the signatures and the chain themselves. Trust comes from the evidence, not from us.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" aria-labelledby="concepts-h">
+            <div class="container-prose">
+                <h2 id="concepts-h">Key concepts</h2>
+                <p>The vocabulary worth knowing before the deeper docs.</p>
+                <ul>
+                    <li><strong>Blueprint</strong> — a workflow definition: the participants, the actions they can take, and the order things happen in. Authored as JSON or YAML and published before any work begins.</li>
+                    <li><strong>Register</strong> — the append-only ledger a workflow's actions are written to. Each entry is Merkle-linked to the one before, so the history is tamper-evident.</li>
+                    <li><strong>Wallet</strong> — holds a participant's keys, signs their actions, and holds the verifiable credentials issued to them. Keys derive from a hierarchical-deterministic seed (BIP-32/39/44).</li>
+                    <li><strong>Participant / Peer</strong> — a participant is a party in a workflow (a person or organisation); a peer is a node in the decentralised network that replicates registers so no single party can erase them.</li>
+                    <li><strong>Credential</strong> — a verifiable credential: a signed, tamper-evident claim a holder can present and a verifier can check, following W3C Verifiable Credentials 2.0 and the SD-JWT VC profile.</li>
+                    <li><strong>Presentation</strong> — the act of showing one or more credentials to a relying party, who verifies them directly (OpenID4VP).</li>
+                    <li><strong>Disclosure</strong> — selective disclosure: each recipient sees only the fields they are entitled to, and that data is sealed to a key only they hold.</li>
+                    <li><strong><code class="mono">did:sorcha</code></strong> — Sorcha's decentralised identifier method, used to name and resolve participants and their keys.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="section section-alt" aria-labelledby="system-h">
+            <div class="container-prose">
+                <h2 id="system-h">The system at a glance</h2>
+                <p>
+                    Eight single-responsibility services, each doing one job. They compose into the platform;
+                    the API Gateway is the only part the outside world talks to directly.
+                </p>
+                <ul>
+                    <li><strong>Blueprint</strong> — workflow definitions.</li>
+                    <li><strong>Wallet</strong> — keys, signing, and credential holding.</li>
+                    <li><strong>Register</strong> — append-only Merkle ledgers.</li>
+                    <li><strong>Validator</strong> — quorum consensus over what is admitted to a register.</li>
+                    <li><strong>Peer</strong> — decentralised replication across the network.</li>
+                    <li><strong>Tenant</strong> — multi-tenancy, identity, and access.</li>
+                    <li><strong>API Gateway</strong> — the single external surface in front of the services.</li>
+                    <li><strong>HAIP</strong> — the boundary to the OpenID4VC wallet ecosystem.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="section" aria-labelledby="standards-h">
+            <div class="container-prose">
+                <h2 id="standards-h">Standards and cryptography</h2>
+                <div class="chips" style="justify-content:flex-start">
+                    <span class="chip mono">ML-DSA (FIPS 204)</span>
+                    <span class="chip mono">ML-KEM (FIPS 203)</span>
+                    <span class="chip mono">SLH-DSA (FIPS 205)</span>
+                    <span class="chip mono">BIP-32/39/44</span>
+                    <span class="chip mono">Merkle + SHA-256</span>
+                    <span class="chip mono">OpenID4VCI</span>
+                    <span class="chip mono">OpenID4VP</span>
+                    <span class="chip mono">SD-JWT VC</span>
+                    <span class="chip mono">W3C VC 2.0</span>
+                    <span class="chip mono">did:sorcha</span>
+                </div>
+                <p style="margin-top:var(--space-4)">
+                    Signing defaults to <strong>ML-DSA (FIPS 204)</strong>, a post-quantum signature scheme,
+                    with <strong>ML-KEM (FIPS 203)</strong> for key encapsulation and SLH-DSA (FIPS 205)
+                    primitives also present. Wallets derive keys with BIP-32/39/44; registers chain their
+                    entries with Merkle dockets and SHA-256. At the wallet boundary the HAIP service speaks
+                    OpenID4VCI, OpenID4VP and SD-JWT VC, issuing W3C Verifiable Credentials 2.0 named with
+                    the <code class="mono">did:sorcha</code> method. The Developers page carries the full
+                    list and the rationale.
+                </p>
+            </div>
+        </section>
+
+        <section class="section section-alt" aria-labelledby="principles-h">
+            <div class="container-prose">
+                <h2 id="principles-h">Design principles</h2>
+                <ul>
+                    <li><strong>Trust from evidence, not operators.</strong> Verification rests on signatures and the chain, not on trusting whoever runs the system.</li>
+                    <li><strong>Open standards over proprietary lock-in.</strong> Every protocol and primitive is a published standard you can implement against.</li>
+                    <li><strong>Post-quantum by default.</strong> The default signing path is ML-DSA, so records stay verifiable as cryptography moves on.</li>
+                    <li><strong>Participant-held keys.</strong> Each party holds their own keys and signs their own actions; the platform never signs on their behalf.</li>
+                    <li><strong>Rehearse before go-live.</strong> A workflow is rehearsed and validated before it can be published and run for real.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="section" aria-labelledby="next-h">
+            <div class="container-prose">
+                <h2 id="next-h">Where to go next</h2>
+                <p>Pick the path that fits what you're deciding.</p>
+            </div>
+            <div class="container" style="margin-top:var(--space-4)">
+                <div class="doors">
+                    <a class="door" href="/developers">
+                        <h3>Developers</h3>
+                        <p>The build-and-run path: the services, the API, the cryptography, and the self-hosting quick-start.</p>
+                        <span class="door-cta">Build on Sorcha →</span>
+                    </a>
+                    <a class="door" href="/designer-overview">
+                        <h3>The Designer</h3>
+                        <p>How an organisation describes a multi-party workflow and takes it live — describe, understand, rehearse, go live.</p>
+                        <span class="door-cta">See the Designer →</span>
+                    </a>
+                    <a class="door" href="/solutions">
+                        <h3>Solutions</h3>
+                        <p>Where proof fits: government-aligned identity, product passports, AI-decision audit trails, and trade finance.</p>
+                        <span class="door-cta">Explore solutions →</span>
+                    </a>
+                </div>
+            </div>
+            <div class="container-prose">
+                <div class="actions">
+                    <a href="https://github.com/Sorcha-Platform/Sorcha#quick-start" class="btn btn-primary btn-lg" target="_blank" rel="noopener">Self-hosting quick-start →</a>
+                    <a href="https://github.com/Sorcha-Platform/Sorcha/tree/master/docs" class="btn btn-outline btn-lg" target="_blank" rel="noopener">Browse the repo docs →</a>
+                    <a href="https://github.com/Sorcha-Platform/Sorcha" class="btn btn-text" target="_blank" rel="noopener">View on GitHub →</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-base">© Sorcha · Open source, MIT licensed · <a href="/" style="color:inherit">Home</a> · <a href="/developers" style="color:inherit">Developers</a> · <a href="https://github.com/Sorcha-Platform/Sorcha" style="color:inherit" target="_blank" rel="noopener">GitHub</a> · <button type="button" onclick="if(window.openConsent)window.openConsent()" style="background:none;border:none;color:inherit;cursor:pointer;font:inherit">Cookie settings</button></div>
+    </footer>
+
+    <script src="landing.js"></script>
+    <script src="consent-banner.js"></script>
+</body>
+</html>
