@@ -170,7 +170,7 @@ h5 { font-size: 18px; font-weight: 600; line-height: 1.4; }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: .45; pointer-events: none; box-shadow: none; }
 
 /* ===========================  SECTION SHELLS  ============================ */
-.section { padding: var(--sp-9) 28px; border-top: 1px solid var(--border); }
+.section { padding: var(--sp-9) 28px; border-top: 1px solid var(--border); background: var(--bg); }
 .section-alt { background: var(--surface-alt); }
 .section-head { max-width: 760px; margin: 0 auto var(--sp-7); text-align: center; }
 .section-eyebrow {

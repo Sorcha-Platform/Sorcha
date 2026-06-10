@@ -133,6 +133,6 @@ A complete walkthrough transcript with input/output payloads will be added to `w
 - **`/.well-known/mcp.json`** — live machine-readable manifest.
 - **`/api/mcp/tools`** — flat catalogue with one entry per tool (name, category, short description). The full per-tool description (≥ 2 sentences with disambiguation per FR-017) lives on the running MCP server and is returned by the standard MCP `list_tools` request.
 - **`STANDARDS.md`** — the standards posture every tool indirectly relies on (BIP32/39/44 wallet keys, ML-DSA signatures, OpenID4VC issuance, etc.).
-- **`docs/architecture.md`** *(forthcoming, Phase 8)* — full system architecture.
-- **`docs/quickstart.md`** *(forthcoming, Phase 7)* — agent-runnable setup.
+- **[Architecture overview](./architecture.md)** — full system architecture.
+- **[Quickstart](./quickstart.md)** — agent-runnable setup.
 - **`walkthroughs/TradeFinance/`** and **`walkthroughs/AssuredIdentity/`** — runnable end-to-end demonstrations of the patterns the MCP tools drive.
