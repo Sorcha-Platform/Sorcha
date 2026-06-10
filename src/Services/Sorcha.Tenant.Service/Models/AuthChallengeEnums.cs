@@ -49,3 +49,23 @@ public enum ScopedOperation
     /// <summary>Disable the user's enrolled time-based two-factor authentication.</summary>
     Disable2Fa = 4
 }
+
+/// <summary>
+/// Relative strength of an authentication method or step-up proof (Feature 150).
+/// The numeric values are deliberately ordinal so the floor rule can compare tiers
+/// with <c>&gt;=</c>: a proof authorises a destructive/downgrade operation only when
+/// its tier is greater than or equal to the target's. Computed from the method kind —
+/// never persisted — by <see cref="Services.AssurancePolicy"/>.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum AuthAssuranceTier
+{
+    /// <summary>Email/SMS one-time codes, backup codes — phishable, lowest assurance.</summary>
+    Basic = 1,
+
+    /// <summary>Authenticator (TOTP), account password, re-OAuth — solid but not phishing-resistant.</summary>
+    Strong = 2,
+
+    /// <summary>Passkey (WebAuthn) — phishing-resistant, highest assurance.</summary>
+    Strongest = 3
+}
