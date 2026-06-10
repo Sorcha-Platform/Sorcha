@@ -71,7 +71,7 @@
             {
                 var isUnread = entry.ReadAt is null;
                 <MudListItem T="InboxEntryDto"
-                             Style="@(isUnread ? "background-color: rgba(102,126,234,0.06);" : "")">
+                             Style="@(isUnread ? "background-color: rgba(79,70,229,0.06);" : "")">
                     <div class="d-flex flex-column gap-1" @onclick="() => OnEntryClickedAsync(entry)">
                         <div class="d-flex align-center gap-2">
                             <MudIcon Icon="@IconForCategory(entry.Category)"

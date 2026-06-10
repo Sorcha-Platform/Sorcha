@@ -78,7 +78,7 @@
     font-size: 14px;
     font-weight: 700;
     color: #fff;
-    background: var(--sorcha-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+    background: var(--sorcha-gradient, linear-gradient(135deg, #4F46E5 0%, #818CF8 100%));
 }
 
 .cards-add-tile {

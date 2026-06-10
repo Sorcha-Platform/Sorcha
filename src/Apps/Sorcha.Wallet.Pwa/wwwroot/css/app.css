@@ -9,7 +9,7 @@
    in its var() usage so it renders correctly even when hosted somewhere that
    does not define these (e.g. the /app web host render-sanity path, FR-025). */
 :root {
-    --sorcha-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --sorcha-gradient: linear-gradient(135deg, #4F46E5 0%, #818CF8 100%);
     --sorcha-accent: #48bb78;
     --sorcha-warn: #d69e2e;
 }
