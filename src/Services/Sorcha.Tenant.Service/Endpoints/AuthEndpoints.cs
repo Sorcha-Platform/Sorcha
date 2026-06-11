@@ -472,11 +472,14 @@ public static class AuthEndpoints
             return TypedResults.Unauthorized();
         }
 
-        // Validate the code by method: email one-time code (Feature 150 US2), or TOTP/backup.
+        // Validate the code by method: server-sent code (email US2 / sms US3), or TOTP/backup.
         bool isValid;
-        if (string.Equals(request.Method, "email", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(request.Method, "email", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(request.Method, "sms", StringComparison.OrdinalIgnoreCase))
         {
-            var channel = channels.Resolve(ChallengeMethod.EmailOtp);
+            var kind = string.Equals(request.Method, "sms", StringComparison.OrdinalIgnoreCase)
+                ? ChallengeMethod.SmsOtp : ChallengeMethod.EmailOtp;
+            var channel = channels.Resolve(kind);
             isValid = channel is not null
                 && await channel.VerifyAsync(user.PlatformUserId, OtpPurpose.Login2Fa, request.Code, cancellationToken)
                     == OtpVerifyOutcome.Verified;

@@ -416,7 +416,12 @@ public sealed class AuthChallengeService : IAuthChallengeService
                 .AsNoTracking()
                 .AnyAsync(t => t.PlatformUserId == context.PlatformUserId && t.EmailOtpEnabled, cancellationToken);
 
-        return new UserEnrolment(totpEnabled, hasPassword, hasActivePasskey, hasSocial, emailOtpEnabled);
+        var smsOtpEnabled = _channels.Resolve(ChallengeMethod.SmsOtp) is not null
+            && await _db.PlatformUserTwoFactors
+                .AsNoTracking()
+                .AnyAsync(t => t.PlatformUserId == context.PlatformUserId && t.SmsOtpEnabled, cancellationToken);
+
+        return new UserEnrolment(totpEnabled, hasPassword, hasActivePasskey, hasSocial, emailOtpEnabled, smsOtpEnabled);
     }
 
     private static string GenerateRawToken()
@@ -434,7 +439,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    private readonly record struct UserEnrolment(bool TotpEnabled, bool HasPassword, bool HasActivePasskey, bool HasSocial, bool EmailOtpEnabled)
+    private readonly record struct UserEnrolment(bool TotpEnabled, bool HasPassword, bool HasActivePasskey, bool HasSocial, bool EmailOtpEnabled, bool SmsOtpEnabled)
     {
         public bool IsEnrolled(ChallengeMethod method) => method switch
         {
@@ -443,6 +448,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
             ChallengeMethod.Passkey => HasActivePasskey,
             ChallengeMethod.ReOAuth => HasSocial,
             ChallengeMethod.EmailOtp => EmailOtpEnabled,
+            ChallengeMethod.SmsOtp => SmsOtpEnabled,
             _ => false
         };
 
@@ -453,6 +459,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
             if (HasActivePasskey) return ChallengeMethod.Passkey;
             if (HasSocial) return ChallengeMethod.ReOAuth;
             if (EmailOtpEnabled) return ChallengeMethod.EmailOtp;
+            if (SmsOtpEnabled) return ChallengeMethod.SmsOtp;
             return null;
         }
 
@@ -475,6 +482,8 @@ public sealed class AuthChallengeService : IAuthChallengeService
             // stronger is enrolled and the operation's floor is Basic).
             if (EmailOtpEnabled && AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(ChallengeMethod.EmailOtp), requiredTier))
                 return ChallengeMethod.EmailOtp;
+            if (SmsOtpEnabled && AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(ChallengeMethod.SmsOtp), requiredTier))
+                return ChallengeMethod.SmsOtp;
             return null;
         }
     }

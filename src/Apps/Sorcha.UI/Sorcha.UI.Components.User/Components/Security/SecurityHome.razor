@@ -65,13 +65,10 @@ else
     @* ── Group 2: Two-factor authentication ───────────────────── *@
     <section data-testid="security-group-2fa">
         <MudText Typo="Typo.h6" Class="mb-3 mt-4">Two-factor authentication</MudText>
-        <TwoFactorSection EmailEnabled="_methods.EmailOtpEnabled" OnChanged="LoadAsync" />
-        @if (_methods.SmsAvailable)
-        {
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                SMS codes are available on this installation and appear above when configured.
-            </MudText>
-        }
+        <TwoFactorSection EmailEnabled="_methods.EmailOtpEnabled"
+                          SmsAvailable="_methods.SmsAvailable"
+                          SmsEnabled="_methods.SmsOtpEnabled"
+                          OnChanged="LoadAsync" />
     </section>
 
     @* ── Group 3: Recovery ─────────────────────────────────────── *@

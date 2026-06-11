@@ -136,18 +136,18 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 ### Tests for User Story 3
 
-- [ ] T039 [P] [US3] Unit: the registry **hides** the SMS channel when `ISmsSender` is unconfigured and **registers** it when configured, in `tests/Sorcha.Tenant.Service.Tests/Auth/SmsChannelGatingTests.cs` — fail first.
-- [ ] T040 [P] [US3] Unit: phone verify sets `PhoneVerifiedAt`; per-number send cap enforced; changing the number clears `PhoneVerifiedAt`, in `tests/Sorcha.Tenant.Service.Tests/Auth/SmsPhoneVerifyTests.cs` — fail first.
+- [x] T039 [P] [US3] Unit: the registry **hides** the SMS channel when `ISmsSender` is unconfigured and **registers** it when configured, in `tests/Sorcha.Tenant.Service.Tests/Auth/SmsChannelGatingTests.cs` — fail first.
+- [x] T040 [P] [US3] Unit: phone verify sets `PhoneVerifiedAt`; per-number send cap enforced; changing the number clears `PhoneVerifiedAt`, in `tests/Sorcha.Tenant.Service.Tests/Auth/SmsPhoneVerifyTests.cs` — fail first.
 - [ ] T041 [P] [US3] Playwright E2E with a fake `ISmsSender`: absent-when-unconfigured, verify-phone, enable, login-with-sms-code, in `tests/Sorcha.UI.E2E.Tests/Docker/Security/SmsOtpTests.cs` — fail first.
 
 ### Implementation for User Story 3
 
-- [ ] T042 [US3] Define `ISmsSender` + `AcsSmsSender` (config-gated, mirroring `IEmailSender`'s SMTP/ACS auto-select on `Sms:*` config) in `src/Services/Sorcha.Tenant.Service/Services/Sms/`.
-- [ ] T043 [US3] Register the SMS channel in `VerificationChannelRegistry` **only when** `ISmsSender` is configured, and set the aggregate `SmsAvailable` flag accordingly (make T039 pass) — `VerificationChannelRegistry` + `AuthMethodService`.
-- [ ] T044 [US3] Implement the phone capture + verify flow via `ServerSentOtpService` (`PhoneVerify` purpose) with a per-number send/cost guard; changing the number clears `PhoneVerifiedAt` + disables SMS (make T040 pass) — `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
-- [ ] T045 [US3] Endpoints `POST /api/me/2fa/sms/phone`, `POST /api/me/2fa/sms/phone/verify`, `POST /api/me/2fa/sms/enable`, `DELETE /api/me/2fa/sms` — return `404` when SMS is unavailable (Scalar + XML), in `TwoFactorChannelEndpoints.cs`; always-notify.
-- [ ] T046 [US3] Implement `SmsOtpChannel : IVerificationChannel` and wire `SmsOtp` into the login second-factor path + the step-up `ChallengeMethod`, in `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
-- [ ] T047 [US3] Extend `TwoFactorSection.razor` with the SMS row (hidden when `smsAvailable=false`) + the phone capture/verify UI; extend `IAuthMethodsClientService` with the SMS methods.
+- [x] T042 [US3] Define `ISmsSender` + `AcsSmsSender` (config-gated, mirroring `IEmailSender`'s SMTP/ACS auto-select on `Sms:*` config) in `src/Services/Sorcha.Tenant.Service/Services/Sms/`.
+- [x] T043 [US3] Register the SMS channel in `VerificationChannelRegistry` **only when** `ISmsSender` is configured, and set the aggregate `SmsAvailable` flag accordingly (make T039 pass) — `VerificationChannelRegistry` + `AuthMethodService`.
+- [x] T044 [US3] Implement the phone capture + verify flow via `ServerSentOtpService` (`PhoneVerify` purpose) with a per-number send/cost guard; changing the number clears `PhoneVerifiedAt` + disables SMS (make T040 pass) — `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
+- [x] T045 [US3] Endpoints `POST /api/me/2fa/sms/phone`, `POST /api/me/2fa/sms/phone/verify`, `POST /api/me/2fa/sms/enable`, `DELETE /api/me/2fa/sms` — return `404` when SMS is unavailable (Scalar + XML), in `TwoFactorChannelEndpoints.cs`; always-notify.
+- [x] T046 [US3] Implement `SmsOtpChannel : IVerificationChannel` and wire `SmsOtp` into the login second-factor path + the step-up `ChallengeMethod`, in `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
+- [x] T047 [US3] Extend `TwoFactorSection.razor` with the SMS row (hidden when `smsAvailable=false`) + the phone capture/verify UI; extend `IAuthMethodsClientService` with the SMS methods.
 
 **Checkpoint**: US1–US3 work; SMS is available wherever an operator configures a provider and invisible elsewhere.
 

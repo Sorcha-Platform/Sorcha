@@ -251,28 +251,35 @@ public class LoginService : ILoginService
         var totpStatus = await _totpService.GetStatusAsync(user.Id, ct);
         var passkeys = await _passkeyService.GetCredentialsByOwnerAsync(platformUser.Id, ct);
         var hasActivePasskeys = passkeys.Any(p => p.Status == CredentialStatus.Active);
-        var emailOtpEnabled = _channels.Resolve(ChallengeMethod.EmailOtp) is not null
-            && await _dbContext.PlatformUserTwoFactors
-                .AsNoTracking()
-                .AnyAsync(t => t.PlatformUserId == platformUser.Id && t.EmailOtpEnabled, ct);
+        var twoFactor = await _dbContext.PlatformUserTwoFactors
+            .AsNoTracking()
+            .Where(t => t.PlatformUserId == platformUser.Id)
+            .Select(t => new { t.EmailOtpEnabled, t.SmsOtpEnabled })
+            .FirstOrDefaultAsync(ct);
+        var emailOtpEnabled = _channels.Resolve(ChallengeMethod.EmailOtp) is not null && (twoFactor?.EmailOtpEnabled ?? false);
+        var smsOtpEnabled = _channels.Resolve(ChallengeMethod.SmsOtp) is not null && (twoFactor?.SmsOtpEnabled ?? false);
 
-        if (totpStatus.IsEnabled || hasActivePasskeys || emailOtpEnabled)
+        if (totpStatus.IsEnabled || hasActivePasskeys || emailOtpEnabled || smsOtpEnabled)
         {
             var loginToken = await _totpService.GenerateLoginTokenAsync(user.Id, ct);
-            // Strongest-enrolled first (passkey → totp → email), with a "use another method" fallback.
+            // Strongest-enrolled first (passkey → totp → email → sms), with a "use another method" fallback.
             var methods = new List<string>();
             if (hasActivePasskeys) methods.Add("passkey");
             if (totpStatus.IsEnabled) methods.Add("totp");
             if (emailOtpEnabled) methods.Add("email");
+            if (smsOtpEnabled) methods.Add("sms");
 
-            // When email is the ONLY factor, dispatch the code now so the user has something to enter.
-            // (When a stronger factor exists the client requests an email code on demand via the
-            // dedicated send-email endpoint — the "use another method" path.)
-            if (emailOtpEnabled && !totpStatus.IsEnabled && !hasActivePasskeys)
+            // When a server-sent code is the ONLY factor, dispatch it now (email preferred over sms).
+            // When a stronger factor exists the client requests a code on demand (the fallback path).
+            if (!totpStatus.IsEnabled && !hasActivePasskeys)
             {
-                var channel = _channels.Resolve(ChallengeMethod.EmailOtp);
-                if (channel is not null)
-                    await channel.SendAsync(platformUser.Id, OtpPurpose.Login2Fa, ct);
+                var soleChannel = emailOtpEnabled ? ChallengeMethod.EmailOtp : smsOtpEnabled ? ChallengeMethod.SmsOtp : (ChallengeMethod?)null;
+                if (soleChannel is { } ch)
+                {
+                    var channel = _channels.Resolve(ch);
+                    if (channel is not null)
+                        await channel.SendAsync(platformUser.Id, OtpPurpose.Login2Fa, ct);
+                }
             }
 
             _logger.LogInformation("Login requires 2FA for {Email} in org {OrgId}, methods: {Methods}",

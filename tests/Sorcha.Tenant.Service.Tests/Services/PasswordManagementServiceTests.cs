@@ -38,7 +38,7 @@ public class PasswordManagementServiceTests : IDisposable
         var options = new DbContextOptionsBuilder<TenantDbContext>().UseSqlite(_connection).Options;
         _db = new TenantDbContext(options);
         _db.Database.EnsureCreated();
-        _floor = new AuthMethodService(_db);
+        _floor = new AuthMethodService(_db, new VerificationChannelRegistry([]));
         _metrics = new AuthMetrics(new TestMeterFactory());
         _policy = new StubPasswordPolicy(allowAll: true);
         _service = new PasswordManagementService(_db, _floor, _policy, Mock.Of<ISecurityChangeNotifier>(), _metrics, NullLogger<PasswordManagementService>.Instance);

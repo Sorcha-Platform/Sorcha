@@ -34,7 +34,7 @@ public class SocialLinkServiceTests : IDisposable
         _db = new TenantDbContext(options);
         _db.Database.EnsureCreated();
         _metrics = new AuthMetrics(new TestMeterFactory());
-        _floor = new AuthMethodService(_db);
+        _floor = new AuthMethodService(_db, new VerificationChannelRegistry([]));
     }
 
     private SocialLinkService CreateService() => new(

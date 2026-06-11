@@ -26,7 +26,8 @@ public sealed record AuthMethodsResponse(
     IReadOnlyList<AuthMethodsSocial> Socials,
     IReadOnlyList<AuthMethodsPasskey> Passkeys,
     bool SmsAvailable,
-    bool EmailOtpEnabled = false);
+    bool EmailOtpEnabled = false,
+    bool SmsOtpEnabled = false);
 
 /// <summary>Password-section view model.</summary>
 /// <param name="IsSet">True when <c>PasswordHash</c> is non-null.</param>

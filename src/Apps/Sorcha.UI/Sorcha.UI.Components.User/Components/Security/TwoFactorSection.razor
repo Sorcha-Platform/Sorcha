@@ -143,12 +143,84 @@
     }
 </MudPaper>
 
+@* ── SMS one-time codes (Feature 150 US3, config-gated — hidden when unavailable) ── *@
+@if (SmsAvailable)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true" data-testid="sms-2fa-row">
+        <div class="d-flex align-center mb-1">
+            <MudIcon Icon="@Icons.Material.Filled.Sms" Class="mr-3" />
+            <div class="flex-grow-1">
+                <div class="d-flex align-center" style="gap:8px;">
+                    <MudText Typo="Typo.h6">SMS code</MudText>
+                    <AssuranceBadge Tier="AuthAssuranceTier.Basic" />
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    A one-time code texted to your mobile. Lower assurance.
+                </MudText>
+            </div>
+            @if (SmsEnabled)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">On</MudChip>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" Class="ml-2"
+                           Disabled="_smsBusy" OnClick="DisableSmsAsync">Turn off</MudButton>
+            }
+            else if (!_smsCapturing)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           Disabled="_smsBusy" OnClick="@(() => _smsCapturing = true)">Turn on</MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Text" Disabled="_smsBusy" OnClick="CancelSmsSetup">Cancel</MudButton>
+            }
+        </div>
+
+        @if (_smsCapturing && !SmsEnabled)
+        {
+            <MudDivider Class="my-3" />
+            @if (!_smsCodeSent)
+            {
+                <MudTextField T="string" @bind-Value="_smsPhone"
+                              Label="Mobile number (e.g. +14155550123)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Style="max-width: 280px;" Disabled="_smsBusy" />
+                <div class="mt-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               Disabled="@(_smsBusy || string.IsNullOrWhiteSpace(_smsPhone))"
+                               OnClick="CaptureSmsAsync">Send code</MudButton>
+                </div>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    Enter the code we texted to @_smsPhone.
+                </MudText>
+                <MudTextField T="string" @bind-Value="_smsCode"
+                              Label="6-digit code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              MaxLength="6" InputMode="InputMode.numeric" Immediate="true"
+                              Style="max-width: 220px;" Disabled="_smsBusy" />
+                <div class="mt-2 d-flex align-center" style="gap:8px;">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               Disabled="@(_smsBusy || _smsCode.Length != 6 || !_smsCode.All(char.IsDigit))"
+                               OnClick="VerifySmsAsync">Verify and enable</MudButton>
+                    <MudButton Variant="Variant.Text" Disabled="_smsBusy" OnClick="CaptureSmsAsync">Resend</MudButton>
+                </div>
+            }
+        }
+    </MudPaper>
+}
+
 @code {
     /// <summary>Invoked after enable / disable so the parent can refresh assurance state.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
 
     /// <summary>Whether emailed one-time codes are currently enabled (from the aggregate read).</summary>
     [Parameter] public bool EmailEnabled { get; set; }
+
+    /// <summary>Whether an SMS provider is configured on this installation (US3). Hides the row when false.</summary>
+    [Parameter] public bool SmsAvailable { get; set; }
+
+    /// <summary>Whether SMS one-time codes are currently enabled.</summary>
+    [Parameter] public bool SmsEnabled { get; set; }
 
     private TotpStatusResponse? _status;
     private TotpSetupResponse? _setup;
@@ -158,6 +230,12 @@
     private bool _emailVerifying;
     private string _emailCode = string.Empty;
     private bool _emailBusy;
+
+    private bool _smsCapturing;
+    private bool _smsCodeSent;
+    private string _smsPhone = string.Empty;
+    private string _smsCode = string.Empty;
+    private bool _smsBusy;
 
     protected override async Task OnInitializedAsync() => await RefreshStatusAsync();
 
@@ -312,6 +390,65 @@
             _emailBusy = false;
             StateHasChanged();
         }
+    }
+
+    // ---- SMS one-time codes (US3) ----
+
+    private void CancelSmsSetup()
+    {
+        _smsCapturing = false; _smsCodeSent = false; _smsPhone = string.Empty; _smsCode = string.Empty;
+    }
+
+    private async Task CaptureSmsAsync()
+    {
+        _smsBusy = true; StateHasChanged();
+        try
+        {
+            if (await AuthMethodsClient.CaptureSmsPhoneAsync(_smsPhone.Trim()))
+            {
+                _smsCodeSent = true; _smsCode = string.Empty;
+                Feedback.ShowInfo("We've texted you a code.");
+            }
+            else { Feedback.ShowError("Couldn't send the SMS. Check the number and try again.", autoDismissMs: 0); }
+        }
+        finally { _smsBusy = false; StateHasChanged(); }
+    }
+
+    private async Task VerifySmsAsync()
+    {
+        _smsBusy = true; StateHasChanged();
+        try
+        {
+            var outcome = await AuthMethodsClient.VerifySmsPhoneAsync(_smsCode);
+            if (outcome == OtpMutationOutcome.Succeeded)
+            {
+                if (await AuthMethodsClient.EnableSmsOtpAsync())
+                {
+                    Feedback.ShowSuccess("SMS codes enabled.");
+                    CancelSmsSetup(); SmsEnabled = true;
+                    if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+                }
+                else { Feedback.ShowError("Number verified, but couldn't enable SMS. Try again."); }
+            }
+            else if (outcome == OtpMutationOutcome.Invalid) { Feedback.ShowError("That code didn't match. Try again."); _smsCode = string.Empty; }
+            else { Feedback.ShowError("That code expired — send a new one.", autoDismissMs: 0); _smsCode = string.Empty; }
+        }
+        finally { _smsBusy = false; StateHasChanged(); }
+    }
+
+    private async Task DisableSmsAsync()
+    {
+        _smsBusy = true; StateHasChanged();
+        try
+        {
+            if (await AuthMethodsClient.DisableSmsOtpAsync())
+            {
+                Feedback.ShowSuccess("SMS codes turned off."); SmsEnabled = false;
+                if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+            }
+            else { Feedback.ShowError("Couldn't turn off SMS codes. Try again."); }
+        }
+        finally { _smsBusy = false; StateHasChanged(); }
     }
 
     private async Task DisableAsync()

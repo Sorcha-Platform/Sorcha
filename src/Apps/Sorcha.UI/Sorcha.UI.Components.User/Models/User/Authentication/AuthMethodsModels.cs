@@ -39,6 +39,9 @@ public sealed record AuthMethodsResponse
 
     /// <summary>True when emailed one-time codes are enabled as a second factor (Feature 150 US2).</summary>
     public bool EmailOtpEnabled { get; init; }
+
+    /// <summary>True when SMS one-time codes are enabled as a second factor (Feature 150 US3).</summary>
+    public bool SmsOtpEnabled { get; init; }
 }
 
 /// <summary>Password-section view model.</summary>

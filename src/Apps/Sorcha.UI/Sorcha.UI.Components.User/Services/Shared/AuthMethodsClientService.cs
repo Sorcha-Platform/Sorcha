@@ -146,6 +146,19 @@ public interface IAuthMethodsClientService
 
     /// <summary>Disable email one-time codes. Returns false on transport failure.</summary>
     Task<bool> DisableEmailOtpAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Capture a mobile number and trigger a verification SMS (Feature 150 US3). False on
+    /// failure / rate-limit / when SMS is unavailable (404).</summary>
+    Task<bool> CaptureSmsPhoneAsync(string phoneE164, CancellationToken cancellationToken = default);
+
+    /// <summary>Verify the texted code to confirm the number.</summary>
+    Task<OtpMutationOutcome> VerifySmsPhoneAsync(string code, CancellationToken cancellationToken = default);
+
+    /// <summary>Enable SMS one-time codes (requires a verified number). False on failure / 404.</summary>
+    Task<bool> EnableSmsOtpAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Disable SMS one-time codes. False on transport failure.</summary>
+    Task<bool> DisableSmsOtpAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome surfaced for an email/SMS OTP enable-verify call (Feature 150).</summary>
@@ -613,6 +626,61 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
             _logger.LogError(ex, "Disable email OTP failed");
             return false;
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> CaptureSmsPhoneAsync(string phoneE164, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(phoneE164);
+        try
+        {
+            using var response = await _httpClient.PostAsJsonAsync(
+                "/api/me/2fa/sms/phone", new { phone = phoneE164 }, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Capture SMS phone failed"); return false; }
+    }
+
+    /// <inheritdoc />
+    public async Task<OtpMutationOutcome> VerifySmsPhoneAsync(string code, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+        try
+        {
+            using var response = await _httpClient.PostAsJsonAsync(
+                "/api/me/2fa/sms/phone/verify", new { code }, cancellationToken);
+            return response.StatusCode switch
+            {
+                System.Net.HttpStatusCode.NoContent => OtpMutationOutcome.Succeeded,
+                System.Net.HttpStatusCode.BadRequest => OtpMutationOutcome.Invalid,
+                System.Net.HttpStatusCode.Gone => OtpMutationOutcome.Expired,
+                System.Net.HttpStatusCode.TooManyRequests => OtpMutationOutcome.RateLimited,
+                _ => OtpMutationOutcome.Failed,
+            };
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Verify SMS phone failed"); return OtpMutationOutcome.Failed; }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> EnableSmsOtpAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await _httpClient.PostAsync("/api/me/2fa/sms/enable", null, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Enable SMS OTP failed"); return false; }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> DisableSmsOtpAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await _httpClient.DeleteAsync("/api/me/2fa/sms", cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Disable SMS OTP failed"); return false; }
     }
 
     private async Task<PasswordMutationOutcome> PostPasswordAsync(

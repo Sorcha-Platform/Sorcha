@@ -343,6 +343,16 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IEmailSender, SmtpEmailSender>();
         }
 
+        // Feature 150 US3 — SMS OTP, config-gated: only when an operator configures a provider
+        // (Sms:AcsConnectionString) do we register ISmsSender + the SMS channel + the phone-verify
+        // service. Unconfigured ⇒ the SMS channel never resolves and SmsAvailable stays false.
+        if (!string.IsNullOrEmpty(configuration["Sms:AcsConnectionString"]))
+        {
+            services.AddSingleton<Services.Sms.ISmsSender, Services.Sms.AcsSmsSender>();
+            services.AddScoped<IVerificationChannel, SmsOtpChannel>();
+            services.AddScoped<ISmsPhoneVerificationService, SmsPhoneVerificationService>();
+        }
+
         // Template renderer is a singleton — templates are parsed once at startup and
         // rendering is pure. Fails fast on parse errors during first resolution.
         services.AddSingleton<IEmailTemplateRenderer, ScribanEmailTemplateRenderer>();

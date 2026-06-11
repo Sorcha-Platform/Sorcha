@@ -61,8 +61,114 @@ public static class TwoFactorChannelEndpoints
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status401Unauthorized);
 
+        // ---- SMS (US3, config-gated) — all return 404 when no provider is configured ----
+        var sms = app.MapGroup("/api/me/2fa/sms").WithTags("Two-Factor Channels");
+
+        sms.MapPost("/phone", CapturePhone)
+            .WithName("CaptureSmsPhone")
+            .WithSummary("Capture a mobile number and send a verification code")
+            .WithDescription("Stores the number (clearing any prior verification) and texts a code. "
+                + "404 when SMS is not configured on this installation.")
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status202Accepted).Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status429TooManyRequests)
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        sms.MapPost("/phone/verify", VerifyPhone)
+            .WithName("VerifySmsPhone")
+            .WithSummary("Verify the texted code to confirm the number")
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status410Gone).Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        sms.MapPost("/enable", EnableSms)
+            .WithName("EnableSmsOtp")
+            .WithSummary("Enable SMS one-time codes (requires a verified number)")
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status401Unauthorized);
+
+        sms.MapDelete("", DisableSms)
+            .WithName("DisableSmsOtp")
+            .WithSummary("Disable SMS one-time codes")
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         return app;
     }
+
+    /// <summary>Request capturing a candidate mobile number.</summary>
+    /// <param name="Phone">The E.164 mobile number.</param>
+    public sealed record PhoneRequest(string Phone);
+
+    private static async Task<IResult> CapturePhone(
+        PhoneRequest request, HttpContext httpContext, ISecurityChangeNotifier notifier, CancellationToken ct)
+    {
+        var (userId, svc) = ResolveSms(httpContext);
+        if (svc is null) return Results.NotFound();
+        if (userId == Guid.Empty) return Results.Unauthorized();
+
+        var outcome = await svc.CapturePhoneAsync(userId, request?.Phone ?? string.Empty, ct);
+        if (outcome == SmsFlowOutcome.Ok) await notifier.NotifyAsync(userId, SecurityChangeKind.PhoneChanged, ct);
+        return outcome switch
+        {
+            SmsFlowOutcome.Ok => Results.Accepted(),
+            SmsFlowOutcome.RateLimited => Results.StatusCode(StatusCodes.Status429TooManyRequests),
+            _ => Results.BadRequest("Enter a valid mobile number in international format (e.g. +14155550123)."),
+        };
+    }
+
+    private static async Task<IResult> VerifyPhone(
+        CodeRequest request, HttpContext httpContext, CancellationToken ct)
+    {
+        var (userId, svc) = ResolveSms(httpContext);
+        if (svc is null) return Results.NotFound();
+        if (userId == Guid.Empty) return Results.Unauthorized();
+        if (string.IsNullOrWhiteSpace(request?.Code)) return Results.BadRequest("Code is required.");
+
+        var outcome = await svc.VerifyPhoneAsync(userId, request.Code, ct);
+        return outcome switch
+        {
+            SmsFlowOutcome.Ok => Results.NoContent(),
+            SmsFlowOutcome.InvalidCode => Results.BadRequest("That code didn't match."),
+            SmsFlowOutcome.RateLimited => Results.StatusCode(StatusCodes.Status429TooManyRequests),
+            _ => Results.StatusCode(StatusCodes.Status410Gone),
+        };
+    }
+
+    private static async Task<IResult> EnableSms(
+        HttpContext httpContext, ISecurityChangeNotifier notifier, CancellationToken ct)
+    {
+        var (userId, svc) = ResolveSms(httpContext);
+        if (svc is null) return Results.NotFound();
+        if (userId == Guid.Empty) return Results.Unauthorized();
+
+        var outcome = await svc.EnableAsync(userId, ct);
+        if (outcome == SmsFlowOutcome.Ok)
+        {
+            await notifier.NotifyAsync(userId, SecurityChangeKind.SmsOtpEnabled, ct);
+            return Results.NoContent();
+        }
+        return Results.Conflict("Verify a mobile number before enabling SMS codes.");
+    }
+
+    private static async Task<IResult> DisableSms(
+        HttpContext httpContext, ISecurityChangeNotifier notifier, CancellationToken ct)
+    {
+        var (userId, svc) = ResolveSms(httpContext);
+        if (svc is null) return Results.NotFound();
+        if (userId == Guid.Empty) return Results.Unauthorized();
+
+        await svc.DisableAsync(userId, ct);
+        await notifier.NotifyAsync(userId, SecurityChangeKind.SmsOtpDisabled, ct);
+        return Results.NoContent();
+    }
+
+    // SMS service is registered only when configured — its absence is the 404 gate.
+    private static (Guid userId, ISmsPhoneVerificationService? svc) ResolveSms(HttpContext ctx)
+        => (GetUserId(ctx), ctx.RequestServices.GetService(typeof(ISmsPhoneVerificationService)) as ISmsPhoneVerificationService);
 
     private static async Task<Results<Accepted, UnauthorizedHttpResult, StatusCodeHttpResult, BadRequest<string>>> EnableEmail(
         HttpContext httpContext,

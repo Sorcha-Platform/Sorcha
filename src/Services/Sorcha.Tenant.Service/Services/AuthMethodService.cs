@@ -17,11 +17,13 @@ namespace Sorcha.Tenant.Service.Services;
 public sealed class AuthMethodService : IAuthMethodService
 {
     private readonly TenantDbContext _db;
+    private readonly IVerificationChannelRegistry _channels;
 
     /// <summary>Creates a new <see cref="AuthMethodService"/>.</summary>
-    public AuthMethodService(TenantDbContext db)
+    public AuthMethodService(TenantDbContext db, IVerificationChannelRegistry channels)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        _channels = channels ?? throw new ArgumentNullException(nameof(channels));
     }
 
     /// <inheritdoc />
@@ -138,13 +140,18 @@ public sealed class AuthMethodService : IAuthMethodService
         var passkeyTier = AssurancePolicy.TierOfMethod(AuthMethodKind.Passkey);
         var passkeyRequired = AssurancePolicy.RequiredProofTier(ScopedOperation.RemoveAuthMethod, AuthMethodKind.Passkey);
 
-        // SMS 2FA is configuration-gated (US3) — false until an ISmsSender provider is wired in.
-        const bool smsAvailable = false;
+        // SMS 2FA is configuration-gated (US3) — true only when an operator configured a provider
+        // (the registry has an SMS channel).
+        var smsAvailable = _channels.SmsAvailable;
 
-        // Email OTP enablement (US2) is account-wide on PlatformUserTwoFactor.
-        var emailOtpEnabled = await _db.PlatformUserTwoFactors
+        // Email/SMS OTP enablement (US2/US3) is account-wide on PlatformUserTwoFactor.
+        var twoFactor = await _db.PlatformUserTwoFactors
             .AsNoTracking()
-            .AnyAsync(t => t.PlatformUserId == platformUserId && t.EmailOtpEnabled, cancellationToken);
+            .Where(t => t.PlatformUserId == platformUserId)
+            .Select(t => new { t.EmailOtpEnabled, t.SmsOtpEnabled })
+            .FirstOrDefaultAsync(cancellationToken);
+        var emailOtpEnabled = twoFactor?.EmailOtpEnabled ?? false;
+        var smsOtpEnabled = (twoFactor?.SmsOtpEnabled ?? false) && smsAvailable;
 
         return new AuthMethodsResponse(
             Email: user.Email,
@@ -178,6 +185,7 @@ public sealed class AuthMethodService : IAuthMethodService
                 AssuranceTier: passkeyTier,
                 RequiredProofTier: passkeyRequired)).ToList(),
             SmsAvailable: smsAvailable,
-            EmailOtpEnabled: emailOtpEnabled);
+            EmailOtpEnabled: emailOtpEnabled,
+            SmsOtpEnabled: smsOtpEnabled);
     }
 }
