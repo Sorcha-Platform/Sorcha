@@ -184,7 +184,8 @@ public class AuthChallengeServiceTests : IDisposable
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.Totp,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"code":"123456"}""").RootElement);
+            JsonDocument.Parse("""{"code":"123456"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social); // Strong proof authorises a Basic (social) removal
 
         result.Succeeded.Should().BeTrue();
         result.Token.Should().StartWith("ch_").And.HaveLength(46); // "ch_" + 43 base64url chars (32 bytes)
@@ -211,7 +212,8 @@ public class AuthChallengeServiceTests : IDisposable
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.Totp,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"code":"000000"}""").RootElement);
+            JsonDocument.Parse("""{"code":"000000"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social);
 
         result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
         result.Token.Should().BeNull();
@@ -258,7 +260,8 @@ public class AuthChallengeServiceTests : IDisposable
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.Totp,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"wrong":"shape"}""").RootElement);
+            JsonDocument.Parse("""{"wrong":"shape"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social);
 
         result.Outcome.Should().Be(ChallengeVerificationOutcome.InvalidProofShape);
     }
@@ -346,7 +349,8 @@ public class AuthChallengeServiceTests : IDisposable
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.ReOAuth,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"provider":"google","code":"c","state":"s"}""").RootElement);
+            JsonDocument.Parse("""{"provider":"google","code":"c","state":"s"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social); // Strong proof authorises a Basic (social) removal
 
         result.Succeeded.Should().BeTrue();
     }
@@ -366,9 +370,87 @@ public class AuthChallengeServiceTests : IDisposable
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.ReOAuth,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"provider":"google","code":"c","state":"s"}""").RootElement);
+            JsonDocument.Parse("""{"provider":"google","code":"c","state":"s"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social);
 
         result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
+    }
+
+    // ---- Feature 150 (T016): floor-rule enforcement on initiate + verify ----
+
+    [Fact]
+    public async Task InitiateAsync_RemovePasskey_PicksPasskeyNotTotp_BecauseFloorRequiresStrongest()
+    {
+        // TOTP is preferred by the ladder, but removing a passkey (Strongest) requires a
+        // Strongest proof — so only the passkey is floor-eligible.
+        var (pu, ui) = await SeedUserAsync(withTotp: true, withActivePasskey: true);
+        _passkeys
+            .Setup(p => p.CreateAssertionOptionsAsync(It.IsAny<string?>(), It.IsAny<IEnumerable<byte[]>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AssertionOptionsResult("tx", AssertionOptions.FromJson("""{"challenge":"AAAA","rpId":"localhost","allowCredentials":[]}""")));
+        var service = CreateService();
+
+        var prep = await service.InitiateAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ScopedOperation.RemoveAuthMethod,
+            preferredMethod: null,
+            targetMethodKind: AuthMethodKind.Passkey);
+
+        prep.IsAvailable.Should().BeTrue();
+        prep.Method.Should().Be(ChallengeMethod.Passkey);
+    }
+
+    [Fact]
+    public async Task InitiateAsync_RemovePasskey_NoMethodAvailable_WhenOnlyTotpEnrolled()
+    {
+        // Only TOTP (Strong) enrolled, but a passkey removal needs Strongest → nothing qualifies.
+        var (pu, ui) = await SeedUserAsync(withTotp: true);
+        var service = CreateService();
+
+        var prep = await service.InitiateAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ScopedOperation.RemoveAuthMethod,
+            preferredMethod: null,
+            targetMethodKind: AuthMethodKind.Passkey);
+
+        prep.IsAvailable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_TotpProof_RemovePasskey_ProofTierInsufficient()
+    {
+        // A Strong proof (TOTP) cannot authorise removing a Strongest method (passkey) —
+        // rejected before the proof body is even validated.
+        var (pu, ui) = await SeedUserAsync(withTotp: true);
+        _totp.Setup(t => t.ValidateCodeAsync(ui.Id, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.Totp,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"code":"123456"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Passkey);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofTierInsufficient);
+        result.Token.Should().BeNull();
+        (await _db.AuthChallengeTokens.AnyAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_PasswordProof_RemovePasskey_ProofTierInsufficient()
+    {
+        // Password is Strong — still below Strongest, so it cannot strip a passkey.
+        var (pu, ui) = await SeedUserAsync(withPassword: true, password: "Right1!");
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.Password,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"password":"Right1!"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Passkey);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofTierInsufficient);
     }
 
     private static PasskeyCredential NewCredential(Guid platformUserId) => new()

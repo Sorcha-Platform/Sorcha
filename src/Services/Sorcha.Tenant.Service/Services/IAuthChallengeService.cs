@@ -27,10 +27,18 @@ public interface IAuthChallengeService
     /// no enrolled method (only reachable in the bootstrap edge case);
     /// otherwise a populated <see cref="ChallengePreparation"/>.
     /// </returns>
+    /// <param name="targetMethodKind">
+    /// The sign-in method the operation targets, when ambiguous. Required for
+    /// <see cref="ScopedOperation.RemoveAuthMethod"/> (which covers both passkey
+    /// revocation and social unlink) so the floor rule can compute the right
+    /// required proof tier. A null target fails safe to the strongest tier
+    /// (Feature 150, T016).
+    /// </param>
     Task<ChallengePreparation> InitiateAsync(
         ChallengeContext context,
         ScopedOperation scopedOperation,
         ChallengeMethod? preferredMethod,
+        AuthMethodKind? targetMethodKind = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -39,11 +47,19 @@ public interface IAuthChallengeService
     /// the raw token string. The raw token is never available again — only
     /// the SHA-256 hash is stored.
     /// </summary>
+    /// <param name="targetMethodKind">
+    /// The sign-in method the operation targets, when ambiguous (see
+    /// <see cref="InitiateAsync"/>). The floor rule is re-checked server-side on
+    /// verify; a proof whose tier is below the required tier for
+    /// (<paramref name="scopedOperation"/>, target) is rejected with
+    /// <see cref="ChallengeVerificationOutcome.ProofTierInsufficient"/> (Feature 150, T016).
+    /// </param>
     Task<ChallengeVerification> VerifyAsync(
         ChallengeContext context,
         ChallengeMethod method,
         ScopedOperation scopedOperation,
         JsonElement proof,
+        AuthMethodKind? targetMethodKind = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -109,5 +125,12 @@ public enum ChallengeVerificationOutcome
     MethodNotAvailable = 2,
 
     /// <summary>The proof shape was invalid (missing field, wrong type).</summary>
-    InvalidProofShape = 3
+    InvalidProofShape = 3,
+
+    /// <summary>
+    /// The proof was valid but its assurance tier is below the floor required to
+    /// authorise this operation on the target method (Feature 150 floor rule).
+    /// Surfaced to the client as <c>403 proof_tier_insufficient</c>.
+    /// </summary>
+    ProofTierInsufficient = 4
 }

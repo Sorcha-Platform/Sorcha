@@ -58,15 +58,24 @@ public sealed class AuthChallengeService : IAuthChallengeService
         ChallengeContext context,
         ScopedOperation scopedOperation,
         ChallengeMethod? preferredMethod,
+        AuthMethodKind? targetMethodKind = null,
         CancellationToken cancellationToken = default)
     {
         var enrolment = await GetEnrolmentAsync(context, cancellationToken);
 
-        // Honour the caller's preference iff that method is actually enrolled.
-        // Falls back to the ladder otherwise — never downgrades past TOTP.
-        var method = preferredMethod is { } pref && enrolment.IsEnrolled(pref)
+        // The floor rule (Feature 150): only proof methods whose tier is at least the
+        // required tier for this (operation, target) may be offered. A null target
+        // fails safe to Strongest, never to a weaker tier.
+        var requiredTier = AssurancePolicy.RequiredProofTier(scopedOperation, targetMethodKind);
+
+        // Honour the caller's preference iff it is enrolled AND meets the floor.
+        // Otherwise pick the strongest-enrolled method that meets the floor, in
+        // the existing ladder order (TOTP → Password → Passkey → re-OAuth).
+        var method = preferredMethod is { } pref
+                && enrolment.IsEnrolled(pref)
+                && AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(pref), requiredTier)
             ? pref
-            : enrolment.PickStrongest();
+            : enrolment.PickForFloor(requiredTier);
 
         if (method is null)
         {
@@ -95,6 +104,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
         ChallengeMethod method,
         ScopedOperation scopedOperation,
         JsonElement proof,
+        AuthMethodKind? targetMethodKind = null,
         CancellationToken cancellationToken = default)
     {
         var enrolment = await GetEnrolmentAsync(context, cancellationToken);
@@ -105,6 +115,20 @@ public sealed class AuthChallengeService : IAuthChallengeService
                 "Verification attempted with non-enrolled method {Method} for {PlatformUserId}",
                 method, context.PlatformUserId);
             return new ChallengeVerification(ChallengeVerificationOutcome.MethodNotAvailable, null, null);
+        }
+
+        // Floor rule (Feature 150): re-check server-side that the proof's tier is at least
+        // the required tier for this (operation, target). A null target fails safe to
+        // Strongest. We reject BEFORE validating the proof body so a too-weak factor can
+        // never authorise a stronger method even with otherwise-valid proof.
+        var requiredTier = AssurancePolicy.RequiredProofTier(scopedOperation, targetMethodKind);
+        if (!AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(method), requiredTier))
+        {
+            _metrics.RecordChallengeIssued(method, scopedOperation, success: false);
+            _logger.LogWarning(
+                "Proof tier {ProofTier} below required {RequiredTier} for {Method}/{ScopedOperation} target={Target} ({PlatformUserId})",
+                AssurancePolicy.TierOfProof(method), requiredTier, method, scopedOperation, targetMethodKind, context.PlatformUserId);
+            return new ChallengeVerification(ChallengeVerificationOutcome.ProofTierInsufficient, null, null);
         }
 
         var proofAccepted = method switch
@@ -384,6 +408,24 @@ public sealed class AuthChallengeService : IAuthChallengeService
             if (HasPassword) return ChallengeMethod.Password;
             if (HasActivePasskey) return ChallengeMethod.Passkey;
             if (HasSocial) return ChallengeMethod.ReOAuth;
+            return null;
+        }
+
+        /// <summary>
+        /// Picks an enrolled proof method that satisfies the floor (<paramref name="requiredTier"/>),
+        /// preserving the existing ladder preference order within the eligible set. Returns null
+        /// when the user holds no enrolled method strong enough to authorise the operation.
+        /// </summary>
+        public ChallengeMethod? PickForFloor(AuthAssuranceTier requiredTier)
+        {
+            if (TotpEnabled && AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(ChallengeMethod.Totp), requiredTier))
+                return ChallengeMethod.Totp;
+            if (HasPassword && AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(ChallengeMethod.Password), requiredTier))
+                return ChallengeMethod.Password;
+            if (HasActivePasskey && AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(ChallengeMethod.Passkey), requiredTier))
+                return ChallengeMethod.Passkey;
+            if (HasSocial && AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(ChallengeMethod.ReOAuth), requiredTier))
+                return ChallengeMethod.ReOAuth;
             return null;
         }
     }

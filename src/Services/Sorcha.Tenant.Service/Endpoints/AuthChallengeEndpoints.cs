@@ -46,7 +46,8 @@ public static class AuthChallengeEndpoints
             .RequireAuthorization()
             .Produces<ChallengeVerifyResponse>()
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         return app;
     }
@@ -62,7 +63,7 @@ public static class AuthChallengeEndpoints
         if (ctx is null) return TypedResults.Unauthorized();
 
         var prep = await challengeService.InitiateAsync(
-            ctx.Value, request.ScopedOperation, request.PreferredMethod, cancellationToken);
+            ctx.Value, request.ScopedOperation, request.PreferredMethod, request.TargetMethodKind, cancellationToken);
 
         if (!prep.IsAvailable)
         {
@@ -73,7 +74,7 @@ public static class AuthChallengeEndpoints
         return TypedResults.Ok(new ChallengeInitiateResponse(prep.Method, prep.Payload));
     }
 
-    private static async Task<Results<Ok<ChallengeVerifyResponse>, UnauthorizedHttpResult>> VerifyChallenge(
+    private static async Task<Results<Ok<ChallengeVerifyResponse>, UnauthorizedHttpResult, ProblemHttpResult>> VerifyChallenge(
         ChallengeVerifyRequest request,
         IAuthChallengeService challengeService,
         IIdentityRepository identityRepository,
@@ -84,7 +85,17 @@ public static class AuthChallengeEndpoints
         if (ctx is null) return TypedResults.Unauthorized();
 
         var result = await challengeService.VerifyAsync(
-            ctx.Value, request.Method, request.ScopedOperation, request.Proof, cancellationToken);
+            ctx.Value, request.Method, request.ScopedOperation, request.Proof, request.TargetMethodKind, cancellationToken);
+
+        // Floor-rule violation (Feature 150): the proof was the wrong tier for the operation.
+        // Distinct from a rejected/invalid proof — a 403 with a machine-readable reason code.
+        if (result.Outcome == ChallengeVerificationOutcome.ProofTierInsufficient)
+        {
+            return TypedResults.Problem(
+                title: "Proof tier insufficient",
+                detail: "proof_tier_insufficient",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
 
         if (!result.Succeeded || result.Token is null || result.ExpiresAt is null)
         {
