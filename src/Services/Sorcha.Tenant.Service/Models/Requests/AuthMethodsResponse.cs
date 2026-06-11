@@ -18,13 +18,15 @@ namespace Sorcha.Tenant.Service.Models.Requests;
 /// <param name="Socials">Collection of socials associated with this resource.</param>
 /// <param name="Passkeys">Collection of passkeys associated with this resource.</param>
 /// <param name="SmsAvailable">True only when an operator has configured an SMS provider (Feature 150); gates whether the SMS 2FA option is offered.</param>
+/// <param name="EmailOtpEnabled">True when emailed one-time codes are enabled as a second factor (Feature 150 US2).</param>
 public sealed record AuthMethodsResponse(
     string Email,
     bool EmailVerified,
     AuthMethodsPassword Password,
     IReadOnlyList<AuthMethodsSocial> Socials,
     IReadOnlyList<AuthMethodsPasskey> Passkeys,
-    bool SmsAvailable);
+    bool SmsAvailable,
+    bool EmailOtpEnabled = false);
 
 /// <summary>Password-section view model.</summary>
 /// <param name="IsSet">True when <c>PasswordHash</c> is non-null.</param>

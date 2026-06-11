@@ -66,13 +66,27 @@ public static class AuthEndpoints
         // Verify 2FA code after login (public endpoint — uses loginToken)
         group.MapPost("/verify-2fa", Verify2Fa)
             .WithName("Verify2Fa")
-            .WithSummary("Verify TOTP 2FA code to complete login")
-            .WithDescription("Accepts a loginToken (from login response) and a TOTP code or backup code. "
+            .WithSummary("Verify a 2FA code (TOTP, backup, or email) to complete login")
+            .WithDescription("Accepts a loginToken (from login response) and a code. Set method=email "
+                + "for an emailed one-time code, otherwise a TOTP or backup code is assumed. "
                 + "Returns access/refresh tokens on successful verification.")
             .AllowAnonymous()
             .RequireRateLimiting(TotpEndpoints.TotpRateLimitPolicy)
             .Produces<TokenResponse>()
             .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        // Feature 150 US2 — send (or resend) an email one-time code mid-login. The "use another
+        // method" fallback: usable even when a stronger factor is the primary. loginToken-gated.
+        group.MapPost("/login/2fa/send-email", SendEmailLoginCode)
+            .WithName("SendEmailLoginCode")
+            .WithSummary("Send an email one-time code during login")
+            .WithDescription("Given a valid loginToken, dispatches an emailed one-time code so the user "
+                + "can complete 2FA with email. Rate-limited (429 within the send cooldown).")
+            .AllowAnonymous()
+            .RequireRateLimiting(TotpEndpoints.TotpRateLimitPolicy)
+            .Produces(StatusCodes.Status202Accepted)
+            .Produces(StatusCodes.Status429TooManyRequests)
             .Produces(StatusCodes.Status401Unauthorized);
 
         // Complete login after org selection (public endpoint)
@@ -421,6 +435,7 @@ public static class AuthEndpoints
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         ITokenService tokenService,
+        IVerificationChannelRegistry channels,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -449,9 +464,24 @@ public static class AuthEndpoints
             return TypedResults.Unauthorized();
         }
 
-        // Validate the code (TOTP or backup)
+        // Look up the identity up-front — the email channel keys off the account-wide PlatformUserId
+        // and we need the active check regardless of method.
+        var user = await identityRepository.GetUserByIdAsync(userId.Value, cancellationToken);
+        if (user is null || user.Status != IdentityStatus.Active)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        // Validate the code by method: email one-time code (Feature 150 US2), or TOTP/backup.
         bool isValid;
-        if (request.IsBackupCode)
+        if (string.Equals(request.Method, "email", StringComparison.OrdinalIgnoreCase))
+        {
+            var channel = channels.Resolve(ChallengeMethod.EmailOtp);
+            isValid = channel is not null
+                && await channel.VerifyAsync(user.PlatformUserId, OtpPurpose.Login2Fa, request.Code, cancellationToken)
+                    == OtpVerifyOutcome.Verified;
+        }
+        else if (request.IsBackupCode)
         {
             isValid = await totpService.ValidateBackupCodeAsync(userId.Value, request.Code, cancellationToken);
         }
@@ -463,13 +493,6 @@ public static class AuthEndpoints
         if (!isValid)
         {
             logger.LogWarning("2FA verification failed: invalid code for user {UserId}", userId.Value);
-            return TypedResults.Unauthorized();
-        }
-
-        // Code valid — look up user and org, then issue JWT
-        var user = await identityRepository.GetUserByIdAsync(userId.Value, cancellationToken);
-        if (user is null || user.Status != IdentityStatus.Active)
-        {
             return TypedResults.Unauthorized();
         }
 
@@ -491,6 +514,35 @@ public static class AuthEndpoints
             user.Id, organization.Id);
 
         return TypedResults.Ok(tokenResponse);
+    }
+
+    /// <summary>Request to send an email one-time code mid-login.</summary>
+    /// <param name="LoginToken">The short-lived login token from the login response.</param>
+    public sealed record SendEmailLoginCodeRequest(
+        [property: System.Text.Json.Serialization.JsonPropertyName("login_token")] string LoginToken);
+
+    private static async Task<Results<Accepted, UnauthorizedHttpResult, StatusCodeHttpResult>> SendEmailLoginCode(
+        SendEmailLoginCodeRequest request,
+        ITotpService totpService,
+        IIdentityRepository identityRepository,
+        IVerificationChannelRegistry channels,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request?.LoginToken)) return TypedResults.Unauthorized();
+
+        var userId = await totpService.ValidateLoginTokenAsync(request.LoginToken, cancellationToken);
+        if (userId is null) return TypedResults.Unauthorized();
+
+        var user = await identityRepository.GetUserByIdAsync(userId.Value, cancellationToken);
+        if (user is null || user.Status != IdentityStatus.Active) return TypedResults.Unauthorized();
+
+        var channel = channels.Resolve(ChallengeMethod.EmailOtp);
+        if (channel is null) return TypedResults.Unauthorized();
+
+        var outcome = await channel.SendAsync(user.PlatformUserId, OtpPurpose.Login2Fa, cancellationToken);
+        return outcome == ChannelSendOutcome.RateLimited
+            ? TypedResults.StatusCode(StatusCodes.Status429TooManyRequests)
+            : TypedResults.Accepted((string?)null);
     }
 
     /// <summary>

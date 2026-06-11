@@ -36,6 +36,9 @@ public sealed record AuthMethodsResponse
 
     /// <summary>True only when an operator has configured an SMS provider (Feature 150 US3).</summary>
     public bool SmsAvailable { get; init; }
+
+    /// <summary>True when emailed one-time codes are enabled as a second factor (Feature 150 US2).</summary>
+    public bool EmailOtpEnabled { get; init; }
 }
 
 /// <summary>Password-section view model.</summary>

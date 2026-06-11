@@ -52,7 +52,10 @@ public class LoginServiceTests : IDisposable
         _connection.Dispose();
     }
 
-    private LoginService CreateService()
+    // Most tests cover TOTP/passkey paths, so default to an empty channel registry.
+    private LoginService CreateService() => CreateServiceWith(new VerificationChannelRegistry([]));
+
+    private LoginService CreateServiceWith(IVerificationChannelRegistry channels)
     {
         var dispatcher = new WelcomeEmailDispatcher(
             _dbContext, _transactionalEmail.Object, NullLogger<WelcomeEmailDispatcher>.Instance);
@@ -66,6 +69,7 @@ public class LoginServiceTests : IDisposable
             _revocationService.Object,
             _platformUserService.Object,
             dispatcher,
+            channels,
             _logger);
     }
 
@@ -214,6 +218,49 @@ public class LoginServiceTests : IDisposable
 
         _revocationService.Verify(r => r.ResetFailedAuthAttemptsAsync("user@test.com", It.IsAny<CancellationToken>()), Times.Once);
         _identityRepo.Verify(r => r.UpdateUserAsync(It.Is<UserIdentity>(u => u.LastLoginAt != null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task LoginAsync_EmailOtpOnly_RequiresTwoFactor_AndSendsCode()
+    {
+        // Feature 150 US2 — a user whose only second factor is email OTP must complete 2FA, and the
+        // code is dispatched at login (email is the sole factor) with "email" offered.
+        var (platformUser, org, _) = SeedFullUser();
+        _dbContext.PlatformUserTwoFactors.Add(new PlatformUserTwoFactor
+        {
+            PlatformUserId = platformUser.Id,
+            EmailOtpEnabled = true,
+        });
+        _dbContext.SaveChanges();
+
+        SetupNoRateLimit();
+        SetupNo2Fa(); // TOTP off, no passkeys
+        SetupPasswordSuccess();
+        SetupPlatformUserLookup(platformUser);
+        SetupOrgMemberships(platformUser.Id, new PlatformUserOrgMembership
+        {
+            PlatformUserId = platformUser.Id,
+            OrganizationId = org.Id,
+            Role = "Consumer",
+            JoinedAt = DateTimeOffset.UtcNow,
+        });
+        _totpService.Setup(t => t.GenerateLoginTokenAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("login-token");
+
+        var emailChannel = new Mock<IVerificationChannel>();
+        emailChannel.SetupGet(c => c.Kind).Returns(ChallengeMethod.EmailOtp);
+        emailChannel.SetupGet(c => c.Tier).Returns(AuthAssuranceTier.Basic);
+        emailChannel.Setup(c => c.SendAsync(platformUser.Id, OtpPurpose.Login2Fa, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ChannelSendOutcome.Sent);
+
+        var service = CreateServiceWith(new VerificationChannelRegistry([emailChannel.Object]));
+
+        var result = await service.LoginAsync("user@test.com", "correct-password");
+
+        result.TwoFactorRequired.Should().BeTrue();
+        result.AvailableMethods.Should().Contain("email");
+        result.Tokens.Should().BeNull();
+        emailChannel.Verify(c => c.SendAsync(platformUser.Id, OtpPurpose.Login2Fa, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // --- Spec 136 / US5: tier follows the person (entitlement) ---

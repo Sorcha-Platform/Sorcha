@@ -10,6 +10,7 @@
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Feedback
 @inject ITotpClientService TotpService
+@inject IAuthMethodsClientService AuthMethodsClient
 @inject IDialogService DialogService
 @inject IInlineFeedback Feedback
 
@@ -86,14 +87,77 @@
     }
 </MudPaper>
 
+@* ── Email one-time codes (Feature 150 US2) ─────────────────────────── *@
+<MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+    <div class="d-flex align-center mb-1">
+        <MudIcon Icon="@Icons.Material.Filled.Email" Class="mr-3" />
+        <div class="flex-grow-1">
+            <div class="d-flex align-center" style="gap:8px;">
+                <MudText Typo="Typo.h6">Email code</MudText>
+                <AssuranceBadge Tier="AuthAssuranceTier.Basic" />
+            </div>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                A one-time code sent to your email. Lower assurance — handy if you don't use an
+                authenticator app.
+            </MudText>
+        </div>
+        @if (EmailEnabled)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">On</MudChip>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" Class="ml-2"
+                       Disabled="_emailBusy" OnClick="DisableEmailAsync">
+                Turn off
+            </MudButton>
+        }
+        else if (_emailVerifying)
+        {
+            <MudButton Variant="Variant.Text" Disabled="_emailBusy" OnClick="CancelEmailSetup">Cancel</MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       Disabled="_emailBusy" OnClick="BeginEmailSetupAsync">
+                Turn on
+            </MudButton>
+        }
+    </div>
+
+    @if (_emailVerifying && !EmailEnabled)
+    {
+        <MudDivider Class="my-3" />
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+            We've sent a 6-digit code to your email. Enter it to turn on email codes.
+        </MudText>
+        <MudTextField T="string" @bind-Value="_emailCode"
+                      Label="6-digit code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      MaxLength="6" InputMode="InputMode.numeric" Immediate="true"
+                      Style="max-width: 220px;" Disabled="_emailBusy" />
+        <div class="mt-2 d-flex align-center" style="gap:8px;">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(_emailBusy || _emailCode.Length != 6 || !_emailCode.All(char.IsDigit))"
+                       OnClick="VerifyEmailAsync">
+                Verify and enable
+            </MudButton>
+            <MudButton Variant="Variant.Text" Disabled="_emailBusy" OnClick="ResendEmailAsync">Resend</MudButton>
+        </div>
+    }
+</MudPaper>
+
 @code {
     /// <summary>Invoked after enable / disable so the parent can refresh assurance state.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>Whether emailed one-time codes are currently enabled (from the aggregate read).</summary>
+    [Parameter] public bool EmailEnabled { get; set; }
 
     private TotpStatusResponse? _status;
     private TotpSetupResponse? _setup;
     private string _verifyCode = string.Empty;
     private bool _busy;
+
+    private bool _emailVerifying;
+    private string _emailCode = string.Empty;
+    private bool _emailBusy;
 
     protected override async Task OnInitializedAsync() => await RefreshStatusAsync();
 
@@ -149,6 +213,103 @@
         finally
         {
             _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    // ---- Email one-time codes (US2) ----
+
+    private async Task BeginEmailSetupAsync()
+    {
+        _emailBusy = true;
+        StateHasChanged();
+        try
+        {
+            if (await AuthMethodsClient.EnableEmailOtpAsync())
+            {
+                _emailVerifying = true;
+                _emailCode = string.Empty;
+                Feedback.ShowInfo("We've emailed you a code.");
+            }
+            else
+            {
+                Feedback.ShowError("Couldn't send the email code. Try again shortly.", autoDismissMs: 0);
+            }
+        }
+        finally
+        {
+            _emailBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResendEmailAsync() => await BeginEmailSetupAsync();
+
+    private void CancelEmailSetup()
+    {
+        _emailVerifying = false;
+        _emailCode = string.Empty;
+    }
+
+    private async Task VerifyEmailAsync()
+    {
+        _emailBusy = true;
+        StateHasChanged();
+        try
+        {
+            var outcome = await AuthMethodsClient.VerifyEmailOtpAsync(_emailCode);
+            switch (outcome)
+            {
+                case OtpMutationOutcome.Succeeded:
+                    Feedback.ShowSuccess("Email codes enabled.");
+                    _emailVerifying = false;
+                    _emailCode = string.Empty;
+                    EmailEnabled = true;
+                    if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+                    break;
+                case OtpMutationOutcome.Invalid:
+                    Feedback.ShowError("That code didn't match. Try again.");
+                    _emailCode = string.Empty;
+                    break;
+                case OtpMutationOutcome.Expired:
+                    Feedback.ShowError("That code expired — send a new one.", autoDismissMs: 0);
+                    _emailCode = string.Empty;
+                    break;
+                case OtpMutationOutcome.RateLimited:
+                    Feedback.ShowWarning("Too many attempts. Wait a moment and request a new code.");
+                    break;
+                default:
+                    Feedback.ShowError("Couldn't verify the code. Try again.");
+                    break;
+            }
+        }
+        finally
+        {
+            _emailBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DisableEmailAsync()
+    {
+        _emailBusy = true;
+        StateHasChanged();
+        try
+        {
+            if (await AuthMethodsClient.DisableEmailOtpAsync())
+            {
+                Feedback.ShowSuccess("Email codes turned off.");
+                EmailEnabled = false;
+                if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+            }
+            else
+            {
+                Feedback.ShowError("Couldn't turn off email codes. Try again.");
+            }
+        }
+        finally
+        {
+            _emailBusy = false;
             StateHasChanged();
         }
     }

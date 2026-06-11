@@ -141,6 +141,11 @@ public sealed class AuthMethodService : IAuthMethodService
         // SMS 2FA is configuration-gated (US3) — false until an ISmsSender provider is wired in.
         const bool smsAvailable = false;
 
+        // Email OTP enablement (US2) is account-wide on PlatformUserTwoFactor.
+        var emailOtpEnabled = await _db.PlatformUserTwoFactors
+            .AsNoTracking()
+            .AnyAsync(t => t.PlatformUserId == platformUserId && t.EmailOtpEnabled, cancellationToken);
+
         return new AuthMethodsResponse(
             Email: user.Email,
             EmailVerified: user.EmailVerified,
@@ -172,6 +177,7 @@ public sealed class AuthMethodService : IAuthMethodService
                 CanRename: p.Status == CredentialStatus.Active,
                 AssuranceTier: passkeyTier,
                 RequiredProofTier: passkeyRequired)).ToList(),
-            SmsAvailable: smsAvailable);
+            SmsAvailable: smsAvailable,
+            EmailOtpEnabled: emailOtpEnabled);
     }
 }

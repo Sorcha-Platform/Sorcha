@@ -121,8 +121,8 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 - [x] T034 [US2] Implement `EmailOtpChannel : IVerificationChannel` (uses `ServerSentOtpService` + `TwoFactorCodeDispatch`) and register it in the registry (always available), in `src/Services/Sorcha.Tenant.Service/Services/Auth/` (make T027 pass).
 - [x] T035 [US2] Endpoints `POST /api/me/2fa/email/enable`, `POST /api/me/2fa/email/verify`, `DELETE /api/me/2fa/email` (Scalar summaries + XML), in `src/Services/Sorcha.Tenant.Service/Endpoints/TwoFactorChannelEndpoints.cs`; flip `PlatformUserTwoFactor.EmailOtpEnabled`; always-notify via `SecurityChangeNotifier`.
 - [x] T036 [US2] Add `EmailOtp` to the `ChallengeMethod` enum and to step-up `initiate`/`verify` (initiate sends a code) in `AuthChallengeService.cs` + `AuthChallengeEndpoints.cs`.
-- [ ] T037 [US2] Wire EmailOtp into the **login** second-factor path (offer strongest-enrolled first + a "use another method" fallback per R-010) in the login/verify-2FA flow (`LoginService` / verify-2fa endpoint).
-- [ ] T038 [US2] Build `TwoFactorSection.razor` (TOTP + Email OTP rows with badges, enable/verify/disable) in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/` and slot it into `SecurityHome`; extend `IAuthMethodsClientService` (in `Sorcha.UI.Components.User/Services/Shared/`) with email enable/verify/disable methods.
+- [x] T037 [US2] Wire EmailOtp into the **login** second-factor path (offer strongest-enrolled first + a "use another method" fallback per R-010) in the login/verify-2FA flow (`LoginService` / verify-2fa endpoint).
+- [x] T038 [US2] Build `TwoFactorSection.razor` (TOTP + Email OTP rows with badges, enable/verify/disable) in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/` and slot it into `SecurityHome`; extend `IAuthMethodsClientService` (in `Sorcha.UI.Components.User/Services/Shared/`) with email enable/verify/disable methods.
 
 **Checkpoint**: US1 + US2 both work; Email OTP is a usable Basic second factor.
 

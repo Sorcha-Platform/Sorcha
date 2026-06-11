@@ -131,6 +131,36 @@ public interface IAuthMethodsClientService
     /// </summary>
     Task<PasswordMutationOutcome> RemovePasswordAsync(
         string challengeToken, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Begin enabling email one-time codes (Feature 150 US2) — sends a confirmation code to the
+    /// account email. Returns false on transport failure or while rate-limited (429).
+    /// </summary>
+    Task<bool> EnableEmailOtpAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Confirm the emailed code and enable email 2FA. The outcome distinguishes invalid / expired /
+    /// rate-limited so the UI can guide the user.
+    /// </summary>
+    Task<OtpMutationOutcome> VerifyEmailOtpAsync(string code, CancellationToken cancellationToken = default);
+
+    /// <summary>Disable email one-time codes. Returns false on transport failure.</summary>
+    Task<bool> DisableEmailOtpAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>Outcome surfaced for an email/SMS OTP enable-verify call (Feature 150).</summary>
+public enum OtpMutationOutcome
+{
+    /// <summary>Server confirmed (204) — the channel is now enabled.</summary>
+    Succeeded = 0,
+    /// <summary>Server returned 400 — the code didn't match.</summary>
+    Invalid = 1,
+    /// <summary>Server returned 410 — the code expired or was already used.</summary>
+    Expired = 2,
+    /// <summary>Server returned 429 — too many attempts / send cooldown.</summary>
+    RateLimited = 3,
+    /// <summary>Transport failure or unexpected status.</summary>
+    Failed = 4,
 }
 
 /// <summary>Outcome surfaced for password set / change / remove calls.</summary>
@@ -527,6 +557,61 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
         {
             _logger.LogError(ex, "Password remove failed");
             return PasswordMutationOutcome.Failed;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> EnableEmailOtpAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await _httpClient.PostAsync("/api/me/2fa/email/enable", null, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Enable email OTP failed");
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<OtpMutationOutcome> VerifyEmailOtpAsync(string code, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+        try
+        {
+            using var response = await _httpClient.PostAsJsonAsync(
+                "/api/me/2fa/email/verify", new { code }, cancellationToken);
+            return response.StatusCode switch
+            {
+                System.Net.HttpStatusCode.NoContent => OtpMutationOutcome.Succeeded,
+                System.Net.HttpStatusCode.OK => OtpMutationOutcome.Succeeded,
+                System.Net.HttpStatusCode.BadRequest => OtpMutationOutcome.Invalid,
+                System.Net.HttpStatusCode.Gone => OtpMutationOutcome.Expired,
+                System.Net.HttpStatusCode.TooManyRequests => OtpMutationOutcome.RateLimited,
+                _ => OtpMutationOutcome.Failed,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Verify email OTP failed");
+            return OtpMutationOutcome.Failed;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> DisableEmailOtpAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await _httpClient.DeleteAsync("/api/me/2fa/email", cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Disable email OTP failed");
+            return false;
         }
     }
 

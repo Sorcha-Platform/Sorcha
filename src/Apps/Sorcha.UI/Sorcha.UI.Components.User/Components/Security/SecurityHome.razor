@@ -65,7 +65,7 @@ else
     @* ── Group 2: Two-factor authentication ───────────────────── *@
     <section data-testid="security-group-2fa">
         <MudText Typo="Typo.h6" Class="mb-3 mt-4">Two-factor authentication</MudText>
-        <TwoFactorSection OnChanged="LoadAsync" />
+        <TwoFactorSection EmailEnabled="_methods.EmailOtpEnabled" OnChanged="LoadAsync" />
         @if (_methods.SmsAvailable)
         {
             <MudText Typo="Typo.caption" Color="Color.Secondary">
