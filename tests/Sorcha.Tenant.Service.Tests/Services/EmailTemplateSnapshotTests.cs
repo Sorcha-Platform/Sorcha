@@ -101,6 +101,23 @@ public class EmailTemplateSnapshotTests
                 ExpiresInHours: 24,
                 Branding: SorchaBranding)
         },
+        {
+            "twofactor-code",
+            new TwoFactorCodeTemplateModel(
+                DisplayName: "Stuart Fraser",
+                Code: "123456",
+                ExpiresInMinutes: 10,
+                Branding: SorchaBranding)
+        },
+        {
+            "security-change",
+            new SecurityChangeTemplateModel(
+                DisplayName: "Stuart Fraser",
+                Title: "Passkey removed",
+                Summary: "A passkey was removed from your account. If this wasn't you, review your sign-in methods now.",
+                ManageUrl: "https://sorcha.dev/app/security",
+                Branding: SorchaBranding)
+        },
     };
 
     /// <summary>

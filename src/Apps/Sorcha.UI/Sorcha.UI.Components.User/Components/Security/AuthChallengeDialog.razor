@@ -18,10 +18,12 @@
 *@
 
 @using System.Text.Json
+@using System.Text.Json.Nodes
 @using MudBlazor
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
 @inject IAuthMethodsClientService AuthMethodsClient
+@inject PasskeyInteropService PasskeyInterop
 
 <MudDialog>
     <TitleContent>
@@ -77,10 +79,17 @@
                         break;
 
                     case ChallengeMethod.Passkey:
-                    case ChallengeMethod.ReOAuth:
                         <MudAlert Severity="Severity.Info" Dense="true">
-                            @MethodLabel(_initiated.Method) step-up will land in a follow-up.
-                            For now, please ensure you have a TOTP or password method enrolled.
+                            Confirm with your passkey — press <b>Confirm</b> and complete the prompt
+                            from your device (Touch ID, Windows Hello, security key).
+                        </MudAlert>
+                        break;
+
+                    case ChallengeMethod.ReOAuth:
+                        <MudAlert Severity="Severity.Warning" Dense="true">
+                            This account signs in with a social provider. Re-authenticating in-page is
+                            coming in a follow-up; for now, use a passkey, authenticator, or password to
+                            confirm this change.
                         </MudAlert>
                         break;
                 }
@@ -111,6 +120,13 @@
 
     [Parameter, EditorRequired] public ScopedOperation Scope { get; set; }
 
+    /// <summary>
+    /// The sign-in method the operation targets, for the ambiguous
+    /// <see cref="ScopedOperation.RemoveAuthMethod"/> (passkey-revoke vs social-unlink). Forwarded to
+    /// the server so the floor rule offers only sufficiently strong proofs (Feature 150).
+    /// </summary>
+    [Parameter] public AuthMethodKind? Target { get; set; }
+
     private ChallengeInitiateResult? _initiated;
     private bool _loadingInitiate = true;
     private bool _initiateFailed;
@@ -129,6 +145,7 @@
             {
                 ChallengeMethod.Totp => _totpCode.Length == 6 && _totpCode.All(char.IsDigit),
                 ChallengeMethod.Password => !string.IsNullOrEmpty(_password),
+                ChallengeMethod.Passkey => true, // the WebAuthn prompt is the input
                 _ => false,
             };
         }
@@ -136,7 +153,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _initiated = await AuthMethodsClient.InitiateChallengeAsync(Scope);
+        _initiated = await AuthMethodsClient.InitiateChallengeAsync(Scope, targetMethodKind: Target);
         _loadingInitiate = false;
         _initiateFailed = _initiated is null;
         StateHasChanged();
@@ -152,9 +169,21 @@
 
         try
         {
-            var proof = BuildProof(_initiated.Method);
+            // Passkey proof needs an async WebAuthn ceremony before we can build the proof body;
+            // the others are synchronous form inputs.
+            JsonElement? proof = _initiated.Method == ChallengeMethod.Passkey
+                ? await BuildPasskeyProofAsync()
+                : BuildProof(_initiated.Method);
+
+            if (proof is null)
+            {
+                // User cancelled the WebAuthn prompt or it could not run — leave the dialog open.
+                _errorMessage = "Passkey prompt was cancelled or unavailable. Try again.";
+                return;
+            }
+
             var result = await AuthMethodsClient.VerifyChallengeAsync(
-                _initiated.Method, Scope, proof);
+                _initiated.Method, Scope, proof.Value, targetMethodKind: Target);
 
             if (result.Succeeded && !string.IsNullOrEmpty(result.Token))
             {
@@ -164,10 +193,13 @@
 
             _errorMessage = result.Error switch
             {
+                ChallengeVerifyError.ProofTierInsufficient =>
+                    "This method isn't strong enough to authorise that change. Use a passkey.",
                 ChallengeVerifyError.ProofRejected => _initiated.Method switch
                 {
                     ChallengeMethod.Totp => "That code didn't match. Try again.",
                     ChallengeMethod.Password => "Password didn't match. Try again.",
+                    ChallengeMethod.Passkey => "Passkey verification failed. Try again.",
                     _ => "Verification failed. Try again.",
                 },
                 ChallengeVerifyError.Expired => "Step-up timed out. Close this dialog and try again.",
@@ -194,6 +226,37 @@
             _ => new { },
         };
         return JsonSerializer.SerializeToElement(proof);
+    }
+
+    /// <summary>
+    /// Runs the WebAuthn assertion ceremony for the Passkey rung. The initiate payload carries the
+    /// transaction id + assertion options scoped to the user's own credentials; we hand the options
+    /// to the browser and post back <c>{ transactionId, assertionResponse }</c>. Returns null when the
+    /// payload is missing or the user cancels the prompt.
+    /// </summary>
+    private async Task<JsonElement?> BuildPasskeyProofAsync()
+    {
+        if (_initiated?.Payload is not { } payload) return null;
+        if (!payload.TryGetProperty("transactionId", out var txEl) || txEl.ValueKind != JsonValueKind.String)
+            return null;
+        if (!payload.TryGetProperty("assertionOptions", out var optionsEl))
+            return null;
+
+        try
+        {
+            var assertion = await PasskeyInterop.GetCredentialAsync(optionsEl);
+            var node = new JsonObject
+            {
+                ["transactionId"] = txEl.GetString(),
+                ["assertionResponse"] = JsonNode.Parse(assertion.GetRawText()),
+            };
+            return JsonSerializer.SerializeToElement(node);
+        }
+        catch
+        {
+            // User dismissed the WebAuthn prompt or the authenticator rejected.
+            return null;
+        }
     }
 
     private void Cancel() => MudDialog.Cancel();

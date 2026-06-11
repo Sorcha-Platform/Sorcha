@@ -21,6 +21,7 @@ public sealed class PasswordManagementService : IPasswordManagementService
     private readonly TenantDbContext _db;
     private readonly IAuthMethodService _authMethodService;
     private readonly IPasswordPolicyService _passwordPolicy;
+    private readonly ISecurityChangeNotifier _notifier;
     private readonly AuthMetrics _metrics;
     private readonly ILogger<PasswordManagementService> _logger;
 
@@ -29,12 +30,14 @@ public sealed class PasswordManagementService : IPasswordManagementService
         TenantDbContext db,
         IAuthMethodService authMethodService,
         IPasswordPolicyService passwordPolicy,
+        ISecurityChangeNotifier notifier,
         AuthMetrics metrics,
         ILogger<PasswordManagementService> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _authMethodService = authMethodService ?? throw new ArgumentNullException(nameof(authMethodService));
         _passwordPolicy = passwordPolicy ?? throw new ArgumentNullException(nameof(passwordPolicy));
+        _notifier = notifier ?? throw new ArgumentNullException(nameof(notifier));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -61,6 +64,7 @@ public sealed class PasswordManagementService : IPasswordManagementService
 
         _metrics.RecordMethodAdded(AuthMethodKindTag.Password);
         _logger.LogInformation("Password set for {PlatformUserId}", platformUserId);
+        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasswordSet, cancellationToken);
         return PasswordSetOutcome.Set;
     }
 
@@ -85,6 +89,7 @@ public sealed class PasswordManagementService : IPasswordManagementService
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Password rotated for {PlatformUserId}", platformUserId);
+        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasswordChanged, cancellationToken);
         return PasswordChangeOutcome.Changed;
     }
 
@@ -122,6 +127,7 @@ public sealed class PasswordManagementService : IPasswordManagementService
 
         _metrics.RecordMethodRemoved(AuthMethodKindTag.Password);
         _logger.LogInformation("Password removed for {PlatformUserId}", platformUserId);
+        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasswordRemoved, cancellationToken);
         return PasswordRemoveOutcome.Removed;
     }
 

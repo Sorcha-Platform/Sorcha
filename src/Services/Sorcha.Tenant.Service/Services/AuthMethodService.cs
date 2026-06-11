@@ -17,11 +17,13 @@ namespace Sorcha.Tenant.Service.Services;
 public sealed class AuthMethodService : IAuthMethodService
 {
     private readonly TenantDbContext _db;
+    private readonly IVerificationChannelRegistry _channels;
 
     /// <summary>Creates a new <see cref="AuthMethodService"/>.</summary>
-    public AuthMethodService(TenantDbContext db)
+    public AuthMethodService(TenantDbContext db, IVerificationChannelRegistry channels)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        _channels = channels ?? throw new ArgumentNullException(nameof(channels));
     }
 
     /// <inheritdoc />
@@ -123,10 +125,43 @@ public sealed class AuthMethodService : IAuthMethodService
 
         // CanRemove logic is "subtract one only if the targeted method is
         // currently part of the active set" — same as WouldRemovingLeaveZero.
+        //
+        // T012 (Feature 150) — the floor rule's second clause ("the user holds an enrolled proof of
+        // tier >= RequiredProofTier") is, for the current method set, ALWAYS satisfied and so adds no
+        // gating beyond the last-method floor: RequiredProofTier(remove X) == TierOf(X) by the
+        // "required = tier of the thing weakened" rule, and removing a method is satisfiable by a
+        // proof of that same method (assert-then-delete for a passkey; re-enter for a password;
+        // re-OAuth for a social) — or is ungated entirely (a Disabled passkey bypasses step-up). The
+        // per-row RequiredProofTier is still surfaced so the dialog requests the right proof, and the
+        // server re-checks on verify (403 proof_tier_insufficient). So CanRemove == the floor here is
+        // complete, not a simplification.
         bool CanRemovePassword() => user.HasPassword && totalActive - 1 > 0;
         bool CanRemoveSocial() => totalActive - 1 > 0;
         bool CanRemovePasskey(CredentialStatus status) =>
             status == CredentialStatus.Active ? totalActive - 1 > 0 : true;
+
+        // Feature 150 — assurance tier (badge) + the floor-rule proof tier each row needs to be
+        // removed. These are method-kind constants sourced from AssurancePolicy, the single
+        // server-authoritative source; the UI only reflects them, never decides.
+        var passwordTier = AssurancePolicy.TierOfMethod(AuthMethodKind.Password);
+        var passwordRequired = AssurancePolicy.RequiredProofTier(ScopedOperation.RemovePassword);
+        var socialTier = AssurancePolicy.TierOfMethod(AuthMethodKind.Social);
+        var socialRequired = AssurancePolicy.RequiredProofTier(ScopedOperation.RemoveAuthMethod, AuthMethodKind.Social);
+        var passkeyTier = AssurancePolicy.TierOfMethod(AuthMethodKind.Passkey);
+        var passkeyRequired = AssurancePolicy.RequiredProofTier(ScopedOperation.RemoveAuthMethod, AuthMethodKind.Passkey);
+
+        // SMS 2FA is configuration-gated (US3) — true only when an operator configured a provider
+        // (the registry has an SMS channel).
+        var smsAvailable = _channels.SmsAvailable;
+
+        // Email/SMS OTP enablement (US2/US3) is account-wide on PlatformUserTwoFactor.
+        var twoFactor = await _db.PlatformUserTwoFactors
+            .AsNoTracking()
+            .Where(t => t.PlatformUserId == platformUserId)
+            .Select(t => new { t.EmailOtpEnabled, t.SmsOtpEnabled })
+            .FirstOrDefaultAsync(cancellationToken);
+        var emailOtpEnabled = twoFactor?.EmailOtpEnabled ?? false;
+        var smsOtpEnabled = (twoFactor?.SmsOtpEnabled ?? false) && smsAvailable;
 
         return new AuthMethodsResponse(
             Email: user.Email,
@@ -134,7 +169,9 @@ public sealed class AuthMethodService : IAuthMethodService
             Password: new AuthMethodsPassword(
                 IsSet: user.HasPassword,
                 LastChangedAt: null, // Not currently tracked — future work.
-                CanRemove: CanRemovePassword()),
+                CanRemove: CanRemovePassword(),
+                AssuranceTier: passwordTier,
+                RequiredProofTier: passwordRequired),
             Socials: socials.Select(s => new AuthMethodsSocial(
                 LinkId: s.Id,
                 Provider: s.Provider,
@@ -142,7 +179,9 @@ public sealed class AuthMethodService : IAuthMethodService
                 DisplayName: s.DisplayName,
                 LinkedAt: s.LinkedAt,
                 LastUsedAt: s.LastUsedAt,
-                CanRemove: CanRemoveSocial())).ToList(),
+                CanRemove: CanRemoveSocial(),
+                AssuranceTier: socialTier,
+                RequiredProofTier: socialRequired)).ToList(),
             Passkeys: passkeys.Select(p => new AuthMethodsPasskey(
                 Id: p.Id,
                 DisplayName: string.IsNullOrWhiteSpace(p.DisplayName) ? "Unnamed passkey" : p.DisplayName,
@@ -152,6 +191,11 @@ public sealed class AuthMethodService : IAuthMethodService
                 CreatedAt: p.CreatedAt,
                 LastUsedAt: p.LastUsedAt,
                 CanRemove: CanRemovePasskey(p.Status),
-                CanRename: p.Status == CredentialStatus.Active)).ToList());
+                CanRename: p.Status == CredentialStatus.Active,
+                AssuranceTier: passkeyTier,
+                RequiredProofTier: passkeyRequired)).ToList(),
+            SmsAvailable: smsAvailable,
+            EmailOtpEnabled: emailOtpEnabled,
+            SmsOtpEnabled: smsOtpEnabled);
     }
 }

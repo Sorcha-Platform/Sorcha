@@ -263,11 +263,36 @@ namespace Sorcha.Tenant.Service.Migrations
                     Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     LastLoginAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    WelcomeSentAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    WelcomeSentAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    PhoneNumber = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
+                    PhoneVerifiedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_PlatformUsers", x => x.Id);
+                });
+
+            // Feature 150 — account-wide Email/SMS OTP enablement, 1:1 with PlatformUsers (PK = FK).
+            migrationBuilder.CreateTable(
+                name: "PlatformUserTwoFactors",
+                schema: "public",
+                columns: table => new
+                {
+                    PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    EmailOtpEnabled = table.Column<bool>(type: "boolean", nullable: false),
+                    SmsOtpEnabled = table.Column<bool>(type: "boolean", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PlatformUserTwoFactors", x => x.PlatformUserId);
+                    table.ForeignKey(
+                        name: "FK_PlatformUserTwoFactors_PlatformUsers_PlatformUserId",
+                        column: x => x.PlatformUserId,
+                        principalSchema: "public",
+                        principalTable: "PlatformUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -1311,6 +1336,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "PlatformUserPersonas",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "PlatformUserTwoFactors",
                 schema: "public");
 
             migrationBuilder.DropTable(

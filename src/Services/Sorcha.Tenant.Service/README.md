@@ -1028,6 +1028,20 @@ For issues, questions, or contributions:
 
 ---
 
-**Last Updated**: 2026-03-16
+## Unified Account Security Surface (Feature 150)
+
+The successor to Feature 116 — one discoverable **Security** home plus an assurance-aware floor rule.
+
+- **Assurance model** — `AssurancePolicy` is the server-authoritative, computed-never-stored source of truth: `AuthAssuranceTier` (`Basic < Strong < Strongest`), `TierOfMethod`, `TierOfProof`, `RequiredProofTier(operation, target)`. **The password is `Basic` everywhere (T061 resolved)** — its change/remove are Basic-gated; a Basic proof can never disable TOTP (Strong) or remove a passkey (Strongest).
+- **Floor rule** — a step-up proof authorises a destructive/downgrade op **iff `proofTier >= RequiredProofTier`** (plus the last-method floor). Enforced in `AuthChallengeService`: initiate offers only floor-eligible proofs; verify returns `403 proof_tier_insufficient`. The ambiguous `RemoveAuthMethod` carries a `TargetMethodKind` (passkey-revoke vs social-unlink); a null target fails safe to Strongest. A Basic factor can never strip a Strong/Strongest method.
+- **Always-notify** — `ISecurityChangeNotifier` writes an F118 inbox entry **and** sends the Sorcha-branded `security-change` email on every mutation (password / social / passkey / TOTP). Both legs best-effort; a notify failure never rolls back the operation.
+- **Surface** — `GET /api/me/auth-methods` returns per-row `AssuranceTier` + `RequiredProofTier` + `CanRemove`; `POST /api/auth/challenge/{initiate,verify}` take the optional `TargetMethodKind`. The shared `SecurityHome` renders on web (`/app/security`) and the wallet PWA (`/wallet/security`).
+- **Phasing** — US1 (consolidation + floor + finished Passkey/Re-OAuth proofs + always-notify) shipped. Email OTP (US2), config-gated SMS OTP (US3, via `ISmsSender`), and PWA parity (US4) are follow-up phases; US2 owns the pre-release schema squash (`PlatformUser.PhoneNumber`/`PhoneVerifiedAt` + `PlatformUserTwoFactor`) and a Redis-backed `ServerSentOtpService` + `VerificationChannelRegistry`.
+
+See the **`sorcha-architecture`** skill ("Feature 150") and `specs/150-account-security/` for the full reference.
+
+---
+
+**Last Updated**: 2026-06-11
 **Maintained By**: Sorcha Contributors
 **Deferred (Post-MVD)**: Azure AD B2C integration

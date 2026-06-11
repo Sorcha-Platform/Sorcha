@@ -1,0 +1,18 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/security"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize]
+
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Components.Security
+
+<PageTitle>Security</PageTitle>
+
+@* Feature 150 — the web host mounts the shared SecurityHome verbatim. Served under /app/security
+   behind the gateway. The identical component renders in the wallet PWA at /wallet/security. *@
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <SecurityHome />
+</MudContainer>

@@ -28,6 +28,7 @@ public class PasskeyService : IPasskeyService
     private readonly IDistributedCache _cache;
     private readonly TenantDbContext _db;
     private readonly IAuthMethodService _authMethodService;
+    private readonly ISecurityChangeNotifier _notifier;
     private readonly ILogger<PasskeyService> _logger;
 
     /// <summary>
@@ -37,24 +38,28 @@ public class PasskeyService : IPasskeyService
     /// <param name="cache">Distributed cache for storing challenge state.</param>
     /// <param name="db">Tenant database context.</param>
     /// <param name="authMethodService">Floor service used during revocation to enforce the last-method floor (Feature 116 US2).</param>
+    /// <param name="notifier">Always-notify sink for passkey add/remove/rename (Feature 150).</param>
     /// <param name="logger">Logger instance.</param>
     public PasskeyService(
         IFido2 fido2,
         IDistributedCache cache,
         TenantDbContext db,
         IAuthMethodService authMethodService,
+        ISecurityChangeNotifier notifier,
         ILogger<PasskeyService> logger)
     {
         ArgumentNullException.ThrowIfNull(fido2);
         ArgumentNullException.ThrowIfNull(cache);
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(authMethodService);
+        ArgumentNullException.ThrowIfNull(notifier);
         ArgumentNullException.ThrowIfNull(logger);
 
         _fido2 = fido2;
         _cache = cache;
         _db = db;
         _authMethodService = authMethodService;
+        _notifier = notifier;
         _logger = logger;
     }
 
@@ -174,6 +179,7 @@ public class PasskeyService : IPasskeyService
         {
             _db.PasskeyCredentials.Add(credential);
             await _db.SaveChangesAsync(cancellationToken);
+            await _notifier.NotifyAsync(credential.PlatformUserId, SecurityChangeKind.PasskeyAdded, cancellationToken);
         }
 
         _logger.LogInformation(
@@ -388,6 +394,8 @@ public class PasskeyService : IPasskeyService
             "Passkey credential {CredentialId} revoked for PlatformUser {PlatformUserId} prior={PriorStatus}",
             credentialId, platformUserId, priorStatus);
 
+        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasskeyRemoved, cancellationToken);
+
         return priorStatus == CredentialStatus.Active
             ? PasskeyRevocationOutcome.RevokedFromActive
             : PasskeyRevocationOutcome.RevokedFromDisabled;
@@ -430,6 +438,8 @@ public class PasskeyService : IPasskeyService
         _logger.LogInformation(
             "Passkey credential {CredentialId} renamed for PlatformUser {PlatformUserId}",
             credentialId, platformUserId);
+
+        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.PasskeyRenamed, cancellationToken);
 
         return PasskeyRenameOutcome.Renamed;
     }

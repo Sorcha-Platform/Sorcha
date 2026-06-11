@@ -25,6 +25,7 @@ public class LoginService : ILoginService
     private readonly ITokenRevocationService _revocationService;
     private readonly IPlatformUserService _platformUserService;
     private readonly IWelcomeEmailDispatcher _welcomeDispatcher;
+    private readonly IVerificationChannelRegistry _channels;
     private readonly ILogger<LoginService> _logger;
     private readonly IdentityMetrics? _metrics;
 
@@ -41,6 +42,7 @@ public class LoginService : ILoginService
         ITokenRevocationService revocationService,
         IPlatformUserService platformUserService,
         IWelcomeEmailDispatcher welcomeDispatcher,
+        IVerificationChannelRegistry channels,
         ILogger<LoginService> logger,
         IdentityMetrics? metrics = null)
     {
@@ -54,6 +56,7 @@ public class LoginService : ILoginService
         _revocationService = revocationService;
         _platformUserService = platformUserService;
         _welcomeDispatcher = welcomeDispatcher;
+        _channels = channels;
         _logger = logger;
     }
 
@@ -243,17 +246,41 @@ public class LoginService : ILoginService
         }
         var mintTier = tierResolution.Tier;
 
-        // Check if user has TOTP 2FA or passkeys enabled
+        // Check enrolled second factors. TOTP + passkeys are org-scoped / per-credential; email OTP
+        // (Feature 150 US2) is account-wide and only counts when the channel is configured.
         var totpStatus = await _totpService.GetStatusAsync(user.Id, ct);
         var passkeys = await _passkeyService.GetCredentialsByOwnerAsync(platformUser.Id, ct);
         var hasActivePasskeys = passkeys.Any(p => p.Status == CredentialStatus.Active);
+        var twoFactor = await _dbContext.PlatformUserTwoFactors
+            .AsNoTracking()
+            .Where(t => t.PlatformUserId == platformUser.Id)
+            .Select(t => new { t.EmailOtpEnabled, t.SmsOtpEnabled })
+            .FirstOrDefaultAsync(ct);
+        var emailOtpEnabled = _channels.Resolve(ChallengeMethod.EmailOtp) is not null && (twoFactor?.EmailOtpEnabled ?? false);
+        var smsOtpEnabled = _channels.Resolve(ChallengeMethod.SmsOtp) is not null && (twoFactor?.SmsOtpEnabled ?? false);
 
-        if (totpStatus.IsEnabled || hasActivePasskeys)
+        if (totpStatus.IsEnabled || hasActivePasskeys || emailOtpEnabled || smsOtpEnabled)
         {
             var loginToken = await _totpService.GenerateLoginTokenAsync(user.Id, ct);
+            // Strongest-enrolled first (passkey → totp → email → sms), with a "use another method" fallback.
             var methods = new List<string>();
-            if (totpStatus.IsEnabled) methods.Add("totp");
             if (hasActivePasskeys) methods.Add("passkey");
+            if (totpStatus.IsEnabled) methods.Add("totp");
+            if (emailOtpEnabled) methods.Add("email");
+            if (smsOtpEnabled) methods.Add("sms");
+
+            // When a server-sent code is the ONLY factor, dispatch it now (email preferred over sms).
+            // When a stronger factor exists the client requests a code on demand (the fallback path).
+            if (!totpStatus.IsEnabled && !hasActivePasskeys)
+            {
+                var soleChannel = emailOtpEnabled ? ChallengeMethod.EmailOtp : smsOtpEnabled ? ChallengeMethod.SmsOtp : (ChallengeMethod?)null;
+                if (soleChannel is { } ch)
+                {
+                    var channel = _channels.Resolve(ch);
+                    if (channel is not null)
+                        await channel.SendAsync(platformUser.Id, OtpPurpose.Login2Fa, ct);
+                }
+            }
 
             _logger.LogInformation("Login requires 2FA for {Email} in org {OrgId}, methods: {Methods}",
                 user.Email, organization.Id, string.Join(", ", methods));

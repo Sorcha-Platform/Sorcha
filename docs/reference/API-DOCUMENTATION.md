@@ -2667,3 +2667,21 @@ connection.on("InstanceAdvanced", async (instanceId) => {
 **Last Updated:** 2026-06-10
 **Document Version:** 2.4.0
 **Feature:** 128 - Cold-start onboarding and device pairing UX
+
+---
+
+## Feature 150 — Account Security endpoints (Tenant Service)
+
+Cross-tier `/me/*` (`.RequireAuthorization()`, F136) — one surface for consumer + platform tokens.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/me/auth-methods` | Aggregate read: password/social/passkey rows with `AssuranceTier`/`RequiredProofTier`/`CanRemove`, plus `EmailOtpEnabled`, `SmsAvailable`, `SmsOtpEnabled`. |
+| POST | `/api/auth/challenge/initiate` · `/verify` | Step-up; carries `TargetMethodKind`; verify → `403 proof_tier_insufficient` when below floor. |
+| POST | `/api/me/2fa/email/enable` · `/verify` | Enable email OTP (sends a code; confirm). |
+| DELETE | `/api/me/2fa/email` | Disable email OTP. |
+| POST | `/api/me/2fa/sms/phone` · `/phone/verify` | Capture + verify a mobile number (404 if SMS unconfigured). |
+| POST | `/api/me/2fa/sms/enable` | Enable SMS OTP (requires a verified number). |
+| DELETE | `/api/me/2fa/sms` | Disable SMS OTP. |
+| POST | `/api/auth/verify-2fa` | Complete login 2FA; `method=email|sms` for server-sent codes. |
+| POST | `/api/auth/login/2fa/send-email` | Send/resend an email login code (loginToken-gated). |

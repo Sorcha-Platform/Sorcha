@@ -33,6 +33,7 @@ public class TenantDbContext : DbContext
     public DbSet<PlatformUserOrgMembership> PlatformUserOrgMemberships => Set<PlatformUserOrgMembership>();
     public DbSet<PlatformUserPersona> PlatformUserPersonas => Set<PlatformUserPersona>();
     public DbSet<PlatformUserDevice> PlatformUserDevices => Set<PlatformUserDevice>();
+    public DbSet<PlatformUserTwoFactor> PlatformUserTwoFactors => Set<PlatformUserTwoFactor>();
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
     public DbSet<AuthChallengeToken> AuthChallengeTokens => Set<AuthChallengeToken>();
@@ -1040,6 +1041,11 @@ public class TenantDbContext : DbContext
                 .IsRequired(false)
                 .HasMaxLength(500);
 
+            // Feature 150 US3 — mobile number for SMS OTP (E.164). Captured + verified at SMS-enable.
+            entity.Property(e => e.PhoneNumber)
+                .IsRequired(false)
+                .HasMaxLength(20);
+
             entity.Property(e => e.Status)
                 .HasConversion<string>()
                 .IsRequired()
@@ -1072,6 +1078,26 @@ public class TenantDbContext : DbContext
                 .WithOne(m => m.PlatformUser)
                 .HasForeignKey(m => m.PlatformUserId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Feature 150 — 1:1 per-channel 2FA flags. Cascade-delete with the user (GDPR erasure).
+            entity.HasOne(e => e.TwoFactor)
+                .WithOne(t => t.PlatformUser)
+                .HasForeignKey<PlatformUserTwoFactor>(t => t.PlatformUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Feature 150 — account-wide Email/SMS OTP enablement, 1:1 with PlatformUser (PK = FK).
+        modelBuilder.Entity<PlatformUserTwoFactor>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("PlatformUserTwoFactors");
+            else
+                entity.ToTable("PlatformUserTwoFactors", "public");
+
+            entity.HasKey(e => e.PlatformUserId);
+            entity.Property(e => e.EmailOtpEnabled).IsRequired();
+            entity.Property(e => e.SmsOtpEnabled).IsRequired();
+            entity.Property(e => e.UpdatedAt).IsRequired();
         });
     }
 

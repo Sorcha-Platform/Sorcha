@@ -122,7 +122,7 @@ public class AuthMethodServiceTests : IDisposable
     {
         var pu = await SeedAsync(withPassword: withPassword,
                                   socialCount: socials, activePasskeyCount: activePasskeys);
-        var service = new AuthMethodService(_db);
+        var service = new AuthMethodService(_db, new VerificationChannelRegistry([]));
 
         var counts = await service.GetCountsAsync(pu.Id);
 
@@ -136,7 +136,7 @@ public class AuthMethodServiceTests : IDisposable
     public async Task GetCountsAsync_DisabledPasskeysNotCounted()
     {
         var pu = await SeedAsync(withPassword: false, activePasskeyCount: 1, disabledPasskeyCount: 5);
-        var service = new AuthMethodService(_db);
+        var service = new AuthMethodService(_db, new VerificationChannelRegistry([]));
 
         var counts = await service.GetCountsAsync(pu.Id);
 
@@ -150,7 +150,7 @@ public class AuthMethodServiceTests : IDisposable
         // TOTP is a second factor, not a method. A user with ONLY TOTP is
         // still locked out — they have no method to unlock with.
         var pu = await SeedAsync(withPassword: true, withTotp: true);
-        var service = new AuthMethodService(_db);
+        var service = new AuthMethodService(_db, new VerificationChannelRegistry([]));
 
         var counts = await service.GetCountsAsync(pu.Id);
 
@@ -161,7 +161,7 @@ public class AuthMethodServiceTests : IDisposable
     public async Task WouldRemovingLeaveZero_PasswordOnlyUser_RemovingPasswordTriggersFloor()
     {
         var pu = await SeedAsync(withPassword: true);
-        var service = new AuthMethodService(_db);
+        var service = new AuthMethodService(_db, new VerificationChannelRegistry([]));
 
         var blocked = await service.WouldRemovingLeaveZeroAsync(pu.Id, AuthMethodKind.Password, methodId: null);
 
@@ -172,7 +172,7 @@ public class AuthMethodServiceTests : IDisposable
     public async Task WouldRemovingLeaveZero_PasswordPlusOnePasskey_RemovingPasskeyAllowed()
     {
         var pu = await SeedAsync(withPassword: true, activePasskeyCount: 1);
-        var service = new AuthMethodService(_db);
+        var service = new AuthMethodService(_db, new VerificationChannelRegistry([]));
 
         var passkey = await _db.PasskeyCredentials.FirstAsync(p => p.PlatformUserId == pu.Id);
         var blocked = await service.WouldRemovingLeaveZeroAsync(pu.Id, AuthMethodKind.Passkey, passkey.Id);
@@ -187,7 +187,7 @@ public class AuthMethodServiceTests : IDisposable
         // currently active. Disabled passkeys are already off the active set;
         // their removal cannot trigger the floor.
         var pu = await SeedAsync(withPassword: false, activePasskeyCount: 1, disabledPasskeyCount: 1);
-        var service = new AuthMethodService(_db);
+        var service = new AuthMethodService(_db, new VerificationChannelRegistry([]));
 
         var disabled = await _db.PasskeyCredentials
             .FirstAsync(p => p.PlatformUserId == pu.Id && p.Status == CredentialStatus.Disabled);
@@ -203,7 +203,7 @@ public class AuthMethodServiceTests : IDisposable
         // concurrent request, we must not under-count and falsely trigger the
         // floor on the remaining methods.
         var pu = await SeedAsync(withPassword: true, socialCount: 1);
-        var service = new AuthMethodService(_db);
+        var service = new AuthMethodService(_db, new VerificationChannelRegistry([]));
 
         var blocked = await service.WouldRemovingLeaveZeroAsync(pu.Id, AuthMethodKind.Social, methodId: Guid.NewGuid());
 
@@ -213,7 +213,7 @@ public class AuthMethodServiceTests : IDisposable
     [Fact]
     public async Task WouldRemovingLeaveZero_UnknownUser_TreatedAsFloorAlreadyAtZero()
     {
-        var service = new AuthMethodService(_db);
+        var service = new AuthMethodService(_db, new VerificationChannelRegistry([]));
         var blocked = await service.WouldRemovingLeaveZeroAsync(
             Guid.NewGuid(), AuthMethodKind.Password, methodId: null);
         blocked.Should().BeTrue();

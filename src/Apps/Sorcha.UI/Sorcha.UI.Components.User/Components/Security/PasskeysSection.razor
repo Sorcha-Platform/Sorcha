@@ -8,7 +8,6 @@
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Feedback
-@using Sorcha.UI.Web.Client.Services
 @inject ILocalizationService Loc
 @inject IAuthMethodsClientService AuthMethodsClient
 @inject IDialogService DialogService
@@ -61,7 +60,10 @@
                     }
                     else
                     {
-                        <MudText Typo="Typo.body1">@passkey.DisplayName</MudText>
+                        <div class="d-flex align-center" style="gap:8px;">
+                            <MudText Typo="Typo.body1">@passkey.DisplayName</MudText>
+                            <AssuranceBadge Tier="passkey.AssuranceTier" />
+                        </div>
                     }
                     <MudText Typo="Typo.caption" Color="Color.Secondary">
                         @(passkey.DeviceType ?? Loc.T("settings.accounts.passkeys.unknownDevice"))
@@ -236,7 +238,13 @@
         if (!IsDisabled(passkey.Status))
         {
             // Active passkeys require step-up; Disabled bypasses per spec.
-            var parameters = new DialogParameters { ["Scope"] = ScopedOperation.RemoveAuthMethod };
+            // Removing a passkey is a Strongest-tier operation — tell the dialog the target so
+            // the server's floor rule offers only a Strongest proof (another passkey).
+            var parameters = new DialogParameters
+            {
+                ["Scope"] = ScopedOperation.RemoveAuthMethod,
+                ["Target"] = AuthMethodKind.Passkey,
+            };
             var dialog = await DialogService.ShowAsync<AuthChallengeDialog>(
                 Loc.T("settings.accounts.unlink.confirmTitle"), parameters);
             var result = await dialog.Result;

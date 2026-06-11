@@ -224,6 +224,26 @@ public static class ServiceCollectionExtensions
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Feature 150 (US4) — the account-security surface. The shared SecurityHome (mounted at
+        // /wallet/security) needs the auth-method + TOTP typed clients carrying the citizen's
+        // consumer-tier JWT (the /me/* endpoints are cross-tier .RequireAuthorization, so the
+        // consumer audience is accepted), localization, and the WebAuthn interop the relocated
+        // PasskeysSection depends on (webauthn.js already ships in the PWA wwwroot).
+        services.AddHttpClient<IAuthMethodsClientService, AuthMethodsClientService>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+        services.AddHttpClient<ITotpClientService, TotpClientService>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+        services.AddScoped<PasskeyInteropService>();
+        services.AddScoped<ILocalizationService>(sp => new LocalizationService(
+            sp.GetRequiredService<HttpClient>(),
+            sp.GetRequiredService<IUserPreferencesService>(),
+            sp.GetRequiredService<Microsoft.JSInterop.IJSRuntime>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LocalizationService>>()));
+
         // Feature 125 / PR-B — user context (active org) + memberships client.
         // ManagedUserContext drives /api/auth/switch-org through the bearer-
         // and clock-handler chain so the new JWT is acquired with the

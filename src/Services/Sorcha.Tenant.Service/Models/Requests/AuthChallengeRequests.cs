@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Models.Requests;
 
@@ -14,9 +15,16 @@ namespace Sorcha.Tenant.Service.Models.Requests;
 /// Optional override of the default ladder selection. Server still validates
 /// the choice is enrolled.
 /// </param>
+/// <param name="TargetMethodKind">
+/// The sign-in method the operation targets, when ambiguous. Required for
+/// <see cref="ScopedOperation.RemoveAuthMethod"/> (passkey-revoke vs social-unlink)
+/// so the floor rule computes the correct required proof tier (Feature 150). A null
+/// target fails safe to the strongest tier.
+/// </param>
 public sealed record ChallengeInitiateRequest(
     ScopedOperation ScopedOperation,
-    ChallengeMethod? PreferredMethod);
+    ChallengeMethod? PreferredMethod,
+    AuthMethodKind? TargetMethodKind = null);
 
 /// <summary>
 /// Server response after a successful initiate. The dialog uses
@@ -39,10 +47,17 @@ public sealed record ChallengeInitiateResponse(
 /// <c>{ "password": "..." }</c> for Password, WebAuthn assertion JSON for
 /// Passkey, OAuth code/state object for ReOAuth.
 /// </param>
+/// <param name="TargetMethodKind">
+/// The sign-in method the operation targets, when ambiguous (see
+/// <see cref="ChallengeInitiateRequest.TargetMethodKind"/>). The floor rule is
+/// re-checked on verify; a proof tier below the required tier yields
+/// <c>403 proof_tier_insufficient</c> (Feature 150).
+/// </param>
 public sealed record ChallengeVerifyRequest(
     ChallengeMethod Method,
     ScopedOperation ScopedOperation,
-    JsonElement Proof);
+    JsonElement Proof,
+    AuthMethodKind? TargetMethodKind = null);
 
 /// <summary>
 /// Server response after a successful verify. The raw token is returned only

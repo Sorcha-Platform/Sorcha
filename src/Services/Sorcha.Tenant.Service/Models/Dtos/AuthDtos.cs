@@ -332,6 +332,14 @@ public record Verify2FaRequest
     /// </summary>
     [JsonPropertyName("tier")]
     public string? Tier { get; init; }
+
+    /// <summary>
+    /// Which second-factor method the <see cref="Code"/> belongs to (Feature 150 US2):
+    /// <c>totp</c> (default — also covers backup codes via <see cref="IsBackupCode"/>) or
+    /// <c>email</c> for an emailed one-time code.
+    /// </summary>
+    [JsonPropertyName("method")]
+    public string? Method { get; init; }
 }
 
 /// <summary>

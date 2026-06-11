@@ -1104,6 +1104,13 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset?>("PhoneVerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1137,6 +1144,25 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasFilter("\"VerificationToken\" IS NOT NULL");
 
                     b.ToTable("PlatformUsers", "public");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserTwoFactor", b =>
+                {
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("EmailOtpEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("SmsOtpEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PlatformUserId");
+
+                    b.ToTable("PlatformUserTwoFactors", "public");
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserDevice", b =>
@@ -1794,6 +1820,17 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Navigation("PlatformUser");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserTwoFactor", b =>
+                {
+                    b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
+                        .WithOne("TwoFactor")
+                        .HasForeignKey("Sorcha.Tenant.Service.Models.PlatformUserTwoFactor", "PlatformUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlatformUser");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserDevice", b =>
                 {
                     b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
@@ -1878,6 +1915,8 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Navigation("PasskeyCredentials");
 
                     b.Navigation("SocialLogins");
+
+                    b.Navigation("TwoFactor");
                 });
 #pragma warning restore 612, 618
         }

@@ -241,6 +241,7 @@ app.MapAuthEndpoints();
 app.MapPasskeyEndpoints();
 app.MapAuthChallengeEndpoints();
 app.MapAuthMethodsEndpoints();
+app.MapTwoFactorChannelEndpoints();
 app.MapPasswordEndpoints();
 app.MapPublicPasskeyEndpoints();
 app.MapServiceAuthEndpoints();

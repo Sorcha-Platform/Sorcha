@@ -4,6 +4,7 @@
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using FluentAssertions;
+using Fido2NetLib;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -28,6 +29,8 @@ public class AuthChallengeServiceTests : IDisposable
     private readonly TenantDbContext _db;
     private readonly AuthChallengeRepository _repository;
     private readonly Mock<ITotpService> _totp = new();
+    private readonly Mock<IPasskeyService> _passkeys = new();
+    private readonly Mock<ISocialLoginService> _social = new();
     private readonly AuthMetrics _metrics;
 
     public AuthChallengeServiceTests()
@@ -41,8 +44,12 @@ public class AuthChallengeServiceTests : IDisposable
         _metrics = new AuthMetrics(new TestMeterFactory());
     }
 
+    // Empty channel registry — these tests don't exercise Email/SMS OTP, so no channel resolves
+    // and EmailOtp is never enrolled/offered.
+    private readonly VerificationChannelRegistry _channels = new([]);
+
     private AuthChallengeService CreateService() => new(
-        _db, _repository, _totp.Object, _metrics, NullLogger<AuthChallengeService>.Instance);
+        _db, _repository, _totp.Object, _passkeys.Object, _social.Object, _channels, _metrics, NullLogger<AuthChallengeService>.Instance);
 
     private async Task<(PlatformUser, UserIdentity)> SeedUserAsync(
         bool withPassword = false,
@@ -181,7 +188,8 @@ public class AuthChallengeServiceTests : IDisposable
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.Totp,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"code":"123456"}""").RootElement);
+            JsonDocument.Parse("""{"code":"123456"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social); // Strong proof authorises a Basic (social) removal
 
         result.Succeeded.Should().BeTrue();
         result.Token.Should().StartWith("ch_").And.HaveLength(46); // "ch_" + 43 base64url chars (32 bytes)
@@ -208,7 +216,8 @@ public class AuthChallengeServiceTests : IDisposable
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.Totp,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"code":"000000"}""").RootElement);
+            JsonDocument.Parse("""{"code":"000000"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social);
 
         result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
         result.Token.Should().BeNull();
@@ -255,7 +264,8 @@ public class AuthChallengeServiceTests : IDisposable
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.Totp,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"wrong":"shape"}""").RootElement);
+            JsonDocument.Parse("""{"wrong":"shape"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social);
 
         result.Outcome.Should().Be(ChallengeVerificationOutcome.InvalidProofShape);
     }
@@ -275,29 +285,246 @@ public class AuthChallengeServiceTests : IDisposable
         result.Outcome.Should().Be(ChallengeVerificationOutcome.MethodNotAvailable);
     }
 
+    // ---- Feature 150 (T014/T015): Passkey + Re-OAuth step-up proofs ----
+
     [Fact]
-    public async Task VerifyAsync_PasskeyAndReOAuth_NotYetWired_ReturnFalse()
+    public async Task VerifyAsync_PasskeyProof_MissingAssertionResponse_InvalidShape()
     {
-        // Passkey + ReOAuth verification ceremonies are deferred to the
-        // user-story phases (US1 / US2). Until then, the service treats
-        // them as proof-rejected so the dialog can degrade gracefully.
-        var (pu, ui) = await SeedUserAsync(withSocial: true, withActivePasskey: true);
+        var (pu, ui) = await SeedUserAsync(withActivePasskey: true);
         var service = CreateService();
 
-        var passkeyResult = await service.VerifyAsync(
+        var result = await service.VerifyAsync(
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.Passkey,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"assertion":"stub"}""").RootElement);
-        passkeyResult.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
+            JsonDocument.Parse("""{"transactionId":"tx"}""").RootElement);
 
-        var oauthResult = await service.VerifyAsync(
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.InvalidProofShape);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_PasskeyProof_MatchingUser_Accepted()
+    {
+        var (pu, ui) = await SeedUserAsync(withActivePasskey: true);
+        _passkeys
+            .Setup(p => p.VerifyAssertionAsync(It.IsAny<string>(), It.IsAny<AuthenticatorAssertionRawResponse>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AssertionVerificationResult(NewCredential(pu.Id), pu.Id));
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.Passkey,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"transactionId":"tx","assertionResponse":{}}""").RootElement);
+
+        result.Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_PasskeyProof_DifferentUser_Rejected()
+    {
+        var (pu, ui) = await SeedUserAsync(withActivePasskey: true);
+        _passkeys
+            .Setup(p => p.VerifyAssertionAsync(It.IsAny<string>(), It.IsAny<AuthenticatorAssertionRawResponse>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AssertionVerificationResult(NewCredential(Guid.NewGuid()), Guid.NewGuid()));
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.Passkey,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"transactionId":"tx","assertionResponse":{}}""").RootElement);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ReOAuthProof_LinkedProvider_Accepted()
+    {
+        var (pu, ui) = await SeedUserAsync(withSocial: true); // google
+        _social
+            .Setup(s => s.ExchangeCodeAsync("google", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SocialAuthCallbackResult(
+                Success: true, Error: null, Subject: "sub", Email: "e@test.com",
+                DisplayName: "d", EmailVerified: true, Provider: "google"));
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.ReOAuth,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"provider":"google","code":"x","state":"y"}""").RootElement);
-        oauthResult.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
+            JsonDocument.Parse("""{"provider":"google","code":"c","state":"s"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social); // Strong proof authorises a Basic (social) removal
+
+        result.Succeeded.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task VerifyAsync_ReOAuthProof_ExchangeFails_Rejected()
+    {
+        var (pu, ui) = await SeedUserAsync(withSocial: true);
+        _social
+            .Setup(s => s.ExchangeCodeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SocialAuthCallbackResult(
+                Success: false, Error: "denied", Subject: null, Email: null,
+                DisplayName: null, EmailVerified: false, Provider: "google"));
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.ReOAuth,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"provider":"google","code":"c","state":"s"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Social);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
+    }
+
+    // ---- Feature 150 (T016): floor-rule enforcement on initiate + verify ----
+
+    [Fact]
+    public async Task InitiateAsync_RemovePasskey_PicksPasskeyNotTotp_BecauseFloorRequiresStrongest()
+    {
+        // TOTP is preferred by the ladder, but removing a passkey (Strongest) requires a
+        // Strongest proof — so only the passkey is floor-eligible.
+        var (pu, ui) = await SeedUserAsync(withTotp: true, withActivePasskey: true);
+        _passkeys
+            .Setup(p => p.CreateAssertionOptionsAsync(It.IsAny<string?>(), It.IsAny<IEnumerable<byte[]>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AssertionOptionsResult("tx", AssertionOptions.FromJson("""{"challenge":"AAAA","rpId":"localhost","allowCredentials":[]}""")));
+        var service = CreateService();
+
+        var prep = await service.InitiateAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ScopedOperation.RemoveAuthMethod,
+            preferredMethod: null,
+            targetMethodKind: AuthMethodKind.Passkey);
+
+        prep.IsAvailable.Should().BeTrue();
+        prep.Method.Should().Be(ChallengeMethod.Passkey);
+    }
+
+    [Fact]
+    public async Task InitiateAsync_RemovePasskey_NoMethodAvailable_WhenOnlyTotpEnrolled()
+    {
+        // Only TOTP (Strong) enrolled, but a passkey removal needs Strongest → nothing qualifies.
+        var (pu, ui) = await SeedUserAsync(withTotp: true);
+        var service = CreateService();
+
+        var prep = await service.InitiateAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ScopedOperation.RemoveAuthMethod,
+            preferredMethod: null,
+            targetMethodKind: AuthMethodKind.Passkey);
+
+        prep.IsAvailable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_TotpProof_RemovePasskey_ProofTierInsufficient()
+    {
+        // A Strong proof (TOTP) cannot authorise removing a Strongest method (passkey) —
+        // rejected before the proof body is even validated.
+        var (pu, ui) = await SeedUserAsync(withTotp: true);
+        _totp.Setup(t => t.ValidateCodeAsync(ui.Id, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.Totp,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"code":"123456"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Passkey);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofTierInsufficient);
+        result.Token.Should().BeNull();
+        (await _db.AuthChallengeTokens.AnyAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_PasswordProof_RemovePasskey_ProofTierInsufficient()
+    {
+        // Password is Basic — below Strongest, so it cannot strip a passkey.
+        var (pu, ui) = await SeedUserAsync(withPassword: true, password: "Right1!");
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.Password,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"password":"Right1!"}""").RootElement,
+            targetMethodKind: AuthMethodKind.Passkey);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofTierInsufficient);
+    }
+
+    // ---- Feature 150 US2: Email OTP as a step-up proof ----
+
+    private AuthChallengeService CreateServiceWith(IVerificationChannel channel) => new(
+        _db, _repository, _totp.Object, _passkeys.Object, _social.Object,
+        new VerificationChannelRegistry([channel]), _metrics, NullLogger<AuthChallengeService>.Instance);
+
+    private static Mock<IVerificationChannel> EmailChannelReturning(OtpVerifyOutcome outcome)
+    {
+        var ch = new Mock<IVerificationChannel>();
+        ch.SetupGet(c => c.Kind).Returns(ChallengeMethod.EmailOtp);
+        ch.SetupGet(c => c.Tier).Returns(AuthAssuranceTier.Basic);
+        ch.Setup(c => c.SendAsync(It.IsAny<Guid>(), It.IsAny<OtpPurpose>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ChannelSendOutcome.Sent);
+        ch.Setup(c => c.VerifyAsync(It.IsAny<Guid>(), It.IsAny<OtpPurpose>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outcome);
+        return ch;
+    }
+
+    private async Task EnableEmailOtpAsync(Guid platformUserId)
+    {
+        _db.PlatformUserTwoFactors.Add(new PlatformUserTwoFactor { PlatformUserId = platformUserId, EmailOtpEnabled = true });
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_EmailOtpProof_ChangePassword_Accepted()
+    {
+        // ChangePassword is Basic (T061), Email OTP is Basic → floor passes.
+        var (pu, ui) = await SeedUserAsync(withPassword: true);
+        await EnableEmailOtpAsync(pu.Id);
+        var service = CreateServiceWith(EmailChannelReturning(OtpVerifyOutcome.Verified).Object);
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.EmailOtp,
+            ScopedOperation.ChangePassword,
+            JsonDocument.Parse("""{"code":"123456"}""").RootElement);
+
+        result.Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_EmailOtpProof_Disable2Fa_ProofTierInsufficient()
+    {
+        // Disable2Fa is Strong; Email OTP is Basic → rejected by the floor before the channel is called.
+        var (pu, ui) = await SeedUserAsync(withPassword: true);
+        await EnableEmailOtpAsync(pu.Id);
+        var service = CreateServiceWith(EmailChannelReturning(OtpVerifyOutcome.Verified).Object);
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.EmailOtp,
+            ScopedOperation.Disable2Fa,
+            JsonDocument.Parse("""{"code":"123456"}""").RootElement);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofTierInsufficient);
+    }
+
+    private static PasskeyCredential NewCredential(Guid platformUserId) => new()
+    {
+        Id = Guid.NewGuid(),
+        PlatformUserId = platformUserId,
+        CredentialId = new byte[] { 1 },
+        PublicKeyCose = new byte[] { 2 },
+        DisplayName = "Dev Passkey",
+        AttestationType = "none",
+        Status = CredentialStatus.Active,
+    };
 
     [Fact]
     public async Task TryConsumeAsync_AtomicConsume_ExactlyOneWinnerOnConcurrentPresentation()

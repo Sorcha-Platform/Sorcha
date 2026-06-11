@@ -3,6 +3,7 @@
 
 using Fido2NetLib;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Polly;
 using Polly.CircuitBreaker;
 using Sorcha.ServiceDefaults;
@@ -214,6 +215,17 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITenantMembershipInboxWriter, TenantMembershipInboxWriter>();
         // Feature 118 — Tenant-side inbox writer for security events (2FA enable/disable).
         services.AddScoped<ITenantSecurityInboxWriter, TenantSecurityInboxWriter>();
+        // Feature 150 — always-notify: composes the inbox writer + a Sorcha-branded email.
+        services.AddScoped<ISecurityChangeNotifier, SecurityChangeNotifier>();
+
+        // Feature 150 US2 — server-sent OTP (Redis GETDEL via IAtomicDistributedCache) + the
+        // verification-channel registry. The Email channel is always registered; the SMS channel
+        // (US3) is added by AddSmsChannel only when an ISmsSender provider is configured, so an
+        // unconfigured install never resolves SMS. TimeProvider drives deterministic OTP expiry.
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<IServerSentOtpService, ServerSentOtpService>();
+        services.AddScoped<IVerificationChannel, EmailOtpChannel>();
+        services.AddScoped<IVerificationChannelRegistry, VerificationChannelRegistry>();
         services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
         services.AddScoped<IOrgProvisioningService, OrgProvisioningService>();
         services.AddScoped<IPlatformUserProvisioningService, PlatformUserProvisioningService>();
@@ -329,6 +341,16 @@ public static class ServiceCollectionExtensions
         else
         {
             services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        }
+
+        // Feature 150 US3 — SMS OTP, config-gated: only when an operator configures a provider
+        // (Sms:AcsConnectionString) do we register ISmsSender + the SMS channel + the phone-verify
+        // service. Unconfigured ⇒ the SMS channel never resolves and SmsAvailable stays false.
+        if (!string.IsNullOrEmpty(configuration["Sms:AcsConnectionString"]))
+        {
+            services.AddSingleton<Services.Sms.ISmsSender, Services.Sms.AcsSmsSender>();
+            services.AddScoped<IVerificationChannel, SmsOtpChannel>();
+            services.AddScoped<ISmsPhoneVerificationService, SmsPhoneVerificationService>();
         }
 
         // Template renderer is a singleton — templates are parsed once at startup and

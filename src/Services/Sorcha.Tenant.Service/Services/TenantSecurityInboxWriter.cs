@@ -34,6 +34,19 @@ public interface ITenantSecurityInboxWriter
     /// entry (timestamp folded into the SourceEventId).
     /// </summary>
     Task WriteBackupCodeUsedAsync(Guid platformUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Write a Feature-150 security-change entry with caller-supplied copy. The single
+    /// generic entry point used by <c>ISecurityChangeNotifier</c> so every account-security
+    /// mutation (password / social / passkey / 2FA channel) lands in the bell drawer.
+    /// </summary>
+    Task WriteSecurityChangeAsync(
+        Guid platformUserId,
+        string eventKey,
+        string title,
+        string summary,
+        InboxSeverity severity = InboxSeverity.Warning,
+        CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -95,6 +108,23 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
             severity: InboxSeverity.Warning,
             ct);
 
+    /// <inheritdoc />
+    public Task WriteSecurityChangeAsync(
+        Guid platformUserId,
+        string eventKey,
+        string title,
+        string summary,
+        InboxSeverity severity = InboxSeverity.Warning,
+        CancellationToken ct = default) =>
+        WriteAsync(
+            platformUserId,
+            eventKey,
+            title: title,
+            summary: summary,
+            iconKey: $"security.{eventKey}",
+            severity: severity,
+            ct);
+
     private async Task WriteAsync(
         Guid platformUserId,
         string eventKey,
@@ -114,7 +144,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
                 Category: InboxCategory.Security,
                 Severity: severity,
                 CorrelationKey: $"security:{eventKey}:{platformUserId:N}",
-                DetailHref: "/settings/security",
+                DetailHref: "/security", // Feature 150 — the unified Security home
                 SourceEventId: sourceEventId,
                 OccurredAt: occurredAt,
                 Title: title,

@@ -6,6 +6,7 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
@@ -37,10 +38,10 @@ public class PasswordManagementServiceTests : IDisposable
         var options = new DbContextOptionsBuilder<TenantDbContext>().UseSqlite(_connection).Options;
         _db = new TenantDbContext(options);
         _db.Database.EnsureCreated();
-        _floor = new AuthMethodService(_db);
+        _floor = new AuthMethodService(_db, new VerificationChannelRegistry([]));
         _metrics = new AuthMetrics(new TestMeterFactory());
         _policy = new StubPasswordPolicy(allowAll: true);
-        _service = new PasswordManagementService(_db, _floor, _policy, _metrics, NullLogger<PasswordManagementService>.Instance);
+        _service = new PasswordManagementService(_db, _floor, _policy, Mock.Of<ISecurityChangeNotifier>(), _metrics, NullLogger<PasswordManagementService>.Instance);
     }
 
     public void Dispose()

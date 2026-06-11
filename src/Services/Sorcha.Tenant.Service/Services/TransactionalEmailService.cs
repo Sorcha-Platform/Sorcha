@@ -11,6 +11,7 @@ public sealed class TransactionalEmailService : ITransactionalEmailService
     private const string VerifySubject = "Confirm your email";
     private const string PasswordResetSubject = "Reset your password";
     private const string PairingResumptionSubject = "Set up your Sorcha wallet";
+    private const string TwoFactorCodeSubject = "Your Sorcha verification code";
 
     /// <summary>
     /// Maximum number of characters of an organisation name that may appear in an email
@@ -149,6 +150,35 @@ public sealed class TransactionalEmailService : ITransactionalEmailService
 
         var (html, text) = _renderer.Render("pairing-resumption", model);
         await _sender.SendAsync(dispatch.ToEmail, PairingResumptionSubject, html, text, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task SendTwoFactorCodeAsync(TwoFactorCodeDispatch dispatch, CancellationToken ct = default)
+    {
+        var model = new TwoFactorCodeTemplateModel(
+            DisplayName: dispatch.DisplayName,
+            Code: dispatch.Code,
+            ExpiresInMinutes: dispatch.ExpiresInMinutes,
+            Branding: _branding.GetDefault());
+
+        var (html, text) = _renderer.Render("twofactor-code", model);
+        await _sender.SendAsync(dispatch.ToEmail, TwoFactorCodeSubject, html, text, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task SendSecurityChangeAsync(SecurityChangeDispatch dispatch, CancellationToken ct = default)
+    {
+        // Always Sorcha default branding — a security alert must never carry org branding.
+        var model = new SecurityChangeTemplateModel(
+            DisplayName: dispatch.DisplayName,
+            Title: dispatch.Title,
+            Summary: dispatch.Summary,
+            ManageUrl: dispatch.ManageUrl,
+            Branding: _branding.GetDefault());
+
+        var (html, text) = _renderer.Render("security-change", model);
+        // The change-specific Title doubles as the subject so the inbox preview is self-describing.
+        await _sender.SendAsync(dispatch.ToEmail, dispatch.Title, html, text, ct);
     }
 
     /// <summary>

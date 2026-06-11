@@ -43,6 +43,25 @@ public sealed record PairingResumptionDispatch(
     string ResumptionUrl,
     int ExpiresInHours);
 
+/// <summary>Input to <see cref="ITransactionalEmailService.SendTwoFactorCodeAsync"/> (Feature 150). Always Sorcha-branded.</summary>
+public sealed record TwoFactorCodeDispatch(
+    string ToEmail,
+    string DisplayName,
+    string Code,
+    int ExpiresInMinutes);
+
+/// <summary>
+/// Input to <see cref="ITransactionalEmailService.SendSecurityChangeAsync"/> (Feature 150) — the
+/// always-notify alert sent on every account-security change. Always Sorcha-branded (never per-org):
+/// a security alert must carry the platform's identity, not an org's.
+/// </summary>
+public sealed record SecurityChangeDispatch(
+    string ToEmail,
+    string DisplayName,
+    string Title,
+    string Summary,
+    string ManageUrl);
+
 /// <summary>
 /// Context passed by <c>WelcomeEmailDispatcher</c> when dispatching a welcome email.
 /// <see cref="InvitingOrganization"/> and <see cref="InvitedRole"/> are required when

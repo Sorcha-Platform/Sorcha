@@ -42,11 +42,11 @@ public class PasskeyRevocationTests : IDisposable
         var options = new DbContextOptionsBuilder<TenantDbContext>().UseSqlite(_connection).Options;
         _db = new TenantDbContext(options);
         _db.Database.EnsureCreated();
-        _floor = new AuthMethodService(_db);
+        _floor = new AuthMethodService(_db, new VerificationChannelRegistry([]));
 
         var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
         var fido2 = new Mock<IFido2>(MockBehavior.Strict);
-        _service = new PasskeyService(fido2.Object, cache, _db, _floor, NullLogger<PasskeyService>.Instance);
+        _service = new PasskeyService(fido2.Object, cache, _db, _floor, Mock.Of<ISecurityChangeNotifier>(), NullLogger<PasskeyService>.Instance);
     }
 
     public void Dispose()

@@ -1,0 +1,27 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Security (Feature 150, US4 — wallet PWA parity). Mounts the SAME shared
+    SecurityHome the web shell renders at /app/security, here at /wallet/security.
+    A citizen is the same person on both hosts (F136 tier model), so the surface
+    is identical: how you sign in / two-factor / recovery, with the assurance
+    floor rule and always-notify enforced server-side.
+
+    Distinct from Devices (/devices): Security → Passkeys are WebAuthn *login*
+    authenticators; Devices are wallet holder-key delegations (F114/F128). The two
+    never cross-link as if equivalent (FR-026).
+*@
+@page "/security"
+@layout MainLayout
+@attribute [Authorize]
+
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Components.Security
+
+<PageTitle>Security · Sorcha Wallet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <SecurityHome />
+</MudContainer>

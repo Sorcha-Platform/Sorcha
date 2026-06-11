@@ -49,6 +49,13 @@
     <MudMenuItem Icon="@Icons.Material.Filled.Person" OnClick="@(() => Navigation.NavigateTo("profile"))">
         My Profile
     </MudMenuItem>
+    @* Feature 150 — the unified Security home, between My Profile and My Devices. Base-relative
+       nav resolves to /app/security (web) and /wallet/security (PWA). *@
+    <MudMenuItem Icon="@Icons.Material.Filled.Security"
+                 OnClick="@(() => Navigation.NavigateTo("security"))"
+                 data-testid="user-menu-security">
+        Security
+    </MudMenuItem>
     <MudMenuItem Icon="@Icons.Material.Filled.Devices"
                  OnClick="@(() => Navigation.NavigateTo("my-devices"))"
                  data-testid="user-menu-my-devices">

@@ -24,6 +24,9 @@ public sealed class AuthMetrics : IDisposable
     private readonly Counter<long> _methodRemoved;
     private readonly Counter<long> _floorBlocked;
     private readonly Counter<long> _linkCollision;
+    private readonly Counter<long> _otpSend;
+    private readonly Counter<long> _otpVerify;
+    private readonly Counter<long> _floorRejected;
 
     /// <summary>Creates a new <see cref="AuthMetrics"/> instance.</summary>
     public AuthMetrics(IMeterFactory meterFactory)
@@ -54,6 +57,17 @@ public sealed class AuthMetrics : IDisposable
         _linkCollision = _meter.CreateCounter<long>(
             "sorcha_auth_link_collision_total",
             description: "Social-link rejections due to email collision against another PlatformUser.");
+
+        // Feature 150 — server-sent OTP + floor-rule observability.
+        _otpSend = _meter.CreateCounter<long>(
+            "sorcha_auth_otp_send_total",
+            description: "Server-sent OTP dispatch attempts, tagged channel + outcome (Feature 150).");
+        _otpVerify = _meter.CreateCounter<long>(
+            "sorcha_auth_otp_verify_total",
+            description: "Server-sent OTP verifications, tagged channel + outcome (Feature 150).");
+        _floorRejected = _meter.CreateCounter<long>(
+            "sorcha_auth_floor_rejected_total",
+            description: "Step-up proofs rejected by the assurance floor rule (proof_tier_insufficient).");
     }
 
     /// <summary>Record a challenge issuance attempt result.</summary>
@@ -89,6 +103,24 @@ public sealed class AuthMetrics : IDisposable
     /// <summary>Record a social-link rejection due to email collision.</summary>
     public void RecordLinkCollision(string provider)
         => _linkCollision.Add(1, new KeyValuePair<string, object?>("provider", provider));
+
+    /// <summary>Record a server-sent OTP dispatch (Feature 150).</summary>
+    public void RecordOtpSend(ChallengeMethod channel, string outcome)
+        => _otpSend.Add(1,
+            new KeyValuePair<string, object?>("channel", channel.ToString()),
+            new KeyValuePair<string, object?>("outcome", outcome));
+
+    /// <summary>Record a server-sent OTP verification (Feature 150).</summary>
+    public void RecordOtpVerify(ChallengeMethod channel, string outcome)
+        => _otpVerify.Add(1,
+            new KeyValuePair<string, object?>("channel", channel.ToString()),
+            new KeyValuePair<string, object?>("outcome", outcome));
+
+    /// <summary>Record a step-up proof rejected by the assurance floor rule (Feature 150).</summary>
+    public void RecordFloorRejected(ChallengeMethod method, ScopedOperation scope)
+        => _floorRejected.Add(1,
+            new KeyValuePair<string, object?>("method", method.ToString()),
+            new KeyValuePair<string, object?>("scope", scope.ToString()));
 
     /// <inheritdoc />
     public void Dispose() => _meter.Dispose();

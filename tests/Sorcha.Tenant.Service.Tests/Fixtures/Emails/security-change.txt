@@ -1,0 +1,11 @@
+Hi Stuart Fraser — A passkey was removed from your account. If this wasn't you, review your sign-in methods now.
+
+Review your security settings:
+https://sorcha.dev/app/security
+
+If this was you, no action is needed. If it wasn't, open your security settings now
+and remove anything you don't recognise.
+
+— the Sorcha team
+Decentralised registers for secure data flow
+Questions? Write to help@sorcha.dev.
