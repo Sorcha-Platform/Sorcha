@@ -1,0 +1,44 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@*
+    Assurance badge (Feature 150). Renders a method's or proof's assurance tier as a coloured chip
+    — Strongest / Strong / Basic. Purely presentational: the tier is computed server-side and the UI
+    only reflects it (FR-008). Used on every sign-in-method and 2FA row in the Security home.
+*@
+
+@using Sorcha.UI.Core.Models
+
+<MudChip T="string"
+         Size="Size.Small"
+         Variant="Variant.Text"
+         Color="@Colour"
+         Icon="@Icon"
+         data-testid="assurance-badge">
+    @Label
+</MudChip>
+
+@code {
+    /// <summary>The assurance tier to render.</summary>
+    [Parameter, EditorRequired] public AuthAssuranceTier Tier { get; set; }
+
+    private Color Colour => Tier switch
+    {
+        AuthAssuranceTier.Strongest => Color.Success,
+        AuthAssuranceTier.Strong => Color.Info,
+        _ => Color.Default,
+    };
+
+    private string Icon => Tier switch
+    {
+        AuthAssuranceTier.Strongest => Icons.Material.Filled.Shield,
+        AuthAssuranceTier.Strong => Icons.Material.Filled.VerifiedUser,
+        _ => Icons.Material.Filled.LockOpen,
+    };
+
+    private string Label => Tier switch
+    {
+        AuthAssuranceTier.Strongest => "Strongest",
+        AuthAssuranceTier.Strong => "Strong",
+        _ => "Basic",
+    };
+}

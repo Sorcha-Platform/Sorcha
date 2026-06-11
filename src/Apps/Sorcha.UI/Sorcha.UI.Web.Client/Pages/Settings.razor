@@ -13,11 +13,8 @@
 @using Sorcha.UI.Core.Services.Configuration
 @using Sorcha.UI.Core.Components.Configuration
 @using Sorcha.UI.Core.Services.Feedback
-@using Sorcha.UI.Web.Client.Components.Settings
 @inject IUserPreferencesService PreferencesService
 @inject IConfigurationService ConfigService
-@inject ITotpClientService TotpService
-@inject IAuthMethodsClientService AuthMethodsClient
 @inject IPushNotificationService PushService
 @inject IJSRuntime JSRuntime
 @inject IDialogService DialogService
@@ -42,10 +39,8 @@
         <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4"
                  @bind-ActivePanelIndex="_activeTabIndex">
 
-            <!-- Accounts Tab (Feature 116) -->
-            <MudTabPanel Text="@Loc.T("settings.accounts")" Icon="@Icons.Material.Filled.ManageAccounts">
-                <AccountsTab />
-            </MudTabPanel>
+            @* Feature 150 — the Accounts + Security tabs were retired in favour of the unified
+               /security home (see the avatar menu → Security). Old deep-links redirect there. *@
 
             <!-- Appearance Tab -->
             <MudTabPanel Text="@Loc.T("settings.appearance")" Icon="@Icons.Material.Filled.Palette">
@@ -121,108 +116,6 @@
                 </MudList>
             </MudTabPanel>
 
-            <!-- Security Tab -->
-            <MudTabPanel Text="@Loc.T("settings.security")" Icon="@Icons.Material.Filled.Security">
-
-                @* Feature 116 US3 — password lifecycle mounted above 2FA. *@
-                <Sorcha.UI.Web.Client.Components.Settings.AuthMethods.PasswordSection
-                    Password="_authMethods?.Password"
-                    IsBootstrap="@IsBootstrapAuth"
-                    OnChanged="LoadAuthMethodsAsync" />
-
-                <MudDivider Class="my-4" />
-
-                <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.twoFactor.title")</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                    @Loc.T("settings.twoFactor.description")
-                </MudText>
-
-                @if (_preferences.TwoFactorEnabled)
-                {
-                    <MudAlert Severity="Severity.Success" Class="mb-4">
-                        <div class="d-flex align-center">
-                            <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Class="mr-2" />
-                            @Loc.T("settings.twoFactor.enabledMessage")
-                        </div>
-                    </MudAlert>
-
-                    <MudButton Variant="Variant.Outlined"
-                               Color="Color.Error"
-                               StartIcon="@Icons.Material.Filled.RemoveCircle"
-                               OnClick="DisableTwoFactor">
-                        @Loc.T("settings.twoFactor.disable")
-                    </MudButton>
-                }
-                else
-                {
-                    <MudAlert Severity="Severity.Warning" Class="mb-4">
-                        <div class="d-flex align-center">
-                            <MudIcon Icon="@Icons.Material.Filled.Warning" Class="mr-2" />
-                            @Loc.T("settings.twoFactor.disabledMessage")
-                        </div>
-                    </MudAlert>
-
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.Security"
-                               OnClick="SetupTwoFactor">
-                        @Loc.T("settings.twoFactor.enable")
-                    </MudButton>
-                }
-
-                @if (_showTotpSetup)
-                {
-                    <MudDivider Class="my-4" />
-                    <MudPaper Class="pa-4" Outlined="true">
-                        <MudText Typo="Typo.subtitle1" Class="mb-3">@Loc.T("settings.twoFactor.setupTitle")</MudText>
-                        <MudText Typo="Typo.body2" Class="mb-3">
-                            @Loc.T("settings.twoFactor.setupDescription")
-                        </MudText>
-
-                        @if (!string.IsNullOrEmpty(_totpQrUri))
-                        {
-                            <div class="d-flex justify-center mb-4">
-                                <div id="totp-qr-code" style="width: 200px; height: 200px; background: #f5f5f5; display: flex; align-items: center; justify-content: center;">
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">QR Code</MudText>
-                                </div>
-                            </div>
-
-                            <MudText Typo="Typo.caption" Class="mb-3" Align="Align.Center">
-                                @Loc.T("settings.twoFactor.manualKey") <code>@_totpSecret</code>
-                            </MudText>
-                        }
-
-                        <MudTextField @bind-Value="_totpVerificationCode"
-                                      Label="@Loc.T("settings.twoFactor.verificationCodeLabel")"
-                                      Placeholder="@Loc.T("settings.twoFactor.verificationCodePlaceholder")"
-                                      Variant="Variant.Outlined"
-                                      MaxLength="6"
-                                      Style="max-width: 300px;"
-                                      Class="mb-3" />
-
-                        <MudButton Variant="Variant.Filled"
-                                   Color="Color.Primary"
-                                   Disabled="@(string.IsNullOrEmpty(_totpVerificationCode) || _totpVerificationCode.Length != 6)"
-                                   OnClick="VerifyTotpSetup">
-                            @Loc.T("settings.twoFactor.verifyAndEnable")
-                        </MudButton>
-
-                        @if (_totpBackupCodes.Any())
-                        {
-                            <MudDivider Class="my-4" />
-                            <MudAlert Severity="Severity.Warning" Class="mb-3">
-                                @Loc.T("settings.twoFactor.backupCodesWarning")
-                            </MudAlert>
-                            <MudPaper Class="pa-3" Outlined="true" Style="max-width: 300px;">
-                                @foreach (var totpCode in _totpBackupCodes)
-                                {
-                                    <MudText Typo="Typo.body2" Style="font-family: monospace;">@totpCode</MudText>
-                                }
-                            </MudPaper>
-                        }
-                    </MudPaper>
-                }
-            </MudTabPanel>
 
             <!-- Notifications Tab -->
             <MudTabPanel Text="@Loc.T("settings.notifications")" Icon="@Icons.Material.Filled.Notifications">
@@ -564,33 +457,16 @@
     private bool _loading = true;
     private string _buildNumber = $"{DateTime.Now:yyyyMMdd}.{DateTime.Now:HHmm}";
 
-    // Feature 116 US3 — auth-methods aggregate for the Security tab's
-    // PasswordSection. Lives alongside _preferences to keep the same
-    // tab-mounted lifecycle.
-    private AuthMethodsResponse? _authMethods;
-    private bool IsBootstrapAuth =>
-        _authMethods is not null
-        && !_authMethods.Password.IsSet
-        && _authMethods.Socials.Count == 0
-        && !_authMethods.Passkeys.Any(p => string.Equals(p.Status, "Active", StringComparison.OrdinalIgnoreCase));
-
-    // Feature 092 / US4 — Notifications tab index (Appearance=0, Language=1,
-    // Security=2, Notifications=3) so the /settings/notifications deep link
-    // and avatar-menu shortcut both land on the right tab.
-    private const int NotificationsTabIndex = 3;
+    // Feature 150 — after retiring the Accounts + Security tabs the order is
+    // Appearance=0, Language=1, Notifications=2, so the /settings/notifications
+    // deep link and avatar-menu shortcut land on the right tab.
+    private const int NotificationsTabIndex = 2;
     private int _activeTabIndex;
 
     // Feature 092 / US4 — push notification state migrated from the former
     // /settings/notifications standalone page.
     private bool _pushEnabled;
     private bool _pushPermissionDenied;
-
-    // TOTP setup state
-    private bool _showTotpSetup;
-    private string _totpSecret = string.Empty;
-    private string _totpQrUri = string.Empty;
-    private string _totpVerificationCode = string.Empty;
-    private List<string> _totpBackupCodes = new();
 
     // Supported languages
     private readonly List<(string Code, string Name, string NativeName)> _supportedLanguages =
@@ -615,7 +491,18 @@
         else
         {
             var query = HttpUtility.ParseQueryString(uri.Query);
-            if (string.Equals(query["tab"], "notifications", StringComparison.OrdinalIgnoreCase))
+
+            // Feature 150 — the Accounts + Security tabs moved to the unified /security home.
+            // Redirect their old deep-links there (base-relative, resolves to /app/security).
+            var tab = query["tab"];
+            if (string.Equals(tab, "accounts", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(tab, "security", StringComparison.OrdinalIgnoreCase))
+            {
+                Navigation.NavigateTo("security");
+                return;
+            }
+
+            if (string.Equals(tab, "notifications", StringComparison.OrdinalIgnoreCase))
             {
                 _activeTabIndex = NotificationsTabIndex;
             }
@@ -624,8 +511,7 @@
         await Task.WhenAll(
             LoadPreferencesAsync(),
             LoadProfilesAsync(),
-            LoadPushStatusAsync(),
-            LoadAuthMethodsAsync());
+            LoadPushStatusAsync());
     }
 
     private async Task LoadPushStatusAsync()
@@ -715,19 +601,6 @@
         }
     }
 
-    private async Task LoadAuthMethodsAsync()
-    {
-        try
-        {
-            _authMethods = await AuthMethodsClient.GetAuthMethodsAsync();
-        }
-        catch
-        {
-            _authMethods = null;
-        }
-        StateHasChanged();
-    }
-
     private async Task OnThemeChanged(string theme)
     {
         _preferences.Theme = theme;
@@ -784,92 +657,6 @@
         try
         {
             _preferences = await PreferencesService.UpdateUserPreferencesAsync(request);
-        }
-        catch (Exception ex)
-        {
-            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
-        }
-    }
-
-    private async Task SetupTwoFactor()
-    {
-        try
-        {
-            var setupResponse = await TotpService.SetupTotpAsync();
-            if (setupResponse != null)
-            {
-                _totpSecret = setupResponse.Secret;
-                _totpQrUri = setupResponse.QrUri;
-                _totpBackupCodes = setupResponse.BackupCodes?.ToList() ?? [];
-                _showTotpSetup = true;
-            }
-            else
-            {
-                Feedback.ShowError(Loc.T("settings.twoFactor.setupFailed"), autoDismissMs: 0);
-            }
-        }
-        catch (Exception ex)
-        {
-            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
-        }
-    }
-
-    private async Task VerifyTotpSetup()
-    {
-        if (string.IsNullOrEmpty(_totpVerificationCode) || _totpVerificationCode.Length != 6)
-            return;
-
-        try
-        {
-            var verified = await TotpService.VerifySetupAsync(_totpVerificationCode);
-            if (verified)
-            {
-                _preferences.TwoFactorEnabled = true;
-                _showTotpSetup = false;
-                _totpVerificationCode = string.Empty;
-                Feedback.ShowSuccess(Loc.T("settings.twoFactor.enabledSuccess"));
-            }
-            else
-            {
-                Feedback.ShowError(Loc.T("settings.twoFactor.invalidCode"), autoDismissMs: 0);
-            }
-        }
-        catch (Exception ex)
-        {
-            Feedback.ShowError($"{Loc.T("common.error")}: {ex.Message}", autoDismissMs: 0);
-        }
-    }
-
-    private async Task DisableTwoFactor()
-    {
-        // Feature 116 T068 — the /api/totp DELETE endpoint now requires a fresh
-        // re-authentication challenge with Scope=Disable2Fa. AuthChallengeDialog
-        // doubles as the confirmation surface (replaces the old ShowMessageBoxAsync).
-        var parameters = new MudBlazor.DialogParameters { ["Scope"] = ScopedOperation.Disable2Fa };
-        var dialog = await DialogService.ShowAsync<Sorcha.UI.Web.Client.Components.Settings.AuthMethods.AuthChallengeDialog>(
-            Loc.T("settings.twoFactor.disableTitle"), parameters);
-        var result = await dialog.Result;
-        if (result is not { Canceled: false, Data: string token })
-        {
-            return;
-        }
-
-        try
-        {
-            var disabled = await TotpService.DisableTotpAsync(token);
-            if (disabled)
-            {
-                _preferences.TwoFactorEnabled = false;
-                _showTotpSetup = false;
-                _totpSecret = string.Empty;
-                _totpQrUri = string.Empty;
-                _totpBackupCodes.Clear();
-                Feedback.ShowInfo(Loc.T("settings.twoFactor.disabledSuccess"));
-            }
-            else
-            {
-                Feedback.ShowError(Loc.T("settings.twoFactor.disableFailed"), autoDismissMs: 0);
-            }
         }
         catch (Exception ex)
         {

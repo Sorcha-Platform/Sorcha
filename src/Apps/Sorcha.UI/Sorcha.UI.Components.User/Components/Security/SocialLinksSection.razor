@@ -38,7 +38,10 @@
             <div class="d-flex align-center mb-2 pa-2" style="border:1px solid var(--mud-palette-divider);border-radius:4px;">
                 <MudIcon Icon="@ProviderIcon(social.Provider)" Class="mr-3" />
                 <div class="flex-grow-1">
-                    <MudText Typo="Typo.body1">@FormatProvider(social.Provider)</MudText>
+                    <div class="d-flex align-center" style="gap:8px;">
+                        <MudText Typo="Typo.body1">@FormatProvider(social.Provider)</MudText>
+                        <AssuranceBadge Tier="social.AssuranceTier" />
+                    </div>
                     <MudText Typo="Typo.caption" Color="Color.Secondary">
                         @(social.Email ?? Loc.T("settings.accounts.socials.noEmail"))
                         · @Loc.T("settings.accounts.linkedAt"): @social.LinkedAt.ToLocalTime().ToString("d MMM yyyy")
@@ -131,6 +134,7 @@
         var parameters = new DialogParameters
         {
             ["Scope"] = ScopedOperation.RemoveAuthMethod,
+            ["Target"] = AuthMethodKind.Social, // unlinking a social is a Basic-tier operation
         };
         var dialog = await DialogService.ShowAsync<AuthChallengeDialog>(
             Loc.T("settings.accounts.unlink.confirmTitle"), parameters);

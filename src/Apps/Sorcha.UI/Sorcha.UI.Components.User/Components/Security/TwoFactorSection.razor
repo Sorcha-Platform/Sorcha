@@ -1,0 +1,186 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@*
+    Two-factor authentication section (Feature 150). US1 ships the Authenticator (TOTP) row —
+    enable (QR + verify), disable (step-up gated via AuthChallengeDialog). US2 adds the Email-code
+    row and US3 the SMS-code row onto the same surface. Each row carries an AssuranceBadge.
+*@
+
+@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
+@inject ITotpClientService TotpService
+@inject IDialogService DialogService
+@inject IInlineFeedback Feedback
+
+<MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+    <div class="d-flex align-center mb-1">
+        <MudIcon Icon="@Icons.Material.Filled.Smartphone" Class="mr-3" />
+        <div class="flex-grow-1">
+            <div class="d-flex align-center" style="gap:8px;">
+                <MudText Typo="Typo.h6">Authenticator app</MudText>
+                <AssuranceBadge Tier="AuthAssuranceTier.Strong" />
+            </div>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Time-based one-time codes from an app like Google Authenticator or 1Password.
+            </MudText>
+        </div>
+        @if (_status is null)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        }
+        else if (_status.IsEnabled)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">On</MudChip>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" Class="ml-2"
+                       Disabled="_busy" OnClick="DisableAsync">
+                Turn off
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       Disabled="_busy" OnClick="BeginSetupAsync">
+                Turn on
+            </MudButton>
+        }
+    </div>
+
+    @if (_setup is not null && _status is { IsEnabled: false })
+    {
+        <MudDivider Class="my-3" />
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Scan to set up</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+            Scan this code in your authenticator app, or enter the key manually, then enter the
+            6-digit code it shows.
+        </MudText>
+        <MudText Typo="Typo.caption" Class="mb-3">
+            Manual key: <code>@_setup.Secret</code>
+        </MudText>
+        <MudTextField T="string" @bind-Value="_verifyCode"
+                      Label="6-digit code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      MaxLength="6" InputMode="InputMode.numeric" Immediate="true"
+                      Style="max-width: 220px;" Disabled="_busy" />
+        <div class="mt-2 d-flex align-center" style="gap:8px;">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(_busy || _verifyCode.Length != 6 || !_verifyCode.All(char.IsDigit))"
+                       OnClick="VerifyAsync">
+                Verify and enable
+            </MudButton>
+            <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="CancelSetup">Cancel</MudButton>
+        </div>
+
+        @if (_setup.BackupCodes.Length > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                Save these one-time backup codes somewhere safe — they let you sign in if you lose
+                your device:
+            </MudAlert>
+            <MudPaper Class="pa-3 mt-2" Outlined="true" Style="max-width: 260px;">
+                @foreach (var backupCode in _setup.BackupCodes)
+                {
+                    <MudText Typo="Typo.body2" Style="font-family: monospace;">@backupCode</MudText>
+                }
+            </MudPaper>
+        }
+    }
+</MudPaper>
+
+@code {
+    /// <summary>Invoked after enable / disable so the parent can refresh assurance state.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private TotpStatusResponse? _status;
+    private TotpSetupResponse? _setup;
+    private string _verifyCode = string.Empty;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await RefreshStatusAsync();
+
+    private async Task RefreshStatusAsync()
+    {
+        _status = await TotpService.GetStatusAsync();
+        StateHasChanged();
+    }
+
+    private async Task BeginSetupAsync()
+    {
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            _setup = await TotpService.SetupTotpAsync();
+            if (_setup is null) Feedback.ShowError("Couldn't start authenticator setup. Try again.", autoDismissMs: 0);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelSetup()
+    {
+        _setup = null;
+        _verifyCode = string.Empty;
+    }
+
+    private async Task VerifyAsync()
+    {
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            var ok = await TotpService.VerifySetupAsync(_verifyCode);
+            if (ok)
+            {
+                Feedback.ShowSuccess("Authenticator enabled.");
+                _setup = null;
+                _verifyCode = string.Empty;
+                await RefreshStatusAsync();
+                if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+            }
+            else
+            {
+                Feedback.ShowError("That code didn't match. Try again.");
+                _verifyCode = string.Empty;
+            }
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DisableAsync()
+    {
+        // Disabling 2FA is a Strong-tier operation — step-up first.
+        var parameters = new DialogParameters { ["Scope"] = ScopedOperation.Disable2Fa };
+        var dialog = await DialogService.ShowAsync<AuthChallengeDialog>("Confirm it's you", parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string token) return;
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            var ok = await TotpService.DisableTotpAsync(token);
+            if (ok)
+            {
+                Feedback.ShowSuccess("Authenticator turned off.");
+                await RefreshStatusAsync();
+                if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+            }
+            else
+            {
+                Feedback.ShowError("Couldn't turn off the authenticator. Try again.");
+            }
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+}

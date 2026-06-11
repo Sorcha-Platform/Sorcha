@@ -1,0 +1,131 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@*
+    The unified Security home (Feature 150) — built once here and rendered verbatim on web
+    (/app/security) and the wallet PWA (/wallet/security). Job-based information architecture
+    (D3): "How you sign in" / "Two-factor authentication" / "Recovery". Loads the aggregate
+    /api/me/auth-methods read and reflects the server's per-row CanRemove / RequiredProofTier /
+    AssuranceTier — the UI never decides (FR-008).
+*@
+
+@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
+@inject IAuthMethodsClientService AuthMethodsClient
+@inject IInlineFeedback Feedback
+
+<MudText Typo="Typo.h4" Class="mb-1">
+    <MudIcon Icon="@Icons.Material.Filled.Security" Class="mr-2" />
+    Security
+</MudText>
+<MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-6">
+    Manage how you sign in, your second factor, and account recovery.
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Class="mb-4" />
+    <MudSkeleton Width="100%" Height="80px" Class="mb-4" />
+    <MudSkeleton Width="100%" Height="80px" Class="mb-4" />
+}
+else if (_methods is null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="security-load-failed">
+        We couldn't load your security settings.
+    </MudAlert>
+    <MudButton Variant="Variant.Outlined" OnClick="LoadAsync">Retry</MudButton>
+}
+else
+{
+    @* ── Group 1: How you sign in ─────────────────────────────── *@
+    <section data-testid="security-group-signin">
+        <MudText Typo="Typo.h6" Class="mb-3">How you sign in</MudText>
+
+        <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.Email" Class="mr-3" />
+                <div class="flex-grow-1">
+                    <MudText Typo="Typo.body1">@_methods.Email</MudText>
+                </div>
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(_methods.EmailVerified ? Color.Success : Color.Warning)"
+                         Variant="Variant.Outlined">
+                    @(_methods.EmailVerified ? "Verified" : "Unverified")
+                </MudChip>
+            </div>
+        </MudPaper>
+
+        <PasswordSection Password="_methods.Password"
+                         IsBootstrap="@IsBootstrap"
+                         OnChanged="LoadAsync" />
+        <SocialLinksSection Socials="_methods.Socials" OnChanged="LoadAsync" />
+        <PasskeysSection Passkeys="_methods.Passkeys" OnChanged="LoadAsync" />
+    </section>
+
+    @* ── Group 2: Two-factor authentication ───────────────────── *@
+    <section data-testid="security-group-2fa">
+        <MudText Typo="Typo.h6" Class="mb-3 mt-4">Two-factor authentication</MudText>
+        <TwoFactorSection OnChanged="LoadAsync" />
+        @if (_methods.SmsAvailable)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                SMS codes are available on this installation and appear above when configured.
+            </MudText>
+        }
+    </section>
+
+    @* ── Group 3: Recovery ─────────────────────────────────────── *@
+    <section data-testid="security-group-recovery">
+        <MudText Typo="Typo.h6" Class="mb-3 mt-4">Recovery</MudText>
+        <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.Backup" Class="mr-3" />
+                <div class="flex-grow-1">
+                    <div class="d-flex align-center" style="gap:8px;">
+                        <MudText Typo="Typo.body1">Backup codes</MudText>
+                        <AssuranceBadge Tier="AuthAssuranceTier.Basic" />
+                    </div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        One-time codes generated when you set up your authenticator. Keep them safe.
+                    </MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </section>
+}
+
+@code {
+    private AuthMethodsResponse? _methods;
+    private bool _loading = true;
+
+    /// <summary>
+    /// Bootstrap = no sign-in method yet (no password, no social, no active passkey). In that
+    /// state setting a first password skips the step-up (the server bypasses it).
+    /// </summary>
+    private bool IsBootstrap =>
+        _methods is not null
+        && !_methods.Password.IsSet
+        && _methods.Socials.Count == 0
+        && !_methods.Passkeys.Any(p => string.Equals(p.Status, "Active", StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _methods = await AuthMethodsClient.GetAuthMethodsAsync();
+            if (_methods is null)
+            {
+                Feedback.ShowError("We couldn't load your security settings.", autoDismissMs: 0);
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+}

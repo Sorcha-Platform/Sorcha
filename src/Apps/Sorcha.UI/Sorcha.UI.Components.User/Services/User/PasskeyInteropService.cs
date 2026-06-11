@@ -4,7 +4,7 @@
 using System.Text.Json;
 using Microsoft.JSInterop;
 
-namespace Sorcha.UI.Web.Client.Services;
+namespace Sorcha.UI.Core.Services;
 
 /// <summary>
 /// Provides C# interop with the browser WebAuthn API via the webauthn.js module.

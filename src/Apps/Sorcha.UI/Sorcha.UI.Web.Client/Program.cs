@@ -10,7 +10,6 @@ using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
 using Sorcha.UI.Core.Services.User.Enrolment;
 using Sorcha.UI.Web.Client;
-using Sorcha.UI.Web.Client.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
