@@ -20,7 +20,8 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 - **T010/T012** — the aggregate surfaces `RequiredProofTier` per row, but `CanRemove` still reflects only the last-method floor (not the "holds a sufficiently-strong proof" widening). The server stays authoritative: an over-optimistic Remove triggers the step-up, which then returns `403 proof_tier_insufficient` (surfaced by the dialog). Widening `CanRemove` is the remaining T012 work.
 - **T024** — the **Passkey** proof rung is fully implemented (WebAuthn assertion); the **Re-OAuth** rung keeps its redirect-return UX deferred (API path works; the security-critical removals are covered by the Passkey/TOTP/Password rungs).
 - **T002/T011** — Playwright E2E (web) **not written** (needs the Docker UI harness; see the `sorcha-ui` skill).
-- **US2 (Email OTP, T026–T038), US3 (SMS OTP, T039–T047), US4 (PWA parity, T048–T054)** — **not started**; independently-shippable follow-up phases per the design's delivery phasing. US2 owns the schema squash (T030).
+- **US4 (PWA parity) — DONE (wiring): T050-T052, T054.** Shared SecurityHome mounted at PWA /wallet/security; Settings hub "Auth methods" row replaced by **Security** (distinct from Devices); old /auth-methods redirects to /security; PWA DI registers IAuthMethodsClientService + ITotpClientService (consumer-tier auth chain) + PasskeyInteropService + ILocalizationService. PWA builds 0-warning. **T053 (social-link round-trip returns to /wallet/security) + T048/T049 (PWA Playwright) need the Docker/browser runtime — not verified here.**
+- **US2 (Email OTP, T026–T038), US3 (SMS OTP, T039–T047)** — **not started**; independently-shippable follow-up phases. US2 owns the schema squash (T030).
 - **T057–T060** — docs partially done (T055/T056); API-DOCUMENTATION/AUTHENTICATION-SETUP/dev-status full pass pending.
 - **T061 — RESOLVED (2026-06-11): password is `Basic` everywhere.** Its change/remove are Basic-gated (no dead-end for password-only users); a Basic proof can never disable TOTP (Strong) or remove a passkey (Strongest). AssurancePolicy + matrix test + contract + docs updated in lockstep.
 
@@ -165,11 +166,11 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 ### Implementation for User Story 4
 
-- [ ] T050 [US4] Create the PWA host page `@page "/security"` → `<SecurityHome/>` in `src/Apps/Sorcha.Wallet.Pwa/Pages/Security.razor` (resolves to `/wallet/security`; all nav base-relative).
-- [ ] T051 [US4] Add a **Security** entry to the PWA navigation (FloatingTabBar / settings menu) using base-relative `NavigateTo("security")`, in `src/Apps/Sorcha.Wallet.Pwa/` layout/nav component.
-- [ ] T052 [US4] Ensure the PWA host DI registers `IAuthMethodsClientService` + the Security client services on a consumer-tier token, and confirm the `/me/*` cross-tier endpoints accept the consumer audience, in `src/Apps/Sorcha.Wallet.Pwa/Program.cs`.
+- [x] T050 [US4] Create the PWA host page `@page "/security"` → `<SecurityHome/>` in `src/Apps/Sorcha.Wallet.Pwa/Pages/Security.razor` (resolves to `/wallet/security`; all nav base-relative).
+- [x] T051 [US4] Add a **Security** entry to the PWA navigation (FloatingTabBar / settings menu) using base-relative `NavigateTo("security")`, in `src/Apps/Sorcha.Wallet.Pwa/` layout/nav component.
+- [x] T052 [US4] Ensure the PWA host DI registers `IAuthMethodsClientService` + the Security client services on a consumer-tier token, and confirm the `/me/*` cross-tier endpoints accept the consumer audience, in `src/Apps/Sorcha.Wallet.Pwa/Program.cs`.
 - [ ] T053 [US4] Validate + fix the social-link OAuth round-trip from inside the PWA so it returns to `/wallet/security` with the account linked (the one host-specific flow per the design).
-- [ ] T054 [US4] Copy/iconography pass ensuring *Security → Passkeys* never reads as the wallet's *My Devices* (FR-026), across `SecurityHome`/`SignInMethodsSection` and the PWA My Devices page.
+- [x] T054 [US4] Copy/iconography pass ensuring *Security → Passkeys* never reads as the wallet's *My Devices* (FR-026), across `SecurityHome`/`SignInMethodsSection` and the PWA My Devices page.
 
 **Checkpoint**: full web ⇄ PWA parity; a citizen is the same person on both hosts.
 

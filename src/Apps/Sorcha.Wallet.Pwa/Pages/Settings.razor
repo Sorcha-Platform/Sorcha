@@ -41,11 +41,14 @@
                 <MudText Typo="Typo.body1">Devices</MudText>
                 <MudText Typo="Typo.caption" Class="mud-text-secondary">Phones and tablets enrolled to your account.</MudText>
             </MudListItem>
-            <MudListItem T="string" Icon="@Icons.Material.Filled.Key"
-                         OnClick="@GoAuthMethods"
-                         data-testid="settings-link-auth-methods">
-                <MudText Typo="Typo.body1">Auth methods</MudText>
-                <MudText Typo="Typo.caption" Class="mud-text-secondary">Passkeys, social logins, and recovery email.</MudText>
+            @* Feature 150 — the unified Security home (replaces the old auth-methods stub). Kept
+               verbally + visually distinct from Devices above (login authenticators vs wallet
+               device delegation). *@
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Security"
+                         OnClick="@GoSecurity"
+                         data-testid="settings-link-security">
+                <MudText Typo="Typo.body1">Security</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">How you sign in, two-factor, and recovery.</MudText>
             </MudListItem>
             @* Activity lives in its own floating-nav tab — no duplicate row here. *@
         </MudList>
@@ -120,7 +123,7 @@
 @code {
     private void GoProfile() => Nav.NavigateTo("profile");
     private void GoDevices() => Nav.NavigateTo("devices");
-    private void GoAuthMethods() => Nav.NavigateTo("auth-methods");
+    private void GoSecurity() => Nav.NavigateTo("security");
 
     // ReplayTourAsync removed with the "Replay tour" card while the guided tour is
     // suppressed in the PWA. Restore both when re-enabling — see backlog

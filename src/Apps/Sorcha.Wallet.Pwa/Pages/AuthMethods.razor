@@ -2,29 +2,17 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Auth methods page (Feature 125, T096). v1 stub explaining the
-    recoverability story; the full passkey / social / password
-    management surface is migrated from Sorcha.UI.Web.Client (Feature 116)
-    into the shared library in a follow-up PR.
+    Auth methods (Feature 125 stub) — RETIRED by Feature 150 (US4). The full
+    sign-in / two-factor / recovery surface now lives in the shared SecurityHome
+    at /wallet/security. This route stays only to redirect old deep-links there
+    (base-relative, never origin-root, per the F128/F149 base-path lesson).
 *@
 @page "/auth-methods"
 @layout MainLayout
+@inject NavigationManager Nav
 
-<PageTitle>Auth methods · Sorcha Wallet</PageTitle>
+<PageTitle>Security · Sorcha Wallet</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
-    <MudText Typo="Typo.h5" Class="mb-3">Auth methods</MudText>
-    <MudPaper Class="pa-4" Elevation="1" data-testid="auth-methods-placeholder">
-        <MudStack Spacing="2">
-            <MudText Typo="Typo.body1">
-                Manage how you sign in.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mud-text-secondary">
-                The more sign-in methods you have — passkey, social account, or
-                a recovery email — the easier it is to get back in if you lose
-                your phone. Detailed management arrives soon; for now, use your
-                council's website to update auth methods.
-            </MudText>
-        </MudStack>
-    </MudPaper>
-</MudContainer>
+@code {
+    protected override void OnInitialized() => Nav.NavigateTo("security", replace: true);
+}
