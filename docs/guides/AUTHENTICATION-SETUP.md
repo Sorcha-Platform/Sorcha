@@ -1013,3 +1013,24 @@ app.MapPost("/api/wallets/{id}/sign", SignWithWallet)
 **Status**: ✅ AUTH-002 Complete | OIDC (054) | PassKey & Social Login (055) | Platform Identity (058) documented
 **Last Updated**: 2026-03-16
 **Version**: 1.5
+
+---
+
+## Feature 150 — Unified Account Security (2FA channels, floor rule, SMS config)
+
+The **Security** home (`/app/security`, `/wallet/security`) consolidates sign-in methods, two-factor channels, and recovery. Server-authoritative model in `AssurancePolicy` (Tenant Service).
+
+**Assurance tiers & floor rule.** `AuthAssuranceTier` = `Basic < Strong < Strongest`. A step-up proof authorises a destructive/downgrade op **iff `proofTier >= RequiredProofTier(operation, target)`** plus the last-sign-in-method floor. Tiers: Passkey=Strongest; TOTP/Re-OAuth=Strong; **Password/Email-OTP/SMS-OTP=Basic** (T061: a password is a phishable knowledge factor). A Basic proof can never disable TOTP or remove a passkey. Enforced in `AuthChallengeService` (initiate offers only floor-eligible proofs; verify → `403 proof_tier_insufficient`). The ambiguous `RemoveAuthMethod` carries a `TargetMethodKind` (null → fail-safe Strongest).
+
+**Always-notify.** Every security mutation writes an F118 inbox entry + a Sorcha-branded `security-change` email (both best-effort).
+
+**2FA channels.**
+- **Authenticator (TOTP)** — Strong; org-scoped `TotpConfiguration`.
+- **Email OTP (US2)** — Basic; account-wide `PlatformUserTwoFactor.EmailOtpEnabled`. `POST /api/me/2fa/email/{enable,verify}`, `DELETE /api/me/2fa/email`. Codes via the F112 `twofactor-code` template; single-use, 10-min, 5-attempt, send-cooldown (`ServerSentOtpService` over Redis GETDEL).
+- **SMS OTP (US3) — config-gated.** Enabled only when `Sms:AcsConnectionString` is set (registers `ISmsSender` + the SMS channel). `POST /api/me/2fa/sms/{phone,phone/verify,enable}`, `DELETE /api/me/2fa/sms` — **404 when unconfigured**. Capturing a new number clears verification + disables SMS. The concrete provider HTTP send in `AcsSmsSender` is an operator integration point.
+
+**Login 2FA.** After the first factor, `LoginService` requires 2FA if any of TOTP / passkey / email-OTP / SMS-OTP is enrolled, offering methods strongest-first; `POST /api/auth/verify-2fa` accepts `method=email|sms`; `POST /api/auth/login/2fa/send-email` is the "use another method" resend.
+
+**Config.** `Sms:AcsConnectionString`, `Sms:FromNumber` to enable SMS. No SMS config ⇒ the option is entirely absent.
+
+**Metrics** (`Sorcha.Tenant.Auth` meter): `sorcha_auth_otp_send_total{channel,outcome}`, `sorcha_auth_otp_verify_total{channel,outcome}`, `sorcha_auth_floor_rejected_total{method,scope}`.

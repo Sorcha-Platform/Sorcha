@@ -125,6 +125,16 @@ public sealed class AuthMethodService : IAuthMethodService
 
         // CanRemove logic is "subtract one only if the targeted method is
         // currently part of the active set" — same as WouldRemovingLeaveZero.
+        //
+        // T012 (Feature 150) — the floor rule's second clause ("the user holds an enrolled proof of
+        // tier >= RequiredProofTier") is, for the current method set, ALWAYS satisfied and so adds no
+        // gating beyond the last-method floor: RequiredProofTier(remove X) == TierOf(X) by the
+        // "required = tier of the thing weakened" rule, and removing a method is satisfiable by a
+        // proof of that same method (assert-then-delete for a passkey; re-enter for a password;
+        // re-OAuth for a social) — or is ungated entirely (a Disabled passkey bypasses step-up). The
+        // per-row RequiredProofTier is still surfaced so the dialog requests the right proof, and the
+        // server re-checks on verify (403 proof_tier_insufficient). So CanRemove == the floor here is
+        // complete, not a simplification.
         bool CanRemovePassword() => user.HasPassword && totalActive - 1 > 0;
         bool CanRemoveSocial() => totalActive - 1 > 0;
         bool CanRemovePasskey(CredentialStatus status) =>

@@ -138,6 +138,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
         if (!AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(method), requiredTier))
         {
             _metrics.RecordChallengeIssued(method, scopedOperation, success: false);
+            _metrics.RecordFloorRejected(method, scopedOperation);
             _logger.LogWarning(
                 "Proof tier {ProofTier} below required {RequiredTier} for {Method}/{ScopedOperation} target={Target} ({PlatformUserId})",
                 AssurancePolicy.TierOfProof(method), requiredTier, method, scopedOperation, targetMethodKind, context.PlatformUserId);

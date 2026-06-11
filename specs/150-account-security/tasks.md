@@ -80,7 +80,7 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Widen `IAuthMethodService`/`AuthMethodService` to populate `AssuranceTier`, `Role`, `RequiredProofTier`, and assurance-aware `CanRemove` via `AssurancePolicy`, in `src/Services/Sorcha.Tenant.Service/Services/IAuthMethodService.cs` + `AuthMethodService.cs` (depends T005, T006).
+- [x] T012 [US1] Widen `IAuthMethodService`/`AuthMethodService` to populate `AssuranceTier`, `Role`, `RequiredProofTier`, and assurance-aware `CanRemove` via `AssurancePolicy`, in `src/Services/Sorcha.Tenant.Service/Services/IAuthMethodService.cs` + `AuthMethodService.cs` (depends T005, T006).
 - [x] T013 [US1] Extend `GET /api/me/auth-methods` to return the new fields (+ `SmsAvailable=false` until US3) with Scalar `.WithSummary()`/`.WithDescription()` + XML docs, in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthMethodsEndpoints.cs`.
 - [x] T014 [P] [US1] Finish the **Passkey** step-up proof (reuse the FIDO2 assertion ceremony scoped to the challenge nonce → Strongest proof) in `src/Services/Sorcha.Tenant.Service/Services/.../AuthChallengeService.cs` + `Endpoints/AuthChallengeEndpoints.cs` (replaces the placeholder).
 - [x] T015 [P] [US1] Finish the **Re-OAuth** step-up proof (re-run the social flow with a `stepup` intent, verify the returned identity matches a linked account → social tier) in `AuthChallengeService.cs` + `Endpoints/SocialLoginEndpoints.cs`.
@@ -114,7 +114,7 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 ### Implementation for User Story 2
 
-- [ ] T030 [US2] **Squash the schema change into the Tenant Service's existing initial migration** (pre-release policy — do NOT add an incremental migration): add `PlatformUser.PhoneNumber` (E.164, nullable) + `PhoneVerifiedAt` (nullable) **and** the new `PlatformUserTwoFactor` 1:1 table (`TotpEnabled`, `EmailOtpEnabled`, `SmsOtpEnabled`, `UpdatedAt`) to the models in `src/Services/Sorcha.Tenant.Service/Models/PlatformUser.cs` + `PlatformUserTwoFactor.cs`, then **regenerate** the existing initial migration (remove + re-add `InitialCreate` against the design-time factory) so `*.Designer.cs` + `*ModelSnapshot.cs` stay in lockstep — never hand-edit. ⚠️ **Shared, once** — US3's phone columns ride this same squashed initial migration; US3 adds NO migration of its own.
+- [x] T030 [US2] **Squash the schema change into the Tenant Service's existing initial migration** (pre-release policy — do NOT add an incremental migration): add `PlatformUser.PhoneNumber` (E.164, nullable) + `PhoneVerifiedAt` (nullable) **and** the new `PlatformUserTwoFactor` 1:1 table (`TotpEnabled`, `EmailOtpEnabled`, `SmsOtpEnabled`, `UpdatedAt`) to the models in `src/Services/Sorcha.Tenant.Service/Models/PlatformUser.cs` + `PlatformUserTwoFactor.cs`, then **regenerate** the existing initial migration (remove + re-add `InitialCreate` against the design-time factory) so `*.Designer.cs` + `*ModelSnapshot.cs` stay in lockstep — never hand-edit. ⚠️ **Shared, once** — US3's phone columns ride this same squashed initial migration; US3 adds NO migration of its own.
 - [x] T031 [P] [US2] Define `IVerificationChannel` (`Kind`, `Tier`, `InitiateAsync`, `VerifyAsync`) + `VerificationChannelRegistry` in `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
 - [x] T032 [US2] Implement `ServerSentOtpService` (Redis GETDEL, hashed codes, expiry, attempt cap, rate-limit) and register it through F113 `IStorageRegistrationLog` as a **cache-style** store (not fail-fast audited), in `src/Services/Sorcha.Tenant.Service/Services/Auth/ServerSentOtpService.cs` (make T026 pass).
 - [x] T033 [P] [US2] Add the F112 `TwoFactorCodeDispatch` record + `twofactor-code.{html,txt}` Sorcha-branded template under `src/Services/Sorcha.Tenant.Service/Emails/Templates/` and register on `ITransactionalEmailService` (make T028 pass).
@@ -180,10 +180,10 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 - [x] T055 [P] Docs: update the Tenant Service README with the Security surface, 2FA channels, floor rule, and SMS config, in `src/Services/Sorcha.Tenant.Service/README.md`.
 - [x] T056 [P] Docs: add an **F150** section to `.claude/skills/sorcha-architecture/SKILL.md` (endpoint surface, floor-rule policy, channel abstraction, assurance tiers).
-- [ ] T057 [P] Docs: add the new endpoints to `docs/reference/API-DOCUMENTATION.md` and the 2FA-channel + floor-rule + SMS-config flows to `docs/guides/AUTHENTICATION-SETUP.md`.
-- [ ] T058 [P] Observability: add OTel counters for OTP send/verify (tagged channel/outcome) and floor-rule rejections on the `Sorcha.Tenant.Auth` (or `Sorcha.Identity`) meter, in `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
-- [ ] T059 [P] Audit: MIT SPDX/Copyright headers on all new files; `.WithSummary()`/`.WithDescription()` + XML docs on every new endpoint; confirm no hard-coded `<Version>`.
-- [ ] T060 Update `docs/reference/development-status.md` (Feature 150 status) and run `quickstart.md` end-to-end against the Docker stack for all four phases.
+- [x] T057 [P] Docs: add the new endpoints to `docs/reference/API-DOCUMENTATION.md` and the 2FA-channel + floor-rule + SMS-config flows to `docs/guides/AUTHENTICATION-SETUP.md`.
+- [x] T058 [P] Observability: add OTel counters for OTP send/verify (tagged channel/outcome) and floor-rule rejections on the `Sorcha.Tenant.Auth` (or `Sorcha.Identity`) meter, in `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
+- [x] T059 [P] Audit: MIT SPDX/Copyright headers on all new files; `.WithSummary()`/`.WithDescription()` + XML docs on every new endpoint; confirm no hard-coded `<Version>`.
+- [x] T060 Update `docs/reference/development-status.md` (Feature 150 status) and run `quickstart.md` end-to-end against the Docker stack for all four phases.
 - [x] T061 **Decision gate**: confirm or revise the flagged **password-as-Strong-proof** call (`contracts/floor-rule-policy.md` Table A) with the team before merge; if demoted to Basic, update `AssurancePolicy` + the matrix test + the contract in lockstep.
 
 ---
