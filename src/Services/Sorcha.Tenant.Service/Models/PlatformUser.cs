@@ -108,6 +108,26 @@ public class PlatformUser
     public DateTimeOffset? WelcomeSentAt { get; set; }
 
     /// <summary>
+    /// Mobile number used for SMS one-time codes (Feature 150 US3), E.164 format. Null until the
+    /// user captures + verifies a number at SMS-enable time. Purely a security-surface concern —
+    /// untouched by sign-up. Changing it clears <see cref="PhoneVerifiedAt"/> and disables SMS OTP.
+    /// </summary>
+    public string? PhoneNumber { get; set; }
+
+    /// <summary>
+    /// When <see cref="PhoneNumber"/> was verified via an SMS code (Feature 150 US3). Null = unverified;
+    /// SMS OTP cannot be enabled until this is set.
+    /// </summary>
+    public DateTimeOffset? PhoneVerifiedAt { get; set; }
+
+    /// <summary>
+    /// Per-channel second-factor enablement (Feature 150). 1:1 with the user; created lazily the first
+    /// time a channel is enabled. TOTP enablement is tracked separately (org-scoped
+    /// <c>TotpConfiguration</c>); this row carries the account-wide Email/SMS OTP flags.
+    /// </summary>
+    public PlatformUserTwoFactor? TwoFactor { get; set; }
+
+    /// <summary>
     /// Social login provider links (Google, GitHub, Microsoft, Apple).
     /// </summary>
     public ICollection<PlatformSocialLogin> SocialLogins { get; set; } = new List<PlatformSocialLogin>();
