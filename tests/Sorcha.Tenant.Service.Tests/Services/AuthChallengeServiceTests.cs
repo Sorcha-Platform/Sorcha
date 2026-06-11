@@ -4,6 +4,7 @@
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using FluentAssertions;
+using Fido2NetLib;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -28,6 +29,8 @@ public class AuthChallengeServiceTests : IDisposable
     private readonly TenantDbContext _db;
     private readonly AuthChallengeRepository _repository;
     private readonly Mock<ITotpService> _totp = new();
+    private readonly Mock<IPasskeyService> _passkeys = new();
+    private readonly Mock<ISocialLoginService> _social = new();
     private readonly AuthMetrics _metrics;
 
     public AuthChallengeServiceTests()
@@ -42,7 +45,7 @@ public class AuthChallengeServiceTests : IDisposable
     }
 
     private AuthChallengeService CreateService() => new(
-        _db, _repository, _totp.Object, _metrics, NullLogger<AuthChallengeService>.Instance);
+        _db, _repository, _totp.Object, _passkeys.Object, _social.Object, _metrics, NullLogger<AuthChallengeService>.Instance);
 
     private async Task<(PlatformUser, UserIdentity)> SeedUserAsync(
         bool withPassword = false,
@@ -275,29 +278,109 @@ public class AuthChallengeServiceTests : IDisposable
         result.Outcome.Should().Be(ChallengeVerificationOutcome.MethodNotAvailable);
     }
 
+    // ---- Feature 150 (T014/T015): Passkey + Re-OAuth step-up proofs ----
+
     [Fact]
-    public async Task VerifyAsync_PasskeyAndReOAuth_NotYetWired_ReturnFalse()
+    public async Task VerifyAsync_PasskeyProof_MissingAssertionResponse_InvalidShape()
     {
-        // Passkey + ReOAuth verification ceremonies are deferred to the
-        // user-story phases (US1 / US2). Until then, the service treats
-        // them as proof-rejected so the dialog can degrade gracefully.
-        var (pu, ui) = await SeedUserAsync(withSocial: true, withActivePasskey: true);
+        var (pu, ui) = await SeedUserAsync(withActivePasskey: true);
         var service = CreateService();
 
-        var passkeyResult = await service.VerifyAsync(
+        var result = await service.VerifyAsync(
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.Passkey,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"assertion":"stub"}""").RootElement);
-        passkeyResult.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
+            JsonDocument.Parse("""{"transactionId":"tx"}""").RootElement);
 
-        var oauthResult = await service.VerifyAsync(
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.InvalidProofShape);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_PasskeyProof_MatchingUser_Accepted()
+    {
+        var (pu, ui) = await SeedUserAsync(withActivePasskey: true);
+        _passkeys
+            .Setup(p => p.VerifyAssertionAsync(It.IsAny<string>(), It.IsAny<AuthenticatorAssertionRawResponse>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AssertionVerificationResult(NewCredential(pu.Id), pu.Id));
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.Passkey,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"transactionId":"tx","assertionResponse":{}}""").RootElement);
+
+        result.Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_PasskeyProof_DifferentUser_Rejected()
+    {
+        var (pu, ui) = await SeedUserAsync(withActivePasskey: true);
+        _passkeys
+            .Setup(p => p.VerifyAssertionAsync(It.IsAny<string>(), It.IsAny<AuthenticatorAssertionRawResponse>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AssertionVerificationResult(NewCredential(Guid.NewGuid()), Guid.NewGuid()));
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.Passkey,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"transactionId":"tx","assertionResponse":{}}""").RootElement);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ReOAuthProof_LinkedProvider_Accepted()
+    {
+        var (pu, ui) = await SeedUserAsync(withSocial: true); // google
+        _social
+            .Setup(s => s.ExchangeCodeAsync("google", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SocialAuthCallbackResult(
+                Success: true, Error: null, Subject: "sub", Email: "e@test.com",
+                DisplayName: "d", EmailVerified: true, Provider: "google"));
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
             new ChallengeContext(pu.Id, ui.Id),
             ChallengeMethod.ReOAuth,
             ScopedOperation.RemoveAuthMethod,
-            JsonDocument.Parse("""{"provider":"google","code":"x","state":"y"}""").RootElement);
-        oauthResult.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
+            JsonDocument.Parse("""{"provider":"google","code":"c","state":"s"}""").RootElement);
+
+        result.Succeeded.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task VerifyAsync_ReOAuthProof_ExchangeFails_Rejected()
+    {
+        var (pu, ui) = await SeedUserAsync(withSocial: true);
+        _social
+            .Setup(s => s.ExchangeCodeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SocialAuthCallbackResult(
+                Success: false, Error: "denied", Subject: null, Email: null,
+                DisplayName: null, EmailVerified: false, Provider: "google"));
+        var service = CreateService();
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.ReOAuth,
+            ScopedOperation.RemoveAuthMethod,
+            JsonDocument.Parse("""{"provider":"google","code":"c","state":"s"}""").RootElement);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofRejected);
+    }
+
+    private static PasskeyCredential NewCredential(Guid platformUserId) => new()
+    {
+        Id = Guid.NewGuid(),
+        PlatformUserId = platformUserId,
+        CredentialId = new byte[] { 1 },
+        PublicKeyCose = new byte[] { 2 },
+        DisplayName = "Dev Passkey",
+        AttestationType = "none",
+        Status = CredentialStatus.Active,
+    };
 
     [Fact]
     public async Task TryConsumeAsync_AtomicConsume_ExactlyOneWinnerOnConcurrentPresentation()
