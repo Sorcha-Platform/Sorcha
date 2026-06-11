@@ -6,6 +6,7 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
@@ -37,7 +38,7 @@ public class SocialLinkServiceTests : IDisposable
     }
 
     private SocialLinkService CreateService() => new(
-        _db, _floor, _metrics, NullLogger<SocialLinkService>.Instance);
+        _db, _floor, Mock.Of<ISecurityChangeNotifier>(), _metrics, NullLogger<SocialLinkService>.Instance);
 
     private async Task<PlatformUser> SeedUserAsync(
         string email = "alice@test.com",

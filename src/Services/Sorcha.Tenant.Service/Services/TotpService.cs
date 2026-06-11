@@ -35,6 +35,7 @@ public class TotpService : ITotpService
     private readonly TenantDbContext _db;
     private readonly IIdentityRepository _identityRepository;
     private readonly ITenantSecurityInboxWriter _securityInbox;
+    private readonly ISecurityChangeNotifier _notifier;
     private readonly ISecretProtectionProvider _secretProtection;
     private readonly byte[] _loginTokenSigningKey;
     private readonly ILogger<TotpService> _logger;
@@ -43,6 +44,7 @@ public class TotpService : ITotpService
         TenantDbContext db,
         IIdentityRepository identityRepository,
         ITenantSecurityInboxWriter securityInbox,
+        ISecurityChangeNotifier notifier,
         ISecretProtectionProvider secretProtection,
         LoginTokenSigningKey loginTokenSigningKey,
         ILogger<TotpService> logger)
@@ -50,9 +52,22 @@ public class TotpService : ITotpService
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _securityInbox = securityInbox ?? throw new ArgumentNullException(nameof(securityInbox));
+        _notifier = notifier ?? throw new ArgumentNullException(nameof(notifier));
         _secretProtection = secretProtection ?? throw new ArgumentNullException(nameof(secretProtection));
         _loginTokenSigningKey = (loginTokenSigningKey ?? throw new ArgumentNullException(nameof(loginTokenSigningKey))).Key;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Maps the org-scoped <c>UserIdentity</c> id that TOTP is keyed by to the account-wide
+    /// PlatformUser id the always-notify sink (Feature 150) requires. Returns
+    /// <see cref="Guid.Empty"/> when the identity cannot be resolved — the notifier treats that
+    /// as a no-op email and the call never throws.
+    /// </summary>
+    private async Task<Guid> ResolvePlatformUserIdAsync(Guid userIdentityId, CancellationToken ct)
+    {
+        var user = await _identityRepository.GetUserByIdAsync(userIdentityId, ct);
+        return user?.PlatformUserId ?? Guid.Empty;
     }
 
     /// <inheritdoc />
@@ -161,8 +176,10 @@ public class TotpService : ITotpService
 
         _logger.LogInformation("TOTP enabled for user {UserId}", userId);
 
-        // Feature 118 — emit a Category=Security inbox entry. Fail-safe.
-        await _securityInbox.WriteTwoFactorEnabledAsync(userId, cancellationToken);
+        // Feature 150 always-notify — inbox entry + email, keyed by the account-wide
+        // PlatformUser id. Best-effort; the notifier never throws.
+        var platformUserId = await ResolvePlatformUserIdAsync(userId, cancellationToken);
+        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.TwoFactorEnabled, cancellationToken);
 
         return true;
     }
@@ -249,8 +266,10 @@ public class TotpService : ITotpService
 
             _logger.LogInformation("TOTP disabled for user {UserId}", userId);
 
-            // Feature 118 — emit a Category=Security inbox entry. Fail-safe.
-            await _securityInbox.WriteTwoFactorDisabledAsync(userId, cancellationToken);
+            // Feature 150 always-notify — inbox entry + email, keyed by the account-wide
+            // PlatformUser id. Best-effort; the notifier never throws.
+            var platformUserId = await ResolvePlatformUserIdAsync(userId, cancellationToken);
+            await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.TwoFactorDisabled, cancellationToken);
         }
     }
 

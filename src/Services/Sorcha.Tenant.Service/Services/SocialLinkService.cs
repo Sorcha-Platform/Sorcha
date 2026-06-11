@@ -20,6 +20,7 @@ public sealed class SocialLinkService : ISocialLinkService
 {
     private readonly TenantDbContext _db;
     private readonly IAuthMethodService _authMethodService;
+    private readonly ISecurityChangeNotifier _notifier;
     private readonly AuthMetrics _metrics;
     private readonly ILogger<SocialLinkService> _logger;
 
@@ -27,11 +28,13 @@ public sealed class SocialLinkService : ISocialLinkService
     public SocialLinkService(
         TenantDbContext db,
         IAuthMethodService authMethodService,
+        ISecurityChangeNotifier notifier,
         AuthMetrics metrics,
         ILogger<SocialLinkService> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _authMethodService = authMethodService ?? throw new ArgumentNullException(nameof(authMethodService));
+        _notifier = notifier ?? throw new ArgumentNullException(nameof(notifier));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -127,6 +130,7 @@ public sealed class SocialLinkService : ISocialLinkService
         _logger.LogInformation(
             "Linked social provider {Provider} to {PlatformUserId}",
             provider, platformUserId);
+        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.SocialLinked, cancellationToken);
         return SocialLinkOutcome.Linked;
     }
 
@@ -170,6 +174,7 @@ public sealed class SocialLinkService : ISocialLinkService
         _logger.LogInformation(
             "Unlinked social provider {Provider} {LinkId} from {PlatformUserId}",
             link.Provider, linkId, platformUserId);
+        await _notifier.NotifyAsync(platformUserId, SecurityChangeKind.SocialUnlinked, cancellationToken);
         return SocialUnlinkOutcome.Unlinked;
     }
 }

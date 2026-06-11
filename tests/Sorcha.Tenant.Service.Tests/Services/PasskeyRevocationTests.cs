@@ -46,7 +46,7 @@ public class PasskeyRevocationTests : IDisposable
 
         var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
         var fido2 = new Mock<IFido2>(MockBehavior.Strict);
-        _service = new PasskeyService(fido2.Object, cache, _db, _floor, NullLogger<PasskeyService>.Instance);
+        _service = new PasskeyService(fido2.Object, cache, _db, _floor, Mock.Of<ISecurityChangeNotifier>(), NullLogger<PasskeyService>.Instance);
     }
 
     public void Dispose()

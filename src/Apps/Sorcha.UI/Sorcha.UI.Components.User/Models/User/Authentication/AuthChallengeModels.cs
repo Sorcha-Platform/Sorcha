@@ -27,6 +27,25 @@ public enum ChallengeMethod
 }
 
 /// <summary>
+/// The sign-in method a step-up operation targets (Feature 150). Wire-compatible with the Tenant
+/// Service <c>AuthMethodKind</c>. Sent on challenge initiate/verify so the server can compute the
+/// floor's required proof tier for the ambiguous <see cref="ScopedOperation.RemoveAuthMethod"/>
+/// (passkey-revoke vs social-unlink). A null target fails safe to the strongest tier server-side.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum AuthMethodKind
+{
+    /// <summary>The account password.</summary>
+    Password = 0,
+
+    /// <summary>A linked social provider.</summary>
+    Social = 1,
+
+    /// <summary>An active passkey.</summary>
+    Passkey = 2,
+}
+
+/// <summary>
 /// Operation that a re-authentication challenge token authorises (Feature 116).
 /// Tokens are scoped — a token issued for one operation cannot be replayed
 /// against another.

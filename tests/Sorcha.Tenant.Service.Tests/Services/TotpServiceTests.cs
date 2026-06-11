@@ -55,7 +55,7 @@ public sealed class TotpServiceTests : IDisposable
         _loginKey = new byte[32];
         for (var i = 0; i < _loginKey.Length; i++) _loginKey[i] = (byte)(i + 100);
 
-        _sut = new TotpService(_db, _identity.Object, _securityInbox.Object, _protection,
+        _sut = new TotpService(_db, _identity.Object, _securityInbox.Object, Mock.Of<ISecurityChangeNotifier>(), _protection,
             new LoginTokenSigningKey(_loginKey), NullLogger<TotpService>.Instance);
     }
 
@@ -145,6 +145,6 @@ public sealed class TotpServiceTests : IDisposable
     }
 
     private TotpService NewServiceWithLoginKey(byte[] loginKey) =>
-        new(_db, _identity.Object, _securityInbox.Object, _protection,
+        new(_db, _identity.Object, _securityInbox.Object, Mock.Of<ISecurityChangeNotifier>(), _protection,
             new LoginTokenSigningKey(loginKey), NullLogger<TotpService>.Instance);
 }
