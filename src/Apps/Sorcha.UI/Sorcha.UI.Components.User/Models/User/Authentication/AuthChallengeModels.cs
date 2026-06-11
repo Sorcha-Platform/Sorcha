@@ -96,4 +96,11 @@ public enum ChallengeVerifyError
 
     /// <summary>Transport or unexpected status — caller should offer retry.</summary>
     Failed = 3,
+
+    /// <summary>
+    /// The proof was valid but its assurance tier is below the floor required for the operation
+    /// (server returned <c>403 proof_tier_insufficient</c>, Feature 150). The dialog should guide
+    /// the user to a stronger proof method.
+    /// </summary>
+    ProofTierInsufficient = 4,
 }

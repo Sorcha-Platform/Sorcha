@@ -47,9 +47,15 @@ public interface IAuthMethodsClientService
     /// Passkey → ReOAuth) unless <paramref name="preferredMethod"/> is supplied.
     /// Returns null on transport failure or when no method is enrolled (400).
     /// </summary>
+    /// <param name="targetMethodKind">
+    /// The sign-in method the operation targets, for the ambiguous
+    /// <see cref="ScopedOperation.RemoveAuthMethod"/> (passkey-revoke vs social-unlink). Lets the
+    /// server compute the correct floor tier (Feature 150). Omit for unambiguous operations.
+    /// </param>
     Task<ChallengeInitiateResult?> InitiateChallengeAsync(
         ScopedOperation scopedOperation,
         ChallengeMethod? preferredMethod = null,
+        AuthMethodKind? targetMethodKind = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -58,10 +64,15 @@ public interface IAuthMethodsClientService
     /// five minutes; the caller presents it via the <c>X-Auth-Challenge</c>
     /// header on the subsequent mutation call.
     /// </summary>
+    /// <param name="targetMethodKind">
+    /// The targeted sign-in method (see <see cref="InitiateChallengeAsync"/>). Re-checked
+    /// server-side; a below-floor proof returns <see cref="ChallengeVerifyError.ProofTierInsufficient"/>.
+    /// </param>
     Task<ChallengeVerifyResult> VerifyChallengeAsync(
         ChallengeMethod method,
         ScopedOperation scopedOperation,
         JsonElement proof,
+        AuthMethodKind? targetMethodKind = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -276,13 +287,14 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
     public async Task<ChallengeInitiateResult?> InitiateChallengeAsync(
         ScopedOperation scopedOperation,
         ChallengeMethod? preferredMethod = null,
+        AuthMethodKind? targetMethodKind = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var response = await _httpClient.PostAsJsonAsync(
                 "/api/auth/challenge/initiate",
-                new ChallengeInitiateBody(scopedOperation, preferredMethod),
+                new ChallengeInitiateBody(scopedOperation, preferredMethod, targetMethodKind),
                 cancellationToken);
 
             if (!response.IsSuccessStatusCode)
@@ -308,13 +320,14 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
         ChallengeMethod method,
         ScopedOperation scopedOperation,
         JsonElement proof,
+        AuthMethodKind? targetMethodKind = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var response = await _httpClient.PostAsJsonAsync(
                 "/api/auth/challenge/verify",
-                new ChallengeVerifyBody(method, scopedOperation, proof),
+                new ChallengeVerifyBody(method, scopedOperation, proof, targetMethodKind),
                 cancellationToken);
 
             if (response.IsSuccessStatusCode)
@@ -328,6 +341,7 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
 
             var error = response.StatusCode switch
             {
+                System.Net.HttpStatusCode.Forbidden => ChallengeVerifyError.ProofTierInsufficient,
                 System.Net.HttpStatusCode.Unauthorized => ChallengeVerifyError.ProofRejected,
                 System.Net.HttpStatusCode.Gone => ChallengeVerifyError.Expired,
                 _ => ChallengeVerifyError.Failed,
@@ -462,9 +476,11 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
         public string State { get; init; } = string.Empty;
     }
 
-    private sealed record ChallengeInitiateBody(ScopedOperation ScopedOperation, ChallengeMethod? PreferredMethod);
+    private sealed record ChallengeInitiateBody(
+        ScopedOperation ScopedOperation, ChallengeMethod? PreferredMethod, AuthMethodKind? TargetMethodKind);
 
-    private sealed record ChallengeVerifyBody(ChallengeMethod Method, ScopedOperation ScopedOperation, JsonElement Proof);
+    private sealed record ChallengeVerifyBody(
+        ChallengeMethod Method, ScopedOperation ScopedOperation, JsonElement Proof, AuthMethodKind? TargetMethodKind);
 
     private sealed record ChallengeVerifyBodyResponse(string Token, int ExpiresIn);
 
