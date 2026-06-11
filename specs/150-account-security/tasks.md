@@ -107,20 +107,20 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 ### Tests for User Story 2
 
-- [ ] T026 [P] [US2] Unit: `ServerSentOtpService` — single-use GETDEL, hashed code, 10-min expiry, 5-attempt cap, send rate-limit — in `tests/Sorcha.Tenant.Service.Tests/Auth/ServerSentOtpServiceTests.cs` — fail first.
-- [ ] T027 [P] [US2] Unit: `VerificationChannelRegistry` resolves the EmailOtp channel with `Tier=Basic`, in `tests/Sorcha.Tenant.Service.Tests/Auth/VerificationChannelRegistryTests.cs` — fail first.
-- [ ] T028 [P] [US2] Email snapshot test for `twofactor-code` in `tests/Sorcha.Tenant.Service.Tests/Services/EmailTemplateSnapshotTests.cs` (+ fixtures `Fixtures/Emails/twofactor-code.{html,txt}`) — fail first.
+- [x] T026 [P] [US2] Unit: `ServerSentOtpService` — single-use GETDEL, hashed code, 10-min expiry, 5-attempt cap, send rate-limit — in `tests/Sorcha.Tenant.Service.Tests/Auth/ServerSentOtpServiceTests.cs` — fail first.
+- [x] T027 [P] [US2] Unit: `VerificationChannelRegistry` resolves the EmailOtp channel with `Tier=Basic`, in `tests/Sorcha.Tenant.Service.Tests/Auth/VerificationChannelRegistryTests.cs` — fail first.
+- [x] T028 [P] [US2] Email snapshot test for `twofactor-code` in `tests/Sorcha.Tenant.Service.Tests/Services/EmailTemplateSnapshotTests.cs` (+ fixtures `Fixtures/Emails/twofactor-code.{html,txt}`) — fail first.
 - [ ] T029 [P] [US2] Playwright E2E: enable Email OTP, login-with-email-code, reuse + expiry rejected, rate-limit, in `tests/Sorcha.UI.E2E.Tests/Docker/Security/EmailOtpTests.cs` — fail first.
 
 ### Implementation for User Story 2
 
 - [ ] T030 [US2] **Squash the schema change into the Tenant Service's existing initial migration** (pre-release policy — do NOT add an incremental migration): add `PlatformUser.PhoneNumber` (E.164, nullable) + `PhoneVerifiedAt` (nullable) **and** the new `PlatformUserTwoFactor` 1:1 table (`TotpEnabled`, `EmailOtpEnabled`, `SmsOtpEnabled`, `UpdatedAt`) to the models in `src/Services/Sorcha.Tenant.Service/Models/PlatformUser.cs` + `PlatformUserTwoFactor.cs`, then **regenerate** the existing initial migration (remove + re-add `InitialCreate` against the design-time factory) so `*.Designer.cs` + `*ModelSnapshot.cs` stay in lockstep — never hand-edit. ⚠️ **Shared, once** — US3's phone columns ride this same squashed initial migration; US3 adds NO migration of its own.
-- [ ] T031 [P] [US2] Define `IVerificationChannel` (`Kind`, `Tier`, `InitiateAsync`, `VerifyAsync`) + `VerificationChannelRegistry` in `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
-- [ ] T032 [US2] Implement `ServerSentOtpService` (Redis GETDEL, hashed codes, expiry, attempt cap, rate-limit) and register it through F113 `IStorageRegistrationLog` as a **cache-style** store (not fail-fast audited), in `src/Services/Sorcha.Tenant.Service/Services/Auth/ServerSentOtpService.cs` (make T026 pass).
-- [ ] T033 [P] [US2] Add the F112 `TwoFactorCodeDispatch` record + `twofactor-code.{html,txt}` Sorcha-branded template under `src/Services/Sorcha.Tenant.Service/Emails/Templates/` and register on `ITransactionalEmailService` (make T028 pass).
-- [ ] T034 [US2] Implement `EmailOtpChannel : IVerificationChannel` (uses `ServerSentOtpService` + `TwoFactorCodeDispatch`) and register it in the registry (always available), in `src/Services/Sorcha.Tenant.Service/Services/Auth/` (make T027 pass).
-- [ ] T035 [US2] Endpoints `POST /api/me/2fa/email/enable`, `POST /api/me/2fa/email/verify`, `DELETE /api/me/2fa/email` (Scalar summaries + XML), in `src/Services/Sorcha.Tenant.Service/Endpoints/TwoFactorChannelEndpoints.cs`; flip `PlatformUserTwoFactor.EmailOtpEnabled`; always-notify via `SecurityChangeNotifier`.
-- [ ] T036 [US2] Add `EmailOtp` to the `ChallengeMethod` enum and to step-up `initiate`/`verify` (initiate sends a code) in `AuthChallengeService.cs` + `AuthChallengeEndpoints.cs`.
+- [x] T031 [P] [US2] Define `IVerificationChannel` (`Kind`, `Tier`, `InitiateAsync`, `VerifyAsync`) + `VerificationChannelRegistry` in `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
+- [x] T032 [US2] Implement `ServerSentOtpService` (Redis GETDEL, hashed codes, expiry, attempt cap, rate-limit) and register it through F113 `IStorageRegistrationLog` as a **cache-style** store (not fail-fast audited), in `src/Services/Sorcha.Tenant.Service/Services/Auth/ServerSentOtpService.cs` (make T026 pass).
+- [x] T033 [P] [US2] Add the F112 `TwoFactorCodeDispatch` record + `twofactor-code.{html,txt}` Sorcha-branded template under `src/Services/Sorcha.Tenant.Service/Emails/Templates/` and register on `ITransactionalEmailService` (make T028 pass).
+- [x] T034 [US2] Implement `EmailOtpChannel : IVerificationChannel` (uses `ServerSentOtpService` + `TwoFactorCodeDispatch`) and register it in the registry (always available), in `src/Services/Sorcha.Tenant.Service/Services/Auth/` (make T027 pass).
+- [x] T035 [US2] Endpoints `POST /api/me/2fa/email/enable`, `POST /api/me/2fa/email/verify`, `DELETE /api/me/2fa/email` (Scalar summaries + XML), in `src/Services/Sorcha.Tenant.Service/Endpoints/TwoFactorChannelEndpoints.cs`; flip `PlatformUserTwoFactor.EmailOtpEnabled`; always-notify via `SecurityChangeNotifier`.
+- [x] T036 [US2] Add `EmailOtp` to the `ChallengeMethod` enum and to step-up `initiate`/`verify` (initiate sends a code) in `AuthChallengeService.cs` + `AuthChallengeEndpoints.cs`.
 - [ ] T037 [US2] Wire EmailOtp into the **login** second-factor path (offer strongest-enrolled first + a "use another method" fallback per R-010) in the login/verify-2FA flow (`LoginService` / verify-2fa endpoint).
 - [ ] T038 [US2] Build `TwoFactorSection.razor` (TOTP + Email OTP rows with badges, enable/verify/disable) in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/` and slot it into `SecurityHome`; extend `IAuthMethodsClientService` (in `Sorcha.UI.Components.User/Services/Shared/`) with email enable/verify/disable methods.
 

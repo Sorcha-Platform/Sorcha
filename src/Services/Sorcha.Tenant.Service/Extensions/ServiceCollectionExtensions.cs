@@ -3,6 +3,7 @@
 
 using Fido2NetLib;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Polly;
 using Polly.CircuitBreaker;
 using Sorcha.ServiceDefaults;
@@ -216,6 +217,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITenantSecurityInboxWriter, TenantSecurityInboxWriter>();
         // Feature 150 — always-notify: composes the inbox writer + a Sorcha-branded email.
         services.AddScoped<ISecurityChangeNotifier, SecurityChangeNotifier>();
+
+        // Feature 150 US2 — server-sent OTP (Redis GETDEL via IAtomicDistributedCache) + the
+        // verification-channel registry. The Email channel is always registered; the SMS channel
+        // (US3) is added by AddSmsChannel only when an ISmsSender provider is configured, so an
+        // unconfigured install never resolves SMS. TimeProvider drives deterministic OTP expiry.
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<IServerSentOtpService, ServerSentOtpService>();
+        services.AddScoped<IVerificationChannel, EmailOtpChannel>();
+        services.AddScoped<IVerificationChannelRegistry, VerificationChannelRegistry>();
         services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
         services.AddScoped<IOrgProvisioningService, OrgProvisioningService>();
         services.AddScoped<IPlatformUserProvisioningService, PlatformUserProvisioningService>();

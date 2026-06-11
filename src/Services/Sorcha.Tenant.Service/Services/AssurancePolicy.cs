@@ -43,7 +43,9 @@ public static class AssurancePolicy
         ChallengeMethod.Totp => AuthAssuranceTier.Strong,
         ChallengeMethod.Password => AuthAssuranceTier.Basic,    // T061 resolved: a password is a phishable knowledge factor
         ChallengeMethod.ReOAuth => AuthAssuranceTier.Strong,    // provider-controlled, proves current control
-        _ => AuthAssuranceTier.Basic                            // future Email/SMS OTP rungs land here
+        ChallengeMethod.EmailOtp => AuthAssuranceTier.Basic,    // US2 — emailed one-time code
+        ChallengeMethod.SmsOtp => AuthAssuranceTier.Basic,      // US3 — SMS one-time code
+        _ => AuthAssuranceTier.Basic
     };
 
     /// <summary>

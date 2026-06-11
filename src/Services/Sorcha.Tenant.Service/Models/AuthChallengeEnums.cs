@@ -23,7 +23,13 @@ public enum ChallengeMethod
     Passkey = 2,
 
     /// <summary>OAuth round-trip on a still-linked social provider.</summary>
-    ReOAuth = 3
+    ReOAuth = 3,
+
+    /// <summary>Emailed one-time code (Feature 150 US2) — Basic tier.</summary>
+    EmailOtp = 4,
+
+    /// <summary>SMS one-time code (Feature 150 US3, config-gated) — Basic tier.</summary>
+    SmsOtp = 5
 }
 
 /// <summary>

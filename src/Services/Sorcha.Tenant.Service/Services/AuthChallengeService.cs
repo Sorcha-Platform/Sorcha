@@ -31,6 +31,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
     private readonly ITotpService _totp;
     private readonly IPasskeyService _passkeys;
     private readonly ISocialLoginService _social;
+    private readonly IVerificationChannelRegistry _channels;
     private readonly AuthMetrics _metrics;
     private readonly ILogger<AuthChallengeService> _logger;
 
@@ -41,6 +42,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
         ITotpService totp,
         IPasskeyService passkeys,
         ISocialLoginService social,
+        IVerificationChannelRegistry channels,
         AuthMetrics metrics,
         ILogger<AuthChallengeService> logger)
     {
@@ -49,6 +51,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
         _totp = totp ?? throw new ArgumentNullException(nameof(totp));
         _passkeys = passkeys ?? throw new ArgumentNullException(nameof(passkeys));
         _social = social ?? throw new ArgumentNullException(nameof(social));
+        _channels = channels ?? throw new ArgumentNullException(nameof(channels));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -85,7 +88,17 @@ public sealed class AuthChallengeService : IAuthChallengeService
             return ChallengePreparation.NoMethodAvailable;
         }
 
-        // TOTP/Password need no payload (the user types a code/password). Passkey carries
+        // Server-sent channels (Email/SMS OTP) must dispatch a code now so the user has something to
+        // type. Best-effort: a rate-limited send still returns the method (the user likely has a
+        // recent code), and the prior code stays valid.
+        if (method.Value is ChallengeMethod.EmailOtp or ChallengeMethod.SmsOtp)
+        {
+            var channel = _channels.Resolve(method.Value);
+            if (channel is not null)
+                await channel.SendAsync(context.PlatformUserId, OtpPurpose.StepUp, cancellationToken);
+        }
+
+        // TOTP/Password/Email/SMS need no payload (the user types a code/password). Passkey carries
         // WebAuthn assertion options scoped to this user's credentials; ReOAuth carries the
         // linked provider the client re-authenticates against (Feature 150 T014/T015).
         JsonElement? payload = method.Value switch
@@ -137,6 +150,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
             ChallengeMethod.Password => await VerifyPasswordAsync(context, proof, cancellationToken),
             ChallengeMethod.Passkey => await VerifyPasskeyAsync(context, proof, cancellationToken),
             ChallengeMethod.ReOAuth => await VerifyReOAuthAsync(context, proof, cancellationToken),
+            ChallengeMethod.EmailOtp or ChallengeMethod.SmsOtp => await VerifyServerSentOtpAsync(method, context, proof, cancellationToken),
             _ => false
         };
 
@@ -216,6 +230,28 @@ public sealed class AuthChallengeService : IAuthChallengeService
             return false;
 
         return BCrypt.Net.BCrypt.Verify(password, hash);
+    }
+
+    /// <summary>
+    /// Verifies a server-sent (Email/SMS) one-time code as a step-up proof (Feature 150 US2/US3).
+    /// Returns null for a malformed proof, false for any non-Verified outcome.
+    /// </summary>
+    private async Task<bool?> VerifyServerSentOtpAsync(
+        ChallengeMethod method, ChallengeContext context, JsonElement proof, CancellationToken ct)
+    {
+        // Expected proof shape: { "code": "123456" }.
+        if (!proof.TryGetProperty("code", out var codeProp) || codeProp.ValueKind != JsonValueKind.String)
+            return null;
+        var code = codeProp.GetString();
+        if (string.IsNullOrWhiteSpace(code))
+            return null;
+
+        var channel = _channels.Resolve(method);
+        if (channel is null)
+            return false; // channel not registered on this installation
+
+        var outcome = await channel.VerifyAsync(context.PlatformUserId, OtpPurpose.StepUp, code, ct);
+        return outcome == OtpVerifyOutcome.Verified;
     }
 
     // ---- Feature 150 (T014/T015): Passkey + Re-OAuth step-up proofs ----
@@ -373,7 +409,14 @@ public sealed class AuthChallengeService : IAuthChallengeService
             .AsNoTracking()
             .AnyAsync(s => s.PlatformUserId == context.PlatformUserId, cancellationToken);
 
-        return new UserEnrolment(totpEnabled, hasPassword, hasActivePasskey, hasSocial);
+        // Email OTP enrolment is account-wide (PlatformUserTwoFactor); only offer it as a step-up
+        // proof when the channel is actually registered on this installation.
+        var emailOtpEnabled = _channels.Resolve(ChallengeMethod.EmailOtp) is not null
+            && await _db.PlatformUserTwoFactors
+                .AsNoTracking()
+                .AnyAsync(t => t.PlatformUserId == context.PlatformUserId && t.EmailOtpEnabled, cancellationToken);
+
+        return new UserEnrolment(totpEnabled, hasPassword, hasActivePasskey, hasSocial, emailOtpEnabled);
     }
 
     private static string GenerateRawToken()
@@ -391,7 +434,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    private readonly record struct UserEnrolment(bool TotpEnabled, bool HasPassword, bool HasActivePasskey, bool HasSocial)
+    private readonly record struct UserEnrolment(bool TotpEnabled, bool HasPassword, bool HasActivePasskey, bool HasSocial, bool EmailOtpEnabled)
     {
         public bool IsEnrolled(ChallengeMethod method) => method switch
         {
@@ -399,6 +442,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
             ChallengeMethod.Password => HasPassword,
             ChallengeMethod.Passkey => HasActivePasskey,
             ChallengeMethod.ReOAuth => HasSocial,
+            ChallengeMethod.EmailOtp => EmailOtpEnabled,
             _ => false
         };
 
@@ -408,6 +452,7 @@ public sealed class AuthChallengeService : IAuthChallengeService
             if (HasPassword) return ChallengeMethod.Password;
             if (HasActivePasskey) return ChallengeMethod.Passkey;
             if (HasSocial) return ChallengeMethod.ReOAuth;
+            if (EmailOtpEnabled) return ChallengeMethod.EmailOtp;
             return null;
         }
 
@@ -426,6 +471,10 @@ public sealed class AuthChallengeService : IAuthChallengeService
                 return ChallengeMethod.Passkey;
             if (HasSocial && AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(ChallengeMethod.ReOAuth), requiredTier))
                 return ChallengeMethod.ReOAuth;
+            // Email OTP is Basic — the weakest, so it is the last resort (only chosen when nothing
+            // stronger is enrolled and the operation's floor is Basic).
+            if (EmailOtpEnabled && AssurancePolicy.CanAuthorize(AssurancePolicy.TierOfProof(ChallengeMethod.EmailOtp), requiredTier))
+                return ChallengeMethod.EmailOtp;
             return null;
         }
     }

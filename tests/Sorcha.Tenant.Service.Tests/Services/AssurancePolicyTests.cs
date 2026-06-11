@@ -24,6 +24,8 @@ public sealed class AssurancePolicyTests
     [InlineData(ChallengeMethod.Totp, AuthAssuranceTier.Strong)]
     [InlineData(ChallengeMethod.Password, AuthAssuranceTier.Basic)]    // T061 resolved: password is Basic
     [InlineData(ChallengeMethod.ReOAuth, AuthAssuranceTier.Strong)]
+    [InlineData(ChallengeMethod.EmailOtp, AuthAssuranceTier.Basic)]    // US2
+    [InlineData(ChallengeMethod.SmsOtp, AuthAssuranceTier.Basic)]      // US3
     public void TierOfProof_MapsEachMethod(ChallengeMethod method, AuthAssuranceTier expected)
         => AssurancePolicy.TierOfProof(method).Should().Be(expected);
 

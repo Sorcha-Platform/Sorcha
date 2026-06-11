@@ -44,8 +44,12 @@ public class AuthChallengeServiceTests : IDisposable
         _metrics = new AuthMetrics(new TestMeterFactory());
     }
 
+    // Empty channel registry — these tests don't exercise Email/SMS OTP, so no channel resolves
+    // and EmailOtp is never enrolled/offered.
+    private readonly VerificationChannelRegistry _channels = new([]);
+
     private AuthChallengeService CreateService() => new(
-        _db, _repository, _totp.Object, _passkeys.Object, _social.Object, _metrics, NullLogger<AuthChallengeService>.Instance);
+        _db, _repository, _totp.Object, _passkeys.Object, _social.Object, _channels, _metrics, NullLogger<AuthChallengeService>.Instance);
 
     private async Task<(PlatformUser, UserIdentity)> SeedUserAsync(
         bool withPassword = false,
@@ -449,6 +453,64 @@ public class AuthChallengeServiceTests : IDisposable
             ScopedOperation.RemoveAuthMethod,
             JsonDocument.Parse("""{"password":"Right1!"}""").RootElement,
             targetMethodKind: AuthMethodKind.Passkey);
+
+        result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofTierInsufficient);
+    }
+
+    // ---- Feature 150 US2: Email OTP as a step-up proof ----
+
+    private AuthChallengeService CreateServiceWith(IVerificationChannel channel) => new(
+        _db, _repository, _totp.Object, _passkeys.Object, _social.Object,
+        new VerificationChannelRegistry([channel]), _metrics, NullLogger<AuthChallengeService>.Instance);
+
+    private static Mock<IVerificationChannel> EmailChannelReturning(OtpVerifyOutcome outcome)
+    {
+        var ch = new Mock<IVerificationChannel>();
+        ch.SetupGet(c => c.Kind).Returns(ChallengeMethod.EmailOtp);
+        ch.SetupGet(c => c.Tier).Returns(AuthAssuranceTier.Basic);
+        ch.Setup(c => c.SendAsync(It.IsAny<Guid>(), It.IsAny<OtpPurpose>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ChannelSendOutcome.Sent);
+        ch.Setup(c => c.VerifyAsync(It.IsAny<Guid>(), It.IsAny<OtpPurpose>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outcome);
+        return ch;
+    }
+
+    private async Task EnableEmailOtpAsync(Guid platformUserId)
+    {
+        _db.PlatformUserTwoFactors.Add(new PlatformUserTwoFactor { PlatformUserId = platformUserId, EmailOtpEnabled = true });
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_EmailOtpProof_ChangePassword_Accepted()
+    {
+        // ChangePassword is Basic (T061), Email OTP is Basic → floor passes.
+        var (pu, ui) = await SeedUserAsync(withPassword: true);
+        await EnableEmailOtpAsync(pu.Id);
+        var service = CreateServiceWith(EmailChannelReturning(OtpVerifyOutcome.Verified).Object);
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.EmailOtp,
+            ScopedOperation.ChangePassword,
+            JsonDocument.Parse("""{"code":"123456"}""").RootElement);
+
+        result.Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_EmailOtpProof_Disable2Fa_ProofTierInsufficient()
+    {
+        // Disable2Fa is Strong; Email OTP is Basic → rejected by the floor before the channel is called.
+        var (pu, ui) = await SeedUserAsync(withPassword: true);
+        await EnableEmailOtpAsync(pu.Id);
+        var service = CreateServiceWith(EmailChannelReturning(OtpVerifyOutcome.Verified).Object);
+
+        var result = await service.VerifyAsync(
+            new ChallengeContext(pu.Id, ui.Id),
+            ChallengeMethod.EmailOtp,
+            ScopedOperation.Disable2Fa,
+            JsonDocument.Parse("""{"code":"123456"}""").RootElement);
 
         result.Outcome.Should().Be(ChallengeVerificationOutcome.ProofTierInsufficient);
     }
