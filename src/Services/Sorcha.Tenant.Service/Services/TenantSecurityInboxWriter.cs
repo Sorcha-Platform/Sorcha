@@ -144,7 +144,7 @@ public sealed class TenantSecurityInboxWriter : ITenantSecurityInboxWriter
                 Category: InboxCategory.Security,
                 Severity: severity,
                 CorrelationKey: $"security:{eventKey}:{platformUserId:N}",
-                DetailHref: "/settings/security",
+                DetailHref: "/security", // Feature 150 — the unified Security home
                 SourceEventId: sourceEventId,
                 OccurredAt: occurredAt,
                 Title: title,

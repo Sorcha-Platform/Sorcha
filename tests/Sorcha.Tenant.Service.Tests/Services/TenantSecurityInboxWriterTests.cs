@@ -37,7 +37,7 @@ public sealed class TenantSecurityInboxWriterTests
         captured.Category.Should().Be(InboxCategory.Security);
         captured.Severity.Should().Be(InboxSeverity.Info);
         captured.CorrelationKey.Should().Be($"security:two-factor-enabled:{_userId:N}");
-        captured.DetailHref.Should().Be("/settings/security");
+        captured.DetailHref.Should().Be("/security");
         captured.Title.Should().Be("Two-factor authentication enabled");
         captured.IconKey.Should().Be("security.2fa-enabled");
     }
@@ -117,7 +117,7 @@ public sealed class TenantSecurityInboxWriterTests
         captured.Should().NotBeNull();
         captured!.Category.Should().Be(InboxCategory.Security);
         captured.CorrelationKey.Should().Be($"security:password-reset:{_userId:N}");
-        captured.DetailHref.Should().Be("/settings/security");
+        captured.DetailHref.Should().Be("/security");
         captured.Title.Should().Be("Password reset");
         captured.Summary.Should().Contain("contact support");
         captured.IconKey.Should().Be("security.password-reset");
