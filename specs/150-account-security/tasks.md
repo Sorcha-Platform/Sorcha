@@ -22,7 +22,7 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 - **T002/T011** — Playwright E2E (web) **not written** (needs the Docker UI harness; see the `sorcha-ui` skill).
 - **US2 (Email OTP, T026–T038), US3 (SMS OTP, T039–T047), US4 (PWA parity, T048–T054)** — **not started**; independently-shippable follow-up phases per the design's delivery phasing. US2 owns the schema squash (T030).
 - **T057–T060** — docs partially done (T055/T056); API-DOCUMENTATION/AUTHENTICATION-SETUP/dev-status full pass pending.
-- **T061** — password-as-Strong-proof remains a **flagged decision** for review (not changed).
+- **T061 — RESOLVED (2026-06-11): password is `Basic` everywhere.** Its change/remove are Basic-gated (no dead-end for password-only users); a Basic proof can never disable TOTP (Strong) or remove a passkey (Strongest). AssurancePolicy + matrix test + contract + docs updated in lockstep.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -183,7 +183,7 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 - [ ] T058 [P] Observability: add OTel counters for OTP send/verify (tagged channel/outcome) and floor-rule rejections on the `Sorcha.Tenant.Auth` (or `Sorcha.Identity`) meter, in `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
 - [ ] T059 [P] Audit: MIT SPDX/Copyright headers on all new files; `.WithSummary()`/`.WithDescription()` + XML docs on every new endpoint; confirm no hard-coded `<Version>`.
 - [ ] T060 Update `docs/reference/development-status.md` (Feature 150 status) and run `quickstart.md` end-to-end against the Docker stack for all four phases.
-- [ ] T061 **Decision gate**: confirm or revise the flagged **password-as-Strong-proof** call (`contracts/floor-rule-policy.md` Table A) with the team before merge; if demoted to Basic, update `AssurancePolicy` + the matrix test + the contract in lockstep.
+- [x] T061 **Decision gate**: confirm or revise the flagged **password-as-Strong-proof** call (`contracts/floor-rule-policy.md` Table A) with the team before merge; if demoted to Basic, update `AssurancePolicy` + the matrix test + the contract in lockstep.
 
 ---
 

@@ -439,7 +439,7 @@ public class AuthChallengeServiceTests : IDisposable
     [Fact]
     public async Task VerifyAsync_PasswordProof_RemovePasskey_ProofTierInsufficient()
     {
-        // Password is Strong — still below Strongest, so it cannot strip a passkey.
+        // Password is Basic — below Strongest, so it cannot strip a passkey.
         var (pu, ui) = await SeedUserAsync(withPassword: true, password: "Right1!");
         var service = CreateService();
 

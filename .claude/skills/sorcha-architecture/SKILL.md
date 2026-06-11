@@ -1636,7 +1636,7 @@ The successor to Feature 116. Consolidates account-security management into one 
 `AssurancePolicy` (`Sorcha.Tenant.Service/Services/AssurancePolicy.cs`) is the single source of truth:
 - `AuthAssuranceTier` (`Basic=1 < Strong=2 < Strongest=3`) — ordinal so the floor compares with `>=`.
 - `TierOfMethod(AuthMethodKind)` — Passkey=Strongest, Password=Strong, Social=Basic (badge).
-- `TierOfProof(ChallengeMethod)` — Passkey=Strongest, Totp/Password/ReOAuth=Strong, else Basic. **Password-as-proof = Strong is a flagged decision (T061)** — demoting it to Basic is a one-line change here + the matrix test.
+- `TierOfProof(ChallengeMethod)` — Passkey=Strongest, Totp/ReOAuth=Strong, **Password=Basic** (T061 resolved 2026-06-11 — a password is a phishable knowledge factor). Its own ops (`ChangePassword`/`RemovePassword`) are Basic-gated by the floor's own "required = tier-being-weakened" rule (no dead-end for password-only users); the load-bearing guarantee holds — a Basic proof can never disable TOTP (Strong) or remove a passkey (Strongest).
 - `RequiredProofTier(ScopedOperation, AuthMethodKind? target)` — the floor. `RemoveAuthMethod` is ambiguous (passkey-revoke vs social-unlink) so the **target is required**; a **null target fails safe to Strongest**.
 
 ### The ladder-floor rule (the security spine)

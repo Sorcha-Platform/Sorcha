@@ -45,11 +45,11 @@ public sealed record AuthMethodsPassword
     public DateTimeOffset? LastChangedAt { get; init; }
     public bool CanRemove { get; init; }
 
-    /// <summary>Assurance tier of the password as a sign-in method (Feature 150) — Strong.</summary>
-    public AuthAssuranceTier AssuranceTier { get; init; } = AuthAssuranceTier.Strong;
+    /// <summary>Assurance tier of the password as a sign-in method (Feature 150, T061) — Basic.</summary>
+    public AuthAssuranceTier AssuranceTier { get; init; } = AuthAssuranceTier.Basic;
 
-    /// <summary>Minimum step-up proof tier required to change or remove the password (Feature 150).</summary>
-    public AuthAssuranceTier RequiredProofTier { get; init; } = AuthAssuranceTier.Strong;
+    /// <summary>Minimum step-up proof tier required to change or remove the password (Feature 150, T061) — Basic.</summary>
+    public AuthAssuranceTier RequiredProofTier { get; init; } = AuthAssuranceTier.Basic;
 }
 
 /// <summary>Linked-social-provider row.</summary>

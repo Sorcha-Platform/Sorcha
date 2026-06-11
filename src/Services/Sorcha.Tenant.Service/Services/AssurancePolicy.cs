@@ -20,11 +20,17 @@ namespace Sorcha.Tenant.Service.Services;
 /// </summary>
 /// <remarks>
 /// Design contract: <c>specs/150-account-security/contracts/floor-rule-policy.md</c>.
-/// The <see cref="ChallengeMethod.Password"/> proof tier is <b>Strong</b> by a deliberate,
-/// flagged decision (tasks T061) — it preserves the ability to manage the account with the
-/// password while keeping the invariant that a <b>Basic</b> proof can never strip a Strong/Strongest
-/// method. Demoting it to <see cref="AuthAssuranceTier.Basic"/> is an isolated one-line change here
-/// plus the matrix test.
+/// <para>
+/// <b>T061 resolved (2026-06-11) — the password is <see cref="AuthAssuranceTier.Basic"/> everywhere.</b>
+/// A password is a phishable knowledge factor, so it is treated as Basic both as a sign-in method
+/// (badge) and as a step-up proof. By the floor's own rule (<i>required tier = the tier of the thing
+/// being removed/weakened</i>) the password's own operations — change / remove — are therefore
+/// <b>Basic</b>-gated too: you re-enter your password to change it, with no dead-end for password-only
+/// users. The guarantee that matters is preserved and strengthened: a Basic proof (the password, and
+/// the future Email/SMS OTP) can <b>never</b> disable TOTP (<see cref="ScopedOperation.Disable2Fa"/>,
+/// Strong) or remove a passkey (Strongest). Consequence vs the original contract: a Basic factor can
+/// now authorise a password change — equivalent to the existing email-reset flow, not a new exposure.
+/// </para>
 /// </remarks>
 public static class AssurancePolicy
 {
@@ -35,7 +41,7 @@ public static class AssurancePolicy
     {
         ChallengeMethod.Passkey => AuthAssuranceTier.Strongest, // phishing-resistant
         ChallengeMethod.Totp => AuthAssuranceTier.Strong,
-        ChallengeMethod.Password => AuthAssuranceTier.Strong,   // flagged (T061): password-as-proof = Strong
+        ChallengeMethod.Password => AuthAssuranceTier.Basic,    // T061 resolved: a password is a phishable knowledge factor
         ChallengeMethod.ReOAuth => AuthAssuranceTier.Strong,    // provider-controlled, proves current control
         _ => AuthAssuranceTier.Basic                            // future Email/SMS OTP rungs land here
     };
@@ -47,7 +53,7 @@ public static class AssurancePolicy
     public static AuthAssuranceTier TierOfMethod(AuthMethodKind kind) => kind switch
     {
         AuthMethodKind.Passkey => AuthAssuranceTier.Strongest,
-        AuthMethodKind.Password => AuthAssuranceTier.Strong,
+        AuthMethodKind.Password => AuthAssuranceTier.Basic,     // T061 resolved: a phishable knowledge factor
         AuthMethodKind.Social => AuthAssuranceTier.Basic,       // a delegated sign-in path of no particular strength
         _ => AuthAssuranceTier.Basic
     };
@@ -70,9 +76,11 @@ public static class AssurancePolicy
             AuthMethodKind.Social => AuthAssuranceTier.Basic,      // unlinking a social loses no strong factor
             _ => AuthAssuranceTier.Strongest                        // fail-safe: unknown target → strongest
         },
-        ScopedOperation.ChangePassword => AuthAssuranceTier.Strong,
-        ScopedOperation.RemovePassword => AuthAssuranceTier.Strong,
-        ScopedOperation.Disable2Fa => AuthAssuranceTier.Strong,     // losing TOTP loses Strong protection
+        // The password is Basic (T061), so by the floor's own rule its own operations are Basic-gated —
+        // you re-enter your password to change/remove it, with no dead-end for password-only users.
+        ScopedOperation.ChangePassword => AuthAssuranceTier.Basic,
+        ScopedOperation.RemovePassword => AuthAssuranceTier.Basic,  // + the last-method floor still applies
+        ScopedOperation.Disable2Fa => AuthAssuranceTier.Strong,     // losing TOTP loses Strong protection — a Basic proof can't
         ScopedOperation.SetPassword => AuthAssuranceTier.Basic,     // adding a credential weakens nothing — lowest gated bar
         _ => AuthAssuranceTier.Strongest                            // unknown operation fails safe
     };

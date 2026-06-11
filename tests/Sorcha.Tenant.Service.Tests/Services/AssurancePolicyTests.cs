@@ -22,7 +22,7 @@ public sealed class AssurancePolicyTests
     [Theory]
     [InlineData(ChallengeMethod.Passkey, AuthAssuranceTier.Strongest)]
     [InlineData(ChallengeMethod.Totp, AuthAssuranceTier.Strong)]
-    [InlineData(ChallengeMethod.Password, AuthAssuranceTier.Strong)]   // flagged decision (T061)
+    [InlineData(ChallengeMethod.Password, AuthAssuranceTier.Basic)]    // T061 resolved: password is Basic
     [InlineData(ChallengeMethod.ReOAuth, AuthAssuranceTier.Strong)]
     public void TierOfProof_MapsEachMethod(ChallengeMethod method, AuthAssuranceTier expected)
         => AssurancePolicy.TierOfProof(method).Should().Be(expected);
@@ -31,7 +31,7 @@ public sealed class AssurancePolicyTests
 
     [Theory]
     [InlineData(AuthMethodKind.Passkey, AuthAssuranceTier.Strongest)]
-    [InlineData(AuthMethodKind.Password, AuthAssuranceTier.Strong)]
+    [InlineData(AuthMethodKind.Password, AuthAssuranceTier.Basic)]   // T061 resolved: password is Basic
     [InlineData(AuthMethodKind.Social, AuthAssuranceTier.Basic)]
     public void TierOfMethod_MapsEachKind(AuthMethodKind kind, AuthAssuranceTier expected)
         => AssurancePolicy.TierOfMethod(kind).Should().Be(expected);
@@ -70,9 +70,9 @@ public sealed class AssurancePolicyTests
             .Should().Be(AuthAssuranceTier.Strongest);
 
     [Theory]
-    [InlineData(ScopedOperation.ChangePassword, AuthAssuranceTier.Strong)]
-    [InlineData(ScopedOperation.RemovePassword, AuthAssuranceTier.Strong)]
-    [InlineData(ScopedOperation.Disable2Fa, AuthAssuranceTier.Strong)]
+    [InlineData(ScopedOperation.ChangePassword, AuthAssuranceTier.Basic)]   // T061: password is Basic → Basic-gated
+    [InlineData(ScopedOperation.RemovePassword, AuthAssuranceTier.Basic)]   // + last-method floor
+    [InlineData(ScopedOperation.Disable2Fa, AuthAssuranceTier.Strong)]      // losing TOTP loses Strong protection
     [InlineData(ScopedOperation.SetPassword, AuthAssuranceTier.Basic)]
     public void RequiredProofTier_OtherOperations(ScopedOperation operation, AuthAssuranceTier expected)
         => AssurancePolicy.RequiredProofTier(operation).Should().Be(expected);
@@ -82,7 +82,7 @@ public sealed class AssurancePolicyTests
     [Theory]
     [InlineData(ChallengeMethod.Passkey, true)]    // assert-then-delete: the passkey removes itself
     [InlineData(ChallengeMethod.Totp, false)]
-    [InlineData(ChallengeMethod.Password, false)]  // even the password (Strong) cannot strip a passkey
+    [InlineData(ChallengeMethod.Password, false)]  // the password (Basic) cannot strip a passkey
     [InlineData(ChallengeMethod.ReOAuth, false)]
     public void CanProofSatisfy_RemovePasskey_RequiresPasskeyTierProof(ChallengeMethod proof, bool expected)
         => AssurancePolicy.CanProofSatisfy(proof, ScopedOperation.RemoveAuthMethod, AuthMethodKind.Passkey)
@@ -99,22 +99,24 @@ public sealed class AssurancePolicyTests
         => AssurancePolicy.CanProofSatisfy(proof, ScopedOperation.RemoveAuthMethod, AuthMethodKind.Social)
             .Should().BeTrue();
 
-    // ---- Disabling 2FA / changing the password is Strong — all current proofs are Strong+ ----
+    // ---- Disabling 2FA is Strong — only Strong/Strongest proofs satisfy; the password (Basic) cannot ----
+
+    [Theory]
+    [InlineData(ChallengeMethod.Passkey, true)]
+    [InlineData(ChallengeMethod.Totp, true)]
+    [InlineData(ChallengeMethod.ReOAuth, true)]
+    [InlineData(ChallengeMethod.Password, false)]  // T061: a Basic password can't disable Strong TOTP
+    public void CanProofSatisfy_Disable2Fa_RequiresStrongProof(ChallengeMethod proof, bool expected)
+        => AssurancePolicy.CanProofSatisfy(proof, ScopedOperation.Disable2Fa).Should().Be(expected);
+
+    // ---- Changing the password is Basic (T061) — every current proof, incl. the password itself, satisfies ----
 
     [Theory]
     [InlineData(ChallengeMethod.Passkey)]
     [InlineData(ChallengeMethod.Totp)]
-    [InlineData(ChallengeMethod.Password)]
+    [InlineData(ChallengeMethod.Password)]  // re-enter your password to change it — no dead-end for password-only users
     [InlineData(ChallengeMethod.ReOAuth)]
-    public void CanProofSatisfy_Disable2Fa_AllCurrentProofsSatisfy(ChallengeMethod proof)
-        => AssurancePolicy.CanProofSatisfy(proof, ScopedOperation.Disable2Fa).Should().BeTrue();
-
-    [Theory]
-    [InlineData(ChallengeMethod.Passkey)]
-    [InlineData(ChallengeMethod.Totp)]
-    [InlineData(ChallengeMethod.Password)]
-    [InlineData(ChallengeMethod.ReOAuth)]
-    public void CanProofSatisfy_ChangePassword_AllCurrentProofsSatisfy(ChallengeMethod proof)
+    public void CanProofSatisfy_ChangePassword_AnyEnrolledProofSatisfies(ChallengeMethod proof)
         => AssurancePolicy.CanProofSatisfy(proof, ScopedOperation.ChangePassword).Should().BeTrue();
 
     // ---- Worked invariant: a Basic proof (future Email/SMS OTP) can never reach Strong/Strongest ----
