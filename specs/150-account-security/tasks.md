@@ -12,6 +12,18 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 **Organization**: grouped by the four user stories (US1=P1 MVP → US4=P4), each independently shippable.
 
+## Implementation status (2026-06-11)
+
+**US1 (P1 MVP) — delivered & verified.** Backend floor rule (T016), always-notify wiring (T017), finished Passkey proof + Re-OAuth API path (T014/T015), assurance fields on the aggregate (T006/T013), and the consolidated **Security** home (relocated sections + `SecurityHome`/`AssuranceBadge`/`TwoFactorSection`, menu entry, `/security` page, Settings-tab retirement + redirect; T018–T025), plus bUnit coverage (T009) and docs (T055/T056). Full Tenant suite green (1296+); 6 bUnit Security tests green; Web.Client/Components.User/Core build 0-warning.
+
+**Partial / deferred deviations (recorded):**
+- **T010/T012** — the aggregate surfaces `RequiredProofTier` per row, but `CanRemove` still reflects only the last-method floor (not the "holds a sufficiently-strong proof" widening). The server stays authoritative: an over-optimistic Remove triggers the step-up, which then returns `403 proof_tier_insufficient` (surfaced by the dialog). Widening `CanRemove` is the remaining T012 work.
+- **T024** — the **Passkey** proof rung is fully implemented (WebAuthn assertion); the **Re-OAuth** rung keeps its redirect-return UX deferred (API path works; the security-critical removals are covered by the Passkey/TOTP/Password rungs).
+- **T002/T011** — Playwright E2E (web) **not written** (needs the Docker UI harness; see the `sorcha-ui` skill).
+- **US2 (Email OTP, T026–T038), US3 (SMS OTP, T039–T047), US4 (PWA parity, T048–T054)** — **not started**; independently-shippable follow-up phases per the design's delivery phasing. US2 owns the schema squash (T030).
+- **T057–T060** — docs partially done (T055/T056); API-DOCUMENTATION/AUTHENTICATION-SETUP/dev-status full pass pending.
+- **T061** — password-as-Strong-proof remains a **flagged decision** for review (not changed).
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: parallelizable (different files, no dependency on an incomplete task)
@@ -33,9 +45,9 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 **Purpose**: prep that is not story-specific. No new project is created.
 
-- [ ] T001 [P] Verify `RootNamespace=Sorcha.UI.Core` on `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Sorcha.UI.Components.User.csproj` (so relocated component namespaces stay stable per R-012) and create the empty `Components/Security/` folder.
+- [x] T001 [P] Verify `RootNamespace=Sorcha.UI.Core` on `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Sorcha.UI.Components.User.csproj` (so relocated component namespaces stay stable per R-012) and create the empty `Components/Security/` folder.
 - [ ] T002 [P] Scaffold the E2E category: create `tests/Sorcha.UI.E2E.Tests/PageObjects/SecurityPage.cs` and an empty `tests/Sorcha.UI.E2E.Tests/Docker/Security/` folder with a `[Category("Security")]` fixture base (per the `sorcha-ui` skill page-object pattern).
-- [ ] T003 [P] Confirm `Sorcha.UI.Web.Client` and `Sorcha.Wallet.Pwa` both transitively reference `Sorcha.UI.Components.User` (web via `Sorcha.UI.Core` re-export, PWA directly) so a shared `SecurityHome` renders on both hosts.
+- [x] T003 [P] Confirm `Sorcha.UI.Web.Client` and `Sorcha.Wallet.Pwa` both transitively reference `Sorcha.UI.Components.User` (web via `Sorcha.UI.Core` re-export, PWA directly) so a shared `SecurityHome` renders on both hosts.
 
 ---
 
@@ -43,11 +55,11 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 **⚠️ CRITICAL**: the assurance model + notifier are consumed by every user story. Complete before US1.
 
-- [ ] T004 Write the EXHAUSTIVE matrix unit test for the floor rule (every proof-tier × operation × target → expected allow/deny, exactly per `contracts/floor-rule-policy.md` Tables A/B/C and the 4 worked invariants) in `tests/Sorcha.Tenant.Service.Tests/Auth/AssurancePolicyTests.cs` — MUST fail first.
-- [ ] T005 Implement `AssurancePolicy` (static `TierOf(AuthMethodKind)`, `RequiredProofTierFor(operation,target)`, `CanRemove(user,method)`) in `src/Services/Sorcha.Tenant.Service/Services/Auth/AssurancePolicy.cs` + `AuthAssuranceTier` enum (`Basic=1,Strong=2,Strongest=3`) — make T004 pass.
-- [ ] T006 [P] Extend the aggregate DTOs (`AuthMethodsResponse` + `AuthMethodRow`) with `AssuranceTier`, `RequiredProofTier`, `Role`, and `SmsAvailable` per `contracts/account-security.openapi.yaml`, in `src/Services/Sorcha.Tenant.Service/Models/` (auth-methods response model).
-- [ ] T007 [P] Add the F112 `SecurityChangeDispatch` record + `security-change.{html,txt}` Sorcha-branded Scriban template (no per-org branding) under `src/Services/Sorcha.Tenant.Service/Emails/Templates/`, register it on `ITransactionalEmailService`, and commit snapshot fixtures in `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/security-change.{html,txt}`.
-- [ ] T008 Implement `SecurityChangeNotifier` (F118 inbox via `TenantSecurityInboxWriter` + F112 `SecurityChangeDispatch`, wrapped `try`/`LogError`/swallow per FR-011) in `src/Services/Sorcha.Tenant.Service/Services/Auth/SecurityChangeNotifier.cs` + a unit test asserting a notifier failure does not throw, in `tests/Sorcha.Tenant.Service.Tests/Auth/SecurityChangeNotifierTests.cs`.
+- [x] T004 Write the EXHAUSTIVE matrix unit test for the floor rule (every proof-tier × operation × target → expected allow/deny, exactly per `contracts/floor-rule-policy.md` Tables A/B/C and the 4 worked invariants) in `tests/Sorcha.Tenant.Service.Tests/Auth/AssurancePolicyTests.cs` — MUST fail first.
+- [x] T005 Implement `AssurancePolicy` (static `TierOf(AuthMethodKind)`, `RequiredProofTierFor(operation,target)`, `CanRemove(user,method)`) in `src/Services/Sorcha.Tenant.Service/Services/Auth/AssurancePolicy.cs` + `AuthAssuranceTier` enum (`Basic=1,Strong=2,Strongest=3`) — make T004 pass.
+- [x] T006 [P] Extend the aggregate DTOs (`AuthMethodsResponse` + `AuthMethodRow`) with `AssuranceTier`, `RequiredProofTier`, `Role`, and `SmsAvailable` per `contracts/account-security.openapi.yaml`, in `src/Services/Sorcha.Tenant.Service/Models/` (auth-methods response model).
+- [x] T007 [P] Add the F112 `SecurityChangeDispatch` record + `security-change.{html,txt}` Sorcha-branded Scriban template (no per-org branding) under `src/Services/Sorcha.Tenant.Service/Emails/Templates/`, register it on `ITransactionalEmailService`, and commit snapshot fixtures in `tests/Sorcha.Tenant.Service.Tests/Fixtures/Emails/security-change.{html,txt}`.
+- [x] T008 Implement `SecurityChangeNotifier` (F118 inbox via `TenantSecurityInboxWriter` + F112 `SecurityChangeDispatch`, wrapped `try`/`LogError`/swallow per FR-011) in `src/Services/Sorcha.Tenant.Service/Services/Auth/SecurityChangeNotifier.cs` + a unit test asserting a notifier failure does not throw, in `tests/Sorcha.Tenant.Service.Tests/Auth/SecurityChangeNotifierTests.cs`.
 
 **Checkpoint**: assurance policy + notifier ready — user stories can begin.
 
@@ -61,26 +73,26 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 ### Tests for User Story 1
 
-- [ ] T009 [P] [US1] bUnit test: `SecurityHome` renders the three groups, an `AssuranceBadge` per method, and disables Remove per server `CanRemove`/`RequiredProofTier`, in `tests/Sorcha.UI.Core.Tests/Security/SecurityHomeTests.cs` — fail first.
+- [x] T009 [P] [US1] bUnit test: `SecurityHome` renders the three groups, an `AssuranceBadge` per method, and disables Remove per server `CanRemove`/`RequiredProofTier`, in `tests/Sorcha.UI.Core.Tests/Security/SecurityHomeTests.cs` — fail first.
 - [ ] T010 [P] [US1] Unit test: `IAuthMethodService` aggregate emits assurance-aware `CanRemove` + `RequiredProofTier` (drives off `AssurancePolicy`) in `tests/Sorcha.Tenant.Service.Tests/Auth/AuthMethodServiceAssuranceTests.cs` — fail first.
 - [ ] T011 [P] [US1] Playwright E2E: user-menu *Security* entry (`data-testid=user-menu-security`) between My Profile/My Devices → navigates to `/app/security`; and floor-rule blocks passkey removal when only a Basic proof exists, in `tests/Sorcha.UI.E2E.Tests/Docker/Security/SecurityHomeTests.cs` — fail first.
 
 ### Implementation for User Story 1
 
 - [ ] T012 [US1] Widen `IAuthMethodService`/`AuthMethodService` to populate `AssuranceTier`, `Role`, `RequiredProofTier`, and assurance-aware `CanRemove` via `AssurancePolicy`, in `src/Services/Sorcha.Tenant.Service/Services/IAuthMethodService.cs` + `AuthMethodService.cs` (depends T005, T006).
-- [ ] T013 [US1] Extend `GET /api/me/auth-methods` to return the new fields (+ `SmsAvailable=false` until US3) with Scalar `.WithSummary()`/`.WithDescription()` + XML docs, in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthMethodsEndpoints.cs`.
-- [ ] T014 [P] [US1] Finish the **Passkey** step-up proof (reuse the FIDO2 assertion ceremony scoped to the challenge nonce → Strongest proof) in `src/Services/Sorcha.Tenant.Service/Services/.../AuthChallengeService.cs` + `Endpoints/AuthChallengeEndpoints.cs` (replaces the placeholder).
-- [ ] T015 [P] [US1] Finish the **Re-OAuth** step-up proof (re-run the social flow with a `stepup` intent, verify the returned identity matches a linked account → social tier) in `AuthChallengeService.cs` + `Endpoints/SocialLoginEndpoints.cs`.
-- [ ] T016 [US1] Enforce the floor rule on `challenge/initiate` + `challenge/verify` (offer only proof methods whose tier ≥ `RequiredProofTier`; server re-checks on verify, `403 proof_tier_insufficient`) in `AuthChallengeEndpoints.cs` (depends T005, T014, T015).
-- [ ] T017 [US1] Wire `SecurityChangeNotifier` into every existing auth-method mutation (password set/change/remove, social unlink, passkey add/rename/remove, TOTP enable/disable) across `PasswordEndpoints.cs`, `SocialLoginEndpoints.cs`, `PasskeyEndpoints.cs`, `TotpEndpoints.cs` (depends T008).
-- [ ] T018 [P] [US1] Relocate `PasswordSection.razor`, `SocialLinksSection.razor`, `PasskeysSection.razor`, `AuthChallengeDialog.razor` from `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/AuthMethods/` to `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/` (namespaces preserved via RootNamespace); update all `using`/references.
-- [ ] T019 [P] [US1] Create `AssuranceBadge.razor` (Strongest/Strong/Basic chip) in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/`.
-- [ ] T020 [US1] Build `SecurityHome.razor` (three job-based groups: *How you sign in* / *Two-factor authentication* (TOTP only until US2) / *Recovery*) composing the relocated sections + `AssuranceBadge`, in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/` (depends T018, T019).
-- [ ] T021 [US1] Add the **Security** item to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Shared/UserProfileMenu.razor` between *My Profile* and *My Devices* — `Icons.Material.Filled.Security`, `data-testid="user-menu-security"`, base-relative `Navigation.NavigateTo("security")`.
-- [ ] T022 [US1] Create the web host page `@page "/security"` → `<SecurityHome/>` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Security.razor` (resolves to `/app/security`).
-- [ ] T023 [US1] Retire the Settings *Accounts* + *Security* tabs and redirect old deep-links (`/settings?tab=accounts|security`, `/settings/notifications` unaffected) to `/security`, in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Settings.razor`.
+- [x] T013 [US1] Extend `GET /api/me/auth-methods` to return the new fields (+ `SmsAvailable=false` until US3) with Scalar `.WithSummary()`/`.WithDescription()` + XML docs, in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthMethodsEndpoints.cs`.
+- [x] T014 [P] [US1] Finish the **Passkey** step-up proof (reuse the FIDO2 assertion ceremony scoped to the challenge nonce → Strongest proof) in `src/Services/Sorcha.Tenant.Service/Services/.../AuthChallengeService.cs` + `Endpoints/AuthChallengeEndpoints.cs` (replaces the placeholder).
+- [x] T015 [P] [US1] Finish the **Re-OAuth** step-up proof (re-run the social flow with a `stepup` intent, verify the returned identity matches a linked account → social tier) in `AuthChallengeService.cs` + `Endpoints/SocialLoginEndpoints.cs`.
+- [x] T016 [US1] Enforce the floor rule on `challenge/initiate` + `challenge/verify` (offer only proof methods whose tier ≥ `RequiredProofTier`; server re-checks on verify, `403 proof_tier_insufficient`) in `AuthChallengeEndpoints.cs` (depends T005, T014, T015).
+- [x] T017 [US1] Wire `SecurityChangeNotifier` into every existing auth-method mutation (password set/change/remove, social unlink, passkey add/rename/remove, TOTP enable/disable) across `PasswordEndpoints.cs`, `SocialLoginEndpoints.cs`, `PasskeyEndpoints.cs`, `TotpEndpoints.cs` (depends T008).
+- [x] T018 [P] [US1] Relocate `PasswordSection.razor`, `SocialLinksSection.razor`, `PasskeysSection.razor`, `AuthChallengeDialog.razor` from `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/AuthMethods/` to `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/` (namespaces preserved via RootNamespace); update all `using`/references.
+- [x] T019 [P] [US1] Create `AssuranceBadge.razor` (Strongest/Strong/Basic chip) in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/`.
+- [x] T020 [US1] Build `SecurityHome.razor` (three job-based groups: *How you sign in* / *Two-factor authentication* (TOTP only until US2) / *Recovery*) composing the relocated sections + `AssuranceBadge`, in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/` (depends T018, T019).
+- [x] T021 [US1] Add the **Security** item to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Shared/UserProfileMenu.razor` between *My Profile* and *My Devices* — `Icons.Material.Filled.Security`, `data-testid="user-menu-security"`, base-relative `Navigation.NavigateTo("security")`.
+- [x] T022 [US1] Create the web host page `@page "/security"` → `<SecurityHome/>` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Security.razor` (resolves to `/app/security`).
+- [x] T023 [US1] Retire the Settings *Accounts* + *Security* tabs and redirect old deep-links (`/settings?tab=accounts|security`, `/settings/notifications` unaffected) to `/security`, in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Settings.razor`.
 - [ ] T024 [US1] Update `AuthChallengeDialog.razor` to render only the server-offered (floor-permitted) proof rungs and ensure the now-finished Passkey + Re-OAuth rungs work (no placeholder text), in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Security/AuthChallengeDialog.razor` (depends T016).
-- [ ] T025 [US1] Use `IInlineFeedback` for own-action feedback on the Security home and inline `MudAlert` for dialog errors (no `ISnackbar`, CLAUDE.md #12), across the Security components.
+- [x] T025 [US1] Use `IInlineFeedback` for own-action feedback on the Security home and inline `MudAlert` for dialog errors (no `ISnackbar`, CLAUDE.md #12), across the Security components.
 
 **Checkpoint**: US1 is a fully functional, discoverable, safe web Security home — the shippable MVP.
 
@@ -165,8 +177,8 @@ description: "Task list for Feature 150 — Unified Account Security Surface"
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T055 [P] Docs: update the Tenant Service README with the Security surface, 2FA channels, floor rule, and SMS config, in `src/Services/Sorcha.Tenant.Service/README.md`.
-- [ ] T056 [P] Docs: add an **F150** section to `.claude/skills/sorcha-architecture/SKILL.md` (endpoint surface, floor-rule policy, channel abstraction, assurance tiers).
+- [x] T055 [P] Docs: update the Tenant Service README with the Security surface, 2FA channels, floor rule, and SMS config, in `src/Services/Sorcha.Tenant.Service/README.md`.
+- [x] T056 [P] Docs: add an **F150** section to `.claude/skills/sorcha-architecture/SKILL.md` (endpoint surface, floor-rule policy, channel abstraction, assurance tiers).
 - [ ] T057 [P] Docs: add the new endpoints to `docs/reference/API-DOCUMENTATION.md` and the 2FA-channel + floor-rule + SMS-config flows to `docs/guides/AUTHENTICATION-SETUP.md`.
 - [ ] T058 [P] Observability: add OTel counters for OTP send/verify (tagged channel/outcome) and floor-rule rejections on the `Sorcha.Tenant.Auth` (or `Sorcha.Identity`) meter, in `src/Services/Sorcha.Tenant.Service/Services/Auth/`.
 - [ ] T059 [P] Audit: MIT SPDX/Copyright headers on all new files; `.WithSummary()`/`.WithDescription()` + XML docs on every new endpoint; confirm no hard-coded `<Version>`.

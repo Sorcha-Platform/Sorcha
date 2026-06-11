@@ -1624,3 +1624,36 @@ Moves presentation-driven advancement off the imperative path onto the projector
 - **Live gate (must pass before merge):** re-run the F111/F127 presentation walkthroughs; confirm presentation success advances on every node and the sealed success outcome shows `RoutingDecision=PRESENT` in Mongo (the dormant-routing trap).
 
 Contract: `specs/145-ledger-derived-instances/contracts/submission-response.md`. Spec: `specs/145-ledger-derived-instances/` (+ `US6-IMPLEMENTATION-PLAN.md`). Design: `docs/superpowers/specs/2026-05-31-ledger-derived-instances-design.md`. CI clean-break gate (3 mirror patterns enforced): `scripts/check-ledger-derived-clean-break.ps1` + `.github/workflows/ledger-derived-clean-break-gate.yml`.
+
+---
+
+## Feature 150 — Unified Account Security Surface
+
+The successor to Feature 116. Consolidates account-security management into one discoverable **Security** home, adds an **assurance-aware floor rule**, finishes the stubbed step-up proofs, and (in follow-up phases) adds Email/SMS OTP second factors with full web ⇄ PWA parity. Design: `docs/superpowers/specs/2026-06-10-unified-account-security-design.md`; spec/contracts: `specs/150-account-security/`.
+
+### Assurance model (server-authoritative, computed never stored)
+
+`AssurancePolicy` (`Sorcha.Tenant.Service/Services/AssurancePolicy.cs`) is the single source of truth:
+- `AuthAssuranceTier` (`Basic=1 < Strong=2 < Strongest=3`) — ordinal so the floor compares with `>=`.
+- `TierOfMethod(AuthMethodKind)` — Passkey=Strongest, Password=Strong, Social=Basic (badge).
+- `TierOfProof(ChallengeMethod)` — Passkey=Strongest, Totp/Password/ReOAuth=Strong, else Basic. **Password-as-proof = Strong is a flagged decision (T061)** — demoting it to Basic is a one-line change here + the matrix test.
+- `RequiredProofTier(ScopedOperation, AuthMethodKind? target)` — the floor. `RemoveAuthMethod` is ambiguous (passkey-revoke vs social-unlink) so the **target is required**; a **null target fails safe to Strongest**.
+
+### The ladder-floor rule (the security spine)
+
+> A step-up proof authorises a destructive/downgrade op on a method **iff `proofTier >= RequiredProofTier(op, target)`** AND the last-sign-in-method floor (`Total >= 1`) holds. Strict — no lower-tier fallback. A Basic (email/SMS) proof can therefore **never** strip a passkey, disable TOTP, or change the password.
+
+Enforced in `AuthChallengeService`: **initiate** offers only floor-eligible proof methods (filter-then-ladder — TOTP is still preferred for ChangePassword, but only a Passkey can authorise a passkey removal); **verify** re-checks and returns `403 proof_tier_insufficient` (`ChallengeVerificationOutcome.ProofTierInsufficient`). The `TargetMethodKind` is threaded through `ChallengeInitiate/VerifyRequest` → service → endpoints, and the UI client (`AuthMethodsClientService`) sends it from the dialog (`AuthChallengeDialog` `Target` param: PasskeysSection→Passkey, SocialLinksSection→Social). The aggregate read `GET /api/me/auth-methods` surfaces per-row `AssuranceTier` + `RequiredProofTier` + `CanRemove` (UI reflects, never decides).
+
+### Always-notify (paired defense, FR-009/FR-011)
+
+`ISecurityChangeNotifier` (`SecurityChangeNotifier.cs`) fires on **every** security mutation — F118 inbox entry (`ITenantSecurityInboxWriter.WriteSecurityChangeAsync`, DetailHref `/security`) **and** a Sorcha-branded email (`ITransactionalEmailService.SendSecurityChangeAsync` + `security-change` template). Both legs best-effort (try/log/swallow) — a notify failure never rolls back the operation. Wired into PasswordManagementService, SocialLinkService, PasskeyService (add/revoke/rename), and TotpService (enable/disable; maps the org-scoped UserIdentity id → account-wide PlatformUser id the notifier needs).
+
+### UI surface (shared, built once)
+
+`Sorcha.UI.Components.User/Components/Security/` (RootNamespace `Sorcha.UI.Core`): `SecurityHome` (three job-based groups — *How you sign in* / *Two-factor authentication* / *Recovery*), `AssuranceBadge`, `TwoFactorSection` (TOTP; US2 adds Email, US3 SMS), and the relocated `PasswordSection`/`SocialLinksSection`/`PasskeysSection`/`AuthChallengeDialog` + `PasskeyInteropService`. Mounted by the web host at `Pages/Security.razor` (`/app/security`); the avatar menu (`UserProfileMenu.razor`) has a **Security** item (`data-testid=user-menu-security`) between *My Profile* and *My Devices*. The Settings *Accounts* + *Security* tabs are retired; `/settings?tab=accounts|security` redirect to `/security`.
+
+### Status / phasing (independently shippable)
+
+- **US1 (shipped):** consolidation + floor rule + finished Passkey/Re-OAuth proofs + always-notify. Re-OAuth proof rung's in-browser redirect-return UX is deferred (the API path + Passkey/TOTP/Password rungs cover the security-critical removals).
+- **US2 (Email OTP), US3 (SMS OTP, config-gated via `ISmsSender`), US4 (PWA parity):** follow-up phases. US2 owns the pre-release **schema squash** (`PlatformUser.PhoneNumber`/`PhoneVerifiedAt` + `PlatformUserTwoFactor` folded into the Tenant initial migration); US3 rides the same migration. Both reuse a Redis-backed `ServerSentOtpService` + `VerificationChannelRegistry` (SMS channel registered only when `ISmsSender` is configured; aggregate `SmsAvailable` gates the UI).
