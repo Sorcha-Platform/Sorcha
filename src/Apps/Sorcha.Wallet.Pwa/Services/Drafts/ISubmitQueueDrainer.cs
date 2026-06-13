@@ -26,6 +26,7 @@ public sealed class SubmitQueueDrainer : ISubmitQueueDrainer
     private readonly IApplicationActionClient _actionClient;
     private readonly IActionContextCache _contextCache;
     private readonly IDraftStore _drafts;
+    private readonly IFileChunkUploader _uploader;
     private readonly ILogger<SubmitQueueDrainer> _logger;
 
     /// <summary>Initialises a new instance.</summary>
@@ -34,12 +35,14 @@ public sealed class SubmitQueueDrainer : ISubmitQueueDrainer
         IApplicationActionClient actionClient,
         IActionContextCache contextCache,
         IDraftStore drafts,
+        IFileChunkUploader uploader,
         ILogger<SubmitQueueDrainer> logger)
     {
         _queue = queue ?? throw new ArgumentNullException(nameof(queue));
         _actionClient = actionClient ?? throw new ArgumentNullException(nameof(actionClient));
         _contextCache = contextCache ?? throw new ArgumentNullException(nameof(contextCache));
         _drafts = drafts ?? throw new ArgumentNullException(nameof(drafts));
+        _uploader = uploader ?? throw new ArgumentNullException(nameof(uploader));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -56,7 +59,19 @@ public sealed class SubmitQueueDrainer : ISubmitQueueDrainer
             return SubmitOutcome.Retry;
         }
 
-        var result = await _actionClient.SubmitAsync(context, item.Payload, ct).ConfigureAwait(false);
+        // US5 — upload any offline-captured media now (online) and reference it in the payload.
+        var payload = new Dictionary<string, object?>(item.Payload);
+        if (item.Attachments.Count > 0)
+        {
+            var ok = await _uploader.AttachAllAsync(
+                item.Attachments, payload, context.SenderWallet, context.RegisterId, ct).ConfigureAwait(false);
+            if (!ok)
+            {
+                return SubmitOutcome.Retry; // media upload failed — retry the whole submission later
+            }
+        }
+
+        var result = await _actionClient.SubmitAsync(context, payload, ct).ConfigureAwait(false);
         var outcome = SubmitConflictClassifier.Classify(result);
         if (outcome == SubmitOutcome.Submitted)
         {

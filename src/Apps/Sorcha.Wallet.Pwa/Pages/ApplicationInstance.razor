@@ -27,6 +27,7 @@
 @inject IActionContextCache ActionContextCache
 @inject IDraftStore DraftStore
 @inject ISubmitQueue SubmitQueue
+@inject IFileChunkUploader FileUploader
 @inject IConnectivity Connectivity
 @inject NavigationManager Nav
 @inject ILogger<ApplicationInstance> Logger
@@ -264,6 +265,8 @@
         {
             // Feature 152 (US3) — no connectivity: queue the submission to flush on reconnect,
             // rather than failing. The draft is cleared (its data now lives in the queue).
+            var media = ToDraftMedia(submission.FileAttachments);
+
             if (!Connectivity.IsOnline)
             {
                 await SubmitQueue.EnqueueAsync(new QueuedSubmission
@@ -274,6 +277,7 @@
                     RegisterId = _ctx.RegisterId,
                     SenderWallet = _ctx.SenderWallet,
                     Payload = new Dictionary<string, object?>(submission.Data),
+                    Attachments = media,
                     IdempotencyKey = Guid.NewGuid().ToString("N"),
                 });
                 _autosaveCts?.Cancel();
@@ -284,7 +288,20 @@
                 return;
             }
 
-            var result = await ActionClient.SubmitAsync(_ctx, submission.Data);
+            // US5 — online: upload captured media via the chunk pipeline and reference it in the payload.
+            var payload = new Dictionary<string, object?>(submission.Data);
+            if (media.Count > 0)
+            {
+                var uploaded = await FileUploader.AttachAllAsync(media, payload, _ctx.SenderWallet, _ctx.RegisterId);
+                if (!uploaded)
+                {
+                    _severity = Severity.Error;
+                    _status = "Couldn't upload your photo(s). Check your connection and try again.";
+                    return;
+                }
+            }
+
+            var result = await ActionClient.SubmitAsync(_ctx, payload);
             switch (result.Status)
             {
                 case ApplicationSubmissionStatus.Success:
@@ -319,4 +336,14 @@
     }
 
     private void GoHome() => Nav.NavigateTo("");
+
+    private static List<DraftMedia> ToDraftMedia(IReadOnlyList<Sorcha.UI.Core.Models.Forms.FileAttachmentInfo> attachments)
+    {
+        var list = new List<DraftMedia>(attachments.Count);
+        foreach (var a in attachments)
+        {
+            list.Add(new DraftMedia(a.FileName, a.ContentType, Convert.ToBase64String(a.Content), DateTimeOffset.UtcNow, a.Scope));
+        }
+        return list;
+    }
 }

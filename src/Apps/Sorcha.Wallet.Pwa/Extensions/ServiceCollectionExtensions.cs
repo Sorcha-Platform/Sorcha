@@ -213,6 +213,13 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Feature 152 (US5) — file-chunk uploader for captured media (consumer-tier /api/file-chunks).
+        services.AddHttpClient<Sorcha.Wallet.Pwa.Services.Drafts.IFileChunkUploader,
+                               Sorcha.Wallet.Pwa.Services.Drafts.FileChunkUploader>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 128 — shared has-any-device probe. Drives the wallet PWA
         // pairing-takeover trigger (sub-PR A3) and the Sorcha Web nag-banner
         // trigger (sub-PR B). Registered Singleton so the cached value +

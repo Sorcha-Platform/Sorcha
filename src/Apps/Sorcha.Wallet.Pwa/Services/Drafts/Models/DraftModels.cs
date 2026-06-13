@@ -36,7 +36,9 @@ public enum ConflictReason
 /// <param name="ContentType">MIME type.</param>
 /// <param name="ContentBase64">Base64 bytes (encrypted in the store; held in memory while editing).</param>
 /// <param name="CapturedAt">When captured.</param>
-public sealed record DraftMedia(string FileName, string ContentType, string ContentBase64, DateTimeOffset CapturedAt);
+/// <param name="Scope">The JSON-Pointer form field this media attaches to (e.g. "/proofOfAddress").</param>
+public sealed record DraftMedia(
+    string FileName, string ContentType, string ContentBase64, DateTimeOffset CapturedAt, string Scope = "");
 
 /// <summary>
 /// Feature 152 — a citizen's in-progress action draft, persisted encrypted on the device. Keyed by
