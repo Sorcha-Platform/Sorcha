@@ -36,7 +36,7 @@
   }
 
   const DB_NAME = "sorcha-wallet";
-  const DB_VERSION = 3;
+  const DB_VERSION = 4;
   const CONTENT_KEY_ID = "content-key/v1";
 
   let dbPromise = null;
@@ -58,6 +58,13 @@
         if (!db.objectStoreNames.contains("personas")) db.createObjectStore("personas");
         // v3 (Feature 114 US5) — citizen's own presentation activity log.
         if (!db.objectStoreNames.contains("presentationLog")) db.createObjectStore("presentationLog", { keyPath: "id" });
+        // v4 (Feature 152 — offline / field capture):
+        //   drafts        — keyed by id ("instanceId:actionId") — encrypted in-progress action drafts (form + media)
+        //   submitQueue  — keyed by id (GUID string)            — encrypted deferred submissions (outbox)
+        //   actionContext — keyed by id ("instanceId:actionId") — encrypted cached action form contexts for offline open
+        if (!db.objectStoreNames.contains("drafts")) db.createObjectStore("drafts", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("submitQueue")) db.createObjectStore("submitQueue", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("actionContext")) db.createObjectStore("actionContext", { keyPath: "id" });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -242,10 +249,52 @@
     await del("credentials", id);
   }
 
+  // --- generic encrypted store ops (Feature 152) ----------------------------
+  // Reuse the credential content-key + XChaCha20 sealing for any store whose
+  // rows are { id, nonce, ciphertext, updatedAt }. Callers serialise their own
+  // object to JSON. listEnc/getEnc evict undecryptable rows (legacy-cipher /
+  // corrupt) rather than aborting, matching the credential cache behaviour.
+
+  async function putEnc(storeName, key, payloadJson) {
+    const { nonce, ciphertext } = await encryptString(payloadJson);
+    await put(storeName, { id: key, nonce, ciphertext, updatedAt: new Date().toISOString() });
+  }
+
+  async function getEnc(storeName, key) {
+    const row = await get(storeName, key);
+    if (!row) return null;
+    try {
+      return await decryptString(row.nonce, row.ciphertext);
+    } catch (e) {
+      console.warn("[Sorcha] evicting undecryptable row", storeName, key, e);
+      await del(storeName, key);
+      return null;
+    }
+  }
+
+  // Returns [{ id, json }] so callers know each row's key (e.g. autoincrement queue ids).
+  async function listEnc(storeName) {
+    const rows = await getAll(storeName);
+    const out = [];
+    const evict = [];
+    for (const row of rows) {
+      try {
+        out.push({ id: row.id, json: await decryptString(row.nonce, row.ciphertext) });
+      } catch (e) {
+        console.warn("[Sorcha] evicting undecryptable row", storeName, row && row.id, e);
+        if (row && row.id !== undefined) evict.push(row.id);
+      }
+    }
+    for (const id of evict) await del(storeName, id);
+    return out;
+  }
+
   globalThis.SorchaIndexedDb = {
     // raw store ops
     put, get, del, getAll, clear, wipe,
     // credentials (encrypted)
     putCredential, getCredential, listCredentials, deleteCredential,
+    // generic encrypted stores (Feature 152 — drafts / submitQueue / actionContext)
+    putEnc, getEnc, listEnc, delEnc: del,
   };
 })();

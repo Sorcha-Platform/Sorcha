@@ -15,12 +15,20 @@
 @layout MainLayout
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
+@implements IAsyncDisposable
 @using Sorcha.UI.Core.Components.Forms
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Applications
+@using Sorcha.Wallet.Pwa.Services.Drafts
+@using Sorcha.Wallet.Pwa.Services.Drafts.Models
 @inject IApplicationActionClient ActionClient
 @inject IPendingApplicationClient PendingApplications
+@inject IActionContextCache ActionContextCache
+@inject IDraftStore DraftStore
+@inject ISubmitQueue SubmitQueue
+@inject IFileChunkUploader FileUploader
+@inject IConnectivity Connectivity
 @inject NavigationManager Nav
 @inject ILogger<ApplicationInstance> Logger
 
@@ -44,7 +52,16 @@
                                     ParticipantAddress="_ctx.SenderWallet"
                                     SigningWalletAddress="_ctx.SenderWallet"
                                     IsSenderAction="true"
+                                    InitialFormData="_initialFormData"
+                                    OnFormDataChanged="HandleFormDataChangedAsync"
                                     OnSubmit="HandleSubmitAsync" />
+                @if (_draftSavedAt is { } saved)
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2 d-block"
+                             data-testid="application-instance-draft-saved">
+                        Saved offline @saved.ToLocalTime().ToString("HH:mm")
+                    </MudText>
+                }
             </div>
             @if (!string.IsNullOrEmpty(_status))
             {
@@ -55,16 +72,35 @@
         case State.Submitted:
             <MudPaper Class="pa-6 d-flex flex-column align-center gap-3" Elevation="1"
                       data-testid="application-instance-submitted">
-                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
-                <MudText Typo="Typo.h6">Application submitted</MudText>
-                <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
-                    You'll see the in-progress state on Home. Watch your wallet — your credential will
-                    arrive here once it's approved.
-                </MudText>
+                @if (_queuedOffline)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CloudOff" Color="Color.Info" Size="Size.Large" />
+                    <MudText Typo="Typo.h6">Saved — will submit when online</MudText>
+                    <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
+                        You're offline. We've saved this and will submit it automatically the next time
+                        you're connected.
+                    </MudText>
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
+                    <MudText Typo="Typo.h6">Application submitted</MudText>
+                    <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
+                        You'll see the in-progress state on Home. Watch your wallet — your credential will
+                        arrive here once it's approved.
+                    </MudText>
+                }
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GoHome">
                     Back to wallet
                 </MudButton>
             </MudPaper>
+            break;
+
+        case State.Offline:
+            <MudAlert Severity="Severity.Info" data-testid="application-instance-offline">
+                This application isn't available offline yet. Open it once while you're connected and
+                it'll be ready to fill in the field next time.
+            </MudAlert>
             break;
 
         default:
@@ -79,7 +115,7 @@
     /// <summary>The blueprint instance the form binds to.</summary>
     [Parameter] public Guid InstanceId { get; set; }
 
-    private enum State { Loading, Ready, Submitted, Error }
+    private enum State { Loading, Ready, Submitted, Error, Offline }
 
     private State _state = State.Loading;
     private ApplicationFormContext? _ctx;
@@ -87,10 +123,137 @@
     private Severity _severity = Severity.Info;
     private bool _busy;
 
+    // Feature 152 (US1) — offline draft: seed editable values from a saved draft, autosave edits.
+    private IReadOnlyDictionary<string, object?>? _initialFormData;
+    private IReadOnlyDictionary<string, object?> _currentFormData = new Dictionary<string, object?>();
+    private DateTimeOffset? _draftSavedAt;
+    private CancellationTokenSource? _autosaveCts;
+    private static readonly TimeSpan AutosaveDebounce = TimeSpan.FromMilliseconds(800);
+    private bool _queuedOffline;
+
     protected override async Task OnInitializedAsync()
     {
-        _ctx = await ActionClient.LoadFormAsync(InstanceId);
-        _state = _ctx is null ? State.Error : State.Ready;
+        // Online: resolve the live form context. On failure (offline / unreachable), fall back to
+        // the locally pre-cached context (Feature 152 US2) so the action still opens in the field.
+        try
+        {
+            _ctx = await ActionClient.LoadFormAsync(InstanceId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Live form load failed for {InstanceId}; trying offline cache.", InstanceId);
+            _ctx = null;
+        }
+
+        if (_ctx is null)
+        {
+            _ctx = await TryLoadCachedContextAsync();
+            if (_ctx is null)
+            {
+                // No live context and nothing prepared offline — distinct from a hard error.
+                _state = State.Offline;
+                return;
+            }
+        }
+
+        // Feature 152 — seed the form from any saved offline draft for this action.
+        try
+        {
+            var draft = await DraftStore.GetAsync(InstanceId.ToString(), _ctx.ActionId);
+            if (draft is { FormData.Count: > 0 })
+            {
+                _initialFormData = draft.FormData;
+                _currentFormData = draft.FormData;
+                _draftSavedAt = draft.SavedAt;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Loading draft for {InstanceId} failed; starting fresh.", InstanceId);
+        }
+
+        _state = State.Ready;
+    }
+
+    private async Task HandleFormDataChangedAsync(IReadOnlyDictionary<string, object?> data)
+    {
+        _currentFormData = data;
+        if (_ctx is null) return;
+
+        // Debounce: coalesce rapid edits into one save ~800ms after the last keystroke.
+        _autosaveCts?.Cancel();
+        _autosaveCts?.Dispose();
+        _autosaveCts = new CancellationTokenSource();
+        var token = _autosaveCts.Token;
+        try
+        {
+            await Task.Delay(AutosaveDebounce, token);
+            await SaveDraftAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException) { /* superseded by a newer edit */ }
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            await DraftStore.SaveAsync(new ActionDraft
+            {
+                InstanceId = InstanceId.ToString(),
+                ActionId = _ctx.ActionId,
+                FormData = new Dictionary<string, object?>(_currentFormData),
+                Status = DraftStatus.Editing,
+            });
+            _draftSavedAt = DateTimeOffset.Now;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Autosave of draft {InstanceId} failed.", InstanceId);
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        // Flush any pending edit so navigating away never loses work (FR-001).
+        _autosaveCts?.Cancel();
+        _autosaveCts?.Dispose();
+        _autosaveCts = null;
+        if (_state == State.Ready && _currentFormData.Count > 0)
+        {
+            await SaveDraftAsync();
+        }
+    }
+
+    private async Task<ApplicationFormContext?> TryLoadCachedContextAsync()
+    {
+        try
+        {
+            var cached = await ActionContextCache.GetForInstanceAsync(InstanceId.ToString());
+            if (cached is null)
+            {
+                return null;
+            }
+
+            var action = System.Text.Json.JsonSerializer.Deserialize<Sorcha.Blueprint.Models.Action>(
+                cached.ActionJson,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            if (action is null)
+            {
+                return null;
+            }
+
+            return new ApplicationFormContext(
+                InstanceId, action, cached.BlueprintId, cached.RegisterId, cached.SenderWallet,
+                cached.ActionId, string.IsNullOrWhiteSpace(cached.Title) ? "Application" : cached.Title);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Offline cached context load failed for {InstanceId}.", InstanceId);
+            return null;
+        }
     }
 
     private async Task HandleSubmitAsync(FormSubmission submission)
@@ -100,10 +263,52 @@
         _status = null;
         try
         {
-            var result = await ActionClient.SubmitAsync(_ctx, submission.Data);
+            // Feature 152 (US3) — no connectivity: queue the submission to flush on reconnect,
+            // rather than failing. The draft is cleared (its data now lives in the queue).
+            var media = ToDraftMedia(submission.FileAttachments);
+
+            if (!Connectivity.IsOnline)
+            {
+                await SubmitQueue.EnqueueAsync(new QueuedSubmission
+                {
+                    InstanceId = InstanceId.ToString(),
+                    ActionId = _ctx.ActionId,
+                    BlueprintId = _ctx.BlueprintId,
+                    RegisterId = _ctx.RegisterId,
+                    SenderWallet = _ctx.SenderWallet,
+                    Payload = new Dictionary<string, object?>(submission.Data),
+                    Attachments = media,
+                    IdempotencyKey = Guid.NewGuid().ToString("N"),
+                });
+                _autosaveCts?.Cancel();
+                try { await DraftStore.DeleteAsync(InstanceId.ToString(), _ctx.ActionId); }
+                catch (Exception ex) { Logger.LogWarning(ex, "Clearing draft after queueing failed."); }
+                _queuedOffline = true;
+                _state = State.Submitted;
+                return;
+            }
+
+            // US5 — online: upload captured media via the chunk pipeline and reference it in the payload.
+            var payload = new Dictionary<string, object?>(submission.Data);
+            if (media.Count > 0)
+            {
+                var uploaded = await FileUploader.AttachAllAsync(media, payload, _ctx.SenderWallet, _ctx.RegisterId);
+                if (!uploaded)
+                {
+                    _severity = Severity.Error;
+                    _status = "Couldn't upload your photo(s). Check your connection and try again.";
+                    return;
+                }
+            }
+
+            var result = await ActionClient.SubmitAsync(_ctx, payload);
             switch (result.Status)
             {
                 case ApplicationSubmissionStatus.Success:
+                    // Feature 152 — submitted: the draft is no longer needed.
+                    _autosaveCts?.Cancel();
+                    try { await DraftStore.DeleteAsync(InstanceId.ToString(), _ctx.ActionId); }
+                    catch (Exception ex) { Logger.LogWarning(ex, "Clearing draft after submit failed."); }
                     try
                     {
                         await PendingApplications.SetAsync(_ctx.Title);
@@ -131,4 +336,14 @@
     }
 
     private void GoHome() => Nav.NavigateTo("");
+
+    private static List<DraftMedia> ToDraftMedia(IReadOnlyList<Sorcha.UI.Core.Models.Forms.FileAttachmentInfo> attachments)
+    {
+        var list = new List<DraftMedia>(attachments.Count);
+        foreach (var a in attachments)
+        {
+            list.Add(new DraftMedia(a.FileName, a.ContentType, Convert.ToBase64String(a.Content), DateTimeOffset.UtcNow, a.Scope));
+        }
+        return list;
+    }
 }

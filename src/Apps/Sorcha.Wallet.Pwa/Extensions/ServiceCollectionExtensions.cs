@@ -41,6 +41,18 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPresentationEngine, PresentationEngine>();
         services.AddSingleton<IDeviceKeyService, WebCryptoDeviceKeyService>();
         services.AddSingleton<ICredentialCache, IndexedDbCredentialCache>();
+        // Feature 152 (offline / field capture) — encrypted device-local store seam + connectivity.
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.IEncryptedObjectStore,
+                              Sorcha.Wallet.Pwa.Services.Drafts.IndexedDbEncryptedObjectStore>();
+        services.AddSingleton<IConnectivity, BrowserConnectivity>();
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.IActionContextCache,
+                              Sorcha.Wallet.Pwa.Services.Drafts.ActionContextCache>();
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.IDraftStore,
+                              Sorcha.Wallet.Pwa.Services.Drafts.DraftStore>();
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueue,
+                              Sorcha.Wallet.Pwa.Services.Drafts.SubmitQueue>();
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueueDrainer,
+                              Sorcha.Wallet.Pwa.Services.Drafts.SubmitQueueDrainer>();
         services.AddSingleton<IDelegationStore, IndexedDbDelegationStore>();
         services.AddSingleton<IStatusListService, IndexedDbStatusListService>();
         services.AddSingleton<ISyncCursorStore, IndexedDbSyncCursorStore>();
@@ -197,6 +209,13 @@ public static class ServiceCollectionExtensions
         // resolve the citizen's wallet(s) from the consumer-tier JWT. Same auth chain; no backend change.
         services.AddHttpClient<Sorcha.Wallet.Pwa.Services.Actions.IMyActionsClient,
                                Sorcha.Wallet.Pwa.Services.Actions.HttpMyActionsClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
+        // Feature 152 (US5) — file-chunk uploader for captured media (consumer-tier /api/file-chunks).
+        services.AddHttpClient<Sorcha.Wallet.Pwa.Services.Drafts.IFileChunkUploader,
+                               Sorcha.Wallet.Pwa.Services.Drafts.FileChunkUploader>(c =>
             c.BaseAddress = new Uri(gatewayBaseAddress))
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
