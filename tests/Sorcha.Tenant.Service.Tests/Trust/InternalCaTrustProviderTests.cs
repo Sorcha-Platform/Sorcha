@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Numerics;
 using System.Security.Cryptography;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
@@ -228,10 +229,14 @@ public class InternalCaTrustProviderTests
         parsed.Should().NotBeNull();
         currentCrlNumber.Should().Be(crl.Version);
 
-        // Round-trip: rebuild the CRL with the same entries and verify the DER shape.
-        // Simplest check — the revoked serial must appear somewhere in the DER bytes.
-        var serialBytes = Convert.FromHexString(enrolment.SerialNumber);
-        IndexOfSequence(crl.CrlDer, serialBytes).Should().BeGreaterThanOrEqualTo(0,
+        // The revoked serial must appear in the signed CRL bytes. Compare against the serial's
+        // CANONICAL DER INTEGER content (two's-complement big-endian), not the raw hex bytes:
+        // DER prepends a 0x00 sign byte when the leading bit is set and strips non-canonical
+        // leading zeros, so a raw-byte scan is non-deterministic across random serials (the source
+        // of an intermittent flake). Normalising to the DER INTEGER content makes this exact.
+        var serial = new BigInteger(Convert.FromHexString(enrolment.SerialNumber), isUnsigned: true, isBigEndian: true);
+        var derSerial = serial.ToByteArray(isUnsigned: false, isBigEndian: true);
+        IndexOfSequence(crl.CrlDer, derSerial).Should().BeGreaterThanOrEqualTo(0,
             "revoked serial number must be present in the signed CRL bytes");
     }
 
