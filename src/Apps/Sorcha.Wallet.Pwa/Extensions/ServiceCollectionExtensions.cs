@@ -41,6 +41,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPresentationEngine, PresentationEngine>();
         services.AddSingleton<IDeviceKeyService, WebCryptoDeviceKeyService>();
         services.AddSingleton<ICredentialCache, IndexedDbCredentialCache>();
+        // Feature 152 (offline / field capture) — encrypted device-local store seam + connectivity.
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.IEncryptedObjectStore,
+                              Sorcha.Wallet.Pwa.Services.Drafts.IndexedDbEncryptedObjectStore>();
+        services.AddSingleton<IConnectivity, BrowserConnectivity>();
         services.AddSingleton<IDelegationStore, IndexedDbDelegationStore>();
         services.AddSingleton<IStatusListService, IndexedDbStatusListService>();
         services.AddSingleton<ISyncCursorStore, IndexedDbSyncCursorStore>();
