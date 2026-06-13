@@ -17,6 +17,7 @@
 @implements IDisposable
 @inject IMyActionsClient MyActions
 @inject IPendingApplicationClient PendingApplications
+@inject Sorcha.Wallet.Pwa.Services.Drafts.IActionContextCache ActionContextCache
 @inject NavigationManager Nav
 
 <PageTitle>Things to do · Sorcha Wallet</PageTitle>
@@ -143,6 +144,10 @@
             var items = await MyActions.GetPendingAsync();
             _items = PendingActionOrdering.Order(items);
             _refreshError = false;
+
+            // Feature 152 (US2) — while online, pre-cache each pending action's form context so the
+            // citizen can open any of them offline. Best-effort, fire-and-forget; never blocks the list.
+            _ = ActionContextCache.RefreshFromPendingAsync();
         }
         catch (Exception)
         {

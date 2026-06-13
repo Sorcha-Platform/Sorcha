@@ -45,6 +45,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.IEncryptedObjectStore,
                               Sorcha.Wallet.Pwa.Services.Drafts.IndexedDbEncryptedObjectStore>();
         services.AddSingleton<IConnectivity, BrowserConnectivity>();
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.IActionContextCache,
+                              Sorcha.Wallet.Pwa.Services.Drafts.ActionContextCache>();
         services.AddSingleton<IDelegationStore, IndexedDbDelegationStore>();
         services.AddSingleton<IStatusListService, IndexedDbStatusListService>();
         services.AddSingleton<ISyncCursorStore, IndexedDbSyncCursorStore>();

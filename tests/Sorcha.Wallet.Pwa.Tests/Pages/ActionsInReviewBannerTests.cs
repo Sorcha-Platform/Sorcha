@@ -29,6 +29,7 @@ public sealed class ActionsInReviewBannerTests : ComponentTestFixture
     {
         Services.AddSingleton(_client.Object);
         Services.AddSingleton(_pending.Object);
+        Services.AddSingleton(Mock.Of<Sorcha.Wallet.Pwa.Services.Drafts.IActionContextCache>());
         _client.Setup(c => c.GetPendingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<PendingActionItem>());
     }

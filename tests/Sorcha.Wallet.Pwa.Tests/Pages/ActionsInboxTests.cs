@@ -34,6 +34,7 @@ public sealed class ActionsInboxTests : ComponentTestFixture
     {
         Services.AddSingleton(_client.Object);
         Services.AddSingleton(_pending.Object);
+        Services.AddSingleton(Mock.Of<Sorcha.Wallet.Pwa.Services.Drafts.IActionContextCache>());
         _pending.Setup(p => p.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync((PendingApplicationView?)null);
     }
 

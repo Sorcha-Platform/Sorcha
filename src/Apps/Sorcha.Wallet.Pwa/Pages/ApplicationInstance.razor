@@ -19,8 +19,10 @@
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Applications
+@using Sorcha.Wallet.Pwa.Services.Drafts
 @inject IApplicationActionClient ActionClient
 @inject IPendingApplicationClient PendingApplications
+@inject IActionContextCache ActionContextCache
 @inject NavigationManager Nav
 @inject ILogger<ApplicationInstance> Logger
 
@@ -67,6 +69,13 @@
             </MudPaper>
             break;
 
+        case State.Offline:
+            <MudAlert Severity="Severity.Info" data-testid="application-instance-offline">
+                This application isn't available offline yet. Open it once while you're connected and
+                it'll be ready to fill in the field next time.
+            </MudAlert>
+            break;
+
         default:
             <MudAlert Severity="Severity.Error" data-testid="application-instance-error">
                 We couldn't load this application. It may not be ready yet — try again shortly.
@@ -79,7 +88,7 @@
     /// <summary>The blueprint instance the form binds to.</summary>
     [Parameter] public Guid InstanceId { get; set; }
 
-    private enum State { Loading, Ready, Submitted, Error }
+    private enum State { Loading, Ready, Submitted, Error, Offline }
 
     private State _state = State.Loading;
     private ApplicationFormContext? _ctx;
@@ -89,8 +98,59 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _ctx = await ActionClient.LoadFormAsync(InstanceId);
-        _state = _ctx is null ? State.Error : State.Ready;
+        // Online: resolve the live form context. On failure (offline / unreachable), fall back to
+        // the locally pre-cached context (Feature 152 US2) so the action still opens in the field.
+        try
+        {
+            _ctx = await ActionClient.LoadFormAsync(InstanceId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Live form load failed for {InstanceId}; trying offline cache.", InstanceId);
+            _ctx = null;
+        }
+
+        if (_ctx is null)
+        {
+            _ctx = await TryLoadCachedContextAsync();
+            if (_ctx is null)
+            {
+                // No live context and nothing prepared offline — distinct from a hard error.
+                _state = State.Offline;
+                return;
+            }
+        }
+
+        _state = State.Ready;
+    }
+
+    private async Task<ApplicationFormContext?> TryLoadCachedContextAsync()
+    {
+        try
+        {
+            var cached = await ActionContextCache.GetForInstanceAsync(InstanceId.ToString());
+            if (cached is null)
+            {
+                return null;
+            }
+
+            var action = System.Text.Json.JsonSerializer.Deserialize<Sorcha.Blueprint.Models.Action>(
+                cached.ActionJson,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            if (action is null)
+            {
+                return null;
+            }
+
+            return new ApplicationFormContext(
+                InstanceId, action, cached.BlueprintId, cached.RegisterId, cached.SenderWallet,
+                cached.ActionId, string.IsNullOrWhiteSpace(cached.Title) ? "Application" : cached.Title);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Offline cached context load failed for {InstanceId}.", InstanceId);
+            return null;
+        }
     }
 
     private async Task HandleSubmitAsync(FormSubmission submission)
