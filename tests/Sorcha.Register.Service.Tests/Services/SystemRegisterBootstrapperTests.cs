@@ -68,7 +68,9 @@ public class SystemRegisterBootstrapperTests
 
     private SystemRegisterBootstrapper CreateBootstrapper(
         SystemRegisterOptions options,
-        ILogger<SystemRegisterBootstrapper>? logger = null)
+        ILogger<SystemRegisterBootstrapper>? logger = null,
+        ISystemWalletSigningService? signingService = null,
+        IHashProvider? hashProvider = null)
     {
         var registerManager = new RegisterManager(_mockRepository.Object, _mockEventPublisher.Object);
         var transactionManager = new TransactionManager(_mockRepository.Object, _mockEventPublisher.Object);
@@ -78,8 +80,8 @@ public class SystemRegisterBootstrapperTests
             registerManager,
             transactionManager,
             _validatorClient.Object,
-            new Mock<ISystemWalletSigningService>().Object,
-            new Mock<IHashProvider>().Object);
+            signingService ?? new Mock<ISystemWalletSigningService>().Object,
+            hashProvider ?? new Mock<IHashProvider>().Object);
 
         var genesisOptions = Options.Create(new SystemRegisterOptions { GenesisFile = options.GenesisFile });
         var genesisIngestion = new GenesisIngestionService(
@@ -504,6 +506,118 @@ public class SystemRegisterBootstrapperTests
                 It.IsAny<Exception?>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
+    }
+
+    // ========================================================================
+    // #917 resilience: seed-blueprint seal must fail loud, not be swallowed
+    // ========================================================================
+
+    [Fact]
+    public async Task GenesisFile_SeedBlueprintNeverSeals_RetriesThenFailsLoud()
+    {
+        // Arrange: register exists (skip ingestion) so bootstrap proceeds to seeding.
+        _mockRepository
+            .Setup(r => r.GetRegisterAsync(SystemRegisterConstants.SystemRegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = SystemRegisterConstants.SystemRegisterId,
+                Name = SystemRegisterConstants.SystemRegisterName,
+                Height = 1
+            });
+
+        // No transactions on the register => every seed blueprint is "missing" AND no
+        // publish ever appears as sealed (BlueprintExistsAsync stays false). This is the
+        // half-seeded SSR the swallow bug used to report as success.
+        _mockRepository
+            .Setup(r => r.GetTransactionsAsync(SystemRegisterConstants.SystemRegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Sorcha.Register.Models.TransactionModel>().AsQueryable());
+
+        // Make a seed template discoverable so LoadBlueprintFromCatalog succeeds and the
+        // publish path is actually exercised (the bug is post-publish, in the seal wait).
+        WriteSeedTemplate("register-creation-v1");
+
+        // Publish must SUCCEED so we isolate the seal-wait swallow (not a publish failure,
+        // which already propagated before this fix).
+        _validatorClient
+            .Setup(v => v.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionSubmissionResult
+            {
+                Success = true,
+                TransactionId = "seed-tx",
+                RegisterId = SystemRegisterConstants.SystemRegisterId
+            });
+
+        var signing = new Mock<ISystemWalletSigningService>();
+        signing
+            .Setup(s => s.SignAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SystemSignResult
+            {
+                Signature = new byte[64],
+                PublicKey = new byte[32],
+                Algorithm = "ED25519",
+                WalletAddress = "sys-wallet"
+            });
+
+        var hash = new Mock<IHashProvider>();
+        hash
+            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), It.IsAny<Sorcha.Cryptography.Enums.HashType>()))
+            .Returns(new byte[32]);
+
+        var logger = new Mock<ILogger<SystemRegisterBootstrapper>>();
+        var bootstrapper = CreateBootstrapper(
+            new SystemRegisterOptions
+            {
+                BootstrapMode = BootstrapMode.GenesisFile,
+                BlueprintSealTimeoutSeconds = 1,
+                BlueprintSeedMaxPublishAttempts = 2
+            },
+            logger.Object,
+            signing.Object,
+            hash.Object);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        // Act
+        await RunBootstrapperAsync(bootstrapper, cts.Token);
+
+        // Assert: the unsealed seed was re-published up to the attempt cap (retry happened).
+        _validatorClient.Verify(
+            v => v.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2),
+            "the unsealed seed should be re-published BlueprintSeedMaxPublishAttempts times");
+
+        // Assert: bootstrap FAILED LOUD — an error/critical was logged...
+        logger.Verify(
+            l => l.Log(
+                It.IsIn(LogLevel.Critical, LogLevel.Error),
+                It.IsAny<EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.AtLeastOnce);
+
+        // ...and it did NOT falsely report success.
+        logger.Verify(
+            l => l.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("bootstrap completed")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never,
+            "a half-seeded system register must not be reported as a completed bootstrap");
+    }
+
+    private static void WriteSeedTemplate(string blueprintId)
+    {
+        // LoadBlueprintFromCatalog probes AppContext.BaseDirectory/blueprints/templates first.
+        var dir = Path.Combine(AppContext.BaseDirectory, "blueprints", "templates");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(
+            Path.Combine(dir, $"{blueprintId}.json"),
+            "{\"title\":\"seed-test\",\"participants\":[],\"actions\":[]}");
     }
 
     // ========================================================================

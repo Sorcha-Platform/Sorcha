@@ -26,8 +26,10 @@ public class SystemRegisterBootstrapper : BackgroundService
     private static readonly TimeSpan GenesisTimeout = TimeSpan.FromSeconds(30);
 
     // #917: each seed blueprint must be sealed before the next is published, so the
-    // chain head is fresh when the next publish reads it. Mirrors GenesisTimeout.
-    private static readonly TimeSpan BlueprintSealTimeout = TimeSpan.FromSeconds(30);
+    // chain head is fresh when the next publish reads it. Timeout + retry attempts are
+    // configurable via SystemRegisterOptions (mirror GenesisTimeout by default).
+    private TimeSpan BlueprintSealTimeout => TimeSpan.FromSeconds(_options.BlueprintSealTimeoutSeconds);
+    private int BlueprintSeedMaxPublishAttempts => Math.Max(1, _options.BlueprintSeedMaxPublishAttempts);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemRegisterBootstrapper"/> class.
@@ -485,14 +487,7 @@ public class SystemRegisterBootstrapper : BackgroundService
                 continue;
             }
 
-            _logger.LogInformation("Seeding blueprint: {BlueprintId}", blueprintId);
             var blueprint = LoadBlueprintFromCatalog(blueprintId);
-            await systemRegisterService.PublishBlueprintAsync(
-                blueprintId,
-                blueprint,
-                "system",
-                new Dictionary<string, string> { ["seedReason"] = "bootstrap" },
-                cancellationToken);
 
             // #917: wait for this publish to SEAL before submitting the next. Blueprint
             // publishes chain via previousTxId = the latest *sealed* transaction
@@ -502,8 +497,47 @@ public class SystemRegisterBootstrapper : BackgroundService
             // two txs claimed the same predecessor; the validator can only seal one linear
             // successor and silently dropped the forked sibling, leaving the owner SSR
             // missing register-governance-v1. Sealing each seed first keeps the head fresh.
-            await WaitForBlueprintSealedAsync(systemRegisterService, blueprintId, cancellationToken);
-            _logger.LogInformation("Blueprint {BlueprintId} seeded and sealed", blueprintId);
+            //
+            // #917 resilience follow-up: a seal timeout is NOT a soft warning. A seed that
+            // never seals leaves a half-built system register; swallowing it let bootstrap
+            // report "completed" over a broken SSR. Re-publish up to the attempt cap, then
+            // fail loud so the failure surfaces (and, in Auto mode, feeds the outer retry).
+            var sealed_ = false;
+            for (int attempt = 1; attempt <= BlueprintSeedMaxPublishAttempts; attempt++)
+            {
+                _logger.LogInformation(
+                    "Seeding blueprint: {BlueprintId} (attempt {Attempt}/{MaxAttempts})",
+                    blueprintId, attempt, BlueprintSeedMaxPublishAttempts);
+
+                await systemRegisterService.PublishBlueprintAsync(
+                    blueprintId,
+                    blueprint,
+                    "system",
+                    new Dictionary<string, string> { ["seedReason"] = "bootstrap" },
+                    cancellationToken);
+
+                if (await WaitForBlueprintSealedAsync(systemRegisterService, blueprintId, cancellationToken))
+                {
+                    sealed_ = true;
+                    _logger.LogInformation("Blueprint {BlueprintId} seeded and sealed", blueprintId);
+                    break;
+                }
+
+                _logger.LogWarning(
+                    "Seed blueprint {BlueprintId} did not seal within {Timeout}s on attempt " +
+                    "{Attempt}/{MaxAttempts}.",
+                    blueprintId, BlueprintSealTimeout.TotalSeconds, attempt, BlueprintSeedMaxPublishAttempts);
+            }
+
+            if (!sealed_)
+            {
+                throw new InvalidOperationException(
+                    $"Seed blueprint '{blueprintId}' failed to seal after " +
+                    $"{BlueprintSeedMaxPublishAttempts} publish attempt(s) " +
+                    $"({BlueprintSealTimeout.TotalSeconds}s each). The system register would be " +
+                    "left incomplete; aborting bootstrap rather than reporting a half-seeded register " +
+                    "as successful (issue #917).");
+            }
         }
     }
 
@@ -513,7 +547,11 @@ public class SystemRegisterBootstrapper : BackgroundService
     /// timeout elapses. Keeps the chain head fresh between sequential seed publishes
     /// so they cannot fork on a stale predecessor (issue #917).
     /// </summary>
-    private async Task WaitForBlueprintSealedAsync(
+    /// <returns>
+    /// <c>true</c> if the blueprint sealed before the timeout; <c>false</c> if it timed out.
+    /// The caller decides how to react (retry / fail-loud) — a timeout is never swallowed here.
+    /// </returns>
+    private async Task<bool> WaitForBlueprintSealedAsync(
         SystemRegisterService systemRegisterService,
         string blueprintId,
         CancellationToken cancellationToken)
@@ -526,17 +564,13 @@ public class SystemRegisterBootstrapper : BackgroundService
 
             if (await systemRegisterService.BlueprintExistsAsync(blueprintId, cancellationToken))
             {
-                return;
+                return true;
             }
 
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
 
-        _logger.LogWarning(
-            "Timed out after {Timeout}s waiting for seed blueprint {BlueprintId} to seal. " +
-            "Subsequent seeds may chain off a stale head and be dropped by the validator, " +
-            "leaving the system register incomplete.",
-            BlueprintSealTimeout.TotalSeconds, blueprintId);
+        return false;
     }
 
     /// <summary>
