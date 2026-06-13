@@ -13,6 +13,7 @@
 @using Sorcha.Wallet.Pwa.Services.Actions
 @using Sorcha.Wallet.Pwa.Services.Actions.Models
 @attribute [Authorize]
+@implements IDisposable
 @inject IMyActionsClient MyActions
 @inject NavigationManager Nav
 
@@ -89,7 +90,32 @@
     private IReadOnlyList<PendingActionItem>? _items;
     private bool _refreshError;
 
-    protected override Task OnInitializedAsync() => RefreshAsync();
+    /// <summary>
+    /// Feature 151 — the wallet shell (cascaded by MainLayout). When present, the inbox subscribes
+    /// to its outstanding-work signal so the list re-loads live while mounted. Null under test
+    /// (no shell), so the page degrades to load-on-open.
+    /// </summary>
+    [CascadingParameter] public MainLayout? Shell { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Shell is not null)
+        {
+            Shell.OutstandingWorkChanged += OnWorkChanged;
+        }
+        await RefreshAsync();
+    }
+
+    private void OnWorkChanged() => _ = InvokeAsync(RefreshAsync);
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (Shell is not null)
+        {
+            Shell.OutstandingWorkChanged -= OnWorkChanged;
+        }
+    }
 
     /// <summary>
     /// Loads (or re-loads) the citizen's outstanding actions. On a transient failure the last-known
