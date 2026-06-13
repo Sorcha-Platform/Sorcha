@@ -98,13 +98,12 @@ public sealed class MyActionsClientTests
     }
 
     [Fact]
-    public async Task GetPendingAsync_TransientFailure_ReturnsEmpty()
+    public async Task GetPendingAsync_TransientFailure_Throws()
     {
         var client = Create((_, _) => throw new HttpRequestException("offline"));
 
-        var items = await client.GetPendingAsync();
-
-        items.Should().BeEmpty();
+        await client.Invoking(c => c.GetPendingAsync())
+            .Should().ThrowAsync<HttpRequestException>();
     }
 
     [Fact]
@@ -122,13 +121,12 @@ public sealed class MyActionsClientTests
     }
 
     [Fact]
-    public async Task GetCountAsync_TransientFailure_ReturnsEmpty()
+    public async Task GetCountAsync_TransientFailure_Throws()
     {
         var client = Create((_, _) => new HttpResponseMessage(HttpStatusCode.InternalServerError));
 
-        var count = await client.GetCountAsync();
-
-        count.Count.Should().Be(0);
+        await client.Invoking(c => c.GetCountAsync())
+            .Should().ThrowAsync<HttpRequestException>();
     }
 
     private static string ItemWith(string urgency, string actionTitle = "Some action") => $$"""

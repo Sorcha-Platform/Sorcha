@@ -29,55 +29,38 @@ public sealed class HttpMyActionsClient : IMyActionsClient
     public HttpMyActionsClient(HttpClient http) => _http = http ?? throw new ArgumentNullException(nameof(http));
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Transient failures (network / non-success / malformed body) are NOT swallowed — they
+    /// propagate so the inbox can retain its last-known list and surface a non-blocking notice
+    /// (FR-010), distinct from a genuinely empty inbox.
+    /// </remarks>
     public async Task<IReadOnlyList<PendingActionItem>> GetPendingAsync(
         int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
-        try
-        {
-            var result = await _http.GetFromJsonAsync<PendingPage>(
-                $"api/actions/pending?page={page}&pageSize={pageSize}", JsonOptions, ct).ConfigureAwait(false);
+        var result = await _http.GetFromJsonAsync<PendingPage>(
+            $"api/actions/pending?page={page}&pageSize={pageSize}", JsonOptions, ct).ConfigureAwait(false);
 
-            var items = result?.Items;
-            if (items is null || items.Count == 0)
-            {
-                return Array.Empty<PendingActionItem>();
-            }
-
-            var mapped = new List<PendingActionItem>(items.Count);
-            foreach (var dto in items)
-            {
-                mapped.Add(Map(dto));
-            }
-            return mapped;
-        }
-        catch (OperationCanceledException)
+        var items = result?.Items;
+        if (items is null || items.Count == 0)
         {
-            throw;
-        }
-        catch
-        {
-            // Transient failure — the inbox retains its last-known list and shows a notice.
             return Array.Empty<PendingActionItem>();
         }
+
+        var mapped = new List<PendingActionItem>(items.Count);
+        foreach (var dto in items)
+        {
+            mapped.Add(Map(dto));
+        }
+        return mapped;
     }
 
     /// <inheritdoc />
+    /// <remarks>Transient failures propagate; the badge owner retains its last-known count.</remarks>
     public async Task<PendingActionsCount> GetCountAsync(CancellationToken ct = default)
     {
-        try
-        {
-            var dto = await _http.GetFromJsonAsync<CountDto>(
-                "api/actions/pending/count", JsonOptions, ct).ConfigureAwait(false);
-            return dto is null ? PendingActionsCount.Empty : new PendingActionsCount(dto.Count, dto.UrgentCount);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            return PendingActionsCount.Empty;
-        }
+        var dto = await _http.GetFromJsonAsync<CountDto>(
+            "api/actions/pending/count", JsonOptions, ct).ConfigureAwait(false);
+        return dto is null ? PendingActionsCount.Empty : new PendingActionsCount(dto.Count, dto.UrgentCount);
     }
 
     private static PendingActionItem Map(PendingActionDto dto)

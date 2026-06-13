@@ -16,16 +16,18 @@ namespace Sorcha.Wallet.Pwa.Services.Actions;
 public interface IMyActionsClient
 {
     /// <summary>
-    /// Returns the actions currently awaiting the citizen's input ("their turn"), most-pressing
-    /// ordering is applied by the caller. Returns an empty list on a transient failure (the caller
-    /// retains its last-known list and surfaces a non-blocking notice).
+    /// Returns the actions currently awaiting the citizen's input ("their turn"); most-pressing
+    /// ordering is applied by the caller. An empty list means "nothing waiting on you". A transient
+    /// failure (network / non-success / malformed body) <b>throws</b> so the caller can retain its
+    /// last-known list and surface a non-blocking notice (FR-010) — failure is never conflated with
+    /// an empty inbox.
     /// </summary>
     Task<IReadOnlyList<PendingActionItem>> GetPendingAsync(
         int page = 1, int pageSize = 20, CancellationToken ct = default);
 
     /// <summary>
-    /// Returns the count of outstanding actions for the navigation badge. Returns
-    /// <see cref="PendingActionsCount.Empty"/> on a transient failure.
+    /// Returns the count of outstanding actions for the navigation badge. A transient failure
+    /// throws; the badge owner retains its last-known count.
     /// </summary>
     Task<PendingActionsCount> GetCountAsync(CancellationToken ct = default);
 }

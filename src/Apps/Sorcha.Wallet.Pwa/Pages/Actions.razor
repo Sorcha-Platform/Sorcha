@@ -1,0 +1,123 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Feature 151 (US1) — the "Things to do" inbox. Lists the workflow actions currently awaiting the
+    signed-in citizen (their turn), from GET /api/actions/pending (consumer-tier). Tapping a row
+    opens the existing ApplicationInstance fill/submit flow (base-relative). The "In review" banner
+    (US3) and live count badge (US2) are layered on in later slices. No backend change.
+*@
+@page "/actions"
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@using Sorcha.Wallet.Pwa.Services.Actions
+@using Sorcha.Wallet.Pwa.Services.Actions.Models
+@attribute [Authorize]
+@inject IMyActionsClient MyActions
+@inject NavigationManager Nav
+
+<PageTitle>Things to do · Sorcha Wallet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="pt-4">
+    <div class="actions-header">
+        <MudText Typo="Typo.h5">Things to do</MudText>
+    </div>
+
+    @if (_refreshError)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" data-testid="actions-refresh-error">
+            Couldn't refresh just now — showing what we last loaded.
+        </MudAlert>
+    }
+
+    @if (_items is null)
+    {
+        @if (!_refreshError)
+        {
+            <div class="actions-list" data-testid="actions-loading">
+                @for (var i = 0; i < 3; i++)
+                {
+                    <div class="action-row-skeleton" aria-hidden="true"></div>
+                }
+            </div>
+        }
+    }
+    else if (_items.Count == 0)
+    {
+        <div class="actions-empty" data-testid="actions-empty">
+            <MudIcon Icon="@Icons.Material.Filled.TaskAlt" Size="Size.Large" />
+            <MudText Typo="Typo.subtitle1" Class="mt-2">Nothing needs you right now</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                When an application needs your input, it'll show up here.
+            </MudText>
+        </div>
+    }
+    else
+    {
+        <div class="actions-list" data-testid="actions-list">
+            @foreach (var item in _items)
+            {
+                <button type="button" class="action-row" data-testid="@($"actions-item-{item.InstanceId}")"
+                        @onclick="@(() => Open(item))">
+                    <div class="action-row__main">
+                        <MudText Typo="Typo.subtitle1" Class="action-row__title">@item.Title</MudText>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">@item.WorkflowTitle</MudText>
+                        @if (!string.IsNullOrWhiteSpace(item.Summary))
+                        {
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary action-row__summary">@item.Summary</MudText>
+                        }
+                    </div>
+                    <div class="action-row__meta">
+                        @if (item.Urgency != ActionUrgency.Normal)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@UrgencyColor(item.Urgency)" Variant="Variant.Filled">
+                                @item.Urgency.ToString()
+                            </MudChip>
+                        }
+                        @if (item.Deadline is { } due)
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">Due @due.ToLocalTime().ToString("d MMM")</MudText>
+                        }
+                    </div>
+                </button>
+            }
+        </div>
+    }
+</MudContainer>
+
+@code {
+    private IReadOnlyList<PendingActionItem>? _items;
+    private bool _refreshError;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    /// <summary>
+    /// Loads (or re-loads) the citizen's outstanding actions. On a transient failure the last-known
+    /// list is retained and a non-blocking notice is shown (FR-010); a successful load clears it.
+    /// Public so the host can re-invoke it on a live signal (US2).
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        try
+        {
+            var items = await MyActions.GetPendingAsync();
+            _items = PendingActionOrdering.Order(items);
+            _refreshError = false;
+        }
+        catch (Exception)
+        {
+            // Retain _items (last-known); surface a non-blocking notice. Never a blank/error screen.
+            _refreshError = true;
+        }
+        StateHasChanged();
+    }
+
+    private void Open(PendingActionItem item) => Nav.NavigateTo($"applications/{item.InstanceId}");
+
+    private static Color UrgencyColor(ActionUrgency u) => u switch
+    {
+        ActionUrgency.Urgent => Color.Error,
+        ActionUrgency.Warning => Color.Warning,
+        _ => Color.Default,
+    };
+}
