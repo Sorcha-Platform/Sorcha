@@ -192,6 +192,15 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Feature 151 — citizen workflow inbox ("Things to do"). Reads the Blueprint Service's
+        // existing GET /api/actions/pending (list) and /api/actions/pending/count (badge), which
+        // resolve the citizen's wallet(s) from the consumer-tier JWT. Same auth chain; no backend change.
+        services.AddHttpClient<Sorcha.Wallet.Pwa.Services.Actions.IMyActionsClient,
+                               Sorcha.Wallet.Pwa.Services.Actions.HttpMyActionsClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 128 — shared has-any-device probe. Drives the wallet PWA
         // pairing-takeover trigger (sub-PR A3) and the Sorcha Web nag-banner
         // trigger (sub-PR B). Registered Singleton so the cached value +
