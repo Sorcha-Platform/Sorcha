@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.sorcha.dev/membership/submit-application/v1",
+  "title": "Membership application submission (action 2 payload)",
+  "description": "Scheme-specific applicant fields ONLY. Identity (givenName, familyName, dateOfBirth) is NOT collected here — it arrives from the presented identity credential (action 1) and is carried forward. memberNumber and tier are NOT here either — they are assigned by the issuer at action 3. For the loyalty-discount profile the applicant only consents and optionally opts in to marketing.",
+  "type": "object",
+  "properties": {
+    "consentToMembershipTerms": {
+      "type": "boolean",
+      "title": "I agree to the membership terms",
+      "description": "Confirm acceptance of the scheme's membership terms and conditions.",
+      "const": true
+    },
+    "marketingOptIn": {
+      "type": "boolean",
+      "title": "Keep me updated about offers",
+      "description": "Optional — receive offers and rewards news."
+    }
+  },
+  "required": ["consentToMembershipTerms"],
+  "additionalProperties": false,
+  "x-persona": { "presentation": 1 }
+}
