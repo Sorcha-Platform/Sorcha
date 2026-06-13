@@ -153,12 +153,13 @@ public sealed class WalletChromeComponentTests : BunitContext
     // ── FloatingTabBar ──────────────────────────────────────────────────────
 
     [Fact]
-    public void FloatingTabBar_RendersFourTabs_WithStableTestIds()
+    public void FloatingTabBar_RendersFiveTabs_WithStableTestIds()
     {
         var cut = Render<FloatingTabBar>(ps => ps.Add(p => p.ActiveRoute, ""));
 
-        cut.FindAll(".tab-pill").Count.Should().Be(4);
-        foreach (var id in new[] { "footer-nav-home", "footer-nav-cards", "footer-nav-activity", "footer-nav-settings" })
+        // Feature 151 added the "To do" workflow-inbox destination (footer-nav-todo).
+        cut.FindAll(".tab-pill").Count.Should().Be(5);
+        foreach (var id in new[] { "footer-nav-home", "footer-nav-todo", "footer-nav-cards", "footer-nav-activity", "footer-nav-settings" })
         {
             cut.FindAll($"[data-testid='{id}']").Should().ContainSingle($"tab {id} must exist for navigation tests");
         }
