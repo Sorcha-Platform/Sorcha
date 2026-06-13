@@ -39,6 +39,11 @@ public sealed class OrgDidDocumentService : IOrgDidDocumentService
         => _db.OrgDidDocuments.AsNoTracking()
             .FirstOrDefaultAsync(d => d.OrganizationId == organizationId, ct);
 
+    /// <inheritdoc />
+    public Task<OrgDidDocument?> GetByPrimaryDidAsync(string primaryDid, CancellationToken ct = default)
+        => _db.OrgDidDocuments.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.PrimaryDid == primaryDid, ct);
+
     /// <summary>
     /// Regenerate from a pushed key snapshot (the wallet-side IssuanceKeyService is the source of truth).
     /// </summary>

@@ -175,6 +175,48 @@ string? multibase = Multicodec.ToMultibasePublicKey("ED25519", rawPublicKeyBytes
 
 Never hand-roll `"z" + Base58.Encode(publicKey)` — that was the original bug.
 
+## Org VC-Issuer Signing & DID Anchoring (the three-address model)
+
+> Hard-won during the CyberEssentialsUac live-test blocker (2026-06). Read this before touching org credential issuance, `did:sorcha:org:`, trust allowlists, or the issuer-key resolver — the model is **split-brained** and the seams are non-obvious.
+
+A single credential-issuing org has **three distinct identities**, and `did:sorcha:org:{addr}` does **not** mean the same `addr` everywhere:
+
+| | Identity | How created | `did:sorcha:org:{…}` used for |
+|---|---|---|---|
+| **A** | Operational / participant wallet — `Organization.WalletAddress` | plain `New-SorchaWallet`, linked as a participant | register ownership, governance roster, **register invitations** (`RegisterInvitationService`), **X.509 org-cert SAN** (`InternalCaTrustProvider.IssueOrgCertAsync`), trust `did-allowlist` pins, participant publishing |
+| **B** | Feature 083 org **master seed** | `Set-SorchaOrgMasterKey` → `OrgKeyDerivationService.ProvisionMasterKeyAsync` | **none** — it has *no address*; it is an encrypted BIP39 seed + master public key, a derivation root only |
+| **C** | Derived **VC-issuance child wallet** (`KeyUsage.VCIssuance`, F083 slot 1, F120) | lazily derived by `IssuanceKeyService.GetOrDeriveAsync` under B | the credential's **`iss`**, the published **did.json `id`**, `kid = …#vc-issuance-{n}`, and what `IOrgDidDocumentClient.ResolveCanonicalDidAsync` returns (the **F127 verifier `client_id`**) |
+
+**The split-brain:** `did:sorcha:org:{A}` is canonical for register/trust/invitation/X.509, but issuance + did.json + the F127 verifier identity all use `did:sorcha:org:{C}`. **A and C never match** (C is a BIP32 child of B with its own address). This is the root cause behind a cluster of latent bugs:
+
+- **An org with NO master key signs with its root wallet key** and emits `iss` = a **bare wallet address** (not a `did:`), with **no `kid`** and **no `jwk`** in the JWS header → the issuer key is unresolvable → `TrustEvaluator: issuer signature not verified`. (`CredentialEndpoints.cs` fallback when `IssuanceKeyService.GetActiveSigningMaterialAsync` returns null.)
+- **The dev "embedded JWS `jwk`" resolver path can never fire** — `SdJwtService` issuance writes only `alg`/`typ`/optional `kid`/optional `x5c`; it has **no code path that embeds `jwk`**. Don't propose "embed the issuer JWK for dev verification" without first adding the emit side.
+- **A `did-allowlist` pinning `did:sorcha:org:{A}` won't match a credential whose `iss` is `did:sorcha:org:{C}`** (no `alsoKnownAs` bridges them). Adding a master key to an org that pins its operational DID silently breaks its own trust check.
+- **Blueprint Service's verifier doesn't read the published did.json.** `SorchaDidResolver` is wired there with the 2-arg ctor (no `HttpClient`), so it **skips** the Tenant `/orgs/{id}/did.json` fetch and **rebuilds the doc locally from the wallet row**, synthesising a **hardcoded `#vc-issuance-1`** VM. Works only for rotation index 1 — `#vc-issuance-2` won't match → latent rotation bug.
+
+**The correct fix (identified, not yet implemented):** re-anchor the issuer `iss`/`kid`/did.json `id` from the derived child **C** to the operational wallet **A** (publish C's public key as a VM *under* `did:sorcha:org:{A}`, e.g. `did:sorcha:org:{A}#vc-issuance-{n}`). Edit points: `IssuanceKeyService.cs:128,233-234` + `OrgDidDocumentService.cs:52` (change together + regenerate cached docs, or the verifier fails closed). Blast radius is strictly positive — fixes F127 `client_id`, VC-`iss`↔invitation↔X.509-SAN consistency, and the allowlist footgun; tests assert the `#vc-issuance-{n}` *suffix*, not the address. Add the old C-DID to `alsoKnownAs` for backward-compat with already-issued creds. (Anchoring to the stable `orgId` GUID would be even more rotation-proof but touches all the A-consumers — a bigger, separate decision.)
+
+**Walkthrough rule:** any org that issues native SorchaLocalWallet VCs **MUST** call `Set-SorchaOrgMasterKey` for that org, or it falls to the bare-wallet-`iss` path above. `ForestryCertification`/`TradeFinance`/`SelfBuildHouse` do; `CyberEssentialsUac`/`AssuredIdentity` historically did **not** (they only provisioned HAIP enrolment).
+
+### Standards conformance of the issuer-signing model
+
+| Item | Verdict |
+|---|---|
+| F120 DID path (`iss`=did, kid-matched `assertionMethod` VM, `cnf`+KB-JWT) | **conformant** profile choice — DID is a sanctioned `iss` form; `assertionMethod` is the right relationship for issuer keys |
+| **`iss` = bare wallet address** (no-master-key fallback) | **divergence** — not a URI/DID, no `kid`/`jwk`; unresolvable by any conformant verifier. Should fail *closed at issuance* rather than mint an unverifiable credential |
+| `typ = "vc+sd-jwt"` | **drift** — the current SD-JWT VC draft renamed the media subtype to **`dc+sd-jwt`**. Plan a `typ` migration (accept both on verify during transition) |
+| embedded-`jwk` dev resolver path | off-spec (self-certifying issuer); acceptable only if strictly non-prod |
+| `.well-known/jwt-vc-issuer` metadata path | not implemented — legitimately substituted by DID resolution |
+
+### Two trust rails — pick by who the verifier is
+
+Credential trust runs on **two distinct rails**; reaching for the wrong one ("use the X.509 CA so my credential is trusted") is a common mistake.
+
+- **Rail 1 — register/DID-native (intra-ecosystem).** Verifiers *inside* Sorcha (engine `CredentialVerifier`, HAIP verifier, another Sorcha node) anchor on the **register** (wallet signatures + validator roster) + `did:sorcha:org:` resolution. **No X.509, no external CA.** The register is the trust root (DAD model). This is the correct rail whenever the verifier is itself a Sorcha participant (e.g. an insurer org consuming an assessor's credential).
+- **Rail 2 — X.509/x5c (EUDI/external bridge).** Verifiers *outside* Sorcha that only speak PKI (EUDI wallets, third parties) need a cert chain to a root **they already trust**. F135's `CredentialIssuanceConfig.TrustAnchor` = `x509-tenant` (per-tenant **self-signed** root, `InternalCaTrustProvider`) vs `x509-lotl` (external trusted-list anchor).
+
+**Current-state gap:** the X.509 rail is **intra-ecosystem only** today. The internal CA is *self-signed*, so no external party trusts it without planting Sorcha's root. Genuine external interop needs `x509-lotl` (chain to a CA on a recognised List of Trusted Lists) — and **LOTL is deferred**. Plus two stacked blockers: `X509CertificateBuilder` is **P-256-only** (Ed25519 org keys → `ASN1 corrupted data` enrol 500), and org-cert enrol (`POST /api/v1/trust/tenants/{id}/orgs/{wallet}/enrol`) is an explicit admin API invoked only by HAIP walkthrough setup — no auto-enrol on org creation, no admin UI. So "the org has an externally-usable X.509 identity" is not a state any normal org reaches. Full F135 detail: `sorcha-architecture` skill → "Two trust rails: register/DID-native vs X.509/EUDI-external".
+
 ## Selective Disclosure (SD-JWT)
 
 SD-JWT compact form: `<issuer JWT>~<disclosure1>~<disclosure2>~...~<key binding JWT>`.

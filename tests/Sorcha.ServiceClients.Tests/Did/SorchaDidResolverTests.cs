@@ -152,54 +152,56 @@ public class SorchaDidResolverTests
     // --- Organization DID Resolution ---
 
     [Fact]
-    public async Task ResolveAsync_OrgDid_ReturnsDidDocumentWithValidMultibase()
+    public async Task ResolveAsync_OrgDid_FetchesPublishedDidDocument()
     {
-        _walletClientMock
-            .Setup(w => w.GetWalletAsync("org-addr-456", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new WalletInfo
-            {
-                Address = "org-addr-456",
-                Name = "org-acme-signing",
-                PublicKey = Ed25519KeyBase64,
-                Algorithm = "ED25519",
-                Status = "Active",
-                Owner = "org:acme-id",
-                Tenant = "acme-id"
-            });
+        // Feature 149: an org's issuer DID is anchored on its canonical operational wallet (A),
+        // but credentials are signed by the derived vc-issuance sub-key (C). The {kid -> C key}
+        // mapping lives ONLY in the Tenant-published did.json, so the resolver fetches it BY DID
+        // (GET /orgs/by-did/{did}/did.json) rather than rebuilding from the wallet row.
+        const string did = "did:sorcha:org:org-addr-456";
+        var publishedDoc = """
+        {"id":"did:sorcha:org:org-addr-456",
+         "verificationMethod":[{"id":"did:sorcha:org:org-addr-456#vc-issuance-1","type":"JsonWebKey2020","controller":"did:sorcha:org:org-addr-456","publicKeyJwk":{"kty":"OKP","crv":"Ed25519","x":"AQIDBA"}}],
+         "assertionMethod":["did:sorcha:org:org-addr-456#vc-issuance-1"],
+         "authentication":["did:sorcha:org:org-addr-456#vc-issuance-1"]}
+        """;
+        var handler = new StubHttpHandler(publishedDoc);
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://tenant-service:8080") };
+        var resolver = new SorchaDidResolver(_walletClientMock.Object, http, _loggerMock.Object);
 
-        var doc = await _resolver.ResolveAsync("did:sorcha:org:org-addr-456");
+        var doc = await resolver.ResolveAsync(did);
 
         doc.Should().NotBeNull();
-        doc!.Id.Should().Be("did:sorcha:org:org-addr-456");
-
-        // Feature 120 kid-swap (#604/#605): org DIDs emit two VMs — the canonical
-        // `#key-1` and a `#vc-issuance-1` alias pointing at the same key bytes so
-        // credentials carrying kid=did:sorcha:org:{addr}#vc-issuance-{n} resolve
-        // via exact-match. Both must be Ed25519VerificationKey2020.
-        doc.VerificationMethod.Should().HaveCount(2);
-        doc.VerificationMethod[0].Id.Should().Be("did:sorcha:org:org-addr-456#key-1");
-        doc.VerificationMethod[1].Id.Should().Be("did:sorcha:org:org-addr-456#vc-issuance-1");
-        doc.VerificationMethod.Should().AllSatisfy(vm =>
-            vm.Type.Should().Be("Ed25519VerificationKey2020"));
-
-        // Feature 093 US3 FR-015: org DIDs produce the same valid multibase as wallet DIDs.
-        // Both VMs point at the same key bytes, so verify the multibase on the canonical
-        // #key-1 entry.
-        var multibase = doc.VerificationMethod[0].PublicKeyMultibase;
-        multibase.Should().NotBeNull();
-        multibase!.Should().StartWith("z");
-
-        var decoded = Base58.Bitcoin.Decode(multibase.AsSpan(1));
-        decoded[0].Should().Be(0xed);
-        decoded[1].Should().Be(0x01);
-        decoded.Skip(2).Should().Equal(Ed25519KeyBytes);
-
-        // The issuance alias shares the same key material as the canonical VM.
-        doc.VerificationMethod[1].PublicKeyMultibase.Should().Be(multibase);
-
-        doc.Authentication.Should().Contain("did:sorcha:org:org-addr-456#key-1");
-        doc.AssertionMethod.Should().Contain("did:sorcha:org:org-addr-456#key-1");
+        doc!.Id.Should().Be(did);
+        doc.VerificationMethod.Should().ContainSingle();
+        doc.VerificationMethod[0].Id.Should().Be("did:sorcha:org:org-addr-456#vc-issuance-1");
         doc.AssertionMethod.Should().Contain("did:sorcha:org:org-addr-456#vc-issuance-1");
+
+        // Fetched by DID from the Tenant by-DID route — never rebuilt from the wallet row.
+        handler.LastRequestUri.Should().Contain("/orgs/by-did/");
+        _walletClientMock.Verify(
+            w => w.GetWalletAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OrgDid_PublishedDocNotFound_ReturnsNull()
+    {
+        var handler = new StubHttpHandler("", System.Net.HttpStatusCode.NotFound);
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://tenant-service:8080") };
+        var resolver = new SorchaDidResolver(_walletClientMock.Object, http, _loggerMock.Object);
+
+        var doc = await resolver.ResolveAsync("did:sorcha:org:org-addr-456");
+
+        doc.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OrgDid_NoPublishedDidClient_ReturnsNull()
+    {
+        // Feature 149: org-DID resolution requires the published-DID client. Without it
+        // (the default 2-arg ctor), fail closed rather than rebuild the wrong key from the wallet.
+        var doc = await _resolver.ResolveAsync("did:sorcha:org:org-addr-456");
+        doc.Should().BeNull();
     }
 
     [Fact]
@@ -316,5 +318,31 @@ public class SorchaDidResolverTests
         // leaving both PublicKeyMultibase and PublicKeyJwk unset rather than emit garbage.
         doc!.VerificationMethod[0].PublicKeyMultibase.Should().BeNull();
         doc.VerificationMethod[0].PublicKeyJwk.Should().BeNull();
+    }
+
+    /// <summary>Canned-response handler for the published-DID fetch (Feature 149).</summary>
+    private sealed class StubHttpHandler : HttpMessageHandler
+    {
+        private readonly string _json;
+        private readonly System.Net.HttpStatusCode _status;
+
+        public string? LastRequestUri { get; private set; }
+
+        public StubHttpHandler(string json, System.Net.HttpStatusCode status = System.Net.HttpStatusCode.OK)
+        {
+            _json = json;
+            _status = status;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequestUri = request.RequestUri?.ToString();
+            var response = new HttpResponseMessage(_status)
+            {
+                Content = new StringContent(_json, System.Text.Encoding.UTF8, "application/did+json")
+            };
+            return Task.FromResult(response);
+        }
     }
 }

@@ -78,49 +78,42 @@ public class SorchaDidResolver : IDidResolver
             return null;
         }
 
-        // Feature 120 — try the public did-document endpoint first when we have a
-        // pre-configured HttpClient for it. This path doesn't require service-auth and
-        // returns the W3C-shaped doc with publicKeyJwk + the #vc-issuance-{n} alias VM
-        // baked in. Fall back to the auth-gated GetWalletAsync path on failure.
-        if (_publicDidHttp is not null)
+        // Feature 149: an org's issuer DID is anchored on its CANONICAL operational wallet (A),
+        // but credentials are signed by a DERIVED vc-issuance sub-key (C). The only authoritative
+        // {kid -> C's key} mapping is the Tenant-published did.json. Resolve it BY DID. We must NOT
+        // rebuild from the wallet row — that would synthesise A's own key under #vc-issuance-{n},
+        // which never matches a signature made by C (and would miss rotated keys). No published
+        // document -> return null (fail closed).
+        if (_publicDidHttp is null)
         {
-            try
-            {
-                using var resp = await _publicDidHttp
-                    .GetAsync($"/api/v1/wallets/{address}/did-document", ct)
-                    .ConfigureAwait(false);
-                if (resp.IsSuccessStatusCode)
-                {
-                    var doc = await resp.Content.ReadFromJsonAsync<DidDocument>(ct).ConfigureAwait(false);
-                    if (doc is not null) return doc;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex,
-                    "Public DID resolution path failed for {Did}; falling through to auth-gated wallet client",
-                    did);
-            }
+            _logger.LogWarning(
+                "Organization DID {Did} cannot be resolved without a published-DID client (Feature 149); " +
+                "returning null (fail closed).", did);
+            return null;
         }
 
-        WalletInfo? wallet;
         try
         {
-            wallet = await _walletClient.GetWalletAsync(address, ct);
+            using var resp = await _publicDidHttp
+                .GetAsync($"/orgs/by-did/{Uri.EscapeDataString(did)}/did.json", ct)
+                .ConfigureAwait(false);
+            if (resp.IsSuccessStatusCode)
+            {
+                var doc = await resp.Content.ReadFromJsonAsync<DidDocument>(ct).ConfigureAwait(false);
+                if (doc is null)
+                    _logger.LogWarning("Published DID document for {Did} parsed to null", did);
+                return doc;
+            }
+
+            _logger.LogWarning(
+                "Published DID resolution for {Did} returned {Status}", did, resp.StatusCode);
+            return null;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to resolve organization DID {Did}", did);
+            _logger.LogWarning(ex, "Published DID resolution failed for {Did}", did);
             return null;
         }
-
-        if (wallet is null)
-        {
-            _logger.LogWarning("Wallet not found for organization DID {Did}", did);
-            return null;
-        }
-
-        return BuildDidDocument(did, wallet);
     }
 
     private async Task<DidDocument?> ResolveWalletDidAsync(string did, CancellationToken ct)
@@ -218,23 +211,11 @@ public class SorchaDidResolver : IDidResolver
             }
         }
 
-        // Feature 120 — when resolving did:sorcha:org:*, also emit a `#vc-issuance-1`
-        // alias VM pointing at the same key bytes. Credentials minted via the kid-swap
-        // path (#604, #605) carry kid=did:sorcha:org:{addr}#vc-issuance-{n}; verifier
-        // exact-match resolves through this alias. Rotation index >1 lands with US6.
+        // Feature 149: BuildDidDocument now serves only wallet DIDs (did:sorcha:w:*).
+        // Org issuer keys (#vc-issuance-{n}) are resolved exclusively from the Tenant-published
+        // did.json — never synthesised from the wallet row, which holds the wrong key (the
+        // operational wallet A's key, not the derived vc-issuance key C that signs credentials).
         var vms = new List<VerificationMethod> { verificationMethod };
-        if (did.StartsWith("did:sorcha:org:", StringComparison.Ordinal))
-        {
-            var issuanceVmId = $"{did}#vc-issuance-1";
-            vms.Add(new VerificationMethod
-            {
-                Id = issuanceVmId,
-                Type = keyType,
-                Controller = did,
-                PublicKeyMultibase = verificationMethod.PublicKeyMultibase,
-                PublicKeyJwk = verificationMethod.PublicKeyJwk
-            });
-        }
 
         return new DidDocument
         {

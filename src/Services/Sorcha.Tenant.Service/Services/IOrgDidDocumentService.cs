@@ -14,6 +14,13 @@ public interface IOrgDidDocumentService
     Task<OrgDidDocument?> GetAsync(Guid organizationId, CancellationToken ct = default);
 
     /// <summary>
+    /// Returns the published DID document whose canonical <c>PrimaryDid</c> equals the supplied
+    /// <c>did:sorcha:org:{walletAddress}</c>, or null if none exists. Lets a verifier resolve the
+    /// document from the issuer DID alone (the by-orgId route requires the GUID). Feature 149.
+    /// </summary>
+    Task<OrgDidDocument?> GetByPrimaryDidAsync(string primaryDid, CancellationToken ct = default);
+
+    /// <summary>
     /// Regenerates the DID document for the org. Idempotent — returns the existing row
     /// unchanged when the recomputed key-version fingerprint matches the persisted one.
     /// </summary>

@@ -68,9 +68,11 @@ public sealed class IssueCredentialStatusListUrlGuardTests
     [Fact]
     public async Task IssueCredential_HttpsStatusListUrl_PassesGuard()
     {
-        // Verifies that an HTTPS URL passes the URL guard. The handler is
-        // expected to fail later (no SDJWT service mocked), but the failure
-        // mode must not be the URL-guard BadRequest.
+        // Verifies an HTTPS URL passes the URL guard. With no issuance key wired
+        // (IIssuanceKeyService = null), the handler now fails closed with a 409 Problem
+        // (Feature 149 — no resolvable VC-issuance key) rather than minting an
+        // unverifiable bare-wallet credential. The point of this test is that HTTPS does
+        // NOT trip the URL guard's BadRequest; reaching the fail-closed 409 proves it.
         var request = new IssueCredentialRequest
         {
             CredentialType = "TestCredential",
@@ -80,12 +82,11 @@ public sealed class IssueCredentialStatusListUrlGuardTests
             StatusListIndex = 0
         };
 
-        Func<Task> act = async () => await InvokeAsync(WalletAddress, request);
+        var result = await InvokeAsync(WalletAddress, request);
 
-        // We expect a NullReferenceException or similar from the un-mocked
-        // pipeline downstream — anything except the URL guard's BadRequest.
-        // If the guard regresses to reject HTTPS, this test fails fast.
-        await act.Should().ThrowAsync<Exception>();
+        // HTTPS passed the URL guard — the result must NOT be the guard's BadRequest.
+        // (It is now a fail-closed Problem result because no issuance key is configured.)
+        result.GetType().Name.Should().NotContain("BadRequest");
     }
 
     private async Task<IResult> InvokeAsync(string walletAddress, IssueCredentialRequest request)

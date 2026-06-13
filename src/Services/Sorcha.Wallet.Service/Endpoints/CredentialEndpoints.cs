@@ -597,20 +597,36 @@ public static class CredentialEndpoints
             }
         }
 
-        // 2. Decrypt the wallet's private key (only used when issuance-key swap is unavailable).
-        var privateKey = issuanceMaterial?.PrivateKey
-            ?? await keyManagement.DecryptPrivateKeyAsync(
-                wallet.EncryptedPrivateKey, wallet.EncryptionKeyId);
-        var signingAlgorithm = issuanceMaterial?.Algorithm ?? wallet.Algorithm;
-        var signingIssuer = issuanceMaterial?.IssuerDid ?? walletAddress;
-        var signingKid = issuanceMaterial?.Kid;
-
-        if (issuanceMaterial is not null)
+        // Feature 149: fail closed. A native credential MUST carry a resolvable issuer DID
+        // (did:sorcha:org:{A}#vc-issuance-{n}). When no issuance material is available — the org
+        // has no VC-issuance key (no Feature 083 master key) or no canonical operational wallet —
+        // refuse to mint rather than fall back to signing with the raw wallet key under a bare,
+        // unverifiable issuer address. The old wallet-key fallback produced credentials that no
+        // conformant verifier could check.
+        if (issuanceMaterial is null)
         {
-            logger.LogInformation(
-                "Feature 120 kid-swap: signing credential with org issuance key kid={Kid} for org {OrgId}",
-                signingKid, issuanceMaterial.OrganizationId);
+            logger.LogWarning(
+                "Refusing to issue '{CredentialType}' for org {TenantId}: no resolvable VC-issuance key. "
+                + "Provision a Feature 083 org master key (Set-SorchaOrgMasterKey) so the issuer DID can be "
+                + "anchored and published.",
+                request.CredentialType, request.TenantId);
+            return Results.Problem(
+                title: "Issuer has no VC-issuance key",
+                detail: "Cannot issue a verifiable credential: the issuing organisation has no active "
+                    + "VC-issuance key. Provision a Feature 083 org master key (Set-SorchaOrgMasterKey) and retry.",
+                statusCode: StatusCodes.Status409Conflict);
         }
+
+        // 2. Signing material comes exclusively from the org's VC-issuance key (Feature 149 — the
+        // wallet-key fallback is removed; the fail-closed guard above guarantees non-null material).
+        var privateKey = issuanceMaterial.PrivateKey;
+        var signingAlgorithm = issuanceMaterial.Algorithm;
+        var signingIssuer = issuanceMaterial.IssuerDid;
+        var signingKid = issuanceMaterial.Kid;
+
+        logger.LogInformation(
+            "Feature 120 kid-swap: signing credential with org issuance key kid={Kid} for org {OrgId}",
+            signingKid, issuanceMaterial.OrganizationId);
 
         // 3. Calculate expiry
         var issuedAt = DateTimeOffset.UtcNow;
