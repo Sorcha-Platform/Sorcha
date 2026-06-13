@@ -13,12 +13,14 @@
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Actions
 @using Sorcha.Wallet.Pwa.Services.Actions.Models
+@using Sorcha.Wallet.Pwa.Services.Drafts.Models
 @attribute [Authorize]
 @implements IDisposable
 @inject IMyActionsClient MyActions
 @inject IPendingApplicationClient PendingApplications
 @inject Sorcha.Wallet.Pwa.Services.Drafts.IActionContextCache ActionContextCache
 @inject Sorcha.Wallet.Pwa.Services.Drafts.IDraftStore DraftStore
+@inject Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueue SubmitQueue
 @inject NavigationManager Nav
 
 <PageTitle>Things to do · Sorcha Wallet</PageTitle>
@@ -94,6 +96,43 @@
         </div>
     }
 
+    @if (_queue.Count > 0)
+    {
+        <div class="actions-queue mt-3" data-testid="actions-queue">
+            @foreach (var q in _queue)
+            {
+                <MudPaper Class="pa-3 mb-2 d-flex flex-column gap-1" Elevation="0"
+                          data-testid="@($"actions-queue-{q.QueuedKey}")">
+                    @if (q.State == QueuedSubmissionState.NeedsAttention)
+                    {
+                        <div class="d-flex align-center gap-2">
+                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Color="Color.Warning" Size="Size.Small" />
+                            <MudText Typo="Typo.subtitle2">Needs attention</MudText>
+                        </div>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary" data-testid="@($"actions-queue-reason-{q.QueuedKey}")">
+                            @ReasonText(q.ConflictReason)
+                        </MudText>
+                        <div class="d-flex gap-2 mt-1">
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Default"
+                                       data-testid="@($"actions-queue-discard-{q.QueuedKey}")"
+                                       OnClick="@(() => DiscardAsync(q))">Discard</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                       data-testid="@($"actions-queue-reopen-{q.QueuedKey}")"
+                                       OnClick="@(() => ReopenFreshAsync(q))">Re-open</MudButton>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex align-center gap-2">
+                            <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="Color.Info" Size="Size.Small" />
+                            <MudText Typo="Typo.body2">@(q.State == QueuedSubmissionState.Submitting ? "Submitting…" : "Queued — will submit when online")</MudText>
+                        </div>
+                    }
+                </MudPaper>
+            }
+        </div>
+    }
+
     @if (_inReview is not null)
     {
         <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3 actions-in-review"
@@ -111,9 +150,31 @@
     private bool _refreshError;
     private PendingApplicationView? _inReview;
     private HashSet<string> _draftKeys = new();
+    private IReadOnlyList<QueuedSubmission> _queue = Array.Empty<QueuedSubmission>();
 
     private static string ActionDraftKey(PendingActionItem item) =>
         Sorcha.Wallet.Pwa.Services.Drafts.Models.ActionDraft.MakeKey(item.InstanceId, item.ActionId);
+
+    private static string ReasonText(ConflictReason reason) => reason switch
+    {
+        ConflictReason.AlreadySubmitted => "This was already submitted, so it doesn't need sending again.",
+        ConflictReason.StepMovedOn => "This step has moved on since you filled it in — it can't be submitted as-is.",
+        ConflictReason.InstanceClosed => "This application has closed, so it can no longer be submitted.",
+        _ => "This couldn't be submitted.",
+    };
+
+    private async Task DiscardAsync(QueuedSubmission q)
+    {
+        await SubmitQueue.RemoveAsync(q.QueuedKey);
+        await RefreshAsync();
+    }
+
+    private async Task ReopenFreshAsync(QueuedSubmission q)
+    {
+        // Drop the stale queued item and re-open the action against current (fresh) state.
+        await SubmitQueue.RemoveAsync(q.QueuedKey);
+        Nav.NavigateTo($"applications/{q.InstanceId}");
+    }
 
     /// <summary>
     /// Feature 151 — the wallet shell (cascaded by MainLayout). When present, the inbox subscribes
@@ -185,6 +246,16 @@
         catch (Exception)
         {
             // Non-fatal — just omit draft badges.
+        }
+
+        // US3/US4 — surface queued / submitting / needs-attention items.
+        try
+        {
+            _queue = await SubmitQueue.ListAsync();
+        }
+        catch (Exception)
+        {
+            _queue = Array.Empty<QueuedSubmission>();
         }
 
         StateHasChanged();

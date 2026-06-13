@@ -26,6 +26,8 @@
 @inject IPendingApplicationClient PendingApplications
 @inject IActionContextCache ActionContextCache
 @inject IDraftStore DraftStore
+@inject ISubmitQueue SubmitQueue
+@inject IConnectivity Connectivity
 @inject NavigationManager Nav
 @inject ILogger<ApplicationInstance> Logger
 
@@ -69,12 +71,24 @@
         case State.Submitted:
             <MudPaper Class="pa-6 d-flex flex-column align-center gap-3" Elevation="1"
                       data-testid="application-instance-submitted">
-                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
-                <MudText Typo="Typo.h6">Application submitted</MudText>
-                <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
-                    You'll see the in-progress state on Home. Watch your wallet — your credential will
-                    arrive here once it's approved.
-                </MudText>
+                @if (_queuedOffline)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CloudOff" Color="Color.Info" Size="Size.Large" />
+                    <MudText Typo="Typo.h6">Saved — will submit when online</MudText>
+                    <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
+                        You're offline. We've saved this and will submit it automatically the next time
+                        you're connected.
+                    </MudText>
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
+                    <MudText Typo="Typo.h6">Application submitted</MudText>
+                    <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
+                        You'll see the in-progress state on Home. Watch your wallet — your credential will
+                        arrive here once it's approved.
+                    </MudText>
+                }
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GoHome">
                     Back to wallet
                 </MudButton>
@@ -114,6 +128,7 @@
     private DateTimeOffset? _draftSavedAt;
     private CancellationTokenSource? _autosaveCts;
     private static readonly TimeSpan AutosaveDebounce = TimeSpan.FromMilliseconds(800);
+    private bool _queuedOffline;
 
     protected override async Task OnInitializedAsync()
     {
@@ -247,6 +262,28 @@
         _status = null;
         try
         {
+            // Feature 152 (US3) — no connectivity: queue the submission to flush on reconnect,
+            // rather than failing. The draft is cleared (its data now lives in the queue).
+            if (!Connectivity.IsOnline)
+            {
+                await SubmitQueue.EnqueueAsync(new QueuedSubmission
+                {
+                    InstanceId = InstanceId.ToString(),
+                    ActionId = _ctx.ActionId,
+                    BlueprintId = _ctx.BlueprintId,
+                    RegisterId = _ctx.RegisterId,
+                    SenderWallet = _ctx.SenderWallet,
+                    Payload = new Dictionary<string, object?>(submission.Data),
+                    IdempotencyKey = Guid.NewGuid().ToString("N"),
+                });
+                _autosaveCts?.Cancel();
+                try { await DraftStore.DeleteAsync(InstanceId.ToString(), _ctx.ActionId); }
+                catch (Exception ex) { Logger.LogWarning(ex, "Clearing draft after queueing failed."); }
+                _queuedOffline = true;
+                _state = State.Submitted;
+                return;
+            }
+
             var result = await ActionClient.SubmitAsync(_ctx, submission.Data);
             switch (result.Status)
             {

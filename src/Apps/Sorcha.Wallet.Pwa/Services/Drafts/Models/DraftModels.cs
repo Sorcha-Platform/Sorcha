@@ -109,8 +109,8 @@ public enum QueuedSubmissionState
 /// </summary>
 public sealed record QueuedSubmission
 {
-    /// <summary>Store id (0 until persisted; assigned by the autoincrement store).</summary>
-    public long Id { get; init; }
+    /// <summary>Store key (a GUID string assigned on enqueue; empty until persisted).</summary>
+    public string QueuedKey { get; init; } = string.Empty;
     /// <summary>Target instance id.</summary>
     public required string InstanceId { get; init; }
     /// <summary>Target action id.</summary>

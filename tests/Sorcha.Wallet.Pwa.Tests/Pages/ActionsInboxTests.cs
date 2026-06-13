@@ -36,6 +36,7 @@ public sealed class ActionsInboxTests : ComponentTestFixture
         Services.AddSingleton(_pending.Object);
         Services.AddSingleton(Mock.Of<Sorcha.Wallet.Pwa.Services.Drafts.IActionContextCache>());
         Services.AddSingleton(EmptyDraftStore());
+        Services.AddSingleton(EmptySubmitQueue());
         _pending.Setup(p => p.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync((PendingApplicationView?)null);
     }
 
@@ -44,6 +45,14 @@ public sealed class ActionsInboxTests : ComponentTestFixture
         var m = new Mock<Sorcha.Wallet.Pwa.Services.Drafts.IDraftStore>();
         m.Setup(s => s.ListAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<Sorcha.Wallet.Pwa.Services.Drafts.Models.ActionDraft>());
+        return m.Object;
+    }
+
+    private static Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueue EmptySubmitQueue()
+    {
+        var m = new Mock<Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueue>();
+        m.Setup(s => s.ListAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Sorcha.Wallet.Pwa.Services.Drafts.Models.QueuedSubmission>());
         return m.Object;
     }
 

@@ -36,6 +36,8 @@
 @inject ISessionExpiryNotifier SessionExpiry
 @inject Sorcha.Wallet.Pwa.Services.Actions.IMyActionsClient MyActions
 @inject CitizenWalletHubConnection CitizenHub
+@inject IConnectivity Connectivity
+@inject Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueueDrainer SubmitQueueDrainer
 
 @* Feature 141 — dark mode now follows IThemeService (previously the provider
    was unbound, so the wallet never rendered dark). *@
@@ -240,6 +242,33 @@
         await EvaluateTourEligibilityAsync();
         await InitialiseInboxAsync();
         await RefreshTodoCountAsync();
+
+        // Feature 152 (US3) — watch connectivity; flush the offline submit queue now and on reconnect.
+        Connectivity.Changed += HandleConnectivityChanged;
+        await Connectivity.InitializeAsync();
+        _ = DrainSubmitQueueAsync();
+    }
+
+    private void HandleConnectivityChanged(bool isOnline)
+    {
+        if (isOnline)
+        {
+            _ = InvokeAsync(DrainSubmitQueueAsync);
+        }
+    }
+
+    private async Task DrainSubmitQueueAsync()
+    {
+        try
+        {
+            await SubmitQueueDrainer.DrainAsync();
+            await RefreshTodoCountAsync();
+            OutstandingWorkChanged?.Invoke();
+        }
+        catch (Exception)
+        {
+            // Best-effort — a later reconnect/open retries.
+        }
     }
 
     /// <summary>
@@ -457,6 +486,7 @@
         UserContext.OnContextChanged -= HandleContextChanged;
         Nav.LocationChanged -= HandleLocationChanged;
         CitizenHub.OnCredentialAvailable -= HandleWorkSignal;
+        Connectivity.Changed -= HandleConnectivityChanged;
         SessionExpiry.SessionExpired -= HandleSessionExpired;
         ThemeService.OnThemeChanged -= HandleThemeChanged;
         if (_inboxHubStarted)

@@ -49,6 +49,10 @@ public static class ServiceCollectionExtensions
                               Sorcha.Wallet.Pwa.Services.Drafts.ActionContextCache>();
         services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.IDraftStore,
                               Sorcha.Wallet.Pwa.Services.Drafts.DraftStore>();
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueue,
+                              Sorcha.Wallet.Pwa.Services.Drafts.SubmitQueue>();
+        services.AddSingleton<Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueueDrainer,
+                              Sorcha.Wallet.Pwa.Services.Drafts.SubmitQueueDrainer>();
         services.AddSingleton<IDelegationStore, IndexedDbDelegationStore>();
         services.AddSingleton<IStatusListService, IndexedDbStatusListService>();
         services.AddSingleton<ISyncCursorStore, IndexedDbSyncCursorStore>();
