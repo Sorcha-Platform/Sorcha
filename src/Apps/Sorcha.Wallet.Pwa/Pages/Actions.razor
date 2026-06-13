@@ -10,11 +10,13 @@
 @page "/actions"
 @layout MainLayout
 @using Microsoft.AspNetCore.Authorization
+@using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Actions
 @using Sorcha.Wallet.Pwa.Services.Actions.Models
 @attribute [Authorize]
 @implements IDisposable
 @inject IMyActionsClient MyActions
+@inject IPendingApplicationClient PendingApplications
 @inject NavigationManager Nav
 
 <PageTitle>Things to do · Sorcha Wallet</PageTitle>
@@ -84,11 +86,23 @@
             }
         </div>
     }
+
+    @if (_inReview is not null)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3 actions-in-review"
+                  Icon="@Icons.Material.Filled.HourglassEmpty" data-testid="actions-in-review">
+            <span class="actions-in-review__label"><strong>In review:</strong> @_inReview.Label</span>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                Submitted — waiting on the next step. Nothing more for you to do right now.
+            </MudText>
+        </MudAlert>
+    }
 </MudContainer>
 
 @code {
     private IReadOnlyList<PendingActionItem>? _items;
     private bool _refreshError;
+    private PendingApplicationView? _inReview;
 
     /// <summary>
     /// Feature 151 — the wallet shell (cascaded by MainLayout). When present, the inbox subscribes
@@ -135,6 +149,18 @@
             // Retain _items (last-known); surface a non-blocking notice. Never a blank/error screen.
             _refreshError = true;
         }
+
+        // US3 — the "In review" banner reuses the Feature-124 notice. Its failure is independent of
+        // the list and must never break the inbox; on error we simply omit the banner.
+        try
+        {
+            _inReview = await PendingApplications.GetAsync();
+        }
+        catch (Exception)
+        {
+            _inReview = null;
+        }
+
         StateHasChanged();
     }
 
