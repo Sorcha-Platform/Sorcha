@@ -15,14 +15,17 @@
 @layout MainLayout
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
+@implements IAsyncDisposable
 @using Sorcha.UI.Core.Components.Forms
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Applications
 @using Sorcha.Wallet.Pwa.Services.Drafts
+@using Sorcha.Wallet.Pwa.Services.Drafts.Models
 @inject IApplicationActionClient ActionClient
 @inject IPendingApplicationClient PendingApplications
 @inject IActionContextCache ActionContextCache
+@inject IDraftStore DraftStore
 @inject NavigationManager Nav
 @inject ILogger<ApplicationInstance> Logger
 
@@ -46,7 +49,16 @@
                                     ParticipantAddress="_ctx.SenderWallet"
                                     SigningWalletAddress="_ctx.SenderWallet"
                                     IsSenderAction="true"
+                                    InitialFormData="_initialFormData"
+                                    OnFormDataChanged="HandleFormDataChangedAsync"
                                     OnSubmit="HandleSubmitAsync" />
+                @if (_draftSavedAt is { } saved)
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2 d-block"
+                             data-testid="application-instance-draft-saved">
+                        Saved offline @saved.ToLocalTime().ToString("HH:mm")
+                    </MudText>
+                }
             </div>
             @if (!string.IsNullOrEmpty(_status))
             {
@@ -96,6 +108,13 @@
     private Severity _severity = Severity.Info;
     private bool _busy;
 
+    // Feature 152 (US1) — offline draft: seed editable values from a saved draft, autosave edits.
+    private IReadOnlyDictionary<string, object?>? _initialFormData;
+    private IReadOnlyDictionary<string, object?> _currentFormData = new Dictionary<string, object?>();
+    private DateTimeOffset? _draftSavedAt;
+    private CancellationTokenSource? _autosaveCts;
+    private static readonly TimeSpan AutosaveDebounce = TimeSpan.FromMilliseconds(800);
+
     protected override async Task OnInitializedAsync()
     {
         // Online: resolve the live form context. On failure (offline / unreachable), fall back to
@@ -121,7 +140,75 @@
             }
         }
 
+        // Feature 152 — seed the form from any saved offline draft for this action.
+        try
+        {
+            var draft = await DraftStore.GetAsync(InstanceId.ToString(), _ctx.ActionId);
+            if (draft is { FormData.Count: > 0 })
+            {
+                _initialFormData = draft.FormData;
+                _currentFormData = draft.FormData;
+                _draftSavedAt = draft.SavedAt;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Loading draft for {InstanceId} failed; starting fresh.", InstanceId);
+        }
+
         _state = State.Ready;
+    }
+
+    private async Task HandleFormDataChangedAsync(IReadOnlyDictionary<string, object?> data)
+    {
+        _currentFormData = data;
+        if (_ctx is null) return;
+
+        // Debounce: coalesce rapid edits into one save ~800ms after the last keystroke.
+        _autosaveCts?.Cancel();
+        _autosaveCts?.Dispose();
+        _autosaveCts = new CancellationTokenSource();
+        var token = _autosaveCts.Token;
+        try
+        {
+            await Task.Delay(AutosaveDebounce, token);
+            await SaveDraftAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException) { /* superseded by a newer edit */ }
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        if (_ctx is null) return;
+        try
+        {
+            await DraftStore.SaveAsync(new ActionDraft
+            {
+                InstanceId = InstanceId.ToString(),
+                ActionId = _ctx.ActionId,
+                FormData = new Dictionary<string, object?>(_currentFormData),
+                Status = DraftStatus.Editing,
+            });
+            _draftSavedAt = DateTimeOffset.Now;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Autosave of draft {InstanceId} failed.", InstanceId);
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        // Flush any pending edit so navigating away never loses work (FR-001).
+        _autosaveCts?.Cancel();
+        _autosaveCts?.Dispose();
+        _autosaveCts = null;
+        if (_state == State.Ready && _currentFormData.Count > 0)
+        {
+            await SaveDraftAsync();
+        }
     }
 
     private async Task<ApplicationFormContext?> TryLoadCachedContextAsync()
@@ -164,6 +251,10 @@
             switch (result.Status)
             {
                 case ApplicationSubmissionStatus.Success:
+                    // Feature 152 — submitted: the draft is no longer needed.
+                    _autosaveCts?.Cancel();
+                    try { await DraftStore.DeleteAsync(InstanceId.ToString(), _ctx.ActionId); }
+                    catch (Exception ex) { Logger.LogWarning(ex, "Clearing draft after submit failed."); }
                     try
                     {
                         await PendingApplications.SetAsync(_ctx.Title);

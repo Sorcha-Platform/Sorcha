@@ -18,6 +18,7 @@
 @inject IMyActionsClient MyActions
 @inject IPendingApplicationClient PendingApplications
 @inject Sorcha.Wallet.Pwa.Services.Drafts.IActionContextCache ActionContextCache
+@inject Sorcha.Wallet.Pwa.Services.Drafts.IDraftStore DraftStore
 @inject NavigationManager Nav
 
 <PageTitle>Things to do · Sorcha Wallet</PageTitle>
@@ -72,6 +73,11 @@
                         }
                     </div>
                     <div class="action-row__meta">
+                        @if (_draftKeys.Contains(ActionDraftKey(item)))
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined"
+                                     data-testid="@($"actions-draft-{item.InstanceId}")">Saved offline</MudChip>
+                        }
                         @if (item.Urgency != ActionUrgency.Normal)
                         {
                             <MudChip T="string" Size="Size.Small" Color="@UrgencyColor(item.Urgency)" Variant="Variant.Filled">
@@ -104,6 +110,10 @@
     private IReadOnlyList<PendingActionItem>? _items;
     private bool _refreshError;
     private PendingApplicationView? _inReview;
+    private HashSet<string> _draftKeys = new();
+
+    private static string ActionDraftKey(PendingActionItem item) =>
+        Sorcha.Wallet.Pwa.Services.Drafts.Models.ActionDraft.MakeKey(item.InstanceId, item.ActionId);
 
     /// <summary>
     /// Feature 151 — the wallet shell (cascaded by MainLayout). When present, the inbox subscribes
@@ -164,6 +174,17 @@
         catch (Exception)
         {
             _inReview = null;
+        }
+
+        // US1 — mark rows that have a saved offline draft.
+        try
+        {
+            var drafts = await DraftStore.ListAsync();
+            _draftKeys = drafts.Select(d => d.Key).ToHashSet();
+        }
+        catch (Exception)
+        {
+            // Non-fatal — just omit draft badges.
         }
 
         StateHasChanged();

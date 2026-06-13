@@ -292,6 +292,19 @@
 @code {
     [Parameter] public Sorcha.Blueprint.Models.Action? Action { get; set; }
     [Parameter] public JsonDocument? PreviousData { get; set; }
+
+    /// <summary>
+    /// Feature 152 — editable values to seed the form with on (re)open, keyed by JSON Pointer scope
+    /// (e.g. a saved offline draft). Unlike <see cref="PreviousData"/> (read-only prior-action data),
+    /// these populate the editable controls so a citizen can resume an in-progress draft.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, object?>? InitialFormData { get; set; }
+
+    /// <summary>
+    /// Feature 152 — raised when the user edits form data, carrying the current values. Lets a host
+    /// (e.g. the offline draft autosave) persist in-progress work without waiting for submit.
+    /// </summary>
+    [Parameter] public EventCallback<IReadOnlyDictionary<string, object?>> OnFormDataChanged { get; set; }
     [Parameter] public string ParticipantAddress { get; set; } = string.Empty;
     [Parameter] public string SigningWalletAddress { get; set; } = string.Empty;
     [Parameter] public EventCallback<FormSubmission> OnSubmit { get; set; }
@@ -488,6 +501,15 @@
         if (actionChanged && PreviousData is not null)
         {
             ParsePreviousData();
+        }
+
+        // Feature 152 — seed editable values from a saved draft on (re)open, before controls render.
+        if (actionChanged && InitialFormData is { Count: > 0 })
+        {
+            foreach (var kv in InitialFormData)
+            {
+                _formContext.FormData[kv.Key] = kv.Value;
+            }
         }
 
         if (actionChanged)
@@ -751,6 +773,12 @@
             _personaFillsByPath.Remove(pointer);
         }
         RefreshPersonaFillsList();
+
+        // Feature 152 — surface the edit to a host autosave (offline drafts).
+        if (OnFormDataChanged.HasDelegate)
+        {
+            _ = OnFormDataChanged.InvokeAsync(_formContext.FormData);
+        }
 
         // StateHasChanged is safe here — OnDataChanged is raised by user
         // interactions on the sync context.
