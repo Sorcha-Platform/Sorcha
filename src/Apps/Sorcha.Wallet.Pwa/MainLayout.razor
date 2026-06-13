@@ -34,6 +34,8 @@
 @inject IThemeService ThemeService
 @inject WalletAuthenticationStateProvider AuthState
 @inject ISessionExpiryNotifier SessionExpiry
+@inject Sorcha.Wallet.Pwa.Services.Actions.IMyActionsClient MyActions
+@inject CitizenWalletHubConnection CitizenHub
 
 @* Feature 141 — dark mode now follows IThemeService (previously the provider
    was unbound, so the wallet never rendered dark). *@
@@ -143,7 +145,7 @@
    unauthenticated screens. Same AuthorizeView gate the PairingTakeover uses. *@
 <AuthorizeView>
     <Authorized>
-        <FloatingTabBar ActiveRoute="@_activeRoute" Dark="@_isDark" OnNavigate="HandleTabNavigate" />
+        <FloatingTabBar ActiveRoute="@_activeRoute" Dark="@_isDark" OnNavigate="HandleTabNavigate" TodoCount="@_todoCount" />
     </Authorized>
 </AuthorizeView>
 </CascadingValue>
@@ -175,6 +177,16 @@
     private bool _isDark;
     private bool _isHome = true;
     private string _activeRoute = "";
+
+    // Feature 151 — outstanding-action count for the "To do" tab badge.
+    private int _todoCount;
+
+    /// <summary>
+    /// Feature 151 — raised when the citizen's outstanding work may have changed (count refreshed
+    /// or a live signal fired). The mounted inbox page subscribes (via cascading) to re-load its
+    /// list. Avoids the inbox injecting the concrete hub directly (keeps it unit-testable).
+    /// </summary>
+    public event Action? OutstandingWorkChanged;
 
     // Build version for the bottom-right badge. Stamped at build time by the unified
     // versioning standard (root Directory.Build.props): 2.<run>.<attempt> on CI images,
@@ -214,6 +226,8 @@
         // suppression, and resolve dark mode from the user's theme preference.
         UpdateRoute();
         Nav.LocationChanged += HandleLocationChanged;
+        // Feature 151 — refresh the To-do badge when a credential/work signal arrives.
+        CitizenHub.OnCredentialAvailable += HandleWorkSignal;
         SessionExpiry.SessionExpired += HandleSessionExpired;
         ThemeService.OnThemeChanged += HandleThemeChanged;
         await ThemeService.InitializeAsync();
@@ -225,7 +239,37 @@
         UpdateActiveLabel();
         await EvaluateTourEligibilityAsync();
         await InitialiseInboxAsync();
+        await RefreshTodoCountAsync();
     }
+
+    /// <summary>
+    /// Feature 151 — re-fetch the outstanding-action count for the To-do badge. Swallows transient
+    /// failures (the badge keeps its last-known value rather than dropping to 0 on a blip).
+    /// </summary>
+    private async Task RefreshTodoCountAsync()
+    {
+        try
+        {
+            var count = await MyActions.GetCountAsync();
+            if (count.Count != _todoCount)
+            {
+                _todoCount = count.Count;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // Keep the last-known count; a later refresh corrects it.
+        }
+    }
+
+    // Feature 151 — a credential/work signal arrived: refresh the badge and let the mounted inbox
+    // re-load its list.
+    private void HandleWorkSignal(string _) => InvokeAsync(async () =>
+    {
+        await RefreshTodoCountAsync();
+        OutstandingWorkChanged?.Invoke();
+    });
 
     /// <summary>Feature 141 — base-relative route → Home flag + active tab.</summary>
     private void UpdateRoute()
@@ -242,6 +286,8 @@
     {
         UpdateRoute();
         StateHasChanged();
+        // Feature 151 — navigating (e.g. returning from a submitted action) refreshes the To-do badge.
+        _ = InvokeAsync(RefreshTodoCountAsync);
     }
 
     private void HandleThemeChanged()
@@ -410,6 +456,7 @@
     {
         UserContext.OnContextChanged -= HandleContextChanged;
         Nav.LocationChanged -= HandleLocationChanged;
+        CitizenHub.OnCredentialAvailable -= HandleWorkSignal;
         SessionExpiry.SessionExpired -= HandleSessionExpired;
         ThemeService.OnThemeChanged -= HandleThemeChanged;
         if (_inboxHubStarted)

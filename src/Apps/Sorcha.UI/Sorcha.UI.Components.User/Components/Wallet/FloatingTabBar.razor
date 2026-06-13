@@ -3,10 +3,11 @@
     Copyright (c) 2026 Sorcha Contributors
 
     Feature 141 — floating pill navigation bar for the wallet shell. Replaces
-    the flush bottom MudAppBar rail. Four fixed destinations; the active tab
-    shows a gradient pill + label, the rest are icon-only. The host owns
-    navigation (base-relative) via OnNavigate. Design:
-    docs/mockups/design_handoff_wallet_home/ (TabBar variant="bold").
+    the flush bottom MudAppBar rail. Fixed destinations (Home / To do / Cards /
+    Activity / Settings); the active tab shows a gradient pill + label, the rest
+    are icon-only. The "To do" tab (Feature 151) carries an outstanding-action
+    count badge via TodoCount. The host owns navigation (base-relative) via
+    OnNavigate. Design: docs/mockups/design_handoff_wallet_home/ (TabBar variant="bold").
 *@
 @namespace Sorcha.UI.Core.Components.Wallet
 
@@ -20,7 +21,13 @@
                 aria-current="@(active ? "page" : null)"
                 data-testid="@tab.TestId"
                 @onclick="@(() => HandleNavigateAsync(tab.Route))">
-            <MudIcon Icon="@tab.Icon" Size="Size.Medium" />
+            <span class="tab-pill__icon">
+                <MudIcon Icon="@tab.Icon" Size="Size.Medium" />
+                @if (tab.Route == "actions" && TodoCount > 0)
+                {
+                    <span class="tab-pill__badge" data-testid="footer-nav-todo-badge">@TodoCount</span>
+                }
+            </span>
             @if (active)
             {
                 <span class="tab-pill__label">@tab.Label</span>
@@ -39,6 +46,12 @@
     /// <summary>Fired with the base-relative route when a tab is tapped (host performs NavigateTo).</summary>
     [Parameter] public EventCallback<string> OnNavigate { get; set; }
 
+    /// <summary>
+    /// Feature 151 — count of outstanding workflow actions, shown as a badge on the "To do" tab.
+    /// No badge is rendered when this is 0. The host supplies and live-refreshes the value.
+    /// </summary>
+    [Parameter] public int TodoCount { get; set; }
+
     private string RootClass => "floating-tab-bar" + (Dark ? " floating-tab-bar--dark" : "");
 
     // Trim a leading slash so callers can pass "" or "/" for Home interchangeably.
@@ -52,6 +65,8 @@
     private static readonly Tab[] Tabs =
     [
         new("", "Home", Icons.Material.Filled.Home, "footer-nav-home"),
+        // Feature 151 — "Things to do" workflow inbox destination (route "actions").
+        new("actions", "To do", Icons.Material.Filled.Checklist, "footer-nav-todo"),
         new("cards", "Cards", Icons.Material.Filled.CreditCard, "footer-nav-cards"),
         new("activity", "Activity", Icons.Material.Filled.History, "footer-nav-activity"),
         new("settings", "Settings", Icons.Material.Filled.Settings, "footer-nav-settings"),
