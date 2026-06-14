@@ -254,6 +254,7 @@ public sealed class AuthService : IAuthService
         // Clear the token first so the UI flips to signed-out immediately even
         // if the wider purge throws; then wipe every per-device store.
         await _store.ClearAsync(ct);
+        await _store.ClearHomeAsync(ct); // Feature 153 — drop the personal/home capacity snapshot too.
         await _purge.PurgeAsync(ct);
     }
 
