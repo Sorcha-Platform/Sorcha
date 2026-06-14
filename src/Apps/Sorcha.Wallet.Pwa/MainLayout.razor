@@ -38,6 +38,7 @@
 @inject CitizenWalletHubConnection CitizenHub
 @inject IConnectivity Connectivity
 @inject Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueueDrainer SubmitQueueDrainer
+@inject Sorcha.UI.Core.Services.Feedback.IInlineFeedback Feedback
 
 @* Feature 141 — dark mode now follows IThemeService (previously the provider
    was unbound, so the wallet never rendered dark). *@
@@ -468,7 +469,11 @@
         var ok = await UserContext.SetActiveContextAsync(orgId);
         if (!ok)
         {
-            // Surface the failure inline; toast will be replaced by ErrorRecoveryScaffold in PR-F.
+            // Feature 153 (US4) — a declined/failed switch leaves the current capacity unchanged;
+            // tell the user inline rather than silently no-op'ing.
+            Feedback.ShowWarning(orgId is null
+                ? "Couldn't switch back to personal. Please try again."
+                : "Couldn't switch to that organisation. You may not have access, or the connection failed.");
             return;
         }
         UpdateActiveLabel();
@@ -479,6 +484,9 @@
     {
         UpdateActiveLabel();
         await InvokeAsync(StateHasChanged);
+        // Feature 153 (US3) — the To-do badge follows the active capacity (and the mounted inbox
+        // re-loads via its own OnContextChanged subscription).
+        await RefreshTodoCountAsync();
     }
 
     public async ValueTask DisposeAsync()

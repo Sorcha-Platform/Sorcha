@@ -111,6 +111,18 @@ public sealed class ManagedUserContext : IUserContext
             // Non-Personal switch: acquire a JWT scoped to the target org.
             try
             {
+                // Feature 153 — leaving Personal: snapshot the current (consumer) token as the home
+                // token so we can restore personal capacity on return. switch-org cannot mint a
+                // consumer token (it requires an org), so this snapshot is the only way back.
+                if (_active is null)
+                {
+                    var current = await _tokenStore.GetAsync(ct).ConfigureAwait(false);
+                    if (current is not null)
+                    {
+                        await _tokenStore.SetHomeAsync(current, ct).ConfigureAwait(false);
+                    }
+                }
+
                 var response = await _http.PostAsJsonAsync(
                     "/api/auth/switch-org", new { OrganizationId = targetOrg }, ct).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
@@ -140,8 +152,22 @@ public sealed class ManagedUserContext : IUserContext
                 return false;
             }
         }
-        // Personal context (orgId == null) — keep the user's existing token in v1.
-        // Personal-as-Public-Org switch-org plumbing is a small follow-up.
+        else
+        {
+            // Feature 153 — returning to Personal: restore the snapshotted personal/home (consumer)
+            // token so consumer-gated surfaces keep working (a platform/org token would 403 them).
+            // If the home token is missing/expired, leave the current token; the normal expiry/
+            // re-auth flow handles it.
+            var home = await _tokenStore.GetHomeAsync(ct).ConfigureAwait(false);
+            if (home is not null)
+            {
+                await _tokenStore.SetAsync(home, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                _logger.LogWarning("Return to Personal: no valid home token to restore; keeping current token.");
+            }
+        }
 
         var previous = _active;
         _active = orgId;
