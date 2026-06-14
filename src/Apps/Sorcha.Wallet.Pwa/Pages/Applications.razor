@@ -2,35 +2,153 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Applications list page (Feature 125, T054). Lists blueprint-driven
-    applications available to the active context. v1 ships an empty-
-    state with a CTA pointing at the council web shell — the application
-    catalogue API lands alongside this page in a follow-up. Once the
-    catalogue endpoint exists, the list rows are tappable into
-    Pages/ApplicationInstance for the SorchaFormRenderer-hosted form.
+    Service catalogue (Feature 154 / sub-project B). Lists the services a citizen can start
+    (GET /api/catalogue — startable published blueprints), with search; tapping one starts a new
+    application (POST /api/instances/) and drops into the existing ApplicationInstance fill/submit.
 *@
 @page "/applications"
 @layout MainLayout
 @using Microsoft.AspNetCore.Authorization
+@using Sorcha.Wallet.Pwa.Services.Catalogue
 @attribute [Authorize]
-@using Sorcha.Wallet.Pwa.Services.Context
-@inject IUserContext UserContext
+@implements IDisposable
+@inject ICatalogueClient Catalogue
 @inject NavigationManager Nav
+@inject ILogger<Applications> Logger
 
-<PageTitle>Applications · Sorcha Wallet</PageTitle>
+<PageTitle>Start something · Sorcha Wallet</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
-    <MudText Typo="Typo.h5" Class="mb-3">Applications</MudText>
-    <MudPaper Class="pa-4" Elevation="1" data-testid="applications-empty-state">
-        <MudStack Spacing="2">
-            <MudText Typo="Typo.body1">
-                Application listings will appear here.
-            </MudText>
+    <MudText Typo="Typo.h5" Class="mb-3">Start something</MudText>
+
+    @if (_loadError)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" data-testid="catalogue-error">
+            Couldn't load services just now. Please try again.
+        </MudAlert>
+    }
+
+    @if (_services is null)
+    {
+        <div class="catalogue-list" data-testid="catalogue-loading">
+            @for (var i = 0; i < 3; i++)
+            {
+                <div class="catalogue-row-skeleton" aria-hidden="true"></div>
+            }
+        </div>
+    }
+    else if (_services.Count == 0)
+    {
+        <MudPaper Class="pa-4" Elevation="0" data-testid="catalogue-empty">
+            <MudText Typo="Typo.subtitle1">No services to start right now</MudText>
             <MudText Typo="Typo.body2" Class="mud-text-secondary">
-                For now, start a council application from your council's website. Your
-                wallet will pick it up once you submit and you'll see the in-progress
-                state on Home.
+                When services you can apply for are available, they'll appear here.
             </MudText>
-        </MudStack>
-    </MudPaper>
+        </MudPaper>
+    }
+    else
+    {
+        <MudTextField @bind-Value="_search" @bind-Value:after="ApplyFilter" Immediate="true"
+                      Placeholder="Search services" Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search" Variant="Variant.Outlined"
+                      Margin="Margin.Dense" Class="mb-3" data-testid="catalogue-search" />
+
+        @if (_filtered.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary" data-testid="catalogue-no-matches">
+                No services match "@_search".
+            </MudText>
+        }
+        else
+        {
+            <div class="catalogue-list" data-testid="catalogue-list">
+                @foreach (var svc in _filtered)
+                {
+                    <button type="button" class="catalogue-row" data-testid="@($"catalogue-item-{svc.BlueprintId}")"
+                            disabled="@_starting" @onclick="@(() => StartAsync(svc))">
+                        <div class="catalogue-row__main">
+                            <MudText Typo="Typo.subtitle1">@svc.Title</MudText>
+                            @if (!string.IsNullOrWhiteSpace(svc.Description))
+                            {
+                                <MudText Typo="Typo.body2" Class="mud-text-secondary">@svc.Description</MudText>
+                            }
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
+                    </button>
+                }
+            </div>
+        }
+    }
+
+    @if (_startError)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3" data-testid="catalogue-start-error">
+            Couldn't start that service. Please try again.
+        </MudAlert>
+    }
 </MudContainer>
+
+@code {
+    private IReadOnlyList<CatalogueItem>? _services;
+    private List<CatalogueItem> _filtered = new();
+    private string _search = string.Empty;
+    private bool _loadError;
+    private bool _startError;
+    private bool _starting;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var services = await Catalogue.GetServicesAsync();
+            _services = services;
+            _loadError = false;
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Catalogue load failed.");
+            _services ??= Array.Empty<CatalogueItem>();
+            _loadError = true;
+        }
+        StateHasChanged();
+    }
+
+    private void ApplyFilter() =>
+        _filtered = FilterServices(_services ?? Array.Empty<CatalogueItem>(), _search);
+
+    /// <summary>Pure name/description filter (case-insensitive); empty query returns all.</summary>
+    internal static List<CatalogueItem> FilterServices(IReadOnlyList<CatalogueItem> all, string? search) =>
+        string.IsNullOrWhiteSpace(search)
+            ? all.ToList()
+            : all.Where(s =>
+                  s.Title.Contains(search, StringComparison.OrdinalIgnoreCase)
+                  || (s.Description?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false))
+                 .ToList();
+
+    private async Task StartAsync(CatalogueItem svc)
+    {
+        if (_starting) return;
+        _starting = true;
+        _startError = false;
+        try
+        {
+            var instanceId = await Catalogue.StartAsync(svc);
+            if (string.IsNullOrEmpty(instanceId))
+            {
+                _startError = true;
+                return;
+            }
+            Nav.NavigateTo($"applications/{instanceId}");
+        }
+        finally
+        {
+            _starting = false;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose() { }
+}
