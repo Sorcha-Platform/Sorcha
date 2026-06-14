@@ -220,6 +220,13 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<BearerTokenHandler>()
             .AddHttpMessageHandler<ServerClockHandler>();
 
+        // Feature 154 (B) — service catalogue: list startable services + start one (CreateInstance).
+        services.AddHttpClient<Sorcha.Wallet.Pwa.Services.Catalogue.ICatalogueClient,
+                               Sorcha.Wallet.Pwa.Services.Catalogue.HttpCatalogueClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+
         // Feature 128 — shared has-any-device probe. Drives the wallet PWA
         // pairing-takeover trigger (sub-PR A3) and the Sorcha Web nag-banner
         // trigger (sub-PR B). Registered Singleton so the cached value +
