@@ -1057,6 +1057,9 @@ app.MapActionEndpoints();
 // Map file chunk submission endpoints (Feature 085 — Stored Data Transactions)
 app.MapFileChunkEndpoints();
 
+// Feature 154 (B) — citizen service catalogue (consumer-tier: list startable services).
+app.MapCatalogueEndpoints();
+
 // Feature 111 — Timebound Presentation Lifecycle endpoints.
 var presentationGroup = app.MapGroup("/api/presentations")
     .WithTags("Presentations")
@@ -2787,6 +2790,9 @@ public interface IPublishedBlueprintStore
     Task<PublishedBlueprint?> GetVersionAsync(string blueprintId, int version);
     Task<IEnumerable<PublishedBlueprint>> GetVersionsAsync(string blueprintId);
     Task<IEnumerable<PublishedBlueprint>> GetByRegisterAsync(string registerId);
+
+    /// <summary>Feature 154 (catalogue) — the latest published version of every blueprint.</summary>
+    Task<IEnumerable<PublishedBlueprint>> GetAllLatestAsync();
 }
 
 /// <summary>
@@ -2913,6 +2919,15 @@ public class InMemoryPublishedBlueprintStore : IPublishedBlueprintStore
             .Where(p => string.Equals(p.RegisterId, registerId, StringComparison.OrdinalIgnoreCase))
             .GroupBy(p => p.BlueprintId)
             .Select(g => g.OrderByDescending(v => v.Version).First())
+            .ToList();
+        return Task.FromResult<IEnumerable<PublishedBlueprint>>(result);
+    }
+
+    public Task<IEnumerable<PublishedBlueprint>> GetAllLatestAsync()
+    {
+        var result = _published.Values
+            .Where(versions => versions.Count > 0)
+            .Select(versions => versions.OrderByDescending(v => v.Version).First())
             .ToList();
         return Task.FromResult<IEnumerable<PublishedBlueprint>>(result);
     }
