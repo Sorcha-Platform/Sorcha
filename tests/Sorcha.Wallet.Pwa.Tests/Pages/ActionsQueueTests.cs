@@ -37,6 +37,7 @@ public sealed class ActionsQueueTests : ComponentTestFixture
         Services.AddSingleton(Mock.Of<IActionContextCache>());
         Services.AddSingleton(_drafts.Object);
         Services.AddSingleton(_queue.Object);
+        Services.AddSingleton(Mock.Of<Sorcha.Wallet.Pwa.Services.Context.IUserContext>());
         _client.Setup(c => c.GetPendingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<PendingActionItem>());
         _pending.Setup(p => p.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync((PendingApplicationView?)null);

@@ -479,6 +479,9 @@
     {
         UpdateActiveLabel();
         await InvokeAsync(StateHasChanged);
+        // Feature 153 (US3) — the To-do badge follows the active capacity (and the mounted inbox
+        // re-loads via its own OnContextChanged subscription).
+        await RefreshTodoCountAsync();
     }
 
     public async ValueTask DisposeAsync()

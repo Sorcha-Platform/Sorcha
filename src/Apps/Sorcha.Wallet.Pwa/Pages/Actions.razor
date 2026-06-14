@@ -14,6 +14,7 @@
 @using Sorcha.Wallet.Pwa.Services.Actions
 @using Sorcha.Wallet.Pwa.Services.Actions.Models
 @using Sorcha.Wallet.Pwa.Services.Drafts.Models
+@using Sorcha.Wallet.Pwa.Services.Context
 @attribute [Authorize]
 @implements IDisposable
 @inject IMyActionsClient MyActions
@@ -21,6 +22,7 @@
 @inject Sorcha.Wallet.Pwa.Services.Drafts.IActionContextCache ActionContextCache
 @inject Sorcha.Wallet.Pwa.Services.Drafts.IDraftStore DraftStore
 @inject Sorcha.Wallet.Pwa.Services.Drafts.ISubmitQueue SubmitQueue
+@inject Sorcha.Wallet.Pwa.Services.Context.IUserContext UserContext
 @inject NavigationManager Nav
 
 <PageTitle>Things to do · Sorcha Wallet</PageTitle>
@@ -29,6 +31,14 @@
     <div class="actions-header">
         <MudText Typo="Typo.h5">Things to do</MudText>
     </div>
+
+    @if (UserContext.ActiveContextOrgId is not null)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2 actions-acting-as"
+                  Icon="@Icons.Material.Filled.Business" data-testid="actions-acting-as">
+            Acting as @ActingAsLabel — showing this organisation's work.
+        </MudAlert>
+    }
 
     @if (_refreshError)
     {
@@ -183,16 +193,25 @@
     /// </summary>
     [CascadingParameter] public MainLayout? Shell { get; set; }
 
+    // "Acting as <Org>" label — the shell resolves the org name (Feature 125); fall back to a
+    // generic label when the shell isn't available (e.g. under test).
+    private string ActingAsLabel => string.IsNullOrWhiteSpace(Shell?.ActiveLabel) ? "your organisation" : Shell!.ActiveLabel;
+
     protected override async Task OnInitializedAsync()
     {
         if (Shell is not null)
         {
             Shell.OutstandingWorkChanged += OnWorkChanged;
         }
+        // Feature 153 (US3) — re-load when the active capacity changes so the inbox never shows the
+        // previous capacity's work.
+        UserContext.OnContextChanged += OnContextChangedAsync;
         await RefreshAsync();
     }
 
     private void OnWorkChanged() => _ = InvokeAsync(RefreshAsync);
+
+    private Task OnContextChangedAsync(UserContextChangedEventArgs args) => InvokeAsync(RefreshAsync);
 
     /// <inheritdoc />
     public void Dispose()
@@ -201,6 +220,7 @@
         {
             Shell.OutstandingWorkChanged -= OnWorkChanged;
         }
+        UserContext.OnContextChanged -= OnContextChangedAsync;
     }
 
     /// <summary>
