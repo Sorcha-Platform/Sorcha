@@ -3,28 +3,29 @@
 //
 // Pre-boot loading splash for the Sorcha Wallet PWA.
 //
-// Runs before blazor.webassembly.js finishes booting. Draws a lightweight
+// Runs before blazor.webassembly.js finishes booting. Renders a lightweight
 // network animation (the landing-page hero aesthetic) behind the glowing "S",
 // and shows HONEST load feedback:
 //
 //   Phase 1 (download): a progress bar driven by Blazor's real
-//     `--blazor-load-percentage` CSS custom property (set by the runtime as
-//     boot resources download). Climbs 0 -> 100 truthfully.
-//   Handoff: the instant the percentage reaches 100 (download complete), the
-//     bar fades out and indeterminate status text fades in — so the number is
-//     never seen stalling at 100% during the unmeasurable init/render tail.
+//     `--blazor-load-percentage` CSS custom property. Climbs 0 -> 100 truthfully.
+//   Handoff: the instant the percentage reaches 100, the bar fades out and
+//     indeterminate status text fades in — the number is never seen stalling.
 //   Phase 2 (startup tail): shimmering "Starting up… / Almost ready…" until
 //     Blazor renders App into #app, which removes this splash.
 //
-// Fallback: if the percentage is never readable (older runtimes / fully cached
-// boot), after FALLBACK_MS we drop the bar and show an indeterminate
-// "Loading your wallet…" — never a fake number. The exact element the runtime
-// sets the property on varies, so readPct() checks both #app and the document
-// root.
+// The canvas animation is rendered on a Web Worker via an OffscreenCanvas
+// (splash-worker.js) so the blobs keep moving even while the main thread is
+// blocked instantiating the WASM runtime. When OffscreenCanvas/Worker is
+// unavailable (older Safari, a CSP block) or reduced motion is requested, it
+// falls back to rendering on the main thread via the same shared renderer
+// (splash-render.js).
 //
-// Cleanup: a MutationObserver cancels the animation loop and timers the moment
-// #sorcha-splash leaves the DOM, so a detached canvas never keeps a rAF loop
-// running after the app has taken over.
+// Fallback (progress): if the percentage is never readable, after FALLBACK_MS
+// we drop the bar and show "Loading your wallet…" — never a fake number.
+//
+// Cleanup: a MutationObserver tears down timers, the main-thread rAF, and the
+// worker the moment #sorcha-splash leaves the DOM.
 
 (function () {
   "use strict";
@@ -46,73 +47,65 @@
   var fallbackTimer = null;
   var handedOff = false;
 
-  // ---- network animation ----
-  var ctx = canvas.getContext("2d");
-  var w = 0, h = 0, dpr = 1, peers = [], t = 0;
-  var C = { r: 99, g: 102, b: 241 };
-  var GRID = 38, PEERS = 14, LINK = 95;
+  // ---- canvas animation (worker-preferred, main-thread fallback) ----
+  var worker = null;
+  var renderer = null;
+  var dpr = 1, w = 0, h = 0;
 
-  function size() {
+  function measure() {
     dpr = window.devicePixelRatio || 1;
     var r = canvas.getBoundingClientRect();
     w = r.width; h = r.height;
-    canvas.width = w * dpr; canvas.height = h * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  function initPeers() {
-    peers = [];
-    for (var i = 0; i < PEERS; i++) {
-      peers.push({
-        x: Math.random() * w, y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.12, vy: (Math.random() - 0.5) * 0.12,
-        sz: 3 + Math.random() * 3, ph: Math.random() * 6.28
-      });
+
+  function startInline() {
+    var ctx;
+    try { ctx = canvas.getContext("2d"); } catch (e) { ctx = null; }
+    if (!ctx || typeof createSplashRenderer !== "function") return;
+    renderer = createSplashRenderer(ctx);
+    renderer.resize(w, h, dpr);
+    if (reduce) {
+      renderer.frame(false); // single static frame, no loop
+    } else {
+      (function loop() {
+        renderer.frame(true);
+        raf = window.requestAnimationFrame(loop);
+      })();
     }
   }
-  function draw(animate) {
-    t += 0.016;
-    ctx.clearRect(0, 0, w, h);
-    var g = ctx.createLinearGradient(0, 0, w, h);
-    g.addColorStop(0, "#090A14"); g.addColorStop(1, "#0F1020");
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    var bl = ctx.createRadialGradient(w / 2, h * 0.42, 10, w / 2, h * 0.42, h * 0.42);
-    bl.addColorStop(0, "rgba(" + C.r + "," + C.g + "," + C.b + ",0.12)");
-    bl.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = bl; ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = "rgba(" + C.r + "," + C.g + "," + C.b + ",0.06)";
-    ctx.lineWidth = 1;
-    for (var x = 0; x < w; x += GRID) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
-    for (var y = 0; y < h; y += GRID) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
-    for (var i = 0; i < peers.length; i++) {
-      for (var j = i + 1; j < peers.length; j++) {
-        var a = peers[i], b = peers[j];
-        var d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (d < LINK) {
-          ctx.strokeStyle = "rgba(" + C.r + "," + C.g + "," + C.b + "," + (0.10 * (1 - d / LINK)) + ")";
-          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-        }
-      }
-    }
-    for (var k = 0; k < peers.length; k++) {
-      var p = peers[k];
-      if (animate) {
-        p.x += p.vx; p.y += p.vy;
-        if (p.x < 0 || p.x > w) p.vx *= -1;
-        if (p.y < 0 || p.y > h) p.vy *= -1;
-      }
-      var tw = 0.5 + 0.5 * Math.sin(t * 1.5 + p.ph);
-      var gl = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 12);
-      gl.addColorStop(0, "rgba(" + C.r + "," + C.g + "," + C.b + "," + (0.5 * tw) + ")");
-      gl.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = gl; ctx.fillRect(p.x - 12, p.y - 12, 24, 24);
-      ctx.fillStyle = "rgba(129,140,248," + (0.6 + 0.4 * tw) + ")";
-      ctx.fillRect(p.x - p.sz / 2, p.y - p.sz / 2, p.sz, p.sz);
+
+  function startAnimation() {
+    measure();
+    var canUseWorker = !reduce &&
+      typeof OffscreenCanvas !== "undefined" &&
+      typeof canvas.transferControlToOffscreen === "function" &&
+      typeof Worker !== "undefined";
+
+    if (!canUseWorker) { startInline(); return; }
+
+    try {
+      worker = new Worker("js/splash-worker.js");
+      var off = canvas.transferControlToOffscreen();
+      worker.postMessage(
+        { type: "init", canvas: off, width: w, height: h, dpr: dpr },
+        [off]);
+    } catch (e) {
+      // Worker/transfer blocked (e.g. CSP throws synchronously here, before
+      // the canvas is transferred) — fall back to main-thread rendering.
+      if (worker) { try { worker.terminate(); } catch (e2) {} worker = null; }
+      startInline();
     }
   }
-  function animLoop() {
-    draw(true);
-    raf = window.requestAnimationFrame(animLoop);
-  }
+
+  window.addEventListener("resize", function () {
+    measure();
+    if (worker) {
+      worker.postMessage({ type: "resize", width: w, height: h, dpr: dpr });
+    } else if (renderer) {
+      renderer.resize(w, h, dpr);
+      if (reduce) renderer.frame(false);
+    }
+  });
 
   // ---- progress / handoff ----
   function readPct() {
@@ -134,7 +127,6 @@
       if (statusEl) statusEl.textContent = message;
       return;
     }
-    // Real completion: cycle calm tail copy (unless reduced motion).
     if (reduce) return;
     var msgs = ["Starting up…", "Almost ready…"];
     var i = 0;
@@ -161,6 +153,7 @@
     if (progRaf) { window.cancelAnimationFrame(progRaf); progRaf = null; }
     if (tailTimer) { clearInterval(tailTimer); tailTimer = null; }
     if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+    if (worker) { try { worker.terminate(); } catch (e) {} worker = null; }
   }
   var appHost = document.getElementById("app");
   if (appHost && window.MutationObserver) {
@@ -174,16 +167,8 @@
   }
 
   // ---- start ----
-  size();
-  initPeers();
-  if (reduce) {
-    draw(false); // single static frame, no loop
-  } else {
-    animLoop();
-  }
-  window.addEventListener("resize", function () { size(); initPeers(); if (reduce) draw(false); });
+  startAnimation();
 
-  // Fallback: no readable percentage within FALLBACK_MS -> indeterminate text.
   var FALLBACK_MS = 1500;
   fallbackTimer = window.setTimeout(function () {
     if (!handedOff && readPct() == null) handoff("Loading your wallet…");

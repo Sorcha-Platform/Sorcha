@@ -91,4 +91,13 @@ public class WalletSplashTests : AuthenticatedCitizenWalletTestBase
         Assert.That(count, Is.Zero,
             "Splash should be removed after hydration even under reduced motion.");
     }
+
+    [Test]
+    public async Task SplashScript_ReferencesWorker()
+    {
+        using var http = new HttpClient();
+        var js = await http.GetStringAsync(WalletUrl("js/splash.js"));
+        Assert.That(js, Does.Contain("splash-worker.js"),
+            "splash.js should spawn the OffscreenCanvas worker");
+    }
 }
