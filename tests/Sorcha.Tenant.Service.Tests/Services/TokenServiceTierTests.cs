@@ -154,4 +154,120 @@ public sealed class TokenServiceTierTests
 
         await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
     }
+
+    // --- Refresh tier upgrade (spec 136 defense-in-depth) ---
+
+    /// <summary>
+    /// Builds a TokenService whose repositories resolve <paramref name="user"/>/<paramref name="org"/>
+    /// so a refresh-token round-trip works (the plain <see cref="CreateService"/> returns a null user).
+    /// </summary>
+    private static TokenService CreateServiceForRefresh(UserIdentity user, Organization org)
+    {
+        var config = new JwtConfiguration
+        {
+            InstallationName = Installation,
+            SigningKey = "tier-tests-signing-key-min-32-characters-long-enough!!",
+            Issuer = "urn:sorcha:test",
+            AccessTokenLifetimeMinutes = 60,
+            RefreshTokenLifetimeHours = 24,
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = false,
+        };
+
+        var revocation = new Mock<ITokenRevocationService>();
+        revocation.Setup(r => r.TrackTokenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(),
+            It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        revocation.Setup(r => r.IsTokenRevokedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var identity = new Mock<IIdentityRepository>();
+        identity.Setup(i => i.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+
+        var orgs = new Mock<IOrganizationRepository>();
+        orgs.Setup(o => o.GetByIdAsync(org.Id, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var participants = new Mock<IParticipantRepository>();
+        participants.Setup(p => p.GetByUserAndOrgAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ParticipantIdentity?)null);
+
+        return new TokenService(
+            Options.Create(config), revocation.Object, identity.Object, orgs.Object,
+            participants.Object, NullLogger<TokenService>.Instance);
+    }
+
+    private static (UserIdentity user, Organization org) AdminSubject() => (
+        new UserIdentity
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = Guid.NewGuid(),
+            PlatformUserId = Guid.NewGuid(),
+            Email = "admin@sorcha.local",
+            DisplayName = "System Administrator",
+            Roles = [UserRole.Administrator, UserRole.SystemAdmin, UserRole.Consumer],
+            Status = IdentityStatus.Active,
+        },
+        new Organization { Id = Guid.NewGuid(), Name = "Sorcha Local", Subdomain = "system" });
+
+    private static (UserIdentity user, Organization org) CitizenSubject() => (
+        new UserIdentity
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = Guid.NewGuid(),
+            PlatformUserId = Guid.NewGuid(),
+            Email = "citizen@example.com",
+            DisplayName = "Citizen",
+            Roles = [UserRole.Consumer],
+            Status = IdentityStatus.Active,
+        },
+        new Organization { Id = Guid.NewGuid(), Name = "Public", Subdomain = "public" });
+
+    [Fact]
+    public async Task RefreshToken_PlatformHint_EntitledAdmin_UpgradesToPlatformWithRoles()
+    {
+        var (user, org) = AdminSubject();
+        var svc = CreateServiceForRefresh(user, org);
+
+        // Start from a CONSUMER token (the stale/leaked-token scenario), then request platform.
+        var consumer = await svc.GenerateUserTokenAsync(user, org, user.PlatformUserId, Tier.Consumer);
+        var refreshed = await svc.RefreshTokenAsync(consumer.RefreshToken, requestedTier: Tier.Platform);
+
+        refreshed.Should().NotBeNull();
+        var token = Decode(refreshed!.AccessToken);
+        token.Audiences.Should().ContainSingle().Which.Should().Be("test:platform");
+        token.Claims.Should().Contain(c => c.Value == "SystemAdmin", "an entitled admin is upgraded and roles are restored");
+        token.Claims.Should().Contain(c => c.Value == "Administrator");
+    }
+
+    [Fact]
+    public async Task RefreshToken_PlatformHint_NonEntitledCitizen_StaysConsumer()
+    {
+        var (user, org) = CitizenSubject();
+        var svc = CreateServiceForRefresh(user, org);
+
+        var consumer = await svc.GenerateUserTokenAsync(user, org, user.PlatformUserId, Tier.Consumer);
+        var refreshed = await svc.RefreshTokenAsync(consumer.RefreshToken, requestedTier: Tier.Platform);
+
+        refreshed.Should().NotBeNull();
+        var token = Decode(refreshed!.AccessToken);
+        token.Audiences.Should().ContainSingle().Which.Should().Be("test:consumer",
+            "a non-entitled holder is downgraded to their entitlement, never escalated (FR-008)");
+        token.Claims.Should().NotContain(c => c.Type == System.Security.Claims.ClaimTypes.Role || c.Type == "role");
+    }
+
+    [Fact]
+    public async Task RefreshToken_NoHint_PreservesConsumerTier()
+    {
+        var (user, org) = AdminSubject();
+        var svc = CreateServiceForRefresh(user, org);
+
+        // No tier hint → FR-012 tier-preserving refresh, even for an entitled admin.
+        var consumer = await svc.GenerateUserTokenAsync(user, org, user.PlatformUserId, Tier.Consumer);
+        var refreshed = await svc.RefreshTokenAsync(consumer.RefreshToken);
+
+        refreshed.Should().NotBeNull();
+        var token = Decode(refreshed!.AccessToken);
+        token.Audiences.Should().ContainSingle().Which.Should().Be("test:consumer");
+        token.Claims.Should().NotContain(c => c.Type == System.Security.Claims.ClaimTypes.Role || c.Type == "role");
+    }
 }

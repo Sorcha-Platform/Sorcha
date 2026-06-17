@@ -51,10 +51,18 @@ public interface ITokenService
     /// </summary>
     /// <param name="refreshToken">The refresh token.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="requestedTier">
+    /// Optional trust-tier hint (spec 136). When supplied, the minted access token's tier is
+    /// re-evaluated against the holder's entitlement (<see cref="TierResolver.ResolvePreference"/>
+    /// with <c>isExplicit:false</c>) — upgrading an entitled holder or leaving a non-entitled one
+    /// unchanged; it can never exceed entitlement. When <c>null</c> (the default) the refresh
+    /// preserves the refresh token's existing tier (FR-012).
+    /// </param>
     /// <returns>New token response or null if refresh token is invalid.</returns>
     Task<TokenResponse?> RefreshTokenAsync(
         string refreshToken,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        Tier? requestedTier = null);
 
     /// <summary>
     /// Revokes a token by its JTI.

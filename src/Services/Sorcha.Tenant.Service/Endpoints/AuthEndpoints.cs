@@ -571,7 +571,12 @@ public static class AuthEndpoints
             });
         }
 
-        var response = await tokenService.RefreshTokenAsync(request.RefreshToken, cancellationToken);
+        // Spec 136 defense-in-depth: an optional tier hint lets the platform host re-evaluate the
+        // minted tier against entitlement (e.g. self-heal a stale consumer token for an entitled
+        // admin). Unknown/absent hint → null → tier-preserving refresh (FR-012). The entitlement
+        // gate inside RefreshTokenAsync ensures this can never exceed the holder's entitlement.
+        var requestedTier = RequestedTierResolver.ParseTierHint(request.Tier);
+        var response = await tokenService.RefreshTokenAsync(request.RefreshToken, cancellationToken, requestedTier);
 
         if (response == null)
         {

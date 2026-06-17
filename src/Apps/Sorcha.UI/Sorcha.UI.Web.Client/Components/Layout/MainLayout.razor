@@ -17,6 +17,8 @@
 @inject TenantHubConnection TenantHub
 @inject IInboxApiService InboxApi
 @inject ILocalizationService Loc
+@inject IAuthenticationService AuthService
+@inject Sorcha.UI.Core.Services.Configuration.IConfigurationService ConfigService
 
 <MudThemeProvider Theme="SorchaMudTheme.Default" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
@@ -324,6 +326,23 @@
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             if (authState.User.Identity?.IsAuthenticated == true)
             {
+                // Spec 136 defense-in-depth: /app is the PLATFORM host. If this session is holding a
+                // consumer-tier token (e.g. a stale/leaked token from a /wallet session on the same
+                // origin), silently attempt a one-shot platform upgrade. The server gates it on
+                // entitlement — an admin is upgraded (roles restored, admin menu returns), a citizen
+                // stays consumer (no loop). Without this an entitled admin with a consumer token sees
+                // a silently roleless admin surface. Runs once (firstRender + _tokenRefreshStarted).
+                var aud = authState.User.FindFirst("aud")?.Value;
+                if (aud is not null && aud.EndsWith(":consumer", StringComparison.Ordinal))
+                {
+                    var profileName = await ConfigService.GetActiveProfileNameAsync();
+                    if (await AuthService.TryUpgradeTierAsync(profileName, "platform"))
+                    {
+                        (AuthStateProvider as CustomAuthenticationStateProvider)?.NotifyAuthenticationStateChanged();
+                        authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                    }
+                }
+
                 await RefreshUnreadCount();
             }
 

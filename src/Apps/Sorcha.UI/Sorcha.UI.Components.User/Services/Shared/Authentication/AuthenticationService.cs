@@ -123,6 +123,51 @@ public class AuthenticationService : IAuthenticationService
     }
 
     /// <inheritdoc />
+    public async Task<bool> TryUpgradeTierAsync(string profileName, string tier)
+    {
+        var entry = await _tokenCache.GetTokenAsync(profileName);
+        if (entry is null || string.IsNullOrEmpty(entry.RefreshToken))
+        {
+            return false;
+        }
+
+        try
+        {
+            // Hit the JSON refresh endpoint with a tier hint. The server gates the upgrade on
+            // entitlement (spec 136), so this can never exceed the holder's entitlement: an admin
+            // is upgraded to platform, a citizen is left on consumer. Unlike RefreshTokenAsync this
+            // must NOT clear the cached token on failure — a non-entitled holder legitimately keeps
+            // their current (consumer) token and carries on.
+            var response = await _httpClient.PostAsJsonAsync(
+                "/api/auth/token/refresh",
+                new TierUpgradeRequest(entry.RefreshToken, tier));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>();
+            if (tokenResponse is null || !tokenResponse.IsValid())
+            {
+                return false;
+            }
+
+            var cacheEntry = TokenCacheEntry.FromTokenResponse(tokenResponse, profileName);
+            await _tokenCache.StoreTokenAsync(profileName, cacheEntry);
+            return true;
+        }
+        catch (Exception)
+        {
+            // Best-effort, non-destructive: a failed upgrade leaves the existing token intact.
+            return false;
+        }
+    }
+
+    /// <summary>Wire shape for the tier-hinted JSON refresh (matches Tenant <c>TokenRefreshRequest</c>).</summary>
+    private sealed record TierUpgradeRequest(string RefreshToken, string Tier);
+
+    /// <inheritdoc />
     public async Task LogoutAsync(string profileName)
     {
         // Clear local token cache — server-side revocation is handled
