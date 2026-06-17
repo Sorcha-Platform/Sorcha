@@ -30,9 +30,9 @@ description: "Task list for Open Verifier PWA implementation"
 
 **Purpose**: The per-layer outcome shape that US1/US2/US3 all render. MUST complete first.
 
-- [ ] T003 Add `ValidationLayer` enum (`LivePresentation`, `IssuerSignature`, `Revocation`, `RegisterAnchor`), `LayerStatus` enum (`Pass`, `Fail`, `Unverified`), and `ValidationLayerResult` record (`Layer`, `Status`, `Headline`, `Detail: IReadOnlyDictionary<string,string>`) in `src/Common/Sorcha.Verifier.Engine/Models/VerifierSession.cs`.
-- [ ] T004 Add `IReadOnlyList<ValidationLayerResult> Layers { get; init; } = []` to `VerificationOutcome` in the same file; keep existing fields untouched (back-compat).
-- [ ] T005 [P] Unit test in `tests/Sorcha.Verifier.Tests` asserting `VerificationOutcome.Layers` defaults to empty and serialises round-trip with `JsonDefaults.Api`.
+- [X] T003 Add `ValidationLayer` enum (`LivePresentation`, `IssuerSignature`, `Revocation`, `RegisterAnchor`), `LayerStatus` enum (`Pass`, `Fail`, `Unverified`), and `ValidationLayerResult` record (`Layer`, `Status`, `Headline`, `Detail: IReadOnlyDictionary<string,string>`) in `src/Common/Sorcha.Verifier.Engine/Models/VerifierSession.cs`.
+- [X] T004 Add `IReadOnlyList<ValidationLayerResult> Layers { get; init; } = []` to `VerificationOutcome` in the same file; keep existing fields untouched (back-compat).
+- [X] T005 [P] Unit test in `tests/Sorcha.Verifier.Tests` asserting `VerificationOutcome.Layers` defaults to empty and serialises round-trip with `JsonDefaults.Api`.
 
 ---
 
