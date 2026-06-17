@@ -4,7 +4,7 @@
 @page "/admin/organizations"
 @page "/admin/organizations/{OrgId:guid}"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
-@attribute [Authorize(Roles = "Administrator,OrganizationAdmin,SystemAdmin")]
+@attribute [Authorize(Roles = "Administrator,SystemAdmin")]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
