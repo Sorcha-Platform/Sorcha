@@ -277,8 +277,7 @@ else
         // AlertsPanel or the admin stat grid, so polling those endpoints
         // for them just produces 401 noise in the console.
         _canSeeAdminDashboard = authState.User.IsInRole("Administrator")
-                                || authState.User.IsInRole("SystemAdmin")
-                                || authState.User.IsInRole("OrganizationAdmin");
+                                || authState.User.IsInRole("SystemAdmin");
         _isSystemAdmin = authState.User.IsInRole("SystemAdmin");
         _platformUserId = authState.User.FindFirst("platform_user_id")?.Value ?? string.Empty;
 
