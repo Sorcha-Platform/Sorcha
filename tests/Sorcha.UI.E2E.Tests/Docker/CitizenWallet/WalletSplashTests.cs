@@ -60,4 +60,18 @@ public class WalletSplashTests : AuthenticatedCitizenWalletTestBase
         Assert.That(count, Is.Zero,
             "Splash should be gone once Blazor renders App into #app.");
     }
+
+    [Test]
+    public async Task Splash_ReducedMotion_StillBootsAndRemovesSplash()
+    {
+        // With reduced motion, splash.js draws a single static canvas frame and
+        // runs no rAF loop. Boot must still complete and the splash must still
+        // be removed — i.e. the reduced-motion branch doesn't wedge startup.
+        await Page.EmulateMediaAsync(new() { ReducedMotion = Microsoft.Playwright.ReducedMotion.Reduce });
+        await NavigateToWalletAndWaitForBlazorAsync();
+
+        var count = await Page.Locator("#sorcha-splash").CountAsync();
+        Assert.That(count, Is.Zero,
+            "Splash should be removed after hydration even under reduced motion.");
+    }
 }
