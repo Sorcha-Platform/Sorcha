@@ -397,4 +397,25 @@ public class InMemoryRegisterRepository : IRegisterRepository
 
         return Task.FromResult(revocation);
     }
+
+    public Task<TransactionModel?> GetCredentialIssuanceTransactionAsync(
+        string registerId,
+        string credentialId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_transactions.TryGetValue(registerId, out var registerTransactions))
+        {
+            return Task.FromResult<TransactionModel?>(null);
+        }
+
+        var issuance = registerTransactions.Values
+            .FirstOrDefault(t =>
+                t.MetaData?.TrackingData != null &&
+                t.MetaData.TrackingData.TryGetValue("type", out var type) &&
+                string.Equals(type, "credential-issuance", StringComparison.OrdinalIgnoreCase) &&
+                t.MetaData.TrackingData.TryGetValue("credentialId", out var credId) &&
+                string.Equals(credId, credentialId, StringComparison.Ordinal));
+
+        return Task.FromResult(issuance);
+    }
 }

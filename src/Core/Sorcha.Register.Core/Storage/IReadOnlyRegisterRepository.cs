@@ -165,4 +165,23 @@ public interface IReadOnlyRegisterRepository
         string registerId,
         string targetTxId,
         CancellationToken cancellationToken = default);
+
+    // ===========================
+    // Credential Anchor Queries (Feature 155)
+    // ===========================
+
+    /// <summary>
+    /// Locates the credential-issuance transaction on the given register that anchors the
+    /// supplied credential id. Matches transactions whose tracking metadata carries
+    /// <c>TrackingData["type"] == "credential-issuance"</c> and
+    /// <c>TrackingData["credentialId"] == credentialId</c>.
+    /// </summary>
+    /// <param name="registerId">The register the credential claims to be anchored on.</param>
+    /// <param name="credentialId">The credential's own identifier (jti).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The first matching issuance transaction, or <c>null</c> if none matches.</returns>
+    Task<TransactionModel?> GetCredentialIssuanceTransactionAsync(
+        string registerId,
+        string credentialId,
+        CancellationToken cancellationToken = default);
 }

@@ -26,6 +26,7 @@ public static class VerificationEndpoints
         MapInclusionProofEndpoints(app);
         MapRevocationEndpoints(app);
         MapVerificationBundleEndpoints(app);
+        MapCredentialAnchorEndpoints(app);
     }
 
     // ===========================
@@ -556,6 +557,207 @@ public static class VerificationEndpoints
         .Produces<object>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest);
     }
+
+    // ===========================
+    // T024 (Feature 155): Public Credential Anchor Read
+    // ===========================
+
+    private static void MapCredentialAnchorEndpoints(WebApplication app)
+    {
+        // T024: GET /api/registers/{registerId}/credentials/{credentialId}/anchor  (anonymous)
+        app.MapGet("/api/registers/{registerId}/credentials/{credentialId}/anchor", async (
+            IRegisterRepository repository,
+            IHashProvider hashProvider,
+            string registerId,
+            string credentialId,
+            CancellationToken cancellationToken) =>
+        {
+            // Validate path params (400 on empty / malformed)
+            if (string.IsNullOrWhiteSpace(registerId))
+            {
+                return Results.BadRequest(new { error = "registerId is required" });
+            }
+            if (string.IsNullOrWhiteSpace(credentialId))
+            {
+                return Results.BadRequest(new { error = "credentialId is required" });
+            }
+
+            // Locate the credential-issuance transaction by the credential's own id.
+            // 404 (not 4xx-failure) when none matches — the open verifier renders the anchor
+            // layer as "unverified", distinct from a verification failure.
+            var transaction = await repository.GetCredentialIssuanceTransactionAsync(
+                registerId, credentialId, cancellationToken);
+            if (transaction is null)
+            {
+                return Results.NotFound(new
+                {
+                    error = $"No credential-issuance transaction for credential '{credentialId}' on register '{registerId}'"
+                });
+            }
+
+            // The issuance tx must be sealed in a docket to carry an inclusion proof.
+            if (transaction.DocketNumber is null)
+            {
+                return Results.NotFound(new
+                {
+                    error = "Credential-issuance transaction has not been sealed in a docket yet"
+                });
+            }
+
+            var docket = await repository.GetDocketAsync(
+                registerId, transaction.DocketNumber.Value, cancellationToken);
+            if (docket is null)
+            {
+                return Results.NotFound(new { error = $"Docket {transaction.DocketNumber} not found" });
+            }
+
+            var txId = transaction.TxId ?? transaction.Id ?? string.Empty;
+
+            // Generate the Merkle inclusion proof — same logic as the authenticated
+            // GET .../inclusion-proof endpoint (shared helper below).
+            var inclusionProof = await BuildInclusionProofAsync(
+                repository, hashProvider, registerId, docket, txId, cancellationToken);
+            if (inclusionProof is null)
+            {
+                return Results.Problem(
+                    title: "Data integrity error",
+                    detail: "Unable to generate inclusion proof for the issuance transaction",
+                    statusCode: 500);
+            }
+
+            // Resolve lifecycle status (Active / Revoked / Superseded) via the revocation index.
+            var status = await ResolveLifecycleStatusAsync(repository, registerId, txId, cancellationToken);
+
+            var anchorResponse = new CredentialAnchorResponse
+            {
+                RegisterId = registerId,
+                CredentialId = credentialId,
+                TxId = txId,
+                DocketNumber = checked((long)docket.Id),
+                SealedAt = new DateTimeOffset(docket.TimeStamp, TimeSpan.Zero),
+                Status = status.ToString(),
+                InclusionProof = inclusionProof
+            };
+
+            return Results.Ok(anchorResponse);
+        })
+        .WithName("GetCredentialAnchor")
+        .WithSummary("Resolve a credential's issuance anchor + inclusion proof (public)")
+        .WithDescription("Finds the credential-issuance transaction whose tracking metadata carries the " +
+            "given credentialId and returns its transaction id, sealing docket, lifecycle status, and a " +
+            "Merkle inclusion proof verifiable via POST /inclusion-proofs/verify. Anonymous — exposes only " +
+            "already-public register facts. Returns 404 (not a failure) when no issuance transaction matches.")
+        .WithTags("Verification")
+        .AllowAnonymous()
+        .Produces<CredentialAnchorResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound);
+    }
+
+    // ===========================
+    // Shared helpers
+    // ===========================
+
+    /// <summary>
+    /// Builds a Merkle inclusion proof for a sealed transaction using the same leaf-hash
+    /// computation as the authenticated inclusion-proof endpoint and the <c>ReceiptGenerator</c>.
+    /// Returns null when the docket has no transactions or the target is not a docket leaf.
+    /// </summary>
+    private static async Task<MerkleInclusionProof?> BuildInclusionProofAsync(
+        IRegisterRepository repository,
+        IHashProvider hashProvider,
+        string registerId,
+        Docket docket,
+        string txId,
+        CancellationToken cancellationToken)
+    {
+        var docketTransactions = (await repository.GetTransactionsByDocketAsync(
+            registerId, docket.Id, cancellationToken)).ToList();
+        if (docketTransactions.Count == 0)
+        {
+            return null;
+        }
+
+        var docketHasher = new DocketHasher(hashProvider);
+        var txHashes = docketTransactions
+            .Select(tx => docketHasher.ComputeTransactionHash(
+                tx.TxId ?? tx.Id ?? string.Empty,
+                tx.Payloads?.FirstOrDefault()?.Hash ?? string.Empty,
+                new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero)))
+            .ToList();
+
+        int leafIndex = docketTransactions.FindIndex(tx =>
+            string.Equals(tx.TxId ?? tx.Id, txId, StringComparison.OrdinalIgnoreCase));
+        if (leafIndex < 0)
+        {
+            return null;
+        }
+
+        var merkleTree = new MerkleTree(hashProvider);
+        var proof = merkleTree.GenerateInclusionProof(leafIndex, txHashes.AsReadOnly());
+
+        return new MerkleInclusionProof
+        {
+            TransactionHash = proof.TransactionHash,
+            DocketNumber = checked((long)docket.Id),
+            MerkleRoot = proof.MerkleRoot,
+            ProofPath = proof.ProofPath.Select(step => new MerkleProofStep
+            {
+                Hash = step.Hash,
+                Position = step.Position == MerkleProofPosition.Left
+                    ? ProofPosition.Left
+                    : ProofPosition.Right
+            }).ToList().AsReadOnly(),
+            LeafIndex = proof.LeafIndex,
+            TreeSize = proof.TreeSize
+        };
+    }
+
+    /// <summary>
+    /// Resolves the lifecycle status of a transaction (Active / Revoked / Superseded) by looking
+    /// up any revocation transaction that targets it. Mirrors the GET .../status endpoint.
+    /// </summary>
+    private static async Task<TransactionLifecycleStatus> ResolveLifecycleStatusAsync(
+        IRegisterRepository repository,
+        string registerId,
+        string txId,
+        CancellationToken cancellationToken)
+    {
+        var revocationTx = await repository.FindRevocationForTransactionAsync(
+            registerId, txId, cancellationToken);
+        if (revocationTx is null)
+        {
+            return TransactionLifecycleStatus.Active;
+        }
+
+        RevocationPayload? revocationPayload = null;
+        if (revocationTx.Payloads is { Length: > 0 })
+        {
+            try
+            {
+                var data = revocationTx.Payloads[0].Data;
+                var payloadBytes = data.Contains('+') || data.Contains('/') || data.Contains('=')
+                    ? Convert.FromBase64String(data)
+                    : System.Buffers.Text.Base64Url.DecodeFromChars(data);
+
+                revocationPayload = JsonSerializer.Deserialize<RevocationPayload>(
+                    payloadBytes,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (FormatException)
+            {
+                // Fall through to Revoked
+            }
+            catch (JsonException)
+            {
+                // Fall through to Revoked
+            }
+        }
+
+        return revocationPayload?.Reason == RevocationReason.Superseded
+            ? TransactionLifecycleStatus.Superseded
+            : TransactionLifecycleStatus.Revoked;
+    }
 }
 
 // ===========================
@@ -596,4 +798,33 @@ public class RevokeTransactionRequest
 
     /// <summary>Wallet address of the signer submitting the revocation.</summary>
     public string? SignerWalletAddress { get; set; }
+}
+
+/// <summary>
+/// Response DTO for the public credential anchor read (Feature 155).
+/// Locates a credential's issuance transaction on a register and returns its
+/// F079 Merkle inclusion proof so an open verifier can cross-check the register anchor.
+/// </summary>
+public class CredentialAnchorResponse
+{
+    /// <summary>The register the credential is anchored on.</summary>
+    public string RegisterId { get; set; } = string.Empty;
+
+    /// <summary>The credential's own identifier (jti), echoed back.</summary>
+    public string CredentialId { get; set; } = string.Empty;
+
+    /// <summary>The issuance transaction id.</summary>
+    public string TxId { get; set; } = string.Empty;
+
+    /// <summary>The number of the docket that sealed the issuance transaction.</summary>
+    public long DocketNumber { get; set; }
+
+    /// <summary>The time the sealing docket was created (UTC).</summary>
+    public DateTimeOffset SealedAt { get; set; }
+
+    /// <summary>Transaction lifecycle status: Active, Revoked, or Superseded.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>The F079 Merkle inclusion proof for the issuance transaction.</summary>
+    public MerkleInclusionProof InclusionProof { get; set; } = null!;
 }
