@@ -28,6 +28,7 @@ public class WalletSplashTests : AuthenticatedCitizenWalletTestBase
             Assert.That(html, Does.Contain("sorcha-splash-fill"), "progress bar present");
             Assert.That(html, Does.Contain("sorcha-splash-status"), "status text present");
             Assert.That(html, Does.Contain("css/splash.css"), "splash.css linked");
+            Assert.That(html, Does.Contain("js/splash.js"), "splash.js referenced");
         });
     }
 
@@ -37,5 +38,26 @@ public class WalletSplashTests : AuthenticatedCitizenWalletTestBase
         using var http = new HttpClient();
         var res = await http.GetAsync(WalletUrl("css/splash.css"));
         Assert.That((int)res.StatusCode, Is.EqualTo(200), "css/splash.css should be served");
+    }
+
+    [Test]
+    public async Task SplashScript_IsServed()
+    {
+        using var http = new HttpClient();
+        var res = await http.GetAsync(WalletUrl("js/splash.js"));
+        Assert.That((int)res.StatusCode, Is.EqualTo(200), "js/splash.js should be served");
+    }
+
+    [Test]
+    public async Task Splash_RemovedAfterBlazorHydration()
+    {
+        // Navigating + waiting for Blazor proves two things at once: the splash
+        // markup/script did not break boot, and Blazor's render into #app
+        // removes the splash (it lives inside #app, which Blazor clears).
+        await NavigateToWalletAndWaitForBlazorAsync();
+
+        var count = await Page.Locator("#sorcha-splash").CountAsync();
+        Assert.That(count, Is.Zero,
+            "Splash should be gone once Blazor renders App into #app.");
     }
 }
