@@ -103,6 +103,29 @@ public sealed class RequestedTierResolverTests
             .Should().Be(Tier.Platform);
     }
 
+    [Theory]
+    [InlineData("https://localhost/app/orgs")]
+    [InlineData("https://n1.sorcha.dev/app/designer/blueprint")]
+    [InlineData("http://localhost/app/")]
+    public void ClassifyReturnTo_AllowlistedOwnHost_AppPath_IsPlatform(string returnTo)
+    {
+        // Regression: the platform's own host is allow-listed for redirect-safety, NOT as a consumer
+        // host. A self-referential /app return (RedirectToLogin sends the absolute current URL) must
+        // classify Platform — host-first classification minted an entitled admin a roleless consumer
+        // token, hiding the entire admin menu.
+        var ownHostAllowlist = new ReturnToAllowlistOptions { Hosts = ["localhost", "n1.sorcha.dev"] };
+        RequestedTierResolver.ClassifyReturnTo(returnTo, ownHostAllowlist).Should().Be(Tier.Platform);
+    }
+
+    [Fact]
+    public void ClassifyReturnTo_AllowlistedOwnHost_WalletPath_IsConsumer()
+    {
+        // /wallet self-return still classifies Consumer — path-first preserves the wallet boundary.
+        var ownHostAllowlist = new ReturnToAllowlistOptions { Hosts = ["localhost", "n1.sorcha.dev"] };
+        RequestedTierResolver.ClassifyReturnTo("https://n1.sorcha.dev/wallet/home", ownHostAllowlist)
+            .Should().Be(Tier.Consumer);
+    }
+
     // --- default (rule 3) ---
 
     [Theory]
