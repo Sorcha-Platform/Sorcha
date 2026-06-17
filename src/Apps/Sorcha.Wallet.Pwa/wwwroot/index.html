@@ -9,6 +9,7 @@
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
     <link href="css/app.css" rel="stylesheet" />
     <link href="css/welcome-takeover.css" rel="stylesheet" />
+    <link href="css/splash.css" rel="stylesheet" />
     <!-- Blazor CSS-isolation bundle — without this, every component .razor.css
          (incl. the Feature 141 wallet chrome + shared Sorcha.UI.Components.User
          scoped styles) is never loaded and components render unstyled. -->
@@ -16,8 +17,26 @@
 </head>
 <body>
     <div id="app">
-        <div style="font-family: system-ui, sans-serif; padding: 2rem; text-align: center;">
-            Loading Sorcha Wallet…
+        <div id="sorcha-splash" class="sorcha-splash" role="status" aria-live="polite"
+             aria-label="Loading Sorcha Wallet">
+            <canvas id="sorcha-splash-canvas" aria-hidden="true"></canvas>
+            <div class="sorcha-splash-center">
+                <div class="sorcha-splash-mark"><span>S</span></div>
+                <div class="sorcha-splash-wordmark">Sorcha Wallet</div>
+                <div class="sorcha-splash-subword">Your proof, your device</div>
+            </div>
+            <div class="sorcha-splash-ind">
+                <div class="sorcha-splash-bar" id="sorcha-splash-bar">
+                    <div class="sorcha-splash-track">
+                        <div class="sorcha-splash-fill" id="sorcha-splash-fill"></div>
+                    </div>
+                    <div class="sorcha-splash-pct" id="sorcha-splash-pct">0%</div>
+                </div>
+                <div class="sorcha-splash-text" id="sorcha-splash-text">
+                    <div class="sorcha-splash-status" id="sorcha-splash-status">Starting up…</div>
+                    <div class="sorcha-splash-dots"><i></i><i></i><i></i></div>
+                </div>
+            </div>
         </div>
     </div>
     <div id="blazor-error-ui">
