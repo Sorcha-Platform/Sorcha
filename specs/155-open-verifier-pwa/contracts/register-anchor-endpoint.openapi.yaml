@@ -1,0 +1,72 @@
+openapi: 3.1.0
+info:
+  title: Register Service — Public Credential Anchor Read (Feature 155)
+  version: "1.0.0"
+  description: >
+    Open, unauthenticated read that locates a credential's issuance transaction on a public register
+    by the credential's own identifiers and returns its F079 Merkle inclusion proof. Enables the open
+    verifier's layer-4 register cross-check with no operator configuration and no privileged access.
+    Exposes only already-public register facts.
+paths:
+  /api/registers/{registerId}/credentials/{credentialId}/anchor:
+    get:
+      operationId: getCredentialAnchor
+      summary: Resolve a credential's issuance anchor + inclusion proof on the register.
+      description: >
+        Finds the credential-issuance transaction whose tracking metadata carries the given
+        credentialId, and returns its transaction id, sealing docket, lifecycle status, and a Merkle
+        inclusion proof that can be independently verified via POST /inclusion-proofs/verify. Anonymous.
+      security: []   # public / anonymous
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema: { type: string }
+          description: The public register the credential claims to be anchored on (from the credential's registerAnchor claim).
+        - name: credentialId
+          in: path
+          required: true
+          schema: { type: string }
+          description: The credential's own identifier (jti) read from the presented SD-JWT.
+      responses:
+        "200":
+          description: Issuance transaction found; inclusion proof returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialAnchorResponse"
+        "400":
+          description: Malformed registerId or credentialId.
+        "404":
+          description: No credential-issuance transaction matches (registerId, credentialId). Distinct from a verification failure — the verifier renders the anchor layer as "unverified", not "failed".
+components:
+  schemas:
+    CredentialAnchorResponse:
+      type: object
+      required: [registerId, credentialId, txId, docketNumber, sealedAt, status, inclusionProof]
+      properties:
+        registerId: { type: string }
+        credentialId: { type: string }
+        txId: { type: string, description: Issuance transaction id. }
+        docketNumber: { type: integer, format: int64, description: Sealing docket number. }
+        sealedAt: { type: string, format: date-time }
+        status:
+          type: string
+          enum: [Active, Revoked, Superseded]
+          description: Transaction lifecycle status (F079).
+        inclusionProof:
+          $ref: "#/components/schemas/MerkleInclusionProof"
+    MerkleInclusionProof:
+      type: object
+      description: Existing F079 type (MerkleInclusionProof) — shape shown for reference.
+      required: [transactionHash, merkleRoot, proofPath]
+      properties:
+        transactionHash: { type: string }
+        merkleRoot: { type: string }
+        proofPath:
+          type: array
+          items:
+            type: object
+            properties:
+              hash: { type: string }
+              position: { type: string, enum: [left, right] }
