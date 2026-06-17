@@ -33,6 +33,18 @@ public interface IAuthenticationService
     Task<bool> RefreshTokenAsync(string profileName);
 
     /// <summary>
+    /// Attempts a one-shot trust-tier upgrade (spec 136 defense-in-depth). Re-mints the cached
+    /// token at the requested tier via the JSON refresh endpoint, which the server gates on
+    /// entitlement — an entitled holder is upgraded, a non-entitled one is left on their current
+    /// tier (the call simply returns false / a same-tier token). Used by the <c>/app</c> platform
+    /// host to self-heal a stale consumer-tier token for an entitled admin. Never throws.
+    /// </summary>
+    /// <param name="profileName">Profile name.</param>
+    /// <param name="tier">Requested human tier hint (e.g. <c>"platform"</c>).</param>
+    /// <returns>True if a new token was minted and cached, false otherwise.</returns>
+    Task<bool> TryUpgradeTierAsync(string profileName, string tier);
+
+    /// <summary>
     /// Logs out the user and clears cached tokens
     /// </summary>
     /// <param name="profileName">Profile name</param>

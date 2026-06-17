@@ -217,7 +217,8 @@ public class TokenService : ITokenService
     /// <inheritdoc />
     public async Task<TokenResponse?> RefreshTokenAsync(
         string refreshToken,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Tier? requestedTier = null)
     {
         if (string.IsNullOrWhiteSpace(refreshToken))
         {
@@ -278,9 +279,21 @@ public class TokenService : ITokenService
                 organization = await _organizationRepository.GetByIdAsync(orgGuid, cancellationToken);
             }
 
-            // A refresh re-mints an access token of the SAME tier as the refresh token (spec 136,
-            // FR-012). The tier was stamped at issuance; absent (legacy tokens) defaults to platform.
+            // A plain refresh re-mints an access token of the SAME tier as the refresh token (spec
+            // 136, FR-012). The tier was stamped at issuance; absent (legacy tokens) defaults to
+            // platform.
             var tier = ParseTierClaim(principal.FindFirst("tier")?.Value);
+
+            // An explicit requestedTier opts into an entitlement-gated re-evaluation (FR-016-style,
+            // mirroring org-switch): the tier follows the holder's current roles. With isExplicit:false
+            // a non-entitled request downgrades rather than 403s, so it can never exceed entitlement —
+            // an entitled admin is upgraded (roles restored), a citizen stays consumer. The /app
+            // platform host uses this to self-heal a stale lower-tier token (defense-in-depth for the
+            // shared-origin tier-leak class of bug).
+            if (requestedTier is not null)
+            {
+                tier = TierResolver.ResolvePreference(requestedTier.Value, isExplicit: false, user.Roles).Tier;
+            }
 
             // Generate new access token with claims rebuilt from current user state
             var newAccessTokenJti = Guid.NewGuid().ToString();

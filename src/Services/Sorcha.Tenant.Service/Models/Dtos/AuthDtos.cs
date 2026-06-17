@@ -49,6 +49,15 @@ public record TokenRefreshRequest
     /// The refresh token.
     /// </summary>
     public required string RefreshToken { get; init; }
+
+    /// <summary>
+    /// Optional trust-tier hint (spec 136). When set to a human tier (<c>consumer</c>/<c>platform</c>)
+    /// the refresh re-evaluates the minted tier against the holder's entitlement (FR-016-style, like
+    /// org-switch): an entitled holder is upgraded, a non-entitled one is left unchanged — it can never
+    /// exceed entitlement. Absent (the default) preserves the refresh token's existing tier (FR-012).
+    /// Used by the <c>/app</c> platform host to self-heal a stale lower-tier token.
+    /// </summary>
+    public string? Tier { get; init; }
 }
 
 /// <summary>
