@@ -1,0 +1,104 @@
+/* SPDX-License-Identifier: MIT
+   Copyright (c) 2026 Sorcha Contributors */
+
+/* Pre-boot loading splash for the Sorcha Wallet PWA. Rendered inside #app in
+   index.html and shown until Blazor WASM finishes booting and replaces #app's
+   content with the App component. Pure CSS — no MudBlazor tokens — because this
+   paints before the MudBlazor stylesheet/theme are meaningful. Always dark: it
+   is a brand surface and the user's theme is not known until the app boots. */
+
+.sorcha-splash {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #090A14;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  z-index: 9999;
+}
+.sorcha-splash canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sorcha-splash-center {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.sorcha-splash-mark {
+  width: 92px; height: 92px; border-radius: 24px;
+  background: linear-gradient(135deg, #0d0e1c 0%, #14162b 100%);
+  border: 1px solid rgba(99, 102, 241, .35);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 50px -6px rgba(99, 102, 241, .55),
+              inset 0 0 30px -10px rgba(129, 140, 248, .4);
+}
+.sorcha-splash-mark span {
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-weight: 900;
+  font-size: 60px; line-height: 1; color: #fff;
+  text-shadow: 0 0 22px rgba(129, 140, 248, .9), 0 0 40px rgba(99, 102, 241, .6);
+  animation: sorcha-splash-breathe 2.8s ease-in-out infinite;
+}
+@keyframes sorcha-splash-breathe {
+  0%, 100% { opacity: .85; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.04); }
+}
+.sorcha-splash-wordmark {
+  margin-top: 20px; font-size: 1.05rem; font-weight: 600;
+  letter-spacing: .02em; color: #f2f3fb;
+}
+.sorcha-splash-subword {
+  margin-top: 4px; font-size: .72rem; letter-spacing: .22em;
+  text-transform: uppercase; color: rgba(129, 140, 248, .75);
+}
+.sorcha-splash-ind {
+  position: absolute; left: 0; right: 0; bottom: 14%; z-index: 2;
+  display: flex; justify-content: center;
+}
+/* progress bar (phase 1) */
+.sorcha-splash-bar { width: 180px; transition: opacity .4s ease; }
+.sorcha-splash-track {
+  height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .08); overflow: hidden;
+}
+.sorcha-splash-fill {
+  height: 100%; width: 0%; border-radius: 4px;
+  background: linear-gradient(90deg, #4F46E5, #818CF8);
+  box-shadow: 0 0 12px rgba(129, 140, 248, .7);
+  transition: width .2s ease;
+}
+.sorcha-splash-pct {
+  margin-top: 8px; text-align: center; font-size: .72rem; letter-spacing: .04em;
+  color: #9aa0c8; font-variant-numeric: tabular-nums;
+}
+/* status text (phase 2 / fallback) — hidden until handoff */
+.sorcha-splash-text {
+  position: absolute; left: 0; right: 0; text-align: center;
+  opacity: 0; transition: opacity .5s ease;
+}
+.sorcha-splash-status {
+  font-size: .8rem; letter-spacing: .03em;
+  background: linear-gradient(90deg, #6b72a8 25%, #fff 50%, #6b72a8 75%);
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  animation: sorcha-splash-shimmer 2.4s linear infinite;
+}
+@keyframes sorcha-splash-shimmer { to { background-position: -200% center; } }
+.sorcha-splash-dots {
+  display: inline-flex; gap: 5px; margin-top: 14px; width: 100%; justify-content: center;
+}
+.sorcha-splash-dots i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(129, 140, 248, .5);
+  animation: sorcha-splash-pulse 1.4s ease-in-out infinite;
+}
+.sorcha-splash-dots i:nth-child(2) { animation-delay: .2s; }
+.sorcha-splash-dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes sorcha-splash-pulse {
+  0%, 100% { opacity: .3; transform: scale(.8); }
+  50%      { opacity: 1;  transform: scale(1.15); }
+}
+/* State class toggled by splash.js at the download→startup handoff. */
+.sorcha-splash.is-startup .sorcha-splash-bar  { opacity: 0; }
+.sorcha-splash.is-startup .sorcha-splash-text { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sorcha-splash-mark span,
+  .sorcha-splash-status,
+  .sorcha-splash-dots i { animation: none !important; }
+  .sorcha-splash-status { -webkit-text-fill-color: #aab0d8; color: #aab0d8; }
+}
