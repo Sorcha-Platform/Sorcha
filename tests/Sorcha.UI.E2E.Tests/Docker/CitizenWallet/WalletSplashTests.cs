@@ -29,6 +29,7 @@ public class WalletSplashTests : AuthenticatedCitizenWalletTestBase
             Assert.That(html, Does.Contain("sorcha-splash-status"), "status text present");
             Assert.That(html, Does.Contain("css/splash.css"), "splash.css linked");
             Assert.That(html, Does.Contain("js/splash.js"), "splash.js referenced");
+            Assert.That(html, Does.Contain("js/splash-render.js"), "splash-render.js referenced");
         });
     }
 
@@ -46,6 +47,22 @@ public class WalletSplashTests : AuthenticatedCitizenWalletTestBase
         using var http = new HttpClient();
         var res = await http.GetAsync(WalletUrl("js/splash.js"));
         Assert.That((int)res.StatusCode, Is.EqualTo(200), "js/splash.js should be served");
+    }
+
+    [Test]
+    public async Task SplashRenderScript_IsServed()
+    {
+        using var http = new HttpClient();
+        var res = await http.GetAsync(WalletUrl("js/splash-render.js"));
+        Assert.That((int)res.StatusCode, Is.EqualTo(200), "js/splash-render.js should be served");
+    }
+
+    [Test]
+    public async Task SplashWorkerScript_IsServed()
+    {
+        using var http = new HttpClient();
+        var res = await http.GetAsync(WalletUrl("js/splash-worker.js"));
+        Assert.That((int)res.StatusCode, Is.EqualTo(200), "js/splash-worker.js should be served");
     }
 
     [Test]
