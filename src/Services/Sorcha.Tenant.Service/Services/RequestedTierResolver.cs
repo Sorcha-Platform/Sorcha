@@ -78,16 +78,27 @@ public static class RequestedTierResolver
             return null;
         }
 
-        // Absolute URL: an allow-listed consumer host is a consumer destination (the allowlist itself
-        // fail-closes on open-redirects). Otherwise fall back to classifying the URL's path.
         if (Uri.TryCreate(returnTo, UriKind.Absolute, out var absolute))
         {
+            // A recognised /app or /wallet path expresses tier intent directly and MUST win over the
+            // host heuristic. The platform's own host (localhost, n1.sorcha.dev, ...) is in the allowlist
+            // for redirect-safety, NOT as a consumer-host marker — without path-first, a self-referential
+            // /app return (RedirectToLogin sends the absolute current URL) is mis-classified Consumer and
+            // an entitled admin is minted a roleless consumer token, losing the entire admin surface.
+            var byPath = ClassifyPath(absolute.AbsolutePath);
+            if (byPath is not null)
+            {
+                return byPath;
+            }
+
+            // No tier-bearing path → an allow-listed *external consumer* host (e.g. a council page) is a
+            // consumer destination. The allowlist itself fail-closes on open-redirects.
             if (allowlist is not null && allowlist.IsAllowed(returnTo))
             {
                 return Tier.Consumer;
             }
 
-            return ClassifyPath(absolute.AbsolutePath);
+            return null;
         }
 
         return ClassifyPath(returnTo);
