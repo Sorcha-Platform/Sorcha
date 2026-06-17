@@ -2,18 +2,20 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Verifier outcome page (Feature 114, T093). Single screen the operator sees
-    after the citizen wallet posts an outcome — accepted (with disclosed claims
-    table) or rejected (with reasons).
+    Verifier verdict screen (Feature 155). IdCardLayout-style header (portrait +
+    headline + issuer) over a four-layer validation trail with progressive disclosure.
+    The register-anchor layer is verified on demand ("tap to verify inclusion proof").
 *@
 @page "/s/{SessionId}/outcome"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Sorcha.Verifier.Services
+@using Sorcha.Verifier.Engine.Models
 @inject IVerifierSessionStore Store
+@inject IRegisterAnchorClient AnchorClient
 
-<PageTitle>Verifier outcome</PageTitle>
+<PageTitle>Verifier result</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-6">
     @if (_session is null)
     {
         <MudAlert Severity="Severity.Warning">Session not found or expired.</MudAlert>
@@ -23,50 +25,219 @@
         <MudAlert Severity="Severity.Info">Still pending — return to the QR page.</MudAlert>
         <MudButton Class="mt-4" Variant="Variant.Outlined" Href="@($"s/{SessionId}")">Back to QR</MudButton>
     }
-    else if (_session.Outcome.Accepted)
+    else if (_vm is not null)
     {
-        <MudAlert Severity="Severity.Success" Icon="@Icons.Material.Filled.VerifiedUser" Class="mb-4">
-            Presentation accepted.
-        </MudAlert>
-        <MudText Typo="Typo.h6" Class="mb-2">@_session.Purpose</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-            Disclosed claims from <code>@_session.RequiredVct</code>:
-        </MudText>
-        <MudPaper Elevation="1" Class="pa-4">
-            <MudList T="string" Dense="true">
-                @foreach (var (name, value) in _session.Outcome.DisclosedClaims)
+        <!-- ID-card header -->
+        <div class="verdict-card @(_vm.OverallPass ? "verdict-card--pass" : "verdict-card--fail")">
+            <div class="verdict-portrait">
+                @if (!string.IsNullOrEmpty(_vm.PortraitBase64))
                 {
-                    <MudListItem T="string">
-                        <strong>@name:</strong> @value?.ToString()
-                    </MudListItem>
+                    <img src="@PortraitSrc(_vm.PortraitBase64)" alt="portrait" />
                 }
-            </MudList>
-        </MudPaper>
-    }
-    else
-    {
-        <MudAlert Severity="Severity.Error" Icon="@Icons.Material.Filled.Block" Class="mb-4">
-            Presentation rejected.
-        </MudAlert>
-        <MudPaper Elevation="1" Class="pa-4">
-            <MudList T="string" Dense="true">
-                @foreach (var err in _session.Outcome.Errors)
+                else
                 {
-                    <MudListItem T="string" Icon="@Icons.Material.Filled.ErrorOutline">@err</MudListItem>
+                    <span>no&nbsp;portrait</span>
                 }
-            </MudList>
-        </MudPaper>
-    }
+            </div>
+            <div class="verdict-meta">
+                <div class="verdict-vct">@VctLabel</div>
+                <div class="verdict-headline">
+                    @_vm.Headline&nbsp;@(_vm.OverallPass ? "✓" : "✗")
+                </div>
+                @if (_vm.AgeOver18 is not null)
+                {
+                    <span class="verdict-chip">age_over_18 = @(_vm.AgeOver18.Value ? "true" : "false")</span>
+                }
+                <div class="verdict-issuer">Issued by <b>@(_vm.IssuerDisplayName ?? "unknown issuer")</b></div>
+                @if (!string.IsNullOrEmpty(_vm.IssuerDid))
+                {
+                    <div class="verdict-did">@_vm.IssuerDid</div>
+                }
+            </div>
+        </div>
 
-    <MudButton Class="mt-6" Variant="Variant.Outlined" Href="">Start a new verification</MudButton>
+        <div class="verdict-summary">
+            @PassCount of @_vm.Layers.Count checks passed@(HasUnverified ? " · some reduced-assurance" : "")
+        </div>
+
+        @if (!_vm.OverallPass && _vm.Errors.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="my-3">
+                @string.Join("; ", _vm.Errors)
+            </MudAlert>
+        }
+
+        <!-- Selective disclosure block -->
+        <MudExpansionPanels Class="mt-4" MultiExpansion="true">
+            <MudExpansionPanel data-testid="trail-disclosure">
+                <TitleContent>
+                    <div class="d-flex justify-space-between align-center" style="width:100%">
+                        <span>Selective disclosure</span>
+                        <span style="color:var(--mud-palette-success)">✓ @_vm.Disclosed.Count shared</span>
+                    </div>
+                </TitleContent>
+                <ChildContent>
+                    <div class="trail-detail">
+                        <div class="trail-label trail-label--ok">DISCLOSED (@_vm.Disclosed.Count)</div>
+                        @foreach (var d in _vm.Disclosed)
+                        {
+                            <div><code>@d.Key = @d.Value</code></div>
+                        }
+                        @if (_vm.Withheld.Count > 0)
+                        {
+                            <div class="trail-label">WITHHELD (@_vm.Withheld.Count) — never left the wallet</div>
+                            <div class="trail-withheld">@string.Join(" · ", _vm.Withheld)</div>
+                        }
+                    </div>
+                </ChildContent>
+            </MudExpansionPanel>
+
+            @foreach (var layer in _vm.Layers)
+            {
+                <MudExpansionPanel data-testid="@($"trail-{layer.Layer}")">
+                    <TitleContent>
+                        <div class="d-flex justify-space-between align-center" style="width:100%">
+                            <span>@LayerTitle(layer.Layer)</span>
+                            <span style="color:@StatusColour(layer.Status)">@StatusGlyph(layer.Status) @layer.Headline</span>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <div class="trail-detail">
+                            @foreach (var kv in layer.Detail)
+                            {
+                                <div><code>@kv.Key</code> &nbsp; @kv.Value</div>
+                            }
+                            @if (layer.Layer == ValidationLayer.RegisterAnchor && layer.Status == LayerStatus.Pass && _vm.RegisterAnchorId is not null)
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Class="mt-2"
+                                           OnClick="ExportBundle" data-testid="export-bundle">
+                                    Export verification bundle
+                                </MudButton>
+                            }
+                        </div>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
+
+        <!-- Register-anchor cross-check (layer 4) -->
+        @if (!_vm.Layers.Any(l => l.Layer == ValidationLayer.RegisterAnchor))
+        {
+            <MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="VerifyAnchorAsync" Disabled="@_anchorChecking"
+                       data-testid="verify-anchor">
+                @(_anchorChecking ? "Verifying…" : "Verify against the register")
+            </MudButton>
+        }
+
+        <MudButton Class="mt-6 d-block" Variant="Variant.Outlined" Href="">Start a new verification</MudButton>
+    }
 </MudContainer>
+
+<style>
+    .verdict-card { display:flex; gap:14px; border-radius:12px; padding:16px; color:#fff;
+        background:linear-gradient(135deg,#1b2a4a,#26406e); }
+    .verdict-card--fail { background:linear-gradient(135deg,#4a1b1b,#6e2626); }
+    .verdict-portrait { width:70px; height:88px; border-radius:6px; background:#0d1730;
+        display:flex; align-items:center; justify-content:center; color:#6b86c0; font-size:11px; overflow:hidden; }
+    .verdict-portrait img { width:100%; height:100%; object-fit:cover; }
+    .verdict-vct { font-size:11px; letter-spacing:.08em; opacity:.7; text-transform:uppercase; }
+    .verdict-headline { font-weight:700; font-size:20px; margin-top:2px; }
+    .verdict-chip { display:inline-block; background:rgba(255,255,255,.16); border-radius:999px;
+        padding:2px 9px; font-size:11px; margin-top:8px; }
+    .verdict-issuer { opacity:.85; font-size:12px; margin-top:9px; }
+    .verdict-did { opacity:.55; font-size:10px; font-family:monospace; word-break:break-all; }
+    .verdict-summary { text-align:center; color:var(--mud-palette-text-secondary); font-size:12px; margin-top:8px; }
+    .trail-detail { font-family:monospace; font-size:12px; line-height:1.8; color:var(--mud-palette-text-secondary); }
+    .trail-label { color:var(--mud-palette-text-secondary); font-size:11px; letter-spacing:.04em; margin-top:8px; }
+    .trail-label--ok { color:var(--mud-palette-success); }
+    .trail-withheld { text-decoration:line-through; opacity:.7; }
+</style>
 
 @code {
     [Parameter] public string SessionId { get; set; } = string.Empty;
+
     private Models.VerifierSession? _session;
+    private VerdictViewModel? _vm;
+    private bool _anchorChecking;
 
     protected override void OnInitialized()
     {
         _session = Store.Get(SessionId);
+        if (_session?.Outcome is not null)
+        {
+            _vm = VerdictViewModel.From(_session, _session.Outcome);
+        }
     }
+
+    private int PassCount => _vm?.Layers.Count(l => l.Status == LayerStatus.Pass) ?? 0;
+    private bool HasUnverified => _vm?.Layers.Any(l => l.Status == LayerStatus.Unverified) ?? false;
+    private string VctLabel => _session?.RequiredVct.Split('/').LastOrDefault() ?? "Credential";
+
+    private async Task VerifyAnchorAsync()
+    {
+        if (_vm is null) return;
+        _anchorChecking = true;
+        try
+        {
+            var result = await AnchorClient.CheckAsync(_vm.RegisterAnchorId ?? "", _vm.CredentialId ?? "");
+            var detail = new Dictionary<string, string>();
+            if (_vm.RegisterAnchorId is not null) detail["register"] = _vm.RegisterAnchorId;
+            if (result.TxId is not null) detail["txId"] = result.TxId;
+            if (result.DocketNumber is not null) detail["docket"] = $"#{result.DocketNumber}";
+            if (result.SealedAt is not null) detail["sealedAt"] = result.SealedAt.Value.ToString("u");
+            if (result.Note is not null) detail["note"] = result.Note;
+
+            _vm.Layers.Add(new ValidationLayerResult
+            {
+                Layer = ValidationLayer.RegisterAnchor,
+                Status = result.Status,
+                Headline = result.Status switch
+                {
+                    LayerStatus.Pass => "anchored",
+                    LayerStatus.Fail => "proof invalid",
+                    _ => "unverified",
+                },
+                Detail = detail,
+            });
+            _lastBundle = result.BundleJson;
+        }
+        finally
+        {
+            _anchorChecking = false;
+        }
+    }
+
+    private string? _lastBundle;
+    private void ExportBundle()
+    {
+        // Bundle export is surfaced via the anchor result; download wiring is a JS-interop polish task.
+        // The bundle JSON (when present) can be re-verified via POST /verification-bundles/verify.
+    }
+
+    private static string PortraitSrc(string token) =>
+        token.StartsWith("data:") ? token : $"data:image/jpeg;base64,{token}";
+
+    private static string LayerTitle(ValidationLayer layer) => layer switch
+    {
+        ValidationLayer.LivePresentation => "Live presentation",
+        ValidationLayer.IssuerSignature => "Issuer signature",
+        ValidationLayer.Revocation => "Not revoked",
+        ValidationLayer.RegisterAnchor => "On the public register",
+        _ => layer.ToString(),
+    };
+
+    private static string StatusGlyph(LayerStatus s) => s switch
+    {
+        LayerStatus.Pass => "✓",
+        LayerStatus.Fail => "✗",
+        _ => "⚠",
+    };
+
+    private static string StatusColour(LayerStatus s) => s switch
+    {
+        LayerStatus.Pass => "var(--mud-palette-success)",
+        LayerStatus.Fail => "var(--mud-palette-error)",
+        _ => "var(--mud-palette-warning)",
+    };
 }

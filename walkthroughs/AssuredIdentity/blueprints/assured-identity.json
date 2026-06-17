@@ -147,6 +147,12 @@
                 "description": "Approval state and supporting notes for the audit trail.",
                 "layout": "vertical",
                 "fields": ["decision", "verificationNotes"]
+              },
+              {
+                "title": "Age verification",
+                "description": "Confirm whether the citizen is 18 or over, based on the date of birth they submitted. This is issued as a selectively-disclosable age_over_18 boolean so verifiers can check age without seeing the date of birth.",
+                "layout": "vertical",
+                "fields": ["ageCheck"]
               }
             ],
             "properties": {
@@ -159,6 +165,19 @@
                 "type": "string",
                 "title": "Reviewer notes",
                 "maxLength": 500
+              },
+              "ageCheck": {
+                "type": "object",
+                "title": "Age check",
+                "description": "Analyst-confirmed age predicate derived from the submitted date of birth (Feature 155 / R-005). Issued as the selectively-disclosable age_over_18 claim so the citizen can prove they are over 18 without disclosing their date of birth.",
+                "properties": {
+                  "over18": {
+                    "type": "boolean",
+                    "title": "Citizen is 18 or over",
+                    "description": "Set true once you have confirmed, from the submitted date of birth, that the citizen is at least 18 years old."
+                  }
+                },
+                "required": ["over18"]
               }
             },
             "required": ["decision"]
@@ -177,13 +196,17 @@
             { "claimName": "dateOfBirth", "sourceField": "/dob/dateOfBirth" },
             { "claimName": "email",       "sourceField": "/email/email" },
             { "claimName": "address",     "sourceField": "/address" },
-            { "claimName": "portrait",    "sourceField": "/portrait/tokenImageBase64" }
+            { "claimName": "portrait",    "sourceField": "/portrait/tokenImageBase64" },
+            { "claimName": "age_over_18", "sourceField": "/ageCheck/over18" },
+            { "claimName": "registerAnchor", "sourceField": "/issuanceContext/registerId" }
           ],
           "disclosable": [
             "givenName", "middleName", "familyName", "fullName", "dateOfBirth", "email",
             "/address/line1", "/address/line2", "/address/town", "/address/region",
             "/address/postcode", "/address/country",
-            "portrait"
+            "portrait",
+            "age_over_18",
+            "registerAnchor"
           ]
         },
         "disclosures": [

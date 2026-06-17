@@ -1,0 +1,13 @@
+{
+  "name": "Sorcha Verifier",
+  "short_name": "Verifier",
+  "description": "Open verifier — present a credential and cross-check it against the public register.",
+  "start_url": "/verify/",
+  "scope": "/verify/",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#1b2a4a",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

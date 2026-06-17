@@ -100,6 +100,19 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
         var errors = new List<string>();
         var disclosed = new Dictionary<string, object?>();
 
+        // ── Feature 155 — per-layer verdict trail state ───────────────────────────
+        //   These locals accumulate the raw inputs for the LivePresentation / IssuerSignature /
+        //   Revocation layers as validation proceeds. They are turned into ValidationLayerResults at
+        //   every return point (success or failure) by BuildLayers, so the trail reflects whatever was
+        //   determined before an early reject — without altering the accept/reject decision itself.
+        var layerState = new LayerState();
+
+        // Local builder so every return path attaches the same structured layers. Failure paths that
+        // short-circuit before a layer's inputs are known simply omit that layer (matches the contract:
+        // only surface what was actually checked; never fabricate a Pass).
+        IReadOnlyList<ValidationLayerResult> BuildLayers(bool accepted)
+            => layerState.Build(accepted, errors, session);
+
         try
         {
             // ── 1. Parse the SD-JWT VC compact form ───────────────────────────────
@@ -107,19 +120,19 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             if (credentialJwt is null)
             {
                 errors.Add("vp_token is not a valid SD-JWT compact serialisation.");
-                return Failure(errors);
+                return Failure(errors, BuildLayers(false));
             }
             if (kbJwt is null)
             {
                 errors.Add("vp_token is missing the trailing key-binding JWT.");
-                return Failure(errors);
+                return Failure(errors, BuildLayers(false));
             }
 
             var credentialPayload = TryParseJwtPayload(credentialJwt);
             if (credentialPayload is null)
             {
                 errors.Add("vp_token credential JWT is malformed.");
-                return Failure(errors);
+                return Failure(errors, BuildLayers(false));
             }
 
             // ── 2. Validate vct matches the requested credential type ─────────────
@@ -133,7 +146,7 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             if (!TryExtractCnfJwk(credentialPayload.Value, out var holderJwk))
             {
                 errors.Add("Credential is missing cnf.jwk (holder key binding).");
-                return Failure(errors);
+                return Failure(errors, BuildLayers(false));
             }
 
             // ── 4. Validate holder→device delegation credential ───────────────────
@@ -141,11 +154,11 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             if (!string.IsNullOrWhiteSpace(delegationCredential))
             {
                 var delegationErrors = await ValidateDelegationAsync(
-                    delegationCredential, holderJwk, ct);
+                    delegationCredential, holderJwk, layerState, ct);
                 if (delegationErrors.Count > 0)
                 {
                     errors.AddRange(delegationErrors);
-                    return Failure(errors);
+                    return Failure(errors, BuildLayers(false));
                 }
 
                 var delegationPayload = TryParseJwtPayload(delegationCredential);
@@ -153,13 +166,13 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                     || !TryExtractCnfJwk(delegationPayload.Value, out deviceJwk))
                 {
                     errors.Add("Delegation credential is missing cnf.jwk (device key).");
-                    return Failure(errors);
+                    return Failure(errors, BuildLayers(false));
                 }
             }
             else
             {
                 errors.Add("Delegation credential is required for citizen wallet presentations.");
-                return Failure(errors);
+                return Failure(errors, BuildLayers(false));
             }
 
             // ── 4b. Verify the credential's issuer signature ──────────────────────
@@ -171,12 +184,16 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             if (string.IsNullOrEmpty(issuer))
             {
                 errors.Add("Credential is missing iss claim.");
-                return Failure(errors);
+                return Failure(errors, BuildLayers(false));
             }
             // Feature 120 — pass the credential's JWS kid header to the resolver so DID-resolver-backed
             // implementations can pick the correct verification method out of multi-key documents.
             var credentialHeader = TryParseJwtHeader(credentialJwt);
             var credentialKid = credentialHeader is { } h ? TryGetString(h, "kid") : null;
+            layerState.Issuer = issuer;
+            layerState.CredentialId = TryGetString(credentialPayload.Value, "jti");
+            layerState.IssuerKid = credentialKid;
+            layerState.IssuerAlg = credentialHeader is { } hh ? TryGetString(hh, "alg") : null;
             var issuerJwk = await _issuerKeys.ResolveAsync(issuer, credentialKid, ct);
             var issuerSignatureVerified = false;
             if (issuerJwk is not null)
@@ -184,17 +201,20 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 if (!VerifyJwsSignature(credentialJwt, issuerJwk.Value, out _))
                 {
                     errors.Add($"Credential signature verification failed against issuer '{issuer}' key.");
-                    return Failure(errors);
+                    layerState.IssuerSignature = IssuerLayer.ResolvedFailed;
+                    return Failure(errors, BuildLayers(false));
                 }
 
                 issuerSignatureVerified = true;
+                layerState.IssuerSignature = IssuerLayer.ResolvedVerified;
             }
             else if (_requireIssuerSignature)
             {
                 errors.Add(
                     $"No public key available for issuer '{issuer}' and " +
                     "RequireIssuerSignature is enabled. Reject.");
-                return Failure(errors);
+                layerState.IssuerSignature = IssuerLayer.UnresolvedRequired;
+                return Failure(errors, BuildLayers(false));
             }
             else
             {
@@ -202,13 +222,14 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                     "Issuer '{Issuer}' key unresolved; accepting on holder→device chain only " +
                     "(v1 contract; enable Verifier:RequireIssuerSignature to harden).",
                     issuer);
+                layerState.IssuerSignature = IssuerLayer.UnresolvedNotRequired;
             }
 
             // ── 5. Verify KB-JWT signature with the device key ────────────────────
             if (!VerifyJwsSignature(kbJwt, deviceJwk, out var kbPayload))
             {
                 errors.Add("KB-JWT signature verification failed against device key.");
-                return Failure(errors);
+                return Failure(errors, BuildLayers(false));
             }
 
             // ── 5b. Enforce KB-JWT freshness (Feature 138 US5) ────────────────────
@@ -219,11 +240,19 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             //   (FR-017); freshness is wall-clock within the configured skew (FR-018). Mid-session
             //   revocation is independently re-checked at verify time by the delegation status-list
             //   check above (US1 fail-closed), together satisfying FR-019.
+            // The KB-JWT signature verified against the device key and the delegation chain held — the
+            // holder→device binding is sound. Record this for the LivePresentation layer; nonce/aud/exp
+            // mismatches below append their own detail and flip the layer to Fail.
+            layerState.KbJwtVerified = true;
+            var kbHeaderEl = TryParseJwtHeader(kbJwt);
+            layerState.KbJwtAlg = kbHeaderEl is { } kh ? TryGetString(kh, "alg") : null;
+
             if (!kbPayload.TryGetProperty("exp", out var kbExpEl) || kbExpEl.ValueKind != JsonValueKind.Number)
             {
                 errors.Add("KB-JWT is missing the mandatory exp claim.");
                 _metrics?.PresentationReplayRejected("kbjwt_missing_exp");
-                return Failure(errors);
+                layerState.LivePresentationFailed = true;
+                return Failure(errors, BuildLayers(false));
             }
             var kbExp = DateTimeOffset.FromUnixTimeSeconds(kbExpEl.GetInt64());
             var nowUtc = _clock.GetUtcNow();
@@ -231,32 +260,39 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             {
                 errors.Add("KB-JWT has expired; the key-binding proof is no longer fresh.");
                 _metrics?.PresentationReplayRejected("kbjwt_expired");
-                return Failure(errors);
+                layerState.LivePresentationFailed = true;
+                return Failure(errors, BuildLayers(false));
             }
             // Cap the proof lifetime so an over-long-lived KB-JWT cannot widen the replay window.
             if (kbPayload.TryGetProperty("iat", out var kbIatEl) && kbIatEl.ValueKind == JsonValueKind.Number)
             {
                 var kbIat = DateTimeOffset.FromUnixTimeSeconds(kbIatEl.GetInt64());
+                layerState.KbJwtAgeSeconds = (nowUtc - kbIat).TotalSeconds;
                 if (kbExp - kbIat > _kbJwtMaxLifetime)
                 {
                     errors.Add(
                         $"KB-JWT lifetime ({(kbExp - kbIat).TotalSeconds:0}s) exceeds the maximum " +
                         $"permitted ({_kbJwtMaxLifetime.TotalSeconds:0}s).");
                     _metrics?.PresentationReplayRejected("kbjwt_expired");
-                    return Failure(errors);
+                    layerState.LivePresentationFailed = true;
+                    return Failure(errors, BuildLayers(false));
                 }
             }
 
             // ── 6. Verify KB-JWT nonce + aud match the session ────────────────────
             var kbNonce = TryGetString(kbPayload, "nonce");
             var kbAudience = TryGetString(kbPayload, "aud");
+            layerState.KbNonce = kbNonce;
+            layerState.KbAudience = kbAudience;
             if (!string.Equals(kbNonce, session.Nonce, StringComparison.Ordinal))
             {
                 errors.Add("KB-JWT nonce does not match session.");
+                layerState.LivePresentationFailed = true;
             }
             if (!string.Equals(kbAudience, session.ClientId, StringComparison.Ordinal))
             {
                 errors.Add("KB-JWT aud does not match verifier client_id.");
+                layerState.LivePresentationFailed = true;
             }
 
             // ── 7. Extract disclosed claims and check required set ────────────────
@@ -269,7 +305,7 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 }
             }
 
-            if (errors.Count > 0) return Failure(errors);
+            if (errors.Count > 0) return Failure(errors, BuildLayers(false));
 
             _logger.LogInformation(
                 "Verifier session {SessionId} accepted: vct={Vct}, claims={Claims}",
@@ -284,22 +320,26 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 IssuerSignature = issuerSignatureVerified
                     ? IssuerSignatureStatus.Verified
                     : IssuerSignatureStatus.NotVerified,
+                Layers = BuildLayers(true),
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Verifier session {SessionId} threw during validation", session.SessionId);
             errors.Add($"Validator exception: {ex.Message}");
-            return Failure(errors);
+            return Failure(errors, layerState.Build(false, errors, session));
         }
     }
 
-    private VerificationOutcome Failure(IReadOnlyList<string> errors) => new()
+    private VerificationOutcome Failure(
+        IReadOnlyList<string> errors,
+        IReadOnlyList<ValidationLayerResult>? layers = null) => new()
     {
         Accepted = false,
         DisclosedClaims = new Dictionary<string, object?>(),
         Errors = errors,
         CompletedAt = _clock.GetUtcNow(),
+        Layers = layers ?? [],
     };
 
     // ─────────────────────────── parsing helpers ─────────────────────────────────
@@ -426,6 +466,7 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
     private async Task<List<string>> ValidateDelegationAsync(
         string delegationCredential,
         JsonElement holderJwk,
+        LayerState layerState,
         CancellationToken ct)
     {
         var errors = new List<string>();
@@ -464,17 +505,25 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             && sl.TryGetProperty("uri", out var uriEl) && uriEl.ValueKind == JsonValueKind.String
             && sl.TryGetProperty("idx", out var idxEl) && idxEl.ValueKind == JsonValueKind.Number)
         {
+            // Feature 155 — record the status reference + verdict for the Revocation layer. The presence
+            // of a status_list block is what makes the Revocation layer surface at all (a credential with
+            // no status reference omits the layer entirely rather than fabricating a Pass).
+            layerState.StatusListUri = uriEl.GetString();
+            layerState.StatusListIndex = idxEl.GetInt32();
+
             var expectedIssuer = TryGetString(payload.Value, "iss");
             if (string.IsNullOrEmpty(expectedIssuer))
             {
                 // No issuer to pin the status list to — cannot authenticate revocation. Fail closed.
                 errors.Add("Delegation credential is missing iss; cannot authenticate its status list.");
                 _metrics?.PresentationReplayRejected("revoked_at_verify");
+                layerState.Revocation = StatusListVerdict.Unverifiable;
                 return errors;
             }
 
             var verdict = await _statusListCache.CheckAsync(
                 uriEl.GetString()!, idxEl.GetInt32(), expectedIssuer, ct);
+            layerState.Revocation = verdict;
             switch (verdict)
             {
                 case StatusListVerdict.Revoked:
@@ -546,5 +595,162 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
         {
             return false;
         }
+    }
+}
+
+/// <summary>
+/// Outcome of the issuer-signature check, captured for the IssuerSignature validation layer
+/// (Feature 155). Distinguishes "resolved + verified" / "resolved + failed" from the two
+/// unresolved-key dispositions so the layer can map to Pass / Fail / Unverified.
+/// </summary>
+internal enum IssuerLayer
+{
+    /// <summary>The issuer-signature check was not reached (earlier reject).</summary>
+    NotChecked,
+
+    /// <summary>The issuer key resolved and the credential's JWS verified against it → Pass.</summary>
+    ResolvedVerified,
+
+    /// <summary>A key resolved but the JWS failed to verify against it → Fail.</summary>
+    ResolvedFailed,
+
+    /// <summary>No key resolved and the verifier requires the issuer signature → Fail (rejects).</summary>
+    UnresolvedRequired,
+
+    /// <summary>No key resolved and the verifier does not require it → Unverified (v1 offline path).</summary>
+    UnresolvedNotRequired,
+}
+
+/// <summary>
+/// Mutable accumulator for the per-layer verdict trail (Feature 155). The validator fills these raw
+/// inputs as <c>ValidateAsync</c> progresses, then <see cref="Build"/> turns them into the structured
+/// <see cref="ValidationLayerResult"/> list attached to every <see cref="VerificationOutcome"/>. It
+/// records only what was actually determined before a return — fields left unset cause their layer to be
+/// omitted (the contract forbids fabricating a Pass for a check that never ran).
+/// </summary>
+internal sealed class LayerState
+{
+    // LivePresentation
+    public bool KbJwtVerified;
+    public bool LivePresentationFailed;
+    public string? KbNonce;
+    public string? KbAudience;
+    public string? KbJwtAlg;
+    public double? KbJwtAgeSeconds;
+
+    // IssuerSignature
+    public IssuerLayer IssuerSignature = IssuerLayer.NotChecked;
+    public string? Issuer;
+    public string? IssuerKid;
+    public string? IssuerAlg;
+    public string? CredentialId; // the credential's jti — used by the verifier app's register-anchor lookup
+
+    // Revocation — null when the credential/delegation carries no status reference (layer omitted).
+    public StatusListVerdict? Revocation;
+    public string? StatusListUri;
+    public int? StatusListIndex;
+
+    public IReadOnlyList<ValidationLayerResult> Build(
+        bool accepted, IReadOnlyList<string> errors, VerifierSession session)
+    {
+        var layers = new List<ValidationLayerResult>(3);
+
+        // ── LivePresentation ─────────────────────────────────────────────────────
+        //   The KB-JWT signature + delegation chain held (KbJwtVerified) and no nonce/aud/freshness
+        //   problem was recorded ⇒ Pass; otherwise Fail. If we never reached the KB-JWT verification the
+        //   layer is omitted (an earlier structural reject — there is no live presentation to describe).
+        if (KbJwtVerified)
+        {
+            var live = !LivePresentationFailed;
+            var detail = new Dictionary<string, string>
+            {
+                ["protocol"] = "OpenID4VP · direct_post",
+                ["nonce"] = string.Equals(KbNonce, session.Nonce, StringComparison.Ordinal)
+                    ? "matches request"
+                    : $"mismatch (expected '{session.Nonce}', got '{KbNonce ?? "(none)"}')",
+                ["aud"] = KbAudience ?? session.ClientId,
+            };
+            var kbJwtNote = $"{KbJwtAlg ?? "ES256"} · holder key bound";
+            if (KbJwtAgeSeconds is { } age)
+            {
+                kbJwtNote += $" · age {age:0}s";
+            }
+            detail["kb-jwt"] = kbJwtNote;
+
+            layers.Add(new ValidationLayerResult
+            {
+                Layer = ValidationLayer.LivePresentation,
+                Status = live ? LayerStatus.Pass : LayerStatus.Fail,
+                Headline = live ? "Live holder presentation verified" : "Live presentation check failed",
+                Detail = detail,
+            });
+        }
+
+        // ── IssuerSignature ──────────────────────────────────────────────────────
+        if (IssuerSignature != IssuerLayer.NotChecked)
+        {
+            var (status, headline, note) = IssuerSignature switch
+            {
+                IssuerLayer.ResolvedVerified =>
+                    (LayerStatus.Pass, "Issuer signature verified", "issuer key resolved; JWS verified"),
+                IssuerLayer.ResolvedFailed =>
+                    (LayerStatus.Fail, "Issuer signature invalid", "issuer key resolved; JWS verification failed"),
+                IssuerLayer.UnresolvedRequired =>
+                    (LayerStatus.Fail, "Issuer key could not be resolved",
+                        "issuer key unresolved and RequireIssuerSignature is enabled"),
+                IssuerLayer.UnresolvedNotRequired =>
+                    (LayerStatus.Unverified, "Issuer signature not verified",
+                        "issuer key unresolved; accepted on holder→device chain (RequireIssuerSignature off)"),
+                _ => (LayerStatus.Unverified, "Issuer signature not verified", "not checked"),
+            };
+
+            var detail = new Dictionary<string, string>
+            {
+                ["iss"] = Issuer ?? "(unknown)",
+                ["resolution"] = note,
+            };
+            if (!string.IsNullOrEmpty(IssuerKid)) detail["kid"] = IssuerKid;
+            detail["alg"] = IssuerAlg ?? "ES256";
+            if (!string.IsNullOrEmpty(CredentialId)) detail["jti"] = CredentialId;
+
+            layers.Add(new ValidationLayerResult
+            {
+                Layer = ValidationLayer.IssuerSignature,
+                Status = status,
+                Headline = headline,
+                Detail = detail,
+            });
+        }
+
+        // ── Revocation ───────────────────────────────────────────────────────────
+        //   Only surfaced when the credential/delegation carried a status reference. Active→Pass,
+        //   Revoked→Fail, Unverifiable→Unverified.
+        if (Revocation is { } verdict)
+        {
+            var (status, headline) = verdict switch
+            {
+                StatusListVerdict.Active => (LayerStatus.Pass, "Not revoked"),
+                StatusListVerdict.Revoked => (LayerStatus.Fail, "Credential revoked"),
+                StatusListVerdict.Unverifiable => (LayerStatus.Unverified, "Revocation status unverifiable"),
+                _ => (LayerStatus.Unverified, "Revocation status unverifiable"),
+            };
+
+            var detail = new Dictionary<string, string>
+            {
+                ["statusList"] = StatusListUri ?? "(none)",
+                ["idx"] = StatusListIndex?.ToString() ?? "(none)",
+                ["result"] = verdict.ToString(),
+            };
+
+            layers.Add(new ValidationLayerResult
+            {
+                Layer = ValidationLayer.Revocation,
+                Status = status,
+                Headline = headline,
+                Detail = detail,
+            });
+        }
+
+        return layers;
     }
 }

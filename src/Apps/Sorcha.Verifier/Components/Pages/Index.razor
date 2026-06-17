@@ -2,8 +2,10 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Reference verifier landing page (Feature 114, T092). The operator chooses what
-    to ask for, hits Start, and is sent to the QR session page.
+    Reference verifier Ask screen (Feature 155). The operator picks a preset question
+    (or Custom), hits Start, and is sent to the QR session page. Presets map to a
+    credential type + minimal requested claims so an over-18 check discloses only the
+    boolean answer + portrait.
 *@
 @page "/"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
@@ -14,27 +16,52 @@
 @inject NavigationManager Nav
 @inject IHttpContextAccessor? HttpAccessor
 
-<PageTitle>Sorcha Reference Verifier</PageTitle>
+<PageTitle>Sorcha Verifier</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
-    <MudText Typo="Typo.h4" Class="mb-4">Sorcha Reference Verifier</MudText>
+    <MudText Typo="Typo.h4" Class="mb-1">Sorcha Verifier</MudText>
     <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6">
-        Build an OID4VP cross-device presentation request and show its QR. Citizens
-        scan the code with the Sorcha wallet PWA, approve disclosure, and the result
-        appears here in real time.
+        Ask a question, show the QR. The citizen approves in their wallet, and the verified
+        result — with its full validation trail — appears here.
     </MudText>
+
+    <MudText Typo="Typo.subtitle2" Class="mb-2">What do you want to verify?</MudText>
+    <div class="d-flex flex-wrap gap-2 mb-4">
+        @foreach (var preset in QuestionPresets.All)
+        {
+            <MudChip T="string" Variant="@(_selectedKey == preset.Key ? Variant.Filled : Variant.Outlined)"
+                     Color="Color.Primary" OnClick="@(() => SelectPreset(preset))"
+                     data-testid="@($"preset-{preset.Key}")">
+                @preset.Label
+            </MudChip>
+        }
+        <MudChip T="string" Variant="@(_selectedKey == "custom" ? Variant.Filled : Variant.Outlined)"
+                 Color="Color.Default" OnClick="SelectCustom" data-testid="preset-custom">
+            Custom…
+        </MudChip>
+    </div>
 
     <MudPaper Elevation="1" Class="pa-4">
         <MudStack Spacing="3">
-            <MudTextField @bind-Value="_purpose" Label="Purpose"
-                          HelperText="Shown to the citizen on the consent sheet."
-                          Required="true" />
-            <MudTextField @bind-Value="_vct" Label="Required credential type (vct)"
-                          Required="true" />
-            <MudTextField @bind-Value="_required" Label="Required claims (comma separated)" />
-            <MudTextField @bind-Value="_optional" Label="Optional claims (comma separated)" />
+            @if (_isCustom)
+            {
+                <MudTextField @bind-Value="_purpose" Label="Purpose"
+                              HelperText="Shown to the citizen on the consent sheet." Required="true" />
+                <MudTextField @bind-Value="_vct" Label="Required credential type (vct)" Required="true" />
+                <MudTextField @bind-Value="_required" Label="Required claims (comma separated)" />
+                <MudTextField @bind-Value="_optional" Label="Optional claims (comma separated)" />
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">
+                    <strong>@_purpose.</strong> The citizen will be asked to share only
+                    <strong>@string.Join(", ", SplitCsv(_required))</strong> from a
+                    <code>@_vct</code> credential.
+                </MudText>
+            }
+
             <MudButton Color="Color.Primary" Variant="Variant.Filled"
-                       OnClick="StartAsync" Disabled="@_starting">
+                       OnClick="StartAsync" Disabled="@_starting" data-testid="start-verification">
                 @(_starting ? "Starting…" : "Start verification")
             </MudButton>
             @if (!string.IsNullOrEmpty(_error))
@@ -46,14 +73,30 @@
 </MudContainer>
 
 @code {
-    private string _purpose = "Confirm identity";
-    // Defaults match the "Load demo credential" mint (DemoMintEndpoint.DemoVct) so the
-    // out-of-the-box demo presents successfully without hand-editing these fields.
-    private string _vct = "https://sorcha.dev/vc/demo-id-card/v1";
-    private string _required = "givenName,familyName";
-    private string _optional = "dateOfBirth";
+    private string _selectedKey = QuestionPresets.AgeOver18.Key;
+    private bool _isCustom;
+    private string _purpose = QuestionPresets.AgeOver18.Purpose;
+    private string _vct = QuestionPresets.AgeOver18.RequiredVct;
+    private string _required = string.Join(",", QuestionPresets.AgeOver18.RequiredClaims);
+    private string _optional = string.Join(",", QuestionPresets.AgeOver18.OptionalClaims);
     private bool _starting;
     private string? _error;
+
+    private void SelectPreset(QuestionPreset preset)
+    {
+        _selectedKey = preset.Key;
+        _isCustom = false;
+        _purpose = preset.Purpose;
+        _vct = preset.RequiredVct;
+        _required = string.Join(",", preset.RequiredClaims);
+        _optional = string.Join(",", preset.OptionalClaims);
+    }
+
+    private void SelectCustom()
+    {
+        _selectedKey = "custom";
+        _isCustom = true;
+    }
 
     private async Task StartAsync()
     {
@@ -63,7 +106,6 @@
         {
             var required = SplitCsv(_required);
             var optional = SplitCsv(_optional);
-            // Demo verifier org id is deterministic — trusts that the citizen wallet pins this kid.
             var verifierOrgId = Guid.Parse("00000000-0000-0000-0000-000000000001");
             var baseUri = ResolveBaseUri();
             var result = await Builder.CreateAsync(
@@ -86,12 +128,7 @@
 
     private string ResolveBaseUri()
     {
-        // Return the ORIGIN ONLY (scheme://host). The request builder appends the
-        // /verify gateway mount prefix itself, so this must not include it.
-        // In interactive Blazor Server, HttpContext is null during the button-click
-        // handler — the fallback must derive the origin from Nav.BaseUri's authority,
-        // NOT Nav.BaseUri directly (which carries the /verify base-href and would
-        // double the prefix → …/verify/verify/r/{id}/response → 404).
+        // ORIGIN ONLY (scheme://host) — the request builder appends the /verify mount prefix.
         var ctx = HttpAccessor?.HttpContext;
         if (ctx is not null)
         {

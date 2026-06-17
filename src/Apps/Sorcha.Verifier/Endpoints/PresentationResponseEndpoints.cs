@@ -52,8 +52,13 @@ public static class PresentationResponseEndpoints
         {
             return Results.Ok(new SessionStatusResponse(
                 Status: "pending", Purpose: session.Purpose,
-                Accepted: null, Errors: null, DisclosedClaims: null));
+                Accepted: null, Errors: null, DisclosedClaims: null,
+                Layers: null, Issuer: null));
         }
+
+        var issuerDid = session.Outcome.Layers
+            .FirstOrDefault(l => l.Layer == ValidationLayer.IssuerSignature)?.Detail
+            .GetValueOrDefault("iss");
 
         return Results.Ok(new SessionStatusResponse(
             Status: session.Outcome.Accepted ? "accepted" : "rejected",
@@ -61,7 +66,9 @@ public static class PresentationResponseEndpoints
             Accepted: session.Outcome.Accepted,
             Errors: session.Outcome.Errors,
             DisclosedClaims: session.Outcome.DisclosedClaims
-                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value?.ToString())));
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value?.ToString()),
+            Layers: session.Outcome.Layers,
+            Issuer: issuerDid is null ? null : new IssuerInfo(issuerDid, issuerDid)));
     }
 
     private static async Task<IResult> HandleResponseAsync(
@@ -107,9 +114,18 @@ public sealed record VerificationCallbackBody(string VpToken, string? Delegation
 /// <param name="Accepted">Null while pending; true/false once decided.</param>
 /// <param name="Errors">Rejection reasons; null on accept or pending.</param>
 /// <param name="DisclosedClaims">Disclosed claim values, stringified for transport.</param>
+/// <param name="Layers">Per-layer validation results for the trail (Feature 155); null while pending.</param>
+/// <param name="Issuer">Resolved issuer identity surfaced on the verdict (Feature 155).</param>
 public sealed record SessionStatusResponse(
     string Status,
     string Purpose,
     bool? Accepted,
     IReadOnlyList<string>? Errors,
-    IReadOnlyDictionary<string, string?>? DisclosedClaims);
+    IReadOnlyDictionary<string, string?>? DisclosedClaims,
+    IReadOnlyList<ValidationLayerResult>? Layers,
+    IssuerInfo? Issuer);
+
+/// <summary>Issuer identity surfaced on the verdict (Feature 155, FR-015).</summary>
+/// <param name="DisplayName">Best-effort display name (falls back to the DID).</param>
+/// <param name="Did">The credential issuer DID (<c>iss</c>).</param>
+public sealed record IssuerInfo(string DisplayName, string Did);

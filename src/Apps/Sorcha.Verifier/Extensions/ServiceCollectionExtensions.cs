@@ -111,6 +111,12 @@ public static class ServiceCollectionExtensions
                 kbJwtMaxLifetime));
 
         services.AddSingleton<QrRenderer>();
+
+        // Feature 155 — layer-4 register-anchor cross-check. Calls the public anchor-read endpoint on
+        // the Register Service (base address from RegisterService:PublicBaseUrl) and re-verifies the
+        // returned Merkle inclusion proof. No service principal needed — the endpoint is anonymous.
+        services.AddHttpClient<IRegisterAnchorClient, RegisterAnchorClient>();
+
         return services;
     }
 }

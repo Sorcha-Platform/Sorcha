@@ -12,7 +12,12 @@
 
 <MudLayout>
     <MudAppBar Elevation="1">
-        <MudText Typo="Typo.h6">Sorcha Reference Verifier</MudText>
+        <MudText Typo="Typo.h6">Sorcha Verifier</MudText>
+        <MudSpacer />
+        <button id="sorcha-install-btn" type="button" class="sorcha-install-btn"
+                style="display:none" onclick="window.sorchaPromptInstall && window.sorchaPromptInstall()">
+            Install app
+        </button>
     </MudAppBar>
     <MudMainContent>
         @Body

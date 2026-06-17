@@ -59,6 +59,30 @@ $analystSession = Connect-SorchaUser `
     -OrganizationId $state.roles.verificationAnalyst.organizationId
 Write-WtSuccess "Authenticated as verification-analyst"
 
+# ----------------------------------------------------------------------------
+# Step 1b: Ensure the issuing org (Acme Verification Co.) has a master key
+# ----------------------------------------------------------------------------
+# Feature 155 (R-003 / T010): the AssuredIdentityCredential MUST sign with the
+# org's Feature 120 VC-issuance key (iss = resolvable did:sorcha:org:{C} with a
+# #vc-issuance-n kid) so the Open Verifier PWA can resolve the issuer signature.
+# Without a master key the credential signs with the bare wallet key and the
+# verifier's DID-backed resolver can't verify it (the documented split-brain).
+# Set-SorchaOrgMasterKey needs an Administrator + platform-audience token, so we
+# log in as the Tier-2 org admin (verification-admin) rather than the Tier-3
+# analyst. Idempotent — returns silently if already provisioned.
+Write-WtStep "Step 1b: Ensure issuing org has a master key (Feature 120 VC-issuance)"
+
+$verificationAdminSession = Connect-SorchaUser `
+    -TenantUrl $state.tenantUrl `
+    -Email $state.roles.verificationAdmin.email `
+    -Password $state.roles.verificationAdmin.password `
+    -OrganizationId $state.roles.verificationAdmin.organizationId
+
+Set-SorchaOrgMasterKey `
+    -WalletUrl $state.walletUrl `
+    -OrganizationId $state.roles.verificationAdmin.organizationId `
+    -Headers $verificationAdminSession.Headers
+
 # ============================================================================
 # Step 2: Create Blueprint Instance (citizen-owned)
 # ============================================================================
@@ -197,6 +221,13 @@ $actionResponse = Invoke-SorchaAction `
     -PayloadData @{
         decision          = "approved"
         verificationNotes = "Identity verified against submitted persona."
+        # Feature 155 (T009): analyst confirms the citizen is 18+ from the submitted
+        # date of birth. Issued as the selectively-disclosable age_over_18 claim so a
+        # verifier can check age without seeing the date of birth. The persona DOB
+        # ($($state.persona.dateOfBirth)) is well over 18.
+        ageCheck = @{
+            over18 = $true
+        }
     } `
     -WaitForSeal
 
