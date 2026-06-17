@@ -41,6 +41,7 @@
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   var raf = null;
+  var progRaf = null;
   var tailTimer = null;
   var fallbackTimer = null;
   var handedOff = false;
@@ -151,12 +152,13 @@
       if (pct) pct.textContent = Math.round(p) + "%";
       if (p >= 100) { handoff(null); return; }
     }
-    window.requestAnimationFrame(progressLoop);
+    progRaf = window.requestAnimationFrame(progressLoop);
   }
 
   // ---- cleanup when Blazor replaces #app ----
   function teardown() {
     if (raf) { window.cancelAnimationFrame(raf); raf = null; }
+    if (progRaf) { window.cancelAnimationFrame(progRaf); progRaf = null; }
     if (tailTimer) { clearInterval(tailTimer); tailTimer = null; }
     if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
   }
@@ -179,7 +181,7 @@
   } else {
     animLoop();
   }
-  window.addEventListener("resize", function () { size(); initPeers(); });
+  window.addEventListener("resize", function () { size(); initPeers(); if (reduce) draw(false); });
 
   // Fallback: no readable percentage within FALLBACK_MS -> indeterminate text.
   var FALLBACK_MS = 1500;
@@ -187,5 +189,5 @@
     if (!handedOff && readPct() == null) handoff("Loading your wallet…");
   }, FALLBACK_MS);
 
-  window.requestAnimationFrame(progressLoop);
+  progRaf = window.requestAnimationFrame(progressLoop);
 })();
