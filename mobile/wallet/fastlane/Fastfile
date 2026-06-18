@@ -1,0 +1,59 @@
+# Sorcha Wallet — fastlane lanes.
+#
+# The app is Blazor WASM wrapped by Capacitor, so every lane starts with the shared web
+# step (build-web.sh): dotnet publish -> www -> rewrite base href -> cap sync. These lanes
+# are headless-runnable and identical whether invoked by a human, a git tag, or CI.
+#
+# Lanes are named to match the pipeline's intent->lane mapping:
+#   android_adhoc     signed release APK         (no store account needed)
+#   android_internal  AAB -> Play Internal track (needs Play account + service-account JSON)
+#   ios_adhoc         signed ad-hoc IPA          (needs Apple Dev Program + device UDIDs)
+#   ios_beta          IPA -> TestFlight          (needs Apple Dev Program + ASC API key)
+# Only android_adhoc is wired today; the rest are stubs that fail loud until accounts exist.
+
+opt_out_usage
+skip_docs
+
+# Anchor paths on the Fastfile's own dir (__dir__ = .../mobile/wallet/fastlane), which
+# fastlane sets reliably, so paths don't depend on the invocation cwd.
+WALLET_DIR = File.expand_path("..", __dir__)          # .../mobile/wallet
+REPO_ROOT  = File.expand_path("../../..", __dir__)     # repo root
+WEB_STEP   = File.join(REPO_ROOT, "mobile", "scripts", "build-web.sh")
+
+def web_build
+  sh("bash", WEB_STEP)
+end
+
+desc "Signed ad-hoc release APK. web -> Capacitor -> gradle assembleRelease. No store account needed."
+lane :android_adhoc do
+  web_build
+  # Version is injected by CI (tag -> name, run number -> code). Falls back to the
+  # values baked into build.gradle for local/manual builds.
+  props = {}
+  props["sorchaVersionName"] = ENV["SORCHA_VERSION_NAME"] unless ENV["SORCHA_VERSION_NAME"].to_s.empty?
+  props["sorchaVersionCode"] = ENV["SORCHA_VERSION_CODE"] unless ENV["SORCHA_VERSION_CODE"].to_s.empty?
+  gradle(
+    project_dir: File.join(WALLET_DIR, "android"),
+    task: "assemble",
+    build_type: "Release",
+    flags: "--no-daemon",
+    properties: props
+  )
+  apk = lane_context[SharedValues::GRADLE_APK_OUTPUT_PATH]
+  UI.success("Signed ad-hoc APK: #{apk}")
+end
+
+desc "AAB to Play Internal testing track. Requires Play account + service-account JSON (BLOCKED until set up)."
+lane :android_internal do
+  UI.user_error!("android_internal is not wired yet: needs a Play Console account, the app record, and a service-account JSON. See references/secrets-map.md.")
+end
+
+desc "Signed ad-hoc IPA. Requires Apple Developer Program + registered device UDIDs (BLOCKED until set up)."
+lane :ios_adhoc do
+  UI.user_error!("ios_adhoc is not wired yet: needs Apple Developer Program enrolment, a match repo, and device UDIDs.")
+end
+
+desc "IPA to TestFlight. Requires Apple Developer Program + App Store Connect API key (BLOCKED until set up)."
+lane :ios_beta do
+  UI.user_error!("ios_beta is not wired yet: needs Apple Developer Program enrolment and an App Store Connect API key.")
+end

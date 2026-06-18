@@ -1,0 +1,4 @@
+# Pins fastlane for deterministic builds. Commit Gemfile.lock; CI runs `bundle exec fastlane`.
+source "https://rubygems.org"
+
+gem "fastlane"
