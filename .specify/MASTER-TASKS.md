@@ -77,6 +77,7 @@ This document now tracks **remaining work for the first production release**, or
 | OPS-008 | Log aggregation and structured logging review | P2 | 8h | 📋 | Serilog configured; central aggregation needed |
 | OPS-009 | CI/CD pipeline hardening (release tags, changelog, artifact signing) | P2 | 8h | 📋 | PR/merge CI works; release workflow incomplete |
 | OPS-010 | Documentation & API Portal — OpenAPI enrichment, admin/onboarding guides | P1 | 16h | ✅ | Config-gated `/openapi` route, `/admin/dashboard` proxy, 132 endpoints enriched with `.Produces<T>()`, 11 admin/onboarding docs |
+| OPS-011 | Read-through durability for the published-blueprint store | P2 | 12h | 📋 | `IPublishedBlueprintStore` is `InMemoryPublishedBlueprintStore` (Program.cs:96) — empty after any blueprint-service restart, repopulated solely by `BlueprintRecoveryService` reading the registers (the register/Mongo is the durable source). Works today (recovery is reliable), but recovery is a single point of repopulation: a register offline at boot or a future provenance gap silently strands blueprints until re-publish. **Make it a read-through cache** (in-memory hot tier backed by Redis or a re-read of the register on miss) — NOT a pure-Redis replacement (that taxes every blueprint read on the workflow hot path). Becomes worthwhile when blueprint-service scales to multiple replicas (avoid N independent recoveries + faster cold start). Surfaced 2026-06-18 during the SSR-provenance fix (B-strong); see [[1017-verify-ed25519-fix]] sibling discussion. |
 
 ---
 

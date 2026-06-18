@@ -266,6 +266,52 @@ public class SystemRegisterBlueprintTests
     }
 
     [Fact]
+    public async Task PublishBlueprintAsync_SealsCanonicalContentHash_SoRecoveryProvenancePasses()
+    {
+        // Feature 138 US4 / SSR provenance: a seeded system blueprint MUST carry the same canonical
+        // contentHash in its control-tx TrackingData that the normal publish path seals. Without it,
+        // BlueprintRecoveryService rejects the blueprint with "no_provenance" on every restart, so the
+        // genesis system blueprints never re-enter the published store (the in-memory store is empty
+        // after a restart and recovery is its only repopulation path).
+        const string blueprintStr = """{"title":"Register Creation","actions":[]}""";
+        var blueprintJson = JsonSerializer.Deserialize<JsonElement>(blueprintStr);
+        var expectedContentHash = Sorcha.ServiceClients.Register.BlueprintContentHash.Compute(blueprintStr);
+
+        _mockSigningService
+            .Setup(s => s.SignAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SystemSignResult
+            {
+                Signature = new byte[64],
+                PublicKey = new byte[32],
+                Algorithm = "ED25519",
+                WalletAddress = "system-wallet-addr"
+            });
+
+        TransactionSubmission? captured = null;
+        _mockValidatorClient
+            .Setup(v => v.SubmitTransactionAsync(It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .Callback<TransactionSubmission, CancellationToken>((s, _) => captured = s)
+            .ReturnsAsync(new TransactionSubmissionResult
+            {
+                Success = true,
+                TransactionId = "test-tx-id",
+                RegisterId = SystemRegisterConstants.SystemRegisterId
+            });
+
+        await _service.PublishBlueprintAsync(
+            "register-creation-v1", blueprintJson, "system",
+            new Dictionary<string, string> { ["seedReason"] = "bootstrap" });
+
+        captured.Should().NotBeNull();
+        captured!.Metadata.Should().ContainKey("contentHash");
+        captured.Metadata["contentHash"].Should().Be(
+            expectedContentHash,
+            "the recovery path recomputes BlueprintContentHash.Compute and compares against this value");
+    }
+
+    [Fact]
     public async Task PublishBlueprintAsync_ValidatorRejects_ThrowsInvalidOperation()
     {
         // Arrange

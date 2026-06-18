@@ -9,6 +9,7 @@ using Sorcha.Register.Core.Managers;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Enums;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
 
@@ -269,7 +270,13 @@ public class SystemRegisterService
             ["transactionType"] = BlueprintPublishTransactionType,
             ["BlueprintId"] = blueprintId,
             ["publishedBy"] = publishedBy,
-            ["SystemWalletAddress"] = signResult.WalletAddress
+            ["SystemWalletAddress"] = signResult.WalletAddress,
+            // Feature 138 US4 — seal the canonical content hash the BlueprintRecoveryService recomputes
+            // and compares on recovery. The normal (user) publish path writes this; without it here the
+            // seeded system blueprints fail provenance ("no_provenance") on every restart and never
+            // re-enter the (in-memory) published store. Use the shared helper so producer and consumer
+            // hash the identical canonical form by construction.
+            ["contentHash"] = BlueprintContentHash.Compute(canonicalJson)
         };
 
         // Merge additional metadata if provided
