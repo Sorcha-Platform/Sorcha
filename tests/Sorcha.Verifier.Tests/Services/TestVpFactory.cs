@@ -8,6 +8,10 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
+using Org.BouncyCastle.Security;
 
 namespace Sorcha.Verifier.Tests.Services;
 
@@ -126,6 +130,144 @@ internal static class TestVpFactory
         var vpToken = $"{credentialJwt}{disclosureSegments}~{kbJwt}";
 
         return new Bundle(vpToken, delegation, issuer, holder, device, statusListUri, statusListIndex);
+    }
+
+    /// <summary>
+    /// As <see cref="Mint"/>, but the holder key is an <b>Ed25519</b> (OKP) key — the default
+    /// Sorcha wallet algorithm. The credential's <c>cnf.jwk</c> is therefore an OKP JWK and the
+    /// device delegation credential is signed by the holder with an honest <c>alg:"EdDSA"</c>
+    /// header. The issuer and device keys stay EC P-256 (issuers vary; the device key is always
+    /// a WebCrypto non-extractable P-256 key). Mirrors the real on-the-wire shape an Ed25519
+    /// citizen wallet produces.
+    /// </summary>
+    public static Ed25519Bundle MintEd25519Holder(
+        string vct,
+        Dictionary<string, JsonElement> disclosedClaims,
+        string verifierClientId,
+        string verifierNonce,
+        DateTimeOffset? delegationExpiresAt = null,
+        string statusListUri = "https://verify.test/status/00000000000000000000000000000000/citizen-devices/0.statuslist+jwt",
+        int statusListIndex = 7)
+    {
+        var issuer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var device = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+
+        var holder = new Ed25519KeyPairGenerator();
+        holder.Init(new Ed25519KeyGenerationParameters(new SecureRandom()));
+        var holderPair = holder.GenerateKeyPair();
+        var holderPriv = (Ed25519PrivateKeyParameters)holderPair.Private;
+        var holderPub = (Ed25519PublicKeyParameters)holderPair.Public;
+
+        var holderJwk = ToOkpJwk(holderPub);
+        var deviceJwk = ToJwk(device);
+        var holderThumbprint = ThumbprintOkp(holderJwk);
+        var deviceThumbprint = Thumbprint(deviceJwk);
+
+        var disclosures = new List<string>();
+        var sdHashes = new List<string>();
+        foreach (var (name, value) in disclosedClaims)
+        {
+            var (segment, hash) = MintDisclosure(name, value);
+            disclosures.Add(segment);
+            sdHashes.Add(hash);
+        }
+
+        var credentialPayload = new Dictionary<string, object>
+        {
+            ["iss"] = "did:sorcha:org:test",
+            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["vct"] = vct,
+            ["_sd"] = sdHashes,
+            ["_sd_alg"] = "sha-256",
+            ["cnf"] = new Dictionary<string, object> { ["jwk"] = JsonDocument.Parse(holderJwk).RootElement },
+        };
+        var credentialJwt = SignEs256(
+            new Dictionary<string, object> { ["alg"] = "ES256", ["typ"] = "vc+sd-jwt" },
+            credentialPayload, issuer);
+
+        var exp = (delegationExpiresAt ?? DateTimeOffset.UtcNow.AddDays(365)).ToUnixTimeSeconds();
+        var delegationPayload = new Dictionary<string, object>
+        {
+            ["iss"] = $"did:sorcha:holder:{holderThumbprint}",
+            ["sub"] = $"did:sorcha:device:{deviceThumbprint}",
+            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["exp"] = exp,
+            ["vct"] = "https://sorcha.dev/vc/citizen-device-delegation/v1",
+            ["delegated_capabilities"] = new[] { "presentation.holder-key-binding" },
+            ["cnf"] = new Dictionary<string, object> { ["jwk"] = JsonDocument.Parse(deviceJwk).RootElement },
+            ["status"] = new Dictionary<string, object>
+            {
+                ["status_list"] = new Dictionary<string, object>
+                {
+                    ["uri"] = statusListUri,
+                    ["idx"] = statusListIndex,
+                },
+            },
+        };
+        // Honest EdDSA header — the holder key is Ed25519, so the delegation JWS is an EdDSA signature.
+        var delegation = SignEdDsa(
+            new Dictionary<string, object> { ["alg"] = "EdDSA", ["typ"] = "vc+sd-jwt" },
+            delegationPayload, holderPriv);
+
+        var kbHeader = new Dictionary<string, object>
+        {
+            ["alg"] = "ES256",
+            ["typ"] = "kb+jwt",
+            ["kid"] = deviceThumbprint,
+        };
+        var kbPayload = new Dictionary<string, object>
+        {
+            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["exp"] = DateTimeOffset.UtcNow.AddSeconds(120).ToUnixTimeSeconds(),
+            ["aud"] = verifierClientId,
+            ["nonce"] = verifierNonce,
+            ["sd_hash"] = "placeholder",
+        };
+        var kbJwt = SignEs256(kbHeader, kbPayload, device);
+
+        var disclosureSegments = string.Concat(disclosures.Select(d => "~" + d));
+        var vpToken = $"{credentialJwt}{disclosureSegments}~{kbJwt}";
+
+        return new Ed25519Bundle(vpToken, delegation, issuer, statusListUri, statusListIndex);
+    }
+
+    public sealed record Ed25519Bundle(
+        string VpToken,
+        string Delegation,
+        ECDsa IssuerKey,
+        string StatusListUri,
+        int StatusListIndex);
+
+    public static string SignEdDsa(Dictionary<string, object> header, Dictionary<string, object> payload, Ed25519PrivateKeyParameters signer)
+    {
+        var headerSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(header));
+        var payloadSeg = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(payload));
+        var signingInput = Encoding.ASCII.GetBytes($"{headerSeg}.{payloadSeg}");
+        var ed = new Ed25519Signer();
+        ed.Init(true, signer);
+        ed.BlockUpdate(signingInput, 0, signingInput.Length);
+        var sig = ed.GenerateSignature();
+        return $"{headerSeg}.{payloadSeg}.{Base64Url.EncodeToString(sig)}";
+    }
+
+    public static string ToOkpJwk(Ed25519PublicKeyParameters pub) =>
+        JsonSerializer.Serialize(new
+        {
+            kty = "OKP",
+            crv = "Ed25519",
+            x = Base64Url.EncodeToString(pub.GetEncoded()),
+        });
+
+    private static string ThumbprintOkp(string jwkJson)
+    {
+        using var doc = JsonDocument.Parse(jwkJson);
+        var root = doc.RootElement;
+        var canonical =
+            $"{{\"crv\":\"{root.GetProperty("crv").GetString()}\"," +
+            $"\"kty\":\"{root.GetProperty("kty").GetString()}\"," +
+            $"\"x\":\"{root.GetProperty("x").GetString()}\"}}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
+        return Base64Url.EncodeToString(hash);
     }
 
     /// <summary>Mint a single SD-JWT disclosure segment for a name/value pair, returning (segment, sha256-hash).</summary>

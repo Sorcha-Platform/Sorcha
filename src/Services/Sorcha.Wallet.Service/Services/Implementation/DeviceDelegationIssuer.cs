@@ -95,20 +95,42 @@ public sealed class DeviceDelegationIssuer : IDeviceDelegationIssuer
             }
         };
 
+        // Sign first so the header advertises the holder key's *real* JOSE algorithm. The holder
+        // key derives from the underlying wallet algorithm — Ed25519 for the default Sorcha wallet,
+        // EC P-256 for a P-256 wallet — so a hardcoded "ES256" header over an Ed25519 signature is
+        // unverifiable by any conformant verifier. Two-pass: build header with a placeholder alg to
+        // get the signing input, but the alg is known from SignAsync's return, so we sign over the
+        // honest header in one pass below.
+        var payloadJson = JsonSerializer.SerializeToUtf8Bytes(payload);
+        var payloadB64 = Base64Url.EncodeToString(payloadJson);
+
+        // We need the JOSE alg before computing the signing input, but the holder algorithm is a
+        // property of the key, not the signature — resolve it via the public JWK's key type so the
+        // signed header is correct on the first and only pass.
+        var joseAlg = ResolveJoseAlg(holderJwk);
         var header = new
         {
-            alg = "ES256",
+            alg = joseAlg,
             typ = "vc+sd-jwt",
             kid = $"did:sorcha:holder:{holderThumbprint}#0"
         };
-
         var headerJson = JsonSerializer.SerializeToUtf8Bytes(header);
-        var payloadJson = JsonSerializer.SerializeToUtf8Bytes(payload);
         var headerB64 = Base64Url.EncodeToString(headerJson);
-        var payloadB64 = Base64Url.EncodeToString(payloadJson);
         var signingInput = Encoding.ASCII.GetBytes($"{headerB64}.{payloadB64}");
 
-        var (signature, _) = await _holderKeys.SignAsync(citizenWalletAddress, signingInput, ct);
+        var (signature, signingAlg) = await _holderKeys.SignAsync(citizenWalletAddress, signingInput, ct);
+
+        // Defence in depth: the header alg derived from the JWK must agree with the algorithm the
+        // signer actually used. A mismatch means the holder key material and JWK have diverged —
+        // fail closed rather than emit a credential whose header lies about its own signature.
+        var signerJoseAlg = ToJoseAlg(signingAlg);
+        if (!string.Equals(joseAlg, signerJoseAlg, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Holder JWK advertises '{joseAlg}' but the signer used '{signerJoseAlg}' " +
+                $"(wallet {citizenWalletAddress}); refusing to issue a delegation with a mismatched alg header.");
+        }
+
         var compactJwt = $"{headerB64}.{payloadB64}.{Base64Url.EncodeToString(signature)}";
 
         _logger.LogInformation(
@@ -126,6 +148,34 @@ public sealed class DeviceDelegationIssuer : IDeviceDelegationIssuer
             listId,
             holderJwk);
     }
+
+    /// <summary>
+    /// Resolves the JOSE <c>alg</c> for a delegation header from the holder public JWK's key type:
+    /// <c>OKP</c>/<c>Ed25519</c> → <c>EdDSA</c>, <c>EC</c>/<c>P-256</c> → <c>ES256</c>. The header alg
+    /// must match the curve the holder key signs with so the verifier picks the right primitive.
+    /// </summary>
+    private static string ResolveJoseAlg(JsonElement holderJwk)
+    {
+        var kty = holderJwk.TryGetProperty("kty", out var k) ? k.GetString() : null;
+        var crv = holderJwk.TryGetProperty("crv", out var c) ? c.GetString() : null;
+        return (kty, crv) switch
+        {
+            ("OKP", "Ed25519") => "EdDSA",
+            ("EC", "P-256") => "ES256",
+            _ => throw new NotSupportedException(
+                $"Unsupported holder key type for delegation issuance: kty='{kty}', crv='{crv}'. " +
+                "Only Ed25519 (OKP) and P-256 (EC) holder keys are supported.")
+        };
+    }
+
+    /// <summary>Maps an <see cref="IHolderKeyService"/> algorithm string to its JOSE <c>alg</c> name.</summary>
+    private static string ToJoseAlg(string algorithm) => algorithm.ToUpperInvariant() switch
+    {
+        "ED25519" or "EDDSA" => "EdDSA",
+        "ES256" or "P-256" or "P256" or "NIST-P256" or "NISTP256" or "ECDSA-P256" => "ES256",
+        _ => throw new NotSupportedException(
+            $"Unsupported holder signing algorithm for delegation issuance: '{algorithm}'.")
+    };
 
     /// <summary>
     /// RFC 7638 thumbprint over an EC P-256 JWK. Required members in lex order:

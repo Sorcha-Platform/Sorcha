@@ -8,6 +8,9 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- Pure-managed Ed25519 verification (WASM-safe — the verifier engine runs in the citizen
+         wallet PWA's Blazor WASM host, where libsodium P/Invoke is unavailable). -->
+    <PackageReference Include="BouncyCastle.Cryptography" />
   </ItemGroup>
 
   <ItemGroup>
