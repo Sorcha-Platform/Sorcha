@@ -13,10 +13,24 @@ set -euo pipefail
 log() { printf "\n\033[1;34m==> %s\033[0m\n" "$*"; }
 warn(){ printf "  \033[1;33m!!\033[0m %s\n" "$*"; }
 
+# Register at the REPOSITORY level, not org level. An org-level runner (Default group,
+# visibility=all) reported "online" but GitHub never routed repo jobs to it — the job sat
+# on "Waiting for a runner..." indefinitely. Repo-level registration attaches the runner
+# directly to the repo and dispatches immediately. Set SCOPE=org + ORG to override.
+SCOPE="${SCOPE:-repo}"
+REPO="${REPO:-Sorcha-Platform/Sorcha}"
 ORG="${ORG:-Sorcha-Platform}"
 RUNNER_NAME="${RUNNER_NAME:-macmini-sorcha-build}"
-LABELS="macos,sorcha-build,arm64"
+LABELS="sorcha-build"          # self-hosted is auto-added; match runs-on on this unique label
 RUNNER_DIR="$HOME/actions-runner"
+
+if [ "$SCOPE" = "repo" ]; then
+  REG_API="/repos/$REPO/actions/runners/registration-token"
+  RUNNER_URL="https://github.com/$REPO"
+else
+  REG_API="/orgs/$ORG/actions/runners/registration-token"
+  RUNNER_URL="https://github.com/$ORG"
+fi
 
 command -v gh >/dev/null || { echo "gh not found"; exit 1; }
 gh auth status >/dev/null 2>&1 || { echo "gh not authenticated (gh auth login)"; exit 1; }
@@ -37,11 +51,11 @@ else
   log "Runner already downloaded ($(cat ./.runner 2>/dev/null | grep -o '\"agentName\": *\"[^\"]*\"' || echo unconfigured))"
 fi
 
-log "Register with org $ORG (token fetched via gh, --replace for idempotency)"
-TOKEN="$(gh api -X POST "/orgs/$ORG/actions/runners/registration-token" --jq .token)"
+log "Register ($SCOPE: ${RUNNER_URL}; token via gh, --replace for idempotency)"
+TOKEN="$(gh api -X POST "$REG_API" --jq .token)"
 [ -n "$TOKEN" ] || { echo "failed to obtain registration token"; exit 1; }
 ./config.sh --unattended \
-  --url "https://github.com/$ORG" \
+  --url "$RUNNER_URL" \
   --token "$TOKEN" \
   --name "$RUNNER_NAME" \
   --labels "$LABELS" \
