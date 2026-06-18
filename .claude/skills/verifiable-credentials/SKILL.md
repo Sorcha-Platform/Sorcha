@@ -304,6 +304,22 @@ Status mutations follow the same projector seam: `CredentialStore.PatchStatusAsy
 
 Worked-example blueprint (council issuing Assured Identity to a late-bound citizen applicant) is in `.claude/skills/blueprint-builder/SKILL.md` and `.claude/skills/sorcha-architecture/SKILL.md` § "Citizen Wallet PWA (Feature 114)".
 
+### Holder→device delegation: algorithm support & the `/verify` diagnostic panel
+
+The citizen presentation chain is **curve-mixed by construction**, so any single-algorithm assumption is a bug:
+
+| Key | Curve | Why |
+|-----|-------|-----|
+| **Device** / KB-JWT | always **EC P-256 / ES256** | WebCrypto non-extractable key in the browser |
+| **Holder** (signs the device delegation; the credential's `cnf.jwk`) | **derives from the wallet algorithm** — Ed25519 (OKP/EdDSA) for the default Sorcha wallet, P-256 for a P-256 wallet (`HolderKeyService`, slot 108) | the holder *is* the citizen's wallet |
+| **Issuer** (credential JWS) | Ed25519 **or** P-256 (org VC-issuance key) | org wallets are frequently Ed25519 |
+
+`VerifiablePresentationValidator.VerifyJwsSignature` dispatches on the JWS header `alg` and verifies **both** `ES256` (EC, via `ECDsa`) and `EdDSA` (Ed25519/OKP, via **BouncyCastle** — pure-managed so it works in a Blazor WASM host where libsodium P/Invoke does not). `DeviceDelegationIssuer` emits the **honest** header `alg` from the holder key type (`EdDSA` for Ed25519) — a hardcoded `ES256` over an Ed25519 signature is unverifiable and was the cause of *"Delegation credential signature verification failed against holder key."* on default (Ed25519) wallets.
+
+The decoded key facts ride the **Feature 155 verdict trail** (`VerificationOutcome.Layers`), not a separate structure: the `LivePresentation` layer's `Detail` carries `holder-key` (`"OKP / Ed25519"` or `"EC / P-256"`) and `delegation` (`"{alg} · device key {kty/crv}"`), alongside the existing `IssuerSignature` layer's `alg`. The **Open Verifier PWA** (`Sorcha.Verifier`) renders every layer's `Detail` dictionary generically (`Outcome.razor`), so an operator reads `holder-key  OKP / Ed25519` in the "Live presentation" panel with no browser dev tools — no bespoke diagnostic surface required.
+
+> ⚠ Latent (deferred): `DeviceEnrolmentResponse.HolderPublicJwk` is still typed `EcP256PublicJwk` and coerces an Ed25519 holder JWK to a `Y=""` P-256 shape (`CitizenWalletEndpoints.ParseHolderJwk`). It is a *verifier-convenience copy that no consumer reads* — the verifier takes the holder key from the credential's `cnf.jwk`, not this field — so it is not on the failure path. Widen it to a faithful JWK when a consumer actually needs it.
+
 ## MAUI Blazor UI
 
 The **server** already has `Sorcha.Wallet.Service.Credentials.ICredentialStore`. The UI needs a separate render-mode-agnostic abstraction — use `ICredentialUiStore` under `Sorcha.UI.Core/Services/Credentials/` to avoid naming collision. Platform services (`SecureStorage`, biometrics) hide behind `IBiometricGate` and `IQrScanner`. Razor components never touch MAUI APIs directly.

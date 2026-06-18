@@ -6,6 +6,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
 using Sorcha.Verifier.Engine.Models;
 
 namespace Sorcha.Verifier.Engine;
@@ -148,11 +150,17 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                 errors.Add("Credential is missing cnf.jwk (holder key binding).");
                 return Failure(errors, BuildLayers(false));
             }
+            // Record the holder key's type/curve for the LivePresentation layer — the curve the holder
+            // key binds with (Ed25519 for the default wallet, P-256 otherwise) is the fact that made an
+            // ES256-only verifier reject Ed25519-holder presentations, so it's the first thing to surface.
+            layerState.HolderKey = DescribeJwk(holderJwk);
 
             // ── 4. Validate holder→device delegation credential ───────────────────
             JsonElement deviceJwk = default;
             if (!string.IsNullOrWhiteSpace(delegationCredential))
             {
+                layerState.DelegationAlg = HeaderAlg(delegationCredential);
+
                 var delegationErrors = await ValidateDelegationAsync(
                     delegationCredential, holderJwk, layerState, ct);
                 if (delegationErrors.Count > 0)
@@ -168,6 +176,7 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
                     errors.Add("Delegation credential is missing cnf.jwk (device key).");
                     return Failure(errors, BuildLayers(false));
                 }
+                layerState.DeviceKey = DescribeJwk(deviceJwk);
             }
             else
             {
@@ -546,9 +555,16 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
     // ─────────────────────────── JWS verification ────────────────────────────────
 
     /// <summary>
-    /// Verify an ES256 JWS using a JWK. Returns true and the deserialised payload on success;
-    /// false otherwise. Only ES256 is supported in v1 (matches the citizen wallet's WebCrypto
-    /// non-extractable EC P-256 key).
+    /// Verify a compact JWS using a JWK, dispatching on the protected-header <c>alg</c>:
+    /// <c>ES256</c> over an EC P-256 (<c>kty:"EC"</c>) key, or <c>EdDSA</c> over an Ed25519
+    /// (<c>kty:"OKP"</c>, <c>crv:"Ed25519"</c>) key. Returns true and the deserialised payload
+    /// on success; false otherwise.
+    ///
+    /// <para>Both algorithms are needed because every key in the chain can be either curve:
+    /// the device/KB-JWT key is always WebCrypto P-256, but the holder key (delegation signer)
+    /// and the issuer key derive from the underlying wallet algorithm — and the default Sorcha
+    /// wallet is Ed25519. An ES256-only verifier rejected every Ed25519-holder presentation with
+    /// "signature verification failed against holder key" even though the chain was sound.</para>
     /// </summary>
     internal static bool VerifyJwsSignature(string compactJws, JsonElement publicJwk, out JsonElement payload)
     {
@@ -562,30 +578,17 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
             var header = JsonSerializer.Deserialize<JsonElement>(headerBytes);
             var alg = header.TryGetProperty("alg", out var a) && a.ValueKind == JsonValueKind.String
                 ? a.GetString() : null;
-            if (!string.Equals(alg, "ES256", StringComparison.Ordinal)) return false;
-
-            // Reconstruct the EC public key from the JWK
-            var x = publicJwk.GetProperty("x").GetString();
-            var y = publicJwk.GetProperty("y").GetString();
-            if (x is null || y is null) return false;
-
-            using var ecdsa = ECDsa.Create(new ECParameters
-            {
-                Curve = ECCurve.NamedCurves.nistP256,
-                Q = new ECPoint
-                {
-                    X = Base64Url.DecodeFromChars(x),
-                    Y = Base64Url.DecodeFromChars(y),
-                },
-            });
 
             var signingInput = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
             var signature = Base64Url.DecodeFromChars(parts[2]);
 
-            if (!ecdsa.VerifyData(signingInput, signature, HashAlgorithmName.SHA256))
+            bool verified = alg switch
             {
-                return false;
-            }
+                "ES256" => VerifyEs256(publicJwk, signingInput, signature),
+                "EdDSA" => VerifyEdDsa(publicJwk, signingInput, signature),
+                _ => false,
+            };
+            if (!verified) return false;
 
             var payloadBytes = Base64Url.DecodeFromChars(parts[1]);
             payload = JsonSerializer.Deserialize<JsonElement>(payloadBytes);
@@ -595,6 +598,69 @@ public sealed class VerifiablePresentationValidator : IVerifiablePresentationVal
         {
             return false;
         }
+    }
+
+    /// <summary>Verify an ES256 (ECDSA P-256, SHA-256) JWS against an EC JWK.</summary>
+    private static bool VerifyEs256(JsonElement publicJwk, byte[] signingInput, byte[] signature)
+    {
+        var x = publicJwk.TryGetProperty("x", out var xe) ? xe.GetString() : null;
+        var y = publicJwk.TryGetProperty("y", out var ye) ? ye.GetString() : null;
+        if (x is null || y is null) return false;
+
+        using var ecdsa = ECDsa.Create(new ECParameters
+        {
+            Curve = ECCurve.NamedCurves.nistP256,
+            Q = new ECPoint
+            {
+                X = Base64Url.DecodeFromChars(x),
+                Y = Base64Url.DecodeFromChars(y),
+            },
+        });
+        return ecdsa.VerifyData(signingInput, signature, HashAlgorithmName.SHA256);
+    }
+
+    /// <summary>
+    /// Verify an EdDSA (Ed25519) JWS against an OKP JWK. The JOSE EdDSA signature is the raw
+    /// 64-byte Ed25519 signature and the JWK <c>x</c> is the raw 32-byte public key — exactly
+    /// what BouncyCastle's pure-managed <see cref="Ed25519Signer"/> consumes (WASM-safe; no
+    /// libsodium P/Invoke).
+    /// </summary>
+    private static bool VerifyEdDsa(JsonElement publicJwk, byte[] signingInput, byte[] signature)
+    {
+        var crv = publicJwk.TryGetProperty("crv", out var ce) ? ce.GetString() : null;
+        if (!string.Equals(crv, "Ed25519", StringComparison.Ordinal)) return false;
+        var x = publicJwk.TryGetProperty("x", out var xe) ? xe.GetString() : null;
+        if (x is null) return false;
+
+        var publicKey = Base64Url.DecodeFromChars(x);
+        if (publicKey.Length != Ed25519PublicKeyParameters.KeySize) return false;
+
+        var verifier = new Ed25519Signer();
+        verifier.Init(forSigning: false, new Ed25519PublicKeyParameters(publicKey, 0));
+        verifier.BlockUpdate(signingInput, 0, signingInput.Length);
+        return verifier.VerifySignature(signature);
+    }
+
+    /// <summary>Reads the protected-header <c>alg</c> from a compact JWS; null if unavailable.</summary>
+    private static string? HeaderAlg(string jwt)
+        => TryParseJwtHeader(jwt) is { } h ? TryGetString(h, "alg") : null;
+
+    /// <summary>
+    /// Summarise a public JWK as a compact "kty/crv" label for the verdict-trail Detail. Tolerates
+    /// both EC (P-256) and OKP (Ed25519); returns null members it cannot read rather than throwing —
+    /// the verdict trail must never break verification.
+    /// </summary>
+    private static string? DescribeJwk(JsonElement jwk)
+    {
+        if (jwk.ValueKind != JsonValueKind.Object) return null;
+        var kty = jwk.TryGetProperty("kty", out var k) ? k.GetString() : null;
+        var crv = jwk.TryGetProperty("crv", out var c) ? c.GetString() : null;
+        return (kty, crv) switch
+        {
+            (null, null) => null,
+            (_, null) => kty,
+            _ => $"{kty} / {crv}",
+        };
     }
 }
 
@@ -637,6 +703,9 @@ internal sealed class LayerState
     public string? KbAudience;
     public string? KbJwtAlg;
     public double? KbJwtAgeSeconds;
+    public string? HolderKey;     // credential cnf.jwk "kty / crv" (e.g. "OKP / Ed25519")
+    public string? DelegationAlg; // device-delegation JWS header alg (e.g. "EdDSA")
+    public string? DeviceKey;     // delegation cnf.jwk "kty / crv" (always "EC / P-256" today)
 
     // IssuerSignature
     public IssuerLayer IssuerSignature = IssuerLayer.NotChecked;
@@ -676,6 +745,15 @@ internal sealed class LayerState
                 kbJwtNote += $" · age {age:0}s";
             }
             detail["kb-jwt"] = kbJwtNote;
+            // Surface the holder/device key curves + the delegation algorithm. The holder key curve is
+            // the diagnostic that explains Ed25519-vs-P-256 behaviour (the default Sorcha wallet is
+            // Ed25519, so its credential cnf.jwk is OKP / Ed25519 and the delegation is EdDSA-signed).
+            if (!string.IsNullOrEmpty(HolderKey)) detail["holder-key"] = HolderKey;
+            if (!string.IsNullOrEmpty(DelegationAlg) || !string.IsNullOrEmpty(DeviceKey))
+            {
+                detail["delegation"] =
+                    $"{DelegationAlg ?? "?"} · device key {DeviceKey ?? "?"}";
+            }
 
             layers.Add(new ValidationLayerResult
             {

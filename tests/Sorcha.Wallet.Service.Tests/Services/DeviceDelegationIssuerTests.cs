@@ -111,6 +111,39 @@ public sealed class DeviceDelegationIssuerTests
     }
 
     [Fact]
+    public async Task IssueAsync_Ed25519Holder_HeaderAlgIsEdDsa()
+    {
+        // The default Sorcha wallet is Ed25519, so the citizen-holder key (and therefore the
+        // delegation signature) is EdDSA. The JWS header MUST advertise the real algorithm — a
+        // hardcoded "ES256" over an Ed25519 signature is unverifiable by any conformant verifier.
+        var holderKeys = new Mock<IHolderKeyService>();
+        var okpJwk = JsonSerializer.SerializeToElement(new
+        {
+            kty = "OKP",
+            crv = "Ed25519",
+            x = Base64Url.EncodeToString(new byte[32])
+        });
+        holderKeys.Setup(s => s.GetHolderPublicJwkAsync(CitizenWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(okpJwk);
+        holderKeys.Setup(s => s.GetHolderJwkThumbprintAsync(CitizenWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("holder-thumb-okp");
+        holderKeys.Setup(s => s.SignAsync(CitizenWallet, It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, byte[] _, CancellationToken _) => (new byte[64], "ED25519"));
+
+        var issuer = new DeviceDelegationIssuer(
+            holderKeys.Object, _statusList.Object, Mock.Of<ILogger<DeviceDelegationIssuer>>());
+
+        var result = await issuer.IssueAsync(
+            PlatformUserId, CitizenWallet, OrgId, OrgWallet,
+            MakeDeviceJwk(), "Stuart's iPhone 16", "iOS 19 / Safari 19");
+
+        var header = JsonDocument.Parse(Decode(result.CompactJwt.Split('.')[0])).RootElement;
+        header.GetProperty("alg").GetString().Should().Be("EdDSA");
+        header.GetProperty("typ").GetString().Should().Be("vc+sd-jwt");
+        header.GetProperty("kid").GetString().Should().StartWith("did:sorcha:holder:");
+    }
+
+    [Fact]
     public async Task IssueAsync_PayloadShapesMatchSchema()
     {
         var result = await IssueAsync();
