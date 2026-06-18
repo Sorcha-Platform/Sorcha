@@ -518,6 +518,18 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             }
         }
 
+        // 8a. Feature 155 (T026) — inject an issuanceContext so credential claim
+        //     mappings can anchor to the register the credential is issued on.
+        //     A claim mapping with sourceField "/issuanceContext/registerId" resolves
+        //     to this value; the open verifier reads the resulting `registerAnchor`
+        //     claim (plus the credential's own jti) to call the public anchor endpoint.
+        //     Injected before any BuildClaimsFromMappings call (HAIP at step 8b and
+        //     SorchaLocalWallet at step 8c) so the pointer resolves on every issuance path.
+        mergedData["issuanceContext"] = new Dictionary<string, object?>
+        {
+            ["registerId"] = instance.RegisterId
+        };
+
         // 8b. HAIP credential mint (Feature 097 + Feature 104 wave 14b).
         //     Moved to run BEFORE routing so the minted offer data can be
         //     carried forward to the claim action via Route.OutputMapping.
@@ -2344,6 +2356,12 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                     ["actionId"] = 0,
                     ["instanceId"] = instanceId,
                     ["previousTxId"] = actionTransactionId,
+                    // Feature 155 — these reach the sealed TransactionMetaData.TrackingData via the
+                    // ToTransactionSubmission whitelist so the public anchor endpoint
+                    // (GET /api/registers/{registerId}/credentials/{credentialId}/anchor) can locate
+                    // the issuance tx by TrackingData["type"]=="credential-issuance" AND
+                    // TrackingData["credentialId"]==<id>.
+                    ["type"] = "credential-issuance",
                     ["credentialId"] = credential.CredentialId,
                     ["credentialType"] = credential.Type
                 }

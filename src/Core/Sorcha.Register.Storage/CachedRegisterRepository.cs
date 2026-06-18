@@ -466,4 +466,13 @@ public class CachedRegisterRepository : IRegisterRepository
     {
         return _innerRepository.FindRevocationForTransactionAsync(registerId, targetTxId, cancellationToken);
     }
+
+    /// <inheritdoc/>
+    public Task<TransactionModel?> GetCredentialIssuanceTransactionAsync(
+        string registerId,
+        string credentialId,
+        CancellationToken cancellationToken = default)
+    {
+        return _innerRepository.GetCredentialIssuanceTransactionAsync(registerId, credentialId, cancellationToken);
+    }
 }

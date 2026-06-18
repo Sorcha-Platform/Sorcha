@@ -1667,3 +1667,23 @@ Enforced in `AuthChallengeService`: **initiate** offers only floor-eligible proo
 
 - **US1 (shipped):** consolidation + floor rule + finished Passkey/Re-OAuth proofs + always-notify. Re-OAuth proof rung's in-browser redirect-return UX is deferred (the API path + Passkey/TOTP/Password rungs cover the security-critical removals).
 - **US2 (Email OTP), US3 (SMS OTP, config-gated via `ISmsSender`), US4 (PWA parity):** follow-up phases. US2 owns the pre-release **schema squash** (`PlatformUser.PhoneNumber`/`PhoneVerifiedAt` + `PlatformUserTwoFactor` folded into the Tenant initial migration); US3 rides the same migration. Both reuse a Redis-backed `ServerSentOtpService` + `VerificationChannelRegistry` (SMS channel registered only when `ISmsSender` is configured; aggregate `SmsAvailable` gates the UI).
+
+---
+
+## Open Verifier PWA — present-then-cross-check the register anchor (Feature 155)
+
+Evolves the `Sorcha.Verifier` reference app (Blazor **Server**) into an installable PWA that does **present-then-cross-check** verification, rendered as a verdict with a four-layer, progressively-disclosed validation trail. **Open** = no pre-shared issuer allowlist; resolve-and-verify everything reachable from the credential, surface the issuer identity, leave the trust judgement to the operator. Design: `docs/superpowers/specs/2026-06-17-open-verifier-pwa-design.md`; spec/plan/tasks: `specs/155-open-verifier-pwa/`.
+
+### The four validation layers (engine + app)
+
+`VerificationOutcome` (`Sorcha.Verifier.Engine/Models/VerifierSession.cs`) gained `IReadOnlyList<ValidationLayerResult> Layers` (+ enums `ValidationLayer { LivePresentation, IssuerSignature, Revocation, RegisterAnchor }`, `LayerStatus { Pass, Fail, Unverified }`). `VerifiablePresentationValidator` populates the first three on **every** return path (the Revocation layer is **omitted**, not faked Pass, when the credential carries no status reference); the verifier app appends **RegisterAnchor** after the anchor read (the engine stays HttpClient-free). `LayerStatus.Unverified` (could-not-determine) is deliberately distinct from `Fail` — **Unverified never vetoes** an otherwise-passing verdict; a `Fail` does (`VerdictViewModel.OverallPass = Accepted && no Fail layer`). The validator surfaces the credential `jti` on the IssuerSignature layer `Detail` for the anchor lookup.
+
+### Layer 4 — the open register-anchor cross-check
+
+A credential **cannot embed its own issuance txId** (the SD-JWT is built before the issuance tx seals), so "self-anchoring" carries the **registerId** (a disclosable `registerAnchor` claim) + uses the credential's own **jti** as the lookup key. New **public/anonymous** Register Service endpoint `GET /api/registers/{registerId}/credentials/{credentialId}/anchor` (`VerificationEndpoints.cs`) finds the credential-issuance tx via `IReadOnlyRegisterRepository.GetCredentialIssuanceTransactionAsync` (matches `MetaData.TrackingData["type"]=="credential-issuance"` + `["credentialId"]`) and returns `{ txId, docketNumber, sealedAt, status, inclusionProof }`. The verifier's `IRegisterAnchorClient` calls it (base from `RegisterService:PublicBaseUrl`) then re-verifies the Merkle proof against the existing anonymous `POST /inclusion-proofs/verify`. F079's GET inclusion-proof/bundle stay auth-gated; this new read is the open path.
+
+### UI + PWA (path A)
+
+Three screens: **Ask** (`Index.razor` — `QuestionPresets`: "Age over 18?" requests only `age_over_18`+`portrait`, "Confirm identity", "Custom"), **QR session** (unchanged OID4VP `direct_post` transport), **Verdict** (`Outcome.razor` — `IdCardLayout`-style header + the four-layer trail via `MudExpansionPanels`, label-left/status-right, disclosed-vs-withheld block proving minimal disclosure, register-anchor as a "tap to verify inclusion proof" beat). PWA shell: `wwwroot/manifest.webmanifest` (scope `/verify/`), `service-worker.js` (shell + `offline.html`; circuit not cached), `js/pwa-install.js` (`beforeinstallprompt`), wired in `App.razor` + an install button in `MainLayout.razor`. Trust runs `requireIssuerSignature:true` with the composite DID-backed resolver — the issuing org **must have an org master key** or its `iss` is the unresolvable bare-wallet form (the [[org-vc-issuer-did-anchoring]] split-brain).
+
+**Out of scope (roadmap):** WASM/offline verifier (path B), hard issuer allowlist, ZK age predicates, the external X.509/EUDI rail + Ed25519 certs, mdoc presentation.

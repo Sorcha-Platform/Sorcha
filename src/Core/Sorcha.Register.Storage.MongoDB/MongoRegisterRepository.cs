@@ -758,4 +758,17 @@ public class MongoRegisterRepository : IRegisterRepository
             Builders<TransactionModel>.Filter.Eq("MetaData.TransactionType", TransactionType.Revocation));
         return await transactions.Find(filter).FirstOrDefaultAsync(cancellationToken);
     }
+
+    /// <inheritdoc/>
+    public async Task<TransactionModel?> GetCredentialIssuanceTransactionAsync(
+        string registerId,
+        string credentialId,
+        CancellationToken cancellationToken = default)
+    {
+        var transactions = GetTransactionsCollection(registerId);
+        var filter = Builders<TransactionModel>.Filter.And(
+            Builders<TransactionModel>.Filter.Eq("MetaData.TrackingData.type", "credential-issuance"),
+            Builders<TransactionModel>.Filter.Eq("MetaData.TrackingData.credentialId", credentialId));
+        return await transactions.Find(filter).FirstOrDefaultAsync(cancellationToken);
+    }
 }

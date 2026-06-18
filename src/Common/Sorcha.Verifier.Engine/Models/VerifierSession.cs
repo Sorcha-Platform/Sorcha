@@ -61,6 +61,63 @@ public enum IssuerSignatureStatus
     Verified,
 }
 
+/// <summary>
+/// The four independent validation layers an open verifier surfaces for the verdict trail
+/// (Feature 155). Each answers a distinct question; a credential can pass any subset.
+/// </summary>
+public enum ValidationLayer
+{
+    /// <summary>Is the live holder actually presenting it? (OID4VP + KB-JWT nonce/audience/freshness, delegation chain.)</summary>
+    LivePresentation,
+
+    /// <summary>Who signed it, and does the signature verify? (issuer DID resolution + JWS.)</summary>
+    IssuerSignature,
+
+    /// <summary>Is it still valid right now? (status-list revocation check.)</summary>
+    Revocation,
+
+    /// <summary>Was it genuinely recorded on the public register? (F079 Merkle inclusion proof.)</summary>
+    RegisterAnchor,
+}
+
+/// <summary>
+/// Per-layer status. <see cref="Fail"/> (actively failed) is deliberately distinct from
+/// <see cref="Unverified"/> (could not determine) so the UI and the overall verdict rule can treat
+/// them differently — an <see cref="Unverified"/> layer never vetoes an otherwise-passing verdict,
+/// whereas a <see cref="Fail"/> layer does (Feature 155, FR-013).
+/// </summary>
+public enum LayerStatus
+{
+    /// <summary>The check ran and passed.</summary>
+    Pass,
+
+    /// <summary>The check ran and failed (e.g. revoked, signature mismatch).</summary>
+    Fail,
+
+    /// <summary>The check could not be completed (e.g. issuer key unresolved, anchor not found, list unfetchable).</summary>
+    Unverified,
+}
+
+/// <summary>
+/// One step in the verdict's validation trail (Feature 155). Carries a short headline plus a
+/// dictionary of raw key→value detail lines shown when the operator expands the step.
+/// </summary>
+public sealed record ValidationLayerResult
+{
+    /// <summary>Which validation layer this result describes.</summary>
+    public required ValidationLayer Layer { get; init; }
+
+    /// <summary>Pass / Fail / Unverified for this layer.</summary>
+    public required LayerStatus Status { get; init; }
+
+    /// <summary>Short human-readable label, e.g. "Not revoked".</summary>
+    public required string Headline { get; init; }
+
+    /// <summary>Raw detail lines (key → value) revealed when the step is expanded. Never carries secrets.</summary>
+    public IReadOnlyDictionary<string, string> Detail { get; init; } =
+        new Dictionary<string, string>();
+}
+
 /// <summary>Result of verifying a wallet's vp_token submission.</summary>
 public sealed record VerificationOutcome
 {
@@ -84,4 +141,12 @@ public sealed record VerificationOutcome
     /// always <see cref="IssuerSignatureStatus.Verified"/> (the unresolved-key path rejects instead).
     /// </summary>
     public IssuerSignatureStatus IssuerSignature { get; init; } = IssuerSignatureStatus.NotVerified;
+
+    /// <summary>
+    /// Per-layer validation results for the verdict trail (Feature 155). Defaults to empty so existing
+    /// construction sites are unaffected. The validator populates the LivePresentation, IssuerSignature,
+    /// and Revocation layers; the verifier app appends the RegisterAnchor layer after the anchor read
+    /// (the engine performs no network I/O).
+    /// </summary>
+    public IReadOnlyList<ValidationLayerResult> Layers { get; init; } = [];
 }
