@@ -1,0 +1,35 @@
+# --- Capacitor wrapper: derived/generated, not committed ---
+# (note: .gitignore has no inline comments — '#' only starts a comment at line start)
+wallet/node_modules/
+# wallet/www is produced by build-web.sh (dotnet publish output)
+wallet/www/
+
+# --- Android: commit the native project SOURCE (so CI needs no `cap add`),
+#     but ignore build outputs and machine-local files ---
+wallet/android/.gradle/
+wallet/android/build/
+wallet/android/app/build/
+wallet/android/captures/
+wallet/android/.idea/
+wallet/android/*.iml
+wallet/android/local.properties
+
+# --- iOS (when added): commit the App project, ignore Pods + build ---
+wallet/ios/App/Pods/
+wallet/ios/App/build/
+wallet/ios/App/output/
+wallet/ios/DerivedData/
+
+# --- fastlane run artifacts ---
+wallet/fastlane/report.xml
+wallet/fastlane/Preview.html
+wallet/fastlane/test_output/
+wallet/fastlane/README.md
+
+# --- never commit signing material (defence in depth; it lives on the Mac only) ---
+**/*.jks
+**/*.keystore
+**/keystore.properties
+**/*.p8
+**/*.p12
+**/*.mobileprovision

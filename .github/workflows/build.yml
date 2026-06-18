@@ -1,0 +1,85 @@
+name: Mobile Build
+
+# Unattended mobile build pipeline for the Sorcha Wallet app.
+# Runs on the self-hosted Mac build node. Signing material lives only on that Mac
+# (read from ~/.sorcha-signing at build time) and never enters GitHub.
+#
+# Triggers:
+#   - workflow_dispatch : manual button; choose the lane
+#   - push tags 'v*'    : release builds (version derived from the tag)
+#   - release published : same, on GitHub Releases
+#
+# Versioning (no manual bumping):
+#   versionName = git tag without leading 'v'  (e.g. v1.2.3 -> 1.2.3), else 0.0.0-dev
+#   versionCode = GitHub Actions run number     (monotonic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: Fastlane lane to run
+        type: choice
+        default: android_adhoc
+        options:
+          - android_adhoc
+          - android_internal
+          - ios_adhoc
+          - ios_beta
+  push:
+    tags: ['v*']
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: [self-hosted, macos, sorcha-build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve lane + version
+        id: cfg
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            lane="${{ inputs.lane }}"
+          else
+            lane="android_adhoc"
+          fi
+          ref="${GITHUB_REF_NAME}"
+          if [[ "$ref" =~ ^v[0-9] ]]; then
+            version_name="${ref#v}"
+          else
+            version_name="0.0.0-dev"
+          fi
+          echo "lane=$lane"                       >> "$GITHUB_OUTPUT"
+          echo "version_name=$version_name"       >> "$GITHUB_OUTPUT"
+          echo "version_code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "Lane=$lane  versionName=$version_name  versionCode=${GITHUB_RUN_NUMBER}"
+
+      - name: Install Capacitor deps (npm ci)
+        working-directory: mobile/wallet
+        shell: bash
+        run: |
+          source ~/.zprofile
+          npm ci
+
+      - name: Build — fastlane ${{ steps.cfg.outputs.lane }}
+        working-directory: mobile/wallet
+        shell: bash
+        env:
+          SORCHA_VERSION_NAME: ${{ steps.cfg.outputs.version_name }}
+          SORCHA_VERSION_CODE: ${{ steps.cfg.outputs.version_code }}
+        run: |
+          source ~/.zprofile
+          fastlane ${{ steps.cfg.outputs.lane }}
+
+      - name: Upload APK artifact
+        if: success() && startsWith(steps.cfg.outputs.lane, 'android_adhoc')
+        uses: actions/upload-artifact@v4
+        with:
+          name: sorcha-wallet-${{ steps.cfg.outputs.version_name }}-${{ steps.cfg.outputs.version_code }}-apk
+          path: mobile/wallet/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
