@@ -48,7 +48,7 @@ Full detail: `references/topology.md`. Secret locations: `references/secrets-map
 ### Lanes (`mobile/wallet/fastlane/Fastfile`)
 - **`android_adhoc`** — signed release APK. **Works today; no account needed.**
 - `android_internal` — AAB → Play Internal. Blocked: needs Play account + service-account JSON.
-- `ios_adhoc` / `ios_beta` — blocked: need Apple Developer Program + (TestFlight) ASC API key. Also blocked on Xcode 17 (see below).
+- `ios_adhoc` / `ios_beta` — toolchain ready (Xcode 26.5). Gate now is Apple Developer Program + a `match` repo (+ ASC API key for TestFlight) + iOS platform `cap add ios`.
 
 Every lane begins with the shared web step `mobile/scripts/build-web.sh`: `dotnet publish` (the Blazor
 WASM "web build") → `www` → rewrite `<base href>` to `/` → strip precompressed dupes → `cap sync`.
@@ -64,9 +64,10 @@ WASM "web build") → `www` → rewrite `<base href>` to `/` → strip precompre
 - **CI steps run `bash + source ~/.zprofile`** (not a login shell), so `.zprofile` must export `dotnet`,
   `JAVA_HOME` (JDK 21), `ANDROID_HOME`, ruby/gem bin — bootstrap handles this.
 - **Capacitor 8 needs JDK 21** (docs say "17+", but its Android lib compiles at Java 21) and **SDK 36**.
-- **`bundle install` / all iOS are blocked on Xcode 17 / clang 17** — Xcode 15.4's clang lacks the C23
-  `<stdckdint.h>` ruby headers need, so no native gem compiles. Until Xcode 17 is installed + `xcode-select`'d,
-  `Gemfile.lock` determinism and every iOS lane stay blocked; fastlane still runs via precompiled gems.
+- **Toolchain unblocked (Xcode 26.5 / clang 21, 2026-06-18):** native gems compile, `Gemfile.lock` is
+  committed, lanes run via `bundle exec fastlane` (deterministic). Earlier Xcode 15.4 blocked this — its
+  clang lacked the C23 `<stdckdint.h>` ruby needs. iOS lanes now gate only on **Apple Developer Program
+  enrolment + a `match` repo** (signing), not the toolchain.
 
 ## Accounts (long-pole prerequisites)
 - **Apple**: Developer Program ($99/yr; org needs a D-U-N-S number — the slow step); ASC API key (`.p8` +
