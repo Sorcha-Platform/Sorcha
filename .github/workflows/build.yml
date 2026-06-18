@@ -35,7 +35,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: [self-hosted, macos, sorcha-build]
+    # Match on the unique custom label (exact, lowercase on the runner) rather than the
+    # OS label 'macOS' — avoids any label-case ambiguity. self-hosted + sorcha-build is
+    # sufficient to pin to the Mac build node.
+    runs-on: [self-hosted, sorcha-build]
     steps:
       - uses: actions/checkout@v4
 
