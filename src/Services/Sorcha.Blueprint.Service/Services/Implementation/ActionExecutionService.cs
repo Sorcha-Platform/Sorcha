@@ -2356,6 +2356,12 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                     ["actionId"] = 0,
                     ["instanceId"] = instanceId,
                     ["previousTxId"] = actionTransactionId,
+                    // Feature 155 — these reach the sealed TransactionMetaData.TrackingData via the
+                    // ToTransactionSubmission whitelist so the public anchor endpoint
+                    // (GET /api/registers/{registerId}/credentials/{credentialId}/anchor) can locate
+                    // the issuance tx by TrackingData["type"]=="credential-issuance" AND
+                    // TrackingData["credentialId"]==<id>.
+                    ["type"] = "credential-issuance",
                     ["credentialId"] = credential.CredentialId,
                     ["credentialType"] = credential.Type
                 }

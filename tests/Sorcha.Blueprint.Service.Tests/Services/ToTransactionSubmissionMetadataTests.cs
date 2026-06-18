@@ -149,4 +149,62 @@ public class ToTransactionSubmissionMetadataTests
         submission.Metadata!["routingDecision"].Should().Be(canonicalDecision);
         submission.Metadata!.ContainsKey("nextActionId").Should().BeFalse();
     }
+
+    [Fact]
+    public void ToTransactionSubmission_CredentialIssuance_CarriesTypeAndCredentialId()
+    {
+        // Feature 155: the public anchor endpoint
+        // (GET /api/registers/{registerId}/credentials/{credentialId}/anchor) locates the issuance
+        // tx by sealed TrackingData["type"]=="credential-issuance" AND ["credentialId"]==<id>.
+        // The submission whitelist must propagate both keys from the BuiltTransaction.Metadata dict
+        // exactly as RecordCredentialOnRegisterAsync populates them.
+        const string credentialId = "urn:uuid:3fa85f64-5717-4562-b3fc-2c963f66afa6";
+        var built = new BuiltTransaction
+        {
+            TransactionData = JsonSerializer.SerializeToUtf8Bytes(new { type = "credential-issuance", credentialId }),
+            TxId = "tx-cred-1",
+            PayloadHash = "tx-cred-1",
+            TransactionType = "credential-issuance",
+            RegisterId = "reg-1",
+            SenderWallet = "ws11qissuer",
+            Metadata = new Dictionary<string, object>
+            {
+                ["blueprintId"] = "inst-1",
+                ["actionId"] = 0,
+                ["instanceId"] = "inst-1",
+                ["previousTxId"] = "prev-tx",
+                ["type"] = "credential-issuance",
+                ["credentialId"] = credentialId,
+                ["credentialType"] = "MembershipCredential"
+            }
+        };
+
+        var submission = built.ToTransactionSubmission(MakeSig(), sequenceNumber: 1);
+
+        submission.Metadata!["type"].Should().Be("credential-issuance");
+        submission.Metadata!["credentialId"].Should().Be(credentialId);
+        // ["Type"] (mapped enum name) and the lowercase domain ["type"] coexist independently.
+        submission.Metadata!["Type"].Should().Be("Action");
+    }
+
+    [Fact]
+    public async Task ToTransactionSubmission_NonCredentialTransaction_OmitsTypeAndCredentialId()
+    {
+        // Additive guard: a transaction with no `type`/`credentialId` in its Metadata must not
+        // gain those keys (they remain absent), so non-credential txs are unaffected.
+        var built = await _service.BuildPresentationInitiatedAsync(
+            MakeBp(), MakeInst(), MakeAct(),
+            presentationRequestId: Guid.NewGuid(),
+            consumerName: "haip",
+            requirementsDigest: new byte[] { 0x01 },
+            validityWindowSeconds: 600,
+            submitterWallet: "ws11qcitizen",
+            previousTransactionId: null);
+        built.SenderWallet = "ws11qcitizen";
+
+        var submission = built.ToTransactionSubmission(MakeSig(), sequenceNumber: 1);
+
+        submission.Metadata!.ContainsKey("type").Should().BeFalse();
+        submission.Metadata!.ContainsKey("credentialId").Should().BeFalse();
+    }
 }

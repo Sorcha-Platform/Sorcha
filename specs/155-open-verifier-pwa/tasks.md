@@ -12,6 +12,22 @@ description: "Task list for Open Verifier PWA implementation"
 
 **Organization**: Grouped by user story (US1–US4) for independent delivery. MVP = US1.
 
+## Progress (2026-06-18)
+
+**Done + verified (build + unit green):** Foundational T003–T005; engine layers T006–T008,
+T017–T018 (59/59 verifier+engine tests); verifier UI/PWA T011–T015, T019–T021, T027–T029,
+T031–T034; Register anchor endpoint T023–T025 (Register suite 316 passed/9 skipped); AssuredIdentity
+claims + injection + setup T009/T010/T026; T035 (no gateway change needed — `/verify/{**catch-all}`
+already serves wwwroot at the correct SW scope); docs T039 (sorcha-architecture skill).
+
+**In progress:** integration fix so credential-issuance txs carry `type`+`credentialId` into sealed
+`TrackingData` (the linchpin for layer-4 on real credentials — the submission-metadata whitelist
+currently drops them).
+
+**Deferred (Docker/live-gated, excluded from CI; tracked as follow-up on the PR):** Playwright E2E
+T016/T022/T030/T036; OTel counters T037; extra edge-case UX T038; README/API-DOCUMENTATION doc sweep
+within T039. T040 final full-solution build runs before marking the PR ready.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: parallelizable (different files, no incomplete dependency)

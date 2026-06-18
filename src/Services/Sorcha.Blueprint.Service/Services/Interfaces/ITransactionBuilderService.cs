@@ -669,6 +669,19 @@ public class BuiltTransaction
         if (Metadata.TryGetValue("routingDecision", out var routingDecision) && routingDecision is not null)
             submissionMetadata["routingDecision"] = routingDecision.ToString()!;
 
+        // Feature 155 — credential-issuance transactions must carry the literal `type` discriminator
+        // and `credentialId` onto the sealed TransactionMetaData.TrackingData so the public anchor
+        // endpoint (GET /api/registers/{registerId}/credentials/{credentialId}/anchor) can locate the
+        // issuance tx by TrackingData["type"]=="credential-issuance" AND ["credentialId"]==<id>.
+        // submissionMetadata is a WHITELIST — these keys are silently dropped unless copied here.
+        // Copied only when present, so non-credential transactions are unaffected. (Note: ["Type"]
+        // above is the mapped TransactionType enum name, e.g. "Action" — a distinct key from this
+        // lowercase domain discriminator and not a substitute for it.)
+        if (Metadata.TryGetValue("type", out var domainType) && domainType is not null)
+            submissionMetadata["type"] = domainType.ToString()!;
+        if (Metadata.TryGetValue("credentialId", out var credentialId) && credentialId is not null)
+            submissionMetadata["credentialId"] = credentialId.ToString()!;
+
         return new TransactionSubmission
         {
             TransactionId = TxId,
