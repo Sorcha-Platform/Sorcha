@@ -21,7 +21,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not $RunId) {
-  $RunId = (ssh $Mac "zsh -lc 'cd $RepoDir && gh run list --workflow build.yml --limit 1 --json databaseId --jq .[].databaseId'").Trim()
+  $out = ssh $Mac "zsh -lc 'cd $RepoDir && gh run list --workflow build.yml --limit 1 --json databaseId --jq .[].databaseId'"
+  $RunId = ("$out").Trim()
+  if (-not $RunId) { Write-Error 'No Mobile Build runs found.'; exit 1 }
   Write-Host "Latest Mobile Build run: $RunId" -ForegroundColor Cyan
 }
 
@@ -30,10 +32,10 @@ $rc = $LASTEXITCODE
 
 if ($rc -eq 0) {
   Write-Host "`n==> PASS (run $RunId)" -ForegroundColor Green
-  # surface the uploaded artifact name, if any
-  ssh $Mac "zsh -lc 'cd $RepoDir && gh run view $RunId --json artifacts --jq \".artifacts[]?.name\" 2>/dev/null'"
+  Write-Host 'Artifacts:'
+  ssh $Mac "zsh -lc 'cd $RepoDir && gh run view $RunId --json artifacts --jq `".artifacts[]?.name`" 2>/dev/null'"
 } else {
   Write-Host "`n==> FAIL (run $RunId, exit $rc) — extracted reason:" -ForegroundColor Red
-  ssh $Mac "zsh -lc 'cd $RepoDir && gh run view $RunId --log-failed 2>/dev/null | grep -iE \"error|fail|exception|FAILURE|not found|invalid\" | head -30'"
+  ssh $Mac "zsh -lc 'cd $RepoDir && gh run view $RunId --log-failed 2>/dev/null | grep -iE `"error|fail|exception|FAILURE|not found|invalid`" | head -30'"
 }
 exit $rc

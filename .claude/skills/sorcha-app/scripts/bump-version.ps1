@@ -21,7 +21,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-$tag = (ssh $Mac "zsh -lc 'cd $RepoDir && git describe --tags --match `"v*`" --abbrev=0 2>/dev/null'").Trim()
+$out = ssh $Mac "zsh -lc 'cd $RepoDir && git describe --tags --match `"v*`" --abbrev=0 2>/dev/null'"
+$tag = ("$out").Trim()
 if ($tag -match '^v(.+)$') { $versionName = $Matches[1] } else { $versionName = '0.0.0-dev' }
 
 Write-Host "versionName=$versionName versionCode=$BuildNumber"
