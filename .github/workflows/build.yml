@@ -62,12 +62,13 @@ jobs:
           echo "version_code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "Lane=$lane  versionName=$version_name  versionCode=${GITHUB_RUN_NUMBER}"
 
-      - name: Install Capacitor deps (npm ci)
+      - name: Install deps (npm ci + bundle install)
         working-directory: mobile/wallet
         shell: bash
         run: |
           source ~/.zprofile
           npm ci
+          bundle install --quiet
 
       - name: Build — fastlane ${{ steps.cfg.outputs.lane }}
         working-directory: mobile/wallet
@@ -77,7 +78,7 @@ jobs:
           SORCHA_VERSION_CODE: ${{ steps.cfg.outputs.version_code }}
         run: |
           source ~/.zprofile
-          fastlane ${{ steps.cfg.outputs.lane }}
+          bundle exec fastlane ${{ steps.cfg.outputs.lane }}
 
       - name: Upload APK artifact
         if: success() && startsWith(steps.cfg.outputs.lane, 'android_adhoc')

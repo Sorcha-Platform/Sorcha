@@ -31,8 +31,8 @@ if ($VersionName) { $envPrefix += "SORCHA_VERSION_NAME=$VersionName " }
 if ($VersionCode) { $envPrefix += "SORCHA_VERSION_CODE=$VersionCode " }
 
 # zsh -lc so the login shell loads ~/.zprofile (JAVA_HOME/ANDROID_HOME/dotnet/fastlane).
-# BUNDLE_GEMFILE= avoids bundler until Gemfile.lock exists (blocked on Xcode 17/clang 17).
-$remote = "cd $RepoDir/mobile/wallet && ${envPrefix}BUNDLE_GEMFILE= fastlane $Lane"
+# bundle exec uses the pinned Gemfile.lock (deterministic); bundle install is a fast no-op if current.
+$remote = "cd $RepoDir/mobile/wallet && bundle install --quiet && ${envPrefix}bundle exec fastlane $Lane"
 Write-Host "==> $Mac : fastlane $Lane" -ForegroundColor Cyan
 ssh $Mac "zsh -lc '$remote'"
 exit $LASTEXITCODE
