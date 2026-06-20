@@ -11,15 +11,15 @@ build time on the Mac, so GitHub only ever sees workflow YAML and logs.
 | Upload keystore | `~/.sorcha-signing/sorcha-wallet-upload.jks` | RSA-2048, alias `sorcha-wallet-upload`, validity ~27y. Mode 600. |
 | Keystore credentials | `~/.sorcha-signing/keystore.properties` | `storeFile/storePassword/keyAlias/keyPassword`. Mode 600. Read by `app/build.gradle` (the committed signing block references this path; no secret in gradle). |
 | Password backup | Stuart's password manager | The store/key password + the keystore SHA-256. Generated once by `make-upload-keystore.sh`. Under Play App Signing the upload key is resettable. |
-| Play service-account JSON | `~/.sorcha-signing/` (TBD) | For `fastlane supply` (android_internal). **Not yet created** — needs Play account. |
+| Play service-account JSON | `~/.sorcha-signing/play_service_account.json` | For `fastlane supply` (android_internal). Create once Play account exists. |
 
 ## iOS (not yet — needs Apple Developer Program + Xcode 17)
 
 | Secret | Location (Mac) | Notes |
 |--------|----------------|-------|
-| App Store Connect API key | `~/.sorcha-signing/` (TBD `.p8`) | + Key ID + Issuer ID. Avoids 2FA in CI (pilot/match). |
-| Certs + provisioning profiles | `fastlane match` private git repo | Managed by `match`; decrypted into the Mac keychain at build time. **Repo not yet created.** |
-| Device UDIDs | match / ASC | For the ad-hoc profile. |
+| App Store Connect API key | `~/.sorcha-signing/asc_api_key.p8` + `asc_api_key.json` (`{key_id,issuer_id}`) | Avoids 2FA in CI (build_app/pilot/match). Create once Apple enrolment active. |
+| Certs + provisioning profiles | `fastlane match` private git repo (`MATCH_GIT_URL`), encrypted with `MATCH_PASSWORD` | Decrypted into the Mac keychain at build time. Repo + passphrase set at finish time. |
+| Device UDIDs | Apple dev portal (Devices) → match adhoc profile | For the `ios_adhoc` profile. |
 
 ## Service / infra credentials (Mac)
 

@@ -1,59 +1,130 @@
 # Sorcha Wallet — fastlane lanes.
 #
-# The app is Blazor WASM wrapped by Capacitor, so every lane starts with the shared web
-# step (build-web.sh): dotnet publish -> www -> rewrite base href -> cap sync. These lanes
-# are headless-runnable and identical whether invoked by a human, a git tag, or CI.
+# The app is Blazor WASM wrapped by Capacitor 8, so every build lane starts with the shared
+# web step (build-web.sh): dotnet publish -> www -> rewrite base href -> cap sync. Lanes are
+# headless-runnable and identical whether invoked by a human, a git tag, or CI.
 #
-# Lanes are named to match the pipeline's intent->lane mapping:
-#   android_adhoc     signed release APK         (no store account needed)
-#   android_internal  AAB -> Play Internal track (needs Play account + service-account JSON)
-#   ios_adhoc         signed ad-hoc IPA          (needs Apple Dev Program + device UDIDs)
-#   ios_beta          IPA -> TestFlight          (needs Apple Dev Program + ASC API key)
-# Only android_adhoc is wired today; the rest are stubs that fail loud until accounts exist.
+#   android_adhoc     signed release APK         (no store account needed)        [PROVEN]
+#   android_internal  AAB -> Play Internal track (Play account + service-account) [prestaged]
+#   ios_adhoc         signed ad-hoc IPA          (Apple Dev Program + match)      [prestaged]
+#   ios_beta          IPA -> TestFlight          (Apple Dev Program + ASC key)    [prestaged]
+#
+# The iOS / android_internal lanes are wired but gated on credentials placed on THIS Mac under
+# ~/.sorcha-signing (see references/finishing-accounts.md in the sorcha-app skill). They fail
+# loud with the exact missing-file + instructions until those exist. Nothing secret is in here.
 
 opt_out_usage
 skip_docs
 
-# Anchor paths on the Fastfile's own dir (__dir__ = .../mobile/wallet/fastlane), which
-# fastlane sets reliably, so paths don't depend on the invocation cwd.
+# Anchor paths on the Fastfile's own dir (__dir__ = .../mobile/wallet/fastlane), set reliably
+# by fastlane, so paths don't depend on the invocation cwd.
 WALLET_DIR = File.expand_path("..", __dir__)          # .../mobile/wallet
 REPO_ROOT  = File.expand_path("../../..", __dir__)     # repo root
 WEB_STEP   = File.join(REPO_ROOT, "mobile", "scripts", "build-web.sh")
+SIGN_DIR   = File.join(ENV["HOME"], ".sorcha-signing") # Mac-only signing material
+
+# ---- shared helpers ------------------------------------------------------
 
 def web_build
   sh("bash", WEB_STEP)
 end
 
-desc "Signed ad-hoc release APK. web -> Capacitor -> gradle assembleRelease. No store account needed."
-lane :android_adhoc do
-  web_build
-  # Version is injected by CI (tag -> name, run number -> code). Falls back to the
-  # values baked into build.gradle for local/manual builds.
+# Version injected by CI (tag -> name, run number -> code); falls back to build.gradle values.
+def version_props
   props = {}
   props["sorchaVersionName"] = ENV["SORCHA_VERSION_NAME"] unless ENV["SORCHA_VERSION_NAME"].to_s.empty?
   props["sorchaVersionCode"] = ENV["SORCHA_VERSION_CODE"] unless ENV["SORCHA_VERSION_CODE"].to_s.empty?
+  props
+end
+
+# App Store Connect API key (Mac-only). Place:
+#   ~/.sorcha-signing/asc_api_key.p8           (downloaded once from App Store Connect)
+#   ~/.sorcha-signing/asc_api_key.json         {"key_id":"XXXX","issuer_id":"....."}
+def asc_api_key
+  require "json"
+  p8   = File.join(SIGN_DIR, "asc_api_key.p8")
+  meta = File.join(SIGN_DIR, "asc_api_key.json")
+  unless File.exist?(p8) && File.exist?(meta)
+    UI.user_error!("Missing App Store Connect API key. Put the .p8 at #{p8} and {\"key_id\",\"issuer_id\"} JSON at #{meta}. See the sorcha-app skill: references/finishing-accounts.md")
+  end
+  m = JSON.parse(File.read(meta))
+  app_store_connect_api_key(key_id: m["key_id"], issuer_id: m["issuer_id"], key_filepath: p8)
+end
+
+IOS_PROJECT = File.join(WALLET_DIR, "ios", "App", "App.xcodeproj")
+IOS_OUTPUT  = File.join(WALLET_DIR, "ios", "App", "output")
+
+# ---- Android -------------------------------------------------------------
+
+desc "Signed ad-hoc release APK. web -> Capacitor -> gradle assembleRelease. No store account needed."
+lane :android_adhoc do
+  web_build
   gradle(
     project_dir: File.join(WALLET_DIR, "android"),
     task: "assemble",
     build_type: "Release",
     flags: "--no-daemon",
-    properties: props
+    properties: version_props
   )
   apk = lane_context[SharedValues::GRADLE_APK_OUTPUT_PATH]
   UI.success("Signed ad-hoc APK: #{apk}")
 end
 
-desc "AAB to Play Internal testing track. Requires Play account + service-account JSON (BLOCKED until set up)."
+desc "AAB -> Play Internal testing track. Requires ~/.sorcha-signing/play_service_account.json + the app record (and a manual first AAB upload)."
 lane :android_internal do
-  UI.user_error!("android_internal is not wired yet: needs a Play Console account, the app record, and a service-account JSON. See references/secrets-map.md.")
+  json_key = File.join(SIGN_DIR, "play_service_account.json")
+  unless File.exist?(json_key)
+    UI.user_error!("Missing Play service-account JSON at #{json_key}. See the sorcha-app skill: references/finishing-accounts.md")
+  end
+  web_build
+  gradle(
+    project_dir: File.join(WALLET_DIR, "android"),
+    task: "bundle",
+    build_type: "Release",
+    flags: "--no-daemon",
+    properties: version_props
+  )
+  upload_to_play_store(
+    track: "internal",
+    package_name: "app.sorcha.wallet",
+    json_key: json_key,
+    aab: lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH],
+    skip_upload_metadata: true,
+    skip_upload_images: true,
+    skip_upload_screenshots: true
+  )
+  UI.success("Uploaded AAB to Play Internal track.")
 end
 
-desc "Signed ad-hoc IPA. Requires Apple Developer Program + registered device UDIDs (BLOCKED until set up)."
+# ---- iOS (Capacitor 8 = SPM, no CocoaPods; build the .xcodeproj directly) -
+
+desc "Signed ad-hoc IPA. Requires Apple Developer Program, a match repo (MATCH_GIT_URL/MATCH_PASSWORD), and registered device UDIDs."
 lane :ios_adhoc do
-  UI.user_error!("ios_adhoc is not wired yet: needs Apple Developer Program enrolment, a match repo, and device UDIDs.")
+  key = asc_api_key
+  web_build
+  match(type: "adhoc", api_key: key, readonly: false)
+  build_app(
+    project: IOS_PROJECT,
+    scheme: "App",
+    export_method: "ad-hoc",
+    output_directory: IOS_OUTPUT,
+    output_name: "SorchaWallet-adhoc.ipa"
+  )
+  UI.success("Ad-hoc IPA: #{lane_context[SharedValues::IPA_OUTPUT_PATH]}")
 end
 
-desc "IPA to TestFlight. Requires Apple Developer Program + App Store Connect API key (BLOCKED until set up)."
+desc "IPA -> TestFlight. Requires Apple Developer Program + ASC API key + a match repo."
 lane :ios_beta do
-  UI.user_error!("ios_beta is not wired yet: needs Apple Developer Program enrolment and an App Store Connect API key.")
+  key = asc_api_key
+  web_build
+  match(type: "appstore", api_key: key, readonly: false)
+  build_app(
+    project: IOS_PROJECT,
+    scheme: "App",
+    export_method: "app-store",
+    output_directory: IOS_OUTPUT,
+    output_name: "SorchaWallet-appstore.ipa"
+  )
+  upload_to_testflight(api_key: key, skip_waiting_for_build_processing: true)
+  UI.success("Uploaded to TestFlight.")
 end
