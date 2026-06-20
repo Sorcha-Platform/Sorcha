@@ -1,0 +1,12 @@
+# fastlane match — stores iOS signing certs + provisioning profiles in a PRIVATE git repo,
+# encrypted with MATCH_PASSWORD. Nothing secret is in this file.
+#
+# Set before running the iOS lanes (on the Mac only):
+#   export MATCH_GIT_URL="git@github.com:Sorcha-Platform/ios-certs.git"   (or HTTPS)
+#   export MATCH_PASSWORD="<the encryption passphrase you choose>"        (store in your pw manager)
+# See the sorcha-app skill: references/finishing-accounts.md
+
+git_url(ENV["MATCH_GIT_URL"])          # required at runtime; lanes fail loud if unset
+storage_mode("git")
+app_identifier(["app.sorcha.wallet"])
+# 'type' is supplied per-lane by the Fastfile (adhoc / appstore / development).
