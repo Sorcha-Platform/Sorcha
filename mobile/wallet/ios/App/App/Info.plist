@@ -4,6 +4,11 @@
 <dict>
     <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
+	<!-- Export compliance: Sorcha uses only standard, published crypto (Ed25519, P-256,
+	     RSA, AES, SHA) that qualifies for the Category 5 Part 2 exemption — no proprietary
+	     algorithms. Declaring exempt here stops TestFlight prompting on every build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
