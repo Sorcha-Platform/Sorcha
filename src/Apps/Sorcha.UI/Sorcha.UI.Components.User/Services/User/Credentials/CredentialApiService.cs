@@ -19,12 +19,16 @@ public class CredentialApiService : ICredentialApiService
 
     private static readonly JsonSerializerOptions JsonOptions = JsonDefaults.Api;
 
+    /// <summary>
+    /// Initializes a new instance of <see cref="CredentialApiService"/> with the HTTP client and logger.
+    /// </summary>
     public CredentialApiService(HttpClient httpClient, ILogger<CredentialApiService> logger)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    /// <inheritdoc/>
     public async Task<List<CredentialCardViewModel>> GetCredentialsAsync(
         string walletAddress, CancellationToken ct = default)
     {
@@ -50,6 +54,7 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
+    /// <inheritdoc/>
     public async Task<CredentialDetailViewModel?> GetCredentialDetailAsync(
         string walletAddress, string credentialId, CancellationToken ct = default)
     {
@@ -73,6 +78,7 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
+    /// <inheritdoc/>
     public async Task<bool> UpdateCredentialStatusAsync(
         string walletAddress, string credentialId, string newStatus, CancellationToken ct = default)
     {
@@ -91,6 +97,7 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
+    /// <inheritdoc/>
     public async Task<bool> DeleteCredentialAsync(
         string walletAddress, string credentialId, CancellationToken ct = default)
     {
@@ -108,6 +115,7 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
+    /// <inheritdoc/>
     public async Task<List<PresentationRequestViewModel>> GetPresentationRequestsAsync(
         string walletAddress, CancellationToken ct = default)
     {
@@ -131,6 +139,7 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
+    /// <inheritdoc/>
     public async Task<PresentationRequestViewModel?> GetPresentationRequestDetailAsync(
         string requestId, CancellationToken ct = default)
     {
@@ -154,6 +163,7 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
+    /// <inheritdoc/>
     public async Task<PresentationSubmitResult> SubmitPresentationAsync(
         string requestId, string credentialId, List<string> disclosedClaims,
         string vpToken, CancellationToken ct = default)
@@ -192,6 +202,7 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
+    /// <inheritdoc/>
     public async Task<bool> DenyPresentationAsync(string requestId, CancellationToken ct = default)
     {
         try
@@ -208,6 +219,7 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
+    /// <inheritdoc/>
     public async Task<CredentialOperationResult> SuspendCredentialAsync(
         string credentialId, string issuerWallet, string? reason = null, CancellationToken ct = default)
     {
@@ -217,6 +229,7 @@ public class CredentialApiService : ICredentialApiService
             credentialId, "suspend", ct);
     }
 
+    /// <inheritdoc/>
     public async Task<CredentialOperationResult> ReinstateCredentialAsync(
         string credentialId, string issuerWallet, string? reason = null, CancellationToken ct = default)
     {
@@ -226,6 +239,7 @@ public class CredentialApiService : ICredentialApiService
             credentialId, "reinstate", ct);
     }
 
+    /// <inheritdoc/>
     public async Task<CredentialOperationResult> RefreshCredentialAsync(
         string credentialId, string issuerWallet, string? newExpiryDuration = null, CancellationToken ct = default)
     {

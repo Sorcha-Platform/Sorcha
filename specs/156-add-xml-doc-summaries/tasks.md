@@ -26,8 +26,8 @@ description: "Task list for feature 156 — Add Missing XML Doc Summaries to One
 
 **Why this is foundational**: All subsequent work targets exactly one file, and that file must be confirmed before any edits begin (FR-001).
 
-- [ ] T001 Confirm the recommended candidate by reading `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs` and listing every public member that currently lacks a `/// <summary>` immediately above it (the "before" set)
-- [ ] T002 Confirm the class implements `ICredentialApiService` and identify which members directly implement a documented interface member (these are `<inheritdoc/>` candidates per research.md Decision 3)
+- [X] T001 Confirm the recommended candidate by reading `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs` and listing every public member that currently lacks a `/// <summary>` immediately above it (the "before" set)
+- [X] T002 Confirm the class implements `ICredentialApiService` and identify which members directly implement a documented interface member (these are `<inheritdoc/>` candidates per research.md Decision 3)
 
 **Checkpoint**: Candidate confirmed, "before" set recorded — implementation can begin
 
@@ -39,7 +39,7 @@ description: "Task list for feature 156 — Add Missing XML Doc Summaries to One
 
 **⚠️ CRITICAL**: Must know the interface's documented surface before writing any summaries, to avoid writing prose where `<inheritdoc/>` is more accurate.
 
-- [ ] T003 Read `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/ICredentialApiService.cs` (or equivalent interface file) and record which method/property signatures carry existing `/// <summary>` docs
+- [X] T003 Read `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/ICredentialApiService.cs` (or equivalent interface file) and record which method/property signatures carry existing `/// <summary>` docs
 
 **Checkpoint**: Interface documentation surface mapped — US1 implementation can begin
 
@@ -58,10 +58,10 @@ description: "Task list for feature 156 — Add Missing XML Doc Summaries to One
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Add `/// <summary>` to the `CredentialApiService` class declaration if it lacks one — one accurate sentence describing the service's responsibility — in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs`
-- [ ] T005 [US1] For each public method/property that directly implements a documented member of `ICredentialApiService`, add `/// <inheritdoc/>` immediately above the member in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs`
-- [ ] T006 [US1] For each remaining undocumented public method/property (those not covered by `<inheritdoc/>`), add a concise, accurate `/// <summary> ... </summary>` block above the member in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs` — summaries must describe observable API-level intent without restating the member name verbatim (FR-003)
-- [ ] T007 [US1] Review all added summaries against the member signatures to verify each is accurate, non-misleading, and free of unverifiable implementation claims (SC-005, FR-003)
+- [X] T004 [US1] Add `/// <summary>` to the `CredentialApiService` class declaration if it lacks one — one accurate sentence describing the service's responsibility — in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs`
+- [X] T005 [US1] For each public method/property that directly implements a documented member of `ICredentialApiService`, add `/// <inheritdoc/>` immediately above the member in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs`
+- [X] T006 [US1] For each remaining undocumented public method/property (those not covered by `<inheritdoc/>`), add a concise, accurate `/// <summary> ... </summary>` block above the member in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs` — summaries must describe observable API-level intent without restating the member name verbatim (FR-003)
+- [X] T007 [US1] Review all added summaries against the member signatures to verify each is accurate, non-misleading, and free of unverifiable implementation claims (SC-005, FR-003)
 
 **Checkpoint**: At this point, User Story 1 is complete — every public member has documentation; the file is fully self-describing
 
@@ -81,10 +81,10 @@ description: "Task list for feature 156 — Add Missing XML Doc Summaries to One
 | Build stays clean | `dotnet build src/Apps/Sorcha.UI/Sorcha.UI.Components.User/` | Succeeds, no new warnings | SC-002 |
 | Summaries accurate | Manual diff review | Each summary correct, no verbatim-name restatements | SC-005 |
 
-- [ ] T008 Run `git diff --stat` and confirm exactly one `.cs` file appears in the output (SC-003)
-- [ ] T009 Run `git diff` and confirm every added line begins with `///` and no executable code lines were removed or changed (SC-004)
-- [ ] T010 Rescan `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs` for undocumented public members and confirm the result is empty (SC-001)
-- [ ] T011 Run `dotnet build src/Apps/Sorcha.UI/Sorcha.UI.Components.User/` and confirm it succeeds with no new warnings (SC-002, Constitution Principle V)
+- [X] T008 Run `git diff --stat` and confirm exactly one `.cs` file appears in the output (SC-003)
+- [X] T009 Run `git diff` and confirm every added line begins with `///` and no executable code lines were removed or changed (SC-004)
+- [X] T010 Rescan `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Credentials/CredentialApiService.cs` for undocumented public members and confirm the result is empty (SC-001)
+- [X] T011 Run `dotnet build src/Apps/Sorcha.UI/Sorcha.UI.Components.User/` and confirm it succeeds with no new warnings (SC-002, Constitution Principle V)
 
 ---
 
