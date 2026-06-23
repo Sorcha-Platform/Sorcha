@@ -93,6 +93,38 @@ process alive, socket to `17.56.x:443` ends in `CLOSE_WAIT`)
 → `$ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs <apk> | grep SHA-256` and compare
    to the keystore SHA-256 (in the password manager / `make-upload-keystore.sh` output).
 
+## Play Store upload (android_internal)
+
+**`Google Api Error: Invalid request - The caller does not have permission`** (AAB builds fine,
+upload step fails)
+→ The service account authenticated but isn't authorised to release **this app's** tracks.
+→ Play Console → **Users and permissions** → invite/select the SA email
+   (`sorcha-play-ci@sorcha-494515.iam.gserviceaccount.com`) → **App permissions → add Sorcha Wallet**
+   → grant **"Release to testing tracks"** (or app-scoped Admin while testing). Allow a few minutes to
+   propagate. Grant must be **app-level**, not only account-level.
+
+**`Version code N has already been used`** on upload
+→ The manual first upload was **versionCode 1**. Automated lane runs must use a higher code — pass
+   `SORCHA_VERSION_CODE=<n>` (CI derives it from the run number; for a manual lane run bump it by hand).
+
+## TestFlight (iOS internal testing)
+
+**TestFlight asks for a "redeem code" / "an error occurred, try again later"**
+→ You're on the *external/public* path or there's no testable build for your Apple ID yet. **Internal
+   testing needs no code.** Fixes: (1) the build must be **Ready to Test** — finish Processing + answer
+   the **export-compliance** question; (2) add yourself under **TestFlight → Internal Testing** as a
+   tester (internal testers must be **team users** in Users and Access, max 100) and enable the build
+   for the group; (3) the iPhone's TestFlight must be signed in with the **exact** invited Apple ID.
+
+**Encryption questionnaire on every upload**
+→ Bake the answer into `Info.plist`. Sorcha uses only standard crypto (Ed25519/P-256/RSA/AES/SHA) →
+   `ITSAppUsesNonExemptEncryption=false` (Category 5 Part 2 exemption). Already committed.
+
+**Demo account / sign-in info requested**
+→ Only for **App Review** (external TestFlight first build + App Store), never internal testing. When
+   you do go external/prod: Sorcha needs a working **demo login** AND a **publicly reachable backend**
+   the build points at (a LAN/dev box fails review "can't sign in").
+
 ## Disk
 **Mac data volume low (~tens of GiB)** — Android SDK + gems ~8–10 GiB; **Xcode 17 needs ~40 GiB transient**.
 Free space (old simulators, prior Xcode after upgrade, `~/Library/Developer/Xcode/DerivedData`) before upgrading Xcode.
