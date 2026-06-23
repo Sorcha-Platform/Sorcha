@@ -54,6 +54,26 @@ end
 IOS_PROJECT = File.join(WALLET_DIR, "ios", "App", "App.xcodeproj")
 IOS_OUTPUT  = File.join(WALLET_DIR, "ios", "App", "output")
 
+# Capacitor's generated Xcode project ships with automatic signing and no team, so an
+# archive fails with "Signing requires a development team". match uses MANUAL signing, so
+# pin the App target to the match-provisioned profile before build_app. We read match's
+# exported env vars (sigh_<bundle>_<type>_{profile-name,team-id}) rather than hardcoding the
+# team id, so this stays correct if the team/profile changes. Edits the pbxproj at build
+# time (the committed project stays generic; CI checks out fresh each run).
+def apply_match_signing(profile_type)
+  bundle = "app.sorcha.wallet"
+  prefix = "sigh_#{bundle}_#{profile_type}"
+  update_code_signing_settings(
+    use_automatic_signing: false,
+    path: IOS_PROJECT,
+    team_id: ENV.fetch("#{prefix}_team-id"),
+    code_sign_identity: "Apple Distribution",
+    profile_name: ENV.fetch("#{prefix}_profile-name"),
+    bundle_identifier: bundle,
+    targets: ["App"]
+  )
+end
+
 # ---- Android -------------------------------------------------------------
 
 desc "Signed ad-hoc release APK. web -> Capacitor -> gradle assembleRelease. No store account needed."
@@ -101,8 +121,14 @@ end
 desc "Signed ad-hoc IPA. Requires Apple Developer Program, a match repo (MATCH_GIT_URL/MATCH_PASSWORD), and registered device UDIDs."
 lane :ios_adhoc do
   key = asc_api_key
+  # Headless keychain: match imports the signing cert's private key into a keychain, but
+  # login.keychain is locked over SSH and under the CI runner LaunchDaemon (no GUI session),
+  # which silently hangs. setup_ci creates+unlocks a temporary keychain and points match at
+  # it via MATCH_KEYCHAIN_NAME/PASSWORD, so codesign finds the identity. Idempotent; no-op-safe.
+  setup_ci(force: true)
   web_build
   match(type: "adhoc", api_key: key, readonly: false)
+  apply_match_signing("adhoc")
   build_app(
     project: IOS_PROJECT,
     scheme: "App",
@@ -116,8 +142,14 @@ end
 desc "IPA -> TestFlight. Requires Apple Developer Program + ASC API key + a match repo."
 lane :ios_beta do
   key = asc_api_key
+  # Headless keychain: match imports the signing cert's private key into a keychain, but
+  # login.keychain is locked over SSH and under the CI runner LaunchDaemon (no GUI session),
+  # which silently hangs. setup_ci creates+unlocks a temporary keychain and points match at
+  # it via MATCH_KEYCHAIN_NAME/PASSWORD, so codesign finds the identity. Idempotent; no-op-safe.
+  setup_ci(force: true)
   web_build
   match(type: "appstore", api_key: key, readonly: false)
+  apply_match_signing("appstore")
   build_app(
     project: IOS_PROJECT,
     scheme: "App",
