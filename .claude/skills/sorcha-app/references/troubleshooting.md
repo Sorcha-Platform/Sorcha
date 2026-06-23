@@ -99,9 +99,12 @@ process alive, socket to `17.56.x:443` ends in `CLOSE_WAIT`)
 upload step fails)
 → The service account authenticated but isn't authorised to release **this app's** tracks.
 → Play Console → **Users and permissions** → invite/select the SA email
-   (`sorcha-play-ci@sorcha-494515.iam.gserviceaccount.com`) → **App permissions → add Sorcha Wallet**
-   → grant **"Release to testing tracks"** (or app-scoped Admin while testing). Allow a few minutes to
-   propagate. Grant must be **app-level**, not only account-level.
+   (`sorcha-play-ci@sorcha-494515.iam.gserviceaccount.com`). **What actually worked (2026-06-23):**
+   open the SA → **Account permissions** tab → tick **Admin (all permissions)** → Apply. A narrower
+   "Release to testing tracks" grant kept returning the permission error (didn't take / wrong scope);
+   account-level Admin succeeded immediately. The separate **Setup → API access** page is now merged
+   into Users and permissions on most accounts — the SA invite there IS the grant; don't hunt for it.
+   Verify the SA shows **Status = Active** (not pending) before retrying.
 
 **`Version code N has already been used`** on upload
 → The manual first upload was **versionCode 1**. Automated lane runs must use a higher code — pass

@@ -7,7 +7,12 @@ missing-file path until the credentials are present.
 
 Secrets live ONLY on the Mac. Never copy them to Windows or the repo.
 
-## STATUS (2026-06-23) — BOTH PLATFORMS LIVE IN TESTING
+## STATUS (2026-06-23) — PIPELINE COMPLETE, ALL LANES PROVEN END-TO-END
+**All four lanes proven on real accounts:** `android_adhoc` (CI), `android_internal` (Play Internal —
+versionCode 2 uploaded via `supply`), `ios_adhoc` (signed IPA), `ios_beta` (TestFlight). The Play SA
+needed **account-level Admin** (Users and permissions → SA → Account permissions → Admin); a narrower
+track grant kept failing. Android testing live via vc1 (manual) + vc2 (automated); iOS via TestFlight Internal.
+
 - **iOS `ios_adhoc` + `ios_beta` PROVEN end-to-end** — signed ad-hoc IPA **and** TestFlight upload both
   work (App Store Connect app id `6783321595`, team **HY5HSW5FUT**, bundle `app.sorcha.wallet`, profiles
   `match AdHoc/AppStore app.sorcha.wallet`, match repo `Sorcha-Platform/ios-certs`). App installed/testing
