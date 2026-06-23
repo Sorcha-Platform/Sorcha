@@ -7,18 +7,24 @@ missing-file path until the credentials are present.
 
 Secrets live ONLY on the Mac. Never copy them to Windows or the repo.
 
-## STATUS (2026-06-23)
-- **iOS `ios_adhoc` PROVEN end-to-end** — signed ad-hoc IPA built on the Mac node (team **HY5HSW5FUT**,
-  bundle `app.sorcha.wallet`, profile `match AdHoc app.sorcha.wallet`, match repo
-  `Sorcha-Platform/ios-certs`). Two lane fixes needed (PR #1024, both in the Fastfile now): `setup_ci`
-  for the headless keychain, and `apply_match_signing` for manual signing. One infra fix: a **Little
-  Snitch** allow rule for `*.apple.com` (it was blocking Homebrew Ruby → ASC API; see troubleshooting).
-  `ios_beta` (TestFlight) uses the same signing path — should work when wanted. Creds in
-  `~/.sorcha-signing`: `asc_api_key.p8` + `asc_api_key.json` (key MBZVZTN4VX) + `ios-match.env`
-  (MATCH_GIT_URL + MATCH_PASSWORD; deliberately NOT in `~/.zprofile`, so iOS lanes must `source` it).
-  ⚠ Watch the json key name — it's `issuer_id`, not `issure_id` (a typo silently breaks ASC auth).
-- **Android `android_internal`** — first AAB uploaded manually to Play Internal (versionCode 1). Lane
-  automates once `~/.sorcha-signing/play_service_account.json` is placed. Still outstanding.
+## STATUS (2026-06-23) — BOTH PLATFORMS LIVE IN TESTING
+- **iOS `ios_adhoc` + `ios_beta` PROVEN end-to-end** — signed ad-hoc IPA **and** TestFlight upload both
+  work (App Store Connect app id `6783321595`, team **HY5HSW5FUT**, bundle `app.sorcha.wallet`, profiles
+  `match AdHoc/AppStore app.sorcha.wallet`, match repo `Sorcha-Platform/ios-certs`). App installed/testing
+  on Stuart's iPhone via TestFlight Internal. Fixes (PR #1024, in Fastfile): `setup_ci` (headless
+  keychain) + `apply_match_signing` (manual signing). Export-compliance baked into `Info.plist`
+  (`ITSAppUsesNonExemptEncryption=false`, PR #1025) so TestFlight stops prompting. Infra fix: a **Little
+  Snitch** allow rule for `*.apple.com` (was blocking Homebrew Ruby → ASC API; see troubleshooting).
+  Creds in `~/.sorcha-signing`: `asc_api_key.p8` + `asc_api_key.json` (key MBZVZTN4VX, issuer 3c58937d-…)
+  + `ios-match.env` (MATCH_GIT_URL + MATCH_PASSWORD; deliberately NOT in `~/.zprofile`, so iOS lanes must
+  `source` it — `trigger-build.ps1` does NOT, so iOS via that script needs the source added or run inline).
+  ⚠ json key name is `issuer_id` not `issure_id` (typo silently breaks ASC auth).
+- **Android** — manual AAB (versionCode 1) on Play Internal works for testing NOW. `android_internal`
+  lane builds+signs the AAB fine but the **automated upload is still blocked on the Play permission grant**:
+  service account `sorcha-play-ci@sorcha-494515.iam.gserviceaccount.com` (JSON at
+  `~/.sorcha-signing/play_service_account.json`) needs **"Release to testing tracks"** on the Sorcha
+  Wallet app in Play Console → Users and permissions. Once granted, re-run with `SORCHA_VERSION_CODE=2`
+  (vc1 is taken). Note in `deploy/mobile-artifacts/PLAY-SERVICE-ACCOUNT-NOTE.md`.
 
 ## iOS (ios_adhoc / ios_beta)
 
