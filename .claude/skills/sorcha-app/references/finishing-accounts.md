@@ -7,6 +7,19 @@ missing-file path until the credentials are present.
 
 Secrets live ONLY on the Mac. Never copy them to Windows or the repo.
 
+## STATUS (2026-06-23)
+- **iOS `ios_adhoc` PROVEN end-to-end** — signed ad-hoc IPA built on the Mac node (team **HY5HSW5FUT**,
+  bundle `app.sorcha.wallet`, profile `match AdHoc app.sorcha.wallet`, match repo
+  `Sorcha-Platform/ios-certs`). Two lane fixes needed (PR #1024, both in the Fastfile now): `setup_ci`
+  for the headless keychain, and `apply_match_signing` for manual signing. One infra fix: a **Little
+  Snitch** allow rule for `*.apple.com` (it was blocking Homebrew Ruby → ASC API; see troubleshooting).
+  `ios_beta` (TestFlight) uses the same signing path — should work when wanted. Creds in
+  `~/.sorcha-signing`: `asc_api_key.p8` + `asc_api_key.json` (key MBZVZTN4VX) + `ios-match.env`
+  (MATCH_GIT_URL + MATCH_PASSWORD; deliberately NOT in `~/.zprofile`, so iOS lanes must `source` it).
+  ⚠ Watch the json key name — it's `issuer_id`, not `issure_id` (a typo silently breaks ASC auth).
+- **Android `android_internal`** — first AAB uploaded manually to Play Internal (versionCode 1). Lane
+  automates once `~/.sorcha-signing/play_service_account.json` is placed. Still outstanding.
+
 ## iOS (ios_adhoc / ios_beta)
 
 Prereq: Apple Developer Program active (Individual is fine).
