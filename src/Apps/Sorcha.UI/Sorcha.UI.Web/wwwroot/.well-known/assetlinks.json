@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "app.sorcha.wallet",
       "sha256_cert_fingerprints": [
-        "DD:D9:8C:D5:7C:03:92:03:32:BD:B5:DA:5B:5E:D9:35:DC:11:A5:27:06:50:D5:E5:15:F9:89:85:7C:F0:ED:97"
+        "DD:D9:8C:D5:7C:03:92:03:32:BD:B5:DA:5B:5E:D9:35:DC:11:A5:27:06:50:D5:E5:15:F9:89:85:7C:F0:ED:97",
+        "25:6E:9C:E0:C6:CE:D4:10:71:76:43:66:F4:DE:3B:E2:6D:F3:01:66:09:49:71:FE:EA:C0:DF:94:83:01:2C:27"
       ]
     }
   }
