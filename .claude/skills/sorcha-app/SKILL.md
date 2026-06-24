@@ -1,6 +1,6 @@
 ---
 name: sorcha-app
-description: Build, sign, and ship the Sorcha mobile apps (Capacitor + fastlane on a Mac build node, driven from the Windows orchestrator). Use when triggering or debugging iOS/Android builds, running a fastlane lane, dispatching the build workflow, watching a build, registering or fixing the self-hosted runner, deriving app versions, onboarding the Mac toolchain, or mapping where signing secrets live. Covers the Sorcha Wallet PWA (app.sorcha.wallet).
+description: Build, sign, and ship the Sorcha mobile apps (Capacitor + fastlane on a Mac build node, driven from the Windows orchestrator). Use when triggering or debugging iOS/Android builds, running a fastlane lane, dispatching the build workflow, watching a build, registering or fixing the self-hosted runner, deriving app versions, onboarding the Mac toolchain, mapping where signing secrets live, or configuring native passkeys / Associated Domains (AASA, assetlinks, App-ID capability, relying-party / Fido2 ServerDomain, secure-origin server.url). Covers the Sorcha Wallet PWA (app.sorcha.wallet).
 ---
 
 # sorcha-app — mobile build/deploy orchestration
@@ -20,7 +20,7 @@ by a human, a git tag, or you. If a build only works because you drove it intera
 App: **`src/Apps/Sorcha.Wallet.Pwa`** — a Blazor **WASM** PWA (NOT a JS app), wrapped by Capacitor 8
 in `mobile/wallet/`. Bundle id **`app.sorcha.wallet`**. The Verifier app is server-hosted → not in scope.
 
-Full detail: `references/topology.md`. Secret locations: `references/secrets-map.md`. Fixes: `references/troubleshooting.md`.
+Full detail: `references/topology.md`. Secret locations: `references/secrets-map.md`. Fixes: `references/troubleshooting.md`. Passkeys / Associated Domains (PROVEN iOS recipe — RP model, App-ID capability + match force, AASA/assetlinks via the apex CI pipeline + the upload-pages-artifact dotfile-strip gotcha, Fido2 ServerDomain, secure-origin server.url, account reset): `references/passkeys.md`.
 
 ## Session preflight (do this FIRST, every mobile session)
 The build node is a **separate machine** — nothing builds without it. Before driving any lane, confirm
