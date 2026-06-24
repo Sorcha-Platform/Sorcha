@@ -54,7 +54,11 @@ const binAssets = [
 const linkRewrites = []
 
 // Injected into <head> so the public page advertises the canonical URL.
-const canonicalTag = '    <link rel="canonical" href="https://www.sorcha.dev">\n'
+// Canonical is the apex sorcha.dev: GitHub Pages is configured apex-primary (the
+// apple-app-site-association AASA for iOS passkeys must be served at the apex with a
+// 200, and the apex can only do that when it is the primary domain — www then 301s
+// to the apex). See docs/site/CNAME + .well-known/apple-app-site-association.
+const canonicalTag = '    <link rel="canonical" href="https://sorcha.dev">\n'
 
 // Standalone redirect stubs for app-only routes the static host doesn't have.
 const redirects = [
@@ -134,3 +138,10 @@ for (const { file, rewrite } of pages) copyText(file, rewrite ? rewriteIndex : u
 for (const file of textAssets) copyText(file)
 for (const file of binAssets) copyBinary(file)
 for (const redirect of redirects) writeRedirect(redirect)
+
+// Apple App Site Association — served at https://sorcha.dev/.well-known/apple-app-site-association
+// (no extension, nested path) so the iOS Sorcha Wallet app can do native passkey sign-in
+// (Associated Domains: webcredentials:sorcha.dev). copyText mkdirs the nested .well-known dir.
+// The Pages artifact upload sets include-hidden-files, and docs/site/.nojekyll stops Jekyll
+// from stripping the dot-folder, so the file ships to the apex verbatim.
+copyText('.well-known/apple-app-site-association')
