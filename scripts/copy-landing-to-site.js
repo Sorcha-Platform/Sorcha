@@ -139,9 +139,13 @@ for (const file of textAssets) copyText(file)
 for (const file of binAssets) copyBinary(file)
 for (const redirect of redirects) writeRedirect(redirect)
 
-// Apple App Site Association — served at https://sorcha.dev/.well-known/apple-app-site-association
-// (no extension, nested path) so the iOS Sorcha Wallet app can do native passkey sign-in
-// (Associated Domains: webcredentials:sorcha.dev). copyText mkdirs the nested .well-known dir.
-// The Pages artifact upload sets include-hidden-files, and docs/site/.nojekyll stops Jekyll
-// from stripping the dot-folder, so the file ships to the apex verbatim.
+// Native-app domain association files, served at the apex for passkey sign-in.
+// copyText mkdirs the nested .well-known dir; the Pages artifact upload sets
+// include-hidden-files and docs/site/.nojekyll stops Jekyll stripping the dot-folder,
+// so they ship to the apex verbatim.
+//   iOS  — apple-app-site-association (no extension): Associated Domains
+//          webcredentials:sorcha.dev.
+//   Android — assetlinks.json: Digital Asset Links (get_login_creds) for
+//          app.sorcha.wallet. No app-side entitlement; association is server-side only.
 copyText('.well-known/apple-app-site-association')
+copyText('.well-known/assetlinks.json')

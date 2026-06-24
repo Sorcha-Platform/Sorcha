@@ -11,6 +11,7 @@ on:
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/index.html'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/*.html'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/.well-known/apple-app-site-association'
+      - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/.well-known/assetlinks.json'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/landing.css'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/landing.js'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/consent-banner.js'

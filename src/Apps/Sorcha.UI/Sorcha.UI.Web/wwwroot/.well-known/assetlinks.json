@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.get_login_creds"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.sorcha.wallet",
+      "sha256_cert_fingerprints": [
+        "DD:D9:8C:D5:7C:03:92:03:32:BD:B5:DA:5B:5E:D9:35:DC:11:A5:27:06:50:D5:E5:15:F9:89:85:7C:F0:ED:97"
+      ]
+    }
+  }
+]
