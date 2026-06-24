@@ -70,12 +70,9 @@
     private static string FormatWhen(DateTimeOffset at)
     {
         var delta = DateTimeOffset.UtcNow - at;
-        return delta.TotalDays switch
-        {
-            < 1 => $"{Math.Max(1, (int)delta.TotalHours)} h ago",
-            < 7 => $"{(int)delta.TotalDays} d ago",
-            _ => at.ToLocalTime().ToString("d MMM")
-        };
+        if (delta.TotalDays < 1) return $"{Math.Max(1, (int)delta.TotalHours)} h ago";
+        if (delta.TotalDays < 7) return $"{(int)delta.TotalDays} d ago";
+        return at.ToLocalTime().ToString("d MMM");
     }
 
     /// <summary>One row in the recent feed.</summary>

@@ -23,6 +23,12 @@ public interface ITokenService
     /// context + roles; <see cref="Tier.Consumer"/> omits them (inert on platform surfaces). Only
     /// the two human tiers are valid here.
     /// </param>
+    /// <param name="emailVerified">
+    /// Whether the platform user's email address has been verified. Sourced from
+    /// <c>PlatformUser.EmailVerified</c>; defaults to <c>false</c> (safe/conservative) when the
+    /// caller does not have the PlatformUser record in scope. Minted as the <c>email_verified</c>
+    /// claim (Feature 157, Decision 4).
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Token response with access and refresh tokens.</returns>
     Task<TokenResponse> GenerateUserTokenAsync(
@@ -30,6 +36,7 @@ public interface ITokenService
         Organization organization,
         Guid platformUserId,
         Tier tier = Tier.Platform,
+        bool emailVerified = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>

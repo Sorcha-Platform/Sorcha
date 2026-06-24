@@ -18,8 +18,8 @@
 
 **Purpose**: Discovery tasks that anchor subsequent implementation. No new projects, databases, or migrations required — this feature extends existing surfaces only.
 
-- [ ] T001 Read `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` to identify the exact first-run routing logic and the current wallet-creation navigation URL (confirms wiring anchor for T008 and T010)
-- [ ] T002 [P] Search `src/Services/Sorcha.Tenant.Service` for all JWT claim-assembly sites (login handler, token refresh handler, social callback handler, any `ClaimsIdentity` builders) and list the files that need the `email_verified` claim added (Decision 4 open note — prerequisite for T004)
+- [X] T001 Read `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` to identify the exact first-run routing logic and the current wallet-creation navigation URL (confirms wiring anchor for T008 and T010)
+- [X] T002 [P] Search `src/Services/Sorcha.Tenant.Service` for all JWT claim-assembly sites (login handler, token refresh handler, social callback handler, any `ClaimsIdentity` builders) and list the files that need the `email_verified` claim added (Decision 4 open note — prerequisite for T004)
 
 ---
 
@@ -27,7 +27,7 @@
 
 **Purpose**: Single cross-cutting backend change that must land before US3 can be end-to-end tested. Does not block US1 or US2.
 
-- [ ] T003 Add `email_verified` claim (sourced from `PlatformUser.EmailVerified`) to every JWT token-mint site identified in T002 within `src/Services/Sorcha.Tenant.Service` (login, refresh, social callback — all must carry the claim so both web and consumer tier tokens reflect email-verification state)
+- [X] T003 Add `email_verified` claim (sourced from `PlatformUser.EmailVerified`) to every JWT token-mint site identified in T002 within `src/Services/Sorcha.Tenant.Service` (login, refresh, social callback — all must carry the claim so both web and consumer tier tokens reflect email-verification state)
 
 **Checkpoint**: Email-verified claim flows through new tokens — US3 integration tests can now be written and run against live tokens.
 
@@ -41,14 +41,14 @@
 
 ### Tests for US1
 
-- [ ] T004 [P] [US1] Create Playwright E2E test file `tests/Sorcha.UI.E2E.Tests/Onboarding/CompleteProfileStepTests.cs` with test stubs for: save (happy path), pre-fill from display name, skip optional fields, re-entry update-in-place, invalid input rejected with field error, 409 (no wallet) surfaces inline error without advancing — **ensure tests fail before T005–T009 are implemented**
+- [X] T004 [P] [US1] Create Playwright E2E test file `tests/Sorcha.UI.E2E.Tests/Onboarding/CompleteProfileStepTests.cs` with test stubs for: save (happy path), pre-fill from display name, skip optional fields, re-entry update-in-place, invalid input rejected with field error, 409 (no wallet) surfaces inline error without advancing — **ensure tests fail before T005–T009 are implemented**
 
 ### Implementation for US1
 
-- [ ] T005 [P] [US1] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Onboarding/CompleteProfileStep.razor` with MudBlazor form skeleton — component parameters: `EventCallback OnContinue`, optional `EventCallback OnSkip`; inject `IPersonaService` and `IInlineFeedback`; include the SPDX license header
-- [ ] T006 [US1] Implement pre-fill in `CompleteProfileStep.razor` — in `OnInitializedAsync` call `IPersonaService.GetAsync`, seed `GivenName`/`FamilyName`/`FullName` from `PersonaReadModelV1`; fall back to `AuthenticationState` display name when persona is empty (FR-003)
-- [ ] T007 [US1] Implement form fields and submission in `CompleteProfileStep.razor` — name fields (given/family or full-name toggle) plus one optional email and one optional phone; on submit call `IPersonaService.UpdateAsync(PersonaAttributesV1, ct)`, invalidate persona cache on success, invoke `OnContinue`; on `400` surface field-level errors via `IInlineFeedback` (`autoDismissMs: 0`) and retain entered values; on `409` surface "Wallet not yet created — please retry" inline error without advancing (FR-005, Edge Cases, Pattern #12)
-- [ ] T008 [US1] Wire `CompleteProfileStep` into the first-run onboarding sequence in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` — add the step after the wallet-creation step (ensuring wallet is provisioned before the persona PUT is attempted, per Decision 2)
+- [X] T005 [P] [US1] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Onboarding/CompleteProfileStep.razor` with MudBlazor form skeleton — component parameters: `EventCallback OnContinue`, optional `EventCallback OnSkip`; inject `IPersonaService` and `IInlineFeedback`; include the SPDX license header
+- [X] T006 [US1] Implement pre-fill in `CompleteProfileStep.razor` — in `OnInitializedAsync` call `IPersonaService.GetAsync`, seed `GivenName`/`FamilyName`/`FullName` from `PersonaReadModelV1`; fall back to `AuthenticationState` display name when persona is empty (FR-003)
+- [X] T007 [US1] Implement form fields and submission in `CompleteProfileStep.razor` — name fields (given/family or full-name toggle) plus one optional email and one optional phone; on submit call `IPersonaService.UpdateAsync(PersonaAttributesV1, ct)`, invalidate persona cache on success, invoke `OnContinue`; on `400` surface field-level errors via `IInlineFeedback` (`autoDismissMs: 0`) and retain entered values; on `409` surface "Wallet not yet created — please retry" inline error without advancing (FR-005, Edge Cases, Pattern #12)
+- [X] T008 [US1] Wire `CompleteProfileStep` into the first-run onboarding sequence in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` — add the step after the wallet-creation step (ensuring wallet is provisioned before the persona PUT is attempted, per Decision 2)
 
 **Checkpoint**: User Story 1 fully functional — profile step appears in first-run flow, pre-fills, saves, handles errors, and re-entry updates in place. Run `dotnet test --filter "FullyQualifiedName~Onboarding"`.
 
@@ -62,11 +62,11 @@
 
 ### Tests for US2
 
-- [ ] T009 [P] [US2] Add Playwright E2E tests to `tests/Sorcha.UI.E2E.Tests/Wallets/CreateWalletTests.cs` (or create file) covering: onboarding wizard URL has `words=24` and name pre-filled; selector shows 24 words; user overrides both values and back-navigation preserves them; wallet created with overrides; standalone `wallets/create` (no query string) still defaults to 12 words and empty name
+- [X] T009 [P] [US2] Add Playwright E2E tests to `tests/Sorcha.UI.E2E.Tests/Wallets/CreateWalletTests.cs` (or create file) covering: onboarding wizard URL has `words=24` and name pre-filled; selector shows 24 words; user overrides both values and back-navigation preserves them; wallet created with overrides; standalone `wallets/create` (no query string) still defaults to 12 words and empty name
 
 ### Implementation for US2
 
-- [ ] T010 [US2] Update the first-run wallet-creation navigation in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` to pass `?wizard=true&name=<sensible-default>&words=24` when redirecting a new user to `wallets/create` (Decision 3 — seeding via existing `[SupplyParameterFromQuery]` on `DefaultName` and `DefaultWordCount` in `CreateWallet.razor`; no change to the request model global defaults)
+- [X] T010 [US2] Update the first-run wallet-creation navigation in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` to pass `?wizard=true&name=<sensible-default>&words=24` when redirecting a new user to `wallets/create` (Decision 3 — seeding via existing `[SupplyParameterFromQuery]` on `DefaultName` and `DefaultWordCount` in `CreateWallet.razor`; no change to the request model global defaults)
 
 **Checkpoint**: User Stories 1 and 2 both independently functional. Run `dotnet test --filter "FullyQualifiedName~CreateWallet"` for standalone-unchanged regression.
 
@@ -80,14 +80,14 @@
 
 ### Tests for US3
 
-- [ ] T011 [P] [US3] Add `EmailVerified` assertions to `tests/Sorcha.Tenant.Service.Tests/Integration/AuthApiTests.cs` — three cases: verified user token → `true`, unverified user token → `false`, token with no `email_verified` claim → `false`; also assert existing fields are unchanged (no regression) — **ensure tests fail before T012–T014 are implemented**
+- [X] T011 [P] [US3] Add `EmailVerified` assertions to `tests/Sorcha.Tenant.Service.Tests/Integration/AuthApiTests.cs` — three cases: verified user token → `true`, unverified user token → `false`, token with no `email_verified` claim → `false`; also assert existing fields are unchanged (no regression) — **ensure tests fail before T012–T014 are implemented**
 
 ### Implementation for US3
 
-- [ ] T012 [P] [US3] Add `EmailVerified` property (`bool`, `/// <summary> Whether the user's email address has been verified. False when unknown. </summary>`) to `CurrentUserResponse` in `src/Services/Sorcha.Tenant.Service/Models/Dtos/AuthDtos.cs` at the end of the existing property block (after T003 lands the claim)
-- [ ] T013 [US3] Populate `EmailVerified` in `GetCurrentUser` handler in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs` — read the `email_verified` claim from `ClaimsPrincipal` using `bool.TryParse`; absent or invalid claim → `false`; no DB call (claims-only, Decision 4)
-- [ ] T014 [US3] Update `.WithSummary()` and `.WithDescription()` on the `GET /api/auth/me` endpoint registration in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs` to note the response now includes `emailVerified`
-- [ ] T015 [P] [US3] Find the client-side current-user model in `src/Apps/Sorcha.UI/Sorcha.UI.Core` or `src/Apps/Sorcha.UI/Sorcha.UI.Components.User` (search for class deserializing `/api/auth/me` response) and add `public bool EmailVerified { get; init; }` with a `/// <summary>` comment
+- [X] T012 [P] [US3] Add `EmailVerified` property (`bool`, `/// <summary> Whether the user's email address has been verified. False when unknown. </summary>`) to `CurrentUserResponse` in `src/Services/Sorcha.Tenant.Service/Models/Dtos/AuthDtos.cs` at the end of the existing property block (after T003 lands the claim)
+- [X] T013 [US3] Populate `EmailVerified` in `GetCurrentUser` handler in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs` — read the `email_verified` claim from `ClaimsPrincipal` using `bool.TryParse`; absent or invalid claim → `false`; no DB call (claims-only, Decision 4)
+- [X] T014 [US3] Update `.WithSummary()` and `.WithDescription()` on the `GET /api/auth/me` endpoint registration in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs` to note the response now includes `emailVerified`
+- [X] T015 [P] [US3] Find the client-side current-user model in `src/Apps/Sorcha.UI/Sorcha.UI.Core` or `src/Apps/Sorcha.UI/Sorcha.UI.Components.User` (search for class deserializing `/api/auth/me` response) and add `public bool EmailVerified { get; init; }` with a `/// <summary>` comment — **N/A: Blazor UI reads directly from ClaimsPrincipal; no client-side DTO for /api/auth/me exists**
 
 **Checkpoint**: All three user stories independently functional. Run `dotnet test --filter "FullyQualifiedName~AuthApiTests"`.
 
@@ -95,9 +95,9 @@
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T016 [P] Run `dotnet build` and confirm zero new warnings (XML doc coverage for new public members, no CS8 nullable warnings)
-- [ ] T017 [P] Run `dotnet test` full suite and confirm all new tests pass with no regressions in wallet creation, persona, or auth flows
-- [ ] T018 Update `.specify/MASTER-TASKS.md` to mark Feature 157 tasks complete
+- [X] T016 [P] Run `dotnet build` and confirm zero new warnings (XML doc coverage for new public members, no CS8 nullable warnings) — pre-existing Razor parse errors in TransactionHistoryFeed.razor and RecentActivityFeed.razor fixed as part of this phase
+- [X] T017 [P] Run `dotnet test` full suite and confirm all new tests pass with no regressions in wallet creation, persona, or auth flows — 1323 passed, 0 failed
+- [X] T018 Update `.specify/MASTER-TASKS.md` to mark Feature 157 tasks complete
 
 ---
 
