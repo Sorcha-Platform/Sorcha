@@ -172,6 +172,7 @@ public class NavigationTests : AuthenticatedDockerTestBase
 
         // Measure content width while drawer is open
         var contentOpen = await Page.Locator(".mud-main-content").BoundingBoxAsync();
+        Assert.That(contentOpen, Is.Not.Null, ".mud-main-content must be measurable with drawer open");
 
         // Toggle drawer closed
         await _nav.ToggleDrawerAsync();
@@ -184,11 +185,9 @@ public class NavigationTests : AuthenticatedDockerTestBase
 
         // Content should be wider when drawer is closed (drawer pushed aside, now gone)
         var contentClosed = await Page.Locator(".mud-main-content").BoundingBoxAsync();
-        if (contentOpen is not null && contentClosed is not null)
-        {
-            Assert.That(contentClosed.Width, Is.GreaterThan(contentOpen.Width),
-                "Content width should increase when drawer is closed");
-        }
+        Assert.That(contentClosed, Is.Not.Null, ".mud-main-content must be measurable with drawer closed");
+        Assert.That(contentClosed!.Width, Is.GreaterThan(contentOpen!.Width),
+            "Content width should increase when drawer is closed");
 
         // Toggle back open — drawer returns, content narrows
         await _nav.ToggleDrawerAsync();
@@ -197,11 +196,9 @@ public class NavigationTests : AuthenticatedDockerTestBase
         Assert.That(await _nav.IsDrawerOpenAsync(), Is.True, "Drawer should re-open on second toggle");
 
         var contentReopened = await Page.Locator(".mud-main-content").BoundingBoxAsync();
-        if (contentReopened is not null && contentClosed is not null)
-        {
-            Assert.That(contentReopened.Width, Is.LessThan(contentClosed.Width),
-                "Content width should decrease when drawer re-opens");
-        }
+        Assert.That(contentReopened, Is.Not.Null, ".mud-main-content must be measurable after drawer re-opens");
+        Assert.That(contentReopened!.Width, Is.LessThan(contentClosed.Width),
+            "Content width should decrease when drawer re-opens");
     }
 
     [Test]
@@ -217,11 +214,9 @@ public class NavigationTests : AuthenticatedDockerTestBase
 
         // Main content should occupy near-full viewport width
         var contentBox = await Page.Locator(".mud-main-content").BoundingBoxAsync();
-        if (contentBox is not null)
-        {
-            Assert.That(contentBox.Width, Is.GreaterThan(340),
-                "Content should occupy the full phone viewport width when drawer is closed");
-        }
+        Assert.That(contentBox, Is.Not.Null, ".mud-main-content must be measurable on phone with drawer closed");
+        Assert.That(contentBox!.Width, Is.GreaterThan(340),
+            "Content should occupy the full phone viewport width when drawer is closed");
     }
 
     [Test]
@@ -233,6 +228,7 @@ public class NavigationTests : AuthenticatedDockerTestBase
 
         // Measure content width before opening drawer (should fill viewport)
         var contentBeforeOpen = await Page.Locator(".mud-main-content").BoundingBoxAsync();
+        Assert.That(contentBeforeOpen, Is.Not.Null, ".mud-main-content must be measurable on phone before opening drawer");
 
         // Open drawer on phone
         await _nav.ToggleDrawerAsync();
@@ -243,11 +239,9 @@ public class NavigationTests : AuthenticatedDockerTestBase
 
         // Overlay: content width must not have changed (drawer overlays, does not push)
         var contentAfterOpen = await Page.Locator(".mud-main-content").BoundingBoxAsync();
-        if (contentBeforeOpen is not null && contentAfterOpen is not null)
-        {
-            Assert.That(contentAfterOpen.Width, Is.EqualTo(contentBeforeOpen.Width).Within(5),
-                "Content width should be unchanged when drawer opens as overlay on phone");
-        }
+        Assert.That(contentAfterOpen, Is.Not.Null, ".mud-main-content must be measurable on phone with drawer open as overlay");
+        Assert.That(contentAfterOpen!.Width, Is.EqualTo(contentBeforeOpen!.Width).Within(5),
+            "Content width should be unchanged when drawer opens as overlay on phone");
 
         // Scrim (backdrop) should be visible
         // MudBlazor 9.x uses .mud-overlay.mud-overlay-drawer for the drawer scrim
@@ -265,11 +259,9 @@ public class NavigationTests : AuthenticatedDockerTestBase
 
         // Verify destination rendered at full width
         var contentAfterNav = await Page.Locator(".mud-main-content").BoundingBoxAsync();
-        if (contentAfterNav is not null)
-        {
-            Assert.That(contentAfterNav.Width, Is.GreaterThan(340),
-                "Content should occupy full phone viewport width after drawer closes on navigation");
-        }
+        Assert.That(contentAfterNav, Is.Not.Null, ".mud-main-content must be measurable after nav-item closes drawer");
+        Assert.That(contentAfterNav!.Width, Is.GreaterThan(340),
+            "Content should occupy full phone viewport width after drawer closes on navigation");
 
     }
 

@@ -308,6 +308,17 @@
         if (firstRender && !_tokenRefreshStarted)
         {
             _tokenRefreshStarted = true;
+
+            // Sync _drawerOpen with the Responsive drawer's Temporary mode on
+            // narrow viewports. MudBlazor does not write back to @bind-Open
+            // when it forces the drawer closed below the md breakpoint (960px),
+            // so the toggle cadence inverts without this correction.
+            var viewportWidth = await JSRuntime.InvokeAsync<int>("eval", "window.innerWidth");
+            if (viewportWidth < 960)
+            {
+                _drawerOpen = false;
+            }
+
             await TokenRefreshService.StartAsync(JSRuntime);
 
             // Only fetch authenticated data if user is logged in — avoids 401 console noise
