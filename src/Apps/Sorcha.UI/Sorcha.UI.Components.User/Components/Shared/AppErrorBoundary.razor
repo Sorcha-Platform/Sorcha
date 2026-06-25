@@ -51,6 +51,16 @@
                     Reload
                 </MudButton>
             </MudStack>
+            @if (ShowDetails && exception is not null)
+            {
+                <details style="margin-top: 20px; text-align: left;">
+                    <summary style="cursor: pointer; font-size: 0.85rem;">Diagnostic details</summary>
+                    <div class="mt-2">
+                        <Sorcha.UI.Core.Components.Forms.CopyButton Value="@FormatDetails(exception)" Label="Copy details" />
+                    </div>
+                    <pre style="white-space: pre-wrap; word-break: break-word; font-size: 0.72rem; max-height: 45vh; overflow: auto; margin-top: 8px;">@FormatDetails(exception)</pre>
+                </details>
+            }
         </MudPaper>
     </ErrorContent>
 </ErrorBoundary>
@@ -60,6 +70,18 @@
 
     /// <summary>The routed content to guard (typically <c>@Body</c>).</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// When true, the error panel also renders the exception type, message and stack
+    /// in a collapsible, copy-able block. Opt-in (default false) so only surfaces that
+    /// want on-screen diagnostics show it — notably the installed wallet PWA, where a
+    /// device user can't easily reach browser dev-tools. Keeps stack traces off other
+    /// hosts. Pre-release diagnostic aid — revisit the default before GA.
+    /// </summary>
+    [Parameter] public bool ShowDetails { get; set; }
+
+    private static string FormatDetails(Exception exception)
+        => $"{exception.GetType().FullName}: {exception.Message}\n\n{exception}";
 
     protected override void OnInitialized()
     {
