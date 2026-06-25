@@ -249,7 +249,7 @@ public class InboxDrawerWidthTests : AuthenticatedDockerTestBase
     /// <summary>
     /// Returns the bounding box of the inbox drawer, or <c>null</c> if not found.
     /// </summary>
-    private async Task<ElementHandleBoundingBoxResult?> GetInboxDrawerBoundingBoxAsync()
+    private async Task<LocatorBoundingBoxResult?> GetInboxDrawerBoundingBoxAsync()
     {
         var drawer = Page.Locator("[data-testid='inbox-drawer']").First;
         if (await drawer.CountAsync() == 0) return null;
