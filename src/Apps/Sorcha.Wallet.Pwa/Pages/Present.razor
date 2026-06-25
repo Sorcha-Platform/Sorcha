@@ -187,6 +187,10 @@
     // Auto-start guard: fires once per load on CameraFirst.
     private bool _autoStartFired;
 
+    // Set to true when StartScanAsync calls ParseAsync so the catch can distinguish
+    // a bad-QR-code result from a paste-field parse failure.
+    private bool _deepLinkFromScan;
+
     // Legacy field — kept for DisposeAsync (camera cleanup).
     private bool _scanning;
     private string? _scanError;
@@ -221,6 +225,9 @@
     private async Task ParseAsync()
     {
         _error = null;
+        _intakeMessage = null;
+        var fromScan = _deepLinkFromScan;
+        _deepLinkFromScan = false;
         try
         {
             _request = Engine.Parse(_deepLink.Trim());
@@ -237,12 +244,15 @@
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
-            // FR-009: unreadable / non-verifier result — keep intake usable.
-            if (_intakeMode == IntakeMode.CameraFirst && !_showPaste)
+            // FR-009: bad QR from camera — show friendly message in viewfinder so holder can retry.
+            if (_intakeMode == IntakeMode.CameraFirst && fromScan)
             {
                 _intakeMessage = "Couldn't read that QR code as a verifier request. Try again or paste the link instead.";
-                _showPaste = false;  // stay in camera view so they can retry
+                _showPaste = false;  // return to viewfinder for retry
+            }
+            else
+            {
+                _error = ex.Message;
             }
         }
     }
@@ -335,6 +345,7 @@
         _responseStatus = string.Empty;
         _scanError = null;
         _intakeMessage = null;
+        _deepLinkFromScan = false;
         _userChosePaste = false;
         // Restore intake display state from mode (keep _cameraRefusedThisSession across Reset).
         _showPaste = _intakeMode != IntakeMode.CameraFirst || _cameraRefusedThisSession;
@@ -396,6 +407,7 @@
             }
 
             _deepLink = detected;
+            _deepLinkFromScan = true;
             StateHasChanged();
             await ParseAsync();
         }
