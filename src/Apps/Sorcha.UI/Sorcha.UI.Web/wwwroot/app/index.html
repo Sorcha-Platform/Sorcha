@@ -90,6 +90,15 @@
             font-size: 1.1rem;
             opacity: 0.9;
         }
+
+        /* SPDX-License-Identifier: MIT — Copyright (c) 2026 Sorcha Contributors
+           Inbox/bell drawer width cap — global rule required because MudDrawer temporary
+           overlays render out-of-tree; Blazor CSS isolation never stamps the scope attribute
+           onto the drawer element so ::deep rules in InboxPanel.razor.css are silently dropped. */
+        .mud-drawer[data-testid="inbox-drawer"] {
+            width: min(420px, 100vw) !important;
+            max-width: 100vw;
+        }
     </style>
 </head>
 <body>

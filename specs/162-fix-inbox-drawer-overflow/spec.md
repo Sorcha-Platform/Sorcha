@@ -4,7 +4,7 @@
 
 **Created**: 2026-06-25
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: User description: "Fix inbox/bell drawer overflowing phone width: move the .mud-drawer width cap (min(420px,100vw)) from component-scoped InboxPanel.razor.css to a global stylesheet (Sorcha.Wallet.Pwa wwwroot/css/app.css and the web host app.css) so Blazor CSS isolation does not strip it from MudBlazors out-of-tree drawer. Per docs/superpowers/specs/2026-06-25-pwa-mobile-feedback-backlog.md item 2"
 
