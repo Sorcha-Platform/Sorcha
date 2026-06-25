@@ -10,6 +10,8 @@ on:
       - 'docs/site/**'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/index.html'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/*.html'
+      - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/.well-known/apple-app-site-association'
+      - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/.well-known/assetlinks.json'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/landing.css'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/landing.js'
       - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/consent-banner.js'
@@ -48,10 +50,26 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+      # NOTE: actions/upload-pages-artifact hardcodes `--exclude=".[^/]*"` in its tar,
+      # which strips every top-level dot-folder — including .well-known (the AASA /
+      # assetlinks.json that native iOS/Android passkeys require). Its `include-hidden-files`
+      # input does not exist, so it silently no-ops. Archive the artifact ourselves with a
+      # plain `tar .` so dotfiles are included, then upload it as the github-pages artifact.
+      - name: Archive Pages artifact (include .well-known)
+        shell: bash
+        run: |
+          tar --dereference --hard-dereference \
+            --directory docs/site \
+            -cvf "$RUNNER_TEMP/artifact.tar" \
+            --exclude=.git --exclude=.github \
+            .
+
+      - name: Upload Pages artifact
+        uses: actions/upload-artifact@v4
         with:
-          path: docs/site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: "1"
           include-hidden-files: true
 
       - name: Deploy to GitHub Pages

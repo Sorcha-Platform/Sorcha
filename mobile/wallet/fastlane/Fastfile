@@ -70,7 +70,15 @@ def apply_match_signing(profile_type)
     code_sign_identity: "Apple Distribution",
     profile_name: ENV.fetch("#{prefix}_profile-name"),
     bundle_identifier: bundle,
-    targets: ["App"]
+    targets: ["App"],
+    # Wire the committed App.entitlements (Associated Domains: webcredentials:sorcha.dev)
+    # at build time so the committed Capacitor project stays generic (mirrors how team/
+    # profile are applied here, not committed). Required for native passkey sign-in in the
+    # WKWebView — see App/App.entitlements. The match-provisioned profile MUST carry the
+    # Associated Domains capability (enable it on the App ID via `produce enable_services
+    # associated_domains:"on"` then re-run match) or build_app fails "provisioning profile
+    # doesn't include the com.apple.developer.associated-domains entitlement".
+    entitlements_file_path: "App/App.entitlements"
   )
 end
 
