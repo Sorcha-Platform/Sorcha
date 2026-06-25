@@ -500,5 +500,5 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/156-add-xml-doc-summaries/plan.md`
+`specs/158-web-nav-responsive-drawer/plan.md`
 <!-- SPECKIT END -->
