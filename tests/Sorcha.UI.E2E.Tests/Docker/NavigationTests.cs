@@ -158,6 +158,120 @@ public class NavigationTests : AuthenticatedDockerTestBase
 
     #endregion
 
+    #region Responsive Drawer Behaviour Tests (Feature 158)
+
+    [Test]
+    public async Task Drawer_Desktop_ClosedReleasesAllWidth_NoMiniRail()
+    {
+        await Page.SetViewportSizeAsync(1280, 800);
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Dashboard);
+        await Page.WaitForTimeoutAsync(500);
+
+        // Drawer starts open on desktop
+        Assert.That(await _nav.IsDrawerOpenAsync(), Is.True, "Drawer should start open on desktop");
+
+        // Measure content width while drawer is open
+        var contentOpen = await Page.Locator(".mud-main-content").BoundingBoxAsync();
+
+        // Toggle drawer closed
+        await _nav.ToggleDrawerAsync();
+        await Page.WaitForTimeoutAsync(400);
+
+        // No Mini variant remnant: .mud-drawer-mini must not exist
+        var miniCount = await Page.Locator(".mud-drawer-mini").CountAsync();
+        Assert.That(miniCount, Is.EqualTo(0),
+            "No .mud-drawer-mini element should exist in Responsive mode");
+
+        // Content should be wider when drawer is closed (drawer pushed aside, now gone)
+        var contentClosed = await Page.Locator(".mud-main-content").BoundingBoxAsync();
+        if (contentOpen is not null && contentClosed is not null)
+        {
+            Assert.That(contentClosed.Width, Is.GreaterThan(contentOpen.Width),
+                "Content width should increase when drawer is closed");
+        }
+
+        // Toggle back open — drawer returns, content narrows
+        await _nav.ToggleDrawerAsync();
+        await Page.WaitForTimeoutAsync(400);
+
+        Assert.That(await _nav.IsDrawerOpenAsync(), Is.True, "Drawer should re-open on second toggle");
+
+        var contentReopened = await Page.Locator(".mud-main-content").BoundingBoxAsync();
+        if (contentReopened is not null && contentClosed is not null)
+        {
+            Assert.That(contentReopened.Width, Is.LessThan(contentClosed.Width),
+                "Content width should decrease when drawer re-opens");
+        }
+    }
+
+    [Test]
+    public async Task Drawer_Phone_ClosedByDefault_ContentFullWidth()
+    {
+        await Page.SetViewportSizeAsync(375, 812);
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Dashboard);
+        await Page.WaitForTimeoutAsync(600);
+
+        // On phone viewport the Responsive variant renders the drawer closed regardless of initial state
+        Assert.That(await _nav.IsDrawerOpenAsync(), Is.False,
+            "Drawer should be closed on first render at phone-width viewport");
+
+        // Main content should occupy near-full viewport width
+        var contentBox = await Page.Locator(".mud-main-content").BoundingBoxAsync();
+        if (contentBox is not null)
+        {
+            Assert.That(contentBox.Width, Is.GreaterThan(340),
+                "Content should occupy the full phone viewport width when drawer is closed");
+        }
+    }
+
+    [Test]
+    public async Task Drawer_Phone_OpensAsOverlay_NavItemClosesDrawer()
+    {
+        await Page.SetViewportSizeAsync(375, 812);
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Dashboard);
+        await Page.WaitForTimeoutAsync(600);
+
+        // Measure content width before opening drawer (should fill viewport)
+        var contentBeforeOpen = await Page.Locator(".mud-main-content").BoundingBoxAsync();
+
+        // Open drawer on phone
+        await _nav.ToggleDrawerAsync();
+        await Page.WaitForTimeoutAsync(400);
+
+        Assert.That(await _nav.IsDrawerOpenAsync(), Is.True,
+            "Drawer should open when toggled on phone");
+
+        // Overlay: content width must not have changed (drawer overlays, does not push)
+        var contentAfterOpen = await Page.Locator(".mud-main-content").BoundingBoxAsync();
+        if (contentBeforeOpen is not null && contentAfterOpen is not null)
+        {
+            Assert.That(contentAfterOpen.Width, Is.EqualTo(contentBeforeOpen.Width).Within(5),
+                "Content width should be unchanged when drawer opens as overlay on phone");
+        }
+
+        // Scrim (backdrop) should be visible
+        var scrimCount = await Page.Locator(".mud-overlay, .mud-drawer-scrim").CountAsync();
+        Assert.That(scrimCount, Is.GreaterThan(0),
+            "A scrim or overlay element should be visible when drawer is open on phone");
+
+        // Clicking a nav link closes the drawer
+        await _nav.NavigateToAsync(_nav.DashboardLink);
+        await Page.WaitForTimeoutAsync(400);
+
+        Assert.That(await _nav.IsDrawerOpenAsync(), Is.False,
+            "Drawer should close after navigating to a nav link on phone");
+
+        // Verify destination rendered at full width
+        var contentAfterNav = await Page.Locator(".mud-main-content").BoundingBoxAsync();
+        if (contentAfterNav is not null)
+        {
+            Assert.That(contentAfterNav.Width, Is.GreaterThan(340),
+                "Content should occupy full phone viewport width after drawer closes on navigation");
+        }
+    }
+
+    #endregion
+
     #region Navigation Link Tests - Click and Verify URL
 
     [Test]

@@ -73,7 +73,7 @@
         </AuthorizeView>
     </MudAppBar>
 
-    <MudDrawer @bind-Open="_drawerOpen" Variant="@DrawerVariant.Mini" OpenMiniOnHover="true" ClipMode="DrawerClipMode.Always" Elevation="2">
+    <MudDrawer @bind-Open="_drawerOpen" Variant="@DrawerVariant.Responsive" ClipMode="DrawerClipMode.Always" Elevation="2">
         @* Feature 092 / US4 — the "Navigation" header was removed. The
            MudDrawerHeader element stays in place so the drawer keeps its
            expected vertical rhythm and top spacing. *@
@@ -84,11 +84,8 @@
                     <MudNavLink Href="dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
                         @Loc.T("nav.dashboard")
                     </MudNavLink>
-                    @if (_drawerOpen)
-                    {
-                        <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.myActivity")</MudText>
-                    }
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.myActivity")</MudText>
                     <MudNavLink Href="new-submissions" Icon="@Icons.Material.Filled.PostAdd">
                         @Loc.T("nav.newSubmission")
                     </MudNavLink>
@@ -113,11 +110,8 @@
                     </MudNavLink>
                     <AuthorizeView Roles="Administrator,SystemAdmin,Designer">
                         <Authorized Context="designerContext">
-                            @if (_drawerOpen)
-                            {
-                                <MudDivider Class="my-2" />
-                                <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.designer")</MudText>
-                            }
+                            <MudDivider Class="my-2" />
+                            <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.designer")</MudText>
                             <MudNavLink Href="blueprints" Icon="@Icons.Material.Filled.Description">
                                 @Loc.T("nav.myBlueprints")
                             </MudNavLink>
@@ -134,11 +128,8 @@
                     </AuthorizeView>
                     <AuthorizeView Roles="Administrator,SystemAdmin,Auditor">
                         <Authorized Context="adminNavContext">
-                            @if (_drawerOpen)
-                            {
-                                <MudDivider Class="my-2" />
-                                <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.administration")</MudText>
-                            }
+                            <MudDivider Class="my-2" />
+                            <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.administration")</MudText>
                             <MudNavGroup Title="@Loc.T("nav.wallets")" Icon="@Icons.Material.Filled.AccountBalanceWallet" Expanded="false">
                                 <MudNavLink Href="wallet-admin" Icon="@Icons.Material.Filled.List">
                                     @Loc.T("nav.allWallets")
@@ -239,10 +230,7 @@
                        links removed. Settings is reachable from the avatar
                        menu; notification preferences are now a tab inside
                        the Settings page. Help remains in the side nav. *@
-                    @if (_drawerOpen)
-                    {
-                        <MudDivider Class="my-2" />
-                    }
+                    <MudDivider Class="my-2" />
                     <MudNavLink Href="help" Icon="@Icons.Material.Filled.Help">
                         @Loc.T("nav.help")
                     </MudNavLink>

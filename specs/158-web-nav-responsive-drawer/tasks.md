@@ -25,7 +25,7 @@ description: "Task list for Feature 158 — Web Nav Drawer Responsive (no mini r
 
 **Purpose**: Confirm baseline build state before making changes.
 
-- [ ] T001 Verify baseline build with `dotnet build src/Apps/Sorcha.UI/Sorcha.UI.Web.Client` — confirm zero pre-existing errors in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
+- [X] T001 Verify baseline build with `dotnet build src/Apps/Sorcha.UI/Sorcha.UI.Web.Client` — confirm zero pre-existing errors in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
 
 **Checkpoint**: Build is clean — source edits can begin.
 
@@ -39,10 +39,10 @@ description: "Task list for Feature 158 — Web Nav Drawer Responsive (no mini r
 
 **Contract refs**: C1, C2, C3 in `contracts/drawer-behavior.md` | FR-001, FR-002, SC-001
 
-- [ ] T002 [US1] Change `Variant="@DrawerVariant.Mini"` to `Variant="@DrawerVariant.Responsive"` on the `MudDrawer` at line 76 of `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
-- [ ] T003 [US1] Remove the `OpenMiniOnHover="true"` attribute from the same `MudDrawer` element in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor` (dead under Responsive — no rail to hover; spec Edge Cases §"No hover-expand expectation")
-- [ ] T004 [P] [US1] Review `IsDrawerOpenAsync()` and the drawer locator in `tests/Sorcha.UI.E2E.Tests/PageObjects/NavigationComponent.cs` — if either keys on `.mud-drawer-mini` or Mini-variant DOM, update to the Responsive variant's selector so open-detection remains correct
-- [ ] T005 [US1] In `tests/Sorcha.UI.E2E.Tests/Docker/NavigationTests.cs` add/update a desktop-width test asserting: (a) after `ToggleDrawerAsync()` the `.mud-drawer-mini` element is absent, (b) the main content element's width is greater than before toggle, (c) toggling back shows the full drawer and the content narrows
+- [X] T002 [US1] Change `Variant="@DrawerVariant.Mini"` to `Variant="@DrawerVariant.Responsive"` on the `MudDrawer` at line 76 of `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
+- [X] T003 [US1] Remove the `OpenMiniOnHover="true"` attribute from the same `MudDrawer` element in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor` (dead under Responsive — no rail to hover; spec Edge Cases §"No hover-expand expectation")
+- [X] T004 [P] [US1] Review `IsDrawerOpenAsync()` and the drawer locator in `tests/Sorcha.UI.E2E.Tests/PageObjects/NavigationComponent.cs` — if either keys on `.mud-drawer-mini` or Mini-variant DOM, update to the Responsive variant's selector so open-detection remains correct
+- [X] T005 [US1] In `tests/Sorcha.UI.E2E.Tests/Docker/NavigationTests.cs` add/update a desktop-width test asserting: (a) after `ToggleDrawerAsync()` the `.mud-drawer-mini` element is absent, (b) the main content element's width is greater than before toggle, (c) toggling back shows the full drawer and the content narrows
 
 ---
 
@@ -54,8 +54,8 @@ description: "Task list for Feature 158 — Web Nav Drawer Responsive (no mini r
 
 **Contract refs**: C4, C5, C6 in `contracts/drawer-behavior.md` | FR-003, FR-007, SC-002, SC-003
 
-- [ ] T006 [P] [US2] In `tests/Sorcha.UI.E2E.Tests/Docker/NavigationTests.cs` add a phone-viewport test asserting the drawer is closed on fresh load (no open drawer element visible) and the content element occupies full viewport width
-- [ ] T007 [US2] In `tests/Sorcha.UI.E2E.Tests/Docker/NavigationTests.cs` add a phone-viewport test asserting: (a) opening the drawer renders it as an overlay (content width unchanged), (b) a scrim/backdrop element is visible, (c) selecting any nav item closes the drawer and the destination renders at full width
+- [X] T006 [P] [US2] In `tests/Sorcha.UI.E2E.Tests/Docker/NavigationTests.cs` add a phone-viewport test asserting the drawer is closed on fresh load (no open drawer element visible) and the content element occupies full viewport width
+- [X] T007 [US2] In `tests/Sorcha.UI.E2E.Tests/Docker/NavigationTests.cs` add a phone-viewport test asserting: (a) opening the drawer renders it as an overlay (content width unchanged), (b) a scrim/backdrop element is visible, (c) selecting any nav item closes the drawer and the destination renders at full width
 
 ---
 
@@ -63,9 +63,9 @@ description: "Task list for Feature 158 — Web Nav Drawer Responsive (no mini r
 
 **Purpose**: Optional structural clean-up, build validation, and full E2E green.
 
-- [ ] T008 Optionally remove the four now-dead `@if (_drawerOpen)` guards at lines 87, 116, 137, 242 in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor` (existed to suppress text dividers in Mini icon-only mode; Responsive has no icon-only mode — guards are always-true; removal reduces dead complexity without changing visible behaviour)
-- [ ] T009 Run `dotnet build src/Apps/Sorcha.UI/Sorcha.UI.Web.Client` and confirm zero new build warnings from the edited `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
-- [ ] T010 Run `dotnet test tests/Sorcha.UI.E2E.Tests --filter "FullyQualifiedName~Navigation"` and confirm all navigation tests pass (drawer toggle, visibility, overlay, contents intact per SC-004)
+- [X] T008 Optionally remove the four now-dead `@if (_drawerOpen)` guards at lines 87, 116, 137, 242 in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor` (existed to suppress text dividers in Mini icon-only mode; Responsive has no icon-only mode — guards are always-true; removal reduces dead complexity without changing visible behaviour)
+- [X] T009 Run `dotnet build src/Apps/Sorcha.UI/Sorcha.UI.Web.Client` and confirm zero new build warnings from the edited `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
+- [X] T010 Run `dotnet test tests/Sorcha.UI.E2E.Tests --filter "FullyQualifiedName~Navigation"` and confirm all navigation tests pass (drawer toggle, visibility, overlay, contents intact per SC-004)
 
 ---
 
