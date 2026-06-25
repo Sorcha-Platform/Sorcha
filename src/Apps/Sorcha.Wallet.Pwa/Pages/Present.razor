@@ -398,6 +398,9 @@
         try
         {
             var detected = await JS.InvokeAsync<string>("SorchaQrScanner.start", VideoElementId);
+            // The user may have navigated away during the scan await; DisposeAsync stopped the
+            // scanner and set _disposed. Skip all UI continuation to avoid ObjectDisposedException.
+            if (_disposed) return;
             _scanning = false;
 
             // If user already switched to paste while the scanner was running, respect their choice.
@@ -424,12 +427,14 @@
         }
         catch (JSException jsex) when (jsex.Message.Contains("cancelled", StringComparison.OrdinalIgnoreCase))
         {
+            if (_disposed) return;
             _scanning = false;
             _showPaste = true;
             StateHasChanged();
         }
         catch (JSException jsex)
         {
+            if (_disposed) return;
             _scanning = false;
             _cameraRefusedThisSession = true;
             _showPaste = true;
@@ -442,6 +447,7 @@
         }
         catch (Exception ex)
         {
+            if (_disposed) return;
             _scanning = false;
             _cameraRefusedThisSession = true;
             _showPaste = true;
@@ -463,7 +469,9 @@
 
         await StartScanAsync();
 
-        // After StartScanAsync completes (success or failure), restore paste view.
+        // After StartScanAsync completes (success or failure), restore paste view — unless the
+        // component was disposed during the scan (user navigated away).
+        if (_disposed) return;
         _showPaste = true;
         StateHasChanged();
     }
@@ -492,8 +500,16 @@
         _scanning = false;
     }
 
+    /// <summary>
+    /// Set once the component is disposed (e.g. the user navigated away mid-scan) so that any
+    /// in-flight scan continuation skips its StateHasChanged()/UI updates — guards against the
+    /// ObjectDisposedException race (round-4 review finding).
+    /// </summary>
+    private bool _disposed;
+
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         // FR-008: camera MUST be released on navigation.
         if (_scanning)
         {
