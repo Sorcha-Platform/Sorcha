@@ -2,11 +2,13 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Citizen wallet present page (Feature 114, T096-T100, T057). Two intake
-    paths into the AwaitingDeepLink phase: paste an openid4vp:// link, or
-    scan a QR code with the device camera (T057 — nimiq/qr-scanner via
-    qr-scanner-bridge.js). On scan/paste, parse → match → consent →
-    POST vp_token to the verifier's response_uri.
+    Citizen wallet present page (Feature 114, T096-T100, T057). Three intake
+    layouts selected by IDeviceProfileProbe on load (Feature 159):
+      - CameraFirst   : handheld + usable camera — QR viewfinder auto-starts.
+      - PasteWithScan : desktop + usable camera — paste is default, scan on demand.
+      - PasteOnly     : no usable camera — paste field only, no scan control.
+    All three layouts converge at _deepLink → ParseAsync(). Camera is always
+    stopped on scan, paste-switch, cancel, navigation, or failure (FR-008).
 *@
 @page "/present"
 @layout MainLayout
@@ -18,7 +20,9 @@
 @using System.Text.Json
 @using Microsoft.JSInterop
 @using Sorcha.Wallet.Pwa.Components
+@using Sorcha.Wallet.Pwa.Models.Device
 @using Sorcha.Wallet.Pwa.Services
+@using Sorcha.Wallet.Pwa.Services.Device
 @using Sorcha.Wallet.Pwa.Services.Presentation
 @inject IPresentationEngine Engine
 @inject ICredentialCache Credentials
@@ -28,6 +32,7 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject IPresentationLog PresentationLog
+@inject IDeviceProfileProbe DeviceProbe
 
 <PageTitle>Present a credential</PageTitle>
 
@@ -37,40 +42,88 @@
     @if (_phase == Phase.AwaitingDeepLink)
     {
         <MudPaper Elevation="1" Class="pa-4">
-            @if (_scanning)
+            @if (_intakeMode == IntakeMode.CameraFirst && !_showPaste)
             {
+                @* US1: CameraFirst — viewfinder auto-starts, paste-instead escape *@
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
                     Point your camera at the verifier's QR code.
                 </MudText>
-                <video id="@VideoElementId" playsinline muted autoplay
+                <video id="@VideoElementId" playsinline muted autoplay data-testid="present-viewfinder"
                        style="width:100%; max-width:360px; aspect-ratio:1/1; object-fit:cover; border-radius:8px; background:#000;"></video>
-                <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="CancelScanAsync">
+                <MudButton Class="mt-3" Variant="Variant.Outlined"
+                           data-testid="present-paste-instead"
+                           OnClick="SwitchToPasteAsync">
+                    Paste a link instead
+                </MudButton>
+                @if (!string.IsNullOrEmpty(_intakeMessage))
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3" data-testid="present-intake-message">
+                        @_intakeMessage
+                    </MudAlert>
+                }
+            }
+            else if (_intakeMode == IntakeMode.PasteWithScan && !_showPaste)
+            {
+                @* PasteWithScan with viewfinder active (user tapped "Scan with camera") *@
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    Point your camera at the verifier's QR code.
+                </MudText>
+                <video id="@VideoElementId" playsinline muted autoplay data-testid="present-viewfinder"
+                       style="width:100%; max-width:360px; aspect-ratio:1/1; object-fit:cover; border-radius:8px; background:#000;"></video>
+                <MudButton Class="mt-3" Variant="Variant.Outlined"
+                           OnClick="CancelScanAsync">
                     Cancel
                 </MudButton>
-                @if (!string.IsNullOrEmpty(_scanError))
+                @if (!string.IsNullOrEmpty(_intakeMessage))
                 {
-                    <MudAlert Severity="Severity.Warning" Class="mt-3">@_scanError</MudAlert>
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3" data-testid="present-intake-message">
+                        @_intakeMessage
+                    </MudAlert>
                 }
             }
             else
             {
+                @* Paste field — shown for PasteWithScan (default), PasteOnly, or after fallback *@
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
-                    Scan the verifier's QR code, or paste the <code>openid4vp://</code> link.
+                    @if (_intakeMode == IntakeMode.PasteWithScan)
+                    {
+                        <text>Paste the <code>openid4vp://</code> link, or scan a QR code with the camera.</text>
+                    }
+                    else
+                    {
+                        <text>Paste the <code>openid4vp://</code> link from the verifier.</text>
+                    }
                 </MudText>
-                <MudButton StartIcon="@Icons.Material.Filled.QrCodeScanner"
-                           Variant="Variant.Filled" Color="Color.Primary"
-                           Class="mb-3"
-                           OnClick="StartScanAsync">
-                    Scan QR code
-                </MudButton>
+
+                @* US2 only: offer "Scan with camera" *@
+                @if (_intakeMode == IntakeMode.PasteWithScan)
+                {
+                    <MudButton StartIcon="@Icons.Material.Filled.QrCodeScanner"
+                               Variant="Variant.Filled" Color="Color.Primary"
+                               Class="mb-3"
+                               data-testid="present-scan-with-camera"
+                               OnClick="StartDesktopScanAsync">
+                        Scan with camera
+                    </MudButton>
+                }
+
                 <MudTextField @bind-Value="_deepLink"
-                              Label="Or paste verifier deep link"
-                              Lines="3" Variant="Variant.Outlined" />
+                              Label="Paste verifier deep link"
+                              Lines="3" Variant="Variant.Outlined"
+                              data-testid="present-paste-field" />
                 <MudButton Class="mt-3" Variant="Variant.Outlined"
                            Disabled="@string.IsNullOrWhiteSpace(_deepLink)"
+                           data-testid="present-continue"
                            OnClick="ParseAsync">
                     Continue
                 </MudButton>
+
+                @if (!string.IsNullOrEmpty(_intakeMessage))
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3" data-testid="present-intake-message">
+                        @_intakeMessage
+                    </MudAlert>
+                }
             }
         </MudPaper>
     }
@@ -124,9 +177,46 @@
     private string _responseStatus = string.Empty;
     private string _responseMessage = string.Empty;
 
-    // T057 — QR scanner state.
+    // Feature 159 — intake layout state.
+    private IntakeMode _intakeMode = IntakeMode.PasteOnly;
+    private bool _showPaste = true;
+    private bool _cameraRefusedThisSession;
+    private bool _userChosePaste;   // set when user explicitly taps "Paste instead"
+    private string? _intakeMessage;
+
+    // Auto-start guard: fires once per load on CameraFirst.
+    private bool _autoStartFired;
+
+    // Legacy field — kept for DisposeAsync (camera cleanup).
     private bool _scanning;
     private string? _scanError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var profile = await DeviceProbe.GetProfileAsync();
+            _intakeMode = profile.Mode;
+            // PasteWithScan and PasteOnly start with paste shown; CameraFirst starts without.
+            _showPaste = _intakeMode != IntakeMode.CameraFirst;
+        }
+        catch
+        {
+            // Probe failure → paste-safe fallback (contracts/device-profile.md).
+            _intakeMode = IntakeMode.PasteOnly;
+            _showPaste = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // US1: auto-start the QR scanner once on first render for CameraFirst.
+        if (firstRender && _intakeMode == IntakeMode.CameraFirst && !_cameraRefusedThisSession)
+        {
+            _autoStartFired = true;
+            await StartScanAsync();
+        }
+    }
 
     private async Task ParseAsync()
     {
@@ -145,7 +235,16 @@
             }
             _phase = Phase.PickCredential;
         }
-        catch (Exception ex) { _error = ex.Message; }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            // FR-009: unreadable / non-verifier result — keep intake usable.
+            if (_intakeMode == IntakeMode.CameraFirst && !_showPaste)
+            {
+                _intakeMessage = "Couldn't read that QR code as a verifier request. Try again or paste the link instead.";
+                _showPaste = false;  // stay in camera view so they can retry
+            }
+        }
     }
 
     private void OnCredentialChosen(CredentialMatch? match)
@@ -191,8 +290,6 @@
                 _responseMessage = $"Verifier returned {(int)resp.StatusCode} {resp.StatusCode}.";
             }
 
-            // US5 — record the presentation in the local activity log. Best-effort:
-            // a logging failure must not change the presentation outcome the user sees.
             await TryLogPresentationAsync(approved, resp.IsSuccessStatusCode);
 
             _phase = Phase.Done;
@@ -237,12 +334,18 @@
         _responseMessage = string.Empty;
         _responseStatus = string.Empty;
         _scanError = null;
+        _intakeMessage = null;
+        _userChosePaste = false;
+        // Restore intake display state from mode (keep _cameraRefusedThisSession across Reset).
+        _showPaste = _intakeMode != IntakeMode.CameraFirst || _cameraRefusedThisSession;
     }
 
-    // ------- T057 QR scanner ------------------------------------------
+    // ------- QR scanner (shared by CameraFirst auto-start and PasteWithScan on-demand) ----
 
+    /// <summary>Auto-start the camera (CameraFirst, first render).</summary>
     private async Task StartScanAsync()
     {
+        _intakeMessage = null;
         _scanError = null;
         _error = null;
 
@@ -255,27 +358,43 @@
         {
             supported = false;
         }
+
         if (!supported)
         {
-            _scanError = "This browser doesn't expose a camera API. Paste the link instead.";
+            _intakeMessage = "This browser doesn't expose a camera API. Paste the link instead.";
+            _cameraRefusedThisSession = true;
+            _showPaste = true;
+            StateHasChanged();
             return;
         }
 
         _scanning = true;
         StateHasChanged();
-        // Wait one render so the <video> element exists before we attach the scanner.
+        // One render so the <video> element exists before attaching the scanner.
         await Task.Yield();
 
         try
         {
             var detected = await JS.InvokeAsync<string>("SorchaQrScanner.start", VideoElementId);
             _scanning = false;
-            if (string.IsNullOrWhiteSpace(detected))
+
+            // If user already switched to paste while the scanner was running, respect their choice.
+            if (_userChosePaste)
             {
-                _scanError = "Couldn't read that QR code. Try again.";
                 StateHasChanged();
                 return;
             }
+
+            _showPaste = true;  // viewfinder done — restore paste-reachable state
+
+            if (string.IsNullOrWhiteSpace(detected))
+            {
+                _intakeMessage = "Couldn't read that QR code. Try again or paste the link.";
+                _showPaste = _intakeMode != IntakeMode.CameraFirst;
+                StateHasChanged();
+                return;
+            }
+
             _deepLink = detected;
             StateHasChanged();
             await ParseAsync();
@@ -283,12 +402,15 @@
         catch (JSException jsex) when (jsex.Message.Contains("cancelled", StringComparison.OrdinalIgnoreCase))
         {
             _scanning = false;
+            _showPaste = true;
             StateHasChanged();
         }
         catch (JSException jsex)
         {
             _scanning = false;
-            _scanError = jsex.Message.Contains("NotAllowedError", StringComparison.OrdinalIgnoreCase)
+            _cameraRefusedThisSession = true;
+            _showPaste = true;
+            _intakeMessage = jsex.Message.Contains("NotAllowedError", StringComparison.OrdinalIgnoreCase)
                 ? "Camera permission was denied. You can paste the link instead."
                 : jsex.Message.Contains("NotFoundError", StringComparison.OrdinalIgnoreCase)
                     ? "No camera was found on this device. Paste the link instead."
@@ -298,19 +420,51 @@
         catch (Exception ex)
         {
             _scanning = false;
-            _scanError = ex.Message;
+            _cameraRefusedThisSession = true;
+            _showPaste = true;
+            _intakeMessage = ex.Message;
             StateHasChanged();
         }
     }
 
+    /// <summary>US2: on-demand scan activated by "Scan with camera" button on desktop.</summary>
+    private async Task StartDesktopScanAsync()
+    {
+        // Show the viewfinder by clearing _showPaste.
+        _showPaste = false;
+        _intakeMessage = null;
+        StateHasChanged();
+
+        // Yield to render the <video> element before attaching.
+        await Task.Yield();
+
+        await StartScanAsync();
+
+        // After StartScanAsync completes (success or failure), restore paste view.
+        _showPaste = true;
+        StateHasChanged();
+    }
+
+    /// <summary>US1: explicit "Paste a link instead" tap from CameraFirst layout.</summary>
+    private async Task SwitchToPasteAsync()
+    {
+        // Guard so StartScanAsync (if still in its Task.Yield() continuation) doesn't
+        // override the user's explicit paste choice when it finishes the scan call.
+        _userChosePaste = true;
+        await CancelScanAsync();
+        _showPaste = true;
+        StateHasChanged();
+    }
+
     private async Task CancelScanAsync()
     {
-        try { await JS.InvokeVoidAsync("SorchaQrScanner.stop"); } catch { /* ignore */ }
+        try { await JS.InvokeVoidAsync("SorchaQrScanner.stop"); } catch { /* idempotent */ }
         _scanning = false;
     }
 
     public async ValueTask DisposeAsync()
     {
+        // FR-008: camera MUST be released on navigation.
         if (_scanning)
         {
             try { await JS.InvokeVoidAsync("SorchaQrScanner.stop"); } catch { /* ignore */ }
