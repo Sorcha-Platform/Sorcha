@@ -250,12 +250,14 @@ public class NavigationTests : AuthenticatedDockerTestBase
         }
 
         // Scrim (backdrop) should be visible
-        var scrimCount = await Page.Locator(".mud-overlay, .mud-drawer-scrim").CountAsync();
+        // MudBlazor 9.x uses .mud-overlay.mud-overlay-drawer for the drawer scrim
+        var scrimCount = await Page.Locator(".mud-overlay.mud-overlay-drawer").CountAsync();
         Assert.That(scrimCount, Is.GreaterThan(0),
-            "A scrim or overlay element should be visible when drawer is open on phone");
+            "A scrim/overlay element should be visible when drawer is open on phone");
 
-        // Clicking a nav link closes the drawer
-        await _nav.NavigateToAsync(_nav.DashboardLink);
+        // Clicking a nav link closes the drawer — navigate to a different page so
+        // LocationChanged fires (same-route clicks are no-ops in Blazor)
+        await _nav.NavigateToAsync(_nav.PendingActionsLink);
         await Page.WaitForTimeoutAsync(400);
 
         Assert.That(await _nav.IsDrawerOpenAsync(), Is.False,
@@ -268,6 +270,7 @@ public class NavigationTests : AuthenticatedDockerTestBase
             Assert.That(contentAfterNav.Width, Is.GreaterThan(340),
                 "Content should occupy full phone viewport width after drawer closes on navigation");
         }
+
     }
 
     #endregion
