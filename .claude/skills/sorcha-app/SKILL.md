@@ -1,6 +1,6 @@
 ---
 name: sorcha-app
-description: Build, sign, and ship the Sorcha mobile apps (Capacitor + fastlane on a Mac build node, driven from the Windows orchestrator). Use when triggering or debugging iOS/Android builds, running a fastlane lane, dispatching the build workflow, watching a build, registering or fixing the self-hosted runner, deriving app versions, onboarding the Mac toolchain, or mapping where signing secrets live. Covers the Sorcha Wallet PWA (app.sorcha.wallet).
+description: Build, sign, and ship the Sorcha mobile apps (Capacitor + fastlane on a Mac build node, driven from the Windows orchestrator). Use when triggering or debugging iOS/Android builds, running a fastlane lane, dispatching the build workflow, watching a build, registering or fixing the self-hosted runner, deriving app versions, onboarding the Mac toolchain, mapping where signing secrets live, or configuring native passkeys / Associated Domains (AASA, assetlinks, App-ID capability, relying-party / Fido2 ServerDomain, secure-origin server.url). Covers the Sorcha Wallet PWA (app.sorcha.wallet).
 ---
 
 # sorcha-app — mobile build/deploy orchestration
@@ -20,7 +20,22 @@ by a human, a git tag, or you. If a build only works because you drove it intera
 App: **`src/Apps/Sorcha.Wallet.Pwa`** — a Blazor **WASM** PWA (NOT a JS app), wrapped by Capacitor 8
 in `mobile/wallet/`. Bundle id **`app.sorcha.wallet`**. The Verifier app is server-hosted → not in scope.
 
-Full detail: `references/topology.md`. Secret locations: `references/secrets-map.md`. Fixes: `references/troubleshooting.md`.
+Full detail: `references/topology.md`. Secret locations: `references/secrets-map.md`. Fixes: `references/troubleshooting.md`. Passkeys / Associated Domains (PROVEN iOS recipe — RP model, App-ID capability + match force, AASA/assetlinks via the apex CI pipeline + the upload-pages-artifact dotfile-strip gotcha, Fido2 ServerDomain, secure-origin server.url, account reset): `references/passkeys.md`.
+
+## Session preflight (do this FIRST, every mobile session)
+The build node is a **separate machine** — nothing builds without it. Before driving any lane, confirm
+the orchestrator can reach the Mac over SSH (PowerShell tool, never Git Bash):
+
+```powershell
+ssh stuart@macmini 'echo OK; hostname; cd ~/projects/Sorcha && git rev-parse --short HEAD'
+```
+
+- Expect `OK` + `macmini.local` + a commit. If it hangs or `Permission denied`/`Too many auth failures`:
+  the orchestrator box's SSH **public key isn't in the Mac's `~/.ssh/authorized_keys`**, the Mac is off/asleep,
+  or you used Git Bash (use the **PowerShell tool**). A **new/different orchestrator box must have its key
+  added to the Mac first** — without it, you cannot build. Resolve access before anything else.
+- `~/projects/Sorcha` is the **dedicated lane-running checkout** (distinct from the runner's `~/actions-runner/_work/...`).
+  Keep it clean on `master`; lanes that mutate it (pbxproj signing edits) are reset with `git reset --hard origin/master`.
 
 ## Iron rules
 
@@ -45,13 +60,24 @@ Full detail: `references/topology.md`. Secret locations: `references/secrets-map
 | Stand up / repair the Mac toolchain | `mobile/scripts/bootstrap-mac.sh` (idempotent; in the repo) |
 | (Re)register the runner | `mobile/scripts/setup-runner.sh` (defaults `SCOPE=repo` — see below) + `sudo mobile/scripts/install-runner-daemon.sh` |
 
-### Lanes (`mobile/wallet/fastlane/Fastfile`)
-- **`android_adhoc`** — signed release APK. **Works today; no account needed.**
-- `android_internal` — AAB → Play Internal. Blocked: needs Play account + service-account JSON.
-- `ios_adhoc` / `ios_beta` — toolchain ready (Xcode 26.5). Gate now is Apple Developer Program + a `match` repo (+ ASC API key for TestFlight) + iOS platform `cap add ios`.
+### Lanes (`mobile/wallet/fastlane/Fastfile`) — **ALL FOUR PROVEN END-TO-END (2026-06-23)** on real accounts
+- **`android_adhoc`** — signed release APK. No account needed.
+- **`android_internal`** — AAB → Play Internal via `supply`. Needs `~/.sorcha-signing/play_service_account.json`
+  + the SA granted **account-level Admin** in Play Console (a narrower track grant kept failing). Bump
+  `SORCHA_VERSION_CODE` above the last used (vc1 manual, vc2 automated).
+- **`ios_adhoc`** — signed ad-hoc IPA. **`ios_beta`** — IPA → TestFlight. Both use `match` (repo
+  `Sorcha-Platform/ios-certs`) + the ASC API key; the lanes call `setup_ci` (headless keychain) and
+  `apply_match_signing` (Capacitor ships automatic signing/no team → must force manual). iOS env
+  (`MATCH_GIT_URL`/`MATCH_PASSWORD`) lives in `~/.sorcha-signing/ios-match.env` (NOT `~/.zprofile`), so
+  iOS lanes must `source` it — `trigger-build.ps1` does NOT, so run iOS inline with the env sourced.
 
 Every lane begins with the shared web step `mobile/scripts/build-web.sh`: `dotnet publish` (the Blazor
 WASM "web build") → `www` → rewrite `<base href>` to `/` → strip precompressed dupes → `cap sync`.
+
+**Driving a lane headless (the proven pattern):** write a small script on the Mac that `source`s
+`~/.zprofile` (+ `~/.sorcha-signing/ios-match.env` for iOS), `cd`s to `mobile/wallet`, `bundle install`,
+then `bundle exec fastlane <lane>`; launch it with `nohup … > ~/<lane>.log 2>&1 &` and poll the log
+(builds outlast a single SSH call). Remove the scratch script + log when done.
 
 ## Decision rules / gotchas (learned the hard way)
 
@@ -66,14 +92,34 @@ WASM "web build") → `www` → rewrite `<base href>` to `/` → strip precompre
 - **Capacitor 8 needs JDK 21** (docs say "17+", but its Android lib compiles at Java 21) and **SDK 36**.
 - **Toolchain unblocked (Xcode 26.5 / clang 21, 2026-06-18):** native gems compile, `Gemfile.lock` is
   committed, lanes run via `bundle exec fastlane` (deterministic). Earlier Xcode 15.4 blocked this — its
-  clang lacked the C23 `<stdckdint.h>` ruby needs. iOS lanes now gate only on **Apple Developer Program
-  enrolment + a `match` repo** (signing), not the toolchain.
+  clang lacked the C23 `<stdckdint.h>` ruby needs.
+- **Little Snitch blocks Homebrew Ruby → Apple ASC API** (the session-eating one): `match` hangs at
+  "Creating authorization token for App Store Connect API" with the socket in `CLOSE_WAIT`, while `curl`
+  to the same host works. The Mac's per-app outbound firewall denies the unsigned Ruby; headless there's
+  no GUI prompt. Fix = LS allow rule `*.apple.com`:443 Any Process.
+- **iOS signing on a headless Mac**: `match` needs `setup_ci` (login.keychain is locked over SSH/daemon)
+  and the Capacitor project must be forced to **manual** signing (`apply_match_signing`) or archive fails
+  "requires a development team". Both are already in the Fastfile.
+- **Play upload "caller does not have permission"**: grant the SA **account-level Admin** in Play Console
+  → Users and permissions (a narrower "Release to testing tracks" grant kept failing). Setup→API access
+  is now folded into Users and permissions.
+- **TestFlight**: internal testing needs **no redeem code** (that's external); testers must be team users.
+  Export compliance is baked into `Info.plist` (`ITSAppUsesNonExemptEncryption=false`).
 
-## Accounts (long-pole prerequisites)
-- **Apple**: Developer Program ($99/yr; org needs a D-U-N-S number — the slow step); ASC API key (`.p8` +
-  key id + issuer id) for CI; registered bundle id `app.sorcha.wallet`; device UDIDs for ad-hoc; a `match` repo.
-- **Google Play**: $25 once; org account also needs D-U-N-S now; service-account JSON for `supply`; **the
-  first AAB must be uploaded manually** before the API accepts automated uploads.
+## Accounts — **ACTIVE (Individual/Personal) since 2026-06-23**
+Both enrolled; all creds placed on the Mac under `~/.sorcha-signing` (see `references/secrets-map.md`).
+- **Apple**: Developer Program live (team **HY5HSW5FUT**); ASC API key `asc_api_key.p8`+`asc_api_key.json`
+  (key MBZVZTN4VX); App ID `app.sorcha.wallet` + a device UDID registered; `match` repo `Sorcha-Platform/ios-certs`;
+  ASC app id `6783321595`. **Little Snitch on the Mac silently blocked Homebrew Ruby → Apple's ASC API**
+  (match hung at "Creating authorization token") — fixed with an LS allow rule for `*.apple.com`; if the
+  Ruby/toolchain is reinstalled or LS rules reset, this can recur (see troubleshooting).
+- **Google Play**: live; `play_service_account.json` placed; SA `sorcha-play-ci@sorcha-494515…` granted
+  **account-level Admin**. The first AAB (vc1) was uploaded manually; `supply` automates from there.
+- Setup runbook (what to do if re-enrolling / a fresh account): `references/finishing-accounts.md`.
+
+**Production store lanes** (App Store / Play production) remain out of scope and need extra work:
+a **publicly reachable backend** the build points at + a **demo login** for App Review, plus store
+listing/screenshots. Internal/TestFlight (current targets) need none of that.
 
 ## Optional separate workstream (ASK FIRST)
 A NAT'd Docker backend node can run on the Mac so the apps have a real backend during dev/ad-hoc builds.
