@@ -50,17 +50,25 @@
                 </MudText>
                 <video id="@VideoElementId" playsinline muted autoplay data-testid="present-viewfinder"
                        style="width:100%; max-width:360px; aspect-ratio:1/1; object-fit:cover; border-radius:8px; background:#000;"></video>
-                <MudButton Class="mt-3" Variant="Variant.Outlined"
-                           data-testid="present-paste-instead"
-                           OnClick="SwitchToPasteAsync">
-                    Paste a link instead
-                </MudButton>
                 @if (!string.IsNullOrEmpty(_intakeMessage))
                 {
                     <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3" data-testid="present-intake-message">
                         @_intakeMessage
                     </MudAlert>
+                    @if (!_scanning)
+                    {
+                        <MudButton Class="mt-2" Variant="Variant.Filled" Color="Color.Primary"
+                                   data-testid="present-scan-again"
+                                   OnClick="RescanAsync">
+                            Scan again
+                        </MudButton>
+                    }
                 }
+                <MudButton Class="mt-3" Variant="Variant.Outlined"
+                           data-testid="present-paste-instead"
+                           OnClick="SwitchToPasteAsync">
+                    Paste a link instead
+                </MudButton>
             }
             else if (_intakeMode == IntakeMode.PasteWithScan && !_showPaste)
             {
@@ -214,8 +222,9 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // US1: auto-start the QR scanner once on first render for CameraFirst.
-        if (firstRender && _intakeMode == IntakeMode.CameraFirst && !_cameraRefusedThisSession)
+        // US1: auto-start (or re-start after Reset) for CameraFirst when the scanner is not already running.
+        // _autoStartFired is cleared by Reset() so re-entry after "Done" fires the camera again.
+        if (!_autoStartFired && _intakeMode == IntakeMode.CameraFirst && !_cameraRefusedThisSession && !_showPaste)
         {
             _autoStartFired = true;
             await StartScanAsync();
@@ -349,6 +358,8 @@
         _userChosePaste = false;
         // Restore intake display state from mode (keep _cameraRefusedThisSession across Reset).
         _showPaste = _intakeMode != IntakeMode.CameraFirst || _cameraRefusedThisSession;
+        // Allow auto-start to fire again on next render (unless camera was denied this session).
+        _autoStartFired = false;
     }
 
     // ------- QR scanner (shared by CameraFirst auto-start and PasteWithScan on-demand) ----
@@ -466,6 +477,13 @@
         await CancelScanAsync();
         _showPaste = true;
         StateHasChanged();
+    }
+
+    /// <summary>US1: retry scanning after a bad-QR result while still in the CameraFirst viewfinder.</summary>
+    private async Task RescanAsync()
+    {
+        _intakeMessage = null;
+        await StartScanAsync();
     }
 
     private async Task CancelScanAsync()
