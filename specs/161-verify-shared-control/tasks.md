@@ -24,6 +24,24 @@
 - [ ] **T013** — bUnit: `QuestionSelectionPanel`, `VerdictTrailPanel` (Loose JS).
 - [ ] **T014** — `dotnet build` solution green + Verifier + UI.Core test suites green; XML doc summaries on new public members.
 
+## Status — B2 foundation shipped (this PR)
+Delivered + tested (build green, 1389 UI.Core tests pass):
+- [x] **T005** `IVerificationPresetCatalogue`.
+- [x] **T006** `VerifierPresetsOptions` + `VerificationPresetConfig` + `DefaultPresetCatalogue`
+  (config-driven, builtin fallback — the editable-presets ask).
+- [x] **T007** `IVerificationTransport` (+ `VerificationSessionStarted` / `VerificationSessionPoll`).
+- [x] new canonical `VerificationPreset` model (created shared, rather than moving the desk copy yet).
+- [x] **T012/T014** catalogue unit tests + Components.User build green.
+
+Deferred to the **prodexec component pass** (review-sensitive / entangled with the Razor work):
+- **T001–T003** retire the desk verifier's `QuestionPreset`/`VerdictViewModel` + relocate
+  `IRegisterAnchorClient` to the engine (done alongside the components to avoid a premature
+  project-ref + breaking the working app).
+- **T004** the `Components.User → Verifier.Engine` ref (only needed once `VerdictViewModel` moves).
+- **T008–T010** the 3 shared Razor components (`QuestionSelectionPanel`, `VerificationSessionQr`,
+  `VerdictTrailPanel`) + `VerdictViewModel` move + its tests (**T013**).
+- **T011** host DI wiring (→ B3).
+
 ## Out of scope (→ B3)
 - Rewiring PWA `/wallet/verify` + desk `Sorcha.Verifier` pages to the shared control; retiring old paths.
 - The HAIP-backed `IVerificationTransport` impl wired into the hosts (B2 ships the interface + a
