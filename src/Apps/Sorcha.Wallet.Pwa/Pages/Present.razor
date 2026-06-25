@@ -157,7 +157,7 @@
 
     @if (!string.IsNullOrEmpty(_error))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-3" data-testid="present-error">@_error</MudAlert>
     }
 </MudContainer>
 
@@ -244,11 +244,11 @@
         }
         catch (Exception ex)
         {
-            // FR-009: bad QR from camera — show friendly message in viewfinder so holder can retry.
-            if (_intakeMode == IntakeMode.CameraFirst && fromScan)
+            // FR-009: bad QR from any scan path — show friendly message so holder can retry or paste.
+            if (fromScan)
             {
                 _intakeMessage = "Couldn't read that QR code as a verifier request. Try again or paste the link instead.";
-                _showPaste = false;  // return to viewfinder for retry
+                _showPaste = _intakeMode != IntakeMode.CameraFirst;  // CameraFirst stays in viewfinder; PasteWithScan returns to paste
             }
             else
             {

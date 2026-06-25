@@ -166,6 +166,36 @@ public sealed class PresentIntakeLayoutTests : ComponentTestFixture
     }
 
     [Fact]
+    public async Task PasteWithScan_ScanUnparseableQr_ShowsFriendlyIntakeMessageNotRawError()
+    {
+        // FR-009 regression: scan errors on PasteWithScan path must route to _intakeMessage
+        // (friendly, recoverable inline alert) — not to _error (raw exception string in MudAlert).
+        SetupProbe(DeviceFormFactor.Desktop, CameraAvailability.Usable);
+        JSInterop.Setup<bool>("SorchaQrScanner.isSupported").SetResult(true);
+        JSInterop.Setup<string>("SorchaQrScanner.start", VideoElementId())
+            .SetResult("not-a-verifier-qr-payload");
+        _engine.Setup(e => e.Parse(It.IsAny<string>()))
+               .Throws(new InvalidOperationException("This is a raw exception message that must not be exposed"));
+
+        var cut = Render<PresentPage>();
+        await cut.InvokeAsync(() => cut.Find("[data-testid=present-scan-with-camera]").Click());
+
+        // Friendly intake message must appear — not a raw exception string.
+        cut.WaitForAssertion(() =>
+            cut.FindAll("[data-testid=present-intake-message]").Should().ContainSingle(
+                "PasteWithScan scan error shows a friendly _intakeMessage (FR-009)"),
+            TimeSpan.FromSeconds(2));
+
+        // Raw error element must be absent.
+        cut.FindAll("[data-testid=present-error]").Should().BeEmpty(
+            "raw _error must not be exposed for scan failures on the PasteWithScan path (FR-009)");
+
+        // Paste field must be restored (PasteWithScan returns to paste view after scan completes).
+        cut.FindAll("[data-testid=present-paste-field]").Should().ContainSingle(
+            "PasteWithScan returns to paste view after scan error");
+    }
+
+    [Fact]
     public void PasteWithScan_PasteAndContinue_ReachesParse()
     {
         SetupProbe(DeviceFormFactor.Desktop, CameraAvailability.Usable);
