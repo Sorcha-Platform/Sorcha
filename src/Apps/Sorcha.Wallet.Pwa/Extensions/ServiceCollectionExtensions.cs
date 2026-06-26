@@ -4,6 +4,7 @@
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Sorcha.Wallet.Pwa.Services;
 using Sorcha.Wallet.Pwa.Services.Applications;
+using Sorcha.Wallet.Pwa.Services.Device;
 using Sorcha.Wallet.Pwa.Services.Capture;
 using Sorcha.Wallet.Pwa.Services.Context;
 using Sorcha.Wallet.Pwa.Services.Enrolment;
@@ -32,6 +33,9 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services, string gatewayBaseAddress)
     {
         services.AddSingleton(TimeProvider.System);
+
+        // Feature 159 — device-profile probe for camera-first intake-layout selection.
+        services.AddScoped<IDeviceProfileProbe, DeviceProfileProbe>();
 
         // Phase 1 of the Snackbar retirement — page-scoped inline feedback for
         // actor's-own-action results. Replacement for ISnackbar; see

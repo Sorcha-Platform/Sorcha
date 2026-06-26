@@ -4,7 +4,8 @@
   "private": true,
   "description": "Capacitor wrapper for the Sorcha Wallet (Blazor WASM PWA). The web layer is produced by `dotnet publish` of src/Apps/Sorcha.Wallet.Pwa; npm is only for the Capacitor CLI/native tooling, not the app build.",
   "scripts": {
-    "sync": "cap sync"
+    "sync": "cap sync",
+    "generate:assets": "npx --yes @capacitor/assets generate --ios --android --iconBackgroundColor '#1A1F3A' --iconBackgroundColorDark '#1A1F3A' --splashBackgroundColor '#1A1F3A' --splashBackgroundColorDark '#1A1F3A'"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",

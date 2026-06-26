@@ -237,8 +237,9 @@ public static class VerifierEndpoints
                 ct: ct);
         }
 
-        // Store the result
-        await store.MarkCompletedAsync(requestId, result, ct);
+        // Store the result + the raw submitted presentation (PR B1) so a verifier client can
+        // re-validate locally and build its own rich verdict.
+        await store.MarkCompletedAsync(requestId, result, vp_token, presentation_submission, ct);
 
         // Feature 111: relay the outcome to Blueprint Service for lifecycle transaction writing.
         if (callbackRelay is not null)
@@ -281,7 +282,10 @@ public static class VerifierEndpoints
             {
                 requestId = request.Id,
                 state = request.State.ToString(),
-                result = (VerificationResult?)null
+                result = (VerificationResult?)null,
+                // PR B1: raw submitted presentation for client-side re-validation (null pre-submission).
+                vpToken = request.SubmittedVpToken,
+                presentationSubmission = request.PresentationSubmission
             });
         }
 
@@ -289,7 +293,10 @@ public static class VerifierEndpoints
         {
             requestId = request.Id,
             state = request.State.ToString(),
-            result = request.Result
+            result = request.Result,
+            // PR B1: raw submitted presentation so a verifier client can build its own rich verdict.
+            vpToken = request.SubmittedVpToken,
+            presentationSubmission = request.PresentationSubmission
         });
     }
 
