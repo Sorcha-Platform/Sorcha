@@ -593,13 +593,10 @@
     private static string RelativeSince(DateTimeOffset at)
     {
         var delta = DateTimeOffset.UtcNow - at;
-        return delta.TotalSeconds switch
-        {
-            < 60 => "just now",
-            < 3600 => $"{(int)delta.TotalMinutes} min ago",
-            < 86400 => $"{(int)delta.TotalHours} h ago",
-            _ => at.ToLocalTime().ToString("d MMM")
-        };
+        if (delta.TotalSeconds < 60) return "just now";
+        if (delta.TotalSeconds < 3600) return $"{(int)delta.TotalMinutes} min ago";
+        if (delta.TotalSeconds < 86400) return $"{(int)delta.TotalHours} h ago";
+        return at.ToLocalTime().ToString("d MMM");
     }
 
 }

@@ -26,7 +26,7 @@ client-side composition and DI wiring. Tests are **required** (FR-013, FR-014).
 **Purpose**: Read the source files to be modified before making any changes, so the extraction is
 complete and accurate.
 
-- [ ] T001 Read src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyProfile.razor in full to capture all form markup, mutable state fields, `OnInitializedAsync`, `HydrateFromRead`, `HandleSave`, and `HandleDelete` logic to be extracted into `PersonaEditor`
+- [x] T001 Read src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyProfile.razor in full to capture all form markup, mutable state fields, `OnInitializedAsync`, `HydrateFromRead`, `HandleSave`, and `HandleDelete` logic to be extracted into `PersonaEditor`
 
 **Checkpoint**: Full picture of what `PersonaEditor` must contain — proceed to Foundational.
 
@@ -39,8 +39,8 @@ artifact; nothing else can start until it exists.
 
 **⚠️ CRITICAL**: No user-story or test work can begin until this phase is complete.
 
-- [ ] T002 Create src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Persona/PersonaEditor.razor (namespace `Sorcha.UI.Core.Components.Persona`) by extracting: all form fields (given/family/full name, DOB, and the 5-capped dynamic lists for emails/phones/addresses/nationalities), mutable state, `OnInitializedAsync` (load via `IPersonaService.GetAsync` + `HydrateFromRead`), `HandleSave` (with all three error paths: `PersonaValidationException` → inline field errors; `PersonaWalletNotProvisionedException` → distinct provisioning message; general exception → retry message), `HandleDelete`, and autofill preference read/write
-- [ ] T003 Add `/// <summary>` XML documentation to all public `[Parameter]` and `[Inject]` declarations in src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Persona/PersonaEditor.razor per project XML-doc convention
+- [x] T002 Create src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Persona/PersonaEditor.razor (namespace `Sorcha.UI.Core.Components.Persona`) by extracting: all form fields (given/family/full name, DOB, and the 5-capped dynamic lists for emails/phones/addresses/nationalities), mutable state, `OnInitializedAsync` (load via `IPersonaService.GetAsync` + `HydrateFromRead`), `HandleSave` (with all three error paths: `PersonaValidationException` → inline field errors; `PersonaWalletNotProvisionedException` → distinct provisioning message; general exception → retry message), `HandleDelete`, and autofill preference read/write
+- [x] T003 Add `/// <summary>` XML documentation to all public `[Parameter]` and `[Inject]` declarations in src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Persona/PersonaEditor.razor per project XML-doc convention
 
 **Checkpoint**: `PersonaEditor` compiles and contains all load/edit/save/delete behaviour. Both
 host pages and tests can now proceed.
@@ -58,14 +58,14 @@ same citizen and confirm the same values appear (SC-002).
 
 ### Tests for User Story 1
 
-- [ ] T004 [US1] Write bUnit tests `Load_WithExistingPersona_PopulatesFormFields` and `Load_NoPersona_ShowsEmptyEditableForm` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs using `ComponentTestFixture` (mock `IPersonaService` + `IInlineFeedback`)
-- [ ] T005 [US1] Write bUnit test `Save_ValidInput_CallsUpdateAsync_ShowsSuccessAndRebinds` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs
-- [ ] T008 [US1] Create tests/Sorcha.Wallet.Pwa.Tests/Services/PersonaDiActivationTests.cs asserting that `IPersonaService` resolves without error and `PersonaEditor` renders under a service collection configured identically to the PWA host (FR-014, SC-005)
+- [x] T004 [US1] Write bUnit tests `Load_WithExistingPersona_PopulatesFormFields` and `Load_NoPersona_ShowsEmptyEditableForm` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs using `ComponentTestFixture` (mock `IPersonaService` + `IInlineFeedback`)
+- [x] T005 [US1] Write bUnit test `Save_ValidInput_CallsUpdateAsync_ShowsSuccessAndRebinds` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs
+- [x] T008 [US1] Create tests/Sorcha.Wallet.Pwa.Tests/Services/PersonaDiActivationTests.cs asserting that `IPersonaService` resolves without error and `PersonaEditor` renders under a service collection configured identically to the PWA host (FR-014, SC-005)
 
 ### Implementation for User Story 1
 
-- [ ] T006 [P] [US1] Add three PWA DI registrations to src/Apps/Sorcha.Wallet.Pwa/Extensions/ServiceCollectionExtensions.cs inside `AddCitizenWalletServices`: (1) `AddHttpClient<IPersonaClient, PersonaHttpClient>` with `BearerTokenHandler` + `ServerClockHandler` at the gateway base address; (2) `services.AddScoped<IPersonaService, PersonaService>()`; (3) `services.AddBlazoredLocalStorage()`
-- [ ] T007 [P] [US1] Replace the placeholder stub in src/Apps/Sorcha.Wallet.Pwa/Pages/Profile.razor with a thin `[Authorize]` shell that renders `<PersonaEditor/>` inside the PWA layout (keep `@page "/profile"`, `PageTitle`, and `[Authorize]`; remove all placeholder markup)
+- [x] T006 [P] [US1] Add three PWA DI registrations to src/Apps/Sorcha.Wallet.Pwa/Extensions/ServiceCollectionExtensions.cs inside `AddCitizenWalletServices`: (1) `AddHttpClient<IPersonaClient, PersonaHttpClient>` with `BearerTokenHandler` + `ServerClockHandler` at the gateway base address; (2) `services.AddScoped<IPersonaService, PersonaService>()`; (3) `services.AddBlazoredLocalStorage()`
+- [x] T007 [P] [US1] Replace the placeholder stub in src/Apps/Sorcha.Wallet.Pwa/Pages/Profile.razor with a thin `[Authorize]` shell that renders `<PersonaEditor/>` inside the PWA layout (keep `@page "/profile"`, `PageTitle`, and `[Authorize]`; remove all placeholder markup)
 
 **Checkpoint**: `dotnet test --filter "FullyQualifiedName~PersonaEditorTests"` (load + save tests)
 and `dotnet test --filter "FullyQualifiedName~PersonaDiActivationTests"` both pass. User Story 1
@@ -85,7 +85,7 @@ once to `PersonaEditor` appears on both surfaces without per-surface edits.
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Reduce src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyProfile.razor to a thin host by removing all extracted form markup, mutable state, and event-handler code, replacing the body with `<PersonaEditor/>` inside the existing page shell (`@page "/profile"`, `PageTitle`, layout, `[Authorize]`)
+- [x] T009 [US2] Reduce src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyProfile.razor to a thin host by removing all extracted form markup, mutable state, and event-handler code, replacing the body with `<PersonaEditor/>` inside the existing page shell (`@page "/profile"`, `PageTitle`, layout, `[Authorize]`)
 
 **Checkpoint**: Web `/profile` renders `PersonaEditor`; the web profile page file no longer contains
 duplicated form logic. Both surfaces share one component definition.
@@ -104,9 +104,9 @@ provisioned wallet — confirm a distinct provisioning-specific message, not a g
 
 ### Tests for User Story 3
 
-- [ ] T010 [US3] Write bUnit test `Save_PersonaValidationException_ShowsInlineErrors_PreservesInput` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs (mock `IPersonaService.UpdateAsync` throwing `PersonaValidationException`; assert error message shown, form fields retain entered values, and feedback is non-auto-dismissing)
-- [ ] T011 [US3] Write bUnit test `Save_WalletNotProvisionedException_ShowsDistinctProvisioningMessage` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs (mock throwing `PersonaWalletNotProvisionedException`; assert the provisioning-specific message is shown, distinct from a generic error)
-- [ ] T012 [US3] Write bUnit test `Save_NetworkFailure_ShowsRetryMessage_PreservesEnteredData` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs (mock `UpdateAsync` throwing a generic `HttpRequestException`; assert "save did not complete, retry" feedback and form data preserved)
+- [x] T010 [US3] Write bUnit test `Save_PersonaValidationException_ShowsInlineErrors_PreservesInput` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs (mock `IPersonaService.UpdateAsync` throwing `PersonaValidationException`; assert error message shown, form fields retain entered values, and feedback is non-auto-dismissing)
+- [x] T011 [US3] Write bUnit test `Save_WalletNotProvisionedException_ShowsDistinctProvisioningMessage` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs (mock throwing `PersonaWalletNotProvisionedException`; assert the provisioning-specific message is shown, distinct from a generic error)
+- [x] T012 [US3] Write bUnit test `Save_NetworkFailure_ShowsRetryMessage_PreservesEnteredData` in tests/Sorcha.UI.Core.Tests/Components/Persona/PersonaEditorTests.cs (mock `UpdateAsync` throwing a generic `HttpRequestException`; assert "save did not complete, retry" feedback and form data preserved)
 
 **Checkpoint**: `dotnet test --filter "FullyQualifiedName~PersonaEditorTests"` — all 5+ component
 tests pass (load, save-success, validation-rejection, provisioning-rejection, network-failure). SC-004
@@ -118,8 +118,8 @@ and FR-007/008/009 satisfied.
 
 **Purpose**: Documentation, build verification, and quickstart validation.
 
-- [ ] T013 [P] Update .specify/MASTER-TASKS.md to mark Feature 163 tasks as complete (✅)
-- [ ] T014 [P] Run `dotnet build` and `dotnet test --filter "FullyQualifiedName~PersonaEditorTests|PersonaDiActivationTests"` to confirm zero build warnings and all persona tests green
+- [x] T013 [P] Update .specify/MASTER-TASKS.md to mark Feature 163 tasks as complete (✅)
+- [x] T014 [P] Run `dotnet build` and `dotnet test --filter "FullyQualifiedName~PersonaEditorTests|PersonaDiActivationTests"` to confirm zero build warnings and all persona tests green
 - [ ] T015 Run the SC-001 through SC-005 validation scenarios from specs/163-pwa-shared-persona-editor/quickstart.md against a locally running stack to confirm end-to-end acceptance
 
 ---
