@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Sorcha.Wallet.Pwa.Services;
 using Sorcha.Wallet.Pwa.Services.Applications;
@@ -15,6 +16,7 @@ using Sorcha.UI.Components.User.Services.Capture;
 using Sorcha.UI.Components.User.Services.Signing;
 using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.UI.Core.Services;
+using Sorcha.UI.Core.Services.Persona;
 using Sorcha.ServiceClients.CitizenWallet;
 
 namespace Sorcha.Wallet.Pwa.Extensions;
@@ -327,6 +329,17 @@ public static class ServiceCollectionExtensions
             },
             sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<TenantHubConnection>>(),
             sp.GetService<IInboxApiService>()));
+
+        // Feature 163 — persona editor on the PWA. IPersonaClient carries the
+        // citizen's bearer token so GET/PUT/DELETE /api/me/persona reach the
+        // Tenant Service. IPersonaService wraps the client with a session cache
+        // and reads/writes the autofill preference from browser local storage.
+        services.AddHttpClient<IPersonaClient, PersonaHttpClient>(c =>
+            c.BaseAddress = new Uri(gatewayBaseAddress))
+            .AddHttpMessageHandler<BearerTokenHandler>()
+            .AddHttpMessageHandler<ServerClockHandler>();
+        services.AddScoped<IPersonaService, PersonaService>();
+        services.AddBlazoredLocalStorage();
 
         return services;
     }
