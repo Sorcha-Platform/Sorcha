@@ -9,7 +9,9 @@
 @page "/s/{SessionId}/outcome"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Sorcha.Verifier.Services
+@using Sorcha.Verifier.Engine
 @using Sorcha.Verifier.Engine.Models
+@using Sorcha.UI.Components.User.Models.Verification
 @inject IVerifierSessionStore Store
 @inject IRegisterAnchorClient AnchorClient
 
@@ -166,7 +168,15 @@
         _session = Store.Get(SessionId);
         if (_session?.Outcome is not null)
         {
-            _vm = VerdictViewModel.From(_session, _session.Outcome);
+            var preset = new VerificationPreset(
+                Key: "desk",
+                Label: "",
+                Purpose: _session.Purpose,
+                RequiredVct: _session.RequiredVct,
+                RequiredClaims: _session.RequiredClaims,
+                OptionalClaims: _session.OptionalClaims,
+                KnownCredentialClaims: [.._session.RequiredClaims, .._session.OptionalClaims]);
+            _vm = VerdictViewModel.From(preset, _session.Outcome);
         }
     }
 
