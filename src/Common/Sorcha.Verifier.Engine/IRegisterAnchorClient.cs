@@ -9,10 +9,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Verifier.Engine.Models;
 
-namespace Sorcha.Verifier.Services;
+namespace Sorcha.Verifier.Engine;
 
 /// <summary>
-/// Layer-4 register-anchor cross-check (Feature 155). Calls the PUBLIC anchor-read endpoint on the
+/// Layer-4 register-anchor cross-check (Feature 163). Calls the PUBLIC anchor-read endpoint on the
 /// Register Service to locate a credential's issuance transaction by the credential's own id, then
 /// re-verifies the returned Merkle inclusion proof against the public verify endpoint. No auth, no
 /// operator configuration — the "open" path.
@@ -44,7 +44,7 @@ public sealed record RegisterAnchorResult
     /// <summary>Transaction lifecycle status (Active/Revoked/Superseded), when found.</summary>
     public string? LifecycleStatus { get; init; }
 
-    /// <summary>The exportable verification bundle JSON, when available (FR-011).</summary>
+    /// <summary>The exportable verification bundle JSON, when available.</summary>
     public string? BundleJson { get; init; }
 
     /// <summary>Human-readable note for the trail detail.</summary>
@@ -54,7 +54,7 @@ public sealed record RegisterAnchorResult
 /// <summary>
 /// HTTP implementation. The Register Service base address comes from configuration
 /// (<c>RegisterService:PublicBaseUrl</c>, e.g. the API gateway origin); the verifier reaches the
-/// public register endpoints over the network (issue-#808 networking class — a deployment concern).
+/// public register endpoints over the network.
 /// </summary>
 public sealed class RegisterAnchorClient(
     HttpClient http,
@@ -94,7 +94,6 @@ public sealed class RegisterAnchorClient(
                 return Unverified("Anchor response missing inclusion proof.");
             }
 
-            // Re-verify the Merkle inclusion proof against the public verify endpoint (don't just trust the read).
             var verifyUrl = $"{baseUrl}/api/registers/{Uri.EscapeDataString(registerId)}/inclusion-proofs/verify";
             using var verifyResp = await http.PostAsJsonAsync(verifyUrl, new
             {

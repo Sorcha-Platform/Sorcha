@@ -1,0 +1,61 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Shared question-selection panel for the verify flow (Feature 163, US1). Renders a list of
+    verification presets from IVerificationPresetCatalogue as selectable buttons, plus a
+    custom-question affordance. Raises OnQuestionSelected with the chosen VerificationPreset.
+*@
+@namespace Sorcha.UI.Core.Components.Verify
+@using Sorcha.UI.Components.User.Models.Verification
+@using Sorcha.UI.Components.User.Services.Verification
+@inject IVerificationPresetCatalogue Catalogue
+
+<div class="question-selection-panel" data-testid="question-selection-panel">
+    <MudStack Spacing="2">
+        @foreach (var preset in _presets)
+        {
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       data-testid="@($"preset-{preset.Key}")"
+                       OnClick="@(() => SelectPresetAsync(preset))">
+                @preset.Label
+            </MudButton>
+        }
+
+        <MudButton Variant="Variant.Text"
+                   Color="Color.Secondary"
+                   FullWidth="true"
+                   data-testid="custom-question"
+                   OnClick="SelectCustomAsync">
+            Custom question
+        </MudButton>
+    </MudStack>
+</div>
+
+@code {
+    /// <summary>Raised when the operator selects a preset or confirms a custom question.</summary>
+    [Parameter] public EventCallback<VerificationPreset> OnQuestionSelected { get; set; }
+
+    private IReadOnlyList<VerificationPreset> _presets = [];
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        _presets = Catalogue.GetAll();
+    }
+
+    private Task SelectPresetAsync(VerificationPreset preset)
+        => OnQuestionSelected.InvokeAsync(preset);
+
+    private Task SelectCustomAsync()
+    {
+        var custom = Catalogue.BuildCustom(
+            purpose: "Custom verification",
+            requiredVct: "",
+            requiredClaims: [],
+            optionalClaims: []);
+        return OnQuestionSelected.InvokeAsync(custom);
+    }
+}

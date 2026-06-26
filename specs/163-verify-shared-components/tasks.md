@@ -24,9 +24,9 @@
 > (`IVerificationTransport`, `IVerificationPresetCatalogue`, `DefaultPresetCatalogue`,
 > `VerificationPreset`) are absent from this branch — the entire feature depends on them.
 
-- [ ] T001 Merge `origin/master` into this branch to bring in PR #1045 (B2-foundation): run `git merge origin/master` and resolve any conflicts (prerequisite gate — R-000)
-- [ ] T002 Verify the #1045 seams are now present: run `grep -rl "interface IVerificationTransport" src/` and `grep -rl "class DefaultPresetCatalogue" src/` — both must return files; run `dotnet build` to confirm base builds
-- [ ] T003 Add `<ProjectReference Include="../../Common/Sorcha.Verifier.Engine/Sorcha.Verifier.Engine.csproj" />` to `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Sorcha.UI.Components.User.csproj` (FR-010)
+- [X] T001 Merge `origin/master` into this branch to bring in PR #1045 (B2-foundation): run `git merge origin/master` and resolve any conflicts (prerequisite gate — R-000)
+- [X] T002 Verify the #1045 seams are now present: run `grep -rl "interface IVerificationTransport" src/` and `grep -rl "class DefaultPresetCatalogue" src/` — both must return files; run `dotnet build` to confirm base builds
+- [X] T003 Add `<ProjectReference Include="../../Common/Sorcha.Verifier.Engine/Sorcha.Verifier.Engine.csproj" />` to `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Sorcha.UI.Components.User.csproj` (FR-010)
 
 **Checkpoint**: Branch includes #1045 seams, solution builds with new project reference, no reference cycles.
 
@@ -38,11 +38,11 @@
 
 **⚠️ CRITICAL**: No component task can begin until T007 (relocation complete + build green) is verified.
 
-- [ ] T004 [P] [US5] Relocate `VerdictViewModel.cs` from `src/Apps/Sorcha.Verifier/Services/` to `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Models/Verification/VerdictViewModel.cs` — copy the file, preserving the class and all properties (`OverallPass`, `Headline`, `IssuerDid`, `IssuerDisplayName`, `PortraitBase64`, `AgeOver18`, `Disclosed`, `Withheld`, `Layers`, `Errors`, `RegisterAnchorId`, `CredentialId`) (FR-008)
-- [ ] T005 [US5] Update `VerdictViewModel.From(...)` factory in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Models/Verification/VerdictViewModel.cs` — replace the `VerifierSession` input parameter with `VerificationPreset question` so it reads `RequiredVct`, `RequiredClaims`, and `KnownCredentialClaims` from the preset rather than a desk-only session store (R-001, FR-011)
-- [ ] T006 [P] [US5] Relocate `IRegisterAnchorClient.cs`, `RegisterAnchorClient.cs`, and `RegisterAnchorResult` from `src/Apps/Sorcha.Verifier/Services/` to `src/Common/Sorcha.Verifier.Engine/` — copy with correct namespace, keeping `CheckAsync(string registerId, string credentialId, CancellationToken)` contract and `RegisterService:PublicBaseUrl` config read unchanged (FR-009, R-004)
-- [ ] T007 [US5] Remove the now-relocated source files from `src/Apps/Sorcha.Verifier/Services/` (delete `VerdictViewModel.cs`, `IRegisterAnchorClient.cs`, `RegisterAnchorClient.cs`) and update all `using` directives in `src/Apps/Sorcha.Verifier/` to reference the types from their new shared namespaces so no duplicates remain (FR-013)
-- [ ] T008 [US5] Build the solution (`dotnet build`) and run `dotnet test tests/Sorcha.Verifier.Tests` — all must pass with zero duplicate-type errors and zero broken references; this is the SC-004 regression gate (US5 independent test)
+- [X] T004 [P] [US5] Relocate `VerdictViewModel.cs` from `src/Apps/Sorcha.Verifier/Services/` to `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Models/Verification/VerdictViewModel.cs` — copy the file, preserving the class and all properties (`OverallPass`, `Headline`, `IssuerDid`, `IssuerDisplayName`, `PortraitBase64`, `AgeOver18`, `Disclosed`, `Withheld`, `Layers`, `Errors`, `RegisterAnchorId`, `CredentialId`) (FR-008)
+- [X] T005 [US5] Update `VerdictViewModel.From(...)` factory in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Models/Verification/VerdictViewModel.cs` — replace the `VerifierSession` input parameter with `VerificationPreset question` so it reads `RequiredVct`, `RequiredClaims`, and `KnownCredentialClaims` from the preset rather than a desk-only session store (R-001, FR-011)
+- [X] T006 [P] [US5] Relocate `IRegisterAnchorClient.cs`, `RegisterAnchorClient.cs`, and `RegisterAnchorResult` from `src/Apps/Sorcha.Verifier/Services/` to `src/Common/Sorcha.Verifier.Engine/` — copy with correct namespace, keeping `CheckAsync(string registerId, string credentialId, CancellationToken)` contract and `RegisterService:PublicBaseUrl` config read unchanged (FR-009, R-004)
+- [X] T007 [US5] Remove the now-relocated source files from `src/Apps/Sorcha.Verifier/Services/` (delete `VerdictViewModel.cs`, `IRegisterAnchorClient.cs`, `RegisterAnchorClient.cs`) and update all `using` directives in `src/Apps/Sorcha.Verifier/` to reference the types from their new shared namespaces so no duplicates remain (FR-013)
+- [X] T008 [US5] Build the solution (`dotnet build`) and run `dotnet test tests/Sorcha.Verifier.Tests` — all must pass with zero duplicate-type errors and zero broken references; this is the SC-004 regression gate (US5 independent test)
 
 **Checkpoint**: `VerdictViewModel` lives only in `Sorcha.UI.Components.User`; `IRegisterAnchorClient` + impl live only in `Sorcha.Verifier.Engine`; `Sorcha.Verifier` app consumes both from shared homes and existing tests pass.
 
@@ -54,9 +54,9 @@
 
 **⚠️ CRITICAL**: US1–US3 component tests all depend on the DI extension being wired (T010); the extension depends on the stub transport (T009).
 
-- [ ] T009 [US4] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Verification/NotConfiguredVerificationTransport.cs` — implements `IVerificationTransport`; `StartSessionAsync` returns `new VerificationSessionStarted(SessionId: "", QrDeepLink: "", Purpose: question.Purpose, RequiredVct: question.RequiredVct)`; `PollSessionAsync` returns `new VerificationSessionPoll(IsComplete: false, VpToken: null, PresentationSubmission: null)`; never throws (FR-004, R-002)
-- [ ] T010 [US4] Extend `AddSorchaUserComponents(IServiceCollection, IConfiguration)` in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Extensions/Shared/ServiceCollectionExtensions.cs` — add `services.TryAddSingleton<IVerificationPresetCatalogue, DefaultPresetCatalogue>()` + `services.Configure<VerifierPresetsOptions>(config.GetSection("VerifierPresets"))`, `services.TryAddSingleton<IVerificationTransport, NotConfiguredVerificationTransport>()`, and `services.AddHttpClient<IRegisterAnchorClient, RegisterAnchorClient>()` guarded so a host override wins (FR-005/FR-006, R-005)
-- [ ] T011 [US4] Write `tests/Sorcha.UI.Core.Tests/Verification/SharedVerifyRegistrationTests.cs` — build a `ServiceCollection`, call real `AddSorchaUserComponents(services, config)`; assert `IVerificationPresetCatalogue` → `DefaultPresetCatalogue`, `IVerificationTransport` → `NotConfiguredVerificationTransport`, `IRegisterAnchorClient` → `RegisterAnchorClient` all resolve; assert a host-registered transport override wins over the default stub (US4 scenarios 1–3, SC-002, R-006)
+- [X] T009 [US4] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Services/User/Verification/NotConfiguredVerificationTransport.cs` — implements `IVerificationTransport`; `StartSessionAsync` returns `new VerificationSessionStarted(SessionId: "", QrDeepLink: "", Purpose: question.Purpose, RequiredVct: question.RequiredVct)`; `PollSessionAsync` returns `new VerificationSessionPoll(IsComplete: false, VpToken: null, PresentationSubmission: null)`; never throws (FR-004, R-002)
+- [X] T010 [US4] Extend `AddSorchaUserComponents(IServiceCollection, IConfiguration)` in `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Extensions/Shared/ServiceCollectionExtensions.cs` — add `services.TryAddSingleton<IVerificationPresetCatalogue, DefaultPresetCatalogue>()` + `services.Configure<VerifierPresetsOptions>(config.GetSection("VerifierPresets"))`, `services.TryAddSingleton<IVerificationTransport, NotConfiguredVerificationTransport>()`, and `services.AddHttpClient<IRegisterAnchorClient, RegisterAnchorClient>()` guarded so a host override wins (FR-005/FR-006, R-005)
+- [X] T011 [US4] Write `tests/Sorcha.UI.Core.Tests/Verification/SharedVerifyRegistrationTests.cs` — build a `ServiceCollection`, call real `AddSorchaUserComponents(services, config)`; assert `IVerificationPresetCatalogue` → `DefaultPresetCatalogue`, `IVerificationTransport` → `NotConfiguredVerificationTransport`, `IRegisterAnchorClient` → `RegisterAnchorClient` all resolve; assert a host-registered transport override wins over the default stub (US4 scenarios 1–3, SC-002, R-006)
 
 **Checkpoint**: `dotnet test tests/Sorcha.UI.Core.Tests --filter "SharedVerifyRegistrationTests"` passes; all three seams resolve from a single `AddSorchaUserComponents` call; host override is proven.
 
@@ -70,11 +70,11 @@
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Verify/QuestionSelectionPanel.razor` — injects `IVerificationPresetCatalogue`; renders each `catalogue.GetAll()` preset as a MudBlazor selectable option (label = `preset.Label`); renders a custom-question affordance; raises `[Parameter] EventCallback<VerificationPreset> OnQuestionSelected` with the built/looked-up preset when operator picks a preset or confirms a valid custom question (FR-001, C1 contract)
+- [X] T012 [US1] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Verify/QuestionSelectionPanel.razor` — injects `IVerificationPresetCatalogue`; renders each `catalogue.GetAll()` preset as a MudBlazor selectable option (label = `preset.Label`); renders a custom-question affordance; raises `[Parameter] EventCallback<VerificationPreset> OnQuestionSelected` with the built/looked-up preset when operator picks a preset or confirms a valid custom question (FR-001, C1 contract)
 
 ### Tests for User Story 1
 
-- [ ] T013 [US1] Write `tests/Sorcha.UI.Core.Tests/Verification/QuestionSelectionPanelTests.cs` — mount `QuestionSelectionPanel` via `AddSorchaUserComponents` DI; assert three presets from a three-preset catalogue render as selectable options; assert the custom-question affordance renders; assert selecting a preset raises `OnQuestionSelected` with the correct `VerificationPreset` (US1 scenarios 1–3, FR-014, R-006)
+- [X] T013 [US1] Write `tests/Sorcha.UI.Core.Tests/Verification/QuestionSelectionPanelTests.cs` — mount `QuestionSelectionPanel` via `AddSorchaUserComponents` DI; assert three presets from a three-preset catalogue render as selectable options; assert the custom-question affordance renders; assert selecting a preset raises `OnQuestionSelected` with the correct `VerificationPreset` (US1 scenarios 1–3, FR-014, R-006)
 
 **Checkpoint**: `QuestionSelectionPanel` activates under shared DI and all US1 scenarios pass.
 
@@ -88,11 +88,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Verify/VerificationSessionQr.razor` — injects `IVerificationTransport`; accepts `[Parameter, EditorRequired] VerificationPreset Question` and `[Parameter] CancellationToken CancellationToken = default`; calls `StartSessionAsync` on initialisation; if `SessionId`/`QrDeepLink` is empty (stub sentinel) renders the not-configured state and does not poll; otherwise renders QR via QRCoder + deep-link, runs an async poll loop (linked CTS to the host token) until `IsComplete`; raises `[Parameter] EventCallback<string> OnCompleted` with `VpToken`; on terminal transport error shows error/retry state; implements `IAsyncDisposable` — cancels linked CTS, awaits the poll task swallowing `OperationCanceledException`, disposes CTS, guards post-disposal renders with a disposed flag (FR-002, FR-004, FR-007, C2 contract, R-003)
+- [X] T014 [US2] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Verify/VerificationSessionQr.razor` — injects `IVerificationTransport`; accepts `[Parameter, EditorRequired] VerificationPreset Question` and `[Parameter] CancellationToken CancellationToken = default`; calls `StartSessionAsync` on initialisation; if `SessionId`/`QrDeepLink` is empty (stub sentinel) renders the not-configured state and does not poll; otherwise renders QR via QRCoder + deep-link, runs an async poll loop (linked CTS to the host token) until `IsComplete`; raises `[Parameter] EventCallback<string> OnCompleted` with `VpToken`; on terminal transport error shows error/retry state; implements `IAsyncDisposable` — cancels linked CTS, awaits the poll task swallowing `OperationCanceledException`, disposes CTS, guards post-disposal renders with a disposed flag (FR-002, FR-004, FR-007, C2 contract, R-003)
 
 ### Tests for User Story 2
 
-- [ ] T015 [US2] Write `tests/Sorcha.UI.Core.Tests/Verification/VerificationSessionQrTests.cs` — four bUnit scenarios via `AddSorchaUserComponents` DI: (1) mount under default DI, assert activates without throwing and renders not-configured state; (2) override transport with a fake returning a known session + QR deep-link, assert QR/deep-link renders; (3) fake transport returns pending then complete, assert `OnCompleted` fires with `VpToken`; (4) dispose component mid-poll, assert loop is cancelled, `DisposeAsync` completes, no post-disposal render and no unobserved exception (US2 scenarios 1–5, FR-014, R-003/R-006)
+- [X] T015 [US2] Write `tests/Sorcha.UI.Core.Tests/Verification/VerificationSessionQrTests.cs` — four bUnit scenarios via `AddSorchaUserComponents` DI: (1) mount under default DI, assert activates without throwing and renders not-configured state; (2) override transport with a fake returning a known session + QR deep-link, assert QR/deep-link renders; (3) fake transport returns pending then complete, assert `OnCompleted` fires with `VpToken`; (4) dispose component mid-poll, assert loop is cancelled, `DisposeAsync` completes, no post-disposal render and no unobserved exception (US2 scenarios 1–5, FR-014, R-003/R-006)
 
 **Checkpoint**: `VerificationSessionQr` activates under default DI, all four bUnit scenarios pass, dispose-mid-poll is deterministically proven.
 
@@ -106,11 +106,11 @@
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Verify/VerdictTrailPanel.razor` — injects `IRegisterAnchorClient`; accepts `[Parameter, EditorRequired] VerdictViewModel Verdict` and optional `[Parameter] EventCallback OnAnchorChecked`; renders headline (`Verdict.Headline`, `Verdict.OverallPass`), issuer identity, portrait/age chips when present, disclosed vs withheld claim split (`Verdict.Disclosed`/`Verdict.Withheld`), and the three offline layers (LivePresentation, IssuerSignature, Revocation) from `Verdict.Layers` with no network call on first display; provides a layer-4 affordance button that calls `IRegisterAnchorClient.CheckAsync(Verdict.RegisterAnchorId, Verdict.CredentialId, ct)`, appends/replaces the RegisterAnchor `ValidationLayerResult` in `Verdict.Layers`, re-renders, and raises `OnAnchorChecked`; an `Unverified` layer-4 never flips `OverallPass` (FR-003, C3 contract, data-model layer state transition)
+- [X] T016 [US3] Create `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Verify/VerdictTrailPanel.razor` — injects `IRegisterAnchorClient`; accepts `[Parameter, EditorRequired] VerdictViewModel Verdict` and optional `[Parameter] EventCallback OnAnchorChecked`; renders headline (`Verdict.Headline`, `Verdict.OverallPass`), issuer identity, portrait/age chips when present, disclosed vs withheld claim split (`Verdict.Disclosed`/`Verdict.Withheld`), and the three offline layers (LivePresentation, IssuerSignature, Revocation) from `Verdict.Layers` with no network call on first display; provides a layer-4 affordance button that calls `IRegisterAnchorClient.CheckAsync(Verdict.RegisterAnchorId, Verdict.CredentialId, ct)`, appends/replaces the RegisterAnchor `ValidationLayerResult` in `Verdict.Layers`, re-renders, and raises `OnAnchorChecked`; an `Unverified` layer-4 never flips `OverallPass` (FR-003, C3 contract, data-model layer state transition)
 
 ### Tests for User Story 3
 
-- [ ] T017 [US3] Write `tests/Sorcha.UI.Core.Tests/Verification/VerdictTrailPanelTests.cs` — build a `VerdictViewModel` from a representative `VerificationOutcome` (three offline layers); mount `VerdictTrailPanel` via `AddSorchaUserComponents` DI; assert headline, disclosed/withheld split, and first three layers render; trigger the layer-4 affordance and assert the registered mock `IRegisterAnchorClient.CheckAsync` is called and the trail re-renders with the returned anchor status (US3 scenarios 1–3, FR-014, R-006)
+- [X] T017 [US3] Write `tests/Sorcha.UI.Core.Tests/Verification/VerdictTrailPanelTests.cs` — build a `VerdictViewModel` from a representative `VerificationOutcome` (three offline layers); mount `VerdictTrailPanel` via `AddSorchaUserComponents` DI; assert headline, disclosed/withheld split, and first three layers render; trigger the layer-4 affordance and assert the registered mock `IRegisterAnchorClient.CheckAsync` is called and the trail re-renders with the returned anchor status (US3 scenarios 1–3, FR-014, R-006)
 
 **Checkpoint**: All three components and all four bUnit test files (SharedVerifyRegistration, QuestionSelectionPanel, VerificationSessionQr, VerdictTrailPanel) are green.
 
@@ -120,11 +120,11 @@
 
 **Purpose**: XML doc pass, zero-warning build, full test gate, scope guard, and doc updates.
 
-- [ ] T018 [P] Add `/// <summary>` XML documentation to all new and relocated public members in `Sorcha.UI.Components.User` (`NotConfiguredVerificationTransport`, `VerdictViewModel` relocated factory, `QuestionSelectionPanel`, `VerificationSessionQr`, `VerdictTrailPanel`, DI extension additions) and `Sorcha.Verifier.Engine` (`IRegisterAnchorClient`, `RegisterAnchorClient`, `RegisterAnchorResult`) (FR-015, build-warning convention)
-- [ ] T019 Run `dotnet build -warnaserror` targeting at minimum `Sorcha.UI.Components.User` and `Sorcha.Verifier.Engine` — zero new XML-doc warnings (FR-015 gate, quickstart.md Build step)
-- [ ] T020 Run the full verification suite: `dotnet test tests/Sorcha.UI.Core.Tests --filter "FullyQualifiedName~Verification"` and `dotnet test tests/Sorcha.Verifier.Tests` — all pass (SC-001/SC-002/SC-004)
-- [ ] T021 [P] Run quickstart.md scope guard: `git diff --name-only origin/master...HEAD | grep -E "wallet/[Vv]erify|Sorcha.Verifier/(Pages|Components)"` — must return empty (SC-005; no host pages rewired, no legacy paths removed)
-- [ ] T022 [P] Update `docs/reference/development-status.md` and `.specify/MASTER-TASKS.md` to mark feature 163 complete; update feature notes to confirm B2-components wave shipped the three shared components and the DI fix
+- [X] T018 [P] Add `/// <summary>` XML documentation to all new and relocated public members in `Sorcha.UI.Components.User` (`NotConfiguredVerificationTransport`, `VerdictViewModel` relocated factory, `QuestionSelectionPanel`, `VerificationSessionQr`, `VerdictTrailPanel`, DI extension additions) and `Sorcha.Verifier.Engine` (`IRegisterAnchorClient`, `RegisterAnchorClient`, `RegisterAnchorResult`) (FR-015, build-warning convention)
+- [X] T019 Run `dotnet build -warnaserror` targeting at minimum `Sorcha.UI.Components.User` and `Sorcha.Verifier.Engine` — zero new XML-doc warnings (FR-015 gate, quickstart.md Build step)
+- [X] T020 Run the full verification suite: `dotnet test tests/Sorcha.UI.Core.Tests --filter "FullyQualifiedName~Verification"` and `dotnet test tests/Sorcha.Verifier.Tests` — all pass (SC-001/SC-002/SC-004)
+- [X] T021 [P] Run quickstart.md scope guard: `git diff --name-only origin/master...HEAD | grep -E "wallet/[Vv]erify|Sorcha.Verifier/(Pages|Components)"` — must return empty (SC-005; no host pages rewired, no legacy paths removed)
+- [X] T022 [P] Update `docs/reference/development-status.md` and `.specify/MASTER-TASKS.md` to mark feature 163 complete; update feature notes to confirm B2-components wave shipped the three shared components and the DI fix
 
 ---
 
