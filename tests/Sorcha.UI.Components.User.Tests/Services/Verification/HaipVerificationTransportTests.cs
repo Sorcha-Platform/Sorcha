@@ -108,9 +108,10 @@ public sealed class HaipVerificationTransportTests
     public async Task PollAsync_AfterHolderSubmits_ReturnsCompleteWithVpToken()
     {
         // Arrange — poll result after holder direct-posts a vp_token (C4)
+        // Server serialises PresentationRequestState.Verified via ToString() → "Verified"
         const string vpToken = "eyJhbGciOiJFUzI1NiJ9.fake-vp-token.signature";
         _clientMock.Setup(x => x.PollResultAsync("req-abc-123", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HaipPollResult("Complete", vpToken, null));
+            .ReturnsAsync(new HaipPollResult("Verified", vpToken, null));
 
         var sut = CreateSut();
 
@@ -128,7 +129,7 @@ public sealed class HaipVerificationTransportTests
         // Arrange
         const string vpToken = "eyJhbGciOiJFUzI1NiJ9.fake-vp-token.signature";
         _clientMock.Setup(x => x.PollResultAsync("req-123", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HaipPollResult("Complete", vpToken, null));
+            .ReturnsAsync(new HaipPollResult("Verified", vpToken, null));
 
         var sut = CreateSut();
 
@@ -197,20 +198,19 @@ public sealed class HaipVerificationTransportTests
     }
 
     [Theory]
-    [InlineData("pending", VerificationSessionState.Pending)]
-    [InlineData("PENDING", VerificationSessionState.Pending)]
-    [InlineData("complete", VerificationSessionState.Complete)]
-    [InlineData("COMPLETE", VerificationSessionState.Complete)]
-    [InlineData("Completed", VerificationSessionState.Complete)]
-    [InlineData("expired", VerificationSessionState.Expired)]
-    [InlineData("EXPIRED", VerificationSessionState.Expired)]
+    // Actual PresentationRequestState.ToString() values emitted by the HAIP server
+    [InlineData("Pending", VerificationSessionState.Pending)]
+    [InlineData("Submitted", VerificationSessionState.Pending)]  // still waiting for verdict
+    [InlineData("Verified", VerificationSessionState.Complete)]
+    [InlineData("Denied", VerificationSessionState.Error)]       // credential rejected
+    [InlineData("Expired", VerificationSessionState.Expired)]
+    [InlineData("Cancelled", VerificationSessionState.Expired)]
     [InlineData("unknown-state", VerificationSessionState.Error)]
-    [InlineData("failed", VerificationSessionState.Error)]
     public async Task PollAsync_StateMapping_MapsStateStringsCorrectly(string serverState, VerificationSessionState expectedState)
     {
         // Arrange
         _clientMock.Setup(x => x.PollResultAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HaipPollResult(serverState, serverState == "complete" || serverState == "COMPLETE" || serverState == "Completed" ? "vp" : null, null));
+            .ReturnsAsync(new HaipPollResult(serverState, serverState == "Verified" ? "vp" : null, null));
 
         var sut = CreateSut();
 

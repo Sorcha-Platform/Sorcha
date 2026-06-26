@@ -19,13 +19,16 @@ builder.Services.AddAuthorizationCore();
 builder.Services.AddMudServices();
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
-// Feature 163: shared user-facing component library seams.
-builder.Services.AddSorchaUserComponents(builder.Configuration);
-
 // Gateway base address for typed Sorcha service clients. The wallet PWA is
 // mounted at /wallet/ behind the API Gateway; gateway-relative routes start
 // at the host root so we strip the /wallet/ prefix off the BaseAddress.
 var hostRoot = new Uri(builder.HostEnvironment.BaseAddress).GetLeftPart(UriPartial.Authority) + "/";
+
+// Feature 163: shared user-facing component library seams. Pass hostRoot so the
+// IHaipVerifierClient typed HttpClient gets a BaseAddress — WASM IHttpClientFactory
+// clients have no BaseAddress by default, causing relative URI calls to throw.
+builder.Services.AddSorchaUserComponents(builder.Configuration, haipBaseUrl: hostRoot);
+
 builder.Services.AddCitizenWalletServices(hostRoot);
 
 // Feature 164 B3 (US2): override stub transport with the live HAIP transport + ephemeral identity.

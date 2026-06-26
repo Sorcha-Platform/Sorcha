@@ -25,9 +25,17 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The service collection to populate.</param>
     /// <param name="configuration">Application configuration; used to bind <c>VerifierPresets</c> options.</param>
+    /// <param name="haipBaseUrl">
+    /// Optional base URL for the HAIP verifier HTTP client. Required for WASM hosts where
+    /// <see cref="System.Net.Http.IHttpClientFactory"/>-created clients have no <c>BaseAddress</c>
+    /// — without it, relative URIs in <see cref="HaipVerifierClient"/> throw
+    /// <see cref="InvalidOperationException"/>. Server-side Aspire hosts may omit this and rely
+    /// on service-discovery configuration instead.
+    /// </param>
     public static IServiceCollection AddSorchaUserComponents(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        string? haipBaseUrl = null)
     {
         // Verify seams — Feature 163 (PR B2-components).
         // TryAdd* ensures a host override registered before this call wins.
@@ -37,9 +45,12 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IVerificationTransport, NotConfiguredVerificationTransport>();
 
         // Feature 164 B3 (US1): typed HTTP client for the HAIP verifier endpoints. Hosts that override
-        // IVerificationTransport with HaipVerificationTransport depend on this registration. Registered
-        // always so HaipVerificationTransport can be resolved without host-specific HttpClient setup.
-        services.AddHttpClient<IHaipVerifierClient, HaipVerifierClient>();
+        // IVerificationTransport with HaipVerificationTransport depend on this registration. WASM hosts
+        // must supply haipBaseUrl — IHttpClientFactory-created clients have no BaseAddress by default,
+        // so relative URIs would throw InvalidOperationException at runtime.
+        var haipClientBuilder = services.AddHttpClient<IHaipVerifierClient, HaipVerifierClient>();
+        if (!string.IsNullOrEmpty(haipBaseUrl))
+            haipClientBuilder.ConfigureHttpClient(c => c.BaseAddress = new Uri(haipBaseUrl));
 
         // Guard so a host that registered IRegisterAnchorClient before calling AddSorchaUserComponents
         // keeps its own registration rather than being shadowed by the typed HttpClient registration.

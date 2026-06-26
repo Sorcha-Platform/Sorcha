@@ -159,11 +159,11 @@ public sealed class HaipVerificationTransport : IVerificationTransport
         }
     }
 
-    private static VerificationSessionState MapState(string? state) => state?.ToUpperInvariant() switch
+    private static VerificationSessionState MapState(string? state) => state switch
     {
-        "PENDING" or null => VerificationSessionState.Pending,
-        "COMPLETE" or "COMPLETED" => VerificationSessionState.Complete,
-        "EXPIRED" => VerificationSessionState.Expired,
-        _ => VerificationSessionState.Error
+        null or "Pending" or "Submitted" => VerificationSessionState.Pending,
+        "Verified" => VerificationSessionState.Complete,
+        "Expired" or "Cancelled" => VerificationSessionState.Expired,
+        _ => VerificationSessionState.Error  // Denied + unknown states
     };
 }
