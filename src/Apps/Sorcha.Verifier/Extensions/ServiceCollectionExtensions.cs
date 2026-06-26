@@ -17,8 +17,9 @@ namespace Sorcha.Verifier.Extensions;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers verifier services — status list cache, presentation request
-    /// builder, session store, and the VP validator.
+    /// Registers verifier services — status list cache, VP validator, and anchor client.
+    /// The legacy <c>IPresentationRequestBuilder</c> / <c>IVerifierSessionStore</c> are retired
+    /// in Feature 164 B3 (US4); the shared HAIP transport replaces them.
     /// </summary>
     /// <param name="services">Service collection.</param>
     /// <param name="configuration">Application configuration. Required for Feature 120
@@ -29,8 +30,6 @@ public static class ServiceCollectionExtensions
         IConfiguration? configuration = null)
     {
         services.TryAddSingleton(TimeProvider.System);
-        services.AddSingleton<IVerifierSessionStore, InMemoryVerifierSessionStore>();
-        services.AddSingleton<IPresentationRequestBuilder, PresentationRequestBuilder>();
 
         // Feature 138 US1 — verifier trust-rejection metrics + clock-skew tolerance.
         services.AddSingleton<FederationVerifierMetrics>();
@@ -108,8 +107,6 @@ public static class ServiceCollectionExtensions
                 sp.GetService<FederationVerifierMetrics>(),
                 clockSkew,
                 kbJwtMaxLifetime));
-
-        services.AddSingleton<QrRenderer>();
 
         // Feature 155 — layer-4 register-anchor cross-check. Calls the public anchor-read endpoint on
         // the Register Service (base address from RegisterService:PublicBaseUrl) and re-verifies the

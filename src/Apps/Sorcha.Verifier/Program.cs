@@ -3,9 +3,11 @@
 
 using MudBlazor.Services;
 using Sorcha.UI.Components.User.Extensions;
+using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.Verifier.Components;
 using Sorcha.Verifier.Endpoints;
 using Sorcha.Verifier.Extensions;
+using Sorcha.Verifier.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +28,12 @@ builder.Services.AddCitizenVerifier(builder.Configuration);
 // by AddCitizenVerifier above so AddSorchaUserComponents' guard skips re-registration.
 builder.Services.AddSorchaUserComponents(builder.Configuration);
 
+// Feature 164 B3 (US3): override stub transport with the live HAIP transport + stable org identity.
+// These registrations appear AFTER AddSorchaUserComponents (which uses TryAdd) so the DI overrides
+// win (R4). StableOrgVerifierIdentityProvider reads Verifier:OrgId from appsettings.
+builder.Services.AddScoped<IVerifierIdentityProvider, StableOrgVerifierIdentityProvider>();
+builder.Services.AddScoped<IVerificationTransport, HaipVerificationTransport>();
+
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
@@ -39,7 +47,6 @@ if (!app.Environment.IsDevelopment())
 app.UseStaticFiles();
 app.UseAntiforgery();
 
-app.MapPresentationResponseEndpoints();
 app.MapDemoMintEndpoint();
 
 app.MapRazorComponents<App>()
