@@ -48,4 +48,11 @@ public static class TokenClaimConstants
     /// Token type value for user tokens
     /// </summary>
     public const string TokenTypeUser = "user";
+
+    /// <summary>
+    /// Cross-org stable identifier for the platform user (PlatformUser.Id).
+    /// Present on every human-tier token (consumer and platform) since Feature 136.
+    /// Use this constant everywhere this claim name is referenced — never a bare string literal.
+    /// </summary>
+    public const string PlatformUserId = "platform_user_id";
 }
