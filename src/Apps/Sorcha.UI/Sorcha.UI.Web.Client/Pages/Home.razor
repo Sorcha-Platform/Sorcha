@@ -9,6 +9,7 @@
 @implements IDisposable
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using Sorcha.UI.Components.User.Components.Onboarding
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Models.Dashboard
 @using Sorcha.UI.Core.Services
@@ -25,7 +26,7 @@
 
 <PageTitle>@Loc.T("dashboard.pageTitle")</PageTitle>
 
-@if (!_hasDefaultWallet && !_isLoading)
+@if (!_hasDefaultWallet && !_isLoading && !_showProfileStep)
 {
     <MudText Typo="Typo.h4" Class="mb-4">@Loc.T("dashboard.welcome")</MudText>
     <MudAlert Severity="Severity.Info" Class="mb-4" Icon="@Icons.Material.Filled.AccountBalanceWallet">
@@ -33,10 +34,19 @@
             @Loc.T("dashboard.wizard.walletRequired")
         </MudText>
     </MudAlert>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="wallets/create?wizard=true"
+    @* Onboarding entry: pass words=24 and a default name so the wallet wizard seeds sensible
+       defaults (FR-006). Standalone wallet creation at wallets/create retains its own defaults
+       (FR-009). The user can change both before confirming (Decision 3). *@
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               Href="@($"wallets/create?wizard=true&words=24&name={Uri.EscapeDataString(_displayName)}")"
                StartIcon="@Icons.Material.Filled.Add" Size="Size.Large">
         @Loc.T("wallet.create")
     </MudButton>
+}
+else if (_hasDefaultWallet && _showProfileStep && !_isLoading)
+{
+    @* Profile-capture step shown after wallet is provisioned (Decision 2). *@
+    <CompleteProfileStep OnContinue="@OnProfileStepContinue" OnSkip="@OnProfileStepSkip" />
 }
 else
 {
@@ -262,8 +272,13 @@ else
     private string _displayName = string.Empty;
     private string _platformUserId = string.Empty;
     private string _scope = "org"; // Feature 131 / UX-005 — default for everyone
+    private bool _showProfileStep;
     private System.Timers.Timer? _refreshTimer;
     private bool _disposed;
+
+    // Feature 157 US1: ?onboarding=true is set by CreateWallet.razor after first wallet provisioning.
+    [SupplyParameterFromQuery(Name = "onboarding")]
+    public bool _onboarding { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -291,6 +306,12 @@ else
         var wallets = await WalletApi.GetWalletsAsync();
         var defaultWallet = await WalletPreferences.GetSmartDefaultAsync(wallets);
         _hasDefaultWallet = defaultWallet is not null;
+        // Feature 157 US1: show the profile-capture step when navigated back from the onboarding
+        // wallet wizard (?onboarding=true). The wallet must be provisioned first (Decision 2).
+        if (_hasDefaultWallet && _onboarding)
+        {
+            _showProfileStep = true;
+        }
 
         if (_canSeeAdminDashboard)
         {
@@ -385,6 +406,18 @@ else
         _refreshTimer?.Stop();
         _refreshTimer?.Dispose();
         Loc.OnLanguageChanged -= OnLanguageChanged;
+    }
+
+    private void OnProfileStepContinue()
+    {
+        _showProfileStep = false;
+        Navigation.NavigateTo("/", forceLoad: false);
+    }
+
+    private void OnProfileStepSkip()
+    {
+        _showProfileStep = false;
+        Navigation.NavigateTo("/", forceLoad: false);
     }
 
     private static string GetDisplayName(ClaimsPrincipal user)

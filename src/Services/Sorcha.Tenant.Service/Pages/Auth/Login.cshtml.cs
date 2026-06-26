@@ -290,7 +290,7 @@ public class LoginModel : PageModel
         // Spec 136: 2FA completion mints the destination-derived tier, downgraded to entitlement
         // (never an explicit request here, so a non-entitled preference simply falls to Consumer).
         var mintTier = TierResolver.ResolvePreference(ResolveRequestedTier(), isExplicit: false, targetUser.Roles).Tier;
-        var tokens = await _tokenService.GenerateUserTokenAsync(targetUser, organization, targetUser.PlatformUserId, mintTier, ct);
+        var tokens = await _tokenService.GenerateUserTokenAsync(targetUser, organization, targetUser.PlatformUserId, mintTier, cancellationToken: ct);
         targetUser.LastLoginAt = DateTimeOffset.UtcNow;
         await _identityRepository.UpdateUserAsync(targetUser, ct);
 
