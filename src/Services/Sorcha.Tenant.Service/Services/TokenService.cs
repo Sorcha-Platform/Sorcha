@@ -108,12 +108,8 @@ public class TokenService : ITokenService
             new(JwtRegisteredClaimNames.Jti, accessTokenJti),
             new("name", user.DisplayName),
             new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser),
-<<<<<<< HEAD
-            new(TokenClaimConstants.PlatformUserId, platformUserId.ToString())
-=======
-            new("platform_user_id", platformUserId.ToString()),
+            new(TokenClaimConstants.PlatformUserId, platformUserId.ToString()),
             new("email_verified", emailVerified ? "true" : "false")
->>>>>>> origin/master
         };
 
         // Both human tiers carry organisation context (org_id/org_name) — a citizen's home is the
