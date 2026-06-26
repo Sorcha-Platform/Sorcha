@@ -4,6 +4,7 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
+using Sorcha.UI.Components.User.Extensions;
 using Sorcha.Wallet.Pwa;
 using Sorcha.Wallet.Pwa.Extensions;
 
@@ -15,6 +16,9 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddAuthorizationCore();
 builder.Services.AddMudServices();
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+
+// Feature 163: shared user-facing component library seams.
+builder.Services.AddSorchaUserComponents(builder.Configuration);
 
 // Gateway base address for typed Sorcha service clients. The wallet PWA is
 // mounted at /wallet/ behind the API Gateway; gateway-relative routes start

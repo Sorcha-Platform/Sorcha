@@ -175,7 +175,7 @@
                 RequiredVct: _session.RequiredVct,
                 RequiredClaims: _session.RequiredClaims,
                 OptionalClaims: _session.OptionalClaims,
-                KnownCredentialClaims: _session.RequiredClaims);
+                KnownCredentialClaims: [.._session.RequiredClaims, .._session.OptionalClaims]);
             _vm = VerdictViewModel.From(preset, _session.Outcome);
         }
     }

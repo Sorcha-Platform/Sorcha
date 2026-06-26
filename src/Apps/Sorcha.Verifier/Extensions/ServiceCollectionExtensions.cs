@@ -8,8 +8,6 @@ using Sorcha.Verifier.Engine;
 using Sorcha.Verifier.Services;
 using Sorcha.ServiceClients.Http.Extensions;
 using Sorcha.ServiceDefaults;
-using Sorcha.Verifier.Engine;
-
 
 namespace Sorcha.Verifier.Extensions;
 
