@@ -6,8 +6,10 @@ using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Sorcha.CitizenWallet.Abstractions.Models;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Inbox;
 using Sorcha.ServiceClients.PlatformUserDevice;
 using Sorcha.ServiceDefaults;
 using Sorcha.Wallet.Core.Domain;
@@ -187,7 +189,7 @@ public static class CitizenWalletEndpoints
         ICitizenPresentationStore store,
         CancellationToken ct)
     {
-        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
         if (platformUserId is null) return Results.Unauthorized();
 
         var entries = await store.ListAsync(platformUserId.Value, ct);
@@ -200,7 +202,7 @@ public static class CitizenWalletEndpoints
         ICitizenPresentationStore store,
         CancellationToken ct)
     {
-        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
         if (platformUserId is null) return Results.Unauthorized();
 
         // Idempotent + cross-user-indistinguishable: always 204 regardless of whether
@@ -223,7 +225,7 @@ public static class CitizenWalletEndpoints
             return Results.ValidationProblem(validation.ToDictionary());
         }
 
-        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
         if (platformUserId is null) return Results.Unauthorized();
 
         var uid = platformUserId.Value;
@@ -260,7 +262,7 @@ public static class CitizenWalletEndpoints
         IPlatformUserDeviceClient deviceClient,
         CancellationToken ct)
     {
-        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
         if (platformUserId is null) return Results.Unauthorized();
 
         var devices = await deviceClient.ListAsync(platformUserId.Value, ct);
@@ -286,7 +288,7 @@ public static class CitizenWalletEndpoints
         IPlatformUserDeviceClient deviceClient,
         CancellationToken ct)
     {
-        var (platformUserId, _, _) = ResolveCitizenContext(context.User);
+        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
         if (platformUserId is null) return Results.Unauthorized();
 
         if (string.IsNullOrWhiteSpace(request.Label) || request.Label.Length > 120)
@@ -310,7 +312,8 @@ public static class CitizenWalletEndpoints
         ILogger<Program> logger,
         CancellationToken ct)
     {
-        var (platformUserId, _, organizationId) = ResolveCitizenContext(context.User);
+        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
+        Guid? organizationId = Guid.TryParse(context.User.FindFirstValue(TokenClaimConstants.OrgId), out var oid) ? oid : null;
         if (platformUserId is null || organizationId is null)
         {
             return Results.Unauthorized();
@@ -363,7 +366,7 @@ public static class CitizenWalletEndpoints
         IWalletRepository walletRepository,
         CancellationToken ct)
     {
-        var (platformUserId, citizenWallet, organizationId) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
+        var (platformUserId, citizenWallet, organizationId) = await ResolveCitizenContextAsync(context, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null || organizationId is null)
         {
             return Results.Unauthorized();
@@ -392,7 +395,7 @@ public static class CitizenWalletEndpoints
         IWalletRepository walletRepository,
         CancellationToken ct)
     {
-        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
+        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
 
         var holderKeyId = await holderKeys.GetHolderJwkThumbprintAsync(citizenWallet, ct);
@@ -405,7 +408,7 @@ public static class CitizenWalletEndpoints
         IWalletRepository walletRepository,
         CancellationToken ct)
     {
-        var (_, walletAddress, _) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
+        var (_, walletAddress, _) = await ResolveCitizenContextAsync(context, walletRepository, ct);
         return Results.Ok(new WalletExistsResponse { HasWallet = walletAddress is not null });
     }
 
@@ -416,7 +419,7 @@ public static class CitizenWalletEndpoints
         ILogger<Program> logger,
         CancellationToken ct)
     {
-        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
+        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
 
         try
@@ -453,7 +456,7 @@ public static class CitizenWalletEndpoints
         IWalletRepository walletRepository,
         CancellationToken ct)
     {
-        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
+        var (platformUserId, citizenWallet, _) = await ResolveCitizenContextAsync(context, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null) return Results.Unauthorized();
 
         var holderKeyId = await holderKeys.GetHolderJwkThumbprintAsync(citizenWallet, ct);
@@ -492,7 +495,7 @@ public static class CitizenWalletEndpoints
             return Results.ValidationProblem(validation.ToDictionary());
         }
 
-        var (platformUserId, citizenWallet, organizationId) = await ResolveCitizenContextAsync(context.User, walletRepository, ct);
+        var (platformUserId, citizenWallet, organizationId) = await ResolveCitizenContextAsync(context, walletRepository, ct);
         if (platformUserId is null || citizenWallet is null || organizationId is null)
         {
             return Results.Unauthorized();
@@ -586,14 +589,96 @@ public static class CitizenWalletEndpoints
 
     private static (Guid? platformUserId, string? walletAddress, Guid? organizationId) ResolveCitizenContext(ClaimsPrincipal user)
     {
-        Guid? platformUserId = Guid.TryParse(
-            user.FindFirstValue("platform_user_id") ?? user.FindFirstValue(ClaimTypes.NameIdentifier),
-            out var pid) ? pid : null;
+        // Only reads the platform_user_id claim — no sub fallback here (sub is the org-scoped
+        // UserIdentity.Id, not the cross-org PlatformUser.Id). Callers that need registry-backed
+        // recovery for legacy tokens must use ResolvePlatformUserIdAsync instead.
+        Guid? platformUserId = Guid.TryParse(user.FindFirstValue(TokenClaimConstants.PlatformUserId), out var pid) ? pid : null;
 
         var walletAddress = user.FindFirstValue("wallet_address");
         if (string.IsNullOrWhiteSpace(walletAddress)) walletAddress = null;
 
         Guid? organizationId = Guid.TryParse(user.FindFirstValue(TokenClaimConstants.OrgId), out var oid) ? oid : null;
+
+        return (platformUserId, walletAddress, organizationId);
+    }
+
+    /// <summary>
+    /// Resolves the citizen's stable platform identity from the bearer token using three-step
+    /// precedence (Feature 165): (1) <c>platform_user_id</c> claim; (2) <c>sub</c> →
+    /// identity-registry lookup via <see cref="IPlatformInboxClient.ResolvePlatformUserIdAsync"/>
+    /// (legacy/degraded-token recovery); (3) <c>null</c> — unidentifiable principal.
+    /// Emits a structured-log breadcrumb on step 2 so degraded traffic is observable.
+    /// </summary>
+    private static async Task<Guid?> ResolvePlatformUserIdAsync(HttpContext context, CancellationToken ct)
+    {
+        // Step 1: platform_user_id claim (common path — no I/O)
+        if (Guid.TryParse(context.User.FindFirstValue(TokenClaimConstants.PlatformUserId), out var pid) && pid != Guid.Empty)
+            return pid;
+
+        // Step 2: sub → identity registry (legacy/degraded-token recovery)
+        var sub = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User.FindFirstValue("sub");
+        if (!Guid.TryParse(sub, out var userIdentityId)) return null;
+
+        var inboxClient = context.RequestServices.GetRequiredService<IPlatformInboxClient>();
+        var recovered = await inboxClient.ResolvePlatformUserIdAsync(userIdentityId, ct);
+
+        if (recovered.HasValue)
+        {
+            context.RequestServices.GetRequiredService<ILogger<Program>>()
+                .LogDebug(
+                    "Legacy consumer token lacked {Claim}; recovered PlatformUserId {PlatformUserId} for sub {Sub} via identity registry",
+                    TokenClaimConstants.PlatformUserId, recovered.Value, userIdentityId);
+        }
+
+        return recovered;
+    }
+
+    /// <summary>
+    /// Resolves the citizen context, falling back to a wallet-by-owner lookup when the JWT carries
+    /// no <c>wallet_address</c> claim. Feature 136 strips <c>wallet_address</c> from consumer-tier
+    /// tokens (wallet binding is a platform-privilege marker), but every citizen-wallet surface here
+    /// is consumer-tier — so without this fallback the wallet address is never resolvable for a real
+    /// citizen. The citizen's wallet is owned by their identity (<see cref="ClaimTypes.NameIdentifier"/>
+    /// = the <c>sub</c> claim, the same owner <c>CreateWallet</c> stamps), scoped to the token's
+    /// tenant (<c>"default"</c> for public-org citizens). The active wallet (oldest first) is chosen.
+    /// Uses the hardened three-step platform-user-id resolution (Feature 165).
+    /// </summary>
+    private static async Task<(Guid? platformUserId, string? walletAddress, Guid? organizationId)> ResolveCitizenContextAsync(
+        HttpContext context, IWalletRepository walletRepository, CancellationToken ct)
+    {
+        var platformUserId = await ResolvePlatformUserIdAsync(context, ct);
+
+        var walletAddress = context.User.FindFirstValue("wallet_address");
+        if (string.IsNullOrWhiteSpace(walletAddress)) walletAddress = null;
+
+        Guid? organizationId = Guid.TryParse(context.User.FindFirstValue(TokenClaimConstants.OrgId), out var oid) ? oid : null;
+
+        if (string.IsNullOrWhiteSpace(walletAddress))
+        {
+            // Wallet ownership keying alignment (cleanup of the Smell-1 architectural
+            // inconsistency): post-#878 WalletEndpoints.GetCurrentUser prefers
+            // platform_user_id when minting Wallets.Owner, so new citizen wallets land
+            // with Owner=PlatformUser.Id. Legacy wallets created pre-#878 still carry
+            // Owner=UserIdentity.Id (= sub). Try the new key first, then fall back to
+            // the legacy key — both eras coexist forever for any wallet that was on
+            // disk before the cutover.
+            var platformOwner = platformUserId?.ToString();
+            var legacyOwner = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User.FindFirstValue("sub");
+            var tenant = context.User.FindFirstValue("tenant") ?? "default";
+
+            Sorcha.Wallet.Core.Domain.Entities.Wallet? chosen = null;
+            foreach (var candidate in new[] { platformOwner, legacyOwner })
+            {
+                if (string.IsNullOrWhiteSpace(candidate)) continue;
+                var owned = await walletRepository.GetByOwnerAsync(candidate, tenant, ct);
+                chosen = owned
+                    .OrderByDescending(w => w.Status == WalletStatus.Active)
+                    .ThenBy(w => w.CreatedAt)
+                    .FirstOrDefault();
+                if (chosen is not null) break;
+            }
+            walletAddress = chosen?.Address;
+        }
 
         return (platformUserId, walletAddress, organizationId);
     }
@@ -614,13 +699,6 @@ public static class CitizenWalletEndpoints
 
         if (string.IsNullOrWhiteSpace(walletAddress))
         {
-            // Wallet ownership keying alignment (cleanup of the Smell-1 architectural
-            // inconsistency): post-#878 WalletEndpoints.GetCurrentUser prefers
-            // platform_user_id when minting Wallets.Owner, so new citizen wallets land
-            // with Owner=PlatformUser.Id. Legacy wallets created pre-#878 still carry
-            // Owner=UserIdentity.Id (= sub). Try the new key first, then fall back to
-            // the legacy key — both eras coexist forever for any wallet that was on
-            // disk before the cutover.
             var platformOwner = platformUserId?.ToString();
             var legacyOwner = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
             var tenant = user.FindFirstValue("tenant") ?? "default";

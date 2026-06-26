@@ -108,7 +108,7 @@ public class TokenService : ITokenService
             new(JwtRegisteredClaimNames.Jti, accessTokenJti),
             new("name", user.DisplayName),
             new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser),
-            new("platform_user_id", platformUserId.ToString()),
+            new(TokenClaimConstants.PlatformUserId, platformUserId.ToString()),
             new("email_verified", emailVerified ? "true" : "false")
         };
 
@@ -320,7 +320,7 @@ public class TokenService : ITokenService
 
             // platform_user_id is carried on every human tier. For refresh tokens minted before this
             // claim was persisted, fall back to the UserIdentity row (canonical source).
-            var platformUserId = principal.FindFirst("platform_user_id")?.Value;
+            var platformUserId = principal.FindFirst(TokenClaimConstants.PlatformUserId)?.Value;
             if (string.IsNullOrEmpty(platformUserId) && user.PlatformUserId != Guid.Empty)
             {
                 platformUserId = user.PlatformUserId.ToString();
@@ -330,7 +330,7 @@ public class TokenService : ITokenService
             }
             if (!string.IsNullOrEmpty(platformUserId))
             {
-                claims.Add(new Claim("platform_user_id", platformUserId));
+                claims.Add(new Claim(TokenClaimConstants.PlatformUserId, platformUserId));
             }
 
             // Org context (org_id/org_name) is re-minted for both human tiers (a consumer's home org).
