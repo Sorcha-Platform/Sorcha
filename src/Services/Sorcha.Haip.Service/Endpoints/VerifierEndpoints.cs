@@ -22,17 +22,21 @@ public static class VerifierEndpoints
     /// </summary>
     public static void MapVerifierEndpoints(this WebApplication app)
     {
-        // Internal — Blueprint Service creates presentation requests
+        // Authenticated — Blueprint Service, citizen wallet PWA (consumer tier), and desk verifier
+        // (platform/org tier) all create presentation requests (Feature 164 B3: both human-verifier
+        // callers are accepted alongside Blueprint's service-to-service path).
         app.MapPost("/api/v1/verifier/requests", CreatePresentationRequest)
             .WithName("CreatePresentationRequest")
             .WithTags("HAIP Verifier")
-            .WithSummary("Create a Presentation Request (service-to-service)")
+            .WithSummary("Create a Presentation Request")
             .WithDescription(
                 "Creates an OpenID4VP Presentation Request for an external HAIP wallet. " +
-                "Returns the Authorization Request URI for QR code rendering.")
+                "Returns the Authorization Request URI for QR code rendering. " +
+                "Accepted from any authenticated caller: Blueprint Service (service tier), " +
+                "citizen wallet PWA (consumer tier), or desk verifier (platform/org tier).")
             .Produces<object>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
-            .RequireAuthorization(AuthorizationPolicies.RequireService); // SEC-013
+            .RequireAuthorization(); // Feature 164 B3: any authenticated caller (FR-008)
 
         // Public — wallet fetches the signed Request Object
         app.MapGet("/api/v1/verifier/requests/{requestId:guid}/request-object", GetRequestObject)
@@ -61,19 +65,21 @@ public static class VerifierEndpoints
             .AllowAnonymous()
             .DisableAntiforgery(); // OID4VP direct_post — wallet-to-verifier, no browser CSRF
 
-        // Internal — Blueprint Service polls for result
+        // Authenticated — Blueprint Service, citizen wallet PWA (consumer tier), and desk verifier
+        // (platform/org tier) all poll for results (Feature 164 B3: both human-verifier callers accepted).
         app.MapGet("/api/v1/verifier/requests/{requestId:guid}/result", GetVerificationResult)
             .WithName("GetVerificationResult")
             .WithTags("HAIP Verifier")
-            .WithSummary("Get verification result (service-to-service)")
+            .WithSummary("Get verification result")
             .WithDescription(
                 "Returns the verification outcome for a presentation request once the wallet has " +
                 "submitted its vp_token via direct_post — the verified claims, accepted/rejected state, " +
                 "and any failure reasons. Blueprint Service polls this to gate the next workflow step on " +
-                "successful presentation.")
+                "successful presentation. Also consumed by the citizen wallet PWA and desk verifier " +
+                "to drive the shared client-side verdict (Feature 164 B3).")
             .Produces<VerificationResult>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
-            .RequireAuthorization(AuthorizationPolicies.RequireService); // SEC-013
+            .RequireAuthorization(); // Feature 164 B3: any authenticated caller (FR-008)
     }
 
     private static async Task<IResult> CreatePresentationRequest(

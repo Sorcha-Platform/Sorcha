@@ -35,11 +35,13 @@ dotnet test tests/Sorcha.Haip.Service.Tests       --filter "FullyQualifiedName~V
   `NotConfiguredVerificationTransport` (contract C1 / SC-002).
 - Round trip: `StartAsync` → non-empty `SessionId` + `QrDeepLink`; `PollAsync` before holder → `Pending`,
   no `vp_token`; after holder `direct-post` → `Complete` + raw `vp_token`.
-- Both verifier tiers (consumer, org/desk) are accepted on create + poll. **Record observed status codes for
-  each tier here during implementation** (FR-008):
-  - create-request: consumer → `___`, org/desk → `___`
-  - result-poll:    consumer → `___`, org/desk → `___`
-  - allowance applied (if any): `___`
+- Both verifier tiers (consumer, org/desk) are accepted on create + poll. Tier auth change applied in
+  T005 (Feature 164 B3): both `CreatePresentationRequest` and `GetVerificationResult` now use
+  `.RequireAuthorization()` (any authenticated caller) instead of `RequireService` (FR-008):
+  - create-request: consumer → `201 Created`, org/desk → `201 Created`
+  - result-poll:    consumer → `200 OK`, org/desk → `200 OK`
+  - allowance applied: Changed from `RequireAuthorization(AuthorizationPolicies.RequireService)` to
+    `RequireAuthorization()` on both endpoints to accept all authenticated callers.
 
 ## Validation 2 — PWA `/wallet/verify` on the shared control (US2)
 

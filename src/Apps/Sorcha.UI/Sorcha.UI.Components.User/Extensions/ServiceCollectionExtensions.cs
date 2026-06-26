@@ -36,6 +36,11 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton<IVerificationTransport, NotConfiguredVerificationTransport>();
 
+        // Feature 164 B3 (US1): typed HTTP client for the HAIP verifier endpoints. Hosts that override
+        // IVerificationTransport with HaipVerificationTransport depend on this registration. Registered
+        // always so HaipVerificationTransport can be resolved without host-specific HttpClient setup.
+        services.AddHttpClient<IHaipVerifierClient, HaipVerifierClient>();
+
         // Guard so a host that registered IRegisterAnchorClient before calling AddSorchaUserComponents
         // keeps its own registration rather than being shadowed by the typed HttpClient registration.
         if (services.All(d => d.ServiceType != typeof(IRegisterAnchorClient)))
