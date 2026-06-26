@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\Common\Sorcha.Verifier.Engine\Sorcha.Verifier.Engine.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
     <ProjectReference Include="..\..\..\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />

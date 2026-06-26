@@ -13,7 +13,7 @@
 *@
 @namespace Sorcha.UI.Components.User.Components.History
 
-@if (Entries is { Count: > 0 })
+@if (Entries?.Count > 0)
 {
     <MudList T="HistoryFeedEntry" Dense="true" data-testid="transaction-history-feed">
         @foreach (var entry in Entries)
@@ -21,7 +21,7 @@
             <MudListItem T="HistoryFeedEntry" Value="@entry"
                          Icon="@IconForKind(entry.Kind)"
                          OnClick="@(async () => await Activate(entry))"
-                         data-testid="@($"history-entry-{entry.Id}")">
+                         data-testid='@($"history-entry-{entry.Id}")'> 
                 <MudStack Spacing="0">
                     <MudText Typo="Typo.body1">@entry.Title</MudText>
                     @if (!string.IsNullOrEmpty(entry.Subtitle))

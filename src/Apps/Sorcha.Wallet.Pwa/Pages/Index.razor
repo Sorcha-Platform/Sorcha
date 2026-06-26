@@ -35,7 +35,7 @@
    *outside* MudContainer so its full-screen overlay covers Home cleanly.
    Eligibility check: a credential is visible AND WelcomedAt is null AND
    the takeover hasn't been dismissed in this render cycle. *@
-@if (_showWelcomeTakeover && _credentials is { Count: > 0 })
+@if (_showWelcomeTakeover && _credentials?.Count > 0)
 {
     <WelcomeTakeover Credential="@_credentials[0]"
                      OnDismiss="HandleWelcomeDismissedAsync" />
@@ -43,7 +43,7 @@
 
 @{
     var dark = Shell?.IsDark ?? false;
-    var hasCreds = _credentials is { Count: > 0 };
+    var hasCreds = _credentials?.Count > 0;
     var credCount = _credentials?.Count ?? 0;
 }
 
@@ -465,7 +465,7 @@
         if (!_flagsLoaded) return;
 
         var shouldShow = _flags?.WelcomedAt is null
-                         && _credentials is { Count: > 0 };
+                         && _credentials?.Count > 0;
 
         if (shouldShow && !_showWelcomeTakeover)
         {

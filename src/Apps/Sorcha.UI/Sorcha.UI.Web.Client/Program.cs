@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
 using Sorcha.Blueprint.Schemas.Client;
+using Sorcha.UI.Components.User.Extensions;
 using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
 using Sorcha.UI.Core.Services.User.Enrolment;
@@ -28,6 +29,9 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 // Register core services (authentication, encryption, configuration) with base address
 builder.Services.AddCoreServices(builder.HostEnvironment.BaseAddress);
+
+// Feature 163: shared user-facing component library seams.
+builder.Services.AddSorchaUserComponents(builder.Configuration);
 
 // Register authorization
 builder.Services.AddAuthorizationCore();

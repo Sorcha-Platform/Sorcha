@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.UI.Components.User.Models.Verification;
 using Sorcha.Verifier.Engine.Models;
 
-namespace Sorcha.Verifier.Services;
+namespace Sorcha.UI.Components.User.Models.Verification;
 
 /// <summary>
-/// View model for the verdict screen (Feature 155). Maps a <see cref="VerificationOutcome"/> + the
-/// originating session into the headline verdict, the issuer identity, the disclosed/withheld split,
-/// and the validation-trail rows. The RegisterAnchor layer is appended later by the page once the
-/// anchor cross-check runs.
+/// View model for the verdict screen (Feature 163). Maps a <see cref="VerificationOutcome"/> + the
+/// originating preset question into the headline verdict, the issuer identity, the disclosed/withheld
+/// split, and the validation-trail rows. The RegisterAnchor layer is appended on demand by the
+/// <c>VerdictTrailPanel</c> component after the operator triggers the layer-4 check.
 /// </summary>
 public sealed class VerdictViewModel
 {
@@ -37,7 +38,7 @@ public sealed class VerdictViewModel
     /// <summary>Known credential claims that were NOT disclosed — the visible proof of minimal disclosure.</summary>
     public IReadOnlyList<string> Withheld { get; private init; } = [];
 
-    /// <summary>The validation-trail rows (mutable so the page can append/replace the RegisterAnchor layer).</summary>
+    /// <summary>The validation-trail rows (mutable so the component can append/replace the RegisterAnchor layer).</summary>
     public List<ValidationLayerResult> Layers { get; } = [];
 
     /// <summary>Rejection reasons (shown on a fail verdict).</summary>
@@ -53,8 +54,12 @@ public sealed class VerdictViewModel
     private const string AgeClaim = "age_over_18";
     private const string AnchorClaim = "registerAnchor";
 
-    /// <summary>Build the view model from a completed outcome + its session.</summary>
-    public static VerdictViewModel From(VerifierSession session, VerificationOutcome outcome)
+    /// <summary>
+    /// Build the view model from a completed <paramref name="outcome"/> and the chosen
+    /// <paramref name="question"/> preset. Known credential claims and required VCT come from the
+    /// preset so the verdict can be computed client-side without a server session store (R-001).
+    /// </summary>
+    public static VerdictViewModel From(VerificationPreset question, VerificationOutcome outcome)
     {
         var disclosed = outcome.DisclosedClaims;
         var issuerDid = TryGetIssuerDid(outcome);
@@ -62,8 +67,9 @@ public sealed class VerdictViewModel
         bool? ageOver18 = disclosed.TryGetValue(AgeClaim, out var a) ? ToBool(a) : null;
         var portrait = disclosed.TryGetValue(PortraitClaim, out var p) ? p?.ToString() : null;
 
-        var preset = QuestionPresets.All.FirstOrDefault(x => x.RequiredVct == session.RequiredVct);
-        var known = preset?.KnownCredentialClaims ?? session.RequiredClaims;
+        var known = question.KnownCredentialClaims.Count > 0
+            ? question.KnownCredentialClaims
+            : (IReadOnlyList<string>)question.RequiredClaims;
         var withheld = known.Where(c => !disclosed.ContainsKey(c)).ToList();
 
         var disclosedPairs = disclosed
@@ -86,7 +92,7 @@ public sealed class VerdictViewModel
             OverallPass = overallPass,
             Headline = headline,
             IssuerDid = issuerDid,
-            IssuerDisplayName = issuerDid, // best-effort; a friendly name would need org resolution
+            IssuerDisplayName = issuerDid,
             PortraitBase64 = portrait,
             AgeOver18 = ageOver18,
             Disclosed = disclosedPairs,
@@ -107,8 +113,6 @@ public sealed class VerdictViewModel
 
     private static string? TryGetCredentialId(VerificationOutcome outcome)
     {
-        // The credential's own id (jti) is surfaced by the validator on the IssuerSignature layer
-        // detail when available; fall back to a disclosed "jti"/"id" claim.
         var issuerLayer = outcome.Layers.FirstOrDefault(l => l.Layer == ValidationLayer.IssuerSignature);
         if (issuerLayer is not null && issuerLayer.Detail.TryGetValue("jti", out var jti) && !string.IsNullOrWhiteSpace(jti))
         {
