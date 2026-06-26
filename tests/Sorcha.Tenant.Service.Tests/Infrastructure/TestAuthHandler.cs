@@ -77,6 +77,14 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
             claims.Add(new Claim("token_type", tokenType));
         }
 
+        // Feature 157: X-Test-Email-Verified injects the email_verified claim so /api/auth/me
+        // tests can assert the EmailVerified field on CurrentUserResponse.
+        var emailVerifiedHeader = Request.Headers["X-Test-Email-Verified"].ToString();
+        if (!string.IsNullOrEmpty(emailVerifiedHeader))
+        {
+            claims.Add(new Claim("email_verified", emailVerifiedHeader));
+        }
+
         // Spec 136 tier audiences. X-Test-Audience (comma-separated) sets explicit aud claim(s) for
         // tier-isolation tests; otherwise inject all four default-installation tier audiences so
         // pre-spec-136 tests authenticate at any tier-gated endpoint unchanged.

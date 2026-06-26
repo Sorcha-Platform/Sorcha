@@ -93,6 +93,8 @@ public class PresentationRequestStore
     public async Task MarkCompletedAsync(
         Guid requestId,
         VerificationResult result,
+        string? vpToken = null,
+        string? presentationSubmission = null,
         CancellationToken ct = default)
     {
         var key = $"haip:vp-request:{requestId}";
@@ -117,6 +119,10 @@ public class PresentationRequestStore
 
             request.State = newState;
             request.Result = result;
+            // PR B1: retain the raw submitted presentation so a verifier client can re-validate
+            // locally and build its own rich verdict. Persisted atomically with the result; same TTL.
+            request.SubmittedVpToken = vpToken;
+            request.PresentationSubmission = presentationSubmission;
             var newJson = JsonSerializer.Serialize(request);
 
             if (await _cache.TryUpdateIfMatchAsync(key, json, newJson, ttl, ct))

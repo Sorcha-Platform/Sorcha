@@ -112,7 +112,7 @@ public class OidcCallbackModelTests : IDisposable
             .ReturnsAsync(false);
 
         _orgRepo.Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>())).ReturnsAsync(org);
-        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>())).ReturnsAsync(tokens);
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>())).ReturnsAsync(tokens);
 
         var model = CreateModel();
 

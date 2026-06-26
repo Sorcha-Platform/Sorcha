@@ -176,7 +176,8 @@ public static class AuthEndpoints
         group.MapGet("/me", GetCurrentUser)
             .WithName("GetCurrentUser")
             .WithSummary("Get current user information")
-            .WithDescription("Returns information about the currently authenticated user from their token claims.")
+            .WithDescription("Returns information about the currently authenticated user from their token claims. "
+                + "Includes emailVerified (bool) sourced from the email_verified JWT claim — false when absent or unverified.")
             .RequireAuthorization()
             .Produces<CurrentUserResponse>()
             .Produces(StatusCodes.Status401Unauthorized)
@@ -192,7 +193,8 @@ public static class AuthEndpoints
                       "roles": ["Administrator"],
                       "tokenType": "user",
                       "scopes": ["openid", "profile", "email"],
-                      "authMethod": "password"
+                      "authMethod": "password",
+                      "emailVerified": true
                     }
                     """);
                 return operation;
@@ -511,7 +513,7 @@ public static class AuthEndpoints
 
         // Generate tokens — honour a consumer-tier hint from the wallet (spec 136).
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            user, organization, user.PlatformUserId, ResolveVerify2FaTier(request.Tier), cancellationToken);
+            user, organization, user.PlatformUserId, ResolveVerify2FaTier(request.Tier), cancellationToken: cancellationToken);
 
         logger.LogInformation("User completed 2FA login - UserId: {UserId}, OrgId: {OrgId}",
             user.Id, organization.Id);
@@ -664,6 +666,8 @@ public static class AuthEndpoints
     private static Ok<CurrentUserResponse> GetCurrentUser(
         ClaimsPrincipal user)
     {
+        bool.TryParse(user.FindFirst("email_verified")?.Value, out var emailVerified);
+
         var response = new CurrentUserResponse
         {
             UserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
@@ -677,7 +681,8 @@ public static class AuthEndpoints
             TokenType = user.FindFirst("token_type")?.Value ?? "user",
             Roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray(),
             Scopes = user.FindAll("scope").Select(c => c.Value).ToArray(),
-            AuthMethod = user.FindFirst("auth_method")?.Value
+            AuthMethod = user.FindFirst("auth_method")?.Value,
+            EmailVerified = emailVerified
         };
 
         return TypedResults.Ok(response);
@@ -1026,7 +1031,7 @@ public static class AuthEndpoints
 
         // Issue new JWT scoped to target org
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, targetOrg, platformUserId, contextTier, cancellationToken);
+            userIdentity, targetOrg, platformUserId, contextTier, cancellationToken: cancellationToken);
 
         logger.LogInformation(
             "User {PlatformUserId} switched to org {OrgId} ({Subdomain}) at tier {Tier}",
