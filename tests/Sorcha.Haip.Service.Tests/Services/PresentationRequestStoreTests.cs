@@ -119,6 +119,46 @@ public class PresentationRequestStoreTests
     }
 
     [Fact]
+    public async Task MarkCompletedAsync_PersistsRawVpTokenAndSubmission()
+    {
+        // PR B1: the raw submitted presentation must round-trip so a verifier client can
+        // re-validate locally and build its own rich verdict.
+        var created = await _store.CreateAsync(
+            "https://test.example/haip", "TestCredential",
+            null, null, "https://test.example/haip");
+
+        const string vpToken = "eyJhbGciOiJFUzI1NiJ9.payload~disclosure~kbjwt";
+        const string submission = "{\"id\":\"sub-1\",\"definition_id\":\"pd-1\"}";
+
+        var result = new VerificationResult { IsValid = true };
+
+        await _store.MarkCompletedAsync(created.Id, result, vpToken, submission);
+
+        var updated = await _store.GetAsync(created.Id);
+        updated.Should().NotBeNull();
+        updated!.SubmittedVpToken.Should().Be(vpToken);
+        updated.PresentationSubmission.Should().Be(submission);
+        // Existing fields remain intact (additive change).
+        updated.State.Should().Be(PresentationRequestState.Verified);
+        updated.Result!.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetAsync_BeforeSubmission_HasNoRawVpToken()
+    {
+        // FR-003: the raw token is null before a holder has submitted.
+        var created = await _store.CreateAsync(
+            "https://test.example/haip", "TestCredential",
+            null, null, "https://test.example/haip");
+
+        var retrieved = await _store.GetAsync(created.Id);
+
+        retrieved.Should().NotBeNull();
+        retrieved!.SubmittedVpToken.Should().BeNull();
+        retrieved.PresentationSubmission.Should().BeNull();
+    }
+
+    [Fact]
     public async Task MarkCompletedAsync_SecondCallAfterTerminal_IsIdempotentNoOp()
     {
         // Review M4: the CAS completion is first-writer-wins. A second callback for an

@@ -194,6 +194,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | AUTH-010 | Load testing for OIDC token exchange flow | P2 | 8h | 📋 | Token exchange is latency-sensitive; needs production-scale load testing |
 | AUTH-011 | PassKey/WebAuthn authentication (Fido2NetLib) — org 2FA + public primary auth | P1 | 40h | ✅ | Feature 055: Org passkey 2FA, public passkey signup/sign-in, social login, method management |
 | AUTH-012 | Server-rendered auth pages (Razor Pages in Tenant Service) | P1 | 30h | ✅ | Login, signup, logout, OAuth/OIDC callbacks, email verification, password reset — eliminates WASM download for unauth users |
+| AUTH-013 | Org-configurable verification/passkey domains — admin + control feature | P3 | 24h | 📋 | Future enhancement (not part of current passkey-fix work). Passkey (WebAuthn) RP domains and the iOS Associated Domains / `apple-app-site-association` (AASA) are currently a single platform-wide value (`Fido2:ServerDomain`, set to the parent `sorcha.dev` so passkeys roam across all `*.sorcha.dev` subdomains; AASA served at the apex). Fine for the single-installation model, but orgs will want to bring/configure their own domains for passkeys and credential/verification surfaces. Need an admin + control feature to let organisations register and manage their own domains (RP IDs, associated-domains entries, AASA app lists), with the platform validating domain ownership and propagating the entitlement/AASA changes. |
 
 ---
 
