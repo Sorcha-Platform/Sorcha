@@ -59,6 +59,18 @@ public class SocialLoginInitiateResponse
 }
 
 /// <summary>
+/// Response returned when the social callback matches an existing verified account that is not yet
+/// linked to this social identity. The client must complete the step-up flow and then call
+/// <c>POST /api/auth/social/link/confirm</c> with the <see cref="LinkPendingToken"/> to establish
+/// the link and receive a session (Feature 168).
+/// </summary>
+/// <param name="Outcome">Always <c>"LinkRequired"</c>.</param>
+/// <param name="LinkPendingToken">Short-lived opaque token (~5 min) to present at link-confirm.</param>
+public record SocialLinkRequiredResponse(
+    [property: JsonPropertyName("outcome")] string Outcome,
+    [property: JsonPropertyName("linkPendingToken")] string LinkPendingToken);
+
+/// <summary>
 /// Request to complete a social login with the authorization code.
 /// </summary>
 public class SocialLoginCallbackRequest

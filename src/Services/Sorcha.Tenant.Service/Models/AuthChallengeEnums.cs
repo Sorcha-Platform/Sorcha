@@ -53,7 +53,10 @@ public enum ScopedOperation
     RemovePassword = 3,
 
     /// <summary>Disable the user's enrolled time-based two-factor authentication.</summary>
-    Disable2Fa = 4
+    Disable2Fa = 4,
+
+    /// <summary>Step-up proof for connecting a new social identity to an existing account.</summary>
+    LinkSocial = 5
 }
 
 /// <summary>

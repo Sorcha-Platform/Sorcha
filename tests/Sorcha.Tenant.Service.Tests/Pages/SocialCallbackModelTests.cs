@@ -23,6 +23,7 @@ public class SocialCallbackModelTests : IDisposable
 {
     private readonly Mock<ISocialLoginService> _socialLoginService = new();
     private readonly Mock<IPlatformUserService> _platformUserService = new();
+    private readonly Mock<ILinkPendingTokenService> _linkPendingTokenService = new();
     private readonly Mock<IIdentityRepository> _identityRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
     private readonly Mock<ITokenService> _tokenService = new();
@@ -50,6 +51,7 @@ public class SocialCallbackModelTests : IDisposable
         var model = new SocialCallbackModel(
             _socialLoginService.Object,
             _platformUserService.Object,
+            _linkPendingTokenService.Object,
             _identityRepo.Object,
             _orgRepo.Object,
             _tokenService.Object,

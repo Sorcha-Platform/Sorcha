@@ -84,6 +84,11 @@ public static class AssurancePolicy
         ScopedOperation.RemovePassword => AuthAssuranceTier.Basic,  // + the last-method floor still applies
         ScopedOperation.Disable2Fa => AuthAssuranceTier.Strong,     // losing TOTP loses Strong protection — a Basic proof can't
         ScopedOperation.SetPassword => AuthAssuranceTier.Basic,     // adding a credential weakens nothing — lowest gated bar
+        // T022 (Feature 168): floor = Strong so a bare-password proof (Basic) is rejected when TOTP
+        // is enrolled, satisfying FR-010. Accounts with no method at Strong or above (e.g. password-
+        // only, no 2FA) receive NoMethodAvailable at initiate — they must enrol TOTP or a passkey
+        // before they can step-up-link a social identity.
+        ScopedOperation.LinkSocial => AuthAssuranceTier.Strong,
         _ => AuthAssuranceTier.Strongest                            // unknown operation fails safe
     };
 
