@@ -54,6 +54,21 @@ end
 IOS_PROJECT = File.join(WALLET_DIR, "ios", "App", "App.xcodeproj")
 IOS_OUTPUT  = File.join(WALLET_DIR, "ios", "App", "output")
 
+# CFBundleVersion (the iOS build number) must strictly increase across TestFlight uploads, or
+# the upload is rejected 409 "bundle version must be higher than the previously uploaded
+# version". The committed Capacitor project pins CURRENT_PROJECT_VERSION = 1, and the Android
+# versionCode (GitHub run number) is far too small to beat a build already on TestFlight, so iOS
+# derives a monotonic build number from epoch seconds (always increases, always exceeds prior
+# uploads) and injects it at archive time via xcargs — Info.plist resolves
+# CFBundleVersion = $(CURRENT_PROJECT_VERSION), so the override flows through. The committed
+# project stays generic (CI checks out fresh each run); we never mutate the pbxproj for this.
+def ios_version_xcargs
+  parts = ["CURRENT_PROJECT_VERSION=#{Time.now.utc.to_i}"]
+  name = ENV["SORCHA_VERSION_NAME"].to_s
+  parts << "MARKETING_VERSION=#{name}" unless name.empty?
+  parts.join(" ")
+end
+
 # Capacitor's generated Xcode project ships with automatic signing and no team, so an
 # archive fails with "Signing requires a development team". match uses MANUAL signing, so
 # pin the App target to the match-provisioned profile before build_app. We read match's
@@ -142,7 +157,8 @@ lane :ios_adhoc do
     scheme: "App",
     export_method: "ad-hoc",
     output_directory: IOS_OUTPUT,
-    output_name: "SorchaWallet-adhoc.ipa"
+    output_name: "SorchaWallet-adhoc.ipa",
+    xcargs: ios_version_xcargs
   )
   UI.success("Ad-hoc IPA: #{lane_context[SharedValues::IPA_OUTPUT_PATH]}")
 end
@@ -163,7 +179,8 @@ lane :ios_beta do
     scheme: "App",
     export_method: "app-store",
     output_directory: IOS_OUTPUT,
-    output_name: "SorchaWallet-appstore.ipa"
+    output_name: "SorchaWallet-appstore.ipa",
+    xcargs: ios_version_xcargs
   )
   upload_to_testflight(api_key: key, skip_waiting_for_build_processing: true)
   UI.success("Uploaded to TestFlight.")
