@@ -44,6 +44,7 @@
             @foreach (var provider in _providers)
             {
                 <MudButton FullWidth="true" Variant="Variant.Outlined"
+                           StartIcon="@ProviderIcon(provider)"
                            OnClick="@(() => BeginSocialAsync(provider))" Disabled="@_busy"
                            data-testid="@($"signin-social-{provider.ToLowerInvariant()}")">
                     Continue with @provider
@@ -140,6 +141,15 @@
         _passkeySupported = await Passkey.IsSupportedAsync();
         StateHasChanged();
     }
+
+    private static string ProviderIcon(string providerKey) => providerKey.ToLowerInvariant() switch
+    {
+        "google" => Icons.Custom.Brands.Google,
+        "microsoft" => Icons.Custom.Brands.Microsoft,
+        "github" => Icons.Custom.Brands.GitHub,
+        "apple" => Icons.Custom.Brands.Apple,
+        _ => Icons.Material.Filled.Public
+    };
 
     private static string? MapAuthError(string? code) => code switch
     {
