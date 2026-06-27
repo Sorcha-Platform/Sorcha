@@ -296,8 +296,12 @@ public static class SocialLinkStepUpEndpoints
         var mintTier = string.Equals(linkToken.Surface, "wallet", StringComparison.OrdinalIgnoreCase)
             ? Tier.Consumer
             : Tier.Platform;
+        var emailVerified = await db.PlatformUsers
+            .Where(p => p.Id == linkToken.TargetAccountId)
+            .Select(p => p.EmailVerified)
+            .FirstOrDefaultAsync(ct);
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, publicOrg, linkToken.TargetAccountId, mintTier, ct);
+            userIdentity, publicOrg, linkToken.TargetAccountId, mintTier, emailVerified, ct);
 
         logger.LogInformation(
             "Social link confirm succeeded for PlatformUser {PlatformUserId} provider={Provider}",
