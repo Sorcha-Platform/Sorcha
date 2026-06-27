@@ -316,12 +316,16 @@ public static class SocialLoginEndpoints
                 callbackResult, socialLinkService, httpContext, logger, ct);
         }
 
+        // Wallet surface is login-only — do not create new accounts via social sign-in.
+        // Mirror the SocialCallback.cshtml.cs allowCreate guard (feature 168).
+        var isWallet = string.Equals(callbackResult.Surface, "wallet", StringComparison.OrdinalIgnoreCase);
+
         // Resolve or create PlatformUser under the strict link policy (feature 115).
         // Use the resolved provider name from the callback result throughout — it's
         // been validated against the cached state and is the same value used for
         // metrics tagging and logging. Defence-in-depth: never reflect raw
         // request input back into a user-visible message.
-        var resolveResult = await platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, allowCreate: true, ct);
+        var resolveResult = await platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, allowCreate: !isWallet, ct);
         if (resolveResult.LinkRequired is { } linkInfo)
         {
             // Feature 168: email matched an existing verified account — gate the link behind
@@ -414,9 +418,10 @@ public static class SocialLoginEndpoints
                 statusCode: StatusCodes.Status500InternalServerError);
         }
 
-        // Issue JWT
+        // Issue JWT — wallet users get Consumer-tier tokens; app users get Platform-tier.
+        var mintTier = isWallet ? Tier.Consumer : Tier.Platform;
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, publicOrg, platformUser.Id, cancellationToken: ct);
+            userIdentity, publicOrg, platformUser.Id, mintTier, ct);
 
         logger.LogInformation(
             "Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -67,10 +68,11 @@ public class SocialCallbackLinkRequiredTests
 
     private static SocialAuthCallbackResult SuccessResult(
         string email, string subject, bool emailVerified = true,
-        string provider = "google", string? displayName = "Test User") =>
+        string provider = "google", string? displayName = "Test User",
+        string? surface = null) =>
         new(Success: true, Error: null,
             Subject: subject, Email: email, DisplayName: displayName,
-            EmailVerified: emailVerified, Provider: provider);
+            EmailVerified: emailVerified, Provider: provider, Surface: surface);
 
     private async Task<Guid> SeedVerifiedUserAsync(string email)
     {
@@ -181,6 +183,101 @@ public class SocialCallbackLinkRequiredTests
         linkToken.Provider.Should().Be("google");
         linkToken.Subject.Should().Be("google-sub-bob");
         linkToken.SocialEmail.Should().Be(email);
+    }
+
+    // ── Bug regression: wallet surface (surface=wallet in state) ────────────
+
+    /// <summary>
+    /// Regression for Bug 1 (F168): JSON API callback was hardcoded to allowCreate: true,
+    /// ignoring the wallet surface. A wallet-originated callback for an unknown social
+    /// identity must return a 400 NoExistingAccount refusal — not silently create an account.
+    /// </summary>
+    [Fact]
+    public async Task Callback_WalletSurface_UnknownIdentity_RefusesWithoutCreatingAccount()
+    {
+        await _factory.SeedTestDataAsync();
+        const string email = "newcomer-wallet-bug1@example.com";
+
+        // Surface="wallet" in the callback result mirrors what the state-cache stores when
+        // the citizen PWA initiates the OAuth flow with surface=wallet.
+        SetupExchange(SuccessResult(email, subject: "google-sub-wallet-new", emailVerified: true,
+            surface: "wallet"));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+        var beforeCount = await db.PlatformUsers.CountAsync();
+
+        using var client = _factory.CreateUnauthenticatedClient();
+        var response = await client.PostAsJsonAsync("/api/auth/social/callback",
+            new { provider = "google", code = "auth-code", state = "state-token" });
+
+        // Wallet surface is login-only — unknown identity must be refused, not created.
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            "wallet social callback must refuse unknown identities (allowCreate: false)");
+
+        var afterCount = await db.PlatformUsers.CountAsync();
+        afterCount.Should().Be(beforeCount,
+            "no PlatformUser should be created on a wallet-surface callback for an unknown identity");
+    }
+
+    /// <summary>
+    /// Regression for Bug 2 (F168): JSON API callback defaulted to Platform-tier token regardless
+    /// of surface. A wallet-originated callback for a returning (already-linked) user must issue a
+    /// Consumer-tier JWT (aud=test:consumer), not a Platform-tier one.
+    /// </summary>
+    [Fact]
+    public async Task Callback_WalletSurface_AlreadyLinkedIdentity_IssuesConsumerTierToken()
+    {
+        await _factory.SeedTestDataAsync();
+        const string email = "returning-wallet-bug2@example.com";
+        const string subject = "google-sub-wallet-returning";
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+        var platformUser = new PlatformUser
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            DisplayName = "Wallet Returning User",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Password123!"),
+            EmailVerified = true,
+            Status = PlatformUserStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-30)
+        };
+        db.PlatformUsers.Add(platformUser);
+
+        var userIdentity = new UserIdentity
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            DisplayName = "Wallet Returning User",
+            PlatformUserId = platformUser.Id,
+            Status = IdentityStatus.Active,
+            Roles = [UserRole.Consumer],
+            OrganizationId = TestDataSeeder.PublicOrganizationId,
+            ProfileCompleted = true,
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-30)
+        };
+        db.UserIdentities.Add(userIdentity);
+        await db.SaveChangesAsync();
+
+        await SeedLinkedUserAsync(platformUser.Id, "google", subject, email);
+
+        SetupExchange(SuccessResult(email, subject, emailVerified: true, provider: "google",
+            surface: "wallet"));
+
+        using var client = _factory.CreateUnauthenticatedClient();
+        var response = await client.PostAsJsonAsync("/api/auth/social/callback",
+            new { provider = "google", code = "auth-code", state = "state-token" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+        payload.TryGetProperty("outcome", out _).Should().BeFalse("should be a direct JWT response");
+
+        var accessToken = payload.GetProperty("access_token").GetString()!;
+        var decoded = new JwtSecurityTokenHandler().ReadJwtToken(accessToken);
+        decoded.Audiences.Should().ContainSingle().Which.Should().Be("test:consumer",
+            "wallet-surface social sign-in must issue a Consumer-tier token, not Platform-tier");
     }
 
     // ── T024: no-match → new account (unchanged behaviour) ──────────────────

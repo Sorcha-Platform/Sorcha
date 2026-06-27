@@ -148,6 +148,14 @@ wrong-account proof, tampered token, collision) results in the correct HTTP stat
     API callback path; `callbackResult.Surface` now passed so wallet users get Consumer-tier tokens.
   - SocialLinkStepUpEndpoints.cs:221 — wrong-operation branch returned 401; corrected to 403 per
     contract table; test `Confirm_ChallengeForWrongOperation` updated to assert Forbidden.
+  BUG FIXES (applied 2026-06-27, operator review findings):
+  - SocialLoginEndpoints.cs — JSON API callback hardcoded `allowCreate: true`, ignoring wallet
+    surface. Now computes `isWallet` from `callbackResult.Surface` and passes `allowCreate: !isWallet`
+    (mirrors SocialCallback.cshtml.cs). Regression tests:
+    `Callback_WalletSurface_UnknownIdentity_RefusesWithoutCreatingAccount` and
+    `Callback_WalletSurface_AlreadyLinkedIdentity_IssuesConsumerTierToken`.
+  - SocialLoginEndpoints.cs — JSON API callback called `GenerateUserTokenAsync` without a tier,
+    defaulting to `Tier.Platform`. Now passes `mintTier = isWallet ? Tier.Consumer : Tier.Platform`.
 
 **Checkpoint**: US2 complete. All five rejection axes and both collision cases are covered and
 failing as expected.
