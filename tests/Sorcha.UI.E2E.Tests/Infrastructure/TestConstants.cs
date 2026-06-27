@@ -163,5 +163,7 @@ public static class TestConstants
         public const string Credentials = $"{AppBase}/credentials";
         public const string Help = $"{AppBase}/help";
         public const string MyDevices = $"{AppBase}/my-devices";
+        public const string Profile = $"{AppBase}/profile";
+        public const string Security = $"{AppBase}/security";
     }
 }
