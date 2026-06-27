@@ -218,7 +218,7 @@ public static class SocialLinkStepUpEndpoints
                 "Social link confirm: challenge scoped to {IssuedOp}, expected LinkSocial",
                 challengeToken.ScopedOperation);
             SocialLoginMetrics.RecordLinkConfirm(linkToken.Provider, "rejected");
-            return TypedResults.Unauthorized();
+            return TypedResults.Forbid();
         }
 
         // Step 3c: not expired.

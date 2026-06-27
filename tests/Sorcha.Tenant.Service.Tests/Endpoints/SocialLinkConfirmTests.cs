@@ -284,10 +284,10 @@ public class SocialLinkConfirmTests : IClassFixture<TenantServiceWebApplicationF
     }
 
     [Fact]
-    public async Task Confirm_ChallengeForWrongOperation_Returns401()
+    public async Task Confirm_ChallengeForWrongOperation_Returns403()
     {
         // T019 case (c): challenge is scoped to ChangePassword, not LinkSocial →
-        // step 3b detects the mismatch and returns 401 before TryConsumeAsync.
+        // step 3b detects the mismatch and returns 403 (wrong operation, per contract table).
         await _factory.SeedTestDataAsync();
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
@@ -304,8 +304,8 @@ public class SocialLinkConfirmTests : IClassFixture<TenantServiceWebApplicationF
             "/api/auth/social/link/confirm",
             new LinkConfirmRequest(linkToken));
 
-        // Wrong operation → 401 (non-leaky; does not reveal which token was presented)
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        // Wrong operation → 403 (credentials are valid but operation scope is wrong)
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
         var linkCount = await db.PlatformSocialLogins.CountAsync(l => l.PlatformUserId == platformUserId);
         linkCount.Should().Be(0, "no link row is created when the challenge operation does not match");

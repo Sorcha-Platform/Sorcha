@@ -143,6 +143,11 @@ wrong-account proof, tampered token, collision) results in the correct HTTP stat
   `tests/Sorcha.Tenant.Service.Tests/Endpoints/SocialLinkConfirmTests.cs`
   NOTE: T020 requires TryConsumeAsync which is blocked by InMemory EF; covered at service level by
   existing SocialLinkServiceTests collision paths.
+  BUG FIXES (applied 2026-06-27):
+  - SocialLoginEndpoints.cs:330-336 — `Surface` was omitted from `LinkPendingToken` mint on the JSON
+    API callback path; `callbackResult.Surface` now passed so wallet users get Consumer-tier tokens.
+  - SocialLinkStepUpEndpoints.cs:221 — wrong-operation branch returned 401; corrected to 403 per
+    contract table; test `Confirm_ChallengeForWrongOperation` updated to assert Forbidden.
 
 **Checkpoint**: US2 complete. All five rejection axes and both collision cases are covered and
 failing as expected.

@@ -333,7 +333,8 @@ public static class SocialLoginEndpoints
                 linkInfo.SocialEmail,
                 linkInfo.DisplayName,
                 linkInfo.TargetAccountId,
-                DateTimeOffset.UtcNow.AddMinutes(5)));
+                DateTimeOffset.UtcNow.AddMinutes(5),
+                Surface: callbackResult.Surface));
 
             SocialLoginMetrics.RecordLinkRequired(linkInfo.Provider);
             logger.LogInformation(
