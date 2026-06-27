@@ -15,10 +15,10 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 public interface IEncryptionInboxWriter
 {
     /// <summary>Write an "encryption complete" inbox entry for the given platform user.</summary>
-    Task WriteEncryptionCompleteAsync(Guid platformUserId, string registerTitle, CancellationToken ct = default);
+    Task WriteEncryptionCompleteAsync(Guid platformUserId, string operationId, CancellationToken ct = default);
 
     /// <summary>Write an "encryption failed" inbox entry for the given platform user.</summary>
-    Task WriteEncryptionFailedAsync(Guid platformUserId, string registerTitle, CancellationToken ct = default);
+    Task WriteEncryptionFailedAsync(Guid platformUserId, string operationId, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -37,7 +37,7 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
     }
 
     /// <inheritdoc />
-    public async Task WriteEncryptionCompleteAsync(Guid platformUserId, string registerTitle, CancellationToken ct = default)
+    public async Task WriteEncryptionCompleteAsync(Guid platformUserId, string operationId, CancellationToken ct = default)
     {
         try
         {
@@ -45,12 +45,12 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
                 PlatformUserId: platformUserId,
                 Category: "Workflow",
                 Severity: "Info",
-                CorrelationKey: $"encryption:complete:{platformUserId}:{registerTitle}",
-                DetailHref: "/app/registers",
+                CorrelationKey: $"sorcha.inbox.encryption.complete:{operationId}",
+                DetailHref: $"/api/operations/{operationId}",
                 SourceEventId: Guid.NewGuid(),
                 OccurredAt: DateTimeOffset.UtcNow,
                 Title: "Register encrypted",
-                Summary: $"Encryption of '{registerTitle}' completed successfully.",
+                Summary: "Encryption completed successfully.",
                 IconKey: "lock",
                 ChannelHints: null);
 
@@ -65,7 +65,7 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
     }
 
     /// <inheritdoc />
-    public async Task WriteEncryptionFailedAsync(Guid platformUserId, string registerTitle, CancellationToken ct = default)
+    public async Task WriteEncryptionFailedAsync(Guid platformUserId, string operationId, CancellationToken ct = default)
     {
         try
         {
@@ -73,12 +73,12 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
                 PlatformUserId: platformUserId,
                 Category: "Workflow",
                 Severity: "Warning",
-                CorrelationKey: $"encryption:failed:{platformUserId}:{registerTitle}",
-                DetailHref: "/app/registers",
+                CorrelationKey: $"sorcha.inbox.encryption.fail:{operationId}",
+                DetailHref: $"/api/operations/{operationId}",
                 SourceEventId: Guid.NewGuid(),
                 OccurredAt: DateTimeOffset.UtcNow,
                 Title: "Register encryption failed",
-                Summary: $"Encryption of '{registerTitle}' failed. Please try again.",
+                Summary: "Encryption failed. Please try again.",
                 IconKey: "lock",
                 ChannelHints: null);
 

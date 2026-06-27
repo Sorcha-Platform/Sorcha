@@ -14,7 +14,7 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 public sealed class EncryptionInboxWriterTests
 {
     private readonly Mock<IPlatformInboxClient> _inbox = new();
-    private const string RegisterTitle = "Test Register";
+    private const string OperationId = "op-test-abc123";
     private readonly Guid _userId = Guid.NewGuid();
 
     private EncryptionInboxWriter BuildSut(ILogger<EncryptionInboxWriter>? logger = null) =>
@@ -35,13 +35,14 @@ public sealed class EncryptionInboxWriterTests
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
         var sut = BuildSut();
-        await sut.WriteEncryptionCompleteAsync(_userId, RegisterTitle);
+        await sut.WriteEncryptionCompleteAsync(_userId, OperationId);
 
         captured.Should().NotBeNull();
         captured!.PlatformUserId.Should().Be(_userId);
         captured.Category.Should().Be("Workflow");
         captured.Severity.Should().Be("Info");
-        captured.CorrelationKey.Should().Contain("encryption:complete");
+        captured.CorrelationKey.Should().Be($"sorcha.inbox.encryption.complete:{OperationId}");
+        captured.DetailHref.Should().Be($"/api/operations/{OperationId}");
         captured.Title.Should().Be("Register encrypted");
     }
 
@@ -54,13 +55,14 @@ public sealed class EncryptionInboxWriterTests
             .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
 
         var sut = BuildSut();
-        await sut.WriteEncryptionFailedAsync(_userId, RegisterTitle);
+        await sut.WriteEncryptionFailedAsync(_userId, OperationId);
 
         captured.Should().NotBeNull();
         captured!.PlatformUserId.Should().Be(_userId);
         captured.Category.Should().Be("Workflow");
         captured.Severity.Should().Be("Warning");
-        captured.CorrelationKey.Should().Contain("encryption:failed");
+        captured.CorrelationKey.Should().Be($"sorcha.inbox.encryption.fail:{OperationId}");
+        captured.DetailHref.Should().Be($"/api/operations/{OperationId}");
         captured.Title.Should().Be("Register encryption failed");
     }
 
@@ -73,7 +75,7 @@ public sealed class EncryptionInboxWriterTests
         var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(_userId, RegisterTitle))
+        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(_userId, OperationId))
             .Should().NotThrowAsync("inbox-write failures must never block the encryption operation");
 
         loggerMock.Verify(
@@ -95,7 +97,7 @@ public sealed class EncryptionInboxWriterTests
         var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
         var sut = BuildSut(loggerMock.Object);
 
-        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(_userId, RegisterTitle))
+        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(_userId, OperationId))
             .Should().NotThrowAsync("inbox-write failures must never block the encryption operation");
 
         loggerMock.Verify(

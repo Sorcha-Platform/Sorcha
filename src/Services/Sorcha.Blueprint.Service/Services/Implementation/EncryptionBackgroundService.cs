@@ -282,7 +282,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
             {
                 try
                 {
-                    await encryptionInboxWriter.WriteEncryptionCompleteAsync(successUserId, workItem.RegisterId, ct);
+                    await encryptionInboxWriter.WriteEncryptionCompleteAsync(successUserId, workItem.OperationId, ct);
                 }
                 catch (Exception inboxEx)
                 {
@@ -397,7 +397,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
             {
                 try
                 {
-                    await inboxWriter.WriteEncryptionFailedAsync(failUserId, workItem.RegisterId, ct);
+                    await inboxWriter.WriteEncryptionFailedAsync(failUserId, workItem.OperationId, ct);
                 }
                 catch (Exception inboxEx)
                 {
