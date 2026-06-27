@@ -14,13 +14,16 @@ namespace Sorcha.Tenant.Service.Models;
 /// <param name="DisplayName">Display name from the social profile (may be null).</param>
 /// <param name="TargetAccountId"><see cref="PlatformUser.Id"/> of the existing account the email matched.</param>
 /// <param name="ExpiresAt">UTC expiry (~5 minutes after mint). Enforced server-side.</param>
+/// <param name="Surface">Originating surface key (<c>wallet</c> for the citizen PWA, <c>null</c> for the web platform).
+/// Used at link-confirm to issue the correct tier token (Consumer vs Platform).</param>
 public record LinkPendingToken(
     string Provider,
     string Subject,
     string SocialEmail,
     string? DisplayName,
     Guid TargetAccountId,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string? Surface = null);
 
 /// <summary>
 /// Outcome of a <see cref="Services.ILinkPendingTokenService.TryVerify"/> call.

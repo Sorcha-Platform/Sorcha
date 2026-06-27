@@ -143,7 +143,8 @@ public class SocialCallbackModel : PageModel
                 linkInfo.SocialEmail,
                 linkInfo.DisplayName,
                 linkInfo.TargetAccountId,
-                DateTimeOffset.UtcNow.AddMinutes(5)));
+                DateTimeOffset.UtcNow.AddMinutes(5),
+                Surface: isWallet ? "wallet" : null));
 
             SocialLoginMetrics.RecordLinkRequired(provider);
             _logger.LogInformation(

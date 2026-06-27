@@ -132,4 +132,37 @@ public class LinkPendingTokenServiceTests
         ok.Should().BeFalse();
         err.Should().Be(LinkPendingTokenError.Invalid);
     }
+
+    [Fact]
+    public void TryVerify_WithWalletSurface_RoundTrips()
+    {
+        var svc = CreateService();
+        var token = new LinkPendingToken(
+            Provider: "google",
+            Subject: "sub-wallet",
+            SocialEmail: "citizen@example.com",
+            DisplayName: "Citizen",
+            TargetAccountId: Guid.NewGuid(),
+            ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(5),
+            Surface: "wallet");
+
+        var raw = svc.Mint(token);
+        var ok = svc.TryVerify(raw, out var decoded, out _);
+
+        ok.Should().BeTrue();
+        decoded.Surface.Should().Be("wallet");
+    }
+
+    [Fact]
+    public void TryVerify_WithNullSurface_RoundTrips()
+    {
+        var svc = CreateService();
+        var token = ValidToken();
+
+        var raw = svc.Mint(token);
+        var ok = svc.TryVerify(raw, out var decoded, out _);
+
+        ok.Should().BeTrue();
+        decoded.Surface.Should().BeNull();
+    }
 }

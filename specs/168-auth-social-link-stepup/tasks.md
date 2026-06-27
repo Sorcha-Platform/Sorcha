@@ -236,7 +236,7 @@ linked) are independently tested and regression-free.
 - [X] T029 Update the Tenant Service README to describe the step-up social-linking flow and the
   pre-session challenge entry pattern in
   `src/Services/Sorcha.Tenant.Service/README.md`
-- [ ] T030 Run quickstart.md validation scenarios (Scenarios 1–7 + telemetry check) against the
+- [X] T030 Run quickstart.md validation scenarios (Scenarios 1–7 + telemetry check) against the
   built service and confirm all pass:
   `dotnet test tests/Sorcha.Tenant.Service.Tests --filter "FullyQualifiedName~LinkPendingToken|FullyQualifiedName~SocialLinkStepUp|FullyQualifiedName~SocialLinkConfirm|FullyQualifiedName~SocialCallbackLinkRequired"`
 

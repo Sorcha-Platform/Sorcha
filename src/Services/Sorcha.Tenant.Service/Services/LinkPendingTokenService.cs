@@ -114,7 +114,8 @@ public sealed class LinkPendingTokenService : ILinkPendingTokenService
             t.SocialEmail,
             t.DisplayName,
             t.TargetAccountId,
-            t.ExpiresAt.ToUnixTimeSeconds()));
+            t.ExpiresAt.ToUnixTimeSeconds(),
+            t.Surface));
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(json))
             .Replace('+', '-').Replace('/', '_').TrimEnd('=');
     }
@@ -137,7 +138,8 @@ public sealed class LinkPendingTokenService : ILinkPendingTokenService
             p.SocialEmail,
             p.DisplayName,
             p.TargetAccountId,
-            DateTimeOffset.FromUnixTimeSeconds(p.ExpiresAtUnix));
+            DateTimeOffset.FromUnixTimeSeconds(p.ExpiresAtUnix),
+            p.Surface);
     }
 
     private string ComputeMac(string payload, string expirySeconds)
@@ -153,5 +155,6 @@ public sealed class LinkPendingTokenService : ILinkPendingTokenService
         string SocialEmail,
         string? DisplayName,
         Guid TargetAccountId,
-        long ExpiresAtUnix);
+        long ExpiresAtUnix,
+        string? Surface = null);
 }

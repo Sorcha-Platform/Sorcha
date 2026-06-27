@@ -293,8 +293,11 @@ public static class SocialLinkStepUpEndpoints
         userIdentity.LastLoginAt = DateTimeOffset.UtcNow;
         await identityRepository.UpdateUserAsync(userIdentity, ct);
 
+        var mintTier = string.Equals(linkToken.Surface, "wallet", StringComparison.OrdinalIgnoreCase)
+            ? Tier.Consumer
+            : Tier.Platform;
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, publicOrg, linkToken.TargetAccountId, Tier.Platform, ct);
+            userIdentity, publicOrg, linkToken.TargetAccountId, mintTier, ct);
 
         logger.LogInformation(
             "Social link confirm succeeded for PlatformUser {PlatformUserId} provider={Provider}",
