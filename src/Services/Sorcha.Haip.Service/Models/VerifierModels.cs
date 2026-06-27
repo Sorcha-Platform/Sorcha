@@ -40,6 +40,19 @@ public class PresentationRequest
 
     /// <summary>The result.</summary>
     public VerificationResult? Result { get; set; }
+
+    /// <summary>
+    /// The raw <c>vp_token</c> string the holder submitted via <c>direct_post</c>, retained so a
+    /// verifier client can re-validate the presentation locally and build its own rich verdict
+    /// (Verify-unification PR B1). Null until a holder has submitted; shares the request's TTL.
+    /// </summary>
+    public string? SubmittedVpToken { get; set; }
+
+    /// <summary>
+    /// The OID4VP <c>presentation_submission</c> the holder submitted alongside the
+    /// <see cref="SubmittedVpToken"/>, when present. Null until submission.
+    /// </summary>
+    public string? PresentationSubmission { get; set; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

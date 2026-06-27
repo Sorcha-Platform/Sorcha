@@ -123,6 +123,21 @@ upload step fails)
 → Bake the answer into `Info.plist`. Sorcha uses only standard crypto (Ed25519/P-256/RSA/AES/SHA) →
    `ITSAppUsesNonExemptEncryption=false` (Category 5 Part 2 exemption). Already committed.
 
+**`ios_beta` upload rejected: `The bundle version must be higher than the previously uploaded
+version: 'N'`** (HTTP 409, `cfBundleVersion` / `ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE`). NB this
+can masquerade as a "`match` failure" — a CI run that errors early near `match` may actually be
+fine there; run the lane locally with `--verbose` and read to the END: `match`/archive/sign/export
+all succeed and the real death is the final `upload_to_testflight`.
+→ The committed Capacitor project pins `CURRENT_PROJECT_VERSION = 1` and Info.plist resolves
+   `CFBundleVersion = $(CURRENT_PROJECT_VERSION)`, so **every iOS build is version `1`**. CI exports
+   `SORCHA_VERSION_CODE` (the run number) but **only the Android lane consumes it** — the iOS lanes
+   ignored it. Once TestFlight holds any build, `1` is always rejected as lower/duplicate.
+→ Fixed (#1052): both iOS lanes inject a **monotonic epoch-seconds** build number at archive time via
+   `build_app(xcargs: ios_version_xcargs)` → `CURRENT_PROJECT_VERSION=#{Time.now.utc.to_i}` (+
+   `MARKETING_VERSION` from `SORCHA_VERSION_NAME`). Epoch (~1.78e9) always exceeds any prior upload;
+   the Android run-number scheme can't (run numbers are small — too low to beat an existing build).
+   The committed pbxproj stays generic (xcargs overrides at build time only). No manual bump needed.
+
 **Demo account / sign-in info requested**
 → Only for **App Review** (external TestFlight first build + App Store), never internal testing. When
    you do go external/prod: Sorcha needs a working **demo login** AND a **publicly reachable backend**

@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Sorcha.Verifier.Services;
 using Sorcha.Verifier.Engine.Models;
 using Xunit;using Sorcha.Verifier.Engine;
 
@@ -296,41 +295,6 @@ public sealed class VerifiablePresentationValidatorTests
     }
 }
 
-/// <summary>Smoke tests for <see cref="PresentationRequestBuilder"/> (T088).</summary>
-public sealed class PresentationRequestBuilderTests
-{
-    [Fact]
-    public async Task CreateAsync_ProducesDeepLinkAndStoresSession()
-    {
-        var store = new InMemoryVerifierSessionStore();
-        var builder = new PresentationRequestBuilder(
-            store, TimeProvider.System,
-            NullLogger<PresentationRequestBuilder>.Instance);
-
-        var result = await builder.CreateAsync(
-            Guid.NewGuid(), "Confirm identity",
-            "https://sorcha.dev/vc/test/v1",
-            ["givenName"], ["familyName"],
-            "https://verify.local");
-
-        result.DeepLink.Should().StartWith("openid4vp://?");
-        result.DeepLink.Should().Contain("response_mode=direct_post");
-        result.DeepLink.Should().Contain("nonce=");
-        result.DeepLink.Should().Contain("client_id=");
-        result.Session.RequiredClaims.Should().ContainSingle().Which.Should().Be("givenName");
-        store.Get(result.Session.SessionId).Should().NotBeNull();
-    }
-
-    [Fact]
-    public void BuildPresentationDefinitionJson_IncludesRequiredAndOptionalFields()
-    {
-        var json = PresentationRequestBuilder.BuildPresentationDefinitionJson(
-            "sess-1", "https://sorcha.dev/vc/test/v1",
-            ["givenName"], ["familyName"], "purpose");
-
-        json.Should().Contain("\"id\":\"sess-1\"");
-        json.Should().Contain("givenName");
-        json.Should().Contain("familyName");
-        json.Should().Contain("\"limit_disclosure\":\"required\"");
-    }
-}
+// Note: PresentationRequestBuilder smoke tests removed in Feature 164 B3 (US4 retirement).
+// The PresentationRequestBuilder and InMemoryVerifierSessionStore have been deleted — the
+// desk verifier now uses HaipVerificationTransport via the shared IVerificationTransport seam.

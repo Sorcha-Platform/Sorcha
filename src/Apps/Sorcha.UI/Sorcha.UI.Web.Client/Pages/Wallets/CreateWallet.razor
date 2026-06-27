@@ -288,7 +288,9 @@
         if ((_isWizard || _isFirstLogin) && walletAddress != null)
         {
             await WalletPreferences.SetDefaultWalletAsync(walletAddress);
-            Navigation.NavigateTo("dashboard");
+            // Feature 157 US1: return to the dashboard with ?onboarding=true so the
+            // profile-capture step is shown immediately after wallet provisioning.
+            Navigation.NavigateTo("/?onboarding=true");
         }
         else if (walletAddress != null)
         {

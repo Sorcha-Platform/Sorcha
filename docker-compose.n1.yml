@@ -47,7 +47,13 @@ services:
     image: sorchadev/tenant-service:latest
     environment:
       <<: *jwt-env
-      Fido2__ServerDomain: n1.sorcha.dev
+      # Passkey relying-party = the PARENT domain sorcha.dev (not the per-host
+      # subdomain) so one passkey works across every *.sorcha.dev installation and
+      # matches the native apps' Associated Domains entitlement (webcredentials:sorcha.dev)
+      # + the AASA/assetlinks served at https://sorcha.dev/.well-known/. WebAuthn allows
+      # the RP ID to be a registrable parent of the ceremony origin, which stays the
+      # actual host the app/web runs on (https://n1.sorcha.dev).
+      Fido2__ServerDomain: sorcha.dev
       Fido2__ServerName: Sorcha
       Fido2__Origins__0: https://n1.sorcha.dev
       # n1 is the shared dev/demo node. Walkthrough setup scripts create
