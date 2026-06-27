@@ -48,8 +48,10 @@ user must re-register (or have the account reset; see "Account reset" below).
    so the committed Capacitor project stays generic (mirrors how team/profile are applied). Android
    needs **no** app-side entitlement.
 
-4. **TestFlight build number** — the committed `ios_beta` lane uses a static build number, which
-   collides on re-upload. Bump it: `increment_build_number(build_number: latest_testflight_build_number(...) + 1)`.
+4. **TestFlight build number** — now handled automatically (#1052): both iOS lanes inject a
+   monotonic **epoch-seconds** `CURRENT_PROJECT_VERSION` via `build_app xcargs` (see `ios_version_xcargs`
+   in the Fastfile), so re-uploads never collide. No manual bump needed. (Historically the committed
+   lane used a static build number that collided 409 on re-upload — see troubleshooting → TestFlight.)
 
 5. **Capacitor secure origin** — the installed app MUST load from the real HTTPS origin
    (`capacitor.config.json` `server.url = https://n1.sorcha.dev/wallet`), **not** the bundled
