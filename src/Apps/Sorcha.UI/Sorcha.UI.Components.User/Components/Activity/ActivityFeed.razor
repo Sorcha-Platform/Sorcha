@@ -1,0 +1,162 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@*
+    Feature 169 — Unified Activity Timeline.
+
+    Shared component used by both the web /app host (/activity route) and the
+    Citizen Wallet PWA. Renders ALL inbox entries (no actionable filter) with
+    an Actionable / Informational classification badge on each row.
+
+    Subscribes to TenantHub.OnInboxEntryAdded for real-time refresh.
+*@
+
+@namespace Sorcha.UI.Components.User.Components.Activity
+
+@implements IDisposable
+
+@inject IInboxApiService InboxApi
+@inject TenantHubConnection TenantHub
+@inject ILogger<ActivityFeed> Logger
+
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Components.User.Components.Shared
+@using Sorcha.UI.Components.User.Services.Shared
+@using MudBlazor
+@using Microsoft.Extensions.Logging
+
+<div data-testid="activity-feed">
+    @if (_loading && _entries.Count == 0)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" data-testid="activity-feed-loading" />
+    }
+    else if (_entries.Count == 0)
+    {
+        <div data-testid="activity-feed-empty">
+            <EmptyState Icon="@Icons.Material.Filled.History"
+                        Title="No activity yet"
+                        Description="Your activity history will appear here." />
+        </div>
+    }
+    else
+    {
+        <MudList T="InboxEntryDto" Class="pa-0">
+            @foreach (var entry in _entries)
+            {
+                var isUnread = entry.ReadAt is null;
+                var isActionable = ActivityClassification.IsActionable(entry.Category, entry.Severity);
+                <MudListItem T="InboxEntryDto"
+                             Style="@(isUnread ? "background-color: rgba(79,70,229,0.06);" : "")"
+                             data-testid="@($"activity-entry-{entry.Id}")">
+                    <div class="d-flex flex-column gap-1">
+                        <div class="d-flex align-center gap-2">
+                            <MudIcon Icon="@IconForCategory(entry.Category)"
+                                     Color="@SeverityColor(entry.Severity)"
+                                     Size="Size.Small" />
+                            <MudText Typo="Typo.body2">
+                                <strong>@entry.Title</strong>
+                            </MudText>
+                            @if (isActionable)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">Actionable</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled">Informational</MudChip>
+                            }
+                            @if (isUnread)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Circle"
+                                         Color="Color.Primary"
+                                         Size="Size.Small"
+                                         Title="Unread" />
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(entry.Summary))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@entry.Summary</MudText>
+                        }
+                        <MudText Typo="Typo.caption">@FormatTimestamp(entry.OccurredAt)</MudText>
+                    </div>
+                </MudListItem>
+                <MudDivider />
+            }
+        </MudList>
+    }
+</div>
+
+@code {
+    private readonly List<InboxEntryDto> _entries = new();
+    private bool _loading;
+    private bool _disposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TenantHub.OnInboxEntryAdded += OnInboxEntryAddedAsync;
+        await LoadAsync();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        TenantHub.OnInboxEntryAdded -= OnInboxEntryAddedAsync;
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var page = await InboxApi.ListAsync(page: 1, pageSize: 50, actionableOnly: false);
+            _entries.Clear();
+            if (page is not null)
+            {
+                _entries.AddRange(page.Entries);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "ActivityFeed — failed to load inbox entries");
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnInboxEntryAddedAsync(string entryId, DateTimeOffset occurredAt, string traceId)
+    {
+        await LoadAsync();
+    }
+
+    private static string IconForCategory(string category) => category switch
+    {
+        "Action" => Icons.Material.Filled.AssignmentTurnedIn,
+        "Credential" => Icons.Material.Filled.VerifiedUser,
+        "Membership" => Icons.Material.Filled.GroupAdd,
+        "Security" => Icons.Material.Filled.Security,
+        "System" => Icons.Material.Filled.Campaign,
+        "Workflow" => Icons.Material.Filled.AccountTree,
+        _ => Icons.Material.Filled.Notifications,
+    };
+
+    private static Color SeverityColor(string severity) => severity switch
+    {
+        "Critical" => Color.Error,
+        "ActionRequired" => Color.Warning,
+        "Warning" => Color.Warning,
+        _ => Color.Default,
+    };
+
+    private static string FormatTimestamp(DateTimeOffset occurredAt)
+    {
+        var age = DateTimeOffset.UtcNow - occurredAt;
+        if (age.TotalSeconds < 60) return "just now";
+        if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
+        if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
+        if (age.TotalDays < 7) return $"{(int)age.TotalDays}d ago";
+        return occurredAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+    }
+}

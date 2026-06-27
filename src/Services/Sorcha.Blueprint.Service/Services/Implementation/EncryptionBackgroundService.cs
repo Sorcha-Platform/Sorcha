@@ -102,6 +102,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
         var validatorClient = scope.ServiceProvider.GetRequiredService<IValidatorServiceClient>();
         // Feature 108 — optional peer fan-out (subscriber nodes forward to the register owner).
         var peerClient = scope.ServiceProvider.GetService<IPeerServiceClient>();
+        var encryptionInboxWriter = scope.ServiceProvider.GetRequiredService<IEncryptionInboxWriter>();
 
         try
         {
@@ -277,6 +278,18 @@ public sealed class EncryptionBackgroundService : BackgroundService
             // Store persistent activity event for disconnected users (T047)
             await StoreActivityEventAsync(scope.ServiceProvider, workItem, txHash, success: true, error: null);
 
+            if (Guid.TryParse(workItem.UserId, out var successUserId))
+            {
+                try
+                {
+                    await encryptionInboxWriter.WriteEncryptionCompleteAsync(successUserId, workItem.RegisterId, ct);
+                }
+                catch (Exception inboxEx)
+                {
+                    _logger.LogWarning(inboxEx, "EncryptionInboxWriter — failed to emit encryption-complete inbox entry for {UserId}", workItem.UserId);
+                }
+            }
+
             activity?.SetTag("encryption.tx_hash", txHash);
             activity?.SetStatus(ActivityStatusCode.Ok);
             _logger.LogInformation(
@@ -376,6 +389,22 @@ public sealed class EncryptionBackgroundService : BackgroundService
             userId: workItem.UserId, ct: ct);
 
         await StoreActivityEventAsync(serviceProvider, workItem, null, success: false, error: error);
+
+        if (Guid.TryParse(workItem.UserId, out var failUserId))
+        {
+            var inboxWriter = serviceProvider.GetService<IEncryptionInboxWriter>();
+            if (inboxWriter is not null)
+            {
+                try
+                {
+                    await inboxWriter.WriteEncryptionFailedAsync(failUserId, workItem.RegisterId, ct);
+                }
+                catch (Exception inboxEx)
+                {
+                    _logger.LogWarning(inboxEx, "EncryptionInboxWriter — failed to emit encryption-failed inbox entry for {UserId}", workItem.UserId);
+                }
+            }
+        }
 
         _logger.LogWarning("Encryption operation {OperationId} failed: {Error}", operationId, error);
     }

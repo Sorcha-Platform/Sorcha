@@ -13,6 +13,7 @@
 @attribute [Authorize]
 @using Sorcha.UI.Components.User.Components.Context
 @using Sorcha.UI.Components.User.Components.Home
+@using Sorcha.UI.Components.User.Models
 @using Sorcha.UI.Core.Components.Wallet
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Context
@@ -245,8 +246,8 @@
     // empty so the bands hide gracefully.
     private IReadOnlyList<NeedsAttentionBand.NeedsAttentionItem> _needsAttentionItems =
         Array.Empty<NeedsAttentionBand.NeedsAttentionItem>();
-    private IReadOnlyList<RecentActivityFeed.RecentActivityEntry> _recentActivityEntries =
-        Array.Empty<RecentActivityFeed.RecentActivityEntry>();
+    private IReadOnlyList<RecentActivityEntry> _recentActivityEntries =
+        Array.Empty<RecentActivityEntry>();
     // Placeholders for the multi-context peek footer — not yet populated (the footer renders the
     // default "no other contexts" state). Assigned once multi-context support lands.
 #pragma warning disable CS0649
@@ -593,13 +594,11 @@
     private static string RelativeSince(DateTimeOffset at)
     {
         var delta = DateTimeOffset.UtcNow - at;
-        return delta.TotalSeconds switch
-        {
-            < 60 => "just now",
-            < 3600 => $"{(int)delta.TotalMinutes} min ago",
-            < 86400 => $"{(int)delta.TotalHours} h ago",
-            _ => at.ToLocalTime().ToString("d MMM")
-        };
+        var s = delta.TotalSeconds;
+        if (s < 60) return "just now";
+        if (s < 3600) return $"{(int)delta.TotalMinutes} min ago";
+        if (s < 86400) return $"{(int)delta.TotalHours} h ago";
+        return at.ToLocalTime().ToString("d MMM");
     }
 
 }

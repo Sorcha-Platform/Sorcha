@@ -180,7 +180,7 @@
         try
         {
             var category = string.IsNullOrEmpty(_selectedCategory) ? null : _selectedCategory;
-            var page = await InboxApi.ListAsync(page: 1, pageSize: 50, category: category);
+            var page = await InboxApi.ListAsync(page: 1, pageSize: 50, category: category, actionableOnly: true);
             _entries.Clear();
             if (page is not null)
             {

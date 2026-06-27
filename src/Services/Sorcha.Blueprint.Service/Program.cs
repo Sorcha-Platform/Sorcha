@@ -134,6 +134,8 @@ builder.Services.AddSingleton(System.Threading.Channels.Channel.CreateBounded<So
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.IEncryptionOperationStore,
     Sorcha.Blueprint.Service.Services.Implementation.InMemoryEncryptionOperationStore>();
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EncryptionBackgroundService>();
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Implementation.IEncryptionInboxWriter,
+    Sorcha.Blueprint.Service.Services.Implementation.EncryptionInboxWriter>();
 
 // Add transaction confirmation options
 builder.Services.Configure<Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions>(

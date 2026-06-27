@@ -12,6 +12,7 @@
     alongside the real transaction history HTTP source in a follow-up.
 *@
 @namespace Sorcha.UI.Components.User.Components.History
+@using Sorcha.UI.Components.User.Models
 
 @if (Entries is { Count: > 0 })
 {
@@ -70,30 +71,11 @@ else
     private static string FormatWhen(DateTimeOffset at)
     {
         var delta = DateTimeOffset.UtcNow - at;
-        return delta.TotalHours switch
-        {
-            < 1 => $"{Math.Max(1, (int)delta.TotalMinutes)} min ago",
-            < 24 => $"{(int)delta.TotalHours} h ago",
-            < 24 * 7 => $"{(int)(delta.TotalDays)} d ago",
-            _ => at.ToLocalTime().ToString("d MMM yyyy")
-        };
+        var h = delta.TotalHours;
+        if (h < 1) return $"{Math.Max(1, (int)delta.TotalMinutes)} min ago";
+        if (h < 24) return $"{(int)h} h ago";
+        if (h < 24 * 7) return $"{(int)delta.TotalDays} d ago";
+        return at.ToLocalTime().ToString("d MMM yyyy");
     }
 
-    /// <summary>One row in the feed.</summary>
-    public sealed record HistoryFeedEntry(
-        string Id,
-        HistoryFeedKind Kind,
-        string Title,
-        string? Subtitle,
-        DateTimeOffset At);
-
-    /// <summary>Logical event kind; drives the icon.</summary>
-    public enum HistoryFeedKind
-    {
-        Issuance,
-        Presentation,
-        Verification,
-        Submission,
-        Revocation
-    }
 }

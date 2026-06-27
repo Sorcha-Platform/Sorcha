@@ -42,17 +42,20 @@ public sealed partial class PersonaService : IPersonaService
     private readonly IPersonaCryptoClient _crypto;
     private readonly IEventService _events;
     private readonly ILogger<PersonaService> _logger;
+    private readonly IPersonaInboxWriter _personaInboxWriter;
 
     public PersonaService(
         TenantDbContext db,
         IPersonaCryptoClient crypto,
         IEventService events,
-        ILogger<PersonaService> logger)
+        ILogger<PersonaService> logger,
+        IPersonaInboxWriter personaInboxWriter)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _personaInboxWriter = personaInboxWriter ?? throw new ArgumentNullException(nameof(personaInboxWriter));
     }
 
     /// <inheritdoc />
@@ -279,6 +282,15 @@ public sealed partial class PersonaService : IPersonaService
             ExpiresAt = now.UtcDateTime.AddYears(1)
         }, ct);
 
+        try
+        {
+            await _personaInboxWriter.WritePersonaSavedAsync(platformUserId, "Personal Profile", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PersonaInboxWriter — failed to emit persona-saved inbox entry for {PlatformUserId}", platformUserId);
+        }
+
         _logger.LogInformation("Persona saved for user {PlatformUserId}", platformUserId);
 
         return Project(normalised, row.UpdatedAt);
@@ -316,6 +328,15 @@ public sealed partial class PersonaService : IPersonaService
             CreatedAt = now.UtcDateTime,
             ExpiresAt = now.UtcDateTime.AddYears(1)
         }, ct);
+
+        try
+        {
+            await _personaInboxWriter.WritePersonaDeletedAsync(platformUserId, "Personal Profile", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PersonaInboxWriter — failed to emit persona-deleted inbox entry for {PlatformUserId}", platformUserId);
+        }
 
         _logger.LogInformation("Persona deleted for user {PlatformUserId}", platformUserId);
     }

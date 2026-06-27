@@ -6,6 +6,7 @@
     Activity page is the tap target. Hidden when the events list is empty.
 *@
 @namespace Sorcha.UI.Components.User.Components.Home
+@using Sorcha.UI.Components.User.Models
 
 @if (Events is { Count: > 0 })
 {
@@ -70,28 +71,10 @@
     private static string FormatWhen(DateTimeOffset at)
     {
         var delta = DateTimeOffset.UtcNow - at;
-        return delta.TotalDays switch
-        {
-            < 1 => $"{Math.Max(1, (int)delta.TotalHours)} h ago",
-            < 7 => $"{(int)delta.TotalDays} d ago",
-            _ => at.ToLocalTime().ToString("d MMM")
-        };
+        var d = delta.TotalDays;
+        if (d < 1) return $"{Math.Max(1, (int)delta.TotalHours)} h ago";
+        if (d < 7) return $"{(int)d} d ago";
+        return at.ToLocalTime().ToString("d MMM");
     }
 
-    /// <summary>One row in the recent feed.</summary>
-    public sealed record RecentActivityEntry(
-        string Id,
-        RecentActivityKind Kind,
-        string Summary,
-        DateTimeOffset At);
-
-    /// <summary>Logical kind for icon selection.</summary>
-    public enum RecentActivityKind
-    {
-        Issuance,
-        Presentation,
-        Verification,
-        Submission,
-        Revocation
-    }
 }

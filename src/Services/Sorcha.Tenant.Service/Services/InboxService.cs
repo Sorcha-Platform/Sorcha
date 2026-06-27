@@ -92,6 +92,7 @@ public sealed class InboxService : IInboxService
         InboxCategory? category = null,
         bool unreadOnly = false,
         bool includeDismissed = false,
+        bool actionableOnly = false,
         CancellationToken ct = default)
     {
         if (page < 1) page = 1;
@@ -99,7 +100,7 @@ public sealed class InboxService : IInboxService
         if (pageSize > 100) pageSize = 100;
 
         var result = await _store.GetPageAsync(
-            platformUserId, page, pageSize, category, unreadOnly, includeDismissed, ct)
+            platformUserId, page, pageSize, category, unreadOnly, includeDismissed, actionableOnly, ct)
             .ConfigureAwait(false);
 
         return new InboxPage(result.Entries, page, pageSize, result.TotalCount);
@@ -111,7 +112,7 @@ public sealed class InboxService : IInboxService
 
     /// <inheritdoc />
     public Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default)
-        => _store.GetUnreadCountAsync(platformUserId, ct);
+        => _store.GetUnreadCountAsync(platformUserId, actionableOnly: true, ct);
 
     /// <inheritdoc />
     public async Task<bool> MarkReadAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default)
@@ -193,7 +194,7 @@ public sealed class InboxService : IInboxService
     {
         try
         {
-            var count = await _store.GetUnreadCountAsync(platformUserId, ct).ConfigureAwait(false);
+            var count = await _store.GetUnreadCountAsync(platformUserId, actionableOnly: true, ct).ConfigureAwait(false);
             await _hub.Clients.Group(TenantHubGroups.User(platformUserId))
                 .SendAsync(
                     "InboxUnreadCountUpdated",

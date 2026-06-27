@@ -59,7 +59,7 @@ public sealed class InboxPanelTests : ComponentTestFixture
     {
         _api.Setup(a => a.ListAsync(
                 It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(),
-                It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new InboxPageDto(new List<InboxEntryDto> { Entry(title) }, 1, 50, 1));
 
         builder.OpenComponent<MudPopoverProvider>(0);
