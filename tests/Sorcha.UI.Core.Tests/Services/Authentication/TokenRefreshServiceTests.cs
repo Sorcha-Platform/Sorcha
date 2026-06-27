@@ -22,12 +22,14 @@ public class TokenRefreshServiceTests
     private readonly Mock<IConfigurationService> _configService = new();
     private readonly CustomAuthenticationStateProvider _authStateProvider;
     private readonly Mock<ILogger<TokenRefreshService>> _logger = new();
+    private readonly Mock<ILogger<CustomAuthenticationStateProvider>> _providerLogger = new();
     private readonly Mock<IJSRuntime> _jsRuntime = new();
 
     public TokenRefreshServiceTests()
     {
         _configService.Setup(x => x.GetActiveProfileNameAsync()).ReturnsAsync(ProfileName);
-        _authStateProvider = new CustomAuthenticationStateProvider(_tokenCache.Object, _configService.Object, _jsRuntime.Object);
+        _authStateProvider = new CustomAuthenticationStateProvider(
+            _tokenCache.Object, _configService.Object, _jsRuntime.Object, _providerLogger.Object);
     }
 
     private TokenRefreshService CreateService()

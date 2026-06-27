@@ -421,7 +421,7 @@ public static class SocialLoginEndpoints
         // Issue JWT — wallet users get Consumer-tier tokens; app users get Platform-tier.
         var mintTier = isWallet ? Tier.Consumer : Tier.Platform;
         var tokenResponse = await tokenService.GenerateUserTokenAsync(
-            userIdentity, publicOrg, platformUser.Id, mintTier, ct);
+            userIdentity, publicOrg, platformUser.Id, mintTier, platformUser.EmailVerified, ct);
 
         logger.LogInformation(
             "Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",

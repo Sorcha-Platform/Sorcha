@@ -1,0 +1,191 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Shared verdict trail panel (Feature 163, US3). Renders the four-layer verification trail from a
+    VerdictViewModel: headline, issuer identity, portrait/age chips, disclosed/withheld claim split,
+    and the three offline layers (LivePresentation, IssuerSignature, Revocation). Provides an
+    on-demand layer-4 RegisterAnchor check via IRegisterAnchorClient with no network call on first render.
+*@
+@namespace Sorcha.UI.Core.Components.Verify
+@using Sorcha.UI.Components.User.Models.Verification
+@using Sorcha.Verifier.Engine
+@using Sorcha.Verifier.Engine.Models
+@inject IRegisterAnchorClient AnchorClient
+
+<div class="verdict-trail-panel" data-testid="verdict-trail-panel">
+    @* Headline *@
+    <div class="verdict-headline @(Verdict.OverallPass ? "verdict-pass" : "verdict-fail")"
+         data-testid="verdict-headline">
+        @Verdict.Headline &nbsp; @(Verdict.OverallPass ? "✓" : "✗")
+    </div>
+
+    @* Portrait *@
+    @if (!string.IsNullOrEmpty(Verdict.PortraitBase64))
+    {
+        <img src="@PortraitSrc(Verdict.PortraitBase64)"
+             alt="portrait"
+             data-testid="portrait"
+             style="width:70px;height:88px;border-radius:6px;object-fit:cover;" />
+    }
+
+    @* Age chip *@
+    @if (Verdict.AgeOver18 is not null)
+    {
+        <span class="verdict-chip" data-testid="age-chip">
+            age_over_18 = @(Verdict.AgeOver18.Value ? "true" : "false")
+        </span>
+    }
+
+    @* Issuer identity *@
+    @if (!string.IsNullOrEmpty(Verdict.IssuerDid))
+    {
+        <div class="verdict-issuer" data-testid="issuer-did">
+            Issued by <b>@(Verdict.IssuerDisplayName ?? Verdict.IssuerDid)</b>
+        </div>
+    }
+
+    @* Disclosed / withheld claim split *@
+    <MudExpansionPanels Class="mt-3" MultiExpansion="true">
+        <MudExpansionPanel data-testid="trail-disclosure">
+            <TitleContent>
+                <div class="d-flex justify-space-between align-center" style="width:100%">
+                    <span>Selective disclosure</span>
+                    <span style="color:var(--mud-palette-success)">@Verdict.Disclosed.Count shared</span>
+                </div>
+            </TitleContent>
+            <ChildContent>
+                <div class="trail-detail">
+                    @foreach (var d in Verdict.Disclosed)
+                    {
+                        <div data-testid="disclosed-claim"><code>@d.Key = @d.Value</code></div>
+                    }
+                    @if (Verdict.Withheld.Count > 0)
+                    {
+                        <div class="trail-withheld" data-testid="withheld-claims">
+                            WITHHELD: @string.Join(" · ", Verdict.Withheld)
+                        </div>
+                    }
+                </div>
+            </ChildContent>
+        </MudExpansionPanel>
+
+        @* Validation layers *@
+        @foreach (var layer in Verdict.Layers)
+        {
+            <MudExpansionPanel data-testid="@($"trail-{layer.Layer}")">
+                <TitleContent>
+                    <div class="d-flex justify-space-between align-center" style="width:100%">
+                        <span>@LayerTitle(layer.Layer)</span>
+                        <span style="color:@StatusColour(layer.Status)">
+                            @StatusGlyph(layer.Status) @layer.Headline
+                        </span>
+                    </div>
+                </TitleContent>
+                <ChildContent>
+                    <div class="trail-detail">
+                        @foreach (var kv in layer.Detail)
+                        {
+                            <div><code>@kv.Key</code> &nbsp; @kv.Value</div>
+                        }
+                    </div>
+                </ChildContent>
+            </MudExpansionPanel>
+        }
+    </MudExpansionPanels>
+
+    @* Layer-4 affordance *@
+    @if (!Verdict.Layers.Any(l => l.Layer == ValidationLayer.RegisterAnchor))
+    {
+        @if (string.IsNullOrEmpty(Verdict.RegisterAnchorId))
+        {
+            <div class="mt-3 trail-unverified" data-testid="anchor-na">
+                Register anchor: not applicable
+            </div>
+        }
+        else
+        {
+            <MudButton Class="mt-3"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       Disabled="@_anchorChecking"
+                       OnClick="VerifyAnchorAsync"
+                       data-testid="verify-anchor">
+                @(_anchorChecking ? "Verifying…" : "Verify against the register")
+            </MudButton>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>The verdict view model built client-side from a VerificationPreset + VerificationOutcome.</summary>
+    [Parameter, EditorRequired] public VerdictViewModel Verdict { get; set; } = default!;
+
+    /// <summary>Raised after the on-demand layer-4 register anchor check completes.</summary>
+    [Parameter] public EventCallback OnAnchorChecked { get; set; }
+
+    private bool _anchorChecking;
+
+    private async Task VerifyAnchorAsync()
+    {
+        _anchorChecking = true;
+        try
+        {
+            var result = await AnchorClient.CheckAsync(
+                Verdict.RegisterAnchorId ?? "",
+                Verdict.CredentialId ?? "");
+
+            var detail = new Dictionary<string, string>();
+            if (Verdict.RegisterAnchorId is not null) detail["register"] = Verdict.RegisterAnchorId;
+            if (result.TxId is not null) detail["txId"] = result.TxId;
+            if (result.DocketNumber is not null) detail["docket"] = $"#{result.DocketNumber}";
+            if (result.SealedAt is not null) detail["sealedAt"] = result.SealedAt.Value.ToString("u");
+            if (result.Note is not null) detail["note"] = result.Note;
+
+            Verdict.Layers.Add(new ValidationLayerResult
+            {
+                Layer = ValidationLayer.RegisterAnchor,
+                Status = result.Status,
+                Headline = result.Status switch
+                {
+                    LayerStatus.Pass => "anchored",
+                    LayerStatus.Fail => "proof invalid",
+                    _ => "unverified",
+                },
+                Detail = detail,
+            });
+
+            await OnAnchorChecked.InvokeAsync();
+        }
+        finally
+        {
+            _anchorChecking = false;
+        }
+    }
+
+    private static string PortraitSrc(string token)
+        => token.StartsWith("data:") ? token : $"data:image/jpeg;base64,{token}";
+
+    private static string LayerTitle(ValidationLayer layer) => layer switch
+    {
+        ValidationLayer.LivePresentation => "Live presentation",
+        ValidationLayer.IssuerSignature => "Issuer signature",
+        ValidationLayer.Revocation => "Not revoked",
+        ValidationLayer.RegisterAnchor => "On the public register",
+        _ => layer.ToString(),
+    };
+
+    private static string StatusGlyph(LayerStatus s) => s switch
+    {
+        LayerStatus.Pass => "✓",
+        LayerStatus.Fail => "✗",
+        _ => "⚠",
+    };
+
+    private static string StatusColour(LayerStatus s) => s switch
+    {
+        LayerStatus.Pass => "var(--mud-palette-success)",
+        LayerStatus.Fail => "var(--mud-palette-error)",
+        _ => "var(--mud-palette-warning)",
+    };
+}

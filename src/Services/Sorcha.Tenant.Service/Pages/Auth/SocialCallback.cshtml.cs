@@ -236,7 +236,7 @@ public class SocialCallbackModel : PageModel
         var mintTier = isWallet
             ? Tier.Consumer
             : Tier.Platform;
-        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, mintTier, ct);
+        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, mintTier, platformUser.EmailVerified, ct);
 
         _logger.LogInformation("Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",
             platformUser.Id, provider, isNew);

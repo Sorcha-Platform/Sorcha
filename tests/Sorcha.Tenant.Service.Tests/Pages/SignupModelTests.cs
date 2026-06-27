@@ -95,7 +95,7 @@ public class SignupModelTests
     {
         // Arrange
         _registrationService
-            .Setup(s => s.RegisterAsync("default", "user@test.com", "StrongPassword1!", "Test User", It.IsAny<CancellationToken>()))
+            .Setup(s => s.RegisterAsync("public", "user@test.com", "StrongPassword1!", "Test User", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RegistrationResult(true, UserId: Guid.NewGuid(), Message: "Verification email sent"));
 
         var model = CreateModel();
@@ -122,7 +122,7 @@ public class SignupModelTests
             ["Password"] = ["Password must be at least 8 characters."]
         };
         _registrationService
-            .Setup(s => s.RegisterAsync("default", "user@test.com", "weak", "Test User", It.IsAny<CancellationToken>()))
+            .Setup(s => s.RegisterAsync("public", "user@test.com", "weak", "Test User", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RegistrationResult(false, ValidationErrors: validationErrors, Error: "Validation failed."));
 
         var model = CreateModel();
@@ -146,7 +146,7 @@ public class SignupModelTests
     {
         // Arrange
         _registrationService
-            .Setup(s => s.RegisterAsync("default", "existing@test.com", "StrongPassword1!", "Test User", It.IsAny<CancellationToken>()))
+            .Setup(s => s.RegisterAsync("public", "existing@test.com", "StrongPassword1!", "Test User", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RegistrationResult(false, Error: "A user with this email already exists.", ErrorStatusCode: 409));
 
         var model = CreateModel();
@@ -169,7 +169,7 @@ public class SignupModelTests
     {
         // Arrange — registration succeeds but no tokens are returned (email verification required)
         _registrationService
-            .Setup(s => s.RegisterAsync("default", "new@test.com", "StrongPassword1!", "New User", It.IsAny<CancellationToken>()))
+            .Setup(s => s.RegisterAsync("public", "new@test.com", "StrongPassword1!", "New User", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RegistrationResult(true, UserId: Guid.NewGuid(), Message: "Verification email sent"));
 
         var model = CreateModel();

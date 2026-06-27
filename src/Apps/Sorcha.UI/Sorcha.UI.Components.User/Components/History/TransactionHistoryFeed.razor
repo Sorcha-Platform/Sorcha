@@ -13,7 +13,7 @@
 *@
 @namespace Sorcha.UI.Components.User.Components.History
 
-@if (Entries is { Count: > 0 })
+@if (Entries?.Count > 0)
 {
     <MudList T="HistoryFeedEntry" Dense="true" data-testid="transaction-history-feed">
         @foreach (var entry in Entries)
@@ -21,7 +21,7 @@
             <MudListItem T="HistoryFeedEntry" Value="@entry"
                          Icon="@IconForKind(entry.Kind)"
                          OnClick="@(async () => await Activate(entry))"
-                         data-testid="@($"history-entry-{entry.Id}")">
+                         data-testid='@($"history-entry-{entry.Id}")'> 
                 <MudStack Spacing="0">
                     <MudText Typo="Typo.body1">@entry.Title</MudText>
                     @if (!string.IsNullOrEmpty(entry.Subtitle))
@@ -70,13 +70,13 @@ else
     private static string FormatWhen(DateTimeOffset at)
     {
         var delta = DateTimeOffset.UtcNow - at;
-        return delta.TotalHours switch
-        {
-            < 1 => $"{Math.Max(1, (int)delta.TotalMinutes)} min ago",
-            < 24 => $"{(int)delta.TotalHours} h ago",
-            < 24 * 7 => $"{(int)(delta.TotalDays)} d ago",
-            _ => at.ToLocalTime().ToString("d MMM yyyy")
-        };
+        if (delta.TotalHours < 1)
+            return $"{Math.Max(1, (int)delta.TotalMinutes)} min ago";
+        if (delta.TotalHours < 24)
+            return $"{(int)delta.TotalHours} h ago";
+        if (delta.TotalDays < 7)
+            return $"{(int)delta.TotalDays} d ago";
+        return at.ToLocalTime().ToString("d MMM yyyy");
     }
 
     /// <summary>One row in the feed.</summary>
