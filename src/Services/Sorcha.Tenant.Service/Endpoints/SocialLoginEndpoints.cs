@@ -12,6 +12,7 @@ using Sorcha.Tenant.Service.Filters;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.ServiceDefaults.Auth;
 
 namespace Sorcha.Tenant.Service.Endpoints;
 
@@ -94,10 +95,13 @@ public static class SocialLoginEndpoints
             .WithDescription("Exchanges the authorization code for user claims and dispatches "
                 + "on the intent recovered from the cached state token. login → resolve/create "
                 + "PlatformUser + JWT; link → verify caller matches captured PlatformUser + "
-                + "ISocialLinkService.LinkAsync.")
+                + "ISocialLinkService.LinkAsync. When the social email matches an existing verified "
+                + "account that is not yet linked, returns outcome=LinkRequired with a link-pending "
+                + "token for the step-up flow (Feature 168).")
             .AllowAnonymous()
             .RequireRateLimiting("platform-auth")
             .Produces<TokenResponse>()
+            .Produces<SocialLinkRequiredResponse>()
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status400BadRequest)
@@ -263,6 +267,7 @@ public static class SocialLoginEndpoints
         ISocialLinkService socialLinkService,
         IPlatformUserService platformUserService,
         IPlatformSettingsService platformSettingsService,
+        ILinkPendingTokenService linkPendingTokenService,
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         ITokenService tokenService,
@@ -317,6 +322,27 @@ public static class SocialLoginEndpoints
         // metrics tagging and logging. Defence-in-depth: never reflect raw
         // request input back into a user-visible message.
         var resolveResult = await platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, allowCreate: true, ct);
+        if (resolveResult.LinkRequired is { } linkInfo)
+        {
+            // Feature 168: email matched an existing verified account — gate the link behind
+            // step-up proof. Mint a short-lived link-pending token and return it to the client.
+            // No session is issued here.
+            var linkToken = linkPendingTokenService.Mint(new Models.LinkPendingToken(
+                linkInfo.Provider,
+                linkInfo.Subject,
+                linkInfo.SocialEmail,
+                linkInfo.DisplayName,
+                linkInfo.TargetAccountId,
+                DateTimeOffset.UtcNow.AddMinutes(5)));
+
+            SocialLoginMetrics.RecordLinkRequired(linkInfo.Provider);
+            logger.LogInformation(
+                "Social callback LinkRequired for provider={Provider}, targetAccount={TargetAccountId}",
+                linkInfo.Provider, linkInfo.TargetAccountId);
+
+            return TypedResults.Ok(new SocialLinkRequiredResponse("LinkRequired", linkToken));
+        }
+
         if (resolveResult.Refusal != SocialLoginRefusal.None)
         {
             var resolvedProvider = callbackResult.Provider;

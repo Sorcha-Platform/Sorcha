@@ -254,6 +254,7 @@ app.MapTotpEndpoints();
 app.MapIdpConfigurationEndpoints();
 app.MapOidcEndpoints();
 app.MapSocialLoginEndpoints();
+app.MapSocialLinkStepUpEndpoints();
 app.MapPlatformSettingsEndpoints();
 app.MapPlatformOrgEndpoints();
 app.MapPlatformManagementEndpoints();

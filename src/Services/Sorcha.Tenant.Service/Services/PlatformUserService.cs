@@ -328,23 +328,23 @@ public class PlatformUserService : IPlatformUserService
                     return new ResolveSocialUserResult(User: null, IsNew: false, SocialLoginRefusal.ExistingUnverified);
                 }
 
-                // Stage the DisplayName refresh on the tracked entity BEFORE
-                // LinkSocialLoginAsync — its SaveChangesAsync will then persist
-                // both the new link row and the updated PlatformUser in a single
-                // round-trip rather than two.
-                if (!string.IsNullOrWhiteSpace(displayName)
-                    && !string.Equals(displayName, existingByEmail.DisplayName, StringComparison.Ordinal))
-                {
-                    existingByEmail.DisplayName = displayName;
-                }
-
-                await LinkSocialLoginAsync(existingByEmail.Id, provider, subject, email, displayName, ct);
-
+                // Feature 168: both sides are verified — gate the auto-link behind step-up proof.
+                // Return LinkRequired so the callback can mint a link-pending token and start
+                // the step-up flow. No link is created here; link-confirm does that on success.
                 _logger.LogInformation(
-                    "Social login linked {Provider}/{Subject} to existing user {UserId} via email match",
+                    "Social login match {Provider}/{Subject} requires step-up linking for existing user {UserId}",
                     provider, subject, existingByEmail.Id);
 
-                return new ResolveSocialUserResult(existingByEmail, IsNew: false, SocialLoginRefusal.None);
+                return new ResolveSocialUserResult(
+                    User: null,
+                    IsNew: false,
+                    Refusal: SocialLoginRefusal.None,
+                    LinkRequired: new LinkRequiredInfo(
+                        Provider: provider,
+                        Subject: subject,
+                        SocialEmail: email,
+                        DisplayName: displayName,
+                        TargetAccountId: existingByEmail.Id));
             }
         }
 
