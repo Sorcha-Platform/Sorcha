@@ -54,7 +54,7 @@ ssh stuart@macmini 'echo OK; hostname; cd ~/projects/Sorcha && git rev-parse --s
 | You want to… | Do this |
 |--------------|---------|
 | On-call build right now (debug, bypass CI) | `scripts/trigger-build.ps1 -Lane android_adhoc` (SSH-runs fastlane on the Mac) |
-| Fire the unattended workflow on demand | `scripts/dispatch-workflow.ps1 -Lane android_adhoc` (needs build.yml on master; else push a `v*` tag) |
+| Fire the unattended workflow on demand (**Android only**) | `scripts/dispatch-workflow.ps1 -Lane android_adhoc` (needs build.yml on master; else push a `v*` tag). **Do NOT use for iOS** — the runner has no keychain session (see gotchas); run iOS lanes via the SSH/`nohup` path below. |
 | Watch a build + get the failure reason | `scripts/watch-build.ps1 [-RunId <id>]` |
 | Mirror CI's version for a local build | `scripts/bump-version.ps1 -BuildNumber <n>` |
 | Stand up / repair the Mac toolchain | `mobile/scripts/bootstrap-mac.sh` (idempotent; in the repo) |
@@ -87,6 +87,20 @@ then `bundle exec fastlane <lane>`; launch it with `nohup … > ~/<lane>.log 2>&
 - **Match `runs-on` on the unique `sorcha-build` label**, not the OS label `macOS`/`macos` (case ambiguity).
 - **Runner persistence = system LaunchDaemon** (`install-runner-daemon.sh`, needs sudo once). Survives
   reboot with no GUI login. (svc.sh's LaunchAgent can't bootstrap over SSH.)
+- **iOS lanes will NOT run on the GH Actions runner — only Android.** The runner is a system
+  LaunchDaemon with **no user keychain/Security session**, so `setup_ci`'s `security create-keychain`
+  fails and every `dispatch-workflow.ps1 -Lane ios_*` dies at `setup_ci`→`setup_keychain`
+  (setup_ci.rb:42) in ~15s. Tell-tale in the log: `ORIGINAL_DEFAULT_KEYCHAIN = "…/System.keychain"`
+  (a real user session shows `login.keychain`). **Android signs from the keystore *file*, never the
+  macOS keychain, so it builds fine on the runner.** Don't chase red herrings — it is NOT the app code,
+  a reboot, a stale temp keychain (`security delete-keychain` doesn't help), or the user's default-keychain
+  pref (restoring it doesn't propagate to the daemon session). **Run iOS via the SSH/`nohup` user-session
+  pattern above** (a real `stuart` login session *can* create keychains → `setup_ci` 0s, TestFlight upload OK).
+  (Durable fix candidate: host the runner as a per-user GUI-session LaunchAgent so it has a keychain —
+  blocked by the same can't-bootstrap-over-SSH issue; the SSH path is the pragmatic answer.)
+- **A run-script authored on Windows ships CRLF.** Piped to the Mac it yields `source ~/.zprofile^M:
+  no such file or directory` and a `parse error near '\n'`. Strip carriage returns on upload:
+  `Get-Content script.sh | ssh stuart@macmini "tr -d '\r' > ~/script.sh"`.
 - **CI steps run `bash + source ~/.zprofile`** (not a login shell), so `.zprofile` must export `dotnet`,
   `JAVA_HOME` (JDK 21), `ANDROID_HOME`, ruby/gem bin — bootstrap handles this.
 - **Capacitor 8 needs JDK 21** (docs say "17+", but its Android lib compiles at Java 21) and **SDK 36**.
