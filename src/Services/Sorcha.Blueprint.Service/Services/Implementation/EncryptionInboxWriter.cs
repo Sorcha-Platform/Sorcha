@@ -47,7 +47,7 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
                 Severity: "Info",
                 CorrelationKey: $"sorcha.inbox.encryption.complete:{operationId}",
                 DetailHref: $"/api/operations/{operationId}",
-                SourceEventId: Guid.NewGuid(),
+                SourceEventId: DeterministicSourceEventId($"sorcha.inbox.encryption.complete:{operationId}"),
                 OccurredAt: DateTimeOffset.UtcNow,
                 Title: "Register encrypted",
                 Summary: "Encryption completed successfully.",
@@ -72,10 +72,10 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
             var payload = new InboxWritePayload(
                 PlatformUserId: platformUserId,
                 Category: "Workflow",
-                Severity: "Warning",
+                Severity: "ActionRequired",
                 CorrelationKey: $"sorcha.inbox.encryption.fail:{operationId}",
                 DetailHref: $"/api/operations/{operationId}",
-                SourceEventId: Guid.NewGuid(),
+                SourceEventId: DeterministicSourceEventId($"sorcha.inbox.encryption.fail:{operationId}"),
                 OccurredAt: DateTimeOffset.UtcNow,
                 Title: "Register encryption failed",
                 Summary: "Encryption failed. Please try again.",
@@ -90,5 +90,15 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
                 "EncryptionInboxWriter — failed to write encryption-failed inbox entry for {PlatformUserId}",
                 platformUserId);
         }
+    }
+
+    private static Guid DeterministicSourceEventId(string key)
+    {
+        var bytes = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(key));
+        var guidBytes = new byte[16];
+        Array.Copy(bytes, guidBytes, 16);
+        guidBytes[6] = (byte)((guidBytes[6] & 0x0F) | 0x50);
+        guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
+        return new Guid(guidBytes);
     }
 }

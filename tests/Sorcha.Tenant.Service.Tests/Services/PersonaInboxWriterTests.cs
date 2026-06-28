@@ -63,10 +63,46 @@ public sealed class PersonaInboxWriterTests
         captured.Should().NotBeNull();
         captured!.PlatformUserId.Should().Be(_userId);
         captured.Category.Should().Be(InboxCategory.System);
-        captured.Severity.Should().Be(InboxSeverity.Info);
+        captured.Severity.Should().Be(InboxSeverity.Warning);
         captured.CorrelationKey.Should().Contain("persona:deleted");
         captured.Title.Should().Be("Profile deleted");
         captured.IconKey.Should().Be("person");
+    }
+
+    [Fact]
+    public async Task WritePersonaSavedAsync_SameUserWithinSameSecond_ProducesSameSourceEventId()
+    {
+        var ids = new List<Guid>();
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWriteRequest, CancellationToken>((r, _) => ids.Add(r.SourceEventId))
+            .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
+                new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
+
+        var sut = BuildSut();
+        // Two calls within the same wall-clock second produce the same key and collapse via the unique index.
+        await sut.WritePersonaSavedAsync(_userId, PersonaName);
+        await sut.WritePersonaSavedAsync(_userId, PersonaName);
+
+        // Both SourceEventIds should be identical (same user, same second).
+        ids.Should().HaveCount(2);
+        ids[0].Should().Be(ids[1], "writes within the same second must be idempotent");
+    }
+
+    [Fact]
+    public async Task WritePersonaDeletedAsync_SameUserWithinSameSecond_ProducesSameSourceEventId()
+    {
+        var ids = new List<Guid>();
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWriteRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWriteRequest, CancellationToken>((r, _) => ids.Add(r.SourceEventId))
+            .ReturnsAsync((InboxWriteRequest r, CancellationToken _) =>
+                new InboxWriteResult(new InboxEntry { Id = Guid.NewGuid() }, IsIdempotent: false));
+
+        var sut = BuildSut();
+        await sut.WritePersonaDeletedAsync(_userId, PersonaName);
+        await sut.WritePersonaDeletedAsync(_userId, PersonaName);
+
+        ids.Should().HaveCount(2);
+        ids[0].Should().Be(ids[1], "writes within the same second must be idempotent");
     }
 
     [Fact]

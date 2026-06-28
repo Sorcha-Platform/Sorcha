@@ -41,14 +41,15 @@ public sealed class PersonaInboxWriter : IPersonaInboxWriter
     {
         try
         {
+            var occurredAt = DateTimeOffset.UtcNow;
             var request = new InboxWriteRequest(
                 PlatformUserId: platformUserId,
                 Category: InboxCategory.System,
                 Severity: InboxSeverity.Info,
                 CorrelationKey: $"persona:saved:{platformUserId}",
                 DetailHref: "/app/profile",
-                SourceEventId: Guid.NewGuid(),
-                OccurredAt: DateTimeOffset.UtcNow,
+                SourceEventId: DeterministicSourceEventId($"sorcha.inbox.persona.replaced:{platformUserId:N}:{occurredAt.ToUnixTimeSeconds()}"),
+                OccurredAt: occurredAt,
                 Title: "Profile updated",
                 Summary: $"Your profile '{personaName}' was saved.",
                 IconKey: "person");
@@ -68,14 +69,15 @@ public sealed class PersonaInboxWriter : IPersonaInboxWriter
     {
         try
         {
+            var occurredAt = DateTimeOffset.UtcNow;
             var request = new InboxWriteRequest(
                 PlatformUserId: platformUserId,
                 Category: InboxCategory.System,
-                Severity: InboxSeverity.Info,
+                Severity: InboxSeverity.Warning,
                 CorrelationKey: $"persona:deleted:{platformUserId}",
                 DetailHref: "/app/profile",
-                SourceEventId: Guid.NewGuid(),
-                OccurredAt: DateTimeOffset.UtcNow,
+                SourceEventId: DeterministicSourceEventId($"sorcha.inbox.persona.deleted:{platformUserId:N}:{occurredAt.ToUnixTimeSeconds()}"),
+                OccurredAt: occurredAt,
                 Title: "Profile deleted",
                 Summary: $"Your profile '{personaName}' was deleted.",
                 IconKey: "person");
@@ -88,5 +90,15 @@ public sealed class PersonaInboxWriter : IPersonaInboxWriter
                 "PersonaInboxWriter — failed to write persona-deleted inbox entry for {PlatformUserId}",
                 platformUserId);
         }
+    }
+
+    private static Guid DeterministicSourceEventId(string key)
+    {
+        var bytes = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(key));
+        var guidBytes = new byte[16];
+        Array.Copy(bytes, guidBytes, 16);
+        guidBytes[6] = (byte)((guidBytes[6] & 0x0F) | 0x50);
+        guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
+        return new Guid(guidBytes);
     }
 }

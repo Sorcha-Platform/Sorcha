@@ -60,10 +60,61 @@ public sealed class EncryptionInboxWriterTests
         captured.Should().NotBeNull();
         captured!.PlatformUserId.Should().Be(_userId);
         captured.Category.Should().Be("Workflow");
-        captured.Severity.Should().Be("Warning");
+        captured.Severity.Should().Be("ActionRequired");
         captured.CorrelationKey.Should().Be($"sorcha.inbox.encryption.fail:{OperationId}");
         captured.DetailHref.Should().Be($"/api/operations/{OperationId}");
         captured.Title.Should().Be("Register encryption failed");
+    }
+
+    [Fact]
+    public async Task WriteEncryptionCompleteAsync_SameOperationId_ProducesSameSourceEventId()
+    {
+        var ids = new List<Guid>();
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) => ids.Add(p.SourceEventId))
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+
+        var sut = BuildSut();
+        await sut.WriteEncryptionCompleteAsync(_userId, OperationId);
+        await sut.WriteEncryptionCompleteAsync(_userId, OperationId);
+
+        ids.Should().HaveCount(2);
+        ids[0].Should().Be(ids[1], "retried writes with the same operationId must collapse via the unique-index constraint");
+    }
+
+    [Fact]
+    public async Task WriteEncryptionFailedAsync_SameOperationId_ProducesSameSourceEventId()
+    {
+        var ids = new List<Guid>();
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) => ids.Add(p.SourceEventId))
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+
+        var sut = BuildSut();
+        await sut.WriteEncryptionFailedAsync(_userId, OperationId);
+        await sut.WriteEncryptionFailedAsync(_userId, OperationId);
+
+        ids.Should().HaveCount(2);
+        ids[0].Should().Be(ids[1], "retried writes with the same operationId must collapse via the unique-index constraint");
+    }
+
+    [Fact]
+    public async Task WriteEncryptionCompleteAsync_DifferentFromFailSourceEventId()
+    {
+        InboxWritePayload? cap1 = null, cap2 = null;
+        _inbox.Setup(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()))
+            .Callback<InboxWritePayload, CancellationToken>((p, _) =>
+            {
+                if (cap1 is null) cap1 = p; else cap2 = p;
+            })
+            .ReturnsAsync(new InboxWriteOutcome(Guid.NewGuid(), Idempotent: false));
+
+        var sut = BuildSut();
+        await sut.WriteEncryptionCompleteAsync(_userId, OperationId);
+        await sut.WriteEncryptionFailedAsync(_userId, OperationId);
+
+        cap1!.SourceEventId.Should().NotBe(cap2!.SourceEventId,
+            "complete and fail events for the same operationId must have distinct SourceEventIds");
     }
 
     [Fact]
