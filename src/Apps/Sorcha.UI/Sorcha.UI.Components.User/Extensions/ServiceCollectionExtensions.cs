@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Sorcha.UI.Components.User.Services.Verification;
+using Sorcha.UI.Core.Services;
 using Sorcha.Verifier.Engine;
 
 namespace Sorcha.UI.Components.User.Extensions;
@@ -37,6 +38,9 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration,
         string? haipBaseUrl = null)
     {
+        // Feature 173: anonymous client for the three social-link step-up endpoints (F168 contract).
+        services.AddScoped<IAnonymousSocialLinkClientService, AnonymousSocialLinkClientService>();
+
         // Verify seams — Feature 163 (PR B2-components).
         // TryAdd* ensures a host override registered before this call wins.
         services.TryAddSingleton<IVerificationPresetCatalogue, DefaultPresetCatalogue>();
