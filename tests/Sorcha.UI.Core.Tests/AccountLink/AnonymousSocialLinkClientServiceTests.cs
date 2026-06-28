@@ -9,6 +9,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
+using Sorcha.UI.Core.Models;
 using Sorcha.UI.Core.Models.Authentication;
 using Sorcha.UI.Core.Services;
 using Xunit;
@@ -38,7 +39,7 @@ public class AnonymousSocialLinkClientServiceTests
 
     private void SetupResponse(HttpMethod method, string url, HttpStatusCode status, object? body = null)
     {
-        var content = body is null
+        HttpContent? content = body is null
             ? null
             : JsonContent.Create(body);
 
