@@ -145,6 +145,8 @@ builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider>(sp
 // Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,
     Sorcha.Tenant.Service.Services.PersonaService>();
+builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaInboxWriter,
+    Sorcha.Tenant.Service.Services.PersonaInboxWriter>();
 builder.Services.AddHttpClient<Sorcha.Tenant.Service.Services.IPersonaCryptoClient,
     Sorcha.Tenant.Service.Services.PersonaCryptoClient>(client =>
 {
@@ -254,6 +256,7 @@ app.MapTotpEndpoints();
 app.MapIdpConfigurationEndpoints();
 app.MapOidcEndpoints();
 app.MapSocialLoginEndpoints();
+app.MapSocialLinkStepUpEndpoints();
 app.MapPlatformSettingsEndpoints();
 app.MapPlatformOrgEndpoints();
 app.MapPlatformManagementEndpoints();

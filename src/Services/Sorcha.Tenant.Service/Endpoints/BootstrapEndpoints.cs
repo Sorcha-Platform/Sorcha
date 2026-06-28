@@ -238,7 +238,7 @@ public static class BootstrapEndpoints
                     Name = organization.Name,
                     Subdomain = organization.Subdomain
                 };
-                var tokenResponse = await tokenService.GenerateUserTokenAsync(createdUser, orgEntity, platformUser.Id);
+                var tokenResponse = await tokenService.GenerateUserTokenAsync(createdUser, orgEntity, platformUser.Id, emailVerified: platformUser.EmailVerified);
                 adminAccessToken = tokenResponse.AccessToken;
                 adminRefreshToken = tokenResponse.RefreshToken;
             }

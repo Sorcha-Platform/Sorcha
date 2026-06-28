@@ -293,7 +293,7 @@ public class LoginService : ILoginService
         user.LastLoginAt = DateTimeOffset.UtcNow;
         await _identityRepository.UpdateUserAsync(user, ct);
 
-        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, mintTier, ct);
+        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, mintTier, platformUser.EmailVerified, ct);
 
         _logger.LogInformation("User logged in successfully - {Email} (OrgId: {OrgId}, tier: {Tier})",
             user.Email, organization.Id, mintTier);
@@ -405,7 +405,7 @@ public class LoginService : ILoginService
             user.LastLoginAt = DateTimeOffset.UtcNow;
             await _identityRepository.UpdateUserAsync(user, ct);
 
-            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, tierResolution.Tier, ct);
+            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, tierResolution.Tier, platformUser.EmailVerified, ct);
 
             _logger.LogInformation("Subdomain login succeeded - {Email} in org {Subdomain} (UserId: {UserId}, tier: {Tier})",
                 email, orgSubdomain, user.Id, tierResolution.Tier);

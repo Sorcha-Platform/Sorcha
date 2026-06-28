@@ -28,6 +28,14 @@ public interface IInboxService
     Task<InboxWriteResult> WriteAsync(InboxWriteRequest request, CancellationToken ct = default);
 
     /// <summary>Returns a page of the user's inbox entries, newest first. Excludes dismissed entries unless <paramref name="includeDismissed"/> is true.</summary>
+    /// <param name="platformUserId">Owner of the inbox entries.</param>
+    /// <param name="page">One-based page number.</param>
+    /// <param name="pageSize">Maximum entries per page (capped at 100).</param>
+    /// <param name="category">When non-null, restricts results to the given category.</param>
+    /// <param name="unreadOnly">When true, excludes entries where <c>ReadAt</c> is set.</param>
+    /// <param name="includeDismissed">When true, includes entries where <c>DismissedAt</c> is set.</param>
+    /// <param name="actionableOnly">When true, returns only Actionable entries.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<InboxPage> GetPageAsync(
         Guid platformUserId,
         int page = 1,
@@ -35,12 +43,13 @@ public interface IInboxService
         InboxCategory? category = null,
         bool unreadOnly = false,
         bool includeDismissed = false,
+        bool actionableOnly = false,
         CancellationToken ct = default);
 
     /// <summary>Returns a single entry, scoped to the calling user. <c>null</c> if not found or not owned.</summary>
     Task<InboxEntry?> GetByIdAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);
 
-    /// <summary>Returns the user's unread count.</summary>
+    /// <summary>Returns the user's unread Actionable-only count.</summary>
     Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default);
 
     /// <summary>Marks an entry read. Idempotent. Fires <c>InboxUnreadCountUpdated</c> if state changed.</summary>

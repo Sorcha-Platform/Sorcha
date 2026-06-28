@@ -191,7 +191,7 @@ public class LoginModelTests
             .ReturnsAsync(user);
         _orgRepo.Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
-        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(tokens);
 
         var model = CreateModel();
@@ -384,7 +384,7 @@ public class LoginModelTests
         _orgRepo.Setup(r => r.GetByIdAsync(orgBId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(orgB);
         _tokenService.Setup(t => t.GenerateUserTokenAsync(
-                userInOrgB, orgB, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+                userInOrgB, orgB, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(tokens);
 
         var model = CreateModel();
@@ -398,7 +398,7 @@ public class LoginModelTests
         // Assert — token generated for Org B, NOT Org A
         result.Should().BeOfType<RedirectResult>();
         _tokenService.Verify(t => t.GenerateUserTokenAsync(
-            userInOrgB, orgB, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()),
+            userInOrgB, orgB, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
             Times.Once, "JWT must be generated for the selected org (Org B), not the user's default org");
         _orgRepo.Verify(r => r.GetByIdAsync(orgAId, It.IsAny<CancellationToken>()),
             Times.Never, "Should NOT look up Org A — user selected Org B");
@@ -457,7 +457,7 @@ public class LoginModelTests
         model.ErrorMessage.Should().Be("You are not a member of the selected organization.");
         _tokenService.Verify(t => t.GenerateUserTokenAsync(
             It.IsAny<UserIdentity>(), It.IsAny<Organization>(),
-            It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()),
+            It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
             Times.Never, "Must NOT issue a JWT for an org the user doesn't belong to");
     }
 
@@ -493,7 +493,7 @@ public class LoginModelTests
             .ReturnsAsync(user);
         _orgRepo.Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
-        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()))
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(tokens);
 
         var model = CreateModel();
@@ -507,7 +507,7 @@ public class LoginModelTests
         // Assert — falls back to user's default org
         result.Should().BeOfType<RedirectResult>();
         _tokenService.Verify(t => t.GenerateUserTokenAsync(
-            user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<CancellationToken>()),
+            user, org, It.IsAny<Guid>(), It.IsAny<Tier>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 }

@@ -26,6 +26,14 @@ public interface IInboxStore
     Task<InboxAddResult> AddOrFindAsync(InboxEntry candidate, CancellationToken ct = default);
 
     /// <summary>Returns a page of entries, newest first, with optional filters.</summary>
+    /// <param name="platformUserId">Owner of the inbox entries.</param>
+    /// <param name="page">One-based page number.</param>
+    /// <param name="pageSize">Maximum entries per page.</param>
+    /// <param name="category">When non-null, restricts results to the given category.</param>
+    /// <param name="unreadOnly">When true, excludes entries where <c>ReadAt</c> is set.</param>
+    /// <param name="includeDismissed">When true, includes entries where <c>DismissedAt</c> is set.</param>
+    /// <param name="actionableOnly">When true, returns only entries where <c>Category == Action</c> or <c>Severity >= ActionRequired</c>.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<InboxPageResult> GetPageAsync(
         Guid platformUserId,
         int page,
@@ -33,13 +41,17 @@ public interface IInboxStore
         InboxCategory? category,
         bool unreadOnly,
         bool includeDismissed,
+        bool actionableOnly = false,
         CancellationToken ct = default);
 
     /// <summary>Returns one entry, scoped to the owning user.</summary>
     Task<InboxEntry?> GetByIdAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);
 
     /// <summary>Returns the user's unread, non-dismissed count.</summary>
-    Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default);
+    /// <param name="platformUserId">Owner of the inbox entries.</param>
+    /// <param name="actionableOnly">When true, returns only entries where <c>Category == Action</c> or <c>Severity >= ActionRequired</c>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<int> GetUnreadCountAsync(Guid platformUserId, bool actionableOnly = false, CancellationToken ct = default);
 
     /// <summary>Marks an entry read. Idempotent.</summary>
     Task<InboxMarkReadResult> MarkReadAsync(Guid platformUserId, Guid entryId, CancellationToken ct = default);

@@ -1,5 +1,6 @@
 @page "/auth/signup"
 @model Sorcha.Tenant.Service.Pages.Auth.SignupModel
+@using Sorcha.Tenant.Service.Services
 @{
     ViewData["Title"] = "Sign Up";
 }
@@ -77,6 +78,7 @@
                         @foreach (var provider in Model.AvailableProviders)
                         {
                             <button type="button" class="social-btn" data-provider="@provider">
+                                @Html.Raw(SocialProviderBrandIcon.For(provider))
                                 Continue with @provider
                             </button>
                         }
