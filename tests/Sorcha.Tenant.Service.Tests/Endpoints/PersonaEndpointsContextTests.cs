@@ -10,7 +10,6 @@ using Sorcha.Tenant.Models.Persona;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
-using Sorcha.Tenant.Service.Services.Interfaces;
 
 namespace Sorcha.Tenant.Service.Tests.Endpoints;
 
@@ -35,7 +34,6 @@ public sealed class PersonaEndpointsContextTests : IDisposable
     private readonly SqliteConnection _connection;
     private readonly TenantDbContext _db;
     private readonly Mock<IPersonaCryptoClient> _crypto = new();
-    private readonly Mock<IEventService> _events = new();
     private readonly PersonaService _sut;
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _orgA = Guid.NewGuid();
@@ -63,10 +61,7 @@ public sealed class PersonaEndpointsContextTests : IDisposable
                 new PersonaCryptoRemoteResult(data, new byte[24], wallet));
         _crypto.Setup(c => c.DecryptAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string _, byte[] ct, byte[] _, string _, CancellationToken _) => ct);
-        _events.Setup(e => e.CreateEventAsync(It.IsAny<ActivityEvent>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((ActivityEvent e, CancellationToken _) => e);
-
-        _sut = new PersonaService(_db, _crypto.Object, _events.Object, NullLogger<PersonaService>.Instance);
+        _sut = new PersonaService(_db, _crypto.Object, NullLogger<PersonaService>.Instance, Mock.Of<IPersonaInboxWriter>());
     }
 
     public void Dispose()

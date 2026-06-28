@@ -367,6 +367,34 @@ for the operator runbook.
 `Sorcha.Tenant` meter. PII is never tagged on these metrics; the
 matching log line carries a hash-based redacted email tag.
 
+**Step-up social account linking (Feature 168).**
+When a social sign-in's verified email matches an existing verified account that isn't yet linked to
+the incoming `(provider, subject)`, the callback returns `{"outcome":"LinkRequired","linkPendingToken":"…"}`
+instead of issuing a session. No `PlatformSocialLogin` row is created. The client must complete
+the three-step pre-session challenge flow below.
+
+#### Step-Up Social Account Linking Endpoints (`/api/auth/social/link`)
+
+All three endpoints are unauthenticated and rate-limited with `platform-auth`. The `linkPendingToken`
+(HMAC-SHA256, 5-minute TTL, HKDF-derived key) acts as the principal.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/social/link/challenge/initiate` | POST | Begin a `LinkSocial` step-up challenge. Body: `{"linkPendingToken":"…","preferredMethod":null}`. Returns the offered challenge method and payload. |
+| `/api/auth/social/link/challenge/verify` | POST | Submit the proof. Body: `{"linkPendingToken":"…","method":"totp","proof":{…}}`. Returns a single-use `X-Auth-Challenge` token on success. |
+| `/api/auth/social/link/confirm` | POST | Redeem both tokens, link the social identity, and issue a session. Body: `{"linkPendingToken":"…"}`. Header: `X-Auth-Challenge: ch_…`. |
+
+**Floor rule.** `ScopedOperation.LinkSocial` requires `AuthAssuranceTier.Strong` (Feature 168, T022).
+TOTP, passkey, and linked-social re-auth satisfy the floor. Bare password (Basic) is always rejected.
+Accounts with only a password and no TOTP/passkey enrolled receive `NoMethodAvailable` at initiate (400).
+
+**Link-confirm error codes.** `401` — missing/invalid/expired link-pending token or challenge token.
+`403` — challenge bound to a different account or wrong operation. `409` — social identity already linked
+to a different account. On success, the same session token shape as a normal social sign-in is returned.
+
+**Key material.** The token's signing key is HKDF-SHA256 derived from `JwtSettings:SigningKey` with
+info label `sorcha:tenant:link-pending-hmac:v1`, isolated from all other key derivations.
+
 **Public-organisation seed.** A fresh database can be seeded with
 `PublicOrgEnabled=true` via
 `PlatformSettings__SeedPublicOrgEnabled=true` (feature 115 FR-019).

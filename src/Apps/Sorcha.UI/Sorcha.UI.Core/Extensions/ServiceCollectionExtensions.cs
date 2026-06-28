@@ -347,16 +347,6 @@ public static class ServiceCollectionExtensions
         // Chat Hub Connection (SignalR for AI-assisted blueprint design)
         services.AddChatHubServices(baseAddress);
 
-        // Activity Log Service (043)
-        services.AddScoped<IActivityLogService>(sp =>
-        {
-            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
-            handler.InnerHandler = new HttpClientHandler();
-            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
-            var logger = sp.GetRequiredService<ILogger<ActivityLogService>>();
-            return new ActivityLogService(httpClient, logger);
-        });
-
         // User Preferences Service (043)
         services.AddScoped<IUserPreferencesService>(sp =>
         {
@@ -406,16 +396,6 @@ public static class ServiceCollectionExtensions
 
         // Persona autofill resolver — pure function, singleton.
         services.AddSingleton<Sorcha.UI.Core.Services.Forms.PersonaAutofillResolver>();
-
-        // Pending Action Service (062)
-        services.AddScoped<IPendingActionService>(sp =>
-        {
-            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
-            handler.InnerHandler = new HttpClientHandler();
-            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
-            var logger = sp.GetRequiredService<ILogger<PendingActionService>>();
-            return new PendingActionService(httpClient, logger);
-        });
 
         // Actions Hub Connection (SignalR for real-time action notifications)
         services.AddBlueprintHubServices(baseAddress);
@@ -764,16 +744,6 @@ public static class ServiceCollectionExtensions
             var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
             var logger = sp.GetRequiredService<ILogger<PushNotificationService>>();
             return new PushNotificationService(httpClient, logger);
-        });
-
-        // Event Admin Service (051 - authenticated)
-        services.AddScoped<IEventAdminService>(sp =>
-        {
-            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
-            handler.InnerHandler = new HttpClientHandler();
-            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
-            var logger = sp.GetRequiredService<ILogger<EventAdminService>>();
-            return new EventAdminService(httpClient, logger);
         });
 
         // Presentation Admin Service (050 - authenticated)

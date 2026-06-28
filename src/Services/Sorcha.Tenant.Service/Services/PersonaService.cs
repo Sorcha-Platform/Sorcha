@@ -11,7 +11,6 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Tenant.Models.Persona;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
-using Sorcha.Tenant.Service.Services.Interfaces;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -40,19 +39,19 @@ public sealed partial class PersonaService : IPersonaService
 
     private readonly TenantDbContext _db;
     private readonly IPersonaCryptoClient _crypto;
-    private readonly IEventService _events;
     private readonly ILogger<PersonaService> _logger;
+    private readonly IPersonaInboxWriter _personaInboxWriter;
 
     public PersonaService(
         TenantDbContext db,
         IPersonaCryptoClient crypto,
-        IEventService events,
-        ILogger<PersonaService> logger)
+        ILogger<PersonaService> logger,
+        IPersonaInboxWriter personaInboxWriter)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
-        _events = events ?? throw new ArgumentNullException(nameof(events));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _personaInboxWriter = personaInboxWriter ?? throw new ArgumentNullException(nameof(personaInboxWriter));
     }
 
     /// <inheritdoc />
@@ -265,19 +264,14 @@ public sealed partial class PersonaService : IPersonaService
             }
         }
 
-        await _events.CreateEventAsync(new ActivityEvent
+        try
         {
-            UserId = platformUserId,
-            EventType = "persona.replaced",
-            Severity = EventSeverity.Info,
-            Title = "Profile saved",
-            Message = "Your personal profile was updated.",
-            SourceService = "TenantService",
-            EntityType = "PlatformUserPersona",
-            EntityId = platformUserId.ToString(),
-            CreatedAt = now.UtcDateTime,
-            ExpiresAt = now.UtcDateTime.AddYears(1)
-        }, ct);
+            await _personaInboxWriter.WritePersonaSavedAsync(platformUserId, DerivePersonaDisplayName(normalised), ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PersonaInboxWriter — failed to emit persona-saved inbox entry for {PlatformUserId}", platformUserId);
+        }
 
         _logger.LogInformation("Persona saved for user {PlatformUserId}", platformUserId);
 
@@ -299,28 +293,49 @@ public sealed partial class PersonaService : IPersonaService
             return; // Idempotent.
         }
 
+        // Resolve the display name before deletion — the ciphertext is gone once SaveChanges runs.
+        var displayName = await TryResolvePersonaDisplayNameAsync(row, ct);
+
         _db.PlatformUserPersonas.Remove(row);
         await _db.SaveChangesAsync(ct);
 
-        var now = DateTimeOffset.UtcNow;
-        await _events.CreateEventAsync(new ActivityEvent
+        try
         {
-            UserId = platformUserId,
-            EventType = "persona.deleted",
-            Severity = EventSeverity.Warning,
-            Title = "Profile deleted",
-            Message = "Your personal profile was deleted.",
-            SourceService = "TenantService",
-            EntityType = "PlatformUserPersona",
-            EntityId = platformUserId.ToString(),
-            CreatedAt = now.UtcDateTime,
-            ExpiresAt = now.UtcDateTime.AddYears(1)
-        }, ct);
+            await _personaInboxWriter.WritePersonaDeletedAsync(platformUserId, displayName, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PersonaInboxWriter — failed to emit persona-deleted inbox entry for {PlatformUserId}", platformUserId);
+        }
 
         _logger.LogInformation("Persona deleted for user {PlatformUserId}", platformUserId);
     }
 
     // -------- private helpers --------
+
+    private static string DerivePersonaDisplayName(PersonaAttributesV1 attrs)
+    {
+        var parts = new[] { attrs.GivenName, attrs.FamilyName }
+            .Where(s => !string.IsNullOrWhiteSpace(s));
+        var name = string.Join(" ", parts);
+        return string.IsNullOrWhiteSpace(name) ? (attrs.FullName ?? "Personal Profile") : name;
+    }
+
+    private async Task<string> TryResolvePersonaDisplayNameAsync(PlatformUserPersona row, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(row.WrappedKeyRef)) return "Personal Profile";
+        try
+        {
+            var plaintext = await _crypto.DecryptAsync(
+                row.WrappedKeyRef, row.CiphertextBlob, row.Nonce, row.WrappedKeyRef, ct);
+            var attrs = JsonSerializer.Deserialize<PersonaAttributesV1>(plaintext, JsonOptions);
+            return attrs is null ? "Personal Profile" : DerivePersonaDisplayName(attrs);
+        }
+        catch
+        {
+            return "Personal Profile";
+        }
+    }
 
     /// <summary>
     /// Validates invariants I-1 through I-5 from data-model.md §2 and

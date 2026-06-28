@@ -4,6 +4,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using Sorcha.UI.Core.Models.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
@@ -22,20 +23,26 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     private readonly ITokenCache _tokenCache;
     private readonly IConfigurationService _configurationService;
     private readonly IJSRuntime _jsRuntime;
+    private readonly ILogger<CustomAuthenticationStateProvider> _logger;
     private readonly JwtSecurityTokenHandler _jwtHandler = new() { MapInboundClaims = false };
 
     // Caches the in-flight or completed auth state task to prevent concurrent callers
     // from racing to consume the one-time fragment token
     private Task<AuthenticationState>? _authStateTask;
 
+    // Guards against raising AuthenticationStateChanged more than once per fresh consume
+    private bool _alreadyBroadcast;
+
     public CustomAuthenticationStateProvider(
         ITokenCache tokenCache,
         IConfigurationService configurationService,
-        IJSRuntime jsRuntime)
+        IJSRuntime jsRuntime,
+        ILogger<CustomAuthenticationStateProvider> logger)
     {
         _tokenCache = tokenCache;
         _configurationService = configurationService;
         _jsRuntime = jsRuntime;
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -44,6 +51,11 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
         return _authStateTask ??= GetAuthenticationStateCoreAsync();
     }
 
+    /// <summary>
+    /// Resolves the current authentication state. Checks for a fresh fragment token first;
+    /// if one is consumed, re-broadcasts the authenticated state to already-rendered subscribers
+    /// exactly once so they update without a manual reload.
+    /// </summary>
     private async Task<AuthenticationState> GetAuthenticationStateCoreAsync()
     {
         try
@@ -54,9 +66,15 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
             // login/org-switch and must take precedence over any cached token. Without
             // this, re-login with a different org would be ignored because the old
             // (still-valid) token would be returned from cache.
-            var entry = await TryConsumeFragmentTokenAsync(activeProfileName);
+            var fragmentEntry = await TryConsumeFragmentTokenAsync(activeProfileName);
+            var freshConsume = fragmentEntry != null && !fragmentEntry.IsExpired;
 
-            if (entry == null || entry.IsExpired)
+            TokenCacheEntry? entry;
+            if (freshConsume)
+            {
+                entry = fragmentEntry;
+            }
+            else
             {
                 entry = await _tokenCache.GetTokenAsync(activeProfileName);
             }
@@ -80,8 +98,18 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
 
             var identity = new ClaimsIdentity(claims, "jwt", ClaimTypes.Name, "role");
             var user = new ClaimsPrincipal(identity);
+            var state = new AuthenticationState(user);
 
-            return new AuthenticationState(user);
+            if (freshConsume && state.User.Identity?.IsAuthenticated == true && !_alreadyBroadcast)
+            {
+                _alreadyBroadcast = true;
+                _logger.LogDebug("Auth state re-broadcast after fresh fragment-token consume");
+                // Broadcast the already-resolved state directly — avoids re-entering
+                // GetAuthenticationStateCoreAsync and causing infinite recursion.
+                base.NotifyAuthenticationStateChanged(Task.FromResult(state));
+            }
+
+            return state;
         }
         catch (Exception)
         {
@@ -95,6 +123,7 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     public void NotifyAuthenticationStateChanged()
     {
         _authStateTask = null;
+        _alreadyBroadcast = false;
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }
 

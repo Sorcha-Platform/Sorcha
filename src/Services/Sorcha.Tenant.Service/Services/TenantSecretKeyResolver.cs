@@ -43,6 +43,7 @@ public sealed class TenantSecretKeyResolver
     private const int KeyLength = 32;
     private const string ProtectionInfo = "sorcha:tenant:secret-protection:v1";
     private const string LoginTokenInfo = "sorcha:tenant:login-token-hmac:v1";
+    private const string LinkPendingTokenInfo = "sorcha:tenant:link-pending-hmac:v1";
 
     private readonly JwtConfiguration _jwt;
     private readonly IConfiguration _configuration;
@@ -128,6 +129,24 @@ public sealed class TenantSecretKeyResolver
         return Derive(_jwt.SigningKey, LoginTokenInfo);
     }
 
+    /// <summary>
+    /// Resolves the 32-byte HMAC key for signing the link-pending token used in the step-up social
+    /// account linking flow (Feature 168). Derived from the JWT signing key with a distinct info label
+    /// giving cryptographic domain separation from the login-token key. Stable across replicas/restarts.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">No JWT signing key is configured (fail-closed).</exception>
+    public byte[] ResolveLinkPendingTokenSigningKey()
+    {
+        if (string.IsNullOrEmpty(_jwt.SigningKey))
+        {
+            throw new InvalidOperationException(
+                "Cannot derive the link-pending-token signing key: JwtSettings:SigningKey is not configured " +
+                $"(environment: {_environment.EnvironmentName}).");
+        }
+
+        return Derive(_jwt.SigningKey, LinkPendingTokenInfo);
+    }
+
     private static byte[] Derive(string rootKey, string info) =>
         HKDF.DeriveKey(
             HashAlgorithmName.SHA256,
@@ -154,4 +173,23 @@ public sealed class LoginTokenSigningKey
     /// <summary>DI constructor — derives the key from the resolver.</summary>
     public LoginTokenSigningKey(TenantSecretKeyResolver resolver)
         : this((resolver ?? throw new ArgumentNullException(nameof(resolver))).ResolveLoginTokenSigningKey()) { }
+}
+
+/// <summary>
+/// Singleton holder for the HMAC key used to sign the link-pending token in the step-up social
+/// account linking flow (Feature 168). Derived once from the JWT signing key with a distinct info
+/// label — cryptographically separated from <see cref="LoginTokenSigningKey"/>.
+/// </summary>
+public sealed class LinkPendingTokenKey
+{
+    /// <summary>The 32-byte HMAC-SHA256 signing key.</summary>
+    public byte[] Key { get; }
+
+    /// <summary>Constructs the holder with an already-derived key (used by tests).</summary>
+    public LinkPendingTokenKey(byte[] key) =>
+        Key = key ?? throw new ArgumentNullException(nameof(key));
+
+    /// <summary>DI constructor — derives the key from the resolver.</summary>
+    public LinkPendingTokenKey(TenantSecretKeyResolver resolver)
+        : this((resolver ?? throw new ArgumentNullException(nameof(resolver))).ResolveLinkPendingTokenSigningKey()) { }
 }

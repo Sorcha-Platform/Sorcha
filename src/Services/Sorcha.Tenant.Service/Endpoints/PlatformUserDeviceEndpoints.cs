@@ -4,6 +4,7 @@
 using System.Security.Claims;
 using Microsoft.Extensions.Logging;
 using Sorcha.CitizenWallet.Abstractions.Models;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.CitizenStatusList;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -217,7 +218,7 @@ public static class PlatformUserDeviceEndpoints
         IIdentityRepository identityRepository,
         CancellationToken ct)
     {
-        var pidClaim = context.User.FindFirst("platform_user_id")?.Value
+        var pidClaim = context.User.FindFirst(TokenClaimConstants.PlatformUserId)?.Value
             ?? context.User.FindFirst("pid")?.Value;
         if (Guid.TryParse(pidClaim, out var pid) && pid != Guid.Empty)
         {

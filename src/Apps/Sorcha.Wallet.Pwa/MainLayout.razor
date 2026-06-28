@@ -120,7 +120,9 @@
         <Sorcha.UI.Core.Components.Feedback.InlineFeedbackHost />
         @* Guard the routed page so an unhandled error renders a recovery
            panel instead of blanking the wallet shell. Auto-recovers on nav. *@
-        <Sorcha.UI.Core.Components.Shared.AppErrorBoundary>
+        @* ShowDetails: surface the exception text on-screen (copyable) in the installed
+           PWA, where a device user can't easily reach browser dev-tools. Pre-release aid. *@
+        <Sorcha.UI.Core.Components.Shared.AppErrorBoundary ShowDetails="true">
             @Body
         </Sorcha.UI.Core.Components.Shared.AppErrorBoundary>
     </MudMainContent>

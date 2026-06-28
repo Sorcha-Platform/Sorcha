@@ -18,10 +18,9 @@ them in priority order.
 
 ### Pruning gaps — no cleanup background service
 
-These tables grow unbounded under normal use. Today only `ActivityEvents`
-(`EventCleanupService`) and `AuditLogEntries` (`AuditCleanupService`) are
-swept. A unified `DatabaseHousekeepingService` modeled on the existing
-`EventCleanupService` could handle all of them in one hourly tick.
+These tables grow unbounded under normal use. Today only `AuditLogEntries` (`AuditCleanupService`) is
+swept. (`ActivityEvents` and `EventCleanupService` were removed in F170 — activity events now flow through the Inbox spine.) A unified `DatabaseHousekeepingService` modeled on the existing
+`AuditCleanupService` could handle all of them in one hourly tick.
 
 | Table | Trigger field | Suggested rule |
 |---|---|---|

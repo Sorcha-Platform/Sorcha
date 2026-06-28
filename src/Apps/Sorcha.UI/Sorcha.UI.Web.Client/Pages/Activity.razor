@@ -1,0 +1,24 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/activity"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Components.User.Components.Activity
+
+<PageTitle>Activity · Sorcha</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Spacing="0" Class="mb-4">
+        <MudText Typo="Typo.h4">
+            <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-2" />
+            Activity
+        </MudText>
+        <MudText Typo="Typo.body1" Color="Color.Secondary">
+            Your full activity history
+        </MudText>
+    </MudStack>
+    <ActivityFeed />
+</MudContainer>

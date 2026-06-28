@@ -298,6 +298,16 @@ See `walkthroughs/README.md` for the full list and setup instructions.
 
 For building from source, running tests, project structure, coding conventions, and contributing — see **[DEVELOPMENT.md](DEVELOPMENT.md)**.
 
+## Running the tests
+
+Run the full test suite from the repository root (.NET 10 SDK required — see [DEVELOPMENT.md](DEVELOPMENT.md)):
+
+```bash
+dotnet test
+```
+
+For filtered runs, coverage collection, and other test options, see **[DEVELOPMENT.md](DEVELOPMENT.md)**.
+
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.

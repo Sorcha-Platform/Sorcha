@@ -32,6 +32,7 @@ public sealed class InboxApiService : IInboxApiService
         string? category = null,
         bool unreadOnly = false,
         bool includeDismissed = false,
+        bool actionableOnly = false,
         CancellationToken ct = default)
     {
         try
@@ -43,6 +44,7 @@ public sealed class InboxApiService : IInboxApiService
             }
             if (unreadOnly) query += "&unreadOnly=true";
             if (includeDismissed) query += "&includeDismissed=true";
+            if (actionableOnly) query += "&actionableOnly=true";
 
             using var resp = await _httpClient.GetAsync($"/api/me/inbox{query}", ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)

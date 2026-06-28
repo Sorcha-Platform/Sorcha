@@ -23,10 +23,6 @@ public interface IPendingActionService
     /// </summary>
     Task<PendingActionCountResponse> GetPendingActionCountAsync();
 
-    /// <summary>
-    /// Marks pending action notifications as read via the activity events API.
-    /// </summary>
-    Task MarkAsReadAsync(Guid[] eventIds);
 }
 
 /// <summary>
@@ -80,18 +76,6 @@ public class PendingActionService : IPendingActionService
         }
     }
 
-    /// <inheritdoc/>
-    public async Task MarkAsReadAsync(Guid[] eventIds)
-    {
-        try
-        {
-            await _httpClient.PostAsJsonAsync("/api/events/mark-read", new { eventIds });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to mark pending actions as read");
-        }
-    }
 }
 
 /// <summary>

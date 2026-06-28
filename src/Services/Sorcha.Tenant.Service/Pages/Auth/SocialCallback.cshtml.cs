@@ -11,6 +11,7 @@ using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
+using Sorcha.Tenant.Service.Models.Requests;
 
 namespace Sorcha.Tenant.Service.Pages.Auth;
 
@@ -23,6 +24,7 @@ public class SocialCallbackModel : PageModel
 {
     private readonly ISocialLoginService _socialLoginService;
     private readonly IPlatformUserService _platformUserService;
+    private readonly ILinkPendingTokenService _linkPendingTokenService;
     private readonly IIdentityRepository _identityRepository;
     private readonly IOrganizationRepository _organizationRepository;
     private readonly ITokenService _tokenService;
@@ -37,6 +39,7 @@ public class SocialCallbackModel : PageModel
     public SocialCallbackModel(
         ISocialLoginService socialLoginService,
         IPlatformUserService platformUserService,
+        ILinkPendingTokenService linkPendingTokenService,
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         ITokenService tokenService,
@@ -47,6 +50,7 @@ public class SocialCallbackModel : PageModel
     {
         _socialLoginService = socialLoginService;
         _platformUserService = platformUserService;
+        _linkPendingTokenService = linkPendingTokenService;
         _identityRepository = identityRepository;
         _organizationRepository = organizationRepository;
         _tokenService = tokenService;
@@ -129,6 +133,34 @@ public class SocialCallbackModel : PageModel
         // Wallet surface is login-only — do not create new accounts via social sign-in.
         var resolveResult = await _platformUserService.ResolveOrCreateSocialUserAsync(callbackResult, allowCreate: !isWallet, ct);
 
+        // Feature 168: email matched an existing verified account — step-up linking required.
+        // Mint a link-pending token and forward it to the client. No session is issued.
+        if (resolveResult.LinkRequired is { } linkInfo)
+        {
+            var linkToken = _linkPendingTokenService.Mint(new LinkPendingToken(
+                linkInfo.Provider,
+                linkInfo.Subject,
+                linkInfo.SocialEmail,
+                linkInfo.DisplayName,
+                linkInfo.TargetAccountId,
+                DateTimeOffset.UtcNow.AddMinutes(5),
+                Surface: isWallet ? "wallet" : null));
+
+            SocialLoginMetrics.RecordLinkRequired(provider);
+            _logger.LogInformation(
+                "Social callback LinkRequired for provider={Provider}, targetAccount={TargetAccountId}",
+                provider, linkInfo.TargetAccountId);
+
+            // B-UI (Workstream B-UI) is responsible for rendering the step-up prompt.
+            // Forward the link-pending token via the /app/ fragment so the SPA can pick it up.
+            var linkFragment = $"outcome=LinkRequired&linkPendingToken={Uri.EscapeDataString(linkToken)}";
+            if (isWallet)
+            {
+                return Redirect($"/wallet/#{linkFragment}");
+            }
+            return Redirect($"/app/#{linkFragment}");
+        }
+
         // Refusal handling (feature 115 FR-016, FR-018)
         if (resolveResult.Refusal != SocialLoginRefusal.None)
         {
@@ -204,7 +236,7 @@ public class SocialCallbackModel : PageModel
         var mintTier = isWallet
             ? Tier.Consumer
             : Tier.Platform;
-        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, mintTier, ct);
+        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, mintTier, platformUser.EmailVerified, ct);
 
         _logger.LogInformation("Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",
             platformUser.Id, provider, isNew);

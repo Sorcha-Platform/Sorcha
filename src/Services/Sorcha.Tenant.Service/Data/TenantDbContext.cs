@@ -67,9 +67,6 @@ public class TenantDbContext : DbContext
     // Public schema entities for push notifications
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
-    // Public schema entities for activity event log
-    public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
-
     // Public schema entities for platform-level configuration
     public DbSet<SystemConfiguration> SystemConfigurations => Set<SystemConfiguration>();
 
@@ -145,9 +142,6 @@ public class TenantDbContext : DbContext
 
         // Configure CustomDomainMapping entity (public schema)
         ConfigureCustomDomainMapping(modelBuilder);
-
-        // Configure ActivityEvent entity (public schema)
-        ConfigureActivityEvent(modelBuilder);
 
         // Configure PlatformUser entity (public schema)
         ConfigurePlatformUser(modelBuilder);
@@ -959,52 +953,6 @@ public class TenantDbContext : DbContext
 
             entity.HasIndex(e => e.Domain).IsUnique();
             entity.HasIndex(e => e.OrganizationId).IsUnique();
-        });
-    }
-
-    private void ConfigureActivityEvent(ModelBuilder modelBuilder)
-    {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
-                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
-
-        modelBuilder.Entity<ActivityEvent>(entity =>
-        {
-            if (isInMemory)
-                entity.ToTable("ActivityEvents");
-            else
-                entity.ToTable("ActivityEvents", "public");
-
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.EventType).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Severity).IsRequired()
-                .HasConversion<string>().HasMaxLength(20);
-            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.Message).IsRequired().HasMaxLength(2000);
-            entity.Property(e => e.SourceService).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.EntityId).HasMaxLength(200);
-            entity.Property(e => e.EntityType).HasMaxLength(50);
-
-            entity.HasIndex(e => new { e.UserId, e.CreatedAt })
-                .HasDatabaseName("IX_ActivityEvent_UserId_CreatedAt")
-                .IsDescending(false, true);
-            entity.HasIndex(e => new { e.OrganizationId, e.CreatedAt })
-                .HasDatabaseName("IX_ActivityEvent_OrgId_CreatedAt")
-                .IsDescending(false, true);
-            entity.HasIndex(e => e.ExpiresAt)
-                .HasDatabaseName("IX_ActivityEvent_ExpiresAt");
-
-            if (!isInMemory)
-            {
-                entity.HasIndex(e => new { e.UserId, e.IsRead })
-                    .HasDatabaseName("IX_ActivityEvent_UserId_IsRead")
-                    .HasFilter("\"IsRead\" = false");
-            }
-            else
-            {
-                entity.HasIndex(e => new { e.UserId, e.IsRead })
-                    .HasDatabaseName("IX_ActivityEvent_UserId_IsRead");
-            }
         });
     }
 

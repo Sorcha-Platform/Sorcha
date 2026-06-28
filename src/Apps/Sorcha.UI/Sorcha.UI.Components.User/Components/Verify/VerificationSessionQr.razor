@@ -1,0 +1,179 @@
+@*
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 Sorcha Contributors
+
+    Shared session QR component for the verify flow (Feature 163, US2). Starts a verification session
+    via IVerificationTransport, renders the OID4VP QR code and deep link, polls for completion, and
+    handles not-configured / loading / error / complete states. Implements IAsyncDisposable so the
+    poll loop is cancelled cleanly on unmount.
+*@
+@namespace Sorcha.UI.Core.Components.Verify
+@using QRCoder
+@using Sorcha.UI.Components.User.Models.Verification
+@using Sorcha.UI.Components.User.Services.Verification
+@inject IVerificationTransport Transport
+@implements IAsyncDisposable
+
+<div class="verification-session-qr" data-testid="verification-session-qr">
+    @if (_notConfigured)
+    {
+        <MudAlert Severity="Severity.Info" data-testid="not-configured">
+            Verification is not yet configured here.
+        </MudAlert>
+    }
+    else if (_error)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" data-testid="transport-error">
+            Verification unavailable. Check your connection.
+        </MudAlert>
+        <MudButton Variant="Variant.Outlined" Class="mt-2" OnClick="RetryAsync" data-testid="retry-button">
+            Retry
+        </MudButton>
+    }
+    else if (_loading)
+    {
+        <div data-testid="loading">
+            <MudProgressCircular Indeterminate="true" />
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_qrPng))
+    {
+        <div data-testid="qr-active">
+            <img src="data:image/png;base64,@_qrPng" alt="Scan to verify" style="width:200px;height:200px;" />
+            <div class="mt-2">
+                <a href="@_qrDeepLink" data-testid="deep-link">@_qrDeepLink</a>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>The verification question/preset to start a session for.</summary>
+    [Parameter, EditorRequired] public VerificationPreset Question { get; set; } = default!;
+
+    /// <summary>Host-supplied cancellation token; linked into the component's own CTS.</summary>
+    [Parameter] public CancellationToken CancellationToken { get; set; } = default;
+
+    /// <summary>Raised once with the vp_token when polling reports completion.</summary>
+    [Parameter] public EventCallback<string> OnCompleted { get; set; }
+
+    private CancellationTokenSource? _cts;
+    private Task? _pollTask;
+    private bool _notConfigured;
+    private bool _loading = true;
+    private bool _error;
+    private bool _disposed;
+    private string _qrPng = "";
+    private string _qrDeepLink = "";
+
+    /// <inheritdoc />
+    protected override async Task OnInitializedAsync()
+    {
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
+        _loading = true;
+        _notConfigured = false;
+        _error = false;
+        _qrPng = "";
+        _qrDeepLink = "";
+
+        try
+        {
+            var started = await Transport.StartSessionAsync(Question, _cts.Token);
+
+            if (string.IsNullOrEmpty(started.SessionId) || string.IsNullOrEmpty(started.QrDeepLink))
+            {
+                _notConfigured = true;
+                _loading = false;
+                return;
+            }
+
+            _qrDeepLink = started.QrDeepLink;
+            _qrPng = GenerateQrPng(started.QrDeepLink);
+            _loading = false;
+
+            _pollTask = PollAsync(started.SessionId, _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _loading = false;
+        }
+        catch
+        {
+            _error = true;
+            _loading = false;
+        }
+    }
+
+    private async Task PollAsync(string sessionId, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(3000, ct);
+                var poll = await Transport.PollSessionAsync(sessionId, ct);
+                if (poll.IsComplete)
+                {
+                    if (!_disposed) await OnCompleted.InvokeAsync(poll.VpToken ?? "");
+                    return;
+                }
+                if (poll.IsTerminal)
+                {
+                    if (!_disposed) { _error = true; StateHasChanged(); }
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch
+        {
+            if (!_disposed)
+            {
+                _error = true;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task RetryAsync()
+    {
+        _cts?.Cancel();
+        if (_pollTask is not null)
+        {
+            try { await _pollTask; } catch { }
+        }
+        _cts?.Dispose();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
+        await OnInitializedAsync();
+        StateHasChanged();
+    }
+
+    private static string GenerateQrPng(string content)
+    {
+        try
+        {
+            using var qrGenerator = new QRCodeGenerator();
+            var qrCodeData = qrGenerator.CreateQrCode(content, QRCodeGenerator.ECCLevel.M);
+            using var qrCode = new PngByteQRCode(qrCodeData);
+            return Convert.ToBase64String(qrCode.GetGraphic(5));
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _cts?.Cancel();
+        if (_pollTask is not null)
+        {
+            try { await _pollTask; }
+            catch (OperationCanceledException) { }
+            catch (ObjectDisposedException) { }
+        }
+        _cts?.Dispose();
+    }
+}

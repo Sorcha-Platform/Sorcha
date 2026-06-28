@@ -9,8 +9,6 @@ using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using System.Text.Json;
-using Sorcha.ServiceClients.Events;
-using Sorcha.ServiceClients.Events.Models;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
@@ -102,6 +100,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
         var validatorClient = scope.ServiceProvider.GetRequiredService<IValidatorServiceClient>();
         // Feature 108 — optional peer fan-out (subscriber nodes forward to the register owner).
         var peerClient = scope.ServiceProvider.GetService<IPeerServiceClient>();
+        var encryptionInboxWriter = scope.ServiceProvider.GetRequiredService<IEncryptionInboxWriter>();
 
         try
         {
@@ -274,8 +273,17 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 new EncryptionSignal { OperationId = operationId, PercentComplete = 100, Status = EncryptionStatuses.Complete },
                 userId: workItem.UserId, ct: ct);
 
-            // Store persistent activity event for disconnected users (T047)
-            await StoreActivityEventAsync(scope.ServiceProvider, workItem, txHash, success: true, error: null);
+            if (Guid.TryParse(workItem.UserId, out var successUserId))
+            {
+                try
+                {
+                    await encryptionInboxWriter.WriteEncryptionCompleteAsync(successUserId, workItem.OperationId, ct);
+                }
+                catch (Exception inboxEx)
+                {
+                    _logger.LogWarning(inboxEx, "EncryptionInboxWriter — failed to emit encryption-complete inbox entry for {UserId}", workItem.UserId);
+                }
+            }
 
             activity?.SetTag("encryption.tx_hash", txHash);
             activity?.SetStatus(ActivityStatusCode.Ok);
@@ -375,41 +383,20 @@ public sealed class EncryptionBackgroundService : BackgroundService
             new EncryptionSignal { OperationId = operationId, PercentComplete = op?.PercentComplete ?? 0, Status = EncryptionStatuses.Failed },
             userId: workItem.UserId, ct: ct);
 
-        await StoreActivityEventAsync(serviceProvider, workItem, null, success: false, error: error);
+        if (Guid.TryParse(workItem.UserId, out var failUserId))
+        {
+            var inboxWriter = serviceProvider.GetRequiredService<IEncryptionInboxWriter>();
+            try
+            {
+                await inboxWriter.WriteEncryptionFailedAsync(failUserId, workItem.OperationId, ct);
+            }
+            catch (Exception inboxEx)
+            {
+                _logger.LogWarning(inboxEx, "EncryptionInboxWriter — failed to emit encryption-failed inbox entry for {UserId}", workItem.UserId);
+            }
+        }
 
         _logger.LogWarning("Encryption operation {OperationId} failed: {Error}", operationId, error);
     }
 
-    private async Task StoreActivityEventAsync(
-        IServiceProvider serviceProvider, EncryptionWorkItem workItem,
-        string? txHash, bool success, string? error)
-    {
-        try
-        {
-            var eventClient = serviceProvider.GetService<IEventServiceClient>();
-            if (eventClient == null) return;
-
-            var request = new CreateActivityEventRequest(
-                OrganizationId: Guid.Empty, // System-level event
-                UserId: Guid.Empty,
-                EventType: success ? "EncryptionComplete" : "EncryptionFailed",
-                Severity: success ? "Info" : "Error",
-                Title: success
-                    ? $"Encryption completed for action {workItem.ActionId}"
-                    : $"Encryption failed for action {workItem.ActionId}",
-                Message: success
-                    ? $"Transaction {txHash} submitted for instance {workItem.InstanceId}"
-                    : $"Encryption failed for instance {workItem.InstanceId}: {error}",
-                SourceService: "Blueprint.EncryptionPipeline",
-                EntityId: workItem.OperationId,
-                EntityType: "EncryptionOperation");
-
-            await eventClient.CreateEventAsync(request);
-        }
-        catch (Exception ex)
-        {
-            // Best-effort: don't fail the pipeline if event storage fails
-            _logger.LogWarning(ex, "Failed to store activity event for operation {OperationId}", workItem.OperationId);
-        }
-    }
 }

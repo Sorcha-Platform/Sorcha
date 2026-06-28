@@ -64,7 +64,6 @@ public static class OperationsEndpoints
             var historyItems = new List<object>();
 
             // Get active in-memory operation for this wallet (at most one).
-            // Historical data is available from Tenant Service /api/events endpoint.
             var activeOp = await store.GetByWalletAddressAsync(wallet);
             if (activeOp != null)
             {
@@ -101,7 +100,7 @@ public static class OperationsEndpoints
         })
         .WithName("ListEncryptionOperations")
         .WithSummary("List active encryption operations for a wallet")
-        .WithDescription("Returns active in-memory encryption operations for the specified wallet. For historical data, query Tenant Service /api/events.")
+        .WithDescription("Returns active in-memory encryption operations for the specified wallet.")
         .Produces<object>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden);
