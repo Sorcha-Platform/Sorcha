@@ -79,6 +79,20 @@ process alive, socket to `17.56.x:443` ends in `CLOSE_WAIT`)
 → `login.keychain` is locked over SSH and under the runner LaunchDaemon (no GUI session).
 → The lanes call `setup_ci(force: true)` before `match` (temporary keychain). Already in the Fastfile.
 
+**"The iOS certs look missing — `ios-certs` repo only has a README"**
+→ FALSE ALARM. match stores the cert + profiles on the **`master`** branch; the repo's **default branch
+   (`main`) holds only a README**. `gh api …/ios-certs/…/HEAD` or the GitHub UI default view shows `main`
+   → looks empty. The certs ARE there: `git ls-remote origin master`, or just run `match` — it checks out
+   `master` and decrypts `Y8B6P8VGRB.cer/.p12` + the AppStore/AdHoc profiles. Distribution cert is valid;
+   nothing to recreate or revoke. (See secrets-map.md.) Don't go down the "bootstrap new certs" path.
+
+**CI `build.yml` `ios_beta` dies at `match` with `git_add … exit status 1`, but a direct Mac run works**
+→ Environment divergence: the unattended workflow runs in the runner's checkout under `bash --noprofile
+   --norc`, where match's git op on the `ios-certs` clone fails; driving the lane directly in
+   `~/projects/Sorcha` (git-authed, `source ~/.zprofile` + `~/.sorcha-signing/ios-match.env`) succeeds.
+   Stopgap: run `ios_beta` directly on the Mac (nohup) to ship to TestFlight. **TODO: fix the runner-env git
+   setup so the unattended workflow signs too** (a build that only works when driven by hand is wrong).
+
 **`archive` fails: `Signing for "App" requires a development team`**
 → Capacitor's generated Xcode project uses *automatic* signing with no team; `match` is *manual*.
 → The `apply_match_signing` helper (Fastfile) sets manual signing + `DEVELOPMENT_TEAM` +
@@ -137,6 +151,12 @@ all succeed and the real death is the final `upload_to_testflight`.
    `MARKETING_VERSION` from `SORCHA_VERSION_NAME`). Epoch (~1.78e9) always exceeds any prior upload;
    the Android run-number scheme can't (run numbers are small — too low to beat an existing build).
    The committed pbxproj stays generic (xcargs overrides at build time only). No manual bump needed.
+→ **Recurrence cause = STALE Mac checkout (2026-06-28).** If you drive `ios_beta` directly on the Mac
+   (`~/projects/Sorcha`), that checkout can be behind `origin/master` and predate the epoch fix — so the
+   build silently uses the old fixed/low version and the 409 returns. **Always `git fetch origin master &&
+   git reset --hard origin/master` in `~/projects/Sorcha` before a direct run.** (The `nohup` lane-runner
+   script must do this; the CI runner already checks out fresh.) Don't re-derive this or bump the version —
+   it's epoch + a stale checkout, every time.
 
 **Demo account / sign-in info requested**
 → Only for **App Review** (external TestFlight first build + App Store), never internal testing. When
