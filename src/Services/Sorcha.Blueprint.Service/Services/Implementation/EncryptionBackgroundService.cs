@@ -392,17 +392,14 @@ public sealed class EncryptionBackgroundService : BackgroundService
 
         if (Guid.TryParse(workItem.UserId, out var failUserId))
         {
-            var inboxWriter = serviceProvider.GetService<IEncryptionInboxWriter>();
-            if (inboxWriter is not null)
+            var inboxWriter = serviceProvider.GetRequiredService<IEncryptionInboxWriter>();
+            try
             {
-                try
-                {
-                    await inboxWriter.WriteEncryptionFailedAsync(failUserId, workItem.OperationId, ct);
-                }
-                catch (Exception inboxEx)
-                {
-                    _logger.LogWarning(inboxEx, "EncryptionInboxWriter — failed to emit encryption-failed inbox entry for {UserId}", workItem.UserId);
-                }
+                await inboxWriter.WriteEncryptionFailedAsync(failUserId, workItem.OperationId, ct);
+            }
+            catch (Exception inboxEx)
+            {
+                _logger.LogWarning(inboxEx, "EncryptionInboxWriter — failed to emit encryption-failed inbox entry for {UserId}", workItem.UserId);
             }
         }
 

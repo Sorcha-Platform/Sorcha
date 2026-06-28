@@ -123,4 +123,37 @@ public sealed class ActivityFeedTests : ComponentTestFixture
 
         act.Should().NotThrow();
     }
+
+    [Fact]
+    public void WhenLoadedCountLessThanTotalCount_ShowsLoadMoreButton()
+    {
+        var entries = new List<InboxEntryDto> { Entry("System", "Info", "Entry 1") };
+        // Fewer entries loaded than total — "Load more" must be visible.
+        _api.Setup(a => a.ListAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(),
+                It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboxPageDto(entries, 1, 20, 50));
+
+        var cut = Render<ActivityFeed>();
+
+        cut.Find("[data-testid='activity-feed-load-more']").Should().NotBeNull(
+            "the Load more affordance must appear when loaded entries < TotalCount");
+    }
+
+    [Fact]
+    public void WhenLoadedCountEqualsOrExceedsTotalCount_HidesLoadMoreButton()
+    {
+        var entries = new List<InboxEntryDto>
+        {
+            Entry("System", "Info", "Entry 1"),
+            Entry("System", "Info", "Entry 2"),
+        };
+        // All entries already loaded — "Load more" must be hidden.
+        SetupList(entries);
+
+        var cut = Render<ActivityFeed>();
+
+        cut.FindAll("[data-testid='activity-feed-load-more']").Should().BeEmpty(
+            "the Load more affordance must be hidden when all entries are already loaded");
+    }
 }

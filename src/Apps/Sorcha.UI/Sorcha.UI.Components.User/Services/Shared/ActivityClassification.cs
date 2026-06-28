@@ -12,9 +12,19 @@ namespace Sorcha.UI.Components.User.Services.Shared;
 public static class ActivityClassification
 {
     /// <summary>
+    /// Severity strings in ascending order, mirroring the server-side <c>InboxSeverity</c> enum.
+    /// Positional comparison reproduces the server's <c>severity &gt;= ActionRequired</c> ordinal check.
+    /// Unknown strings resolve to -1, which is below threshold — safe default is Informational.
+    /// </summary>
+    private static readonly string[] SeverityAscending = ["Info", "Warning", "ActionRequired", "Critical"];
+
+    private static readonly int ActionRequiredIndex = Array.IndexOf(SeverityAscending, "ActionRequired");
+
+    /// <summary>
     /// Returns <c>true</c> when the entry is Actionable — that is, when
     /// <paramref name="category"/> is <c>"Action"</c>, or
-    /// <paramref name="severity"/> is <c>"ActionRequired"</c> or <c>"Critical"</c>.
+    /// <paramref name="severity"/> ranks at <c>ActionRequired</c> or above in the
+    /// server's <c>InboxSeverity</c> ordinal order.
     /// Unknown or unrecognised strings default to <c>Informational</c>
     /// (returns <c>false</c>) as the safe default.
     /// </summary>
@@ -22,6 +32,5 @@ public static class ActivityClassification
     /// <param name="severity">The inbox entry severity string (e.g. "ActionRequired", "Critical", "Info").</param>
     public static bool IsActionable(string category, string severity) =>
         category == "Action" ||
-        severity == "ActionRequired" ||
-        severity == "Critical";
+        Array.IndexOf(SeverityAscending, severity) >= ActionRequiredIndex;
 }

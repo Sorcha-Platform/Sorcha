@@ -82,13 +82,34 @@
                 <MudDivider />
             }
         </MudList>
+        @if (_entries.Count < _totalCount)
+        {
+            <div class="d-flex justify-center pa-3" data-testid="activity-feed-load-more">
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Primary"
+                           Disabled="@_loadingMore"
+                           OnClick="LoadMoreAsync">
+                    @if (_loadingMore)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Load more
+                </MudButton>
+            </div>
+        }
     }
 </div>
 
 @code {
+    /// <summary>Entries per incremental load (clamped 1..100 server-side).</summary>
+    [Parameter] public int PageSize { get; set; } = 20;
+
     private readonly List<InboxEntryDto> _entries = new();
     private bool _loading;
+    private bool _loadingMore;
     private bool _disposed;
+    private int _currentPage = 1;
+    private int _totalCount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -106,13 +127,15 @@
     private async Task LoadAsync()
     {
         _loading = true;
+        _currentPage = 1;
         try
         {
-            var page = await InboxApi.ListAsync(page: 1, pageSize: 50, actionableOnly: false);
+            var page = await InboxApi.ListAsync(page: 1, pageSize: PageSize, actionableOnly: false);
             _entries.Clear();
             if (page is not null)
             {
                 _entries.AddRange(page.Entries);
+                _totalCount = page.TotalCount;
             }
         }
         catch (Exception ex)
@@ -122,6 +145,31 @@
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _loadingMore = true;
+        try
+        {
+            var nextPage = _currentPage + 1;
+            var page = await InboxApi.ListAsync(page: nextPage, pageSize: PageSize, actionableOnly: false);
+            if (page is not null && page.Entries.Count > 0)
+            {
+                _entries.AddRange(page.Entries);
+                _totalCount = page.TotalCount;
+                _currentPage = nextPage;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "ActivityFeed — failed to load more inbox entries");
+        }
+        finally
+        {
+            _loadingMore = false;
             await InvokeAsync(StateHasChanged);
         }
     }

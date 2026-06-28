@@ -160,4 +160,50 @@ public sealed class EncryptionInboxWriterTests
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task WriteEncryptionCompleteAsync_WhenPlatformUserIdIsEmpty_SkipsWriteAndLogs()
+    {
+        var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
+        var sut = BuildSut(loggerMock.Object);
+
+        await sut.Awaiting(s => s.WriteEncryptionCompleteAsync(Guid.Empty, OperationId))
+            .Should().NotThrowAsync("empty userId is a known edge case that must be skipped gracefully");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never,
+            "no write must reach the inbox client when userId is empty");
+
+        loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once,
+            "a warning must be emitted so operators can diagnose anonymous operations");
+    }
+
+    [Fact]
+    public async Task WriteEncryptionFailedAsync_WhenPlatformUserIdIsEmpty_SkipsWriteAndLogs()
+    {
+        var loggerMock = new Mock<ILogger<EncryptionInboxWriter>>();
+        var sut = BuildSut(loggerMock.Object);
+
+        await sut.Awaiting(s => s.WriteEncryptionFailedAsync(Guid.Empty, OperationId))
+            .Should().NotThrowAsync("empty userId is a known edge case that must be skipped gracefully");
+
+        _inbox.Verify(i => i.WriteAsync(It.IsAny<InboxWritePayload>(), It.IsAny<CancellationToken>()), Times.Never,
+            "no write must reach the inbox client when userId is empty");
+
+        loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once,
+            "a warning must be emitted so operators can diagnose anonymous operations");
+    }
 }

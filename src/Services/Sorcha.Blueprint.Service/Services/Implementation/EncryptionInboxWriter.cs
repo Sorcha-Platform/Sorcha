@@ -39,6 +39,12 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
     /// <inheritdoc />
     public async Task WriteEncryptionCompleteAsync(Guid platformUserId, string operationId, CancellationToken ct = default)
     {
+        if (platformUserId == Guid.Empty)
+        {
+            _logger.LogWarning("EncryptionInboxWriter — skipping encryption-complete write: platformUserId is empty for operation {OperationId}", operationId);
+            return;
+        }
+
         try
         {
             var payload = new InboxWritePayload(
@@ -67,6 +73,12 @@ public sealed class EncryptionInboxWriter : IEncryptionInboxWriter
     /// <inheritdoc />
     public async Task WriteEncryptionFailedAsync(Guid platformUserId, string operationId, CancellationToken ct = default)
     {
+        if (platformUserId == Guid.Empty)
+        {
+            _logger.LogWarning("EncryptionInboxWriter — skipping encryption-failed write: platformUserId is empty for operation {OperationId}", operationId);
+            return;
+        }
+
         try
         {
             var payload = new InboxWritePayload(

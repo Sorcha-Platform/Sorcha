@@ -98,7 +98,7 @@
 
 - [X] T022 [P] Add XML `<summary>` to all new/changed public members that are missing doc comments: `IInboxStore` new params, `InboxClassification`, `InboxService` changed methods, `ActivityClassification`, `ActivityFeed` component parameters, `IPersonaInboxWriter`, `PersonaInboxWriter`, `IEncryptionInboxWriter`, `EncryptionInboxWriter` — verify `dotnet build` produces no new XML-doc warnings
 - [X] T023 [P] Run `pwsh scripts/check-pwa-bundle.ps1` and confirm `ActivityFeed` introduces no designer/admin assembly dependencies into the PWA bundle
-- [ ] T024 Run quickstart.md Scenario 1 (complete timeline on both hosts, both viewports), Scenario 2 (bell Actionable-only, badge count), Scenario 3 (all four producer events, fault injection, idempotency), and Scenario 4 (scope guards — legacy table intact, `/operations` unchanged) against a live stack
+- [X] T024 Run quickstart.md Scenario 1 (complete timeline on both hosts, both viewports), Scenario 2 (bell Actionable-only, badge count), Scenario 3 (all four producer events, fault injection, idempotency), and Scenario 4 (scope guards — legacy table intact, `/operations` unchanged) against a live stack
 - [X] T025 [P] Run targeted test suites and confirm all green: `dotnet test --filter "FullyQualifiedName~Classification"`, `--filter "FullyQualifiedName~InboxStore"`, `--filter "FullyQualifiedName~PersonaInboxWriter"`, `--filter "FullyQualifiedName~EncryptionInboxWriter"`, `--filter "FullyQualifiedName~ActivityFeed"`
 
 ---
