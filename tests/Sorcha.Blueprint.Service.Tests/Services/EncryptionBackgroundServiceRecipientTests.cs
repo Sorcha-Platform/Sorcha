@@ -37,6 +37,7 @@ public class EncryptionBackgroundServiceRecipientTests
     private readonly Mock<IInstanceStore> _instanceStore = new();
     private readonly Mock<IEncryptionOperationStore> _operationStore = new();
     private readonly Mock<IEventServiceClient> _eventServiceClient = new();
+    private readonly Mock<IEncryptionInboxWriter> _encryptionInboxWriter = new();
 
     private EncryptionBackgroundService CreateService(Channel<EncryptionWorkItem> channel)
     {
@@ -49,6 +50,7 @@ public class EncryptionBackgroundServiceRecipientTests
         services.AddSingleton(_actionResolver.Object);
         services.AddSingleton(_instanceStore.Object);
         services.AddSingleton(_eventServiceClient.Object);
+        services.AddSingleton(_encryptionInboxWriter.Object);
         var serviceProvider = services.BuildServiceProvider();
 
         return new EncryptionBackgroundService(

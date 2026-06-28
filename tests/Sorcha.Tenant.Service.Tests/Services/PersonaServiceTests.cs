@@ -56,7 +56,7 @@ public sealed class PersonaServiceTests : IDisposable
         _db.SaveChanges();
 
         var logger = Mock.Of<ILogger<PersonaService>>();
-        _sut = new PersonaService(_db, _crypto.Object, _events.Object, logger);
+        _sut = new PersonaService(_db, _crypto.Object, _events.Object, logger, Mock.Of<IPersonaInboxWriter>());
 
         // Activity log writes are verified selectively — default to success.
         _events

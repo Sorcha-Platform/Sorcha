@@ -66,7 +66,7 @@ public sealed class PersonaEndpointsContextTests : IDisposable
         _events.Setup(e => e.CreateEventAsync(It.IsAny<ActivityEvent>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ActivityEvent e, CancellationToken _) => e);
 
-        _sut = new PersonaService(_db, _crypto.Object, _events.Object, NullLogger<PersonaService>.Instance);
+        _sut = new PersonaService(_db, _crypto.Object, _events.Object, NullLogger<PersonaService>.Instance, Mock.Of<IPersonaInboxWriter>());
     }
 
     public void Dispose()

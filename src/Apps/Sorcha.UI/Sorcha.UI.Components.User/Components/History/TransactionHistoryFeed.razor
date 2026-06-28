@@ -12,6 +12,7 @@
     alongside the real transaction history HTTP source in a follow-up.
 *@
 @namespace Sorcha.UI.Components.User.Components.History
+@using Sorcha.UI.Components.User.Models
 
 @if (Entries?.Count > 0)
 {
@@ -79,21 +80,4 @@ else
         return at.ToLocalTime().ToString("d MMM yyyy");
     }
 
-    /// <summary>One row in the feed.</summary>
-    public sealed record HistoryFeedEntry(
-        string Id,
-        HistoryFeedKind Kind,
-        string Title,
-        string? Subtitle,
-        DateTimeOffset At);
-
-    /// <summary>Logical event kind; drives the icon.</summary>
-    public enum HistoryFeedKind
-    {
-        Issuance,
-        Presentation,
-        Verification,
-        Submission,
-        Revocation
-    }
 }

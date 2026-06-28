@@ -38,6 +38,7 @@ public class EncryptionBackgroundServiceTests
     // bloom filter / recipient routing during encryption. Without registering this,
     // the pipeline throws on resolution and encryption fails before the success path.
     private readonly Mock<IRegisterServiceClient> _registerClient = new();
+    private readonly Mock<IEncryptionInboxWriter> _encryptionInboxWriter = new();
 
     private EncryptionBackgroundService CreateService(Channel<EncryptionWorkItem> channel)
     {
@@ -51,6 +52,7 @@ public class EncryptionBackgroundServiceTests
         services.AddSingleton(_instanceStore.Object);
         services.AddSingleton(_eventServiceClient.Object);
         services.AddSingleton(_registerClient.Object);
+        services.AddSingleton(_encryptionInboxWriter.Object);
         // SUT now also resolves IOptions<TransactionConfirmationOptions> from scope.
         services.AddSingleton<Microsoft.Extensions.Options.IOptions<Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions>>(
             Microsoft.Extensions.Options.Options.Create(new Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions()));

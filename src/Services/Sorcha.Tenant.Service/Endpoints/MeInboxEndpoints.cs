@@ -31,12 +31,12 @@ public static class MeInboxEndpoints
         group.MapGet("", ListAsync)
             .WithName("ListMyInbox")
             .WithSummary("List the authenticated user's inbox entries.")
-            .WithDescription("Paginated, sorted newest first. Excludes dismissed entries unless includeDismissed=true.");
+            .WithDescription("Paginated, sorted newest first. Excludes dismissed entries unless includeDismissed=true. Use actionableOnly=true to restrict results to Actionable entries (Category==Action or Severity>=ActionRequired).");
 
         group.MapGet("unread-count", GetUnreadCountAsync)
             .WithName("GetMyInboxUnreadCount")
             .WithSummary("Return the user's unread inbox count.")
-            .WithDescription("Authoritative server-side count. Realtime updates are pushed via TenantHub InboxUnreadCountUpdated.");
+            .WithDescription("Returns the user's unread Actionable-only count. Realtime updates are pushed via TenantHub InboxUnreadCountUpdated.");
 
         group.MapGet("{id:guid}", GetByIdAsync)
             .WithName("GetMyInboxEntry")
@@ -66,13 +66,14 @@ public static class MeInboxEndpoints
         InboxCategory? category = null,
         bool unreadOnly = false,
         bool includeDismissed = false,
+        bool actionableOnly = false,
         CancellationToken ct = default)
     {
         var userId = GetUserId(context);
         if (userId == Guid.Empty) return Results.Unauthorized();
 
         var result = await service.GetPageAsync(
-            userId, page, pageSize, category, unreadOnly, includeDismissed, ct);
+            userId, page, pageSize, category, unreadOnly, includeDismissed, actionableOnly, ct);
         return Results.Ok(result);
     }
 
