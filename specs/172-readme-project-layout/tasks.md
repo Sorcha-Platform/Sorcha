@@ -23,8 +23,8 @@ description: "Task list for Feature 172 – README Project Layout Section"
 
 **Purpose**: Confirm the insertion point in the existing README and verify all 14 listed directories exist.
 
-- [ ] T001 Verify existing README.md heading flow and confirm `## Documentation` section is the correct insertion point (`README.md`)
-- [ ] T002 [P] Confirm all 14 top-level directories (`bench`, `blueprints`, `demos`, `docker`, `docs`, `infra`, `mobile`, `ops`, `samples`, `scripts`, `specs`, `src`, `tests`, `walkthroughs`) exist at repository root
+- [X] T001 Verify existing README.md heading flow and confirm `## Documentation` section is the correct insertion point (`README.md`)
+- [X] T002 [P] Confirm all 14 top-level directories (`bench`, `blueprints`, `demos`, `docker`, `docs`, `infra`, `mobile`, `ops`, `samples`, `scripts`, `specs`, `src`, `tests`, `walkthroughs`) exist at repository root
 
 **Checkpoint**: Insertion point confirmed, directories verified present — implementation can begin.
 
@@ -36,8 +36,8 @@ description: "Task list for Feature 172 – README Project Layout Section"
 
 **Independent Test**: Run all five validation scenarios from `specs/172-readme-project-layout/quickstart.md`.
 
-- [ ] T003 [US1] Inspect each of the 14 root directories to confirm descriptions are accurate before writing (`bench/`, `blueprints/`, `demos/`, `docker/`, `docs/`, `infra/`, `mobile/`, `ops/`, `samples/`, `scripts/`, `specs/`, `src/`, `tests/`, `walkthroughs/`)
-- [ ] T004 [US1] Insert `## Project layout` section into `README.md` immediately before `## Documentation`, listing all 14 directories with one-line descriptions and a link to `docs/reference/project-structure.md` (FR-001–007)
+- [X] T003 [US1] Inspect each of the 14 root directories to confirm descriptions are accurate before writing (`bench/`, `blueprints/`, `demos/`, `docker/`, `docs/`, `infra/`, `mobile/`, `ops/`, `samples/`, `scripts/`, `specs/`, `src/`, `tests/`, `walkthroughs/`)
+- [X] T004 [US1] Insert `## Project layout` section into `README.md` immediately before `## Documentation`, listing all 14 directories with one-line descriptions and a link to `docs/reference/project-structure.md` (FR-001–007)
 
 ---
 
@@ -45,11 +45,11 @@ description: "Task list for Feature 172 – README Project Layout Section"
 
 **Purpose**: Confirm the edit is additive-only and every acceptance criterion is met.
 
-- [ ] T005 Run quickstart.md Scenario A — confirm exactly one `## Project layout` heading exists (`README.md`)
-- [ ] T006 Run quickstart.md Scenario B — confirm listed directories match repo root exactly (no omissions, no phantoms)
-- [ ] T007 Run quickstart.md Scenario C — confirm `git diff master...HEAD` touches only `README.md` and `specs/172-*` files and adds no removed lines to README
-- [ ] T008 Run quickstart.md Scenario D — confirm `docs/reference/project-structure.md` is referenced within the new section
-- [ ] T009 Run quickstart.md Scenario E (manual) — confirm no entry references a nested path
+- [X] T005 Run quickstart.md Scenario A — confirm exactly one `## Project layout` heading exists (`README.md`)
+- [X] T006 Run quickstart.md Scenario B — confirm listed directories match repo root exactly (no omissions, no phantoms)
+- [X] T007 Run quickstart.md Scenario C — confirm `git diff master...HEAD` touches only `README.md` and `specs/172-*` files and adds no removed lines to README
+- [X] T008 Run quickstart.md Scenario D — confirm `docs/reference/project-structure.md` is referenced within the new section
+- [X] T009 Run quickstart.md Scenario E (manual) — confirm no entry references a nested path
 
 ---
 
