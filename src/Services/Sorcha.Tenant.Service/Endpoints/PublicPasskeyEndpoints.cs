@@ -385,7 +385,7 @@ public static class PublicPasskeyEndpoints
                 ? Sorcha.ServiceDefaults.Auth.Tier.Consumer
                 : Sorcha.ServiceDefaults.Auth.Tier.Platform;
             var tokenResponse = await tokenService.GenerateUserTokenAsync(
-                userIdentity, publicOrg, platformUser.Id, mintTier, ct);
+                userIdentity, publicOrg, platformUser.Id, mintTier, platformUser.EmailVerified, ct);
 
             logger.LogInformation(
                 "Public passkey sign-in completed for PlatformUser {PlatformUserId}",

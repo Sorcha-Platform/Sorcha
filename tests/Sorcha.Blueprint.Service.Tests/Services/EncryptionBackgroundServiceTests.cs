@@ -12,8 +12,6 @@ using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
-using Sorcha.ServiceClients.Events;
-using Sorcha.ServiceClients.Events.Models;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
@@ -33,11 +31,11 @@ public class EncryptionBackgroundServiceTests
     private readonly Mock<IActionResolverService> _actionResolver = new();
     private readonly Mock<IInstanceStore> _instanceStore = new();
     private readonly Mock<IEncryptionOperationStore> _operationStore = new();
-    private readonly Mock<IEventServiceClient> _eventServiceClient = new();
     // SUT now resolves IRegisterServiceClient from scope to look up the register's
     // bloom filter / recipient routing during encryption. Without registering this,
     // the pipeline throws on resolution and encryption fails before the success path.
     private readonly Mock<IRegisterServiceClient> _registerClient = new();
+    private readonly Mock<IEncryptionInboxWriter> _encryptionInboxWriter = new();
 
     private EncryptionBackgroundService CreateService(Channel<EncryptionWorkItem> channel)
     {
@@ -49,8 +47,8 @@ public class EncryptionBackgroundServiceTests
         services.AddSingleton(_validatorClient.Object);
         services.AddSingleton(_actionResolver.Object);
         services.AddSingleton(_instanceStore.Object);
-        services.AddSingleton(_eventServiceClient.Object);
         services.AddSingleton(_registerClient.Object);
+        services.AddSingleton(_encryptionInboxWriter.Object);
         // SUT now also resolves IOptions<TransactionConfirmationOptions> from scope.
         services.AddSingleton<Microsoft.Extensions.Options.IOptions<Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions>>(
             Microsoft.Extensions.Options.Options.Create(new Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions()));
@@ -183,8 +181,6 @@ public class EncryptionBackgroundServiceTests
                 TransactionId = "abc123def456abc123def456abc123def456abc123def456abc123def456abcd"
             });
 
-        _eventServiceClient.Setup(e => e.CreateEventAsync(It.IsAny<CreateActivityEventRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
     }
 
     [Fact]
@@ -365,66 +361,4 @@ public class EncryptionBackgroundServiceTests
         lastUpdate.TransactionHash.Should().NotBeNullOrEmpty();
     }
 
-    [Fact]
-    public async Task ProcessWorkItem_SuccessfulEncryption_StoresPersistentActivityEvent()
-    {
-        // Arrange
-        var channel = Channel.CreateUnbounded<EncryptionWorkItem>();
-        var service = CreateService(channel);
-        var workItem = CreateTestWorkItem();
-        SetupSuccessfulPipeline();
-
-        // Act
-        await service.ProcessWorkItemAsync(workItem, CancellationToken.None);
-
-        // Assert
-        _eventServiceClient.Verify(e => e.CreateEventAsync(
-            It.Is<CreateActivityEventRequest>(ev =>
-                ev.EventType == "EncryptionComplete" &&
-                ev.Severity == "Info" &&
-                ev.SourceService == "Blueprint.EncryptionPipeline" &&
-                ev.EntityId == "op123" &&
-                ev.EntityType == "EncryptionOperation"),
-            It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task ProcessWorkItem_Failure_StoresFailedActivityEvent()
-    {
-        // Arrange
-        var channel = Channel.CreateUnbounded<EncryptionWorkItem>();
-        var service = CreateService(channel);
-        var workItem = CreateTestWorkItem();
-
-        var testOperation = new EncryptionOperation
-        {
-            OperationId = "op123",
-            BlueprintId = "bp-1",
-            ActionId = "1",
-            InstanceId = "inst-1",
-            SubmittingWalletAddress = "wallet-sender-001"
-        };
-        _operationStore.Setup(s => s.GetByIdAsync("op123")).ReturnsAsync(testOperation);
-        _operationStore.Setup(s => s.UpdateAsync(It.IsAny<EncryptionOperation>()))
-            .ReturnsAsync((EncryptionOperation op) => op);
-
-        // CheckSizeLimit must pass so the pipeline reaches the encryption step
-        _encryptionPipeline.Setup(e => e.CheckSizeLimit(
-                It.IsAny<DisclosureGroup[]>(), It.IsAny<long>()))
-            .Returns((true, 1024L, 4 * 1024 * 1024L));
-
-        _encryptionPipeline.Setup(e => e.EncryptDisclosedPayloadsAsync(
-                It.IsAny<DisclosureGroup[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(EncryptionResult.Failed("Key expired", "wallet-recipient-001"));
-
-        // Act
-        await service.ProcessWorkItemAsync(workItem, CancellationToken.None);
-
-        // Assert
-        _eventServiceClient.Verify(e => e.CreateEventAsync(
-            It.Is<CreateActivityEventRequest>(ev =>
-                ev.EventType == "EncryptionFailed" &&
-                ev.Severity == "Error"),
-            It.IsAny<CancellationToken>()), Times.Once);
-    }
 }

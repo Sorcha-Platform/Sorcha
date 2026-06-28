@@ -126,11 +126,6 @@ builder.Services.AddAuditCleanup();
 // (challenge primitive, last-method floor, telemetry, daily token cleanup)
 builder.Services.AddTenantAccountManagement();
 
-// Add activity event services (event log and cleanup)
-builder.Services.AddScoped<Sorcha.Tenant.Service.Services.Interfaces.IEventService,
-    Sorcha.Tenant.Service.Services.EventService>();
-builder.Services.AddHostedService<Sorcha.Tenant.Service.Services.EventCleanupService>();
-
 // Feature 096: X.509 Organisation Trust — trust anchor provisioning and org cert enrolment
 builder.Services.AddSingleton<Sorcha.Tenant.Service.Trust.ITrustProvider,
     Sorcha.Tenant.Service.Trust.InternalCaTrustProvider>();
@@ -145,6 +140,8 @@ builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.ITrustListProvider>(sp
 // Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,
     Sorcha.Tenant.Service.Services.PersonaService>();
+builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaInboxWriter,
+    Sorcha.Tenant.Service.Services.PersonaInboxWriter>();
 builder.Services.AddHttpClient<Sorcha.Tenant.Service.Services.IPersonaCryptoClient,
     Sorcha.Tenant.Service.Services.PersonaCryptoClient>(client =>
 {
@@ -188,7 +185,7 @@ var app = builder.Build();
 _ = app.Services.GetRequiredService<Sorcha.Tenant.Service.Services.ISecretProtectionProvider>();
 
 // Run database migrations and seeding BEFORE app.Run() to prevent race conditions
-// with background services (AuditCleanupService, EventCleanupService, etc.)
+// with background services (AuditCleanupService, etc.)
 // that query the database immediately on startup.
 // This matches the pattern used by Wallet and Blueprint services.
 {
@@ -254,6 +251,7 @@ app.MapTotpEndpoints();
 app.MapIdpConfigurationEndpoints();
 app.MapOidcEndpoints();
 app.MapSocialLoginEndpoints();
+app.MapSocialLinkStepUpEndpoints();
 app.MapPlatformSettingsEndpoints();
 app.MapPlatformOrgEndpoints();
 app.MapPlatformManagementEndpoints();
@@ -265,7 +263,6 @@ app.MapDashboardEndpoints();
 app.MapCustomDomainEndpoints();
 app.MapInternalEndpoints();
 app.MapPushSubscriptionEndpoints();
-app.MapEventEndpoints();
 app.MapRegisterSubscriptionEndpoints();
 app.MapRegisterInvitationEndpoints();
 app.MapTrustEndpoints();

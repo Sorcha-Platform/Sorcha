@@ -278,6 +278,12 @@ public record CurrentUserResponse
     /// Authentication method (passkey, oidc, etc.).
     /// </summary>
     public string? AuthMethod { get; init; }
+
+    /// <summary>
+    /// Whether the user's email address has been verified. False when unknown or unverified.
+    /// Sourced from the <c>email_verified</c> JWT claim (Feature 157, Decision 4).
+    /// </summary>
+    public bool EmailVerified { get; init; }
 }
 
 /// <summary>

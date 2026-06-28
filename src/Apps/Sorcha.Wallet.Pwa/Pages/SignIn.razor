@@ -44,6 +44,7 @@
             @foreach (var provider in _providers)
             {
                 <MudButton FullWidth="true" Variant="Variant.Outlined"
+                           StartIcon="@ProviderIcon(provider)"
                            OnClick="@(() => BeginSocialAsync(provider))" Disabled="@_busy"
                            data-testid="@($"signin-social-{provider.ToLowerInvariant()}")">
                     Continue with @provider
@@ -115,22 +116,36 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // A social return may have staged a token in the URL fragment (auth-fragment.js).
-        if (await Auth.TryConsumeSocialReturnAsync(Js))
+        // Defense-in-depth: the sign-in screen is the unauthenticated redirect
+        // target, so a throw here white-screens the whole app via the
+        // ErrorBoundary instead of showing a usable form. Degrade gracefully —
+        // a failed init (transient backend, or a JS bridge absent on a
+        // non-secure device origin) must still leave the user able to sign in.
+        try
         {
-            AuthState.NotifyChanged();
-            NavigateOnSuccess();
-            return;
-        }
+            // A social return may have staged a token in the URL fragment (auth-fragment.js).
+            if (await Auth.TryConsumeSocialReturnAsync(Js))
+            {
+                AuthState.NotifyChanged();
+                NavigateOnSuccess();
+                return;
+            }
 
-        if (await Auth.IsSignedInAsync())
+            if (await Auth.IsSignedInAsync())
+            {
+                NavigateOnSuccess();
+                return;
+            }
+
+            _error = MapAuthError(AuthError);
+            _providers = await Providers.GetConfiguredAsync();
+        }
+        catch (Exception)
         {
-            NavigateOnSuccess();
-            return;
+            // Fall back to a bare password sign-in form (no social providers).
+            _error ??= MapAuthError(AuthError);
+            _providers = [];
         }
-
-        _error = MapAuthError(AuthError);
-        _providers = await Providers.GetConfiguredAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -140,6 +155,15 @@
         _passkeySupported = await Passkey.IsSupportedAsync();
         StateHasChanged();
     }
+
+    private static string ProviderIcon(string providerKey) => providerKey.ToLowerInvariant() switch
+    {
+        "google" => Icons.Custom.Brands.Google,
+        "microsoft" => Icons.Custom.Brands.Microsoft,
+        "github" => Icons.Custom.Brands.GitHub,
+        "apple" => Icons.Custom.Brands.Apple,
+        _ => Icons.Material.Filled.Public
+    };
 
     private static string? MapAuthError(string? code) => code switch
     {

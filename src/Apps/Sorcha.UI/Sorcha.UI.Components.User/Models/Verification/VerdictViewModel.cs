@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using Sorcha.UI.Components.User.Models.Verification;
+using Sorcha.Verifier.Engine.Models;
+
+namespace Sorcha.UI.Components.User.Models.Verification;
+
+/// <summary>
+/// View model for the verdict screen (Feature 163). Maps a <see cref="VerificationOutcome"/> + the
+/// originating preset question into the headline verdict, the issuer identity, the disclosed/withheld
+/// split, and the validation-trail rows. The RegisterAnchor layer is appended on demand by the
+/// <c>VerdictTrailPanel</c> component after the operator triggers the layer-4 check.
+/// </summary>
+public sealed class VerdictViewModel
+{
+    /// <summary>Overall pass — accepted AND no layer actively failed. An Unverified layer never vetoes.</summary>
+    public bool OverallPass { get; private init; }
+
+    /// <summary>Headline shown on the card, e.g. "Over 18" / "Not over 18" / "Verified".</summary>
+    public string Headline { get; private init; } = "";
+
+    /// <summary>Issuer DID (the credential's <c>iss</c>), surfaced for the operator's trust judgement.</summary>
+    public string? IssuerDid { get; private init; }
+
+    /// <summary>Best-effort issuer display name (falls back to the DID).</summary>
+    public string? IssuerDisplayName { get; private init; }
+
+    /// <summary>Base64 portrait token, when disclosed.</summary>
+    public string? PortraitBase64 { get; private init; }
+
+    /// <summary>The age-over-18 chip value, when the claim was disclosed.</summary>
+    public bool? AgeOver18 { get; private init; }
+
+    /// <summary>Disclosed claim name → stringified value (portrait elided to a marker).</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> Disclosed { get; private init; } = [];
+
+    /// <summary>Known credential claims that were NOT disclosed — the visible proof of minimal disclosure.</summary>
+    public IReadOnlyList<string> Withheld { get; private init; } = [];
+
+    /// <summary>The validation-trail rows (mutable so the component can append/replace the RegisterAnchor layer).</summary>
+    public List<ValidationLayerResult> Layers { get; } = [];
+
+    /// <summary>Rejection reasons (shown on a fail verdict).</summary>
+    public IReadOnlyList<string> Errors { get; private init; } = [];
+
+    /// <summary>The register anchor reference (registerId) read from the credential, for the layer-4 check.</summary>
+    public string? RegisterAnchorId { get; private init; }
+
+    /// <summary>The credential id (jti) read from the disclosed claims / outcome, for the layer-4 check.</summary>
+    public string? CredentialId { get; private init; }
+
+    private const string PortraitClaim = "portrait";
+    private const string AgeClaim = "age_over_18";
+    private const string AnchorClaim = "registerAnchor";
+
+    /// <summary>
+    /// Build the view model from a completed <paramref name="outcome"/> and the chosen
+    /// <paramref name="question"/> preset. Known credential claims and required VCT come from the
+    /// preset so the verdict can be computed client-side without a server session store (R-001).
+    /// </summary>
+    public static VerdictViewModel From(VerificationPreset question, VerificationOutcome outcome)
+    {
+        var disclosed = outcome.DisclosedClaims;
+        var issuerDid = TryGetIssuerDid(outcome);
+
+        bool? ageOver18 = disclosed.TryGetValue(AgeClaim, out var a) ? ToBool(a) : null;
+        var portrait = disclosed.TryGetValue(PortraitClaim, out var p) ? p?.ToString() : null;
+
+        var known = question.KnownCredentialClaims.Count > 0
+            ? question.KnownCredentialClaims
+            : (IReadOnlyList<string>)question.RequiredClaims;
+        var withheld = known.Where(c => !disclosed.ContainsKey(c)).ToList();
+
+        var disclosedPairs = disclosed
+            .Select(kvp => new KeyValuePair<string, string>(
+                kvp.Key,
+                kvp.Key == PortraitClaim ? "<portrait>" : kvp.Value?.ToString() ?? ""))
+            .ToList();
+
+        var headline = ageOver18 switch
+        {
+            true => "Over 18",
+            false => "Not over 18",
+            null => outcome.Accepted ? "Verified" : "Not verified",
+        };
+
+        var overallPass = outcome.Accepted && outcome.Layers.All(l => l.Status != LayerStatus.Fail);
+
+        var vm = new VerdictViewModel
+        {
+            OverallPass = overallPass,
+            Headline = headline,
+            IssuerDid = issuerDid,
+            IssuerDisplayName = issuerDid,
+            PortraitBase64 = portrait,
+            AgeOver18 = ageOver18,
+            Disclosed = disclosedPairs,
+            Withheld = withheld,
+            Errors = outcome.Errors,
+            RegisterAnchorId = disclosed.TryGetValue(AnchorClaim, out var r) ? r?.ToString() : null,
+            CredentialId = TryGetCredentialId(outcome),
+        };
+        vm.Layers.AddRange(outcome.Layers);
+        return vm;
+    }
+
+    private static string? TryGetIssuerDid(VerificationOutcome outcome)
+    {
+        var issuerLayer = outcome.Layers.FirstOrDefault(l => l.Layer == ValidationLayer.IssuerSignature);
+        return issuerLayer is not null && issuerLayer.Detail.TryGetValue("iss", out var iss) ? iss : null;
+    }
+
+    private static string? TryGetCredentialId(VerificationOutcome outcome)
+    {
+        var issuerLayer = outcome.Layers.FirstOrDefault(l => l.Layer == ValidationLayer.IssuerSignature);
+        if (issuerLayer is not null && issuerLayer.Detail.TryGetValue("jti", out var jti) && !string.IsNullOrWhiteSpace(jti))
+        {
+            return jti;
+        }
+        if (outcome.DisclosedClaims.TryGetValue("jti", out var dj)) return dj?.ToString();
+        if (outcome.DisclosedClaims.TryGetValue("id", out var di)) return di?.ToString();
+        return null;
+    }
+
+    private static bool? ToBool(object? value) => value switch
+    {
+        bool b => b,
+        string s when bool.TryParse(s, out var b) => b,
+        _ => null,
+    };
+}

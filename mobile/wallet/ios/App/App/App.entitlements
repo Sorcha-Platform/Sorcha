@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Associated Domains — required for native WebAuthn/passkey sign-in inside the
+	  Capacitor WKWebView. iOS refuses navigator.credentials.get() (NotAllowedError,
+	  surfaced as "Passkey sign-in was cancelled") unless the app is associated with
+	  the relying-party domain via this entitlement AND a matching
+	  apple-app-site-association file served at https://<domain>/.well-known/.
+
+	  webcredentials uses the PARENT domain sorcha.dev (not a per-host subdomain) so a
+	  single passkey roams across every *.sorcha.dev installation (n1, future nodes).
+	  WebAuthn permits the RP ID to be a registrable parent of the page origin, so
+	  RP ID sorcha.dev is valid from origin n1.sorcha.dev. The server must mint/verify
+	  passkeys with Fido2:ServerDomain = sorcha.dev to match. Apple does NOT support
+	  wildcards for webcredentials — the parent-domain entry is how "all subdomains"
+	  is achieved.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:sorcha.dev</string>
+	</array>
+</dict>
+</plist>

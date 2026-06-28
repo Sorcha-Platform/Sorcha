@@ -258,4 +258,71 @@ public class AuthApiTests : IClassFixture<TenantServiceWebApplicationFactory>, I
         // This will likely return OK or a specific response based on implementation
         response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Forbidden);
     }
+
+    // Feature 157 (US3): EmailVerified on GET /api/auth/me
+
+    [Fact]
+    public async Task GetCurrentUser_WithVerifiedEmailClaim_ReturnsEmailVerifiedTrue()
+    {
+        // Arrange — inject email_verified=true via test header
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", TestDataSeeder.AdminUserId.ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Administrator");
+        client.DefaultRequestHeaders.Add("X-Test-Organization-Id", TestDataSeeder.TestOrganizationId.ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Email-Verified", "true");
+
+        // Act
+        var response = await client.GetAsync("/api/auth/me");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var userInfo = await response.Content.ReadFromJsonAsync<CurrentUserResponse>();
+        userInfo.Should().NotBeNull();
+        userInfo!.EmailVerified.Should().BeTrue();
+        // Existing fields are unchanged (regression check)
+        userInfo.UserId.Should().NotBeNullOrEmpty();
+        userInfo.TokenType.Should().Be("user");
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WithUnverifiedEmailClaim_ReturnsEmailVerifiedFalse()
+    {
+        // Arrange — inject email_verified=false via test header
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", TestDataSeeder.AdminUserId.ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Administrator");
+        client.DefaultRequestHeaders.Add("X-Test-Organization-Id", TestDataSeeder.TestOrganizationId.ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Email-Verified", "false");
+
+        // Act
+        var response = await client.GetAsync("/api/auth/me");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var userInfo = await response.Content.ReadFromJsonAsync<CurrentUserResponse>();
+        userInfo.Should().NotBeNull();
+        userInfo!.EmailVerified.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WithNoEmailVerifiedClaim_ReturnsEmailVerifiedFalse()
+    {
+        // Arrange — no email_verified header → claim absent from token
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", TestDataSeeder.AdminUserId.ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Administrator");
+        client.DefaultRequestHeaders.Add("X-Test-Organization-Id", TestDataSeeder.TestOrganizationId.ToString());
+        // Deliberately omit X-Test-Email-Verified
+
+        // Act
+        var response = await client.GetAsync("/api/auth/me");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var userInfo = await response.Content.ReadFromJsonAsync<CurrentUserResponse>();
+        userInfo.Should().NotBeNull();
+        // Absent claim must unambiguously return false (FR-011)
+        userInfo!.EmailVerified.Should().BeFalse();
+        // No exception thrown — handler is robust to missing claim
+    }
 }

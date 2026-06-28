@@ -150,7 +150,9 @@ public class SignupModel : PageModel
 
         try
         {
-            var orgSubdomain = string.IsNullOrWhiteSpace(OrgSubdomain) ? "default" : OrgSubdomain;
+            // Default to the public org — self-registration is only enabled on the
+            // seeded Public org (subdomain "public"); a "default" org does not exist.
+            var orgSubdomain = string.IsNullOrWhiteSpace(OrgSubdomain) ? "public" : OrgSubdomain;
             var result = await _registrationService.RegisterAsync(
                 orgSubdomain, Email, Password, DisplayName, ct);
 

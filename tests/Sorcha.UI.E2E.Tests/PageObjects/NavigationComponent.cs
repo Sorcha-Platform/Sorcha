@@ -80,12 +80,14 @@ public class NavigationComponent
 
     /// <summary>
     /// Checks whether the drawer is currently open.
-    /// MudBlazor uses mud-drawer--open or similar class.
+    /// MudBlazor 9.x Responsive drawers always carry the static class mud-drawer-open-responsive
+    /// regardless of open/closed state — we must check for the BEM open-state modifier
+    /// mud-drawer--open which is only present when the drawer is actually open.
     /// </summary>
     public async Task<bool> IsDrawerOpenAsync()
     {
         var drawerClass = await Drawer.First.GetAttributeAsync("class") ?? "";
-        return drawerClass.Contains("open", StringComparison.OrdinalIgnoreCase);
+        return drawerClass.Contains("mud-drawer--open", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

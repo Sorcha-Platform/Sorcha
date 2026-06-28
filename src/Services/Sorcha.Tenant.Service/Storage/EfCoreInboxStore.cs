@@ -4,6 +4,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Storage;
 
@@ -63,6 +64,7 @@ public sealed class EfCoreInboxStore : IInboxStore
         InboxCategory? category,
         bool unreadOnly,
         bool includeDismissed,
+        bool actionableOnly = false,
         CancellationToken ct = default)
     {
         if (page < 1) page = 1;
@@ -85,6 +87,10 @@ public sealed class EfCoreInboxStore : IInboxStore
         {
             query = query.Where(e => e.Category == category.Value);
         }
+        if (actionableOnly)
+        {
+            query = query.Where(InboxClassification.ActionablePredicate);
+        }
 
         var total = await query.CountAsync(ct).ConfigureAwait(false);
         var entries = await query
@@ -105,12 +111,18 @@ public sealed class EfCoreInboxStore : IInboxStore
     }
 
     /// <inheritdoc />
-    public Task<int> GetUnreadCountAsync(Guid platformUserId, CancellationToken ct = default)
+    public Task<int> GetUnreadCountAsync(Guid platformUserId, bool actionableOnly = false, CancellationToken ct = default)
     {
-        return _db.InboxEntries
+        var query = _db.InboxEntries
             .AsNoTracking()
-            .Where(e => e.PlatformUserId == platformUserId && e.ReadAt == null && e.DismissedAt == null)
-            .CountAsync(ct);
+            .Where(e => e.PlatformUserId == platformUserId && e.ReadAt == null && e.DismissedAt == null);
+
+        if (actionableOnly)
+        {
+            query = query.Where(InboxClassification.ActionablePredicate);
+        }
+
+        return query.CountAsync(ct);
     }
 
     /// <inheritdoc />

@@ -13,7 +13,6 @@ using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
 using Sorcha.Register.Core.Events;
 using Sorcha.Register.Models;
-using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;

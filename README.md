@@ -245,6 +245,27 @@ Sorcha publishes a machine-readable surface so AI agents, AI coding assistants, 
 
 These surfaces are gated by the `ai-discoverability-check` CI workflow on every pull request to `master`.
 
+## Project layout
+
+A map of the top-level directories — enough to orient a newcomer. For a full source-tree breakdown see [`docs/reference/project-structure.md`](docs/reference/project-structure.md).
+
+| Directory | Purpose |
+|-----------|---------|
+| `bench/` | Performance benchmarks and baseline measurement runs |
+| `blueprints/` | Blueprint template library: JSON/YAML workflow definitions, schemas, and worked examples |
+| `demos/` | Self-contained demo scenarios used for interactive showcases |
+| `docker/` | Docker Compose stack, environment-specific app settings, Caddy config, and MCP server setup |
+| `docs/` | All project documentation: guides, architecture diagrams, API reference, and getting-started material |
+| `infra/` | Infrastructure-as-code (Azure Bicep templates and deployment scripts) |
+| `mobile/` | Native mobile client surface: wallet scripts and device-integration assets |
+| `ops/` | Operational tooling: Grafana dashboard definitions and runbook helpers |
+| `samples/` | Sample integrations and reference portal applications |
+| `scripts/` | Developer and CI utility scripts (PowerShell and bash): bootstrap, license headers, key backup |
+| `specs/` | Feature specifications and implementation planning documents |
+| `src/` | All production source code (Apps, Services, Core, Common, Providers) |
+| `tests/` | Cross-service integration and system tests (complements per-project tests inside `src/`) |
+| `walkthroughs/` | Interactive guided tutorials and runnable test scripts for key platform flows |
+
 ## Documentation
 
 | Document | Description |
@@ -276,6 +297,16 @@ See `walkthroughs/README.md` for the full list and setup instructions.
 ## Development
 
 For building from source, running tests, project structure, coding conventions, and contributing — see **[DEVELOPMENT.md](DEVELOPMENT.md)**.
+
+## Running the tests
+
+Run the full test suite from the repository root (.NET 10 SDK required — see [DEVELOPMENT.md](DEVELOPMENT.md)):
+
+```bash
+dotnet test
+```
+
+For filtered runs, coverage collection, and other test options, see **[DEVELOPMENT.md](DEVELOPMENT.md)**.
 
 ## License
 

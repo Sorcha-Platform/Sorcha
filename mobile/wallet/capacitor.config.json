@@ -1,5 +1,9 @@
 {
   "appId": "app.sorcha.wallet",
   "appName": "Sorcha Wallet",
-  "webDir": "www"
+  "webDir": "www",
+  "server": {
+    "url": "https://n1.sorcha.dev/wallet",
+    "cleartext": false
+  }
 }

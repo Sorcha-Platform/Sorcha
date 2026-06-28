@@ -21,12 +21,14 @@ public interface IInboxApiService
     /// <param name="category">Optional filter — one of Action, Credential, Membership, Security, System, Workflow, Custom.</param>
     /// <param name="unreadOnly">When true, returns only entries with no <c>ReadAt</c>.</param>
     /// <param name="includeDismissed">When true, includes dismissed entries (default excludes).</param>
+    /// <param name="actionableOnly">When true, returns only Actionable entries.</param>
     Task<InboxPageDto?> ListAsync(
         int page = 1,
         int pageSize = 20,
         string? category = null,
         bool unreadOnly = false,
         bool includeDismissed = false,
+        bool actionableOnly = false,
         CancellationToken ct = default);
 
     /// <summary>Fetch a single entry. Returns <c>null</c> if not found or not owned.</summary>

@@ -1,0 +1,209 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Components.User.Components.Onboarding
+
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Logging
+@using Sorcha.Tenant.Models.Persona
+@using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.UI.Core.Services.Persona
+
+@inject IPersonaService PersonaService
+@inject IInlineFeedback Feedback
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<CompleteProfileStep> Logger
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+}
+else
+{
+    <MudText Typo="Typo.h5" Class="mb-2">Complete your profile</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        Your profile is encrypted at rest and only used to autofill forms on your behalf.
+        You can update these details at any time from your profile settings.
+    </MudText>
+
+    @if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">@_loadError</MudAlert>
+    }
+
+    <MudForm @ref="_form">
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_givenName"
+                              Label="Given name"
+                              Variant="Variant.Outlined"
+                              data-testid="profile-given-name" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_familyName"
+                              Label="Family name"
+                              Variant="Variant.Outlined"
+                              data-testid="profile-family-name" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_fullName"
+                              Label="Full name (optional fallback)"
+                              Variant="Variant.Outlined"
+                              HelperText="Only used by autofill if given and family name are both blank."
+                              data-testid="profile-full-name" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_email"
+                              Label="Contact email (optional)"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Email"
+                              HelperText="Used for form autofill only, separate from your login email."
+                              data-testid="profile-contact-email" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_phone"
+                              Label="Phone number (optional)"
+                              Variant="Variant.Outlined"
+                              HelperText="E.164 format, e.g. +447700900123"
+                              data-testid="profile-phone" />
+            </MudItem>
+        </MudGrid>
+    </MudForm>
+
+    <MudStack Row="true" Spacing="2" Class="mt-6">
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="SaveAsync"
+                   Disabled="_saving"
+                   data-testid="profile-save-button">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save and continue
+        </MudButton>
+        @if (OnSkip.HasDelegate)
+        {
+            <MudButton Variant="Variant.Text"
+                       Color="Color.Default"
+                       OnClick="SkipAsync"
+                       Disabled="_saving"
+                       data-testid="profile-skip-button">
+                Skip for now
+            </MudButton>
+        }
+    </MudStack>
+}
+
+@code {
+    /// <summary>Fires when the user successfully saves their profile and is ready to continue.</summary>
+    [Parameter] public EventCallback OnContinue { get; set; }
+
+    /// <summary>Optional skip path. When set, a "Skip for now" button is rendered.</summary>
+    [Parameter] public EventCallback OnSkip { get; set; }
+
+    private MudForm? _form;
+    private bool _loading = true;
+    private bool _saving;
+    private string? _loadError;
+
+    private string? _givenName;
+    private string? _familyName;
+    private string? _fullName;
+    private string? _email;
+    private string? _phone;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var persona = await PersonaService.GetAsync(ct: default);
+
+            // Pre-fill from existing persona values.
+            _givenName = persona.GivenName?.Value;
+            _familyName = persona.FamilyName?.Value;
+            _fullName = persona.FullName?.Value;
+            _email = persona.DefaultEmail?.Value?.Value;
+            _phone = persona.DefaultPhone?.Value?.Value;
+
+            // Fall back to auth display name when the persona is empty.
+            if (string.IsNullOrWhiteSpace(_givenName)
+                && string.IsNullOrWhiteSpace(_familyName)
+                && string.IsNullOrWhiteSpace(_fullName))
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var displayName = authState.User.FindFirst("name")?.Value
+                    ?? authState.User.FindFirst("preferred_username")?.Value;
+                if (!string.IsNullOrWhiteSpace(displayName))
+                {
+                    _fullName = displayName;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load persona for CompleteProfileStep pre-fill");
+            _loadError = "Could not load your existing profile details. You can still enter them below.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        Feedback.Clear();
+        try
+        {
+            var emails = new List<PersonaEmail>();
+            if (!string.IsNullOrWhiteSpace(_email))
+                emails.Add(new PersonaEmail(_email.Trim(), IsDefault: true));
+
+            var phones = new List<PersonaPhone>();
+            if (!string.IsNullOrWhiteSpace(_phone))
+                phones.Add(new PersonaPhone(_phone.Trim(), IsDefault: true));
+
+            var attributes = new PersonaAttributesV1
+            {
+                GivenName = string.IsNullOrWhiteSpace(_givenName) ? null : _givenName.Trim(),
+                FamilyName = string.IsNullOrWhiteSpace(_familyName) ? null : _familyName.Trim(),
+                FullName = string.IsNullOrWhiteSpace(_fullName) ? null : _fullName.Trim(),
+                Emails = emails,
+                Phones = phones
+            };
+
+            await PersonaService.UpdateAsync(attributes);
+            PersonaService.InvalidateCache();
+
+            if (OnContinue.HasDelegate)
+                await OnContinue.InvokeAsync();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            Logger.LogWarning(ex, "Profile save rejected (400)");
+            Feedback.ShowError("Some of the values you entered are invalid. Please check and try again.", autoDismissMs: 0);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            Logger.LogWarning(ex, "Profile save rejected (409) — wallet not yet provisioned");
+            Feedback.ShowError("Your wallet has not been created yet. Please create a wallet first and then retry.", autoDismissMs: 0);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error saving profile in CompleteProfileStep");
+            Feedback.ShowError("An unexpected error occurred saving your profile. Please try again.", autoDismissMs: 0);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task SkipAsync()
+    {
+        if (OnSkip.HasDelegate)
+            await OnSkip.InvokeAsync();
+    }
+}
