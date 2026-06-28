@@ -45,7 +45,9 @@ public sealed record VerificationSessionStarted(
 /// <param name="IsComplete">True once the holder has submitted a presentation.</param>
 /// <param name="VpToken">The raw submitted <c>vp_token</c>, or null while pending.</param>
 /// <param name="PresentationSubmission">The OID4VP <c>presentation_submission</c>, when present.</param>
+/// <param name="IsTerminal">True when the session has reached a non-resumable state (Complete, Expired, or Error). The poll loop should stop when this is true.</param>
 public sealed record VerificationSessionPoll(
     bool IsComplete,
     string? VpToken,
-    string? PresentationSubmission);
+    string? PresentationSubmission,
+    bool IsTerminal = false);
