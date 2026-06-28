@@ -17,7 +17,7 @@
 
 **Purpose**: Verify the current state of `README.md` before editing.
 
-- [ ] T001 Read `README.md` to identify the placement point adjacent to the `## Development` section
+- [X] T001 Read `README.md` to identify the placement point adjacent to the `## Development` section
 
 ---
 
@@ -39,7 +39,7 @@
 
 ### Implementation for User Story 1
 
-- [ ] T002 [US1] Insert `## Running the tests` section in `README.md` immediately before or after the existing `## Development` section (research Decision 2), containing: a one-line description, a fenced `dotnet test` command block, a prerequisite note (.NET 10 SDK), and a pointer to `DEVELOPMENT.md` (research Decisions 1, 3, 4)
+- [X] T002 [US1] Insert `## Running the tests` section in `README.md` immediately before or after the existing `## Development` section (research Decision 2), containing: a one-line description, a fenced `dotnet test` command block, a prerequisite note (.NET 10 SDK), and a pointer to `DEVELOPMENT.md` (research Decisions 1, 3, 4)
 
 **Checkpoint**: User Story 1 is fully functional — `README.md` now contains the discoverable test-command section satisfying FR-001 through FR-007 and SC-001 through SC-004.
 
@@ -49,7 +49,7 @@
 
 **Purpose**: Final review confirming the change is additive and accurate.
 
-- [ ] T003 [P] [US1] Review rendered `README.md` to confirm: (a) "Running the tests" heading is scannable within 30 s (SC-001), (b) `dotnet test` command is accurate (SC-002 / FR-003), (c) no non-documentation file was modified (SC-003), (d) no pre-existing section was removed or semantically changed (SC-004 / FR-004)
+- [X] T003 [P] [US1] Review rendered `README.md` to confirm: (a) "Running the tests" heading is scannable within 30 s (SC-001), (b) `dotnet test` command is accurate (SC-002 / FR-003), (c) no non-documentation file was modified (SC-003), (d) no pre-existing section was removed or semantically changed (SC-004 / FR-004)
 
 ---
 
