@@ -284,7 +284,7 @@ public sealed partial class PersonaService : IPersonaService
 
         try
         {
-            await _personaInboxWriter.WritePersonaSavedAsync(platformUserId, "Personal Profile", ct);
+            await _personaInboxWriter.WritePersonaSavedAsync(platformUserId, DerivePersonaDisplayName(normalised), ct);
         }
         catch (Exception ex)
         {
@@ -311,6 +311,9 @@ public sealed partial class PersonaService : IPersonaService
             return; // Idempotent.
         }
 
+        // Resolve the display name before deletion — the ciphertext is gone once SaveChanges runs.
+        var displayName = await TryResolvePersonaDisplayNameAsync(row, ct);
+
         _db.PlatformUserPersonas.Remove(row);
         await _db.SaveChangesAsync(ct);
 
@@ -331,7 +334,7 @@ public sealed partial class PersonaService : IPersonaService
 
         try
         {
-            await _personaInboxWriter.WritePersonaDeletedAsync(platformUserId, "Personal Profile", ct);
+            await _personaInboxWriter.WritePersonaDeletedAsync(platformUserId, displayName, ct);
         }
         catch (Exception ex)
         {
@@ -342,6 +345,30 @@ public sealed partial class PersonaService : IPersonaService
     }
 
     // -------- private helpers --------
+
+    private static string DerivePersonaDisplayName(PersonaAttributesV1 attrs)
+    {
+        var parts = new[] { attrs.GivenName, attrs.FamilyName }
+            .Where(s => !string.IsNullOrWhiteSpace(s));
+        var name = string.Join(" ", parts);
+        return string.IsNullOrWhiteSpace(name) ? (attrs.FullName ?? "Personal Profile") : name;
+    }
+
+    private async Task<string> TryResolvePersonaDisplayNameAsync(PlatformUserPersona row, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(row.WrappedKeyRef)) return "Personal Profile";
+        try
+        {
+            var plaintext = await _crypto.DecryptAsync(
+                row.WrappedKeyRef, row.CiphertextBlob, row.Nonce, row.WrappedKeyRef, ct);
+            var attrs = JsonSerializer.Deserialize<PersonaAttributesV1>(plaintext, JsonOptions);
+            return attrs is null ? "Personal Profile" : DerivePersonaDisplayName(attrs);
+        }
+        catch
+        {
+            return "Personal Profile";
+        }
+    }
 
     /// <summary>
     /// Validates invariants I-1 through I-5 from data-model.md §2 and
