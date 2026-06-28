@@ -40,17 +40,39 @@ public enum SocialLoginRefusal
 
 /// <summary>
 /// Result of <see cref="IPlatformUserService.ResolveOrCreateSocialUserAsync"/>.
-/// Either <paramref name="User"/> is non-null (success) or
-/// <paramref name="Refusal"/> is set to a non-<see cref="SocialLoginRefusal.None"/>
-/// value (refusal). Both are never set simultaneously.
+/// Either <paramref name="User"/> is non-null (success), or
+/// <paramref name="Refusal"/> is set to a non-<see cref="SocialLoginRefusal.None"/> value (refusal),
+/// or <paramref name="LinkRequired"/> is non-null (step-up linking required — no session issued).
+/// At most one of these discriminators is active at a time.
 /// </summary>
-/// <param name="User">The resolved or created platform user, or null on refusal.</param>
+/// <param name="User">The resolved or created platform user, or null on refusal/link-required.</param>
 /// <param name="IsNew">Whether the user was created as part of this call. Always false on refusal.</param>
 /// <param name="Refusal">The refusal reason, or <see cref="SocialLoginRefusal.None"/> on success.</param>
+/// <param name="LinkRequired">
+/// When non-null, the social callback matched an existing verified account but the link has not been
+/// established yet — the caller must start the step-up flow and then call link-confirm.
+/// </param>
 public record ResolveSocialUserResult(
     PlatformUser? User,
     bool IsNew,
-    SocialLoginRefusal Refusal);
+    SocialLoginRefusal Refusal,
+    LinkRequiredInfo? LinkRequired = null);
+
+/// <summary>
+/// Information surfaced when <see cref="ResolveSocialUserResult.LinkRequired"/> is set.
+/// Contains the social identity claims needed to mint the link-pending token.
+/// </summary>
+/// <param name="Provider">Social provider key, e.g. <c>google</c>.</param>
+/// <param name="Subject">Provider's stable subject id.</param>
+/// <param name="SocialEmail">Verified email asserted by the provider.</param>
+/// <param name="DisplayName">Display name from the social profile (may be null).</param>
+/// <param name="TargetAccountId"><see cref="PlatformUser.Id"/> of the existing account the email matched.</param>
+public record LinkRequiredInfo(
+    string Provider,
+    string Subject,
+    string SocialEmail,
+    string? DisplayName,
+    Guid TargetAccountId);
 
 /// <summary>
 /// Service interface for platform-wide user management operations.
@@ -153,10 +175,10 @@ public interface IPlatformUserService
     /// <item>Find by provider+subject (returning user). Refresh
     /// <c>LastUsedAt</c> and <c>DisplayName</c>. <b>No verification re-check</b> —
     /// trust is established at link time (FR-013).</item>
-    /// <item>Find by email and link provider only when <b>both</b> the
-    /// provider's <c>EmailVerified</c> claim and the existing user's
-    /// <c>EmailVerified</c> are <c>true</c> (FR-011, FR-012). Otherwise
-    /// return <see cref="SocialLoginRefusal.ExistingUnverified"/>.</item>
+    /// <item>Find by email: when both the provider's <c>EmailVerified</c> claim and the
+    /// existing user's <c>EmailVerified</c> are <c>true</c>, return a <see cref="LinkRequiredInfo"/>
+    /// result — the caller must complete step-up linking (Feature 168). Otherwise return the
+    /// appropriate <see cref="SocialLoginRefusal"/> value.</item>
     /// <item>Create new user only when <paramref name="allowCreate"/> is <c>true</c>
     /// and the provider asserts <c>EmailVerified=true</c> (FR-010). When
     /// <paramref name="allowCreate"/> is <c>false</c> and neither Step 1 nor Step 2

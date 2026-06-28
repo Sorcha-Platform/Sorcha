@@ -8,7 +8,7 @@
 @namespace Sorcha.UI.Components.User.Components.Home
 @using Sorcha.UI.Components.User.Models
 
-@if (Events is { Count: > 0 })
+@if (Events?.Count > 0)
 {
     <MudPaper Class="pa-3 ma-2" Elevation="1" data-testid="home-recent-activity">
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
@@ -28,7 +28,7 @@
                 <MudListItem T="RecentActivityEntry" Value="@entry"
                              Icon="@IconForKind(entry.Kind)"
                              OnClick="@(async () => await Activate(entry))"
-                             data-testid="@($"home-recent-entry-{entry.Id}")">
+                             data-testid='@($"home-recent-entry-{entry.Id}")'>
                     <MudStack Spacing="0">
                         <MudText Typo="Typo.body2">@entry.Summary</MudText>
                         <MudText Typo="Typo.caption" Class="mud-text-secondary">@FormatWhen(entry.At)</MudText>
@@ -71,9 +71,10 @@
     private static string FormatWhen(DateTimeOffset at)
     {
         var delta = DateTimeOffset.UtcNow - at;
-        var d = delta.TotalDays;
-        if (d < 1) return $"{Math.Max(1, (int)delta.TotalHours)} h ago";
-        if (d < 7) return $"{(int)d} d ago";
+        if (delta.TotalDays < 1)
+            return $"{Math.Max(1, (int)delta.TotalHours)} h ago";
+        if (delta.TotalDays < 7)
+            return $"{(int)delta.TotalDays} d ago";
         return at.ToLocalTime().ToString("d MMM");
     }
 

@@ -56,6 +56,11 @@ public static class WebApplicationExtensions
         services.AddScoped<ISocialLinkService, SocialLinkService>();
         services.AddScoped<IPasswordManagementService, PasswordManagementService>();
 
+        // Feature 168 — step-up social account linking: signing key (singleton, derived once)
+        // and token service (scoped, stateless operations).
+        services.AddSingleton<LinkPendingTokenKey>();
+        services.AddScoped<ILinkPendingTokenService, LinkPendingTokenService>();
+
         // AuthMetrics is a singleton wrapper around the OpenTelemetry meter —
         // counters are process-wide and must outlive any individual scope.
         services.AddSingleton<AuthMetrics>();

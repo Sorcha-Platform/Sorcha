@@ -2,10 +2,13 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using Moq;
+using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceDefaults.Auth;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Extensions;
@@ -268,6 +271,80 @@ public sealed class TokenServiceTierTests
         refreshed.Should().NotBeNull();
         var token = Decode(refreshed!.AccessToken);
         token.Audiences.Should().ContainSingle().Which.Should().Be("test:consumer");
-        token.Claims.Should().NotContain(c => c.Type == System.Security.Claims.ClaimTypes.Role || c.Type == "role");
+        token.Claims.Should().NotContain(c => c.Type == ClaimTypes.Role || c.Type == "role");
+    }
+
+    // --- INV-1 / INV-2: platform_user_id regression (Feature 165) ---
+
+    [Fact]
+    public async Task RefreshToken_Consumer_ReEmitsSamePlatformUserId()
+    {
+        // INV-1: a consumer refresh must re-emit platform_user_id equal to the original.
+        // Regression: any change that strips the claim on refresh would break citizen-wallet
+        // identity resolution.
+        var (user, org) = CitizenSubject();
+        var svc = CreateServiceForRefresh(user, org);
+
+        var initial = await svc.GenerateUserTokenAsync(user, org, user.PlatformUserId, Tier.Consumer);
+        var refreshed = await svc.RefreshTokenAsync(initial.RefreshToken);
+
+        refreshed.Should().NotBeNull();
+        var token = Decode(refreshed!.AccessToken);
+        token.Claims.Should().Contain(
+            c => c.Type == TokenClaimConstants.PlatformUserId && c.Value == user.PlatformUserId.ToString(),
+            "platform_user_id must be re-emitted unchanged after a consumer token refresh (INV-1)");
+        token.Claims.Should().NotContain(c => c.Type == ClaimTypes.Role || c.Type == "role",
+            "a refreshed consumer token must remain role-free (INV-2)");
+        token.Claims.Should().NotContain(c => c.Type == "wallet_address",
+            "a refreshed consumer token must not carry wallet_address (INV-2)");
+    }
+
+    [Fact]
+    public async Task RefreshToken_Legacy_NoPlatformUserIdOnRefreshToken_RecoverFromUserIdentity()
+    {
+        // INV-1 (legacy path): a refresh token minted before Feature 136 lacks platform_user_id.
+        // RefreshTokenAsync must recover it from UserIdentity.PlatformUserId and re-emit it on
+        // the new access token. This test constructs a raw JWT that matches the pre-Feature-136
+        // shape (no platform_user_id claim) and confirms the recovery path is active and correct.
+        var (user, org) = CitizenSubject();
+        var svc = CreateServiceForRefresh(user, org);
+
+        const string SigningKey = "tier-tests-signing-key-min-32-characters-long-enough!!";
+        var legacyRefreshToken = BuildLegacyRefreshToken(user.Id, org.Id, SigningKey);
+
+        var refreshed = await svc.RefreshTokenAsync(legacyRefreshToken);
+
+        refreshed.Should().NotBeNull("the service must handle legacy tokens that lack platform_user_id");
+        var token = Decode(refreshed!.AccessToken);
+        token.Claims.Should().Contain(
+            c => c.Type == TokenClaimConstants.PlatformUserId && c.Value == user.PlatformUserId.ToString(),
+            "platform_user_id must be recovered from UserIdentity.PlatformUserId when absent from the legacy refresh token");
+    }
+
+    /// <summary>
+    /// Builds a JWT refresh token that intentionally omits <c>platform_user_id</c>,
+    /// simulating tokens minted before Feature 136 was deployed.
+    /// </summary>
+    private static string BuildLegacyRefreshToken(Guid userId, Guid orgId, string signingKey)
+    {
+        var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(signingKey));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: "urn:sorcha:test",
+            audience: "test:consumer",
+            claims:
+            [
+                new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim("token_use", "refresh"),
+                new Claim("tier", "consumer"),
+                new Claim("org_id", orgId.ToString()),
+                // platform_user_id deliberately absent — legacy token shape
+            ],
+            expires: DateTime.UtcNow.AddHours(24),
+            signingCredentials: creds);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

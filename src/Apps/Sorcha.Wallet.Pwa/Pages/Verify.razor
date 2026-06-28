@@ -2,19 +2,21 @@
     SPDX-License-Identifier: MIT
     Copyright (c) 2026 Sorcha Contributors
 
-    Doorstep verification page (Feature 125, T040). Full-page host for
-    VerifyFlow. After every verification the live result is persisted
-    to the per-device verification history store so the citizen can
-    review past doorstep checks from Activity.
+    Doorstep verification page (Feature 164, B3 US2). Hosts the shared verify control
+    (QuestionSelectionPanel → VerificationSessionQr → completion) wired to the live HAIP
+    transport via IVerificationTransport and EphemeralVerifierIdentityAdapter.
+    After the holder scans and submits, the vpToken is persisted to the per-device
+    verification history store for audit.
 *@
 @page "/verify"
 @layout MainLayout
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
-@using Sorcha.UI.Components.User.Components.Verify
+@using Sorcha.UI.Core.Components.Verify
 @using Sorcha.UI.Components.User.Models.Verification
 @using Sorcha.Wallet.Pwa.Services
 @using Sorcha.Wallet.Pwa.Services.Context
+@implements IDisposable
 @inject IVerificationHistoryStore History
 @inject IUserContext UserContext
 @inject ILogger<Verify> Logger
@@ -22,40 +24,84 @@
 <PageTitle>Verify a credential · Sorcha Wallet</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
-    <VerifyFlow OnVerified="@PersistVerificationAsync" />
+    @if (_selectedQuestion is null)
+    {
+        <QuestionSelectionPanel OnQuestionSelected="@SelectQuestionAsync" />
+    }
+    else if (!_complete)
+    {
+        <VerificationSessionQr Question="@_selectedQuestion"
+                               CancellationToken="@_pageCts.Token"
+                               OnCompleted="@HandleCompletedAsync" />
+    }
+    else
+    {
+        <MudPaper Elevation="2" Class="pa-6 text-center">
+            <MudIcon Icon="Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" Class="mb-3" />
+            <MudText Typo="Typo.h5" Class="mb-2">Verification Complete</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                The credential was presented and verified successfully.
+            </MudText>
+            <MudButton Variant="Variant.Outlined" OnClick="@Reset">Verify another</MudButton>
+        </MudPaper>
+    }
 </MudContainer>
 
 @code {
-    private async Task PersistVerificationAsync(VerificationResult result)
-    {
-        var historyOutcome = result.Outcome switch
-        {
-            Sorcha.UI.Components.User.Models.Verification.VerifyOutcome.Pass => Services.VerifyOutcome.Pass,
-            Sorcha.UI.Components.User.Models.Verification.VerifyOutcome.Warn => Services.VerifyOutcome.Warn,
-            _ => Services.VerifyOutcome.Fail
-        };
+    private VerificationPreset? _selectedQuestion;
+    private bool _complete;
+    private CancellationTokenSource _pageCts = new();
 
-        var record = new VerificationRecord(
-            Id: Guid.NewGuid(),
-            VerifiedAt: result.VerifiedAt,
-            ContextOrgId: UserContext.ActiveContextOrgId,
-            HolderDisplayName: result.HolderDisplayName,
-            IssuerOrgName: result.IssuerOrgName,
-            CredentialType: result.CredentialType,
-            Outcome: historyOutcome,
-            TrustPanelJson: result.TrustPanelJson);
+    private Task SelectQuestionAsync(VerificationPreset question)
+    {
+        _selectedQuestion = question;
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleCompletedAsync(string vpToken)
+    {
+        _complete = true;
+
+        if (string.IsNullOrEmpty(vpToken) || _selectedQuestion is null) return;
 
         try
         {
-            await History.AddAsync(record);
-            Logger.LogInformation(
-                "Verification recorded: {Outcome} · {Holder} · {Issuer} · {Vct}",
-                record.Outcome, record.HolderDisplayName, record.IssuerOrgName, record.CredentialType);
+            var historyOutcome = Services.VerifyOutcome.Pass;
+
+            var record = new VerificationRecord(
+                Id: Guid.NewGuid(),
+                VerifiedAt: DateTimeOffset.UtcNow,
+                ContextOrgId: UserContext.ActiveContextOrgId,
+                HolderDisplayName: "",
+                IssuerOrgName: "",
+                CredentialType: _selectedQuestion.RequiredVct,
+                Outcome: historyOutcome,
+                TrustPanelJson: "");
+
+            try
+            {
+                await History.AddAsync(record);
+                Logger.LogInformation(
+                    "Verification recorded: {Outcome} · {Vct}",
+                    record.Outcome, record.CredentialType);
+            }
+            catch (Exception ex)
+            {
+                // Persist failures are not fatal — the QR session already succeeded.
+                Logger.LogWarning(ex, "Failed to persist verification history record {Id}.", record.Id);
+            }
         }
         catch (Exception ex)
         {
-            // Persist failures are not fatal — the trust panel still rendered.
-            Logger.LogWarning(ex, "Failed to persist verification history record {Id}.", record.Id);
+            Logger.LogError(ex, "Failed to handle completed verification for credential type {Vct}.", _selectedQuestion?.RequiredVct);
         }
     }
+
+    private void Reset()
+    {
+        _selectedQuestion = null;
+        _complete = false;
+    }
+
+    public void Dispose() => _pageCts.Dispose();
 }

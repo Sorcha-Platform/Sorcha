@@ -130,8 +130,12 @@ public class SocialLoginPolicyTests : IDisposable
     // --- Scenario B: email-collision (existing user, new provider link) ---
 
     [Fact]
-    public async Task EmailCollision_BothVerified_LinksAndReturnsExisting()
+    public async Task EmailCollision_BothVerified_ReturnsLinkRequired()
     {
+        // Feature 168: an unconnected social identity whose verified email matches an existing verified
+        // account no longer silently auto-links. Instead, a LinkRequired outcome is returned so the
+        // caller can mint a link-pending token and require step-up proof from the user.
+
         // Arrange — verified existing user, no provider link yet
         var existing = new PlatformUser
         {
@@ -146,22 +150,24 @@ public class SocialLoginPolicyTests : IDisposable
         _db.PlatformUsers.Add(existing);
         await _db.SaveChangesAsync();
 
-        // Act — Google returns the same email, asserts verified
+        // Act — Google returns the same verified email
         var result = await _service.ResolveOrCreateSocialUserAsync(
             Claim(email: "alice@example.com", emailVerified: true, displayName: "Alice G"),
             allowCreate: true, CancellationToken.None);
 
-        // Assert
-        result.Refusal.Should().Be(SocialLoginRefusal.None);
+        // Assert — LinkRequired, no session, no link row
+        result.User.Should().BeNull("no session is issued until step-up is proven");
         result.IsNew.Should().BeFalse();
-        result.User!.Id.Should().Be(existing.Id);
+        result.Refusal.Should().Be(SocialLoginRefusal.None);
 
-        var link = await _db.PlatformSocialLogins.SingleAsync(s => s.PlatformUserId == existing.Id);
-        link.Provider.Should().Be("Google");
-        link.Subject.Should().Be("sub-123");
+        result.LinkRequired.Should().NotBeNull();
+        result.LinkRequired!.TargetAccountId.Should().Be(existing.Id);
+        result.LinkRequired.Provider.Should().Be("Google");
+        result.LinkRequired.Subject.Should().Be("sub-123");
+        result.LinkRequired.SocialEmail.Should().Be("alice@example.com");
 
-        var refreshed = await _db.PlatformUsers.FindAsync(existing.Id);
-        refreshed!.DisplayName.Should().Be("Alice G");
+        var linkCount = await _db.PlatformSocialLogins.CountAsync(s => s.PlatformUserId == existing.Id);
+        linkCount.Should().Be(0, "no link row is created until link-confirm succeeds");
     }
 
     [Fact]

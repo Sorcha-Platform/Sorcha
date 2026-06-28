@@ -85,6 +85,7 @@ public class TokenService : ITokenService
         Organization organization,
         Guid platformUserId,
         Tier tier = Tier.Platform,
+        bool emailVerified = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -107,7 +108,8 @@ public class TokenService : ITokenService
             new(JwtRegisteredClaimNames.Jti, accessTokenJti),
             new("name", user.DisplayName),
             new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser),
-            new("platform_user_id", platformUserId.ToString())
+            new(TokenClaimConstants.PlatformUserId, platformUserId.ToString()),
+            new("email_verified", emailVerified ? "true" : "false")
         };
 
         // Both human tiers carry organisation context (org_id/org_name) — a citizen's home is the
@@ -137,10 +139,12 @@ public class TokenService : ITokenService
         _metrics?.TokenMinted(tier);
         // The refresh token carries the tier (re-minted same tier, FR-012) and the org context for
         // both human tiers (a consumer's home org is needed to re-mint its org-scoped consumer token).
+        // email_verified is carried on the refresh token so RefreshTokenAsync can re-emit it on the
+        // rebuilt access token without a DB round-trip (Feature 157, Decision 4).
         var refreshToken = GenerateRefreshToken(
             refreshTokenJti, user.Id.ToString(),
             organization.Id.ToString(),
-            refreshTokenExpiry, platformUserId.ToString(), tier);
+            refreshTokenExpiry, platformUserId.ToString(), tier, emailVerified);
 
         // Track tokens for potential bulk revocation
         await _revocationService.TrackTokenAsync(
@@ -299,18 +303,24 @@ public class TokenService : ITokenService
             var newAccessTokenJti = Guid.NewGuid().ToString();
             var accessTokenExpiry = DateTimeOffset.UtcNow.AddMinutes(_config.AccessTokenLifetimeMinutes);
 
+            // Carry email_verified from the refresh token — minted there at initial login so no DB
+            // round-trip is needed here (Feature 157, Decision 4). Absent or invalid → false.
+            var refreshEmailVerifiedStr = principal.FindFirst("email_verified")?.Value;
+            var refreshEmailVerified = string.Equals(refreshEmailVerifiedStr, "true", StringComparison.OrdinalIgnoreCase);
+
             var claims = new List<Claim>
             {
                 new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
                 new(JwtRegisteredClaimNames.Email, user.Email),
                 new(JwtRegisteredClaimNames.Jti, newAccessTokenJti),
                 new("name", user.DisplayName),
-                new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser)
+                new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser),
+                new("email_verified", refreshEmailVerified ? "true" : "false")
             };
 
             // platform_user_id is carried on every human tier. For refresh tokens minted before this
             // claim was persisted, fall back to the UserIdentity row (canonical source).
-            var platformUserId = principal.FindFirst("platform_user_id")?.Value;
+            var platformUserId = principal.FindFirst(TokenClaimConstants.PlatformUserId)?.Value;
             if (string.IsNullOrEmpty(platformUserId) && user.PlatformUserId != Guid.Empty)
             {
                 platformUserId = user.PlatformUserId.ToString();
@@ -320,7 +330,7 @@ public class TokenService : ITokenService
             }
             if (!string.IsNullOrEmpty(platformUserId))
             {
-                claims.Add(new Claim("platform_user_id", platformUserId));
+                claims.Add(new Claim(TokenClaimConstants.PlatformUserId, platformUserId));
             }
 
             // Org context (org_id/org_name) is re-minted for both human tiers (a consumer's home org).
@@ -517,7 +527,7 @@ public class TokenService : ITokenService
         return _tokenHandler.WriteToken(token);
     }
 
-    private string GenerateRefreshToken(string jti, string userId, string? orgId, DateTimeOffset expiry, string? platformUserId = null, Tier tier = Tier.Platform)
+    private string GenerateRefreshToken(string jti, string userId, string? orgId, DateTimeOffset expiry, string? platformUserId = null, Tier tier = Tier.Platform, bool emailVerified = false)
     {
         var claims = new List<Claim>
         {
@@ -543,6 +553,10 @@ public class TokenService : ITokenService
 
         // Refresh tokens carry their tier so a refresh re-mints the same tier (spec 136, FR-012).
         claims.Add(new Claim("tier", TierClaimValue(tier)));
+
+        // Carry email_verified so RefreshTokenAsync can re-emit it without a DB round-trip
+        // (Feature 157, Decision 4).
+        claims.Add(new Claim("email_verified", emailVerified ? "true" : "false"));
 
         return GenerateToken(claims, expiry, _audiences.For(tier));
     }

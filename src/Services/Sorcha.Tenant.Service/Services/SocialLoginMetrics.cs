@@ -23,6 +23,16 @@ public static class SocialLoginMetrics
         unit: "{refusal}",
         description: "Count of refused social-login attempts, tagged by provider and reason.");
 
+    private static readonly Counter<long> LinkRequiredCounter = Meter.CreateCounter<long>(
+        "sorcha_social_link_required_total",
+        unit: "{event}",
+        description: "Count of social-login attempts that required step-up linking, tagged by provider.");
+
+    private static readonly Counter<long> LinkConfirmCounter = Meter.CreateCounter<long>(
+        "sorcha_social_link_confirm_total",
+        unit: "{event}",
+        description: "Count of link-confirm calls, tagged by provider and outcome.");
+
     /// <summary>
     /// Record a refusal under the strict link policy. Maps a
     /// <see cref="SocialLoginRefusal"/> enum value to a stable string tag
@@ -60,5 +70,29 @@ public static class SocialLoginMetrics
         RefusalCounter.Add(1,
             new KeyValuePair<string, object?>("provider", string.IsNullOrEmpty(provider) ? "unknown" : provider),
             new KeyValuePair<string, object?>("reason", reasonTag));
+    }
+
+    /// <summary>
+    /// Record a <c>LinkRequired</c> outcome on the social callback branch (Feature 168, FR-017).
+    /// Tagged by provider only — no PII.
+    /// </summary>
+    /// <param name="provider">The provider name (e.g. "google").</param>
+    public static void RecordLinkRequired(string provider)
+    {
+        LinkRequiredCounter.Add(1,
+            new KeyValuePair<string, object?>("provider", string.IsNullOrEmpty(provider) ? "unknown" : provider));
+    }
+
+    /// <summary>
+    /// Record a link-confirm outcome (Feature 168, FR-017).
+    /// Tagged by provider and outcome — no PII.
+    /// </summary>
+    /// <param name="provider">The provider name (e.g. "google").</param>
+    /// <param name="outcome">A stable outcome tag: "success", "conflict", or "rejected".</param>
+    public static void RecordLinkConfirm(string provider, string outcome)
+    {
+        LinkConfirmCounter.Add(1,
+            new KeyValuePair<string, object?>("provider", string.IsNullOrEmpty(provider) ? "unknown" : provider),
+            new KeyValuePair<string, object?>("outcome", outcome));
     }
 }

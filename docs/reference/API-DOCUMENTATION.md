@@ -452,8 +452,22 @@ FIDO2/WebAuthn passkey authentication for both organizational users (2FA) and pu
 |--------|------|------|-------------|
 | GET  | `/api/auth/social/providers` | Anonymous | List configured social providers. Returns `{"providers":["google",…]}`. Drives conditional "Continue with…" buttons on the citizen wallet PWA sign-in screen. |
 | POST | `/api/auth/public/social/initiate` | Anonymous | Initiate OAuth flow for provider (Google, Microsoft, GitHub, Apple). Optional `surface` field: `"wallet"` routes the post-OAuth callback into the citizen wallet PWA (mints Consumer-tier, redirects to `/wallet/#token=…&refresh=…&expires_in=…`, login-only — unknown identity → `?authError=no_account`). Null/`"app"` keeps the default web flow. |
-| POST | `/api/auth/public/social/callback` | Anonymous | Handle OAuth callback (SPA flow), provision user under strict link policy, issue tokens. Returns 400 with refusal message when `email_verified=false` from provider or when target user is unverified. |
-| GET  | `/auth/social/callback` | Anonymous | Razor-page browser redirect URI for OAuth providers. Single canonical path per environment. Provider is recovered from cached state, NOT a query parameter. See `docs/guides/SOCIAL-LOGIN-SETUP.md`. When `surface=wallet` was used, redirects to `/wallet/#token=…&refresh=…&expires_in=…` with a Consumer-tier token. |
+| POST | `/api/auth/public/social/callback` | Anonymous | Handle OAuth callback (SPA flow), provision user under strict link policy, issue tokens. Returns 400 with refusal message when `email_verified=false` from provider or when target user is unverified. When the provider's verified email matches an existing verified account that isn't yet linked to this `(provider, subject)`, returns `{"outcome":"LinkRequired","linkPendingToken":"…"}` — no session is issued; the client must complete the step-up flow below (Feature 168). |
+| GET  | `/auth/social/callback` | Anonymous | Razor-page browser redirect URI for OAuth providers. Single canonical path per environment. Provider is recovered from cached state, NOT a query parameter. See `docs/guides/SOCIAL-LOGIN-SETUP.md`. When `surface=wallet` was used, redirects to `/wallet/#token=…&refresh=…&expires_in=…` with a Consumer-tier token. On `LinkRequired`, redirects to `/app/#outcome=LinkRequired&linkPendingToken=…` instead. |
+
+#### Step-Up Social Account Linking (Feature 168)
+
+Pre-session challenge flow for linking an unconnected social identity to an existing verified account.
+All three endpoints are **unauthenticated** — the `linkPendingToken` acts as the principal.
+Rate-limited with `platform-auth`. See `contracts/social-link-stepup.md` and `contracts/link-confirm.md`.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/social/link/challenge/initiate` | Anonymous | Begin a step-up challenge against the target account identified by the link-pending token. Body: `{"linkPendingToken":"…","preferredMethod":null}`. Returns `{"method":"totp","payload":null}` (or the appropriate challenge payload). 401 if token invalid/expired; 400 if no enrolled method meets the Strong floor. |
+| POST | `/api/auth/social/link/challenge/verify` | Anonymous | Submit the challenge proof. Body: `{"linkPendingToken":"…","method":"totp","proof":{…}}`. Returns `{"token":"ch_…","expiresInSeconds":300}` on success. 403 `proof_tier_insufficient` if method tier < Strong; 401 for other failures. |
+| POST | `/api/auth/social/link/confirm` | Anonymous | Redeem the link-pending token and the `X-Auth-Challenge` (header) challenge proof to link the social identity and issue a session. Body: `{"linkPendingToken":"…"}`. Header: `X-Auth-Challenge: ch_…`. Returns `{"accessToken":"…","refreshToken":"…","expiresIn":…}` on success. 401 missing/invalid/expired credentials; 403 account mismatch or wrong operation; 409 social identity already linked to a different account. |
+
+**Floor rule (FR-010):** `ScopedOperation.LinkSocial` requires `AuthAssuranceTier.Strong`. TOTP, passkey, and re-auth social proofs satisfy the floor; bare password (Basic) is always rejected with 403. Password-only accounts without TOTP or a passkey cannot initiate this flow (NoMethodAvailable, 400).
 
 #### Public User Auth Method Management
 

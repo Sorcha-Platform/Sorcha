@@ -82,12 +82,26 @@ public sealed class IndexedDbAccessTokenStore : IAccessTokenStore
     /// <inheritdoc />
     public async Task<AccessTokenRecord?> GetAsync(CancellationToken ct = default)
     {
-        var row = await _js.InvokeAsync<AccessTokenRecord?>("SorchaIndexedDb.get", ct, StoreName, Key);
+        AccessTokenRecord? row;
+        try
+        {
+            row = await _js.InvokeAsync<AccessTokenRecord?>("SorchaIndexedDb.get", ct, StoreName, Key);
+        }
+        catch (JSException)
+        {
+            // The IndexedDB bridge is unavailable — most commonly because the app
+            // is running on a non-secure origin (e.g. the Capacitor capacitor://
+            // custom scheme on iOS) where crypto.subtle is absent, so
+            // js/indexeddb-bridge.js returned early and never defined
+            // globalThis.SorchaIndexedDb. Read as signed-out rather than letting an
+            // uncaught throw white-screen the sign-in screen via the ErrorBoundary.
+            return null;
+        }
         if (row is null) return null;
         if (row.ExpiresAt <= DateTimeOffset.UtcNow)
         {
             // Expired — purge so callers see signed-out state.
-            await ClearAsync(ct);
+            try { await ClearAsync(ct); } catch (JSException) { /* bridge gone — already signed-out */ }
             return null;
         }
         return row;
@@ -108,11 +122,20 @@ public sealed class IndexedDbAccessTokenStore : IAccessTokenStore
     /// <inheritdoc />
     public async Task<AccessTokenRecord?> GetHomeAsync(CancellationToken ct = default)
     {
-        var row = await _js.InvokeAsync<AccessTokenRecord?>("SorchaIndexedDb.get", ct, StoreName, HomeKey);
+        AccessTokenRecord? row;
+        try
+        {
+            row = await _js.InvokeAsync<AccessTokenRecord?>("SorchaIndexedDb.get", ct, StoreName, HomeKey);
+        }
+        catch (JSException)
+        {
+            // See GetAsync — degrade to "no home token" when the bridge is absent.
+            return null;
+        }
         if (row is null) return null;
         if (row.ExpiresAt <= DateTimeOffset.UtcNow)
         {
-            await ClearHomeAsync(ct);
+            try { await ClearHomeAsync(ct); } catch (JSException) { /* bridge gone */ }
             return null;
         }
         return row;
