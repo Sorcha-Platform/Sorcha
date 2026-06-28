@@ -11,8 +11,6 @@ using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
-using Sorcha.ServiceClients.Events;
-using Sorcha.ServiceClients.Events.Models;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.TransactionHandler.Encryption;
@@ -36,7 +34,6 @@ public class EncryptionBackgroundServiceRecipientTests
     private readonly Mock<IActionResolverService> _actionResolver = new();
     private readonly Mock<IInstanceStore> _instanceStore = new();
     private readonly Mock<IEncryptionOperationStore> _operationStore = new();
-    private readonly Mock<IEventServiceClient> _eventServiceClient = new();
     private readonly Mock<IEncryptionInboxWriter> _encryptionInboxWriter = new();
 
     private EncryptionBackgroundService CreateService(Channel<EncryptionWorkItem> channel)
@@ -49,7 +46,6 @@ public class EncryptionBackgroundServiceRecipientTests
         services.AddSingleton(_validatorClient.Object);
         services.AddSingleton(_actionResolver.Object);
         services.AddSingleton(_instanceStore.Object);
-        services.AddSingleton(_eventServiceClient.Object);
         services.AddSingleton(_encryptionInboxWriter.Object);
         var serviceProvider = services.BuildServiceProvider();
 
@@ -211,8 +207,6 @@ public class EncryptionBackgroundServiceRecipientTests
                 TransactionId = "abc123def456abc123def456abc123def456abc123def456abc123def456abcd"
             });
 
-        _eventServiceClient.Setup(e => e.CreateEventAsync(It.IsAny<CreateActivityEventRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
     }
 
     [Fact]

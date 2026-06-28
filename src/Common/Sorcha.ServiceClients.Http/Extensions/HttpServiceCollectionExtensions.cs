@@ -8,7 +8,6 @@ using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.CitizenStatusList;
 using Sorcha.ServiceClients.CitizenWallet;
 using Sorcha.ServiceClients.Did;
-using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Invitation;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.PlatformUserDevice;
@@ -68,9 +67,6 @@ public static class HttpServiceCollectionExtensions
         // Spec 139 US4: typed Tenant client for MCP org/user/token reconciliation.
         services.AddHttpClient<TenantServiceClient>();
         services.AddScoped<ITenantServiceClient, TenantServiceClient>();
-
-        services.AddHttpClient<EventServiceClient>();
-        services.AddScoped<IEventServiceClient, EventServiceClient>();
 
         services.AddHttpClient<SubscriptionServiceClient>();
         services.AddScoped<ISubscriptionServiceClient, SubscriptionServiceClient>();

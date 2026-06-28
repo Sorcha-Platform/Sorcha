@@ -249,7 +249,7 @@ Per-service status snapshots are retained in `docs/reference/status/` (not publi
 
 ### 2026-02-26
 - **043-UI-CLI-Modernization** (66 tasks, 11 phases — UI polish and CLI expansion)
-  - **Activity Log**: EventEntity + EventService + SignalR EventHub, ActivityLogPanel with bell icon notification badge, 49 endpoint/service tests
+  - **Activity Log** *(legacy — removed in F170)*: EventEntity + EventService + ActivityLogPanel bell icon; superseded by the Inbox spine (F169)
   - **Sidebar**: Consolidated ADMINISTRATION section, mini drawer with OpenMiniOnHover
   - **StatusFooter**: 30s health polling, connectivity indicator, pending action count, 9 bunit tests
   - **Wallet Management**: List/grid view toggle, default wallet star, QR address dialog, PQC algorithm support in CreateWallet, WalletPreferenceService migrated to server-side with localStorage fallback (14 tests)

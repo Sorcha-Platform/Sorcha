@@ -23,7 +23,7 @@ description: "Task list for Activity Timeline Tidy (Feature 170)"
 
 **⚠️ CRITICAL GATE**: No removal task can begin until T001 is confirmed complete.
 
-- [ ] T001 Merge `origin/master` into branch `170-activity-timeline-tidy` to bring in F169 (commit `f479b886`), then confirm with `git merge-base --is-ancestor f479b886 HEAD && echo OK`, `ls src/Services/Sorcha.Tenant.Service/Services/PersonaInboxWriter.cs`, and `ls src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionInboxWriter.cs`
+- [x] T001 Merge `origin/master` into branch `170-activity-timeline-tidy` to bring in F169 (commit `f479b886`), then confirm with `git merge-base --is-ancestor f479b886 HEAD && echo OK`, `ls src/Services/Sorcha.Tenant.Service/Services/PersonaInboxWriter.cs`, and `ls src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionInboxWriter.cs`
 
 **Checkpoint**: All three commands above succeed → F169 is present → safe to proceed.
 
@@ -35,10 +35,10 @@ description: "Task list for Activity Timeline Tidy (Feature 170)"
 
 **⚠️ CRITICAL**: All four checks must pass before any removal work begins.
 
-- [ ] T002 [P] Verify event-class coverage map (FR-001): confirm `PersonaInboxWriter` contains `WritePersonaSavedAsync` and `WritePersonaDeletedAsync`, and `EncryptionInboxWriter` contains `WriteEncryptionCompleteAsync` and `WriteEncryptionFailedAsync`, by reading `src/Services/Sorcha.Tenant.Service/Services/PersonaInboxWriter.cs` and `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionInboxWriter.cs`
-- [ ] T003 [P] Verify no external consumers of `/api/events*` remain (D5 / edge case): run `grep -rn "/api/events" src/ tests/` and `grep -rn "IEventServiceClient\|EventServiceClient\|CreateActivityEventRequest" src/ tests/` — expected callers are only the files listed in the removal scope (endpoints file, service-client files, encryption service); any other hit is a blocker
-- [ ] T004 [P] Verify F125 feed components are retained (D7 / FR-006): confirm `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/History/TransactionHistoryFeed.razor` and `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Home/RecentActivityFeed.razor` exist and are still referenced in `src/Apps/Sorcha.Wallet.Pwa/Pages/Activity.razor` and `src/Apps/Sorcha.Wallet.Pwa/Pages/Index.razor`
-- [ ] T005 [P] Verify `EventAdminModels.cs` types (`SystemEventViewModel`, `EventFilterModel`, `EventListResponse`) have no consumers outside `ActivityLogService.cs` by running `grep -rn "SystemEventViewModel\|EventFilterModel\|EventListResponse" src/` before scheduling deletion
+- [x] T002 [P] Verify event-class coverage map (FR-001): confirm `PersonaInboxWriter` contains `WritePersonaSavedAsync` and `WritePersonaDeletedAsync`, and `EncryptionInboxWriter` contains `WriteEncryptionCompleteAsync` and `WriteEncryptionFailedAsync`, by reading `src/Services/Sorcha.Tenant.Service/Services/PersonaInboxWriter.cs` and `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionInboxWriter.cs`
+- [x] T003 [P] Verify no external consumers of `/api/events*` remain (D5 / edge case): run `grep -rn "/api/events" src/ tests/` and `grep -rn "IEventServiceClient\|EventServiceClient\|CreateActivityEventRequest" src/ tests/` — expected callers are only the files listed in the removal scope (endpoints file, service-client files, encryption service); any other hit is a blocker
+- [x] T004 [P] Verify F125 feed components are retained (D7 / FR-006): confirm `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/History/TransactionHistoryFeed.razor` and `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Components/Home/RecentActivityFeed.razor` exist and are still referenced in `src/Apps/Sorcha.Wallet.Pwa/Pages/Activity.razor` and `src/Apps/Sorcha.Wallet.Pwa/Pages/Index.razor`
+- [x] T005 [P] Verify `EventAdminModels.cs` types (`SystemEventViewModel`, `EventFilterModel`, `EventListResponse`) have no consumers outside `ActivityLogService.cs` by running `grep -rn "SystemEventViewModel\|EventFilterModel\|EventListResponse" src/` before scheduling deletion
 
 **Checkpoint**: All four checks pass with no blockers → safe to begin US1 removals.
 
@@ -52,11 +52,11 @@ description: "Task list for Activity Timeline Tidy (Feature 170)"
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Remove the legacy `ActivityEvent` write block from `PersonaService.ReplaceAsync` (`src/Services/Sorcha.Tenant.Service/Services/PersonaService.cs` lines ~268–280): delete the `IEventService.CreateEventAsync` call and its surrounding null-check or try-block; confirm the file retains its `PersonaInboxWriter` call that F169 already added
-- [ ] T007 [US1] Remove the legacy `ActivityEvent` write block from `PersonaService.DeleteAsync` (`src/Services/Sorcha.Tenant.Service/Services/PersonaService.cs` lines ~306–318): same pattern as T006; confirm `PersonaInboxWriter.WritePersonaDeletedAsync` call is retained
-- [ ] T008 [US1] Delete the private method `StoreActivityEventAsync` (lines ~383–414) and its two call sites (success path ~l.278, failure path ~l.378) from `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`; confirm F169's `EncryptionInboxWriter` calls are present at those paths
-- [ ] T009 [US1] Remove the dead `using Sorcha.ServiceClients.Events;` directive from `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceProjector.cs` (~l.16)
-- [ ] T010 [US1] Build the solution (`dotnet build -c Release`) and confirm zero errors and no new warnings; run `dotnet test --filter "FullyQualifiedName~Sorcha.Tenant.Service.Tests"` and `dotnet test --filter "FullyQualifiedName~Sorcha.Blueprint.Service.Tests"` to confirm both suites remain green after the write removals
+- [x] T006 [US1] Remove the legacy `ActivityEvent` write block from `PersonaService.ReplaceAsync` (`src/Services/Sorcha.Tenant.Service/Services/PersonaService.cs` lines ~268–280): delete the `IEventService.CreateEventAsync` call and its surrounding null-check or try-block; confirm the file retains its `PersonaInboxWriter` call that F169 already added
+- [x] T007 [US1] Remove the legacy `ActivityEvent` write block from `PersonaService.DeleteAsync` (`src/Services/Sorcha.Tenant.Service/Services/PersonaService.cs` lines ~306–318): same pattern as T006; confirm `PersonaInboxWriter.WritePersonaDeletedAsync` call is retained
+- [x] T008 [US1] Delete the private method `StoreActivityEventAsync` (lines ~383–414) and its two call sites (success path ~l.278, failure path ~l.378) from `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`; confirm F169's `EncryptionInboxWriter` calls are present at those paths
+- [x] T009 [US1] Remove the dead `using Sorcha.ServiceClients.Events;` directive from `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InstanceProjector.cs` (~l.16)
+- [x] T010 [US1] Build the solution (`dotnet build -c Release`) and confirm zero errors and no new warnings; run `dotnet test --filter "FullyQualifiedName~Sorcha.Tenant.Service.Tests"` and `dotnet test --filter "FullyQualifiedName~Sorcha.Blueprint.Service.Tests"` to confirm both suites remain green after the write removals
 
 **Checkpoint**: Build green, both suites pass, and all four event classes still appear in the unified timeline → US1 complete.
 
@@ -70,41 +70,41 @@ description: "Task list for Activity Timeline Tidy (Feature 170)"
 
 ### Tenant Service — entity, service, endpoints, DI
 
-- [ ] T011 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Models/ActivityEvent.cs` (entity class `ActivityEvent` + enum `EventSeverity`)
-- [ ] T012 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Services/Interfaces/IEventService.cs`
-- [ ] T013 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Services/EventService.cs`
-- [ ] T014 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Services/EventCleanupService.cs` (the scheduled retention `BackgroundService`)
-- [ ] T015 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Endpoints/EventEndpoints.cs` (the `/api/events*` endpoint group and its inline request records)
-- [ ] T016 [US2] Modify `src/Services/Sorcha.Tenant.Service/Data/TenantDbContext.cs`: remove the `DbSet<ActivityEvent> ActivityEvents` property (~l.71), remove the `ConfigureActivityEvent(modelBuilder)` call (~l.150), and delete the entire `ConfigureActivityEvent` private method (~l.965–1009); remove the now-dead `using` directive for `ActivityEvent` if present
-- [ ] T017 [US2] Modify `src/Services/Sorcha.Tenant.Service/Program.cs`: remove `AddScoped<IEventService, EventService>` (~l.130–131), `AddHostedService<EventCleanupService>` (~l.132), and the `MapEventEndpoints()` call (~l.268); remove dead `using` directives
+- [x] T011 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Models/ActivityEvent.cs` (entity class `ActivityEvent` + enum `EventSeverity`)
+- [x] T012 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Services/Interfaces/IEventService.cs`
+- [x] T013 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Services/EventService.cs`
+- [x] T014 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Services/EventCleanupService.cs` (the scheduled retention `BackgroundService`)
+- [x] T015 [P] [US2] Delete `src/Services/Sorcha.Tenant.Service/Endpoints/EventEndpoints.cs` (the `/api/events*` endpoint group and its inline request records)
+- [x] T016 [US2] Modify `src/Services/Sorcha.Tenant.Service/Data/TenantDbContext.cs`: remove the `DbSet<ActivityEvent> ActivityEvents` property (~l.71), remove the `ConfigureActivityEvent(modelBuilder)` call (~l.150), and delete the entire `ConfigureActivityEvent` private method (~l.965–1009); remove the now-dead `using` directive for `ActivityEvent` if present
+- [x] T017 [US2] Modify `src/Services/Sorcha.Tenant.Service/Program.cs`: remove `AddScoped<IEventService, EventService>` (~l.130–131), `AddHostedService<EventCleanupService>` (~l.132), and the `MapEventEndpoints()` call (~l.268); remove dead `using` directives
 
 ### ServiceClients — HTTP client removal
 
-- [ ] T018 [P] [US2] Delete `src/Common/Sorcha.ServiceClients.Http/Events/IEventServiceClient.cs`
-- [ ] T019 [P] [US2] Delete `src/Common/Sorcha.ServiceClients.Http/Events/EventServiceClient.cs`
-- [ ] T020 [P] [US2] Delete `src/Common/Sorcha.ServiceClients.Http/Events/Models/CreateActivityEventRequest.cs`; if the `Events/` directory is now empty, delete the directory too
-- [ ] T021 [US2] Modify `src/Common/Sorcha.ServiceClients.Http/Extensions/HttpServiceCollectionExtensions.cs`: remove the `AddHttpClient`/`AddScoped` lines for `IEventServiceClient`/`EventServiceClient` (~l.72–73) and the corresponding `using` directive; confirm T018–T020 are done first
+- [x] T018 [P] [US2] Delete `src/Common/Sorcha.ServiceClients.Http/Events/IEventServiceClient.cs`
+- [x] T019 [P] [US2] Delete `src/Common/Sorcha.ServiceClients.Http/Events/EventServiceClient.cs`
+- [x] T020 [P] [US2] Delete `src/Common/Sorcha.ServiceClients.Http/Events/Models/CreateActivityEventRequest.cs`; if the `Events/` directory is now empty, delete the directory too
+- [x] T021 [US2] Modify `src/Common/Sorcha.ServiceClients.Http/Extensions/HttpServiceCollectionExtensions.cs`: remove the `AddHttpClient`/`AddScoped` lines for `IEventServiceClient`/`EventServiceClient` (~l.72–73) and the corresponding `using` directive; confirm T018–T020 are done first
 
 ### Sorcha.UI.Core — orphaned admin UI service
 
-- [ ] T022 [P] [US2] Delete `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/ActivityLogService.cs` (contains both `IActivityLogService` interface and `ActivityLogService` implementation)
-- [ ] T023 [P] [US2] Delete `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EventAdminModels.cs` (contains `SystemEventViewModel`, `EventFilterModel`, `EventListResponse`) — only after T005 confirmed zero consumers outside `ActivityLogService.cs`
-- [ ] T024 [US2] Modify `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`: remove the `IActivityLogService` DI registration block (~l.350–358) and the dead `using` directive
+- [x] T022 [P] [US2] Delete `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/ActivityLogService.cs` (contains both `IActivityLogService` interface and `ActivityLogService` implementation)
+- [x] T023 [P] [US2] Delete `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EventAdminModels.cs` (contains `SystemEventViewModel`, `EventFilterModel`, `EventListResponse`) — only after T005 confirmed zero consumers outside `ActivityLogService.cs`
+- [x] T024 [US2] Modify `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`: remove the `IActivityLogService` DI registration block (~l.350–358) and the dead `using` directive
 
 ### Sorcha.UI.Components.User — orphaned DTO
 
-- [ ] T025 [P] [US2] Delete `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Models/Shared/ActivityEventDto.cs` (contains `ActivityEventDto`, `EventsPagedResponse`, `UnreadCountResponse`, `MarkReadResponse`)
+- [x] T025 [P] [US2] Delete `src/Apps/Sorcha.UI/Sorcha.UI.Components.User/Models/Shared/ActivityEventDto.cs` (contains `ActivityEventDto`, `EventsPagedResponse`, `UnreadCountResponse`, `MarkReadResponse`)
 
 ### Test hygiene
 
-- [ ] T026 [P] [US2] Delete `tests/Sorcha.Tenant.Service.Tests/Services/EventServiceTests.cs` (covers removed `EventService`; do not skip — delete entirely per FR-008)
-- [ ] T027 [US2] Modify `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionBackgroundServiceTests.cs` and any sibling `EncryptionBackgroundServiceRecipientTests.cs`: remove the `IEventServiceClient` mock field, its `Setup` calls, and any `Verify`/assertion lines referencing the removed method; retain all remaining test coverage
+- [x] T026 [P] [US2] Delete `tests/Sorcha.Tenant.Service.Tests/Services/EventServiceTests.cs` (covers removed `EventService`; do not skip — delete entirely per FR-008)
+- [x] T027 [US2] Modify `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionBackgroundServiceTests.cs` and any sibling `EncryptionBackgroundServiceRecipientTests.cs`: remove the `IEventServiceClient` mock field, its `Setup` calls, and any `Verify`/assertion lines referencing the removed method; retain all remaining test coverage
 
 ### Build and test verification
 
-- [ ] T028 [US2] Build the solution (`dotnet build -c Release`) and confirm zero compile errors and no new build warnings; if any `CS0246` (missing type) or warning appears, locate the stray reference and remove it
-- [ ] T029 [US2] Run `dotnet test --filter "FullyQualifiedName~Sorcha.Tenant.Service.Tests"` and `dotnet test --filter "FullyQualifiedName~Sorcha.Blueprint.Service.Tests"` — both suites must pass; confirm `EventServiceTests` is absent and no test is skipped
-- [ ] T030 [US2] Run the quickstart.md §1 grep battery to confirm all six grep patterns return zero matches outside deleted/spec files: `class ActivityEvent`, `IEventService\b`, `IEventServiceClient`, `IActivityLogService`, `"/api/events"`, `ActivityLogService`
+- [x] T028 [US2] Build the solution (`dotnet build -c Release`) and confirm zero compile errors and no new build warnings; if any `CS0246` (missing type) or warning appears, locate the stray reference and remove it
+- [x] T029 [US2] Run `dotnet test --filter "FullyQualifiedName~Sorcha.Tenant.Service.Tests"` and `dotnet test --filter "FullyQualifiedName~Sorcha.Blueprint.Service.Tests"` — both suites must pass; confirm `EventServiceTests` is absent and no test is skipped
+- [x] T030 [US2] Run the quickstart.md §1 grep battery to confirm all six grep patterns return zero matches outside deleted/spec files: `class ActivityEvent`, `IEventService\b`, `IEventServiceClient`, `IActivityLogService`, `"/api/events"`, `ActivityLogService`
 
 **Checkpoint**: All greps zero, build warning-free, both suites green → US2 complete.
 
@@ -118,9 +118,9 @@ description: "Task list for Activity Timeline Tidy (Feature 170)"
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] Edit `src/Services/Sorcha.Tenant.Service/Migrations/20260513152714_InitialCreate.cs`: in the `Up()` method remove the `CreateTable("ActivityEvents", ...)` block (l.~20–42) and the four `CreateIndex` calls for `IX_ActivityEvent_*` (l.~802–826); in the `Down()` method remove the corresponding `DropTable("ActivityEvents")` call (l.~1262–1263)
-- [ ] T032 [US3] Edit `src/Services/Sorcha.Tenant.Service/Migrations/TenantDbContextModelSnapshot.cs`: locate and delete the entire `Sorcha.Tenant.Service.Models.ActivityEvent` entity block (l.~28–100), including all property/index fluent-API calls within it; leave the surrounding model builder intact
-- [ ] T033 [US3] From `src/Services/Sorcha.Tenant.Service/` run `dotnet ef migrations has-pending-model-changes` — must report no pending changes (snapshot ≡ model); also run `dotnet ef migrations list` and confirm no migration name contains "DropActivityEvents" or "ActivityEvent"
+- [x] T031 [US3] Edit `src/Services/Sorcha.Tenant.Service/Migrations/20260513152714_InitialCreate.cs`: in the `Up()` method remove the `CreateTable("ActivityEvents", ...)` block (l.~20–42) and the four `CreateIndex` calls for `IX_ActivityEvent_*` (l.~802–826); in the `Down()` method remove the corresponding `DropTable("ActivityEvents")` call (l.~1262–1263)
+- [x] T032 [US3] Edit `src/Services/Sorcha.Tenant.Service/Migrations/TenantDbContextModelSnapshot.cs`: locate and delete the entire `Sorcha.Tenant.Service.Models.ActivityEvent` entity block (l.~28–100), including all property/index fluent-API calls within it; leave the surrounding model builder intact
+- [x] T033 [US3] From `src/Services/Sorcha.Tenant.Service/` run `dotnet ef migrations has-pending-model-changes` — must report no pending changes (snapshot ≡ model); also run `dotnet ef migrations list` and confirm no migration name contains "DropActivityEvents" or "ActivityEvent"
 
 **Checkpoint**: No pending model changes, no extra migration, fresh DB has no `ActivityEvents` table → US3 complete.
 
@@ -130,11 +130,11 @@ description: "Task list for Activity Timeline Tidy (Feature 170)"
 
 **Purpose**: Update all documentation that described the legacy `/api/events*` surface to reflect the Inbox spine as the single activity source (SC-005).
 
-- [ ] T034 [P] Update `src/Services/Sorcha.Tenant.Service/README.md`: remove the "Activity Events" endpoints section (the `/api/events` table rows and any description of `IEventService`/`EventCleanupService`); add a note that activity events flow through the Inbox spine (Features 118 + 169)
-- [ ] T035 [P] Update `.claude/skills/sorcha-architecture/SKILL.md`: remove any reference to the legacy activity-event REST surface, `IEventService`, `IEventServiceClient`, or `/api/events*`; update to describe the Inbox spine as the sole activity pipeline
-- [ ] T036 [P] Update `docs/reference/API-DOCUMENTATION.md`: remove the `Events` tag section and all `/api/events*` route entries; add a cross-reference note pointing to the Inbox/unified-timeline endpoints
-- [ ] T037 [P] Update `docs/reference/development-status.md`: update Tenant Service status to reflect the legacy activity-event surface removal; remove any mention of `EventService`/`EventCleanupService` from the service feature list
-- [ ] T038 Run the full quickstart.md validation suite: §1 (all greps zero), §2 (F125 feeds still present), §3 (build warning-free + both suites green), §4 (schema clean — no `ActivityEvents` table), §5 (trigger the four event classes and confirm timeline appearance), §6 (docs updated) — confirm all six sections pass
+- [x] T034 [P] Update `src/Services/Sorcha.Tenant.Service/README.md`: remove the "Activity Events" endpoints section (the `/api/events` table rows and any description of `IEventService`/`EventCleanupService`); add a note that activity events flow through the Inbox spine (Features 118 + 169)
+- [x] T035 [P] Update `.claude/skills/sorcha-architecture/SKILL.md`: remove any reference to the legacy activity-event REST surface, `IEventService`, `IEventServiceClient`, or `/api/events*`; update to describe the Inbox spine as the sole activity pipeline
+- [x] T036 [P] Update `docs/reference/API-DOCUMENTATION.md`: remove the `Events` tag section and all `/api/events*` route entries; add a cross-reference note pointing to the Inbox/unified-timeline endpoints
+- [x] T037 [P] Update `docs/reference/development-status.md`: update Tenant Service status to reflect the legacy activity-event surface removal; remove any mention of `EventService`/`EventCleanupService` from the service feature list
+- [x] T038 Run the full quickstart.md validation suite: §1 (all greps zero), §2 (F125 feeds still present), §3 (build warning-free + both suites green), §4 (schema clean — no `ActivityEvents` table), §5 (trigger the four event classes and confirm timeline appearance), §6 (docs updated) — confirm all six sections pass
 
 **Checkpoint**: All quickstart.md sections pass → feature complete.
 
