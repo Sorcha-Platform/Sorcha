@@ -109,6 +109,34 @@ public class VerificationSessionQrTests : BunitContext
     }
 
     [Fact]
+    public async Task VerificationSessionQr_SessionExpires_ShowsErrorAndStopsPolling()
+    {
+        // Ensures the poll loop terminates on a terminal non-complete state (expired/error)
+        // rather than polling indefinitely.
+        var transport = new SequencedFakeTransport(
+            started: new VerificationSessionStarted("sess-exp", "openid4vp://expire-test", "Age", AgePreset.RequiredVct),
+            pollSequence:
+            [
+                new VerificationSessionPoll(false, null, null, IsTerminal: false),
+                new VerificationSessionPoll(false, null, null, IsTerminal: true)
+            ]);
+
+        SetupServices(transport);
+
+        string? received = null;
+        var cut = Render<VerificationSessionQr>(p =>
+        {
+            p.Add(x => x.Question, AgePreset);
+            p.Add(x => x.OnCompleted, EventCallback.Factory.Create<string>(this, v => received = v));
+        });
+
+        await Task.Delay(TimeSpan.FromSeconds(8)); // 2 × 3s delay + margin
+
+        received.Should().BeNull(because: "OnCompleted must not fire when the session expired");
+        cut.Find("[data-testid='transport-error']").Should().NotBeNull(because: "expired session renders the error state");
+    }
+
+    [Fact]
     public async Task VerificationSessionQr_DisposedMidPoll_CompletesCleanlyWithNoException()
     {
         // US2 scenario 5 — dispose component mid-poll; DisposeAsync completes,

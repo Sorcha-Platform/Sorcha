@@ -11,7 +11,6 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Tenant.Models.Persona;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
-using Sorcha.Tenant.Service.Services.Interfaces;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -40,20 +39,17 @@ public sealed partial class PersonaService : IPersonaService
 
     private readonly TenantDbContext _db;
     private readonly IPersonaCryptoClient _crypto;
-    private readonly IEventService _events;
     private readonly ILogger<PersonaService> _logger;
     private readonly IPersonaInboxWriter _personaInboxWriter;
 
     public PersonaService(
         TenantDbContext db,
         IPersonaCryptoClient crypto,
-        IEventService events,
         ILogger<PersonaService> logger,
         IPersonaInboxWriter personaInboxWriter)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
-        _events = events ?? throw new ArgumentNullException(nameof(events));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _personaInboxWriter = personaInboxWriter ?? throw new ArgumentNullException(nameof(personaInboxWriter));
     }
@@ -268,20 +264,6 @@ public sealed partial class PersonaService : IPersonaService
             }
         }
 
-        await _events.CreateEventAsync(new ActivityEvent
-        {
-            UserId = platformUserId,
-            EventType = "persona.replaced",
-            Severity = EventSeverity.Info,
-            Title = "Profile saved",
-            Message = "Your personal profile was updated.",
-            SourceService = "TenantService",
-            EntityType = "PlatformUserPersona",
-            EntityId = platformUserId.ToString(),
-            CreatedAt = now.UtcDateTime,
-            ExpiresAt = now.UtcDateTime.AddYears(1)
-        }, ct);
-
         try
         {
             await _personaInboxWriter.WritePersonaSavedAsync(platformUserId, DerivePersonaDisplayName(normalised), ct);
@@ -316,21 +298,6 @@ public sealed partial class PersonaService : IPersonaService
 
         _db.PlatformUserPersonas.Remove(row);
         await _db.SaveChangesAsync(ct);
-
-        var now = DateTimeOffset.UtcNow;
-        await _events.CreateEventAsync(new ActivityEvent
-        {
-            UserId = platformUserId,
-            EventType = "persona.deleted",
-            Severity = EventSeverity.Warning,
-            Title = "Profile deleted",
-            Message = "Your personal profile was deleted.",
-            SourceService = "TenantService",
-            EntityType = "PlatformUserPersona",
-            EntityId = platformUserId.ToString(),
-            CreatedAt = now.UtcDateTime,
-            ExpiresAt = now.UtcDateTime.AddYears(1)
-        }, ct);
 
         try
         {

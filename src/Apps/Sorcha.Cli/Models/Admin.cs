@@ -159,33 +159,6 @@ public class SystemAlert
 }
 
 /// <summary>
-/// System event from the events admin API.
-/// </summary>
-public class CliSystemEvent
-{
-    [JsonPropertyName("id")]
-    public string Id { get; set; } = string.Empty;
-
-    [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
-
-    [JsonPropertyName("severity")]
-    public string Severity { get; set; } = string.Empty;
-
-    [JsonPropertyName("message")]
-    public string Message { get; set; } = string.Empty;
-
-    [JsonPropertyName("source")]
-    public string Source { get; set; } = string.Empty;
-
-    [JsonPropertyName("timestamp")]
-    public DateTimeOffset Timestamp { get; set; }
-
-    [JsonPropertyName("userId")]
-    public string UserId { get; set; } = string.Empty;
-}
-
-/// <summary>
 /// Encryption operation status from the Blueprint Service.
 /// </summary>
 public class EncryptionOperationStatus
@@ -198,20 +171,3 @@ public class EncryptionOperationStatus
     [JsonPropertyName("errorMessage")] public string? ErrorMessage { get; set; }
 }
 
-/// <summary>
-/// Paginated event list response.
-/// </summary>
-public class CliEventListResponse
-{
-    [JsonPropertyName("events")]
-    public List<CliSystemEvent> Events { get; set; } = new();
-
-    [JsonPropertyName("totalCount")]
-    public int TotalCount { get; set; }
-
-    [JsonPropertyName("page")]
-    public int Page { get; set; }
-
-    [JsonPropertyName("pageSize")]
-    public int PageSize { get; set; }
-}

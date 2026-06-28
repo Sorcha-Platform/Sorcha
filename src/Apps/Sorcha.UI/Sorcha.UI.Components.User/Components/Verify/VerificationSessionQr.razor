@@ -117,6 +117,11 @@
                     if (!_disposed) await OnCompleted.InvokeAsync(poll.VpToken ?? "");
                     return;
                 }
+                if (poll.IsTerminal)
+                {
+                    if (!_disposed) { _error = true; StateHasChanged(); }
+                    return;
+                }
             }
         }
         catch (OperationCanceledException) { }

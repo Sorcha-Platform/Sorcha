@@ -126,11 +126,6 @@ builder.Services.AddAuditCleanup();
 // (challenge primitive, last-method floor, telemetry, daily token cleanup)
 builder.Services.AddTenantAccountManagement();
 
-// Add activity event services (event log and cleanup)
-builder.Services.AddScoped<Sorcha.Tenant.Service.Services.Interfaces.IEventService,
-    Sorcha.Tenant.Service.Services.EventService>();
-builder.Services.AddHostedService<Sorcha.Tenant.Service.Services.EventCleanupService>();
-
 // Feature 096: X.509 Organisation Trust — trust anchor provisioning and org cert enrolment
 builder.Services.AddSingleton<Sorcha.Tenant.Service.Trust.ITrustProvider,
     Sorcha.Tenant.Service.Trust.InternalCaTrustProvider>();
@@ -190,7 +185,7 @@ var app = builder.Build();
 _ = app.Services.GetRequiredService<Sorcha.Tenant.Service.Services.ISecretProtectionProvider>();
 
 // Run database migrations and seeding BEFORE app.Run() to prevent race conditions
-// with background services (AuditCleanupService, EventCleanupService, etc.)
+// with background services (AuditCleanupService, etc.)
 // that query the database immediately on startup.
 // This matches the pattern used by Wallet and Blueprint services.
 {
@@ -268,7 +263,6 @@ app.MapDashboardEndpoints();
 app.MapCustomDomainEndpoints();
 app.MapInternalEndpoints();
 app.MapPushSubscriptionEndpoints();
-app.MapEventEndpoints();
 app.MapRegisterSubscriptionEndpoints();
 app.MapRegisterInvitationEndpoints();
 app.MapTrustEndpoints();

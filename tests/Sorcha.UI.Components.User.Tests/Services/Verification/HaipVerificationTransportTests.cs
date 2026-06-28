@@ -138,7 +138,43 @@ public sealed class HaipVerificationTransportTests
 
         // Assert
         poll.IsComplete.Should().BeTrue();
+        poll.IsTerminal.Should().BeTrue(because: "Complete is a terminal state");
         poll.VpToken.Should().Be(vpToken);
+    }
+
+    [Fact]
+    public async Task PollSessionAsync_WhenSessionExpires_IsTerminalButNotComplete()
+    {
+        // Arrange — expired session must terminate the poll loop without raising OnCompleted (C7)
+        _clientMock.Setup(x => x.PollResultAsync("req-expired", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HaipPollResult("Expired", null, null));
+
+        var sut = CreateSut();
+
+        // Act
+        var poll = await sut.PollSessionAsync("req-expired");
+
+        // Assert
+        poll.IsTerminal.Should().BeTrue(because: "Expired is a terminal state that stops the poll loop");
+        poll.IsComplete.Should().BeFalse(because: "an expired session did not complete successfully");
+        poll.VpToken.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PollSessionAsync_Pending_IsNotTerminal()
+    {
+        // Arrange
+        _clientMock.Setup(x => x.PollResultAsync("req-pending", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HaipPollResult("Pending", null, null));
+
+        var sut = CreateSut();
+
+        // Act
+        var poll = await sut.PollSessionAsync("req-pending");
+
+        // Assert
+        poll.IsTerminal.Should().BeFalse(because: "Pending sessions should keep the poll loop running");
+        poll.IsComplete.Should().BeFalse();
     }
 
     [Fact]

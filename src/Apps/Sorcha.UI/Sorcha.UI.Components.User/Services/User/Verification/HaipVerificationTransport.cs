@@ -50,10 +50,13 @@ public sealed class HaipVerificationTransport : IVerificationTransport
         CancellationToken ct = default)
     {
         var session = await PollAsync(sessionId, ct);
+        var isComplete = session.State == VerificationSessionState.Complete;
+        var isTerminal = session.State != VerificationSessionState.Pending;
         return new VerificationSessionPoll(
-            IsComplete: session.State == VerificationSessionState.Complete,
+            IsComplete: isComplete,
             VpToken: session.VpToken,
-            PresentationSubmission: null);
+            PresentationSubmission: null,
+            IsTerminal: isTerminal);
     }
 
     /// <summary>

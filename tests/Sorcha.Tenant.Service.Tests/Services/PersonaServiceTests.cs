@@ -10,7 +10,6 @@ using Sorcha.Tenant.Models.Persona;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Services;
-using Sorcha.Tenant.Service.Services.Interfaces;
 
 namespace Sorcha.Tenant.Service.Tests.Services;
 
@@ -24,7 +23,6 @@ public sealed class PersonaServiceTests : IDisposable
     private readonly SqliteConnection _connection;
     private readonly TenantDbContext _db;
     private readonly Mock<IPersonaCryptoClient> _crypto = new();
-    private readonly Mock<IEventService> _events = new();
     private readonly PersonaService _sut;
     private readonly Guid _userId = Guid.NewGuid();
     private const string WalletAddress = "sorcha1testwalletaddress";
@@ -56,12 +54,7 @@ public sealed class PersonaServiceTests : IDisposable
         _db.SaveChanges();
 
         var logger = Mock.Of<ILogger<PersonaService>>();
-        _sut = new PersonaService(_db, _crypto.Object, _events.Object, logger, Mock.Of<IPersonaInboxWriter>());
-
-        // Activity log writes are verified selectively — default to success.
-        _events
-            .Setup(e => e.CreateEventAsync(It.IsAny<ActivityEvent>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((ActivityEvent e, CancellationToken _) => e);
+        _sut = new PersonaService(_db, _crypto.Object, logger, Mock.Of<IPersonaInboxWriter>());
     }
 
     public void Dispose()
@@ -121,12 +114,6 @@ public sealed class PersonaServiceTests : IDisposable
         row!.CiphertextBlob.Should().Equal(1, 2, 3);
         row.WrappedKeyRef.Should().Be(WalletAddress);
 
-        // Activity log: exactly one "persona.replaced" event on success.
-        _events.Verify(
-            e => e.CreateEventAsync(
-                It.Is<ActivityEvent>(a => a.EventType == "persona.replaced" && a.UserId == _userId),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
     }
 
     // --- Feature 103 US2: MiddleName round-trip ---
@@ -313,9 +300,6 @@ public sealed class PersonaServiceTests : IDisposable
     {
         await _sut.DeleteAsync(_userId);
 
-        _events.Verify(
-            e => e.CreateEventAsync(It.IsAny<ActivityEvent>(), It.IsAny<CancellationToken>()),
-            Times.Never);
     }
 
     [Fact]
@@ -339,10 +323,5 @@ public sealed class PersonaServiceTests : IDisposable
         var row = await _db.PlatformUserPersonas.FindAsync(_userId, Guid.Empty);
         row.Should().BeNull();
 
-        _events.Verify(
-            e => e.CreateEventAsync(
-                It.Is<ActivityEvent>(a => a.EventType == "persona.deleted" && a.UserId == _userId),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
     }
 }
