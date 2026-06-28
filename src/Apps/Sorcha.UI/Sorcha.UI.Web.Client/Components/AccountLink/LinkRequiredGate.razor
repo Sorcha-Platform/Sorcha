@@ -1,0 +1,49 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@*
+    Boot-time gate for the Feature 173 LinkRequired step-up flow (FR-003).
+    Mounted outside AuthorizeRouteView in Routes.razor so it runs with no ClaimsPrincipal.
+    On first render it checks JS staging for a link-pending token; if present, it renders
+    the LinkExistingAccountPrompt as a full-screen takeover instead of the normal signed-out home.
+    If no token is staged, this component renders nothing (transparent passthrough).
+*@
+@using Microsoft.JSInterop
+@using System.Text.Json
+@inject IJSRuntime JSRuntime
+
+@if (_showPrompt && _token is not null)
+{
+    <Sorcha.UI.Core.Components.AccountLink.LinkExistingAccountPrompt LinkPendingToken="@_token" />
+}
+
+@code {
+    private bool _showPrompt;
+    private string? _token;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            // getLinkPending() returns { linkPendingToken: "..." } or null
+            var pending = await JSRuntime.InvokeAsync<JsonElement?>("sorcha.fragmentHandoff.getLinkPending");
+            if (pending is JsonElement el && el.ValueKind == JsonValueKind.Object &&
+                el.TryGetProperty("linkPendingToken", out var tokenProp) &&
+                tokenProp.ValueKind == JsonValueKind.String)
+            {
+                var token = tokenProp.GetString();
+                if (!string.IsNullOrEmpty(token))
+                {
+                    _token = token;
+                    _showPrompt = true;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch
+        {
+            // JS interop may not be available in some contexts; treat as absent token
+        }
+    }
+}

@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Sorcha.UI.Core.Services;
 
 namespace Sorcha.UI.Components.User.Extensions;
 
@@ -25,6 +26,10 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         // Intentionally empty until Phase 5 (T037) wires the moved services.
+
+        // Feature 173: anonymous client for the three social-link step-up endpoints (F168 contract).
+        services.AddScoped<IAnonymousSocialLinkClientService, AnonymousSocialLinkClientService>();
+
         return services;
     }
 }

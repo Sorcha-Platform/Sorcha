@@ -1,0 +1,416 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@using System.Text.Json
+@using MudBlazor
+@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Models.Authentication
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Feedback
+@using Sorcha.UI.Core.Services.Configuration
+@using Sorcha.UI.Core.Services.Authentication
+@inject IAnonymousSocialLinkClientService _linkService
+@inject PasskeyInteropService PasskeyInterop
+@inject ITokenCache TokenCache
+@inject CustomAuthenticationStateProvider AuthProvider
+@inject IConfigurationService ConfigurationService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject IInlineFeedback Feedback
+
+<div class="link-account-prompt">
+    @switch (_state)
+    {
+        case PromptState.Detecting:
+            <MudProgressLinear Indeterminate="true" />
+            break;
+
+        case PromptState.Explaining:
+            <MudCard>
+                <MudCardContent>
+                    <MudStack Spacing="3">
+                        <MudText Typo="Typo.h6">Connect a new sign-in method</MudText>
+                        <MudText Typo="Typo.body1">
+                            We found an existing account with the same email address.
+                            To connect the new sign-in method, please confirm it's you.
+                        </MudText>
+                        @if (_inlineError is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@_inlineError</MudAlert>
+                        }
+                    </MudStack>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               OnClick="@OnContinueAsync">Continue</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="@OnCancelAsync">Cancel</MudButton>
+                </MudCardActions>
+            </MudCard>
+            break;
+
+        case PromptState.Initiating:
+            <MudProgressLinear Indeterminate="true" />
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Preparing...</MudText>
+            break;
+
+        case PromptState.PasskeyCeremony:
+            <MudCard>
+                <MudCardContent>
+                    <MudStack Spacing="3">
+                        <MudText Typo="Typo.body1">Follow the browser prompt to verify with your passkey.</MudText>
+                        @if (_inlineError is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@_inlineError</MudAlert>
+                        }
+                        @if (_allowTotpSwitch)
+                        {
+                            <MudButton Variant="Variant.Text" Size="Size.Small"
+                                       OnClick="@OnSwitchToTotpAsync">
+                                Use authenticator code instead
+                            </MudButton>
+                        }
+                    </MudStack>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Text" OnClick="@OnCancelAsync">Cancel</MudButton>
+                </MudCardActions>
+            </MudCard>
+            break;
+
+        case PromptState.AwaitingCode:
+            <MudCard>
+                <MudCardContent>
+                    <MudStack Spacing="3">
+                        <MudText Typo="Typo.body1">Enter the 6-digit code from your authenticator app.</MudText>
+                        <MudTextField @bind-Value="_code"
+                                      Label="Authenticator code"
+                                      InputType="InputType.Number"
+                                      MaxLength="6"
+                                      Immediate="true"
+                                      HelperText="6-digit code" />
+                        @if (_inlineError is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@_inlineError</MudAlert>
+                        }
+                    </MudStack>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               Disabled="@(!IsCodeValid)"
+                               OnClick="@OnSubmitCodeAsync">Verify</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="@OnCancelAsync">Cancel</MudButton>
+                </MudCardActions>
+            </MudCard>
+            break;
+
+        case PromptState.Verifying:
+            <MudProgressLinear Indeterminate="true" />
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Verifying...</MudText>
+            break;
+
+        case PromptState.Confirming:
+            <MudProgressLinear Indeterminate="true" />
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Completing link...</MudText>
+            break;
+
+        case PromptState.Expired:
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                This request has expired — please sign in again.
+            </MudAlert>
+            <MudButton Variant="Variant.Text" OnClick="@OnSignInAgainAsync">Sign in again</MudButton>
+            break;
+
+        case PromptState.ConflictFailure:
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                This sign-in method couldn't be connected — it may already be linked to a different account.
+            </MudAlert>
+            <MudButton Variant="Variant.Text" OnClick="@OnSignInAgainAsync">Sign in again</MudButton>
+            break;
+
+        case PromptState.Recovery:
+            <MudAlert Severity="Severity.Warning" Class="mb-2">
+                Your account requires a sign-in method not yet supported here — please sign in with your existing method.
+            </MudAlert>
+            <MudButton Variant="Variant.Text" OnClick="@OnSignInAgainAsync">Go to sign in</MudButton>
+            break;
+
+        case PromptState.ErrorRetry:
+            <MudCard>
+                <MudCardContent>
+                    @if (_inlineError is not null)
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@_inlineError</MudAlert>
+                    }
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               OnClick="@OnContinueAsync">Try again</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="@OnCancelAsync">Cancel</MudButton>
+                </MudCardActions>
+            </MudCard>
+            break;
+
+        case PromptState.Cancelled:
+            break;
+    }
+</div>
+
+@code {
+    private enum PromptState
+    {
+        Detecting,
+        Explaining,
+        Initiating,
+        PasskeyCeremony,
+        AwaitingCode,
+        Verifying,
+        Confirming,
+        Expired,
+        ConflictFailure,
+        Recovery,
+        ErrorRetry,
+        Cancelled,
+    }
+
+    /// <summary>The opaque link-pending token captured from the URL fragment.</summary>
+    [Parameter] public string? LinkPendingToken { get; set; }
+
+    private PromptState _state = PromptState.Detecting;
+    private string? _code;
+    private string? _inlineError;
+    private JsonElement? _passkeyPayload;
+    private string? _challengeToken;
+    private bool _allowTotpSwitch;
+
+    private bool IsCodeValid => _code?.Trim().Length == 6 && _code.Trim().All(char.IsDigit);
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(LinkPendingToken) && _state == PromptState.Detecting)
+            _state = PromptState.Explaining;
+    }
+
+    private async Task OnContinueAsync()
+    {
+        _inlineError = null;
+        _state = PromptState.Initiating;
+        StateHasChanged();
+        await RunInitiateAsync(preferred: null);
+    }
+
+    private async Task RunInitiateAsync(ChallengeMethod? preferred)
+    {
+        var result = await _linkService.InitiateAsync(LinkPendingToken!, preferred);
+        switch (result.Outcome)
+        {
+            case InitiateOutcome.Ok:
+                HandleInitiateOk(result);
+                break;
+            case InitiateOutcome.Expired:
+                _state = PromptState.Expired;
+                break;
+            case InitiateOutcome.UnsupportedV1Method:
+                await ClearLinkPendingAsync();
+                _state = PromptState.Recovery;
+                break;
+            case InitiateOutcome.RateLimited:
+                _inlineError = "Too many attempts — please wait a moment and try again.";
+                _state = PromptState.ErrorRetry;
+                break;
+            default:
+                _inlineError = "Something went wrong — please try again.";
+                _state = PromptState.ErrorRetry;
+                break;
+        }
+        StateHasChanged();
+    }
+
+    private void HandleInitiateOk(AnonymousLinkInitiateResult result)
+    {
+        switch (result.Method)
+        {
+            case ChallengeMethod.Passkey:
+                _passkeyPayload = result.Payload;
+                _allowTotpSwitch = true;
+                _state = PromptState.PasskeyCeremony;
+                _ = RunPasskeyCeremonyAsync();
+                break;
+            case ChallengeMethod.Totp:
+                _code = string.Empty;
+                _state = PromptState.AwaitingCode;
+                break;
+            default:
+                _state = PromptState.Recovery;
+                break;
+        }
+    }
+
+    private async Task RunPasskeyCeremonyAsync()
+    {
+        try
+        {
+            if (_passkeyPayload is null)
+            {
+                _inlineError = "Passkey options missing — please try again.";
+                _state = PromptState.ErrorRetry;
+                StateHasChanged();
+                return;
+            }
+
+            JsonElement assertion;
+            try
+            {
+                assertion = await PasskeyInterop.GetCredentialAsync(_passkeyPayload.Value);
+            }
+            catch
+            {
+                _inlineError = "Passkey authentication was cancelled or is unavailable.";
+                _state = PromptState.ErrorRetry;
+                StateHasChanged();
+                return;
+            }
+
+            _state = PromptState.Verifying;
+            StateHasChanged();
+            await RunVerifyAsync(ChallengeMethod.Passkey, assertion);
+        }
+        catch (Exception)
+        {
+            _inlineError = "Something went wrong — please try again.";
+            _state = PromptState.ErrorRetry;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSwitchToTotpAsync()
+    {
+        _inlineError = null;
+        _allowTotpSwitch = false;
+        _state = PromptState.Initiating;
+        StateHasChanged();
+        await RunInitiateAsync(preferred: ChallengeMethod.Totp);
+    }
+
+    private async Task OnSubmitCodeAsync()
+    {
+        if (!IsCodeValid) return;
+
+        _inlineError = null;
+        _state = PromptState.Verifying;
+        StateHasChanged();
+
+        var proof = JsonSerializer.Deserialize<JsonElement>(
+            JsonSerializer.Serialize(new { code = _code!.Trim() }));
+        await RunVerifyAsync(ChallengeMethod.Totp, proof);
+    }
+
+    private async Task RunVerifyAsync(ChallengeMethod method, JsonElement proof)
+    {
+        var result = await _linkService.VerifyAsync(LinkPendingToken!, method, proof);
+        if (result.Succeeded && result.ChallengeToken is not null)
+        {
+            _challengeToken = result.ChallengeToken;
+            _state = PromptState.Confirming;
+            StateHasChanged();
+            await RunConfirmAsync();
+        }
+        else
+        {
+            switch (result.Error)
+            {
+                case ChallengeVerifyError.ProofRejected:
+                    _inlineError = method == ChallengeMethod.Totp
+                        ? "Code not accepted — please try again."
+                        : "Passkey not accepted — please try again.";
+                    _state = method == ChallengeMethod.Totp ? PromptState.AwaitingCode : PromptState.ErrorRetry;
+                    break;
+                case ChallengeVerifyError.Expired:
+                    _state = PromptState.Expired;
+                    break;
+                case ChallengeVerifyError.ProofTierInsufficient:
+                    await ClearLinkPendingAsync();
+                    _state = PromptState.Recovery;
+                    break;
+                default:
+                    _inlineError = "Could not verify — please try again.";
+                    _state = PromptState.ErrorRetry;
+                    break;
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunConfirmAsync()
+    {
+        var result = await _linkService.ConfirmAsync(LinkPendingToken!, _challengeToken!);
+        switch (result.Outcome)
+        {
+            case ConfirmOutcome.Linked:
+                await EstablishSessionAsync(result);
+                break;
+            case ConfirmOutcome.Conflict:
+                await ClearLinkPendingAsync();
+                _state = PromptState.ConflictFailure;
+                break;
+            case ConfirmOutcome.Expired:
+                _state = PromptState.Expired;
+                break;
+            case ConfirmOutcome.ProofInvalid:
+                _state = PromptState.Expired;
+                break;
+            case ConfirmOutcome.RateLimited:
+                _inlineError = "Too many attempts — please wait a moment and try again.";
+                _state = PromptState.ErrorRetry;
+                break;
+            default:
+                _inlineError = "Something went wrong — please try again.";
+                _state = PromptState.ErrorRetry;
+                break;
+        }
+        StateHasChanged();
+    }
+
+    private async Task EstablishSessionAsync(AnonymousLinkConfirmResult result)
+    {
+        // Store tokens using the same path as a normal social sign-in, then notify auth state
+        var activeProfileName = await ConfigurationService.GetActiveProfileNameAsync();
+
+        var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler { MapInboundClaims = false };
+        var jwt = handler.ReadJwtToken(result.AccessToken!);
+
+        var entry = new Sorcha.UI.Core.Models.Authentication.TokenCacheEntry
+        {
+            AccessToken = result.AccessToken!,
+            RefreshToken = result.RefreshToken,
+            ExpiresAt = jwt.ValidTo,
+            IssuedAt = jwt.IssuedAt,
+            ProfileName = activeProfileName,
+        };
+
+        await TokenCache.StoreTokenAsync(activeProfileName, entry);
+        await ClearLinkPendingAsync();
+        AuthProvider.NotifyAuthenticationStateChanged();
+        NavigationManager.NavigateTo("/", forceLoad: false);
+    }
+
+    private async Task OnCancelAsync()
+    {
+        await ClearLinkPendingAsync();
+        _state = PromptState.Cancelled;
+        NavigationManager.NavigateTo("/", forceLoad: false);
+    }
+
+    private async Task OnSignInAgainAsync()
+    {
+        await ClearLinkPendingAsync();
+        NavigationManager.NavigateTo("/", forceLoad: false);
+    }
+
+    private async Task ClearLinkPendingAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("sorcha.fragmentHandoff.clearLinkPending");
+        }
+        catch { /* JS interop may not be available in some contexts */ }
+    }
+}

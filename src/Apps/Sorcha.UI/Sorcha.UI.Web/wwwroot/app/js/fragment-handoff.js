@@ -14,6 +14,7 @@ window.sorcha = window.sorcha || {};
 window.sorcha.fragmentHandoff = (function () {
     var _pending = null;
     var _returnUrl = null;
+    var _linkPending = null;
 
     // Eagerly extract token from URL fragment on script load (before Blazor boots).
     // This prevents the race condition where AuthorizeRouteView evaluates auth state
@@ -37,6 +38,17 @@ window.sorcha.fragmentHandoff = (function () {
             window.__sorcha_fragment_token = payload;
 
             // Clear the fragment from the URL immediately to prevent token leakage
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+
+        // Feature 173: detect LinkRequired outcome and stage the link-pending token.
+        var outcome = params.get('outcome');
+        var linkPendingToken = params.get('linkPendingToken');
+        if (outcome === 'LinkRequired' && linkPendingToken) {
+            _linkPending = { linkPendingToken: linkPendingToken };
+            try { localStorage.setItem('sorcha:link-pending', JSON.stringify(_linkPending)); } catch (e) {}
+            window.__sorcha_link_pending = _linkPending;
+            // Strip the token from the address bar immediately (FR-002, SC-005)
             history.replaceState(null, '', window.location.pathname + window.location.search);
         }
     }
@@ -65,6 +77,21 @@ window.sorcha.fragmentHandoff = (function () {
             _pending = null;
             window.__sorcha_fragment_token = null;
             try { localStorage.removeItem('sorcha:fragment-pending'); } catch (e) {}
+        },
+        // Feature 173: peek at the staged link-pending outcome without clearing
+        getLinkPending: function () {
+            if (_linkPending) return _linkPending;
+            try {
+                var stored = localStorage.getItem('sorcha:link-pending');
+                if (stored) return JSON.parse(stored);
+            } catch (e) {}
+            return null;
+        },
+        // Feature 173: clear link-pending staging on flow completion (success, cancel, or terminal failure)
+        clearLinkPending: function () {
+            _linkPending = null;
+            window.__sorcha_link_pending = null;
+            try { localStorage.removeItem('sorcha:link-pending'); } catch (e) {}
         }
     };
 })();
