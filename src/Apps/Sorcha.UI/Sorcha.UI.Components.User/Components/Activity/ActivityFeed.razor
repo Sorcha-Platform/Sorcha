@@ -18,12 +18,14 @@
 @inject IInboxApiService InboxApi
 @inject TenantHubConnection TenantHub
 @inject ILogger<ActivityFeed> Logger
+@inject NavigationManager Navigation
 
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Components.User.Components.Shared
 @using Sorcha.UI.Components.User.Services.Shared
 @using MudBlazor
 @using Microsoft.Extensions.Logging
+@using Microsoft.AspNetCore.Components
 
 <div data-testid="activity-feed">
     @if (_loading && _entries.Count == 0)
@@ -48,7 +50,8 @@
                 <MudListItem T="InboxEntryDto"
                              Style="@(isUnread ? "background-color: rgba(79,70,229,0.06);" : "")"
                              data-testid="@($"activity-entry-{entry.Id}")">
-                    <div class="d-flex flex-column gap-1">
+                    <div class="d-flex flex-column gap-1" @onclick="() => HandleEntryClickAsync(entry)"
+                         style="@(!string.IsNullOrWhiteSpace(entry.DetailHref) ? "cursor:pointer;" : "")">
                         <div class="d-flex align-center gap-2">
                             <MudIcon Icon="@IconForCategory(entry.Category)"
                                      Color="@SeverityColor(entry.Severity)"
@@ -177,6 +180,27 @@
     private async Task OnInboxEntryAddedAsync(string entryId, DateTimeOffset occurredAt, string traceId)
     {
         await LoadAsync();
+    }
+
+    private async Task HandleEntryClickAsync(InboxEntryDto entry)
+    {
+        if (entry.ReadAt is null)
+        {
+            var ok = await InboxApi.MarkReadAsync(entry.Id);
+            if (ok)
+            {
+                var idx = _entries.FindIndex(e => e.Id == entry.Id);
+                if (idx >= 0)
+                {
+                    _entries[idx] = entry with { ReadAt = DateTimeOffset.UtcNow };
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(entry.DetailHref))
+        {
+            Navigation.NavigateTo(entry.DetailHref);
+        }
     }
 
     private static string IconForCategory(string category) => category switch

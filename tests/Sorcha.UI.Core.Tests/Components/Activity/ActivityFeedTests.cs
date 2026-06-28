@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Bunit;
 using FluentAssertions;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -38,14 +39,14 @@ public sealed class ActivityFeedTests : ComponentTestFixture
             _api.Object));
     }
 
-    private static InboxEntryDto Entry(string category, string severity, string title = "Test entry") => new()
+    private static InboxEntryDto Entry(string category, string severity, string title = "Test entry", string detailHref = "") => new()
     {
         Id = Guid.NewGuid(),
         PlatformUserId = Guid.NewGuid(),
         Category = category,
         Severity = severity,
         CorrelationKey = "k",
-        DetailHref = "",
+        DetailHref = detailHref,
         SourceEventId = Guid.NewGuid(),
         OccurredAt = DateTimeOffset.UtcNow,
         Title = title,
@@ -155,5 +156,70 @@ public sealed class ActivityFeedTests : ComponentTestFixture
 
         cut.FindAll("[data-testid='activity-feed-load-more']").Should().BeEmpty(
             "the Load more affordance must be hidden when all entries are already loaded");
+    }
+
+    [Fact]
+    public void WhenEntryHasDetailHref_ClickNavigatesToDetailHref()
+    {
+        var entryId = Guid.NewGuid();
+        var entry = new InboxEntryDto
+        {
+            Id = entryId,
+            PlatformUserId = Guid.NewGuid(),
+            Category = "Workflow",
+            Severity = "Info",
+            CorrelationKey = "k",
+            DetailHref = "/app/workflows/abc123",
+            SourceEventId = Guid.NewGuid(),
+            OccurredAt = DateTimeOffset.UtcNow,
+            Title = "Workflow started",
+        };
+        _api.Setup(a => a.ListAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(),
+                It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboxPageDto(new List<InboxEntryDto> { entry }, 1, 20, 1));
+        _api.Setup(a => a.MarkReadAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var cut = Render<ActivityFeed>();
+        var nav = Services.GetRequiredService<NavigationManager>();
+
+        cut.Find($"[data-testid='activity-entry-{entryId}'] .d-flex.flex-column").Click();
+
+        nav.Uri.Should().EndWith("/app/workflows/abc123",
+            "clicking an entry with a DetailHref must navigate to that href");
+    }
+
+    [Fact]
+    public void WhenEntryHasNoDetailHref_ClickDoesNotNavigate()
+    {
+        var entryId = Guid.NewGuid();
+        var entry = new InboxEntryDto
+        {
+            Id = entryId,
+            PlatformUserId = Guid.NewGuid(),
+            Category = "System",
+            Severity = "Info",
+            CorrelationKey = "k",
+            DetailHref = "",
+            SourceEventId = Guid.NewGuid(),
+            OccurredAt = DateTimeOffset.UtcNow,
+            Title = "System notice",
+        };
+        _api.Setup(a => a.ListAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(),
+                It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboxPageDto(new List<InboxEntryDto> { entry }, 1, 20, 1));
+        _api.Setup(a => a.MarkReadAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var cut = Render<ActivityFeed>();
+        var nav = Services.GetRequiredService<NavigationManager>();
+        var uriBeforeClick = nav.Uri;
+
+        cut.Find($"[data-testid='activity-entry-{entryId}'] .d-flex.flex-column").Click();
+
+        nav.Uri.Should().Be(uriBeforeClick,
+            "clicking an entry without a DetailHref must not navigate");
     }
 }
