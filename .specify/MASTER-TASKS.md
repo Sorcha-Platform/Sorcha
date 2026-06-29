@@ -3,10 +3,12 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.16
-**Last Updated:** 2026-06-25
+**Version:** 7.17
+**Last Updated:** 2026-06-29
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
+
+> **2026-06-29 — Feature 174 (AIAS Assured Identity M1) SHIPPED** (branch `174-aias-assured-identity`, commit `ec63765b`). Delivers the anonymous→assured journey end to end, issuing an **Assured Identity** credential carrying the applicant's photo, powered by a fully autonomous **Assure-ID agent**. One genuine new code surface: **external-check hook** on `RulesDecisionEngine` (`src/Apps/Sorcha.Agent/Decision/Checks/`) — `IExternalCheck`, `ExternalCheckRunner`, `ExternalCheckFactory`, `ChecksConfig`, `PayloadPointer` plus four concrete checks (`EmailVerifiedCheck`, `FieldPresentCheck`, `PostcodeExistsCheck`, `ProfanityCheck`). Reboot-proof demo provisioning under `demos/AIAS/` (`AiasDemo.psm1`, `run-demo.ps1`, `rehearse.ps1`, blueprint template, rules + checks JSON, offline postcode fixture). 147/147 agent tests pass. Spec: `specs/174-aias-assured-identity/`.
 
 > **2026-06-26 — Feature 163 (Verify-Shared-Components, PR B2-components) SHIPPED.** Three shared Blazor components (`QuestionSelectionPanel`, `VerificationSessionQr`, `VerdictTrailPanel`) in `Sorcha.UI.Components.User/Components/Verify/`. `VerdictViewModel` relocated to `Sorcha.UI.Components.User`; `IRegisterAnchorClient`+impl relocated to `Sorcha.Verifier.Engine`. `NotConfiguredVerificationTransport` default stub; `AddSorchaUserComponents` extended with `TryAdd*` seam registrations. 21 new bUnit/DI tests; 1455 total tests pass. No host pages rewired (B3 scope). Spec: `specs/163-verify-shared-components/`.
 
