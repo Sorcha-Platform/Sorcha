@@ -1,0 +1,287 @@
+{
+  "id": "aias-assured-identity-v1",
+  "title": "AIAS Assured Identity",
+  "description": "AIAS conference demo (Feature 174 / M1). Reuses the canonical Assured Identity workflow (submit -> autonomous decide -> claim) with Acme Identity Assurance Services (AIAS) branding and a real reject route. The autonomous Assure-ID sorcha-agent evaluates external checks (email verified, postcode exists, no profanity) and either approves (issuing an AIAS-branded, photo-bearing AssuredIdentityCredential) or rejects with an on-brand reason. The issuing-agency name is injected via the {{issuerName}} token at provision time.",
+  "version": 1,
+  "category": "identity",
+  "tags": ["aias", "assured-identity", "identity", "haip", "oid4vci", "verifiable-credential", "credential-claim", "citizen-application", "portrait", "autonomous-agent", "external-checks"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "aias-assured-identity",
+    "title": "AIAS Assured Identity",
+    "description": "Applicant submits identity details (including an optional portrait), the autonomous Assure-ID agent approves or rejects against real checks, and on approval the applicant claims their AIAS-branded AssuredIdentityCredential.",
+    "version": 1,
+    "metadata": {
+      "category": "Identity & Credentials",
+      "complexity": "Simple",
+      "actions": "3",
+      "features": "HAIP, OpenID4VCI, Verifiable Credential, Portrait Claim, Citizen Claim Action, Autonomous Agent, External Checks, Reject Route, x-review, x-file",
+      "sector": "Identity & Trust"
+    },
+    "participants": [
+      {
+        "id": "citizen",
+        "name": "Applicant",
+        "organisation": "Public",
+        "description": "Applies to AIAS for an Assured Identity and receives the credential in their Citizen Wallet PWA"
+      },
+      {
+        "id": "verification-analyst",
+        "name": "Assure-ID Agent",
+        "organisation": "{{issuerName}}",
+        "description": "The autonomous AIAS assurance agent — evaluates external checks and approves or rejects the application with no human in the loop"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Submit Assured Identity Application",
+        "description": "Applicant submits their personal details (and optionally a portrait photo) so AIAS can assure their identity. Fields are sourced from the Sorcha core primitive library. The final page renders the details as a DRAFT ID card so the applicant sees exactly what they'll receive once issued.",
+        "sender": "citizen",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Apply to Acme Identity Assurance Services (AIAS) for your Assured Identity. Submit your details and AIAS will assure them automatically. Your persona profile (if you have one) will prefill the form.",
+            "x-pages": [
+              {
+                "title": "About you",
+                "description": "Your full legal name and date of birth.",
+                "x-sections": [
+                  { "title": "Your name", "fields": ["name"] },
+                  { "title": "Your date of birth", "fields": ["dob"] }
+                ]
+              },
+              {
+                "title": "Your address",
+                "description": "Your current registered address. AIAS checks that the postcode really exists, so use a real one. Type your postcode and the rest will autofill where supported.",
+                "x-sections": [
+                  { "title": "Address", "fields": ["address"] }
+                ]
+              },
+              {
+                "title": "Contact",
+                "description": "We'll only use your email for correspondence about this application.",
+                "x-sections": [
+                  { "title": "Email", "fields": ["email"] },
+                  { "title": "Secure delivery", "fields": ["holderKeys"] }
+                ]
+              },
+              {
+                "title": "Your photo (optional)",
+                "description": "Add a portrait photo to your credential. This lets verifiers match you to your credential in person. You can skip this step — the credential is still issued without a photo.",
+                "x-sections": [
+                  { "title": "Portrait", "fields": ["portrait"] }
+                ]
+              },
+              {
+                "title": "Review your details",
+                "description": "Check your answers. You can edit any section before submitting. Once AIAS assures you, this is what your Assured Identity credential will show.",
+                "x-review": {
+                  "layout": "id-card",
+                  "editable": true,
+                  "header": {
+                    "issuerName": "{{issuerName}}",
+                    "credentialName": "Assured Identity",
+                    "colourTheme": "aias-assurance-amber"
+                  }
+                }
+              }
+            ],
+            "properties": {
+              "name":    { "$ref": "https://schemas.sorcha.dev/core/PersonName/v1" },
+              "dob":     { "$ref": "https://schemas.sorcha.dev/core/DateOfBirth/v1" },
+              "email":   { "$ref": "https://schemas.sorcha.dev/core/EmailAddress/v1" },
+              "address": { "$ref": "https://schemas.sorcha.dev/core/PostalAddress/v1" },
+              "portrait": {
+                "type": "string",
+                "title": "Portrait photo",
+                "description": "Optional passport-style photograph. Captured via your device camera or uploaded; resized to a 240x320 JPEG token for embedding in the credential.",
+                "format": "file-reference",
+                "x-file": {
+                  "accept": ["image/jpeg", "image/png"],
+                  "maxSizePerFile": "5MB",
+                  "maxChunks": 2,
+                  "capture": "user",
+                  "embedAs": "image-token-jpeg-240x320"
+                }
+              },
+              "emailVerified": {
+                "type": "boolean",
+                "title": "Email verified",
+                "description": "Whether the applicant's email was verified at signup. Carried automatically from the platform's email-verification state so the Assure-ID agent can rely on it (FR-005a). Read-only.",
+                "default": true,
+                "readOnly": true
+              },
+              "holderKeys": {
+                "type": "object",
+                "title": "Identity keys",
+                "description": "Your wallet's public delivery keys. Captured automatically and read-only — the credential is bound to your holder key and encrypted to your wallet so only you can use it. Feature 137 (cross-node submission).",
+                "format": "sorcha-holder-key",
+                "x-holder-key": { "required": true }
+              }
+            },
+            "required": ["name", "dob", "email", "address"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "citizen", "dataPointers": ["/*"] },
+          { "participantAddress": "verification-analyst", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-review",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Application submitted — pending AIAS assurance decision"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Verify Assured Identity Application",
+        "description": "The autonomous Assure-ID agent reviews the applicant's submission against external checks (email verified, postcode exists, no profanity) and approves or rejects. On approval the AssuredIdentityCredential is minted and routed to the applicant's Claim Credential action via OutputMapping. On rejection the on-brand reason is surfaced to the applicant and no credential is issued.",
+        "sender": "verification-analyst",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Automated AIAS assurance decision. Approve to issue, or reject with an on-brand reason.",
+            "x-sections": [
+              {
+                "title": "Decision",
+                "description": "Assurance state and supporting notes for the audit trail.",
+                "layout": "vertical",
+                "fields": ["decision", "verificationNotes"]
+              }
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": ["approved", "rejected"]
+              },
+              "verificationNotes": {
+                "type": "string",
+                "title": "AIAS notes",
+                "maxLength": 500
+              }
+            },
+            "required": ["decision"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "AssuredIdentityCredential",
+          "targetAudience": "SorchaLocalWallet",
+          "recipientParticipantId": "citizen",
+          "holderKeySourceField": "/holderKeys/holderJwk",
+          "claimMappings": [
+            { "claimName": "givenName",   "sourceField": "/name/givenName" },
+            { "claimName": "middleName",  "sourceField": "/name/middleName" },
+            { "claimName": "familyName",  "sourceField": "/name/familyName" },
+            { "claimName": "fullName",    "sourceField": "/name/fullName" },
+            { "claimName": "dateOfBirth", "sourceField": "/dob/dateOfBirth" },
+            { "claimName": "email",       "sourceField": "/email/email" },
+            { "claimName": "address",     "sourceField": "/address" },
+            { "claimName": "portrait",    "sourceField": "/portrait/tokenImageBase64" }
+          ],
+          "disclosable": [
+            "givenName", "middleName", "familyName", "fullName", "dateOfBirth", "email",
+            "/address/line1", "/address/line2", "/address/town", "/address/region",
+            "/address/postcode", "/address/country",
+            "portrait"
+          ]
+        },
+        "disclosures": [
+          { "participantAddress": "verification-analyst", "dataPointers": ["/*"] },
+          { "participantAddress": "citizen", "dataPointers": ["/decision", "/verificationNotes"] }
+        ],
+        "routes": [
+          {
+            "id": "approved-to-claim",
+            "nextActionIds": [3],
+            "condition": { "==": [{ "var": "decision" }, "approved"] },
+            "description": "Approved — deliver the minted credential to the applicant's Claim Credential pending action",
+            "outputMapping": {
+              "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+              "/haip/credential_type":      "/credentialOffer/credential_type",
+              "/haip/expires_at":           "/credentialOffer/expires_at",
+              "/haip/offer_id":             "/credentialOffer/offer_id"
+            }
+          },
+          {
+            "id": "rejected-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "condition": { "==": [{ "var": "decision" }, "rejected"] },
+            "description": "Rejected by AIAS — workflow ends with the on-brand reason surfaced to the applicant and no credential issued"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Claim your Assured Identity credential",
+        "description": "Your AIAS Assured Identity credential is ready. Click Claim to deliver it to your Citizen Wallet PWA. Declining will cancel the claim and no credential will be issued.",
+        "sender": "citizen",
+        "requiredPriorActions": [2],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "credentialOffer": {
+                "type": "object",
+                "title": "Credential Offer",
+                "x-credential-offer": true,
+                "properties": {
+                  "credential_offer_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Canonical OpenID4VCI offer URI (openid-credential-offer://...)"
+                  },
+                  "credential_type": {
+                    "type": "string",
+                    "description": "The credential type to be issued"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the credential offer expires and can no longer be claimed"
+                  },
+                  "offer_id": {
+                    "type": "string",
+                    "description": "HAIP offer identifier for status polling"
+                  }
+                },
+                "required": ["credential_offer_uri"]
+              },
+              "claimed_at": {
+                "type": "string",
+                "format": "date-time",
+                "title": "Claimed at",
+                "description": "Set by the client when the applicant clicks Claim"
+              }
+            },
+            "required": ["credentialOffer"]
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 0,
+          "isTerminal": true,
+          "requireReason": false
+        },
+        "disclosures": [
+          { "participantAddress": "citizen", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "claimed-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Credential claimed — workflow complete"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Agent.Auth;
 using Sorcha.Agent.Configuration;
 using Sorcha.Agent.Decision;
+using Sorcha.Agent.Decision.Checks;
 using Sorcha.Agent.Execution;
 using Sorcha.Agent.Inbox;
 using Sorcha.Agent.Persona;
@@ -113,10 +114,17 @@ public class RunCommand : Command
             // Create decision engine
             // AI HttpClient is separate (calls Anthropic API, not Sorcha gateway)
             using var aiHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+
+            // External-check runner — only built when a checks config is declared (rules mode).
+            // Dedicated HttpClient: external read-only lookups (postcodes.io), not the Sorcha gateway.
+            using var checksHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var checkRunner = BuildCheckRunner(definition, configPath, checksHttpClient, loggerFactory, quiet);
+
             IDecisionEngine decisionEngine = definition.Mode switch
             {
                 "rules" => new RulesDecisionEngine(
                     definition.Rules!,
+                    checkRunner,
                     loggerFactory.CreateLogger<RulesDecisionEngine>()),
                 "ai" => new AiDecisionEngine(
                     definition.Ai!,
@@ -287,5 +295,31 @@ public class RunCommand : Command
         }
 
         return ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// Builds the external-check runner from the actor's optional <c>ChecksFile</c> (resolved
+    /// relative to the config file), or <c>null</c> when none is declared. Throws on any load
+    /// failure — a declared checks file that cannot be loaded is a configuration error that must
+    /// abort startup rather than silently allow the agent to approve all actions.
+    /// </summary>
+    private static ExternalCheckRunner? BuildCheckRunner(
+        ActorDefinition definition,
+        string configPath,
+        HttpClient checksHttpClient,
+        ILoggerFactory loggerFactory,
+        bool quiet)
+    {
+        if (string.IsNullOrWhiteSpace(definition.ChecksFile))
+            return null;
+
+        var checksPath = Path.IsPathRooted(definition.ChecksFile)
+            ? definition.ChecksFile
+            : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(configPath) ?? ".", definition.ChecksFile));
+
+        var runner = ExternalCheckFactory.BuildRunner(checksPath, checksHttpClient, loggerFactory);
+        if (!quiet)
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] External checks loaded from {Path.GetFileName(checksPath)}");
+        return runner;
     }
 }

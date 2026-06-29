@@ -25,6 +25,13 @@ public record ActorDefinition
     /// When set, the agent runs a persona loop alongside its reactive inbox loop.
     /// </summary>
     public string? PersonaFile { get; init; }
+
+    /// <summary>
+    /// Optional path (relative to the actor config file) to an external-checks config JSON file
+    /// (e.g. <c>assure-id.checks.json</c>). When set in rules mode, the declared checks run before
+    /// rule evaluation and their results are merged into the rules context under the <c>checks</c> key.
+    /// </summary>
+    public string? ChecksFile { get; init; }
 }
 
 /// <summary>

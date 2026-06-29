@@ -1,0 +1,29 @@
+{
+  "$comment": "AIAS Assure-ID external checks (Feature 174 / M1). Consumed by the Sorcha.Agent external-check hook (src/Apps/Sorcha.Agent/Decision/Checks). Each check produces a boolean fact under checks.{name} (and an optional checks.{name}Detail string) that assure-id.rules.json then decides on. Field references are JSON Pointers into the submitted Assured Identity application payload.",
+  "checks": [
+    {
+      "name": "emailVerified",
+      "type": "email-verified",
+      "field": "/emailVerified",
+      "emailField": "/email/email"
+    },
+    {
+      "name": "photoPresent",
+      "type": "field-present",
+      "field": "/portrait/tokenImageBase64"
+    },
+    {
+      "name": "postcodeExists",
+      "type": "uk-postcode",
+      "addressField": "/address",
+      "offlineFixture": "../fixtures/postcodes.offline.json",
+      "offlineMode": "auto"
+    },
+    {
+      "name": "profane",
+      "type": "profanity",
+      "fields": ["/name/fullName", "/name/givenName", "/name/familyName", "/address"],
+      "wordlistInline": ["bugger", "arse", "bollocks", "knob", "wanker", "git", "twit", "numpty"]
+    }
+  ]
+}
