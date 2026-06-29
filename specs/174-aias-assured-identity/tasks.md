@@ -122,9 +122,9 @@ org exists, blueprint is published, agent is running. Re-run the script; confirm
 
 **Purpose**: Documentation updates and admin tasks not covered in the implementation commits.
 
-- [ ] T034 [P] Add feature 174 (AIAS M1) entry to `.specify/MASTER-TASKS.md` — status ✅, summary of what shipped, link to `specs/174-aias-assured-identity/`
-- [ ] T035 [P] Update `docs/reference/development-status.md` to reflect AIAS M1 as complete (if applicable)
-- [ ] T036 Commit staged `CLAUDE.md` change (plan pointer update to `specs/174-aias-assured-identity/plan.md`)
+- [x] T034 [P] Add feature 174 (AIAS M1) entry to `.specify/MASTER-TASKS.md` — status ✅, summary of what shipped, link to `specs/174-aias-assured-identity/`
+- [x] T035 [P] Update `docs/reference/development-status.md` to reflect AIAS M1 as complete (if applicable)
+- [x] T036 Commit staged `CLAUDE.md` change (plan pointer update to `specs/174-aias-assured-identity/plan.md`)
 - [ ] T037 Run `./demos/AIAS/rehearse.ps1` against the live Docker stack to validate end-to-end (approve + reject) before PR
 
 ---
