@@ -58,6 +58,10 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
     public static StubHttpMessageHandler Faulting() =>
         new(_ => throw new HttpRequestException("network down"));
 
+    /// <summary>Returns the given status code with an empty body for every request.</summary>
+    public static StubHttpMessageHandler WithStatus(HttpStatusCode statusCode) =>
+        new(_ => new HttpResponseMessage(statusCode));
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Calls++;

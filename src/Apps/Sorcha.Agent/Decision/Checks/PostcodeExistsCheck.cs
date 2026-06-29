@@ -102,6 +102,12 @@ public sealed class PostcodeExistsCheck : IExternalCheck
     {
         var uri = $"{_baseUrl}/postcodes/{Uri.EscapeDataString(postcode)}/validate";
         using var response = await _httpClient.GetAsync(uri, ct);
+
+        // 404 = postcodes.io received and understood the request, but the postcode is invalid or
+        // malformed. This is NOT a network fault — do not fall back to the offline fixture.
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return false;
+
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(ct);

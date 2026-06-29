@@ -84,6 +84,32 @@ public class PostcodeExistsCheckTests
     }
 
     [Fact]
+    public async Task EvaluateAsync_Http404_ReturnsFalse()
+    {
+        // postcodes.io returns 404 for malformed/unrecognised postcodes — NOT a network fault
+        var handler = StubHttpMessageHandler.WithStatus(System.Net.HttpStatusCode.NotFound);
+        var check = new PostcodeExistsCheck("postcodeExists", "/address", handler.Client(), Fixture);
+
+        var result = await check.EvaluateAsync(AddressPayload("ZZ99 9ZZ"), default);
+
+        result.Value.Should().BeFalse("404 means the postcode is invalid, not that the network is down");
+        handler.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_Http404_DoesNotFallBackToFixture()
+    {
+        // A malformed postcode that happens to match a fixture entry must NOT return true
+        var handler = StubHttpMessageHandler.WithStatus(System.Net.HttpStatusCode.NotFound);
+        var check = new PostcodeExistsCheck("postcodeExists", "/address", handler.Client(), Fixture);
+
+        // "SW1A 1AA" is in the fixture — without the fix, Auto mode would return true after a 404
+        var result = await check.EvaluateAsync(AddressPayload("SW1A 1AA"), default);
+
+        result.Value.Should().BeFalse("404 must not fall through to the offline fixture");
+    }
+
+    [Fact]
     public async Task EvaluateAsync_NoPostcode_ReturnsFalse()
     {
         var handler = StubHttpMessageHandler.Json("""{ "status": 200, "result": true }""");

@@ -100,8 +100,9 @@ public class RulesDecisionEngine : IDecisionEngine
 
     /// <summary>
     /// Runs the configured external checks against the action's submitted payload and returns the
-    /// merged facts as a JSON object suitable for the <c>checks</c> context key. A faulting runner
-    /// degrades to an empty fact set so the decision still proceeds.
+    /// merged facts as a JSON object suitable for the <c>checks</c> context key. Returns
+    /// <see langword="null"/> when the runner throws — callers must treat null as a fail-closed signal
+    /// and return a <c>hold</c> decision rather than proceeding to rule evaluation.
     /// </summary>
     private async Task<JsonObject?> BuildChecksFactsAsync(PendingAction action, CancellationToken ct)
     {

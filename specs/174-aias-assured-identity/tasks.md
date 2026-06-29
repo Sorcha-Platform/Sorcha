@@ -4,11 +4,14 @@
 
 **Branch**: `174-aias-assured-identity`
 
-**Implementation status**: Core M1 implementation landed in `ec63765b`. All checks, tests (151/151),
+**Implementation status**: Core M1 implementation landed in `ec63765b`. All checks, tests (153/153),
 demo provisioning, and rehearsal hook are complete. Security fix: `RulesDecisionEngine` now fails
 closed (returns `hold`) when the external-check runner faults — previously it silently omitted the
-`checks` key, causing the catch-all approve rule to fire unconditionally (fail-open). Remaining work
-is end-to-end rehearsal (T037, needs live Docker stack).
+`checks` key, causing the catch-all approve rule to fire unconditionally (fail-open). Code-review
+fix: `PostcodeExistsCheck` now treats HTTP 404 from postcodes.io as a definitive `false` (malformed
+postcode) rather than a transient network fault — previously a 404 fell through to the offline
+fixture in `Auto` mode, potentially returning `true` for a fixture-listed-but-typo'd postcode.
+Remaining work is end-to-end rehearsal (T037, needs live Docker stack).
 
 ## Format: `[ID] [P?] [Story] Description`
 
