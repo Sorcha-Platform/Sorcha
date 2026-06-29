@@ -15,10 +15,25 @@ public class ExternalCheckFactoryTests
     }
 
     [Fact]
-    public void BuildRunner_MissingFile_ReturnsEmptyRunner()
+    public void BuildRunner_NullPath_ReturnsEmptyRunner()
     {
-        var runner = ExternalCheckFactory.BuildRunner("does-not-exist.json", new HttpClient());
+        var runner = ExternalCheckFactory.BuildRunner(null, new HttpClient());
         runner.HasChecks.Should().BeFalse();
+    }
+
+    [Fact]
+    public void BuildRunner_EmptyPath_ReturnsEmptyRunner()
+    {
+        var runner = ExternalCheckFactory.BuildRunner("   ", new HttpClient());
+        runner.HasChecks.Should().BeFalse();
+    }
+
+    [Fact]
+    public void BuildRunner_MissingFile_ThrowsFileNotFoundException()
+    {
+        var act = () => ExternalCheckFactory.BuildRunner("does-not-exist.json", new HttpClient());
+        act.Should().Throw<FileNotFoundException>()
+            .WithMessage("*does-not-exist.json*");
     }
 
     [Fact]

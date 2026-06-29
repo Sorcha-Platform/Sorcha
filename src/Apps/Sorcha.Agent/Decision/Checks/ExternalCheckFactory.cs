@@ -14,13 +14,19 @@ public static class ExternalCheckFactory
 {
     /// <summary>
     /// Builds a runner from the checks config file at <paramref name="configPath"/>. Returns a
-    /// runner with no checks when the file is absent, so callers can always construct one.
+    /// runner with no checks when <paramref name="configPath"/> is null or whitespace (agent has no
+    /// checks configured). Throws <see cref="FileNotFoundException"/> when a non-blank path is
+    /// supplied but the file does not exist — callers must treat this as a configuration error and
+    /// abort rather than proceeding without checks.
     /// </summary>
     public static ExternalCheckRunner BuildRunner(
         string? configPath, HttpClient httpClient, ILoggerFactory? loggerFactory = null)
     {
-        if (string.IsNullOrWhiteSpace(configPath) || !File.Exists(configPath))
+        if (string.IsNullOrWhiteSpace(configPath))
             return new ExternalCheckRunner([], loggerFactory?.CreateLogger(typeof(ExternalCheckRunner).FullName!));
+
+        if (!File.Exists(configPath))
+            throw new FileNotFoundException($"Checks config file not found: {configPath}", configPath);
 
         var config = ChecksConfig.Load(configPath);
         var baseDir = Path.GetDirectoryName(Path.GetFullPath(configPath)) ?? ".";

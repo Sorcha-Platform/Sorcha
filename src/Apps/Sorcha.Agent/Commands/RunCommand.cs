@@ -299,8 +299,9 @@ public class RunCommand : Command
 
     /// <summary>
     /// Builds the external-check runner from the actor's optional <c>ChecksFile</c> (resolved
-    /// relative to the config file), or <c>null</c> when none is declared. Build failures are
-    /// non-fatal — the agent runs without checks rather than refusing to start.
+    /// relative to the config file), or <c>null</c> when none is declared. Throws on any load
+    /// failure — a declared checks file that cannot be loaded is a configuration error that must
+    /// abort startup rather than silently allow the agent to approve all actions.
     /// </summary>
     private static ExternalCheckRunner? BuildCheckRunner(
         ActorDefinition definition,
@@ -316,17 +317,9 @@ public class RunCommand : Command
             ? definition.ChecksFile
             : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(configPath) ?? ".", definition.ChecksFile));
 
-        try
-        {
-            var runner = ExternalCheckFactory.BuildRunner(checksPath, checksHttpClient, loggerFactory);
-            if (!quiet)
-                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] External checks loaded from {Path.GetFileName(checksPath)}");
-            return runner;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"  Checks config error ({checksPath}): {ex.Message} — continuing without external checks");
-            return null;
-        }
+        var runner = ExternalCheckFactory.BuildRunner(checksPath, checksHttpClient, loggerFactory);
+        if (!quiet)
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] External checks loaded from {Path.GetFileName(checksPath)}");
+        return runner;
     }
 }
