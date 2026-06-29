@@ -128,6 +128,15 @@ public class HaipOfferService : IHaipOfferService
                 ErrorMessage = "Could not reach the server. Check your connection and try again."
             };
         }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Malformed response polling verification for {RequestId}", requestId);
+            return new VerificationPollOutcome
+            {
+                IsTransportError = true,
+                ErrorMessage = "Received an unexpected response. Please try again."
+            };
+        }
     }
 
     private static VerificationPollOutcome MapStatusToOutcome(Guid requestId, string? state) =>
