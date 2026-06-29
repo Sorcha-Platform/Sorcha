@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+using Microsoft.Extensions.Logging;
 using Sorcha.Agent.Decision.Checks;
 
 namespace Sorcha.Agent.Tests.Decision.Checks;
@@ -34,6 +35,33 @@ public class ExternalCheckFactoryTests
         var act = () => ExternalCheckFactory.BuildRunner("does-not-exist.json", new HttpClient());
         act.Should().Throw<FileNotFoundException>()
             .WithMessage("*does-not-exist.json*");
+    }
+
+    [Fact]
+    public async Task Build_ProfanityCheck_MissingWordlistFile_LogsWarning()
+    {
+        // Arrange — wordlistFile points to a file that does not exist; inline list is empty.
+        var def = new CheckDefinition
+        {
+            Name = "profane",
+            Type = "profanity",
+            Fields = ["/text"],
+            WordlistFile = "does-not-exist-wordlist.txt"
+        };
+        var warnings = new List<string>();
+        var loggerFactory = LoggerFactory.Create(b => b.AddProvider(new CapturingLoggerProvider(
+            (cat, level, msg) => { if (level >= LogLevel.Warning) warnings.Add(msg); })));
+
+        // Act — should not throw; missing wordlist is a configuration warning, not a fatal error.
+        var check = ExternalCheckFactory.Build(def, ".", new HttpClient(), loggerFactory);
+
+        // Assert — one warning logged and the check still evaluates (returns false for empty wordlist).
+        warnings.Should().ContainSingle(w => w.Contains("does-not-exist-wordlist") || w.Contains("profane"),
+            "a warning must be emitted when the declared wordlistFile is absent");
+
+        var result = await check.EvaluateAsync(
+            CheckTestSupport.Payload("""{"text": "damn"}"""), default);
+        result.Value.Should().BeFalse("empty wordlist means the check never fires");
     }
 
     [Fact]

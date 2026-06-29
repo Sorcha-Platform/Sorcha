@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 using System.Net;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
 
 namespace Sorcha.Agent.Tests.Decision.Checks;
 
@@ -19,6 +20,21 @@ internal static class CheckTestSupport
         foreach (var (key, value) in obj)
             dict[key] = value;
         return dict;
+    }
+}
+
+/// <summary>Minimal log provider that forwards entries to a caller-supplied delegate.</summary>
+internal sealed class CapturingLoggerProvider(Action<string, LogLevel, string> sink) : ILoggerProvider
+{
+    public ILogger CreateLogger(string categoryName) => new CapturingLogger(categoryName, sink);
+    public void Dispose() { }
+
+    private sealed class CapturingLogger(string category, Action<string, LogLevel, string> sink) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel level) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => sink(category, logLevel, formatter(state, exception));
     }
 }
 

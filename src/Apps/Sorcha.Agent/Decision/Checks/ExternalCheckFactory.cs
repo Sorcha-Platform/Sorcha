@@ -49,7 +49,7 @@ public static class ExternalCheckFactory
         {
             "email-verified" => new EmailVerifiedCheck(def.Name, def.Field, def.EmailField),
             "field-present" => new FieldPresentCheck(def.Name, RequireField(def)),
-            "profanity" => new ProfanityCheck(def.Name, def.Fields ?? [], LoadWordlist(def, baseDir)),
+            "profanity" => new ProfanityCheck(def.Name, def.Fields ?? [], LoadWordlist(def, baseDir, loggerFactory)),
             "uk-postcode" => new PostcodeExistsCheck(
                 def.Name,
                 def.AddressField ?? "/address",
@@ -72,7 +72,7 @@ public static class ExternalCheckFactory
         _ => PostcodeOfflineMode.Auto
     };
 
-    private static IEnumerable<string> LoadWordlist(CheckDefinition def, string baseDir)
+    private static IEnumerable<string> LoadWordlist(CheckDefinition def, string baseDir, ILoggerFactory? loggerFactory)
     {
         var words = new List<string>();
         if (def.WordlistInline is not null)
@@ -82,7 +82,20 @@ public static class ExternalCheckFactory
         {
             var path = ResolvePath(baseDir, def.WordlistFile);
             if (File.Exists(path))
+            {
                 words.AddRange(File.ReadAllLines(path).Where(l => !string.IsNullOrWhiteSpace(l) && !l.StartsWith('#')));
+            }
+            else
+            {
+                // A declared wordlist file that is absent silently produces an empty wordlist,
+                // which causes ProfanityCheck to always return false — log prominently so operators
+                // see the misconfiguration rather than discovering it through missed rejections.
+                loggerFactory?.CreateLogger(typeof(ExternalCheckFactory).FullName!)
+                    .LogWarning(
+                        "Profanity check '{CheckName}': declared wordlistFile '{Path}' not found — " +
+                        "check will not fire. Verify the path is correct and the file is deployed.",
+                        def.Name, path);
+            }
         }
 
         return words;
