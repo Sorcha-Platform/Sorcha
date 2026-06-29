@@ -17,9 +17,36 @@ public interface IHaipOfferService
     Task<HaipOfferStatus?> GetOfferStatusAsync(Guid offerId, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets the verification result for a presentation request.
+    /// Polls the Blueprint BFF for the current state of a presentation request.
+    /// Returns a discriminated outcome distinguishing no-result-yet, transport errors, and terminal states.
     /// </summary>
-    Task<HaipVerificationResult?> GetVerificationResultAsync(Guid requestId, CancellationToken ct = default);
+    Task<VerificationPollOutcome> GetVerificationResultAsync(Guid requestId, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Discriminated outcome from a single <see cref="IHaipOfferService.GetVerificationResultAsync"/> poll.
+/// Distinguishes three conditions: no result yet (keep polling), transport failure (error + retry),
+/// and a terminal verification result.
+/// </summary>
+public record VerificationPollOutcome
+{
+    /// <summary>
+    /// The verification result when a terminal state has been reached, or <c>null</c> when the session
+    /// is still active (awaiting wallet scan or outcome processing). Populated only when
+    /// <see cref="IsTransportError"/> is <c>false</c> and the BFF reports a terminal state.
+    /// </summary>
+    public HaipVerificationResult? Result { get; init; }
+
+    /// <summary>
+    /// <c>true</c> when the poll failed due to a transport error (auth rejection, server error,
+    /// or network failure) that is distinct from an empty/pending result.
+    /// </summary>
+    public bool IsTransportError { get; init; }
+
+    /// <summary>
+    /// Human-readable error message populated when <see cref="IsTransportError"/> is <c>true</c>.
+    /// </summary>
+    public string? ErrorMessage { get; init; }
 }
 
 /// <summary>Status of a HAIP credential offer.</summary>
