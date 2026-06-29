@@ -53,8 +53,9 @@ public class HaipOfferService : IHaipOfferService
 
     /// <summary>
     /// Polls <c>GET /api/presentations/{requestId}/status</c> on the Blueprint BFF and returns a
-    /// discriminated <see cref="VerificationPollOutcome"/>. Transport errors (401, 403, 5xx, network)
+    /// discriminated <see cref="VerificationPollOutcome"/>. Transport errors (5xx, network)
     /// are surfaced as <see cref="VerificationPollOutcome.IsTransportError"/> rather than swallowed.
+    /// The endpoint is <c>AllowAnonymous</c> — 401/403 cannot be returned.
     /// </summary>
     public async Task<VerificationPollOutcome> GetVerificationResultAsync(
         Guid requestId, CancellationToken ct = default)
@@ -70,20 +71,6 @@ public class HaipOfferService : IHaipOfferService
                 return new VerificationPollOutcome
                 {
                     Result = new HaipVerificationResult(requestId, HaipVerificationStates.Expired, false, null, null)
-                };
-            }
-
-            if (response.StatusCode is
-                System.Net.HttpStatusCode.Unauthorized or
-                System.Net.HttpStatusCode.Forbidden)
-            {
-                _logger.LogWarning(
-                    "Verification poll rejected for {RequestId}: {StatusCode}",
-                    requestId, (int)response.StatusCode);
-                return new VerificationPollOutcome
-                {
-                    IsTransportError = true,
-                    ErrorMessage = $"Authentication error ({(int)response.StatusCode}). Please refresh and try again."
                 };
             }
 

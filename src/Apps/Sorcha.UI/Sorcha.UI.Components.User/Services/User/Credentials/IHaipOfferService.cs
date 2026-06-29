@@ -38,8 +38,8 @@ public record VerificationPollOutcome
     public HaipVerificationResult? Result { get; init; }
 
     /// <summary>
-    /// <c>true</c> when the poll failed due to a transport error (auth rejection, server error,
-    /// or network failure) that is distinct from an empty/pending result.
+    /// <c>true</c> when the poll failed due to a transport error (server error or network failure)
+    /// that is distinct from an empty/pending result.
     /// </summary>
     public bool IsTransportError { get; init; }
 
