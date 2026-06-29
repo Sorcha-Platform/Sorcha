@@ -1,0 +1,25 @@
+{
+  "$comment": "Bundled offline fallback for the AIAS postcode-existence check (Feature 174 / M1, SC-007). When postcodes.io is unreachable (no venue internet) the PostcodeExistsCheck resolves UK postcodes against this allow-list. Matching is case- and whitespace-insensitive. Add the postcodes your demo applicants will use. These are real, well-known UK postcodes.",
+  "postcodes": [
+    "SW1A 1AA",
+    "SW1A 2AA",
+    "SW1A 0AA",
+    "EC1A 1BB",
+    "W1A 0AX",
+    "M1 1AE",
+    "B33 8TH",
+    "CR2 6XH",
+    "DN55 1PT",
+    "LS1 1UR",
+    "EH1 1RE",
+    "CF10 1EP",
+    "BT1 1AA",
+    "G1 1XW",
+    "NE1 7RU",
+    "BS1 4DJ",
+    "OX1 1BP",
+    "CB2 1TN",
+    "L1 8JQ",
+    "S1 2HE"
+  ]
+}

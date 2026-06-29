@@ -1,0 +1,7 @@
+# Local, environment-specific demo files — never committed.
+# Node/gateway addresses are operator config; secrets live in deploy/keys.env.
+state.json
+
+# Rendered (token-substituted) runtime agent actor config — produced at provision time
+# by Build-AiasAgentConfig (rules embedded inline + checksFile pointer).
+agent/assure-id.config.json

@@ -1,0 +1,38 @@
+[
+  {
+    "actionName": "Verify Assured Identity Application",
+    "condition": { "==": [ { "var": "checks.postcodeExists" }, false ] },
+    "decision": "reject",
+    "payload": {
+      "decision": "rejected",
+      "verificationNotes": "AIAS could not locate that address on any map. We assure real people at real places — try a postcode that exists."
+    }
+  },
+  {
+    "actionName": "Verify Assured Identity Application",
+    "condition": { "==": [ { "var": "checks.profane" }, true ] },
+    "decision": "reject",
+    "payload": {
+      "decision": "rejected",
+      "verificationNotes": "AIAS does not assure identities described in such... colourful terms. Please reapply with your Sunday-best vocabulary."
+    }
+  },
+  {
+    "actionName": "Verify Assured Identity Application",
+    "condition": { "==": [ { "var": "checks.emailVerified" }, false ] },
+    "decision": "reject",
+    "payload": {
+      "decision": "rejected",
+      "verificationNotes": "AIAS needs a verified email before it can assure you. Confirm your email and reapply."
+    }
+  },
+  {
+    "actionName": "Verify Assured Identity Application",
+    "condition": { "==": [ true, true ] },
+    "decision": "approve",
+    "payload": {
+      "decision": "approved",
+      "verificationNotes": "Assured by AIAS — address found, language clean, email verified. Welcome aboard."
+    }
+  }
+]

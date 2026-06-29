@@ -5,26 +5,50 @@ using System.Text.Json.Nodes;
 using Json.Logic;
 using Microsoft.Extensions.Logging;
 using Sorcha.Agent.Configuration;
+using Sorcha.Agent.Decision.Checks;
 using Sorcha.Agent.Models;
 
 namespace Sorcha.Agent.Decision;
 
 /// <summary>
-/// Evaluates JSON Logic rules against incoming actions. First match wins.
+/// Evaluates JSON Logic rules against incoming actions. First match wins. When an optional
+/// <see cref="ExternalCheckRunner"/> is supplied, its checks run before rule evaluation and their
+/// boolean results are merged into the rules context under the <c>checks</c> key, so rules can
+/// reference facts like <c>{ "var": "checks.postcodeExists" }</c>. Agents without configured checks
+/// are unaffected (the runner is null or has no checks).
 /// </summary>
 public class RulesDecisionEngine : IDecisionEngine
 {
     private readonly ActorRule[] _rules;
+    private readonly ExternalCheckRunner? _checkRunner;
     private readonly ILogger<RulesDecisionEngine>? _logger;
 
+    /// <summary>Creates a rules engine over <paramref name="rules"/> with no external checks.</summary>
     public RulesDecisionEngine(ActorRule[] rules, ILogger<RulesDecisionEngine>? logger = null)
+        : this(rules, null, logger)
+    {
+    }
+
+    /// <summary>
+    /// Creates a rules engine that runs <paramref name="checkRunner"/> before evaluating rules,
+    /// merging the resulting facts under the <c>checks</c> context key.
+    /// </summary>
+    public RulesDecisionEngine(
+        ActorRule[] rules, ExternalCheckRunner? checkRunner, ILogger<RulesDecisionEngine>? logger = null)
     {
         _rules = rules;
+        _checkRunner = checkRunner;
         _logger = logger;
     }
 
-    public Task<ActionDecision> DecideAsync(PendingAction action, CancellationToken cancellationToken = default)
+    public async Task<ActionDecision> DecideAsync(PendingAction action, CancellationToken cancellationToken = default)
     {
+        // Run configured external checks once and expose them as the "checks" fact object. Skipped
+        // entirely when no runner/checks are configured, so non-AIAS agents pay nothing.
+        JsonObject? checksFacts = null;
+        if (_checkRunner is { HasChecks: true })
+            checksFacts = await BuildChecksFactsAsync(action, cancellationToken);
+
         foreach (var rule in _rules)
         {
             // Match by action name
@@ -34,7 +58,7 @@ public class RulesDecisionEngine : IDecisionEngine
             // Evaluate condition (null/missing condition = always true)
             if (rule.Condition is not null)
             {
-                var data = BuildContextData(action);
+                var data = BuildContextData(action, checksFacts);
                 if (!EvaluateCondition(rule.Condition, data))
                 {
                     _logger?.LogDebug("Rule condition not met for action {ActionName}", action.ActionName);
@@ -49,16 +73,65 @@ public class RulesDecisionEngine : IDecisionEngine
                 ? JsonSerializer.Deserialize<Dictionary<string, object>>(rule.Payload.ToJsonString())
                 : null;
 
-            return Task.FromResult(new ActionDecision(
+            return new ActionDecision(
                 rule.Decision,
                 payload,
                 $"Rule matched: {rule.ActionName} → {rule.Decision}",
-                rule.PreActions));
+                rule.PreActions);
         }
 
         // No match
         _logger?.LogWarning("No rule matched for action {ActionName}, skipping", action.ActionName);
-        return Task.FromResult(new ActionDecision("skip", null, "No matching rule"));
+        return new ActionDecision("skip", null, "No matching rule");
+    }
+
+    /// <summary>
+    /// Runs the configured external checks against the action's submitted payload and returns the
+    /// merged facts as a JSON object suitable for the <c>checks</c> context key. A faulting runner
+    /// degrades to an empty fact set so the decision still proceeds.
+    /// </summary>
+    private async Task<JsonObject?> BuildChecksFactsAsync(PendingAction action, CancellationToken ct)
+    {
+        var payload = ExtractPayload(action);
+
+        IReadOnlyDictionary<string, object?> facts;
+        try
+        {
+            facts = await _checkRunner!.RunAsync(payload, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _logger?.LogWarning(ex, "External-check runner faulted for action {ActionName}; proceeding without checks", action.ActionName);
+            return null;
+        }
+
+        var obj = new JsonObject();
+        foreach (var (key, value) in facts)
+        {
+            obj[key] = value switch
+            {
+                bool b => JsonValue.Create(b),
+                string s => JsonValue.Create(s),
+                null => null,
+                _ => JsonValue.Create(value.ToString())
+            };
+        }
+
+        return obj;
+    }
+
+    /// <summary>Projects the action's submitted (previous) payload into the top-level dictionary the checks consume.</summary>
+    private static IReadOnlyDictionary<string, object?> ExtractPayload(PendingAction action)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal);
+        if (action.PreviousPayload is { } prev
+            && JsonNode.Parse(prev.GetRawText()) is JsonObject obj)
+        {
+            foreach (var (key, value) in obj)
+                payload[key] = value;
+        }
+
+        return payload;
     }
 
     private bool EvaluateCondition(JsonNode condition, JsonNode data)
@@ -78,7 +151,7 @@ public class RulesDecisionEngine : IDecisionEngine
         }
     }
 
-    private static JsonNode BuildContextData(PendingAction action)
+    private static JsonNode BuildContextData(PendingAction action, JsonObject? checksFacts)
     {
         var data = new JsonObject
         {
@@ -95,6 +168,11 @@ public class RulesDecisionEngine : IDecisionEngine
             var payloadNode = JsonNode.Parse(action.PreviousPayload.Value.GetRawText());
             data["payload"] = payloadNode;
         }
+
+        // Expose external-check facts under "checks" for var references like "checks.postcodeExists".
+        // Deep-cloned because the same fact set is attached to a fresh context per rule iteration.
+        if (checksFacts is not null)
+            data["checks"] = checksFacts.DeepClone();
 
         return data;
     }
