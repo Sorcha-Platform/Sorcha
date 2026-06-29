@@ -10,7 +10,7 @@ namespace Sorcha.Agent.Decision.Checks;
 /// Logic. Checks run concurrently; an individual check that faults unexpectedly resolves to a safe
 /// default (its <c>Value=false</c>) and is logged — it never crashes the decision.
 /// </summary>
-public sealed class ExternalCheckRunner
+public sealed class ExternalCheckRunner : IExternalCheckRunner
 {
     private readonly IReadOnlyList<IExternalCheck> _checks;
     private readonly ILogger? _logger;

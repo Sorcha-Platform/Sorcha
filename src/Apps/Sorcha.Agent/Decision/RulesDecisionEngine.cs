@@ -20,7 +20,7 @@ namespace Sorcha.Agent.Decision;
 public class RulesDecisionEngine : IDecisionEngine
 {
     private readonly ActorRule[] _rules;
-    private readonly ExternalCheckRunner? _checkRunner;
+    private readonly IExternalCheckRunner? _checkRunner;
     private readonly ILogger<RulesDecisionEngine>? _logger;
 
     /// <summary>Creates a rules engine over <paramref name="rules"/> with no external checks.</summary>
@@ -34,7 +34,7 @@ public class RulesDecisionEngine : IDecisionEngine
     /// merging the resulting facts under the <c>checks</c> context key.
     /// </summary>
     public RulesDecisionEngine(
-        ActorRule[] rules, ExternalCheckRunner? checkRunner, ILogger<RulesDecisionEngine>? logger = null)
+        ActorRule[] rules, IExternalCheckRunner? checkRunner, ILogger<RulesDecisionEngine>? logger = null)
     {
         _rules = rules;
         _checkRunner = checkRunner;
@@ -47,7 +47,20 @@ public class RulesDecisionEngine : IDecisionEngine
         // entirely when no runner/checks are configured, so non-AIAS agents pay nothing.
         JsonObject? checksFacts = null;
         if (_checkRunner is { HasChecks: true })
+        {
             checksFacts = await BuildChecksFactsAsync(action, cancellationToken);
+
+            // Runner-level fault: BuildChecksFactsAsync returns null when the entire runner throws.
+            // Fail closed — do NOT proceed to rules evaluation with missing check facts, because the
+            // catch-all approve rule would fire unconditionally (JSON Logic null != false in strict ==).
+            if (checksFacts is null)
+            {
+                _logger?.LogError(
+                    "External-check runner faulted for action {ActionName}; holding for manual review",
+                    action.ActionName);
+                return new ActionDecision("hold", null, "External checks unavailable; application held for manual review");
+            }
+        }
 
         foreach (var rule in _rules)
         {
@@ -101,7 +114,7 @@ public class RulesDecisionEngine : IDecisionEngine
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
-            _logger?.LogWarning(ex, "External-check runner faulted for action {ActionName}; proceeding without checks", action.ActionName);
+            _logger?.LogError(ex, "External-check runner threw for action {ActionName}; returning null to trigger fail-closed hold", action.ActionName);
             return null;
         }
 

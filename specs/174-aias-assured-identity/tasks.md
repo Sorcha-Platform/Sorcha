@@ -4,8 +4,11 @@
 
 **Branch**: `174-aias-assured-identity`
 
-**Implementation status**: Core M1 implementation landed in `ec63765b`. All checks, tests (147/147),
-demo provisioning, and rehearsal hook are complete. Remaining work is documentation/admin.
+**Implementation status**: Core M1 implementation landed in `ec63765b`. All checks, tests (151/151),
+demo provisioning, and rehearsal hook are complete. Security fix: `RulesDecisionEngine` now fails
+closed (returns `hold`) when the external-check runner faults — previously it silently omitted the
+`checks` key, causing the catch-all approve rule to fire unconditionally (fail-open). Remaining work
+is end-to-end rehearsal (T037, needs live Docker stack).
 
 ## Format: `[ID] [P?] [Story] Description`
 

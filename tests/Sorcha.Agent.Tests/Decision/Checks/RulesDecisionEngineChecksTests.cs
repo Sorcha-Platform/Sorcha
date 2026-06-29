@@ -134,4 +134,34 @@ public class RulesDecisionEngineChecksTests
 
         decision.Payload!["verificationNotes"]!.ToString().Should().Be("AIAS could not locate that address on any map.");
     }
+
+    [Fact]
+    public async Task Decide_RunnerFaults_HoldsRatherThanApproving()
+    {
+        // Security regression: when the checks runner itself throws (runner-infrastructure fault,
+        // distinct from a per-check fault which ExternalCheckRunner already contains to false),
+        // BuildChecksFactsAsync catches and returns null, omitting the "checks" key entirely.
+        // JSON Logic resolves {"var":"checks.postcodeExists"} to null; null == false is false
+        // under strict equality, so all three reject rules pass and the catch-all approve fires.
+        // Fix: fail closed — when checksFacts is null (runner faulted), return "hold".
+        var engine = new RulesDecisionEngine(AiasRules(), new ThrowingRunner());
+
+        var decision = await engine.DecideAsync(Action());
+
+        decision.Decision.Should().Be("hold", "a runner-level fault must not approve; fail closed");
+        decision.Payload.Should().BeNull();
+        decision.Reasoning.Should().Contain("manual review");
+    }
+
+    /// <summary>
+    /// Runner stub that throws at the runner level, bypassing per-check fault containment.
+    /// Exercises the null-checksFacts path in <see cref="RulesDecisionEngine.DecideAsync"/>.
+    /// </summary>
+    private sealed class ThrowingRunner : IExternalCheckRunner
+    {
+        public bool HasChecks => true;
+        public Task<IReadOnlyDictionary<string, object?>> RunAsync(
+            IReadOnlyDictionary<string, object?> payload, CancellationToken ct)
+            => throw new InvalidOperationException("runner-level fault");
+    }
 }
