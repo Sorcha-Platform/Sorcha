@@ -37,6 +37,17 @@ public sealed class HaipVerificationTransport : IVerificationTransport
         CancellationToken ct = default)
     {
         var session = await StartAsync(question, ct);
+
+        // A transport/auth/server failure surfaces as an Error session with empty ids. Throw so the
+        // shared VerificationSessionQr component shows its error + retry state — returning the empty
+        // ids here would be mis-rendered as "Verification is not yet configured here." The genuine
+        // not-configured state is reserved for NotConfiguredVerificationTransport (the stub).
+        if (session.State == VerificationSessionState.Error)
+        {
+            throw new InvalidOperationException(
+                session.Error ?? "Failed to start the verification session.");
+        }
+
         return new VerificationSessionStarted(
             SessionId: session.SessionId,
             QrDeepLink: session.QrDeepLink,
