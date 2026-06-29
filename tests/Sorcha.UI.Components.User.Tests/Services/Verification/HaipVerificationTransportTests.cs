@@ -88,6 +88,30 @@ public sealed class HaipVerificationTransportTests
     }
 
     [Fact]
+    public async Task StartSessionAsync_OnTransportFault_Throws()
+    {
+        // Arrange — a 401 / network / server fault must surface as a thrown error so the shared
+        // VerificationSessionQr component shows its error + retry state, NOT "Verification is not
+        // yet configured here." The not-configured state is reserved for the stub transport
+        // (Feature 164 — fixes the mis-rendered auth failure).
+        _identityMock.Setup(x => x.GetClientIdAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync("client-id");
+
+        _clientMock.Setup(x => x.CreateRequestAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("401 Unauthorized"));
+
+        var sut = CreateSut();
+
+        // Act
+        var act = async () => await sut.StartSessionAsync(AgePreset);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>(
+            because: "a transport fault must not be returned as an empty session that renders as not-configured");
+    }
+
+    [Fact]
     public async Task PollAsync_BeforeHolderResponds_ReturnsPendingWithNullVpToken()
     {
         // Arrange — poll result when holder has not yet responded (C3)

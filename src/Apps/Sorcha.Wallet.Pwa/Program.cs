@@ -8,6 +8,7 @@ using Sorcha.UI.Components.User.Extensions;
 using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.Wallet.Pwa;
 using Sorcha.Wallet.Pwa.Extensions;
+using Sorcha.Wallet.Pwa.Services;
 using Sorcha.Wallet.Pwa.Services.Signing;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
@@ -24,10 +25,18 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 // at the host root so we strip the /wallet/ prefix off the BaseAddress.
 var hostRoot = new Uri(builder.HostEnvironment.BaseAddress).GetLeftPart(UriPartial.Authority) + "/";
 
-// Feature 163: shared user-facing component library seams. Pass hostRoot so the
+// Feature 163/164: shared user-facing component library seams. Pass hostRoot so the
 // IHaipVerifierClient typed HttpClient gets a BaseAddress — WASM IHttpClientFactory
-// clients have no BaseAddress by default, causing relative URI calls to throw.
-builder.Services.AddSorchaUserComponents(builder.Configuration, haipBaseUrl: hostRoot);
+// clients have no BaseAddress by default, causing relative URI calls to throw — and attach the
+// PWA's BearerTokenHandler + ServerClockHandler so the verify request carries the holder's bearer
+// token. The verify endpoints (/api/v1/verifier/requests) require an authenticated caller; without
+// the handler the call 401s and is mis-rendered as "Verification is not yet configured here."
+builder.Services.AddSorchaUserComponents(
+    builder.Configuration,
+    haipBaseUrl: hostRoot,
+    configureHaipClient: b => b
+        .AddHttpMessageHandler<BearerTokenHandler>()
+        .AddHttpMessageHandler<ServerClockHandler>());
 
 builder.Services.AddCitizenWalletServices(hostRoot);
 

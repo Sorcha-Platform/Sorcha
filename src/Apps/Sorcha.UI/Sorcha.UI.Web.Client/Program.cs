@@ -7,10 +7,13 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
 using Sorcha.Blueprint.Schemas.Client;
 using Sorcha.UI.Components.User.Extensions;
+using Sorcha.UI.Components.User.Services.Verification;
 using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
+using Sorcha.UI.Core.Services.Http;
 using Sorcha.UI.Core.Services.User.Enrolment;
 using Sorcha.UI.Web.Client;
+using Sorcha.UI.Web.Client.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
@@ -30,8 +33,20 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 // Register core services (authentication, encryption, configuration) with base address
 builder.Services.AddCoreServices(builder.HostEnvironment.BaseAddress);
 
-// Feature 163: shared user-facing component library seams.
-builder.Services.AddSorchaUserComponents(builder.Configuration);
+// Feature 163/164: shared user-facing component library seams + live HAIP verify transport.
+// The web client acts as a relying-party verifier. Pass the gateway base address so the HAIP
+// verifier client can resolve relative URIs, and attach the web client's
+// AuthenticatedHttpMessageHandler so the verify request carries the signed-in user's bearer token
+// — the verify endpoints (/api/v1/verifier/requests) require an authenticated caller (Feature 164).
+builder.Services.AddSorchaUserComponents(
+    builder.Configuration,
+    haipBaseUrl: builder.HostEnvironment.BaseAddress,
+    configureHaipClient: b => b.AddHttpMessageHandler<AuthenticatedHttpMessageHandler>());
+
+// Override the NotConfigured stub transport with the live HAIP transport (Feature 164). Without
+// this override the web client always reported "Verification is not yet configured here."
+builder.Services.AddScoped<IVerifierIdentityProvider, WebVerifierIdentityProvider>();
+builder.Services.AddScoped<IVerificationTransport, HaipVerificationTransport>();
 
 // Register authorization
 builder.Services.AddAuthorizationCore();
