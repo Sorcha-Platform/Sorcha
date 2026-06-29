@@ -70,8 +70,8 @@ specs/174-aias-assured-identity/
 ├── data-model.md        # Phase 1 — entities (org, application, decision, agent config, credential)
 ├── quickstart.md        # Phase 1 — provision + run the AIAS demo (Docker then n1)
 ├── contracts/
-│   ├── external-checks.md       # the rules-engine external-check hook contract
-│   └── aias-rules.md            # the AIAS Assure-ID rules config shape (JSON Logic facts)
+│   └── external-checks.md       # the rules-engine external-check hook contract
+│                                # (AIAS Assure-ID rules + checks config shapes live in data-model.md)
 └── tasks.md             # Phase 2 — created by /speckit.tasks (NOT here)
 ```
 
