@@ -22,7 +22,11 @@ hangs off.
 - Real KYC / real identity assurance. The "assurance" here is plausible-looking theatre with a few
   genuinely-real checks, not a production identity-proofing pipeline.
 - A fixed delivery date. There is no hard deadline; this is being designed ahead of need. Every
-  milestone must nonetheless be independently demoable with a fallback (see §7).
+  milestone must nonetheless be independently demoable with a fallback (see §9).
+- **Multi-credential ("additive") verify.** Root-solved as a ~L4/multi-week change spanning ~15–20
+  files (single `vp_token`, single-SD-JWT validator, single-credential verdict). It is already on
+  the roadmap as **spec 098** and is explicitly **out of scope** here — the demo verifies a single
+  credential (see §4.4).
 
 ---
 
@@ -33,50 +37,54 @@ assurance provider. Branding and copy lean into light humour (rejection reasons,
 reviewing your application" beat). AIAS is the org that runs the assurance and cyber workflows and
 issues both credentials.
 
-**Environment:** runs against a **freshly cleaned n1** (no Strathcarron / no prior demo orgs). All
-provisioning (AIAS org, branding, blueprints, agents, presets) is scripted and repeatable (M5).
+**Environment:** runs against a **freshly cleaned n1** (no Strathcarron / no prior demo orgs).
+Docker-first for build + proof; n1 is the rehearsal gate. All provisioning is scripted and
+repeatable (§8).
 
 **Persona:** an anonymous attendee — referred to as **"Morag"** as a running placeholder; the live
-demo can sign up an actual audience member. The verify story begins **once she holds the Assured
-Identity VC** (that is Stage 0 for the verifier milestones).
+demo can sign up an actual audience member. The verify story begins **once she holds the Cyber
+Level VC**.
 
 ---
 
 ## 3. The arc (end to end)
 
 ```
-anonymous  ──signup (with photo)──▶  AIAS assurance gate  ──issue──▶  Assured Identity VC (carries the photo)
-                                          │ autonomous agent                     │
-                                          │ (Assure-ID mode)                     │ required to start
-                                          ▼                                      ▼
-                                     approve / reject                    Cyber questionnaire (5–10 Q)
-                                     with a cheeky reason                        │ autonomous agent
-                                                                                 │ (Cyber mode) scores
-                                                                                 ▼
-                                                                          AIAS Cyber Level VC
-                                                                          (Fail/Bronze/Silver/Gold/Platinum)
-                                                                                 │
-                                                                                 ▼
-                                              prove the level across 3 surfaces (holder = wallet)
-                                              verdict shows the photo + selectively-disclosed level
+anonymous ─signup─▶ AIAS assurance gate ─issue─▶ Assured Identity VC (carries the photo)
+                         │ autonomous agent                  │ present to start (gate)
+                         │ (Assure-ID mode)                  ▼
+                         ▼                            Cyber questionnaire (5–10 Q)
+                    approve / reject                         │ autonomous agent (Cyber mode):
+                    with a cheeky reason                     │  - scores answers
+                                                             │  - rejects if presented Assured ID
+                                                             │    has NO portrait
+                                                             ▼
+                                              AIAS Cyber Level VC  (level + portrait)
+                                              portrait mapped from the presented Assured ID VC
+                                                             │
+                                                             ▼
+                              prove across 3 surfaces (holder = wallet); single-credential verify;
+                              verdict shows photo + selectively-disclosed level
 ```
 
 ---
 
 ## 4. Credential model (the spine)
 
-**Two credentials.**
+**Two credentials issued; one credential verified.**
 
 ### 4.1 AIAS Assured Identity VC (base, with face)
 - Issued after the AIAS assurance gate passes.
-- Carries the **persona photo** (the portrait subfeature — see §6 risk).
-- Reusable base identity; it is the **prerequisite to start the cyber questionnaire**.
+- Carries the **persona photo** (portrait claim, **optional** at application time — see §4.4).
+- The **prerequisite to start the cyber questionnaire**: the cyber workflow's first action requires
+  *presenting* this VC.
 
-### 4.2 AIAS Cyber Level VC (earned, the punchline)
+### 4.2 AIAS Cyber Level VC (earned, the punchline — and the only credential verified at the demo)
 - Issued after the questionnaire is scored.
-- Carries a **`level`** claim derived from the score.
-- **Selective disclosure**: the verify moments disclose *just the level* (and the photo comes from
-  the base credential / persona), not the full questionnaire detail.
+- Carries **both** a **`level`** claim (derived from the score) **and** the **`portrait`** claim,
+  the latter **mapped from the presented Assured Identity VC** (present-and-map, §4.4).
+- **Selective disclosure**: the verify moments disclose *just the level*; the portrait renders on the
+  verdict via the existing single-credential portrait path.
 
 ### 4.3 Level bands (locked)
 
@@ -88,31 +96,57 @@ anonymous  ──signup (with photo)──▶  AIAS assurance gate  ──issue�
 | 50–64% | **Bronze** | yes |
 | < 50% | **Fail** | no credential |
 
+### 4.4 Photo architecture (root-solved 2026-06-29)
+
+Three investigations settled how the photo reaches the verdict:
+
+- **Capture → embed → render all EXIST** (F107): `FileRenderer` (camera `capture="user"` *and*
+  upload), `PhotoTokenResizer` → 240×320 JPEG ≤20KB token, `embedAs` → credential claim, and
+  `VerdictTrailPanel` already paints a 70×88px portrait on the verdict. The "webcam-with-upload
+  fallback" is the existing control behaviour — nothing to build.
+- **Verify stays single-credential.** Multi-credential (present both VCs) is ~L4/multi-week and is
+  deferred to spec 098 (§1). So the **Cyber Level VC carries the portrait itself** and the verify
+  moment presents that one credential.
+- **Present-and-map** gets the portrait into the Cyber VC: the cyber workflow's first action
+  *requires presenting the Assured Identity VC* (the gate), and its disclosed `portrait` is mapped
+  into the issued Cyber VC. This needs **one small engine enabler — F107 task T035** (capture a
+  verified presentation's `VerifiedClaims` into workflow state under `/presentedCredentials/*` so
+  `claimMappings` can reference them). ~200 LOC in `ActionExecutionService` + tests, 1–2 days, no
+  schema change, low risk; the driving-licence walkthrough wants it too. **Lands in M2.**
+- **Portrait optional on Assured ID, mandatory for cyber.** If the presented Assured Identity VC has
+  no portrait, the **Cyber-mode agent rejects** — a real, visible on-stage rejection reason. The
+  T035 enabler is what lets the agent *inspect* the presented claims to enforce this.
+- **No persona persistence.** Not needed under this model, and it avoids storing a biometric at rest.
+
 ---
 
 ## 5. The autonomous agent(s)
 
-Sorcha-agents, **autonomous** (apply rules, decide — no human-in-the-loop on stage). Generalizes
-the prior AssuredIdentity demo's rules auto-approver.
-
-Two **modes**, runnable independently (two agents, or one agent started in a chosen mode) so the
-assurance flow and the cyber flow can each be exercised in isolation:
+Sorcha-agents, **autonomous** (apply rules, decide — no human-in-the-loop on stage). Reuses the
+existing `Sorcha.Agent` CLI (dual SignalR + polling listeners, pluggable `RulesDecisionEngine`
+[JSON Logic] / `AiDecisionEngine` [Claude]). **"Two agents" is one agent run in two modes / configs**
+— no new agent code; the build is AIAS-specific rules + an external-check hook (§5.1).
 
 ### 5.1 Assure-ID mode — the assurance gate
-On a new signup application, automatically evaluate and decide approve/reject:
+On a new signup application, automatically decide approve/reject against:
 
 1. **Verified email** — table stakes (existing signup capability).
-2. **Photo present** — a captured persona portrait exists.
+2. **Photo present** — a captured persona portrait exists *(soft — portrait is optional here; it is
+   the cyber stage that hard-requires it).*
 3. **Address / postcode exists** — a real lookup against a public source (e.g. UK `postcodes.io`).
-   Doubles as a humour hook: *"AIAS could not locate 'Hogwarts, Diagon Alley' on any map."*
+   Humour hook: *"AIAS could not locate 'Hogwarts, Diagon Alley' on any map."*
 4. **Profanity / "not too sweary" check** — submitted details pass a profanity filter; failures get
    a cheeky AIAS rejection reason.
 
-Approve ⇒ issue the **Assured Identity VC**. Reject ⇒ a (funny, on-brand) rejection reason.
+The postcode + profanity + email-verified checks need an **external-check hook** on the rules engine
+(today it evaluates JSON Logic over the payload only) — the one genuine engine extension for M1.
+Approve ⇒ issue the **Assured Identity VC**. Reject ⇒ a (funny, on-brand) reason via a real reject
+route (the demo blueprint is always-approve today).
 
 ### 5.2 Cyber mode — the questionnaire scorer
-On questionnaire submission, score the answers, map the percentage to a **level band** (§4.3), and
-issue the **Cyber Level VC** (or record a Fail with no credential).
+On questionnaire submission: **reject if the presented Assured Identity VC carries no portrait**
+(§4.4); otherwise score the answers, map the percentage to a **level band** (§4.3), and issue the
+**Cyber Level VC** (level + mapped portrait) — or record a Fail with no credential.
 
 ### 5.3 "Controllable / live" (M4)
 The agent is the live, steerable element on stage — its control surface (start/stop, mode, and
@@ -121,14 +155,11 @@ spec.
 
 ---
 
-## 6. Known risk to investigate (not assume)
+## 6. Risk register (root-solved)
 
-**The photo / persona-image subfeature.** The end-to-end photo path — capture at signup → store on
-the persona → embed in the Assured Identity VC → render on the verifier verdict — is the one
-"under-explored" area. Everything else is assembly of proven parts. M1's spec **must** begin by
-establishing how far F092 (Consumer Persona) and F107 (x-file portrait token / id-cards) already
-take us, and scope only the gap. The "photo on the verdict screen" is a strong conference visual and
-should be protected as a deliverable.
+The one "under-explored" area — the photo path — was investigated and **resolved** (§4.4): capture,
+embed, and verdict-render all exist; the only new code is the small F107-T035 present-and-map
+enabler in M2. Remaining open items are ordinary milestone-spec detail (§10), not risks.
 
 ---
 
@@ -140,21 +171,21 @@ dependency order, not a rigid schedule.
 | ID | Milestone | Status | Notes |
 |----|-----------|--------|-------|
 | **M0** | **Verifier fix** — authenticated HAIP transport into web/PWA/Verifier; surface real errors instead of "not configured" | **In progress** | Credential-agnostic; handed to prodexec (run `4e20c5fe7ddc`). Prerequisite for M3. |
-| **M1** | **AIAS assurance + signup-with-photo** — org/branding, assurance gate rules, autonomous Assure-ID agent, Assured Identity VC with portrait | Not started | Begins with the §6 photo investigation. |
-| **M2** | **Cyber questionnaire → leveled Cyber VC** — questionnaire workflow (gated on Assured ID VC), Cyber-mode scoring agent, leveled issuance | Not started | Questionnaire content + scoring detail in M2's spec. |
-| **M3** | **Verify the level across 3 surfaces** — Verifier app (kiosk), web `/app` (online RP), PWA `/wallet` (peer/field check); verdict shows photo + selective level disclosure | Not started | Reuses M0. Holder is always the wallet. |
+| **M1** | **AIAS assurance + signup-with-photo** — org + (hardcoded) branding, assurance gate rules + external-check hook, autonomous Assure-ID agent with a real reject route, Assured Identity VC with portrait | Not started | Photo capture/embed already exist (F107). Lean — mostly assembly + the rules-engine external-check hook. |
+| **M2** | **Cyber questionnaire → leveled Cyber VC** — questionnaire workflow gated on *presenting* the Assured ID VC; **F107-T035 present-and-map enabler**; Cyber-mode scoring agent (reject if no portrait); leveled issuance carrying level + mapped portrait | Not started | Questionnaire content + scoring detail in M2's spec. T035 (~200 LOC) is the only new engine code. |
+| **M3** | **Verify the level across 3 surfaces** — Verifier app (kiosk), web `/app` (online RP), PWA `/wallet` (peer/field check); **single-credential** verify of the Cyber VC; verdict shows photo + selective level disclosure | Not started | Reuses M0. No multi-credential work (deferred to spec 098). Holder is always the wallet. |
 | **M4** | **Agent control surface** — the live, steerable stage element | Not started | Control affordances TBD in M4. |
-| **M5** | **Repeatable conference timeline** — clean-n1 bootstrap + rehearsal script (Docker first, then n1) + per-stage fallbacks (incl. scripted-holder for flaky-wifi) | Not started | This is the "story that can be reliably repeated". |
+| **M5** | **Repeatable conference timeline** — consolidate the per-milestone provisioning into one clean-n1 bootstrap + rehearsal + per-stage fallbacks (incl. scripted-holder for flaky wifi) | Not started | See §8 — provisioning is built incrementally, M5 consolidates + rehearses. |
 
 ### 7.1 Proof strategy (carried into M3 / M5)
 - **Layer 1 — automated regression (Docker, CI gate):** per-surface Playwright tests asserting each
   verify surface reaches `qr-active` (never `not-configured`), plus one end-to-end protocol test
   driven by a **scripted holder** (Playwright dual-context with a real PWA wallet is a later
   upgrade).
-- **Layer 2 — repeatable demo timeline (M5):** extend the existing `walkthroughs/` PowerShell
-  pattern (the `CyberEssentialsUac` walkthrough already exercises HAIP verify) into a clean-n1
-  bootstrap + rehearsal that prints a numbered step log + screenshots. Live demo uses a real
-  phone/wallet; scripted-holder is the CI/fallback path.
+- **Layer 2 — repeatable demo timeline (M5):** extend the `walkthroughs/` PowerShell pattern (the
+  `CyberEssentialsUac` walkthrough already exercises HAIP verify) into a clean-n1 bootstrap +
+  rehearsal that prints a numbered step log + screenshots. Live demo uses a real phone/wallet;
+  scripted-holder is the CI/fallback path.
 
 ### 7.2 The six verify checkpoints (per verify run, used by M3/M5)
 0. A wallet holds the Cyber Level VC (precondition).
@@ -166,11 +197,30 @@ dependency order, not a rigid schedule.
 
 ---
 
-## 8. Open items deferred to milestone specs
+## 8. Cross-cutting principle: repeatable, reboot-proof provisioning
+
+The network **will** be wiped and rebuilt; setup must be **"re-run one script,"** not a manual
+ceremony. Therefore **every milestone extends a single idempotent provisioning module** (the proven
+`demos/AssuredIdentity/*.psm1` + `walkthroughs/` pattern, aligned with the `network-bootstrap` and
+`walkthrough-builder` skills) that rebuilds the *entire* AIAS demo from a clean network — org +
+branding + blueprint(s) + agent config(s) + verify presets — Docker-first, then n1. Provisioning is
+**not** deferred to M5; M5 only consolidates and rehearses what each milestone already contributed.
+Each milestone's "done" includes its slice of the bootstrap + a test/rehearsal hook.
+
+---
+
+## 9. Demo robustness
+
+No hard date, but every milestone stays independently demoable and every live step has a fallback —
+most importantly a **scripted-holder** path so a flaky-wifi phone never blocks the verify moment on
+stage.
+
+---
+
+## 10. Open items deferred to milestone specs
 - **M2:** the actual 5–10 cyber-security questions, answer shape (weighting / multiple-choice), and
   the score→percentage mapping.
-- **M2:** how the "must hold Assured ID VC to start" gate is enforced (present-the-VC vs.
-  account-level check).
+- **M2:** exact JSON Pointer shape for `/presentedCredentials/*` and the claim-mapping wiring (T035).
 - **M4:** the agent control surface affordances (start/stop, mode switch, visible decisioning).
-- **M1:** the precise assurance-rule thresholds and the rejection-copy tone.
+- **M1:** precise assurance-rule thresholds, the external-check hook contract, and rejection-copy tone.
 - Persona naming / whether to sign up a live audience member.
