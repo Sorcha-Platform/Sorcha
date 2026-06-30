@@ -95,7 +95,7 @@
                 "x-holder-key": { "required": true }
               }
             },
-            "required": ["name", "dob", "email", "address"]
+            "required": ["name", "dob", "email", "address", "holderKeys"]
           }
         ],
         "disclosures": [
@@ -230,7 +230,6 @@
           }
         ],
         "rejectionConfig": {
-          "targetActionId": 0,
           "isTerminal": true,
           "requireReason": false
         },
