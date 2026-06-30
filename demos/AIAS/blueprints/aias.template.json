@@ -1,0 +1,251 @@
+{
+  "id": "aias-v1",
+  "title": "AI-Assisted Identity Assurance",
+  "description": "AI-Assisted Identity Assurance Service (AIAS) workflow. A public-org citizen submits an identity application, an AI-assisted verification agent (or human analyst) reviews and approves, and the AiasCredential is delivered to the citizen's Sorcha wallet. Demo template: the issuing-authority name is injected via the {{issuerName}} token at provision time.",
+  "version": 1,
+  "category": "identity",
+  "tags": ["aias", "identity", "ai-assisted", "verifiable-credential", "credential-claim", "citizen-application"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "aias",
+    "title": "AI-Assisted Identity Assurance",
+    "description": "Citizen submits identity details, an AI-assisted verification agent reviews and issues an AiasCredential, and the citizen claims the credential via a claim-card action.",
+    "version": 1,
+    "metadata": {
+      "category": "Identity & Credentials",
+      "complexity": "Simple",
+      "actions": "3",
+      "features": "AI-Assisted Review, Verifiable Credential, Citizen Claim Action",
+      "sector": "Identity & Trust"
+    },
+    "participants": [
+      {
+        "id": "citizen",
+        "name": "Citizen",
+        "organisation": "Public",
+        "description": "Submits an AIAS identity application and receives the credential in their Citizen Wallet PWA"
+      },
+      {
+        "id": "verification-analyst",
+        "name": "Verification Analyst",
+        "organisation": "{{issuerName}}",
+        "description": "Reviews citizen identity applications (AI-assisted) and approves issuance of the AiasCredential"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Submit Identity Application",
+        "description": "Citizen submits their personal details so a verification analyst (AI-assisted) can verify their identity and issue an AIAS credential.",
+        "sender": "citizen",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Submit your details so a verification analyst can issue your AIAS credential. Your persona profile (if you have one) will prefill the form.",
+            "x-pages": [
+              {
+                "title": "About you",
+                "description": "Your full legal name and date of birth.",
+                "x-sections": [
+                  { "title": "Your name", "fields": ["name"] },
+                  { "title": "Your date of birth", "fields": ["dob"] }
+                ]
+              },
+              {
+                "title": "Your address",
+                "description": "Your current registered address.",
+                "x-sections": [
+                  { "title": "Address", "fields": ["address"] }
+                ]
+              },
+              {
+                "title": "Contact",
+                "description": "We'll only use your email for correspondence about this application.",
+                "x-sections": [
+                  { "title": "Email", "fields": ["email"] },
+                  { "title": "Secure delivery", "fields": ["holderKeys"] }
+                ]
+              },
+              {
+                "title": "Review your details",
+                "description": "Check your answers. You can edit any section before submitting.",
+                "x-review": {
+                  "layout": "id-card",
+                  "editable": true,
+                  "header": {
+                    "issuerName": "{{issuerName}}",
+                    "credentialName": "AIAS Identity",
+                    "colourTheme": "identity-navy"
+                  }
+                }
+              }
+            ],
+            "properties": {
+              "name":    { "$ref": "https://schemas.sorcha.dev/core/PersonName/v1" },
+              "dob":     { "$ref": "https://schemas.sorcha.dev/core/DateOfBirth/v1" },
+              "email":   { "$ref": "https://schemas.sorcha.dev/core/EmailAddress/v1" },
+              "address": { "$ref": "https://schemas.sorcha.dev/core/PostalAddress/v1" },
+              "holderKeys": {
+                "type": "object",
+                "title": "Identity keys",
+                "description": "Your wallet's public delivery keys. Captured automatically and read-only.",
+                "format": "sorcha-holder-key",
+                "x-holder-key": { "required": true }
+              }
+            },
+            "required": ["name", "dob", "email", "address"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "citizen", "dataPointers": ["/*"] },
+          { "participantAddress": "verification-analyst", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-review",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Application submitted — pending AI-assisted analyst review"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Verify Identity Application",
+        "description": "Verification analyst (AI-assisted) reviews the citizen's submission and approves or rejects it. On approval the AiasCredential is minted and routed to the citizen's Claim Credential action.",
+        "sender": "verification-analyst",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Review the citizen's submitted details. Approve to issue the AIAS credential, or reject with a reason.",
+            "x-sections": [
+              {
+                "title": "Decision",
+                "description": "Approval state and supporting notes for the audit trail.",
+                "layout": "vertical",
+                "fields": ["decision", "verificationNotes"]
+              }
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": ["approved", "rejected"]
+              },
+              "verificationNotes": {
+                "type": "string",
+                "title": "Reviewer notes",
+                "maxLength": 500
+              }
+            },
+            "required": ["decision"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "AiasCredential",
+          "targetAudience": "SorchaLocalWallet",
+          "recipientParticipantId": "citizen",
+          "holderKeySourceField": "/holderKeys/holderJwk",
+          "claimMappings": [
+            { "claimName": "givenName",   "sourceField": "/name/givenName" },
+            { "claimName": "middleName",  "sourceField": "/name/middleName" },
+            { "claimName": "familyName",  "sourceField": "/name/familyName" },
+            { "claimName": "fullName",    "sourceField": "/name/fullName" },
+            { "claimName": "dateOfBirth", "sourceField": "/dob/dateOfBirth" },
+            { "claimName": "email",       "sourceField": "/email/email" },
+            { "claimName": "address",     "sourceField": "/address" }
+          ],
+          "disclosable": [
+            "givenName", "middleName", "familyName", "fullName", "dateOfBirth", "email",
+            "/address/line1", "/address/line2", "/address/town", "/address/region",
+            "/address/postcode", "/address/country"
+          ]
+        },
+        "disclosures": [
+          { "participantAddress": "verification-analyst", "dataPointers": ["/*"] },
+          { "participantAddress": "citizen", "dataPointers": ["/decision", "/verificationNotes"] }
+        ],
+        "routes": [
+          {
+            "id": "approved-to-claim",
+            "nextActionIds": [3],
+            "condition": { "==": [{ "var": "decision" }, "approved"] },
+            "description": "Approved — deliver the minted credential to the citizen's Claim Credential pending action",
+            "outputMapping": {
+              "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+              "/haip/credential_type":      "/credentialOffer/credential_type",
+              "/haip/expires_at":           "/credentialOffer/expires_at",
+              "/haip/offer_id":             "/credentialOffer/offer_id"
+            }
+          },
+          {
+            "id": "rejected-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Rejected — workflow ends with no credential issued"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Claim your AIAS credential",
+        "description": "Your AIAS identity credential is ready. Click Claim to deliver it to your Citizen Wallet PWA.",
+        "sender": "citizen",
+        "requiredPriorActions": [2],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "credentialOffer": {
+                "type": "object",
+                "title": "Credential Offer",
+                "x-credential-offer": true,
+                "properties": {
+                  "credential_offer_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Canonical OpenID4VCI offer URI"
+                  },
+                  "credential_type": {
+                    "type": "string",
+                    "description": "The credential type to be issued"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the credential offer expires"
+                  },
+                  "offer_id": {
+                    "type": "string",
+                    "description": "HAIP offer identifier for status polling"
+                  }
+                },
+                "required": ["credential_offer_uri"]
+              }
+            },
+            "required": ["credentialOffer"]
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 0,
+          "isTerminal": true,
+          "requireReason": false
+        },
+        "disclosures": [
+          { "participantAddress": "citizen", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "claimed-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Credential claimed — workflow complete"
+          }
+        ]
+      }
+    ]
+  }
+}

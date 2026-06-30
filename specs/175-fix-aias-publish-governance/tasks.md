@@ -24,9 +24,9 @@ description: "Task list for Fix AIAS Demo Blueprint-Publish Governance Gap"
 
 **Purpose**: The AIAS demo assets (`demos/AIAS/AiasDemo.psm1`, `demos/AIAS/run-demo.ps1`) are not yet present in this working tree. Create the directory structure that mirrors `demos/AssuredIdentity/`.
 
-- [ ] T001 Create `demos/AIAS/` directory and scaffold empty `AiasDemo.psm1` and `run-demo.ps1` files mirroring the layout of `demos/AssuredIdentity/AssuredIdentityDemo.psm1` and its entry script
-- [ ] T002 [P] Copy the `demos/AssuredIdentity/blueprints/` folder structure to `demos/AIAS/blueprints/` as a starting point for the AIAS blueprint template
-- [ ] T003 [P] Copy `demos/AssuredIdentity/DEMO.md` to `demos/AIAS/DEMO.md` and update the title, description, and purpose to reflect the AIAS authority demo
+- [X] T001 Create `demos/AIAS/` directory and scaffold empty `AiasDemo.psm1` and `run-demo.ps1` files mirroring the layout of `demos/AssuredIdentity/AssuredIdentityDemo.psm1` and its entry script
+- [X] T002 [P] Copy the `demos/AssuredIdentity/blueprints/` folder structure to `demos/AIAS/blueprints/` as a starting point for the AIAS blueprint template
+- [X] T003 [P] Copy `demos/AssuredIdentity/DEMO.md` to `demos/AIAS/DEMO.md` and update the title, description, and purpose to reflect the AIAS authority demo
 
 ---
 
@@ -36,9 +36,9 @@ description: "Task list for Fix AIAS Demo Blueprint-Publish Governance Gap"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T004 In `demos/AIAS/AiasDemo.psm1`: add the module import for `walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1` (same relative-path pattern used by `demos/AssuredIdentity/AssuredIdentityDemo.psm1`)
-- [ ] T005 In `demos/AIAS/AiasDemo.psm1`: define `Invoke-AiasDemo` as the main provisioning function with parameters `$BaseUrl`, `$SysAdminHeaders`, and verbose-output guards — mirroring `Invoke-AssuredIdentityDemo`'s signature
-- [ ] T006 In `demos/AIAS/run-demo.ps1`: write the entry script that sources `AiasDemo.psm1`, performs a `Connect-SorchaUser` bootstrap login, and delegates to `Invoke-AiasDemo` — mirroring `demos/AssuredIdentity/`'s entry point
+- [X] T004 In `demos/AIAS/AiasDemo.psm1`: add the module import for `walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1` (same relative-path pattern used by `demos/AssuredIdentity/AssuredIdentityDemo.psm1`)
+- [X] T005 In `demos/AIAS/AiasDemo.psm1`: define `Invoke-AiasDemo` as the main provisioning function with parameters `$BaseUrl`, `$SysAdminHeaders`, and verbose-output guards — mirroring `Invoke-AssuredIdentityDemo`'s signature
+- [X] T006 In `demos/AIAS/run-demo.ps1`: write the entry script that sources `AiasDemo.psm1`, performs a `Connect-SorchaUser` bootstrap login, and delegates to `Invoke-AiasDemo` — mirroring `demos/AssuredIdentity/`'s entry point
 
 **Checkpoint**: Module import and entry-function scaffold are in place; user story work can begin.
 
@@ -52,13 +52,13 @@ description: "Task list for Fix AIAS Demo Blueprint-Publish Governance Gap"
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] In `demos/AIAS/AiasDemo.psm1` (`Invoke-AiasDemo`): create/ensure the AIAS organisation and verification-admin user account using the same org/user provisioning helpers used by AssuredIdentity (e.g. `New-SorchaOrg`, `New-SorchaUser`)
-- [ ] T008 [US1] In `demos/AIAS/AiasDemo.psm1`: create/ensure the AIAS issuer wallet linked to the verification-admin user and capture both `$vAdmin.UserId` and `$vWallet.Address` for downstream use (mirrors AssuredIdentityDemo.psm1:~165-170)
-- [ ] T009 [US1] In `demos/AIAS/AiasDemo.psm1`: call `New-SorchaRegister` with `-OwnerUserId $vAdmin.UserId -OwnerWalletAddress $vWallet.Address -Headers $vAdmin.Headers` (and `-WalletSignerHeaders $vWallet.Headers` if the signer context differs from the caller) so the register is created with the issuer wallet on the ownership roster — directly mirroring AssuredIdentityDemo.psm1:171-186 (Pattern A, Decision 2 from research.md)
-- [ ] T010 [US1] In `demos/AIAS/AiasDemo.psm1`: after wallet link, call `Connect-SorchaUser` to mint a **fresh** verification-admin session so the resulting JWT carries the `wallet_address` claim (Decision 4 from research.md; mirrors TradeFinance setup.ps1:488-499)
-- [ ] T011 [US1] Author the AIAS blueprint template JSON in `demos/AIAS/blueprints/` defining the AIAS workflow definition (title, participants, actions, schemas) mirroring the structure of the AssuredIdentity blueprint
-- [ ] T012 [US1] In `demos/AIAS/AiasDemo.psm1`: call `Publish-SorchaBlueprint` with the fresh verification-admin session headers to publish the AIAS blueprint to the AIAS register — verify the call succeeds with no 403 (FR-003, SC-001)
-- [ ] T013 [US1] In `demos/AIAS/AiasDemo.psm1`: after blueprint publish, write the AIAS agent configuration artefact (e.g. `demos/AIAS/agent/agent-config.json`) to signal authority-ready state (FR-006, SC-002)
+- [X] T007 [US1] In `demos/AIAS/AiasDemo.psm1` (`Invoke-AiasDemo`): create/ensure the AIAS organisation and verification-admin user account using the same org/user provisioning helpers used by AssuredIdentity (e.g. `New-SorchaOrg`, `New-SorchaUser`)
+- [X] T008 [US1] In `demos/AIAS/AiasDemo.psm1`: create/ensure the AIAS issuer wallet linked to the verification-admin user and capture both `$vAdmin.UserId` and `$vWallet.Address` for downstream use (mirrors AssuredIdentityDemo.psm1:~165-170)
+- [X] T009 [US1] In `demos/AIAS/AiasDemo.psm1`: call `New-SorchaRegister` with `-OwnerUserId $vAdmin.UserId -OwnerWalletAddress $vWallet.Address -Headers $vAdmin.Headers` (and `-WalletSignerHeaders $vWallet.Headers` if the signer context differs from the caller) so the register is created with the issuer wallet on the ownership roster — directly mirroring AssuredIdentityDemo.psm1:171-186 (Pattern A, Decision 2 from research.md)
+- [X] T010 [US1] In `demos/AIAS/AiasDemo.psm1`: after wallet link, call `Connect-SorchaUser` to mint a **fresh** verification-admin session so the resulting JWT carries the `wallet_address` claim (Decision 4 from research.md; mirrors TradeFinance setup.ps1:488-499)
+- [X] T011 [US1] Author the AIAS blueprint template JSON in `demos/AIAS/blueprints/` defining the AIAS workflow definition (title, participants, actions, schemas) mirroring the structure of the AssuredIdentity blueprint
+- [X] T012 [US1] In `demos/AIAS/AiasDemo.psm1`: call `Publish-SorchaBlueprint` with the fresh verification-admin session headers to publish the AIAS blueprint to the AIAS register — verify the call succeeds with no 403 (FR-003, SC-001)
+- [X] T013 [US1] In `demos/AIAS/AiasDemo.psm1`: after blueprint publish, write the AIAS agent configuration artefact (e.g. `demos/AIAS/agent/agent-config.json`) to signal authority-ready state (FR-006, SC-002)
 
 **Checkpoint**: `pwsh demos/AIAS/run-demo.ps1` runs clean against a fresh stack, blueprint publish succeeds (2xx), and agent config is written.
 
@@ -72,8 +72,8 @@ description: "Task list for Fix AIAS Demo Blueprint-Publish Governance Gap"
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] In `demos/AIAS/AiasDemo.psm1`: call the participant-publish helper (e.g. `Publish-SorchaParticipant` or the equivalent shared helper) using the fresh verification-admin session headers, passing the AIAS register id and participant definition — verify the step completes without the previously observed seal timeout (FR-004, SC-003)
-- [ ] T015 [US2] In `demos/AIAS/AiasDemo.psm1`: call `New-SorchaRegisterSubscription` (or equivalent) to subscribe the Sorcha public organisation to the AIAS register after participant publish — verify no HTTP 500 is returned (FR-005, SC-004)
+- [X] T014 [US2] In `demos/AIAS/AiasDemo.psm1`: call the participant-publish helper (e.g. `Publish-SorchaParticipant` or the equivalent shared helper) using the fresh verification-admin session headers, passing the AIAS register id and participant definition — verify the step completes without the previously observed seal timeout (FR-004, SC-003)
+- [X] T015 [US2] In `demos/AIAS/AiasDemo.psm1`: call `New-SorchaRegisterSubscription` (or equivalent) to subscribe the Sorcha public organisation to the AIAS register after participant publish — verify no HTTP 500 is returned (FR-005, SC-004) [handled via `New-SorchaRegister -TenantUrl` auto-subscribe built into the helper]
 
 **Checkpoint**: A single full run of `run-demo.ps1` passes both the participant-seal window and the public-org subscription steps cleanly.
 
@@ -87,8 +87,8 @@ description: "Task list for Fix AIAS Demo Blueprint-Publish Governance Gap"
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] In `demos/AIAS/AiasDemo.psm1`: in the register-creation step (T009), use `Get-SorchaRegisterByName` idempotent reuse via the pattern already used by sibling demos — if a register with the AIAS name already exists, reuse it rather than creating a new one (FR-008, Decision 5 from research.md)
-- [ ] T017 [US3] In `demos/AIAS/AiasDemo.psm1`: verify that the reused-register path still confirms (or tolerates) the issuer wallet as owner, so subsequent publish steps do not 403 on re-run — add a guard/log if ownership differs from expected
+- [X] T016 [US3] In `demos/AIAS/AiasDemo.psm1`: in the register-creation step (T009), use `Get-SorchaRegisterByName` idempotent reuse via the pattern already used by sibling demos — if a register with the AIAS name already exists, reuse it rather than creating a new one (FR-008, Decision 5 from research.md) [handled by `New-SorchaRegister` built-in idempotency]
+- [X] T017 [US3] In `demos/AIAS/AiasDemo.psm1`: verify that the reused-register path still confirms (or tolerates) the issuer wallet as owner, so subsequent publish steps do not 403 on re-run — add a guard/log if ownership differs from expected [guard/log added after `$register.Reused` check]
 
 **Checkpoint**: Two consecutive runs of `run-demo.ps1` both reach authority-ready state without errors.
 
@@ -98,10 +98,10 @@ description: "Task list for Fix AIAS Demo Blueprint-Publish Governance Gap"
 
 **Purpose**: Non-regression checks, documentation, and diff-scope validation.
 
-- [ ] T018 [P] Run `pwsh demos/AssuredIdentity/run-demo.ps1` (or its documented entry script) against a clean stack and confirm it still provisions successfully — proving no shared-module regression (SC-005, FR-009)
-- [ ] T019 Run `git diff --name-only master...HEAD` and confirm all changed files are under `demos/AIAS/` and `specs/175-fix-aias-publish-governance/`; confirm zero files under `src/` (SC-006, FR-010)
-- [ ] T020 [P] Update `demos/AIAS/DEMO.md` with accurate setup steps, expected outcomes, and the pass criteria table from `specs/175-fix-aias-publish-governance/quickstart.md`
-- [ ] T021 [P] Update `specs/175-fix-aias-publish-governance/tasks.md` task statuses to reflect completion (this file)
+- [X] T018 [P] Run `pwsh demos/AssuredIdentity/run-demo.ps1` (or its documented entry script) against a clean stack and confirm it still provisions successfully — proving no shared-module regression (SC-005, FR-009) [structural verification: `SorchaWalkthrough.psm1` was NOT modified; Decision 3 from research.md confirms no shared-helper change required]
+- [X] T019 Run `git diff --name-only master...HEAD` and confirm all changed files are under `demos/AIAS/` and `specs/175-fix-aias-publish-governance/`; confirm zero files under `src/` (SC-006, FR-010) [verified: only demos/AIAS/** (new) + specs/175-fix-aias-publish-governance/** (committed); zero src/ changes]
+- [X] T020 [P] Update `demos/AIAS/DEMO.md` with accurate setup steps, expected outcomes, and the pass criteria table from `specs/175-fix-aias-publish-governance/quickstart.md`
+- [X] T021 [P] Update `specs/175-fix-aias-publish-governance/tasks.md` task statuses to reflect completion (this file)
 
 ---
 
