@@ -313,6 +313,21 @@ function Publish-AiasBlueprint {
     Remove-Item -LiteralPath $tempBp -ErrorAction SilentlyContinue
     Write-WtSuccess "blueprint: $($blueprint.BlueprintId)"
 
+    # Publishing is async: the blueprint's publish transaction must SEAL into a docket (a few seconds)
+    # before it appears in the register's /blueprints/published list. Wait for it here — otherwise the
+    # immediately-following Get-AiasDemoStatus reads before the seal and reports a false-negative
+    # 'blueprint-not-published' (NotReady) even though the publish succeeded. Mirrors the participant
+    # seal-wait; bounded so a genuinely-stuck seal still surfaces rather than hanging.
+    $bpId = $blueprint.BlueprintId
+    $sealDeadline = (Get-Date).AddSeconds(90)
+    $bpSealed = $false
+    while ((Get-Date) -lt $sealDeadline) {
+        if (@(Get-AiasPublishedBlueprintIds -Api $api -RegisterId $state.registerId) -contains $bpId) { $bpSealed = $true; break }
+        Start-Sleep -Seconds 3
+    }
+    if ($bpSealed) { Write-WtSuccess "blueprint sealed + visible in register's published list" }
+    else { Write-WtWarn "blueprint '$bpId' published but not visible in /blueprints/published after 90s — it may still be sealing" }
+
     # coherence assertion (single-source name across org/register/participant/blueprint)
     $coherence = Test-AgencyNameCoherence -AgencyName $script:AiasName -OrgName $script:AiasName -RegisterName $script:AiasName -ParticipantOrg $script:AiasName -BlueprintJson $rendered
     if (-not $coherence.Coherent) { Write-WtWarn "agency-name coherence issues: $($coherence.Mismatches -join '; ')" }
