@@ -68,16 +68,22 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             "PullDocketChain requested by peer {PeerId} for register {RegisterId} from version {FromVersion} (max {MaxDockets})",
             request.PeerId, request.RegisterId, request.FromVersion, request.MaxDockets);
 
+        // Feature 175 follow-up: read-through on cache MISS, not only on a fully-absent entry. The
+        // owning node holds an entry for its own register that is created by advertise/subscribe but
+        // never populated with its own dockets (those live in the co-located Register Service). Serving
+        // that empty entry returned "0 dockets" and short-circuited the authoritative fallback below —
+        // which is exactly why a foreign node's full-replica pull of a public register (e.g. the SSR)
+        // came back empty. Treat "entry present but no dockets in the requested range" the same as a
+        // miss and read through to the Register Service.
         var cacheEntry = _registerCache.Get(request.RegisterId);
-        if (cacheEntry != null)
+        var cachedDockets = cacheEntry?.GetDocketsFromVersion(request.FromVersion, request.MaxDockets);
+        if (cachedDockets is { Count: > 0 })
         {
-            // Serve from in-memory cache
-            var dockets = cacheEntry.GetDocketsFromVersion(request.FromVersion, request.MaxDockets);
             _logger.LogDebug(
                 "Streaming {Count} dockets from cache for register {RegisterId}",
-                dockets.Count, request.RegisterId);
+                cachedDockets.Count, request.RegisterId);
 
-            foreach (var docket in dockets)
+            foreach (var docket in cachedDockets)
             {
                 if (context.CancellationToken.IsCancellationRequested)
                     break;
@@ -98,13 +104,13 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
 
             _logger.LogDebug(
                 "PullDocketChain completed for register {RegisterId}: streamed {Count} dockets from cache",
-                request.RegisterId, dockets.Count);
+                request.RegisterId, cachedDockets.Count);
             return;
         }
 
-        // Fall back to Register Service for registers not in cache
+        // Cache absent OR present-but-empty for the requested range → authoritative read-through.
         _logger.LogInformation(
-            "Register {RegisterId} not in cache, falling back to Register Service",
+            "Register {RegisterId} not served from cache (absent/empty) — reading through to Register Service",
             request.RegisterId);
 
         await PullDocketChainFromRegisterServiceAsync(
@@ -126,11 +132,14 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             "PullDocketTransactions requested by peer {PeerId} for register {RegisterId} ({Count} transaction IDs)",
             request.PeerId, request.RegisterId, request.TransactionIds.Count);
 
+        // Feature 175 follow-up: an entry that exists but holds no transactions (the owning node's own
+        // register, never replicated into the peer cache) is a cache MISS, not a hit — read through to
+        // the Register Service instead of streaming an empty result.
         var cacheEntry = _registerCache.Get(request.RegisterId);
-        if (cacheEntry == null)
+        if (cacheEntry == null || cacheEntry.GetStatistics().TransactionCount == 0)
         {
             _logger.LogInformation(
-                "Register {RegisterId} not in cache, falling back to Register Service for {Count} transaction IDs",
+                "Register {RegisterId} not served from cache (absent/empty), reading {Count} transaction IDs through to Register Service",
                 request.RegisterId, request.TransactionIds.Count);
 
             await PullDocketTransactionsFromRegisterServiceAsync(
@@ -327,11 +336,13 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             "SubscribeToRegister requested by peer {PeerId} for register {RegisterId} from version {FromVersion}",
             request.PeerId, request.RegisterId, request.FromVersion);
 
+        // Feature 175 follow-up: empty-but-present entry (owner's own register) is a miss — poll the
+        // authoritative Register Service rather than a cache that will never fill on this node.
         var cacheEntry = _registerCache.Get(request.RegisterId);
-        if (cacheEntry == null)
+        if (cacheEntry == null || cacheEntry.GetStatistics().TransactionCount == 0)
         {
             _logger.LogInformation(
-                "Register {RegisterId} not in cache for live subscription, polling Register Service",
+                "Register {RegisterId} not served from cache (absent/empty) for live subscription, polling Register Service",
                 request.RegisterId);
 
             await SubscribeToRegisterFromRegisterServiceAsync(
