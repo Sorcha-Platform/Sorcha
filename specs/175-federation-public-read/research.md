@@ -120,11 +120,27 @@ failure is **TLS/transport** on the gRPC channel. **F136 only bites the register
   (cleartext-mesh compatible); present-but-invalid/replayed ⇒ refused fail-closed.
 
 ### Phase C — anonymous read + ingest guard (COMPLETE, committed, +6 tests)
-- **T020/T022** `/api/public/registers/{id}` (+ `/dockets`, `/dockets/{n}`) — anonymous, gated
-  per-request on `Advertise`; non-public ⇒ 403; `Relaxed` (burst-tolerant) rate limit.
+- **T020/T022** anonymous public read, gated per-request on `Advertise`; non-public ⇒ 403; `Relaxed`
+  (burst-tolerant) rate limit. **Refined in follow-up:** folded into the CANONICAL register/docket read
+  endpoints (`GET /api/registers/{id}`, `/dockets`, `/dockets/{n}`) as credential-gated reads — the
+  separate `/api/public/registers` namespace was removed (a public register has one URI whether read
+  anonymously or authenticated). `CanReadTransactions`/`RequireAuthenticated` are both
+  `RequireAuthenticatedUser`, so "anonymous-or-public" is a proper superset (no authz weakening).
 - **T021 (reuse-in-place, revised)** register-identity binding on the create-on-sync genesis path
   (reject if the synced control record's `RegisterId` ≠ route). **NOT** a relocation of the full
   verification into the Register ingest — see the architectural decision below.
+
+### Follow-up (live-validation findings, 2026-07-01) — branch `175-followup-readthrough-cache`
+Two-installation live test (local `Phaethon` ↔ n1 `sorcha`) PROVED Phase B: the peer link connects
+cross-installation (was the ~60ms fast-fail) — my accept-any-cert also tolerated the corp-proxy's
+`PartialChain`-intercepted TLS. But the SSR still synced **0 dockets**. Root cause (NOT transport, NOT
+F136): the peer docket-sync serving path (`RegisterSyncGrpcService`) only read through to the Register
+Service when the cache entry was **entirely absent**; the owning node holds an **empty** cache entry
+for its own register (created by advertise/subscribe, never populated with its own dockets), which
+short-circuited the read-through and served "0 dockets". **Fix:** treat an empty/insufficient cache
+entry as a MISS and read through to the Register Service in `PullDocketChain` /
+`PullDocketTransactions` / `SubscribeToRegister`. Server-side (owner) change; the pulling node is
+unchanged. (Aligns with the OPS-011 read-through-store direction.)
 
 ### ⚑ Architectural decision (flagged for a future ADR) — Register service should own docket integrity
 **Finding:** verify-on-replicate **already runs fail-closed *before* persist**, but it lives in the

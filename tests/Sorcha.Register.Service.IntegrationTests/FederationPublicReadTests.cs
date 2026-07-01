@@ -43,7 +43,7 @@ public class FederationPublicReadTests : IAsyncLifetime
         var registerId = await SeedRegisterAsync(advertise: true);
         using var anon = _factory.CreateUnauthenticatedClient();
 
-        var response = await anon.GetAsync($"/api/public/registers/{registerId}/");
+        var response = await anon.GetAsync($"/api/registers/{registerId}");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
             "a public register is open data readable with no credential (FR-001)");
@@ -55,7 +55,7 @@ public class FederationPublicReadTests : IAsyncLifetime
         var registerId = await SeedRegisterAsync(advertise: true);
         using var anon = _factory.CreateUnauthenticatedClient();
 
-        var response = await anon.GetAsync($"/api/public/registers/{registerId}/dockets");
+        var response = await anon.GetAsync($"/api/registers/{registerId}/dockets");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
             "a puller replicates the public register's sealed docket chain anonymously");
@@ -69,7 +69,7 @@ public class FederationPublicReadTests : IAsyncLifetime
         var registerId = await SeedRegisterAsync(advertise: false);
         using var anon = _factory.CreateUnauthenticatedClient();
 
-        var response = await anon.GetAsync($"/api/public/registers/{registerId}/");
+        var response = await anon.GetAsync($"/api/registers/{registerId}");
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
             "a non-advertised register is never exposed on the anonymous path (FR-004/FR-007, SC-004)");
@@ -81,7 +81,7 @@ public class FederationPublicReadTests : IAsyncLifetime
         var registerId = await SeedRegisterAsync(advertise: false);
         using var anon = _factory.CreateUnauthenticatedClient();
 
-        var response = await anon.GetAsync($"/api/public/registers/{registerId}/dockets");
+        var response = await anon.GetAsync($"/api/registers/{registerId}/dockets");
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -91,7 +91,7 @@ public class FederationPublicReadTests : IAsyncLifetime
     {
         using var anon = _factory.CreateUnauthenticatedClient();
 
-        var response = await anon.GetAsync($"/api/public/registers/{Guid.NewGuid():N}/");
+        var response = await anon.GetAsync($"/api/registers/{Guid.NewGuid():N}");
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

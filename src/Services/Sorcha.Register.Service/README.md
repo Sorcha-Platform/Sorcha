@@ -267,23 +267,27 @@ REGISTER__EVENTPROVIDER="AspireMessaging"
 
 Cross-installation federation: a **public** (advertised) register is open data, readable by any node —
 including one from another installation holding **no credential here** — so it can bootstrap trust by
-replicating and cryptographically verifying the register on its own side. Access is gated **strictly
-per-request on the register's `Advertise` flag** (a public→private flip takes effect immediately); a
-non-advertised register is refused **403** and never disclosed. These endpoints are **anonymous** and
-**rate-limited** (burst-tolerant `Relaxed` policy — a full-register replication pull is not throttled).
-Private registers and **all writes** keep their existing auth (no cross-installation write).
+replicating and cryptographically verifying the register on its own side. There is **no separate
+public URL namespace**: the canonical register/docket **read** endpoints are **credential-gated** —
+the credential (or its absence + the register's `Advertise` flag) governs the read. An **anonymous**
+caller may read a register/docket only when the register is **public** (advertised); a private
+register requires authentication. The gate is per-request, so a public→private flip takes effect
+immediately. The read endpoints are **rate-limited** (burst-tolerant `Relaxed` policy — a full-register
+replication pull is not throttled). **All writes** keep their existing auth (no cross-installation write).
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/public/registers/{registerId}` | Anonymous read of a public register (403 if not advertised) |
-| GET | `/api/public/registers/{registerId}/dockets` | Anonymous read of a public register's docket chain |
-| GET | `/api/public/registers/{registerId}/dockets/{docketId}` | Anonymous read of a single public docket |
+| Method | Endpoint | Anonymous access |
+|--------|----------|------------------|
+| GET | `/api/registers/{id}` | When public (advertised); else 403 to anonymous, 404 if unknown |
+| GET | `/api/registers/{registerId}/dockets` | When public; else 403 to anonymous |
+| GET | `/api/registers/{registerId}/dockets/{docketId}` | When public; else 403 to anonymous |
 
 > Peer federation authenticates by **node identity** (self-signed P-256 node cert, mTLS), not an
-> installation-scoped service token — see the Peer Service. Replicated dockets are verified fail-closed
-> before persist (`DocketFinalizationService`); a create-on-sync genesis whose control-record
-> `RegisterId` disagrees with its slot is rejected. A future ADR moves full docket verification into
-> the Register service (see `specs/175-federation-public-read/research.md`).
+> installation-scoped service token — see the Peer Service. The peer docket-sync serving path reads
+> **through to this Register Service on a cache miss** (including an empty owner-cache entry), so a
+> public register's dockets are served for replication even when the owning node's peer cache is cold.
+> Replicated dockets are verified fail-closed before persist (`DocketFinalizationService`); a
+> create-on-sync genesis whose control-record `RegisterId` disagrees with its slot is rejected. A future
+> ADR moves full docket verification into the Register service (see `specs/175-federation-public-read/research.md`).
 
 ### OData Query Endpoint
 
