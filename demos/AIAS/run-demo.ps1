@@ -20,12 +20,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Import the shared walkthrough helpers directly (not just transitively via AiasDemo) so the
-# Write-Wt* presentation cmdlets are in THIS script's scope — AiasDemo imports them as a nested
-# module, which does not re-export them to the caller, so run-demo's own banner/info calls below
-# would otherwise fail with "Write-WtBanner is not recognized" once provisioning returns.
-Import-Module (Join-Path $PSScriptRoot "../../walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1") -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot "AiasDemo.psm1") -Force -DisableNameChecking
+# Import the shared walkthrough helpers directly AFTER AiasDemo so the Write-Wt* presentation cmdlets
+# are in THIS script's scope for run-demo's own banner/info calls below. It must come last: AiasDemo
+# imports SorchaWalkthrough as a nested module with -Force, and that -Force removes+reimports the
+# module into AiasDemo's scope — evicting it from the caller's scope. Importing it here (after
+# AiasDemo has loaded) makes run-demo's the winning, script-scoped import. Otherwise the tail banner
+# calls fail with "Write-WtBanner is not recognized" once provisioning returns.
+Import-Module (Join-Path $PSScriptRoot "../../walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1") -Force -DisableNameChecking
 
 # One idempotent call: org -> master key -> blueprint -> agent config + launch.
 $result = Initialize-AiasDemo -Target $Target -StateFile $StateFile -Force:$Force.IsPresent
