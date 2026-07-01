@@ -2157,6 +2157,25 @@ public class ValidationEngine : IValidationEngine
                 {
                     obj.Remove(key);
                 }
+
+                // Relax the "type" constraint on file-reference fields. A field declared
+                // { "type": "string", "format": "file-reference" } carries an OBJECT at
+                // runtime (the FileReference: fileName/hash/chunkTransactionIds/... plus, for
+                // F107 portrait capture, a tokenImageBase64 sibling) — never a plain string.
+                // The JSON-Schema "type" check therefore spuriously fails VAL_SCHEMA_004
+                // ("Value is object but should be string") whenever the payload is visible to
+                // the validator (DevMode / publicly-disclosed registers; encrypted registers
+                // skip schema validation entirely, which is why this stayed latent). Structural
+                // integrity of file references is enforced separately by ValidateFileReferences,
+                // so drop the "type" keyword here and let any value shape through.
+                if (obj.TryGetPropertyValue("format", out var formatNode) &&
+                    formatNode is JsonValue formatValue &&
+                    formatValue.TryGetValue<string>(out var formatStr) &&
+                    string.Equals(formatStr, "file-reference", StringComparison.Ordinal))
+                {
+                    obj.Remove("type");
+                }
+
                 foreach (var kvp in obj)
                 {
                     StripXPrefixedKeysRecursive(kvp.Value);
