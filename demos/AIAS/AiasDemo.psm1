@@ -36,7 +36,7 @@ $script:AssuredLib = Join-Path $PSScriptRoot "../AssuredIdentity/lib"
 
 # --- well-known ids / constants ---------------------------------------------
 $script:PublicOrgId  = "00000000-0000-0000-0000-000000000002"
-$script:AiasName     = "Acme Identity Assurance Services (AIAS)"
+$script:AiasName     = "Acme Identity Assurance Services"
 $script:AiasSubdomain = "aias"
 
 # --- target table (single-installation; Docker-first, or n1) ----------------

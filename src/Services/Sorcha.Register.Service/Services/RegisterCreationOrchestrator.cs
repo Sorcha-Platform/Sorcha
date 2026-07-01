@@ -86,6 +86,21 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             throw new ArgumentException("At least one owner is required to create a register.");
         }
 
+        // Validate the register name at the INPUT BOUNDARY (fail-fast), not deep inside FinalizeAsync
+        // after attestations have already been signed. The same 1..38 rule is enforced again by
+        // ValidateControlRecord (finalize) and RegisterManager.CreateRegisterAsync (persist); checking
+        // it here turns a silent late failure into a clear 400 on the very first call. (F174/F175 —
+        // a 39-char name previously threw only at finalize and was masked as a partial success.)
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            throw new ArgumentException("Register name is required.");
+        }
+        if (request.Name.Length > 38)
+        {
+            throw new ArgumentException(
+                $"Register name must be 38 characters or less (was {request.Name.Length}: '{request.Name}').");
+        }
+
         _logger.LogInformation(
             "Initiating register creation for name '{Name}' with {OwnerCount} owner(s)",
             request.Name,
