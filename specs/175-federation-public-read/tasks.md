@@ -6,6 +6,13 @@
 coding until confirmed. `[P]` = parallelizable (different files, no dependency). Each task names its
 target area; exact paths finalise in Phase A.
 
+> **Status (2026-07-01):** Phase A ✅ · Phase B ✅ (T010–T013, peer suite 733/733) · Phase C ✅
+> (T020/T022 anonymous read; T021 revised to reuse-in-place RegisterId-match — full verify-on-replicate
+> relocation deferred to a flagged ADR, see `research.md` "Register service should own docket integrity")
+> · Phase D ✅ (write-refusal covered by Phase C tests; F136 authed rejection unchanged — existing tests)
+> · Phase E: docs done here; **T040 two-node e2e is the live-validation step** (run against a real
+> two-installation setup, not an automated CI test). PR #1073.
+
 ---
 
 ## Phase A — Verify the seams (resolve O1–O4 before touching code)

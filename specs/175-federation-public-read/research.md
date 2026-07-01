@@ -105,3 +105,47 @@ failure is **TLS/transport** on the gRPC channel. **F136 only bites the register
    persisted regardless of delivering peer.
 4. Phase B slightly larger than first scoped (net-new peer identity). Phase C's verify sub-task is
    **reuse+relocate**, not greenfield. **Gate cleared — ready for Phase B on confirmation.**
+
+---
+
+## Implementation outcome (2026-07-01)
+
+### Phase B — node-identity peer auth (COMPLETE, committed, peer suite 733/733)
+- `INodeIdentityProvider` self-signed P-256 node cert (thumbprint = installation-neutral identity).
+- **T011a** `FederationChannel`: outbound peer channel presents the node cert (mTLS client) + accepts a
+  peer's self-signed server cert (accept-any callback) — fixes O4 (~60ms fast-fail on n1:50051).
+  Server-side mTLS terminates only under `PeerService:EnableTls`; local/Docker/test cleartext unchanged.
+- **T011b** `GetRegistrationChallenge` RPC + optional signed proof on `RegisterPeer`
+  (`NodeChallenge`/`PeerChallengeStore`, replay-resistant). Absent proof ⇒ registers *unverified*
+  (cleartext-mesh compatible); present-but-invalid/replayed ⇒ refused fail-closed.
+
+### Phase C — anonymous read + ingest guard (COMPLETE, committed, +6 tests)
+- **T020/T022** `/api/public/registers/{id}` (+ `/dockets`, `/dockets/{n}`) — anonymous, gated
+  per-request on `Advertise`; non-public ⇒ 403; `Relaxed` (burst-tolerant) rate limit.
+- **T021 (reuse-in-place, revised)** register-identity binding on the create-on-sync genesis path
+  (reject if the synced control record's `RegisterId` ≠ route). **NOT** a relocation of the full
+  verification into the Register ingest — see the architectural decision below.
+
+### ⚑ Architectural decision (flagged for a future ADR) — Register service should own docket integrity
+**Finding:** verify-on-replicate **already runs fail-closed *before* persist**, but it lives in the
+**Peer service** (`DocketFinalizationService.FinalizeAsync`: system-register genesis trust, validator
+roster, chain integrity, docket hash, proposer signature) — it verifies, then POSTs to the Register
+service's `WriteDocket`, which **trusts the caller** ("the peer already verified", `Program.cs:~1490`).
+`WriteDocket` (shared with the Validator's local-seal writes) is protected by the `CanWriteDockets`
+service policy, so a foreign installation cannot call it; the SSR (demo-critical) is verified at
+`DocketFinalizationService` step 0 against the trusted genesis file.
+
+**Decision (this feature):** do the **cheap, robust** integrity win now (RegisterId-match on create-on-
+sync) and **NOT** port the whole verification subsystem (`ValidatorKeyCache`, `DocketHasher`,
+`SystemRegisterSyncVerifier`) into the core write path — high-risk and largely redundant, and full
+genesis-attestation re-verification on the sync path would have to replicate the exact attestation
+canonicalization the code deliberately avoids (`RegisterCreationOrchestrator` verifies against hashes
+*stored at initiation*, not re-serialized data).
+
+**Future ADR (owner: Stuart):** architecturally the **Register service is responsible for register
+integrity** and should **own** docket verification — move (or authoritatively duplicate) the
+`DocketFinalizationService` verification into the Register ingest so persistence never depends on the
+delivering peer having verified. Scope: relocate the 5-step verification + roster cache + genesis-trust
+verifier into Register.Service (or a shared Core lib), run it in `WriteDocket` fail-closed for the
+replication path without breaking the Validator's local-seal path, and add general-register
+genesis-attestation signature verification. Tracked as follow-up, not required for the AIAS unblock.

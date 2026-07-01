@@ -263,6 +263,28 @@ REGISTER__EVENTPROVIDER="AspireMessaging"
 | GET | `/api/registers/{registerId}/dockets/{docketId}` | Get docket by ID (block height) |
 | GET | `/api/registers/{registerId}/dockets/{docketId}/transactions` | Get transactions in docket |
 
+### Public Federation — anonymous read (Feature 175)
+
+Cross-installation federation: a **public** (advertised) register is open data, readable by any node —
+including one from another installation holding **no credential here** — so it can bootstrap trust by
+replicating and cryptographically verifying the register on its own side. Access is gated **strictly
+per-request on the register's `Advertise` flag** (a public→private flip takes effect immediately); a
+non-advertised register is refused **403** and never disclosed. These endpoints are **anonymous** and
+**rate-limited** (burst-tolerant `Relaxed` policy — a full-register replication pull is not throttled).
+Private registers and **all writes** keep their existing auth (no cross-installation write).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/public/registers/{registerId}` | Anonymous read of a public register (403 if not advertised) |
+| GET | `/api/public/registers/{registerId}/dockets` | Anonymous read of a public register's docket chain |
+| GET | `/api/public/registers/{registerId}/dockets/{docketId}` | Anonymous read of a single public docket |
+
+> Peer federation authenticates by **node identity** (self-signed P-256 node cert, mTLS), not an
+> installation-scoped service token — see the Peer Service. Replicated dockets are verified fail-closed
+> before persist (`DocketFinalizationService`); a create-on-sync genesis whose control-record
+> `RegisterId` disagrees with its slot is rejected. A future ADR moves full docket verification into
+> the Register service (see `specs/175-federation-public-read/research.md`).
+
 ### OData Query Endpoint
 
 | Method | Endpoint | Description |
