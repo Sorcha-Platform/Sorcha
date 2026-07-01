@@ -156,6 +156,25 @@ public class RegisterEndpointsTests : IAsyncLifetime
             HttpStatusCode.InternalServerError);
     }
 
+    [Fact]
+    public async Task InitiateRegisterCreation_NameOver38Chars_ReturnsBadRequest()
+    {
+        // Feature 174: the 1..38 register-name rule is validated at the initiate INPUT BOUNDARY
+        // (fail-fast), not silently deep inside finalize after attestations are signed. A 39-char
+        // name must be refused up front with a clear 400 rather than a masked partial success.
+        using var client = _factory.CreateServiceClient(); // CanManageRegisters (service token)
+        var body = new
+        {
+            name = new string('A', 39),
+            owners = new[] { new { walletId = "ws11qtestownerwallet0000000000000000000000" } }
+        };
+
+        var response = await client.PostAsJsonAsync("/api/registers/initiate", body);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            "a register name over 38 characters must fail fast at initiate");
+    }
+
     #region Internal Endpoint Auth Tests
 
     [Fact]

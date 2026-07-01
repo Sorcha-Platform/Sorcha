@@ -37,6 +37,10 @@ public class RegisterServiceWebApplicationFactory : SorchaWebApplicationFactory<
             ["RegisterStorage:Type"] = "InMemory",
             ["ConnectionStrings:MongoDB"] = "",
             ["SystemWalletSigning:ValidatorId"] = "test-validator-id",
+            // Register-creation endpoints resolve a ValidatorServiceClient, whose ctor requires an
+            // address. A dummy is sufficient for tests that fail before any validator call (e.g.
+            // input-boundary validation at initiate).
+            ["ServiceClients:ValidatorService:Address"] = "http://localhost:9/",
         });
     }
 

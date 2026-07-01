@@ -20,6 +20,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Import the shared walkthrough helpers directly (not just transitively via AiasDemo) so the
+# Write-Wt* presentation cmdlets are in THIS script's scope — AiasDemo imports them as a nested
+# module, which does not re-export them to the caller, so run-demo's own banner/info calls below
+# would otherwise fail with "Write-WtBanner is not recognized" once provisioning returns.
+Import-Module (Join-Path $PSScriptRoot "../../walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1") -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot "AiasDemo.psm1") -Force -DisableNameChecking
 
 # One idempotent call: org -> master key -> blueprint -> agent config + launch.
