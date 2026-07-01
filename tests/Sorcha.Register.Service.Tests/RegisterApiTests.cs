@@ -105,9 +105,9 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
         // Act
         var response = await _client.PostAsJsonAsync("/api/registers/initiate", request);
 
-        // Assert — initiate phase generates a register ID regardless of name content;
-        // name validation occurs during finalize when the control record is verified
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        // Assert — an empty name is rejected fast at the initiate INPUT BOUNDARY (Feature 174),
+        // before any attestations are signed (initiate maps ArgumentException -> 400).
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
