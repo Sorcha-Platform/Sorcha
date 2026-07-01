@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Google.Protobuf;
+using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Identity;
 using Sorcha.Peer.Service.Observability;
 using Sorcha.Peer.Service.Protos;
 using System.Collections.Concurrent;
@@ -34,6 +37,7 @@ public class PeerConnectionPool : IAsyncDisposable
     private readonly PeerServiceMetrics _metrics;
     private readonly PeerServiceActivitySource _activitySource;
     private readonly PeerServiceConfiguration _configuration;
+    private readonly INodeIdentityProvider? _nodeIdentity;
     private readonly ConcurrentDictionary<string, PeerConnection> _connections;
     private readonly ConcurrentDictionary<string, CircuitBreaker> _circuitBreakers;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
@@ -55,13 +59,18 @@ public class PeerConnectionPool : IAsyncDisposable
         PeerListManager peerListManager,
         IOptions<PeerServiceConfiguration> configuration,
         PeerServiceMetrics metrics,
-        PeerServiceActivitySource activitySource)
+        PeerServiceActivitySource activitySource,
+        INodeIdentityProvider? nodeIdentity = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _activitySource = activitySource ?? throw new ArgumentNullException(nameof(activitySource));
+        // Feature 175: optional so the 17 existing test construction sites (and any pre-federation host)
+        // keep compiling and fall back to a plain, certificate-less handler. DI supplies the registered
+        // singleton, giving real hosts their node identity on the peer channel.
+        _nodeIdentity = nodeIdentity;
 
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
         MaxConnections = _configuration.PeerDiscovery.MaxPeersInList;
@@ -443,6 +452,11 @@ public class PeerConnectionPool : IAsyncDisposable
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TimeSpan.FromSeconds(10));
 
+            // Feature 175: prove node identity by signing a server-issued challenge nonce. Best-effort —
+            // if we have no node identity, or the remote is an older peer without the challenge RPC, we
+            // register without proof (the remote records us unverified, as before).
+            await TryAttachNodeIdentityProofAsync(client, request, cts.Token);
+
             var response = await client.RegisterPeerAsync(request, cancellationToken: cts.Token);
 
             if (response.Success)
@@ -459,6 +473,38 @@ public class PeerConnectionPool : IAsyncDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to re-register with peer {PeerId}", peerId);
+        }
+    }
+
+    /// <summary>
+    /// Feature 175: requests a registration challenge from the remote peer, signs the nonce with this
+    /// node's identity key, and attaches the proof (nonce + signature + public key) to
+    /// <paramref name="request"/>. Best-effort: no-ops when this node has no identity, and swallows an
+    /// <c>Unimplemented</c> status from older peers that predate the challenge RPC.
+    /// </summary>
+    private async Task TryAttachNodeIdentityProofAsync(
+        PeerDiscovery.PeerDiscoveryClient client, RegisterPeerRequest request, CancellationToken cancellationToken)
+    {
+        if (_nodeIdentity is null) return;
+
+        try
+        {
+            var challenge = await client.GetRegistrationChallengeAsync(
+                new RegistrationChallengeRequest { RequestingPeerId = _configuration.ResolvedPeerId },
+                cancellationToken: cancellationToken);
+
+            request.ChallengeNonce = challenge.Nonce;
+            request.NodeSignature = ByteString.CopyFrom(_nodeIdentity.SignChallenge(
+                Identity.NodeChallenge.NonceBytes(challenge.Nonce)));
+            request.NodePublicKey = ByteString.CopyFrom(_nodeIdentity.ExportPublicKey());
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented)
+        {
+            _logger.LogDebug("Remote peer does not support node-identity challenge — registering unverified");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to attach node-identity proof — registering unverified");
         }
     }
 
@@ -534,15 +580,12 @@ public class PeerConnectionPool : IAsyncDisposable
 
     private GrpcChannel CreateChannel(string address)
     {
+        // Feature 175: present the node identity certificate for cross-installation mTLS and accept the
+        // peer's self-signed server certificate (federation trusts data crypto, not TLS PKI). Falls back
+        // to a plain handler when no node identity is wired. On a cleartext peer the TLS options are unused.
         return GrpcChannel.ForAddress(address, new GrpcChannelOptions
         {
-            HttpHandler = new SocketsHttpHandler
-            {
-                PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
-                KeepAlivePingDelay = TimeSpan.FromSeconds(60),
-                KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
-                EnableMultipleHttp2Connections = true
-            }
+            HttpHandler = FederationChannel.CreateHandler(_nodeIdentity?.Certificate)
         });
     }
 

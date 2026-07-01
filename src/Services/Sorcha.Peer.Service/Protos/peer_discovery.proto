@@ -33,6 +33,26 @@ service PeerDiscovery {
   // Returns peers that advertise the given register, enabling
   // targeted sync and gossip for register-scoped operations.
   rpc FindPeersForRegister(FindPeersForRegisterRequest) returns (FindPeersForRegisterResponse);
+
+  // Feature 175: obtain a one-time challenge nonce that the caller signs with its node key to
+  // prove node-identity possession during RegisterPeer. Optional — legacy/cleartext peers that
+  // skip this still register (unverified), preserving intra-installation behaviour.
+  rpc GetRegistrationChallenge(RegistrationChallengeRequest) returns (RegistrationChallengeResponse);
+}
+
+// Request for a registration challenge nonce (Feature 175)
+message RegistrationChallengeRequest {
+  // Peer that intends to register (binds the nonce to this identity)
+  string requesting_peer_id = 1;
+}
+
+// Response carrying a one-time challenge nonce (Feature 175)
+message RegistrationChallengeResponse {
+  // Opaque nonce the caller must sign and echo in RegisterPeerRequest
+  string nonce = 1;
+
+  // Unix-seconds expiry after which the nonce is refused
+  int64 expires_at_unix = 2;
 }
 
 // Request for peer list
@@ -100,12 +120,23 @@ message PeerRegisterAdvertisement {
 // Request to register as a peer
 message RegisterPeerRequest {
   PeerInfo peer_info = 1;
+
+  // Feature 175 — optional node-identity proof. Absent ⇒ registers unverified (backward compatible,
+  // as before node identity existed). When present: node_signature is over challenge_nonce (its UTF-8
+  // bytes) produced with the node's P-256 private key, and node_public_key is the SubjectPublicKeyInfo
+  // (DER) the server uses to verify it. A proof that is present-but-invalid is refused (fail-closed).
+  string challenge_nonce = 2;
+  bytes node_signature = 3;
+  bytes node_public_key = 4;
 }
 
 // Response to registration request
 message RegisterPeerResponse {
   bool success = 1;
   string message = 2;
+
+  // Feature 175 — true when the caller supplied a valid node-identity proof for this registration.
+  bool node_identity_verified = 3;
 }
 
 // Ping request for health check
