@@ -128,6 +128,19 @@ public class SchemaValidator : ISchemaValidator
                 {
                     obj.Remove(key);
                 }
+
+                // Relax the "type" constraint on file-reference fields — their runtime value is
+                // a FileReference OBJECT (plus, for F107 portrait capture, a tokenImageBase64
+                // sibling), never the declared "string". Structural validation lives in
+                // FileReferenceValidator. Mirrors ValidationEngine.StripXPrefixedKeysRecursive.
+                if (obj.TryGetPropertyValue("format", out var formatNode) &&
+                    formatNode is JsonValue formatValue &&
+                    formatValue.TryGetValue<string>(out var formatStr) &&
+                    string.Equals(formatStr, "file-reference", StringComparison.Ordinal))
+                {
+                    obj.Remove("type");
+                }
+
                 foreach (var kvp in obj)
                 {
                     StripInPlace(kvp.Value);

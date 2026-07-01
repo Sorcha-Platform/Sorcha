@@ -93,6 +93,48 @@ public class SchemaValidatorTests
     }
 
     [Fact]
+    public async Task ValidateAsync_FileReferenceFieldWithObjectValue_ValidatesAsPass()
+    {
+        // A field declared { "type": "string", "format": "file-reference" } carries an OBJECT at
+        // runtime (the FileReference plus, for F107 portrait capture, a tokenImageBase64 sibling),
+        // never a plain string. The "type" constraint must be relaxed for file-reference fields or
+        // the object value spuriously fails ("Value is object but should be string"). Structural
+        // integrity is enforced separately by FileReferenceValidator. Regression for the AIAS
+        // portrait-seal bug (Feature 174): a portrait-bearing Action 1 was rejected by the validator
+        // (VAL_SCHEMA_004) and therefore never sealed.
+        var schema = JsonNode.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "name": { "type": "string" },
+                "portrait": {
+                    "type": "string",
+                    "format": "file-reference",
+                    "x-file": { "accept": ["image/jpeg"], "embedAs": "image-token-jpeg-240x320" }
+                }
+            },
+            "required": ["name"]
+        }
+        """);
+
+        var data = new Dictionary<string, object>
+        {
+            ["name"] = "Alice",
+            ["portrait"] = new Dictionary<string, object>
+            {
+                ["tokenImageBase64"] = "/9j/4AAQSkZJRg=="
+            }
+        };
+
+        var result = await _validator.ValidateAsync(data, schema!);
+
+        result.IsValid.Should().BeTrue(
+            "file-reference fields carry an object value and must validate as pass; errors: {0}",
+            string.Join(" | ", result.Errors.Select(e => $"{e.InstanceLocation}:{e.Message}")));
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ValidateAsync_MissingRequiredField_ReturnsInvalid()
     {
         // Arrange
