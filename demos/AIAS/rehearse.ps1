@@ -30,8 +30,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path $PSScriptRoot "../../walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1") -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot "AiasDemo.psm1") -Force -DisableNameChecking
+# SorchaWalkthrough LAST: AiasDemo nested-imports it with -Force, which evicts it from the caller's
+# scope, so re-import it here to win the script-scoped copy (Write-Wt* cmdlets). Same fix as run-demo.
+Import-Module (Join-Path $PSScriptRoot "../../walkthroughs/modules/SorchaWalkthrough/SorchaWalkthrough.psm1") -Force -DisableNameChecking
+
+# The demo's generic lib helpers (Read-DemoState, Get-DemoApiBase, Import-DemoSecrets,
+# Connect-DemoNodeAdmin) are dot-sourced by AiasDemo into ITS module scope and are NOT re-exported,
+# so this script's own script-level calls to them fail with "not recognized". Dot-source them here
+# too (same units AiasDemo uses) so rehearse resolves them in its own scope.
+$script:AssuredLib = Join-Path $PSScriptRoot "../AssuredIdentity/lib"
+. (Join-Path $script:AssuredLib "Common.ps1")     # Get-DemoApiBase
+. (Join-Path $script:AssuredLib "DemoState.ps1")  # Read/Write/Merge-DemoState
+. (Join-Path $script:AssuredLib "Auth.ps1")       # Import-DemoSecrets, Connect-DemoNodeAdmin
 
 $state = Read-DemoState -Path $StateFile
 if (-not $state) { Write-WtFail "No state.json — run ./run-demo.ps1 -Target $Target first."; exit 2 }
@@ -57,7 +68,7 @@ function New-RehearsalApplicant {
     $publicOrgId = "00000000-0000-0000-0000-000000000002"
     $pu = Invoke-SorchaApi -Method GET -Uri "$api/organizations/$publicOrgId/users?includeInactive=true" -Headers $admin.Headers
     $u = $pu.users | Where-Object { $_.email -eq $email } | Select-Object -First 1
-    if ($u) { Confirm-SorchaUserEmail -TenantUrl $api -OrganizationId $publicOrgId -UserId $u.id -Headers $admin.Headers }
+    if ($u) { $null = Confirm-SorchaUserEmail -TenantUrl $api -OrganizationId $publicOrgId -UserId $u.id -Headers $admin.Headers }
 
     $session = Connect-SorchaUser -TenantUrl $api -Email $email -Password $pw -OrganizationId $publicOrgId
     $wallet = New-SorchaWallet -WalletUrl $api -Name "Rehearsal $Tag Wallet" -Headers $session.Headers -FetchPublicKey
