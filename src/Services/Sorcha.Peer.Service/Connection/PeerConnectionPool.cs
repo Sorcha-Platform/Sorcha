@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Google.Protobuf;
+using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -450,6 +452,11 @@ public class PeerConnectionPool : IAsyncDisposable
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TimeSpan.FromSeconds(10));
 
+            // Feature 175: prove node identity by signing a server-issued challenge nonce. Best-effort —
+            // if we have no node identity, or the remote is an older peer without the challenge RPC, we
+            // register without proof (the remote records us unverified, as before).
+            await TryAttachNodeIdentityProofAsync(client, request, cts.Token);
+
             var response = await client.RegisterPeerAsync(request, cancellationToken: cts.Token);
 
             if (response.Success)
@@ -466,6 +473,38 @@ public class PeerConnectionPool : IAsyncDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to re-register with peer {PeerId}", peerId);
+        }
+    }
+
+    /// <summary>
+    /// Feature 175: requests a registration challenge from the remote peer, signs the nonce with this
+    /// node's identity key, and attaches the proof (nonce + signature + public key) to
+    /// <paramref name="request"/>. Best-effort: no-ops when this node has no identity, and swallows an
+    /// <c>Unimplemented</c> status from older peers that predate the challenge RPC.
+    /// </summary>
+    private async Task TryAttachNodeIdentityProofAsync(
+        PeerDiscovery.PeerDiscoveryClient client, RegisterPeerRequest request, CancellationToken cancellationToken)
+    {
+        if (_nodeIdentity is null) return;
+
+        try
+        {
+            var challenge = await client.GetRegistrationChallengeAsync(
+                new RegistrationChallengeRequest { RequestingPeerId = _configuration.ResolvedPeerId },
+                cancellationToken: cancellationToken);
+
+            request.ChallengeNonce = challenge.Nonce;
+            request.NodeSignature = ByteString.CopyFrom(_nodeIdentity.SignChallenge(
+                Identity.NodeChallenge.NonceBytes(challenge.Nonce)));
+            request.NodePublicKey = ByteString.CopyFrom(_nodeIdentity.ExportPublicKey());
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented)
+        {
+            _logger.LogDebug("Remote peer does not support node-identity challenge — registering unverified");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to attach node-identity proof — registering unverified");
         }
     }
 

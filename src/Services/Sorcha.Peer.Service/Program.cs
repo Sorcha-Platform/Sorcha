@@ -189,6 +189,10 @@ Sorcha.ServiceClients.Extensions.ServiceCollectionExtensions.AddServiceClients(b
 // above) and the outbound peer channel (injected into PeerConnectionPool).
 builder.Services.AddSingleton<Sorcha.Peer.Service.Identity.INodeIdentityProvider>(nodeIdentity);
 
+// Feature 175: one-time registration challenge nonces backing the node-identity proof exchange.
+builder.Services.AddSingleton<Sorcha.Peer.Service.Identity.IPeerChallengeStore,
+    Sorcha.Peer.Service.Identity.PeerChallengeStore>();
+
 // Register cryptography module and hash provider for signature and docket hash verification
 builder.Services.AddSingleton<ICryptoModule, CryptoModule>();
 builder.Services.AddSingleton<IHashProvider, Sorcha.Cryptography.Core.HashProvider>();

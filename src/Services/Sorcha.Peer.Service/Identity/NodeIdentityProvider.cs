@@ -21,6 +21,18 @@ public interface INodeIdentityProvider
 
     /// <summary>The certificate thumbprint — the stable, installation-neutral node identity string.</summary>
     string NodeIdentityThumbprint { get; }
+
+    /// <summary>
+    /// The node's public key as SubjectPublicKeyInfo (DER). Sent alongside a signed challenge so a
+    /// remote peer can verify node-key possession even over a cleartext (non-mTLS) channel (Feature 175).
+    /// </summary>
+    byte[] ExportPublicKey();
+
+    /// <summary>
+    /// Signs the given data with the node's P-256 private key (ECDSA/SHA-256). Used to answer a
+    /// registration challenge nonce, proving possession of the node identity (Feature 175).
+    /// </summary>
+    byte[] SignChallenge(byte[] data);
 }
 
 /// <summary>
@@ -75,6 +87,22 @@ public sealed class NodeIdentityProvider : INodeIdentityProvider
 
     /// <inheritdoc />
     public string NodeIdentityThumbprint { get; }
+
+    /// <inheritdoc />
+    public byte[] ExportPublicKey()
+    {
+        using var ecdsa = Certificate.GetECDsaPublicKey()
+            ?? throw new InvalidOperationException("Node certificate has no ECDSA public key.");
+        return ecdsa.ExportSubjectPublicKeyInfo();
+    }
+
+    /// <inheritdoc />
+    public byte[] SignChallenge(byte[] data)
+    {
+        using var ecdsa = Certificate.GetECDsaPrivateKey()
+            ?? throw new InvalidOperationException("Node certificate has no ECDSA private key.");
+        return ecdsa.SignData(data, HashAlgorithmName.SHA256);
+    }
 
     private static X509Certificate2 GenerateSelfSigned(string subject, DateTimeOffset notBefore)
     {

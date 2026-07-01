@@ -5,6 +5,7 @@ using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Core;
+using Sorcha.Peer.Service.Identity;
 using Sorcha.Peer.Service.Protos;
 
 namespace Sorcha.Peer.Service.Discovery;
@@ -17,15 +18,34 @@ public class PeerDiscoveryServiceImpl : PeerDiscovery.PeerDiscoveryBase
     private readonly ILogger<PeerDiscoveryServiceImpl> _logger;
     private readonly PeerServiceConfiguration _configuration;
     private readonly PeerListManager _peerListManager;
+    private readonly IPeerChallengeStore _challengeStore;
 
     public PeerDiscoveryServiceImpl(
         ILogger<PeerDiscoveryServiceImpl> logger,
         IOptions<PeerServiceConfiguration> configuration,
-        PeerListManager peerListManager)
+        PeerListManager peerListManager,
+        IPeerChallengeStore challengeStore)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
+        _challengeStore = challengeStore ?? throw new ArgumentNullException(nameof(challengeStore));
+    }
+
+    /// <summary>
+    /// Issues a one-time challenge nonce (Feature 175) that the caller signs with its node key to
+    /// prove node-identity possession in the subsequent <see cref="RegisterPeer"/>.
+    /// </summary>
+    public override Task<RegistrationChallengeResponse> GetRegistrationChallenge(
+        RegistrationChallengeRequest request, ServerCallContext context)
+    {
+        var (nonce, expiresAt) = _challengeStore.Issue(request.RequestingPeerId ?? string.Empty);
+        _logger.LogDebug("Issued registration challenge to {PeerId}", request.RequestingPeerId);
+        return Task.FromResult(new RegistrationChallengeResponse
+        {
+            Nonce = nonce,
+            ExpiresAtUnix = expiresAt.ToUnixTimeSeconds()
+        });
     }
 
     /// <summary>
@@ -94,17 +114,62 @@ public class PeerDiscoveryServiceImpl : PeerDiscovery.PeerDiscoveryBase
                 };
             }
 
+            // Feature 175 — node-identity proof. Optional for backward compatibility: a peer that
+            // supplies no proof registers unverified (as before). A peer that DOES supply proof must
+            // pass, else it is refused fail-closed (a bad/replayed proof is not silently downgraded).
+            var proofAttempted = !string.IsNullOrEmpty(request.ChallengeNonce)
+                || !request.NodeSignature.IsEmpty
+                || !request.NodePublicKey.IsEmpty;
+            var nodeIdentityVerified = false;
+
+            if (proofAttempted)
+            {
+                var consumed = _challengeStore.TryConsume(request.PeerInfo.PeerId, request.ChallengeNonce);
+                var publicKey = request.NodePublicKey.ToByteArray();
+                var signature = request.NodeSignature.ToByteArray();
+
+                if (!consumed)
+                {
+                    _logger.LogWarning(
+                        "RegisterPeer from {PeerId} presented an unknown/expired challenge nonce", request.PeerInfo.PeerId);
+                    return new RegisterPeerResponse
+                    {
+                        Success = false,
+                        Message = "Invalid or expired registration challenge"
+                    };
+                }
+
+                if (!NodeChallenge.Verify(publicKey, request.ChallengeNonce, signature))
+                {
+                    _logger.LogWarning(
+                        "RegisterPeer from {PeerId} failed node-identity signature verification", request.PeerInfo.PeerId);
+                    return new RegisterPeerResponse
+                    {
+                        Success = false,
+                        Message = "Node-identity proof verification failed"
+                    };
+                }
+
+                nodeIdentityVerified = true;
+                _logger.LogInformation(
+                    "RegisterPeer from {PeerId} verified node identity {NodeIdentity}",
+                    request.PeerInfo.PeerId, NodeChallenge.IdentityFromPublicKey(publicKey));
+            }
+
             // Convert and add peer
             var peer = ConvertToPeerNode(request.PeerInfo);
             var added = await _peerListManager.AddOrUpdatePeerAsync(peer);
 
             if (added)
             {
-                _logger.LogInformation("Successfully registered peer {PeerId}", peer.PeerId);
+                _logger.LogInformation(
+                    "Successfully registered peer {PeerId} (node identity verified: {Verified})",
+                    peer.PeerId, nodeIdentityVerified);
                 return new RegisterPeerResponse
                 {
                     Success = true,
-                    Message = "Peer registered successfully"
+                    Message = "Peer registered successfully",
+                    NodeIdentityVerified = nodeIdentityVerified
                 };
             }
             else
