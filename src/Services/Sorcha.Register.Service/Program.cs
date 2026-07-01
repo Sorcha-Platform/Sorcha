@@ -1472,6 +1472,74 @@ docketsGroup.MapGet("/latest", async (
 .Produces(StatusCodes.Status404NotFound)
 .Produces(StatusCodes.Status401Unauthorized);
 
+// ===========================
+// Feature 175 — Anonymous public register read (cross-installation federation)
+// ===========================
+// A public (Advertise==true) register is open data: any node — including one from another
+// installation holding NO credential here — may read it and its sealed dockets to bootstrap trust,
+// verifying the register's own cryptography (genesis attestations + docket/validator signatures) on
+// its side. The gate is strictly the per-request Advertise flag, so a public→private flip takes
+// effect immediately (a non-advertised register is refused 403, never disclosed). Private/
+// non-advertised registers and ALL writes stay behind their existing auth. Rate-limited (burst-
+// tolerant Relaxed policy) as an abuse backstop — a full-register replication pull must not throttle.
+var publicRegistersGroup = app.MapGroup("/api/public/registers/{registerId}")
+    .WithTags("Public Federation")
+    .AllowAnonymous()
+    .RequireRateLimiting(RateLimitPolicies.Relaxed);
+
+// Resolves a register only when it is public; otherwise yields the refusal result. Returns
+// (register, null) on success or (null, result) with a 404 (unknown) / 403 (private) to return.
+static async Task<(Sorcha.Register.Models.Register? Register, IResult? Refusal)> ResolvePublicRegisterAsync(
+    IRegisterRepository repository, string registerId)
+{
+    var register = await repository.GetRegisterAsync(registerId);
+    if (register is null)
+        return (null, Results.NotFound(new { error = "Register not found" }));
+    if (!register.Advertise)
+        return (null, Results.Json(new { error = "Register is not public" }, statusCode: StatusCodes.Status403Forbidden));
+    return (register, null);
+}
+
+publicRegistersGroup.MapGet("/", async (IRegisterRepository repository, string registerId) =>
+{
+    var (register, refusal) = await ResolvePublicRegisterAsync(repository, registerId);
+    return refusal ?? Results.Ok(register);
+})
+.WithName("GetPublicRegister")
+.WithSummary("Get a public register (anonymous)")
+.WithDescription("Returns a register when it is public (advertised), for cross-installation federation. No authentication required; a non-advertised register is refused (403).")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status403Forbidden)
+.Produces(StatusCodes.Status404NotFound);
+
+publicRegistersGroup.MapGet("/dockets", async (IRegisterRepository repository, string registerId) =>
+{
+    var (_, refusal) = await ResolvePublicRegisterAsync(repository, registerId);
+    if (refusal is not null) return refusal;
+    var dockets = await repository.GetDocketsAsync(registerId);
+    return Results.Ok(dockets);
+})
+.WithName("GetPublicRegisterDockets")
+.WithSummary("Get a public register's dockets (anonymous)")
+.WithDescription("Returns the sealed docket chain of a public register for anonymous cross-installation replication. Refused (403) when the register is not advertised.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status403Forbidden)
+.Produces(StatusCodes.Status404NotFound);
+
+publicRegistersGroup.MapGet("/dockets/{docketId}", async (IRegisterRepository repository, string registerId, ulong docketId) =>
+{
+    var (_, refusal) = await ResolvePublicRegisterAsync(repository, registerId);
+    if (refusal is not null) return refusal;
+    var docket = await repository.GetDocketAsync(registerId, docketId);
+    return docket is not null ? Results.Ok(docket) : Results.NotFound();
+})
+.WithName("GetPublicRegisterDocket")
+.WithSummary("Get a public register's docket by id (anonymous)")
+.WithDescription("Returns a single sealed docket of a public register. Refused (403) when the register is not advertised.")
+.Produces<Docket>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status403Forbidden)
+.Produces(StatusCodes.Status404NotFound);
+
 // <summary>
 // Write a confirmed docket to the register (Validator Service only)
 // </summary>
@@ -1513,6 +1581,28 @@ docketsGroup.MapPost("/", async (
             // genesis control record where available, else fall back to a synthetic name
             // so the register row exists and subsequent dockets can be written.
             var controlRecord = Sorcha.Register.Service.Services.GenesisControlRecordExtractor.TryExtract(request.Transactions);
+
+            // Feature 175 (T021) — register-identity binding, fail-closed. A create-on-sync genesis is
+            // written into the register slot named by the route; if the synced control record declares a
+            // DIFFERENT RegisterId, the peer is serving a genesis for another register into this slot.
+            // Reject rather than persist a register whose own control record disagrees with its id. The
+            // full genesis-attestation signature re-verification on the sync path is tracked as the
+            // Register-service-owns-verification architectural decision (see specs/175 research.md).
+            if (controlRecord is { RegisterId.Length: > 0 } &&
+                !string.Equals(controlRecord.RegisterId, registerId, StringComparison.Ordinal))
+            {
+                logger.LogCritical(
+                    "[register] REGISTER-IDENTITY MISMATCH on create-on-sync for {RegisterId}: synced genesis " +
+                    "control record declares RegisterId {DeclaredRegisterId}. Rejecting the docket write (F175 T021).",
+                    registerId, controlRecord.RegisterId);
+                return Results.Conflict(new
+                {
+                    error = "Register identity mismatch",
+                    registerId,
+                    declaredRegisterId = controlRecord.RegisterId
+                });
+            }
+
             var replicaName = controlRecord?.Name is { Length: > 0 } controlName
                 ? controlName
                 : $"replica-{registerId[..Math.Min(8, registerId.Length)]}";
