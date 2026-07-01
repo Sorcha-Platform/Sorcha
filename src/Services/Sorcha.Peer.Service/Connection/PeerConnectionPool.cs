@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Identity;
 using Sorcha.Peer.Service.Observability;
 using Sorcha.Peer.Service.Protos;
 using System.Collections.Concurrent;
@@ -34,6 +35,7 @@ public class PeerConnectionPool : IAsyncDisposable
     private readonly PeerServiceMetrics _metrics;
     private readonly PeerServiceActivitySource _activitySource;
     private readonly PeerServiceConfiguration _configuration;
+    private readonly INodeIdentityProvider? _nodeIdentity;
     private readonly ConcurrentDictionary<string, PeerConnection> _connections;
     private readonly ConcurrentDictionary<string, CircuitBreaker> _circuitBreakers;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
@@ -55,13 +57,18 @@ public class PeerConnectionPool : IAsyncDisposable
         PeerListManager peerListManager,
         IOptions<PeerServiceConfiguration> configuration,
         PeerServiceMetrics metrics,
-        PeerServiceActivitySource activitySource)
+        PeerServiceActivitySource activitySource,
+        INodeIdentityProvider? nodeIdentity = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _activitySource = activitySource ?? throw new ArgumentNullException(nameof(activitySource));
+        // Feature 175: optional so the 17 existing test construction sites (and any pre-federation host)
+        // keep compiling and fall back to a plain, certificate-less handler. DI supplies the registered
+        // singleton, giving real hosts their node identity on the peer channel.
+        _nodeIdentity = nodeIdentity;
 
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
         MaxConnections = _configuration.PeerDiscovery.MaxPeersInList;
@@ -534,15 +541,12 @@ public class PeerConnectionPool : IAsyncDisposable
 
     private GrpcChannel CreateChannel(string address)
     {
+        // Feature 175: present the node identity certificate for cross-installation mTLS and accept the
+        // peer's self-signed server certificate (federation trusts data crypto, not TLS PKI). Falls back
+        // to a plain handler when no node identity is wired. On a cleartext peer the TLS options are unused.
         return GrpcChannel.ForAddress(address, new GrpcChannelOptions
         {
-            HttpHandler = new SocketsHttpHandler
-            {
-                PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
-                KeepAlivePingDelay = TimeSpan.FromSeconds(60),
-                KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
-                EnableMultipleHttp2Connections = true
-            }
+            HttpHandler = FederationChannel.CreateHandler(_nodeIdentity?.Certificate)
         });
     }
 

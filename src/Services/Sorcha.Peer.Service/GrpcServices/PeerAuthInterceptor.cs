@@ -31,6 +31,13 @@ public class PeerAuthInterceptor : Interceptor
     /// </summary>
     public const string AuthenticatedPeerIdKey = "peer-authenticated-id";
 
+    /// <summary>
+    /// Context key for the calling peer's node-identity certificate thumbprint (Feature 175), captured
+    /// from the mTLS client certificate when the peer presented one. Installation-neutral: this is the
+    /// stable federation identity of the caller, independent of any installation-scoped JWT.
+    /// </summary>
+    public const string NodeIdentityThumbprintKey = "peer-node-identity-thumbprint";
+
     public PeerAuthInterceptor(
         ILogger<PeerAuthInterceptor> logger,
         IConfiguration configuration)
@@ -97,6 +104,16 @@ public class PeerAuthInterceptor : Interceptor
 
     private void SetAuthContext(ServerCallContext context)
     {
+        // Feature 175: capture the caller's node-identity certificate thumbprint from the mTLS client
+        // certificate (present only when the peer endpoint runs TLS and the peer presented a cert).
+        var clientCertificate = context.GetHttpContext()?.Connection.ClientCertificate;
+        if (clientCertificate is not null)
+        {
+            context.UserState[NodeIdentityThumbprintKey] = clientCertificate.Thumbprint;
+            _logger.LogDebug(
+                "gRPC call presented node identity certificate {Thumbprint}", clientCertificate.Thumbprint);
+        }
+
         var authHeader = context.RequestHeaders.GetValue("authorization");
 
         if (string.IsNullOrEmpty(authHeader) || _validationParameters is null)

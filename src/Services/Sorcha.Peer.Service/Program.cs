@@ -51,6 +51,14 @@ var healthCheckPort = int.TryParse(Environment.GetEnvironmentVariable("ASPNETCOR
 var grpcPort = builder.Configuration.GetValue<int>("PeerService:Port", 5000);
 var enableTls = builder.Configuration.GetValue<bool>("PeerService:EnableTls", false);
 
+// Feature 175: construct the node federation identity eagerly so the SAME self-signed certificate
+// serves both Kestrel's inbound mTLS (below) and the outbound peer channel (via DI singleton). The
+// thumbprint is the node's installation-neutral identity.
+var nodeIdentity = new Sorcha.Peer.Service.Identity.NodeIdentityProvider(
+    nodeId: builder.Configuration["PeerService:NodeId"],
+    certificatePath: builder.Configuration["PeerService:NodeCertificatePath"],
+    certificatePassword: builder.Configuration["PeerService:NodeCertificatePassword"]);
+
 builder.WebHost.ConfigureKestrel(options =>
 {
     // Disable minimum protocol version to allow HTTP/2 without TLS
@@ -70,9 +78,23 @@ builder.WebHost.ConfigureKestrel(options =>
     {
         options.ListenAnyIP(grpcPort, listenOptions =>
         {
-            // Enable HTTP/2 without TLS for development (cleartext HTTP/2)
-            // This allows gRPC to work without certificates
             listenOptions.Protocols = HttpProtocols.Http2;
+
+            // Feature 175: when TLS is enabled, terminate it with the node identity certificate and
+            // accept (but do not require) a peer's node client certificate so the caller's thumbprint
+            // can be captured as its installation-neutral identity. Any presented client certificate is
+            // accepted — trust in replicated data comes from register cryptography, not TLS PKI. When
+            // TLS is disabled (the local/Docker/test default) the port stays cleartext HTTP/2 so
+            // intra-installation peering is unchanged.
+            if (enableTls)
+            {
+                listenOptions.UseHttps(nodeIdentity.Certificate, httpsOptions =>
+                {
+                    httpsOptions.ClientCertificateMode =
+                        Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate;
+                    httpsOptions.ClientCertificateValidation = (_, _, _) => true;
+                });
+            }
         });
     }
 });
@@ -163,13 +185,9 @@ builder.Services.AddSingleton<RelayCommunicationService>();
 Sorcha.ServiceClients.Extensions.ServiceCollectionExtensions.AddServiceClients(builder.Services, builder.Configuration);
 
 // Feature 175: node federation identity — a self-signed node certificate whose thumbprint is the
-// node's installation-neutral identity (consumed by mTLS peer auth). Additive; nothing depends on it
-// until the mTLS wiring lands.
-builder.Services.AddSingleton<Sorcha.Peer.Service.Identity.INodeIdentityProvider>(sp =>
-    new Sorcha.Peer.Service.Identity.NodeIdentityProvider(
-        nodeId: builder.Configuration["PeerService:NodeId"],
-        certificatePath: builder.Configuration["PeerService:NodeCertificatePath"],
-        certificatePassword: builder.Configuration["PeerService:NodeCertificatePassword"]));
+// node's installation-neutral identity. The same instance backs Kestrel's inbound mTLS (configured
+// above) and the outbound peer channel (injected into PeerConnectionPool).
+builder.Services.AddSingleton<Sorcha.Peer.Service.Identity.INodeIdentityProvider>(nodeIdentity);
 
 // Register cryptography module and hash provider for signature and docket hash verification
 builder.Services.AddSingleton<ICryptoModule, CryptoModule>();
