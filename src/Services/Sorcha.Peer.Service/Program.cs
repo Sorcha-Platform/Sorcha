@@ -162,6 +162,15 @@ builder.Services.AddSingleton<RelayCommunicationService>();
 // Register service clients (provides IRegisterServiceClient for docket finalization writes)
 Sorcha.ServiceClients.Extensions.ServiceCollectionExtensions.AddServiceClients(builder.Services, builder.Configuration);
 
+// Feature 175: node federation identity — a self-signed node certificate whose thumbprint is the
+// node's installation-neutral identity (consumed by mTLS peer auth). Additive; nothing depends on it
+// until the mTLS wiring lands.
+builder.Services.AddSingleton<Sorcha.Peer.Service.Identity.INodeIdentityProvider>(sp =>
+    new Sorcha.Peer.Service.Identity.NodeIdentityProvider(
+        nodeId: builder.Configuration["PeerService:NodeId"],
+        certificatePath: builder.Configuration["PeerService:NodeCertificatePath"],
+        certificatePassword: builder.Configuration["PeerService:NodeCertificatePassword"]));
+
 // Register cryptography module and hash provider for signature and docket hash verification
 builder.Services.AddSingleton<ICryptoModule, CryptoModule>();
 builder.Services.AddSingleton<IHashProvider, Sorcha.Cryptography.Core.HashProvider>();

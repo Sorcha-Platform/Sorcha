@@ -90,7 +90,7 @@ on B, and (b) write to any register on B; both are refused.
 - **FR-003**: Peer federation (handshake / gossip / sync) between nodes MUST authenticate using **node identity**, not an installation-scoped service token.
 - **FR-004**: The system MUST continue to **refuse anonymous access to private / non-advertised registers** and MUST continue to require the target register's governance/participant authority for **writes** (no cross-installation write via this feature).
 - **FR-005**: F136 cross-installation **authorization** rejection for authenticated calls MUST remain unchanged; the anonymous public-read path MUST NOT be implemented by accepting foreign-installation tokens.
-- **FR-006**: The anonymous public-read/replicate path MUST be **rate-limited** using the existing centralised limiting.
+- **FR-006**: The anonymous public-read/replicate path MUST be **rate-limited** using the existing centralised limiting, but the limits MUST be **burst-tolerant**: a legitimate remote node pulling a whole register and *all* its dockets/transactions in one federation sync MUST NOT be throttled. Favour a **generous burst allowance + high sustained throughput** (and prefer pagination/streaming for the bulk history) — the limiter is an **abuse backstop against repeat/abusive callers**, not a brake on normal full-register replication.
 - **FR-007**: The public/anonymous decision MUST be gated strictly on the register's public/advertise state, evaluated per request (so a public→private change takes effect immediately).
 
 ### Key Entities
