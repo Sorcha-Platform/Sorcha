@@ -700,19 +700,34 @@ registersGroup.MapGet("/", async (
 //     (control-record metadata "sandbox" == "true"). Callers exclude sandbox
 //     registers from Go-live targets and normal listings.
 // </remarks>
+// Feature 175: single register-read path, credential-gated rather than a parallel /api/public
+// namespace. Anonymous callers may read a register ONLY when it is public (Advertise==true) — the
+// credential (or its absence + the public flag) gates the read. Authenticated callers read as before.
+// A non-public register is refused 403 to an anonymous caller (never disclosed). Rate-limited
+// (burst-tolerant) since it is now anonymously reachable — a full-register federation pull must not throttle.
 registersGroup.MapGet("/{id}", async (
     RegisterManager manager,
+    HttpContext httpContext,
     string id) =>
 {
     var register = await manager.GetRegisterAsync(id);
-    return register is not null ? Results.Ok(register) : Results.NotFound();
+    if (register is null)
+        return Results.NotFound();
+
+    var isAuthenticated = httpContext.User?.Identity?.IsAuthenticated ?? false;
+    if (!isAuthenticated && !register.Advertise)
+        return Results.Json(new { error = "Register is not public" }, statusCode: StatusCodes.Status403Forbidden);
+
+    return Results.Ok(register);
 })
 .WithName("GetRegister")
 .WithSummary("Get register by ID")
-.WithDescription("Retrieves a specific register by its unique identifier. Surfaces 'advertise' (visibility) and a computed 'sandbox' flag (Feature 142) so callers can show visibility on the Go-live detail card and exclude sandbox registers from Go-live target pickers.")
+.WithDescription("Retrieves a register by id. Authenticated callers read any register they can access; anonymous callers (e.g. a foreign node bootstrapping federation) read a register only when it is public (advertised) — a non-public register is refused 403. Surfaces 'advertise' (visibility) and a computed 'sandbox' flag (Feature 142).")
+.AllowAnonymous()
+.RequireRateLimiting(RateLimitPolicies.Relaxed)
 .Produces<object>(StatusCodes.Status200OK)
-.Produces(StatusCodes.Status404NotFound)
-.Produces(StatusCodes.Status401Unauthorized);
+.Produces(StatusCodes.Status403Forbidden)
+.Produces(StatusCodes.Status404NotFound);
 
 // <summary>
 // Update register
@@ -1391,39 +1406,67 @@ var docketsGroup = app.MapGroup("/api/registers/{registerId}/dockets")
     .WithTags("Dockets")
     .RequireAuthorization("CanReadTransactions");
 
+// Feature 175: single docket-read path, credential-gated (rather than a parallel /api/public
+// namespace). Anonymous callers may read a PUBLIC (advertised) register's dockets — federation
+// bootstrap — while private-register docket reads still require authentication (CanReadTransactions
+// is RequireAuthenticatedUser, so anonymous-or-public is a proper superset, no weakening). Returns a
+// refusal IResult for a disallowed anonymous read, or null to proceed. Authenticated callers proceed.
+static async Task<IResult?> DocketAnonymousReadRefusalAsync(
+    IRegisterRepository repository, HttpContext httpContext, string registerId)
+{
+    if (httpContext.User?.Identity?.IsAuthenticated ?? false)
+        return null;
+    var register = await repository.GetRegisterAsync(registerId);
+    if (register is null)
+        return Results.NotFound(new { error = "Register not found" });
+    if (!register.Advertise)
+        return Results.Json(new { error = "Register is not public" }, statusCode: StatusCodes.Status403Forbidden);
+    return null;
+}
+
 // <summary>
 // Get all dockets for a register
 // </summary>
 docketsGroup.MapGet("/", async (
     IRegisterRepository repository,
+    HttpContext httpContext,
     string registerId) =>
 {
+    var refusal = await DocketAnonymousReadRefusalAsync(repository, httpContext, registerId);
+    if (refusal is not null) return refusal;
     var dockets = await repository.GetDocketsAsync(registerId);
     return Results.Ok(dockets);
 })
 .WithName("GetDockets")
 .WithSummary("Get all dockets")
-.WithDescription("Retrieves all dockets for a register.")
+.WithDescription("Retrieves all dockets for a register. Anonymous when the register is public (advertised); a non-public register requires authentication (403 to anonymous).")
+.AllowAnonymous()
+.RequireRateLimiting(RateLimitPolicies.Relaxed)
 .Produces<object>(StatusCodes.Status200OK)
-.Produces(StatusCodes.Status401Unauthorized);
+.Produces(StatusCodes.Status403Forbidden);
 
 // <summary>
 // Get docket by ID
 // </summary>
 docketsGroup.MapGet("/{docketId}", async (
     IRegisterRepository repository,
+    HttpContext httpContext,
     string registerId,
     ulong docketId) =>
 {
+    var refusal = await DocketAnonymousReadRefusalAsync(repository, httpContext, registerId);
+    if (refusal is not null) return refusal;
     var docket = await repository.GetDocketAsync(registerId, docketId);
     return docket is not null ? Results.Ok(docket) : Results.NotFound();
 })
 .WithName("GetDocket")
 .WithSummary("Get docket by ID")
-.WithDescription("Retrieves a specific docket by its ID (docket height).")
+.WithDescription("Retrieves a specific docket by its ID (docket height). Anonymous when the register is public (advertised); a non-public register requires authentication (403 to anonymous).")
+.AllowAnonymous()
+.RequireRateLimiting(RateLimitPolicies.Relaxed)
 .Produces<Docket>(StatusCodes.Status200OK)
-.Produces(StatusCodes.Status404NotFound)
-.Produces(StatusCodes.Status401Unauthorized);
+.Produces(StatusCodes.Status403Forbidden)
+.Produces(StatusCodes.Status404NotFound);
 
 // <summary>
 // Get transactions in a docket
@@ -1472,73 +1515,10 @@ docketsGroup.MapGet("/latest", async (
 .Produces(StatusCodes.Status404NotFound)
 .Produces(StatusCodes.Status401Unauthorized);
 
-// ===========================
-// Feature 175 — Anonymous public register read (cross-installation federation)
-// ===========================
-// A public (Advertise==true) register is open data: any node — including one from another
-// installation holding NO credential here — may read it and its sealed dockets to bootstrap trust,
-// verifying the register's own cryptography (genesis attestations + docket/validator signatures) on
-// its side. The gate is strictly the per-request Advertise flag, so a public→private flip takes
-// effect immediately (a non-advertised register is refused 403, never disclosed). Private/
-// non-advertised registers and ALL writes stay behind their existing auth. Rate-limited (burst-
-// tolerant Relaxed policy) as an abuse backstop — a full-register replication pull must not throttle.
-var publicRegistersGroup = app.MapGroup("/api/public/registers/{registerId}")
-    .WithTags("Public Federation")
-    .AllowAnonymous()
-    .RequireRateLimiting(RateLimitPolicies.Relaxed);
-
-// Resolves a register only when it is public; otherwise yields the refusal result. Returns
-// (register, null) on success or (null, result) with a 404 (unknown) / 403 (private) to return.
-static async Task<(Sorcha.Register.Models.Register? Register, IResult? Refusal)> ResolvePublicRegisterAsync(
-    IRegisterRepository repository, string registerId)
-{
-    var register = await repository.GetRegisterAsync(registerId);
-    if (register is null)
-        return (null, Results.NotFound(new { error = "Register not found" }));
-    if (!register.Advertise)
-        return (null, Results.Json(new { error = "Register is not public" }, statusCode: StatusCodes.Status403Forbidden));
-    return (register, null);
-}
-
-publicRegistersGroup.MapGet("/", async (IRegisterRepository repository, string registerId) =>
-{
-    var (register, refusal) = await ResolvePublicRegisterAsync(repository, registerId);
-    return refusal ?? Results.Ok(register);
-})
-.WithName("GetPublicRegister")
-.WithSummary("Get a public register (anonymous)")
-.WithDescription("Returns a register when it is public (advertised), for cross-installation federation. No authentication required; a non-advertised register is refused (403).")
-.Produces<object>(StatusCodes.Status200OK)
-.Produces(StatusCodes.Status403Forbidden)
-.Produces(StatusCodes.Status404NotFound);
-
-publicRegistersGroup.MapGet("/dockets", async (IRegisterRepository repository, string registerId) =>
-{
-    var (_, refusal) = await ResolvePublicRegisterAsync(repository, registerId);
-    if (refusal is not null) return refusal;
-    var dockets = await repository.GetDocketsAsync(registerId);
-    return Results.Ok(dockets);
-})
-.WithName("GetPublicRegisterDockets")
-.WithSummary("Get a public register's dockets (anonymous)")
-.WithDescription("Returns the sealed docket chain of a public register for anonymous cross-installation replication. Refused (403) when the register is not advertised.")
-.Produces<object>(StatusCodes.Status200OK)
-.Produces(StatusCodes.Status403Forbidden)
-.Produces(StatusCodes.Status404NotFound);
-
-publicRegistersGroup.MapGet("/dockets/{docketId}", async (IRegisterRepository repository, string registerId, ulong docketId) =>
-{
-    var (_, refusal) = await ResolvePublicRegisterAsync(repository, registerId);
-    if (refusal is not null) return refusal;
-    var docket = await repository.GetDocketAsync(registerId, docketId);
-    return docket is not null ? Results.Ok(docket) : Results.NotFound();
-})
-.WithName("GetPublicRegisterDocket")
-.WithSummary("Get a public register's docket by id (anonymous)")
-.WithDescription("Returns a single sealed docket of a public register. Refused (403) when the register is not advertised.")
-.Produces<Docket>(StatusCodes.Status200OK)
-.Produces(StatusCodes.Status403Forbidden)
-.Produces(StatusCodes.Status404NotFound);
+// Feature 175 follow-up: the parallel /api/public/registers namespace has been removed — anonymous
+// public read is now folded into the canonical register + docket read endpoints above (credential-
+// gated on the per-request Advertise flag), so a public register has ONE URI whether read
+// anonymously or authenticated. Writes and private registers keep their existing auth.
 
 // <summary>
 // Write a confirmed docket to the register (Validator Service only)

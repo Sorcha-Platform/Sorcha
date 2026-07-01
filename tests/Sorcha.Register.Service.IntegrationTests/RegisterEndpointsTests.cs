@@ -99,16 +99,17 @@ public class RegisterEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetRegisterById_RequiresAuthentication()
+    public async Task GetRegisterById_Anonymous_UnknownRegister_ReturnsNotFound()
     {
-        // Arrange
+        // Feature 175: GET /api/registers/{id} is now credential-gated rather than blanket
+        // authenticated — anonymous callers may read a PUBLIC register (see FederationPublicReadTests),
+        // so an anonymous read is no longer categorically 401. An unknown register returns 404; a known
+        // private register returns 403 (covered in FederationPublicReadTests).
         using var unauthenticatedClient = _factory.CreateUnauthenticatedClient();
 
-        // Act
         var response = await unauthenticatedClient.GetAsync("/api/registers/some-id");
 
-        // Assert
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     // === Register Count ===
