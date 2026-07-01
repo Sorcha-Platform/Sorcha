@@ -92,14 +92,14 @@ public class RegisterCreationApiTests : IClassFixture<RegisterServiceWebApplicat
     }
 
     [Fact]
-    public async Task InitiateRegisterCreation_WithMissingName_ShouldAcceptForDeferredValidation()
+    public async Task InitiateRegisterCreation_WithMissingName_ShouldReturn400BadRequest()
     {
         // Arrange
         var client = _factory.CreateClient();
 
         var request = new
         {
-            // name is missing — validation deferred to finalize phase
+            // name is missing — rejected at the initiate input boundary (Feature 174)
             tenantId = "test-tenant-001",
             owners = new[]
             {
@@ -110,9 +110,9 @@ public class RegisterCreationApiTests : IClassFixture<RegisterServiceWebApplicat
         // Act
         var response = await client.PostAsJsonAsync("/api/registers/initiate", request);
 
-        // Assert — initiate phase accepts the request;
-        // name validation is enforced during the finalize phase
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        // Assert — a missing name is rejected fast at the initiate INPUT BOUNDARY (Feature 174),
+        // rather than silently deferred to finalize after attestations are signed.
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -320,9 +320,9 @@ public class RegisterCreationApiTests : IClassFixture<RegisterServiceWebApplicat
         // Act
         var response = await client.PostAsJsonAsync("/api/registers/initiate", request);
 
-        // Assert — initiate phase does not enforce name length;
-        // validation is deferred to finalize phase
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        // Assert — a 39-char name (limit 38) is rejected fast at the initiate INPUT BOUNDARY
+        // (Feature 174), matching this test's name, rather than deferred to finalize.
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
