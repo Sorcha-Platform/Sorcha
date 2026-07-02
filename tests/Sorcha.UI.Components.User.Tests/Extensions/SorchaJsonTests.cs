@@ -4,7 +4,7 @@
 using System.Linq;
 using System.Text.Json;
 using FluentAssertions;
-using Sorcha.Json;
+using Sorcha.Serialization;
 using Sorcha.Tenant.Models.Persona;
 using Xunit;
 

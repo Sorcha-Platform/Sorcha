@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.HolderKeys;
 
@@ -17,12 +17,6 @@ public sealed class HolderKeyHttpClient : IHolderKeyClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<HolderKeyHttpClient> _logger;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
 
     public HolderKeyHttpClient(HttpClient httpClient, ILogger<HolderKeyHttpClient> logger)
     {
@@ -43,7 +37,7 @@ public sealed class HolderKeyHttpClient : IHolderKeyClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<HolderKeysView>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<HolderKeysView>(JsonDefaults.Api, ct);
         }
         catch (OperationCanceledException)
         {

@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
 
@@ -69,7 +70,7 @@ public class WalletServiceClient : IWalletServiceClient
                 "/api/v1/wallets/system", request, JsonOptions, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<SystemWalletResponse>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<SystemWalletResponse>(SorchaJson.Options, cancellationToken);
             return result?.Address ?? throw new InvalidOperationException("System wallet response missing address");
         }
         catch (Exception ex)
@@ -104,7 +105,7 @@ public class WalletServiceClient : IWalletServiceClient
 
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<SystemWalletResponse>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<SystemWalletResponse>(SorchaJson.Options, cancellationToken);
             return result?.Address ?? throw new InvalidOperationException("Recover response missing address");
         }
         catch (InvalidOperationException)
@@ -174,7 +175,7 @@ public class WalletServiceClient : IWalletServiceClient
 
             response.EnsureSuccessStatusCode();
 
-            var signResponse = await response.Content.ReadFromJsonAsync<SignResponse>(cancellationToken);
+            var signResponse = await response.Content.ReadFromJsonAsync<SignResponse>(SorchaJson.Options, cancellationToken);
             if (signResponse is null)
             {
                 throw new InvalidOperationException("Sign response was null");
@@ -218,7 +219,7 @@ public class WalletServiceClient : IWalletServiceClient
                 "/api/v1/wallets/verify", requestBody, JsonOptions, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<VerifyResponse>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<VerifyResponse>(SorchaJson.Options, cancellationToken);
             return result?.IsValid ?? false;
         }
         catch (Exception ex)
@@ -248,7 +249,7 @@ public class WalletServiceClient : IWalletServiceClient
                 $"/api/v1/wallets/{recipientWalletAddress}/encrypt", requestBody, JsonOptions, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<EncryptResponse>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<EncryptResponse>(SorchaJson.Options, cancellationToken);
             return Convert.FromBase64String(result?.EncryptedPayload
                 ?? throw new InvalidOperationException("Encrypt response missing payload"));
         }
@@ -275,7 +276,7 @@ public class WalletServiceClient : IWalletServiceClient
                 $"/api/v1/wallets/{walletAddress}/decrypt", requestBody, JsonOptions, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<DecryptResponse>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<DecryptResponse>(SorchaJson.Options, cancellationToken);
             return Convert.FromBase64String(result?.DecryptedPayload
                 ?? throw new InvalidOperationException("Decrypt response missing payload"));
         }
@@ -307,7 +308,7 @@ public class WalletServiceClient : IWalletServiceClient
                 $"/api/v1/wallets/{walletAddress}/decrypt", requestBody, JsonOptions, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<DecryptResponse>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<DecryptResponse>(SorchaJson.Options, cancellationToken);
             return Convert.FromBase64String(result?.DecryptedPayload
                 ?? throw new InvalidOperationException("Decrypt response missing payload"));
         }
@@ -370,7 +371,7 @@ public class WalletServiceClient : IWalletServiceClient
 
             response.EnsureSuccessStatusCode();
 
-            return await response.Content.ReadFromJsonAsync<CredentialIssuanceResult>(cancellationToken)
+            return await response.Content.ReadFromJsonAsync<CredentialIssuanceResult>(SorchaJson.Options, cancellationToken)
                 ?? throw new InvalidOperationException("Credential issuance response was null");
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
@@ -448,7 +449,7 @@ public class WalletServiceClient : IWalletServiceClient
                 return null;
 
             return await response.Content.ReadFromJsonAsync<CredentialIssuanceResult>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -509,7 +510,7 @@ public class WalletServiceClient : IWalletServiceClient
             }
 
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<WalletInfo>(cancellationToken);
+            return await response.Content.ReadFromJsonAsync<WalletInfo>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -541,7 +542,7 @@ public class WalletServiceClient : IWalletServiceClient
 
             response.EnsureSuccessStatusCode();
             var wallets = await response.Content.ReadFromJsonAsync<List<WalletInfo>>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
             return wallets ?? (IReadOnlyList<WalletInfo>)Array.Empty<WalletInfo>();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -572,7 +573,7 @@ public class WalletServiceClient : IWalletServiceClient
                 "/api/v1/wallets", requestBody, JsonOptions, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var createResponse = await response.Content.ReadFromJsonAsync<CreateWalletResponse>(JsonOptions, cancellationToken)
+            var createResponse = await response.Content.ReadFromJsonAsync<CreateWalletResponse>(SorchaJson.Options, cancellationToken)
                 ?? throw new InvalidOperationException("Create wallet response was null");
             return createResponse.Wallet
                 ?? throw new InvalidOperationException("Create wallet response had no wallet data");
@@ -610,7 +611,7 @@ public class WalletServiceClient : IWalletServiceClient
             }
 
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<OrgMasterKeyProvisionResponse>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<OrgMasterKeyProvisionResponse>(SorchaJson.Options, ct);
         }
         catch (Exception ex)
         {
@@ -639,7 +640,7 @@ public class WalletServiceClient : IWalletServiceClient
                 $"/api/wallets/org/{orgId}/derive-key", requestBody, JsonOptions, ct);
 
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<DerivedKeyResponse>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<DerivedKeyResponse>(SorchaJson.Options, ct);
         }
         catch (Exception ex)
         {
@@ -669,7 +670,7 @@ public class WalletServiceClient : IWalletServiceClient
             }
 
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<DerivedKeyResponse>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<DerivedKeyResponse>(SorchaJson.Options, ct);
         }
         catch (Exception ex)
         {
@@ -699,7 +700,7 @@ public class WalletServiceClient : IWalletServiceClient
             }
 
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<RevokeKeyResponse>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<RevokeKeyResponse>(SorchaJson.Options, ct);
         }
         catch (Exception ex)
         {

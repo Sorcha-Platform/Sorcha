@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.Wallet.Pwa.Services;
 
@@ -97,7 +98,7 @@ public sealed class BearerTokenHandler : DelegatingHandler
             var resp = await _refreshHttp.PostAsJsonAsync(
                 "api/auth/token/refresh", new RefreshBody(refreshToken), ct);
             if (!resp.IsSuccessStatusCode) return null;
-            var body = await resp.Content.ReadFromJsonAsync<RefreshResponse>(ct);
+            var body = await resp.Content.ReadFromJsonAsync<RefreshResponse>(JsonDefaults.Api, ct);
             if (body is null || string.IsNullOrEmpty(body.AccessToken)) return null;
 
             var record = new AccessTokenRecord(

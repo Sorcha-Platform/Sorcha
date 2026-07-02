@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Models;
 using Sorcha.ServiceClients.Blueprint.Models;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Blueprints;
 using Sorcha.UI.Core.Models.Common;
 using Sorcha.UI.Core.Models.Workflows;
@@ -34,7 +35,7 @@ public class BlueprintApiService : IBlueprintApiService
             if (!string.IsNullOrEmpty(search)) url += $"&search={Uri.EscapeDataString(search)}";
             if (!string.IsNullOrEmpty(status)) url += $"&status={Uri.EscapeDataString(status)}";
 
-            var result = await _httpClient.GetFromJsonAsync<PaginatedList<BlueprintListItemViewModel>>(url, cancellationToken);
+            var result = await _httpClient.GetFromJsonAsync<PaginatedList<BlueprintListItemViewModel>>(url, JsonDefaults.Api, cancellationToken);
             return result ?? new PaginatedList<BlueprintListItemViewModel>();
         }
         catch (Exception ex)
@@ -48,7 +49,7 @@ public class BlueprintApiService : IBlueprintApiService
     {
         try
         {
-            return await _httpClient.GetFromJsonAsync<BlueprintListItemViewModel>($"/api/blueprints/{id}", cancellationToken);
+            return await _httpClient.GetFromJsonAsync<BlueprintListItemViewModel>($"/api/blueprints/{id}", JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -61,7 +62,7 @@ public class BlueprintApiService : IBlueprintApiService
     {
         try
         {
-            return await _httpClient.GetFromJsonAsync<Sorcha.Blueprint.Models.Blueprint>($"/api/blueprints/{id}", cancellationToken);
+            return await _httpClient.GetFromJsonAsync<Sorcha.Blueprint.Models.Blueprint>($"/api/blueprints/{id}", JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -77,7 +78,7 @@ public class BlueprintApiService : IBlueprintApiService
             var response = await _httpClient.PostAsJsonAsync("/api/blueprints", blueprint, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadFromJsonAsync<BlueprintListItemViewModel>(cancellationToken: cancellationToken);
+                return await response.Content.ReadFromJsonAsync<BlueprintListItemViewModel>(JsonDefaults.Api, cancellationToken);
             }
             _logger.LogWarning("Failed to save blueprint: {StatusCode}", response.StatusCode);
             return null;
@@ -96,7 +97,7 @@ public class BlueprintApiService : IBlueprintApiService
             var response = await _httpClient.PutAsJsonAsync($"/api/blueprints/{id}", blueprint, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadFromJsonAsync<BlueprintListItemViewModel>(cancellationToken: cancellationToken);
+                return await response.Content.ReadFromJsonAsync<BlueprintListItemViewModel>(JsonDefaults.Api, cancellationToken);
             }
             _logger.LogWarning("Failed to update blueprint {Id}: {StatusCode}", id, response.StatusCode);
             return null;
@@ -129,7 +130,7 @@ public class BlueprintApiService : IBlueprintApiService
             var response = await _httpClient.PostAsync($"/api/blueprints/{id}/publish", null, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadFromJsonAsync<PublishReviewViewModel>(cancellationToken: cancellationToken);
+                return await response.Content.ReadFromJsonAsync<PublishReviewViewModel>(JsonDefaults.Api, cancellationToken);
             }
             return null;
         }
@@ -147,7 +148,7 @@ public class BlueprintApiService : IBlueprintApiService
             var response = await _httpClient.PostAsync($"/api/blueprints/{id}/validate", null, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadFromJsonAsync<BlueprintValidationResponse>(cancellationToken: cancellationToken);
+                return await response.Content.ReadFromJsonAsync<BlueprintValidationResponse>(JsonDefaults.Api, cancellationToken);
             }
             _logger.LogWarning("Failed to validate blueprint {Id}: {StatusCode}", id, response.StatusCode);
             return null;
@@ -167,7 +168,7 @@ public class BlueprintApiService : IBlueprintApiService
             var response = await _httpClient.PostAsJsonAsync($"/api/blueprints/{id}/publish", body, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadFromJsonAsync<PublishReviewViewModel>(cancellationToken: cancellationToken);
+                return await response.Content.ReadFromJsonAsync<PublishReviewViewModel>(JsonDefaults.Api, cancellationToken);
             }
             _logger.LogWarning("Failed to publish blueprint {Id} to register {RegisterId}: {StatusCode}", id, registerId, response.StatusCode);
             return null;
@@ -202,7 +203,7 @@ public class BlueprintApiService : IBlueprintApiService
             if (response.IsSuccessStatusCode)
             {
                 var result = await response.Content.ReadFromJsonAsync<PublishBlueprintResult>(
-                    cancellationToken: cancellationToken);
+                    JsonDefaults.Api, cancellationToken);
                 return result is not null
                     ? GoLivePublishOutcome.Published(result)
                     : GoLivePublishOutcome.Errored("Publish succeeded but the response could not be read.");
@@ -211,7 +212,7 @@ public class BlueprintApiService : IBlueprintApiService
             if (response.StatusCode == HttpStatusCode.Conflict)
             {
                 var error = await response.Content.ReadFromJsonAsync<RehearsalRequiredError>(
-                    cancellationToken: cancellationToken);
+                    JsonDefaults.Api, cancellationToken);
                 return GoLivePublishOutcome.NeedsRehearsal(
                     error ?? new RehearsalRequiredError
                     {
@@ -245,7 +246,7 @@ public class BlueprintApiService : IBlueprintApiService
     {
         try
         {
-            var versions = await _httpClient.GetFromJsonAsync<List<BlueprintVersionViewModel>>($"/api/blueprints/{id}/versions", cancellationToken);
+            var versions = await _httpClient.GetFromJsonAsync<List<BlueprintVersionViewModel>>($"/api/blueprints/{id}/versions", JsonDefaults.Api, cancellationToken);
             return versions ?? [];
         }
         catch (Exception ex)
@@ -277,7 +278,7 @@ public class BlueprintApiService : IBlueprintApiService
             }
 
             var result = await response.Content.ReadFromJsonAsync<CloneFromPublishedResponse>(
-                cancellationToken: cancellationToken);
+                JsonDefaults.Api, cancellationToken);
             return result?.DraftBlueprintId;
         }
         catch (Exception ex)
@@ -296,7 +297,7 @@ public class BlueprintApiService : IBlueprintApiService
     {
         try
         {
-            return await _httpClient.GetFromJsonAsync<BlueprintListItemViewModel>($"/api/blueprints/{id}/versions/{version}", cancellationToken);
+            return await _httpClient.GetFromJsonAsync<BlueprintListItemViewModel>($"/api/blueprints/{id}/versions/{version}", JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -311,6 +312,7 @@ public class BlueprintApiService : IBlueprintApiService
         {
             return await _httpClient.GetFromJsonAsync<AvailableBlueprintsViewModel>(
                 $"/api/actions/{Uri.EscapeDataString(walletAddress)}/{Uri.EscapeDataString(registerId)}/blueprints",
+                JsonDefaults.Api,
                 cancellationToken);
         }
         catch (Exception ex)
@@ -326,6 +328,7 @@ public class BlueprintApiService : IBlueprintApiService
         {
             return await _httpClient.GetFromJsonAsync<Sorcha.Blueprint.Models.Blueprint>(
                 $"/api/actions/{Uri.EscapeDataString(walletAddress)}/{Uri.EscapeDataString(registerId)}/blueprints/{Uri.EscapeDataString(blueprintId)}",
+                JsonDefaults.Api,
                 cancellationToken);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)

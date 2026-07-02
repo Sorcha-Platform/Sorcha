@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Participants;
 
 namespace Sorcha.UI.Core.Services.Participants;
@@ -35,7 +36,7 @@ public class ParticipantApiService : IParticipantApiService
         var response = await _httpClient.GetAsync(url, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<ParticipantListViewModel>(ct);
+        var result = await response.Content.ReadFromJsonAsync<ParticipantListViewModel>(JsonDefaults.Api, ct);
         return result ?? new ParticipantListViewModel();
     }
 
@@ -54,7 +55,7 @@ public class ParticipantApiService : IParticipantApiService
         }
 
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ParticipantDetailViewModel>(ct);
+        return await response.Content.ReadFromJsonAsync<ParticipantDetailViewModel>(JsonDefaults.Api, ct);
     }
 
     /// <inheritdoc />
@@ -67,7 +68,7 @@ public class ParticipantApiService : IParticipantApiService
             $"/api/organizations/{organizationId}/participants", request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<ParticipantDetailViewModel>(ct);
+        var result = await response.Content.ReadFromJsonAsync<ParticipantDetailViewModel>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to deserialize participant creation response");
     }
 
@@ -87,7 +88,7 @@ public class ParticipantApiService : IParticipantApiService
         }
 
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ParticipantDetailViewModel>(ct);
+        return await response.Content.ReadFromJsonAsync<ParticipantDetailViewModel>(JsonDefaults.Api, ct);
     }
 
     /// <inheritdoc />
@@ -152,7 +153,7 @@ public class ParticipantApiService : IParticipantApiService
         var response = await _httpClient.PostAsJsonAsync("/api/participants/search", request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<ParticipantSearchResultsViewModel>(ct);
+        var result = await response.Content.ReadFromJsonAsync<ParticipantSearchResultsViewModel>(JsonDefaults.Api, ct);
         return result ?? new ParticipantSearchResultsViewModel();
     }
 
@@ -170,7 +171,7 @@ public class ParticipantApiService : IParticipantApiService
         }
 
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ParticipantListItemViewModel>(ct);
+        return await response.Content.ReadFromJsonAsync<ParticipantListItemViewModel>(JsonDefaults.Api, ct);
     }
 
     /// <inheritdoc />
@@ -179,7 +180,7 @@ public class ParticipantApiService : IParticipantApiService
         var response = await _httpClient.GetAsync("/api/me/participant-profiles", ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<List<ParticipantDetailViewModel>>(ct);
+        var result = await response.Content.ReadFromJsonAsync<List<ParticipantDetailViewModel>>(JsonDefaults.Api, ct);
         return result ?? new List<ParticipantDetailViewModel>();
     }
 
@@ -198,7 +199,7 @@ public class ParticipantApiService : IParticipantApiService
         var response = await _httpClient.PostAsync(url, null, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<ParticipantDetailViewModel>(ct);
+        var result = await response.Content.ReadFromJsonAsync<ParticipantDetailViewModel>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to deserialize self-registration response");
     }
 
@@ -213,7 +214,7 @@ public class ParticipantApiService : IParticipantApiService
             $"/api/organizations/{organizationId}/participants/{participantId}/wallet-links", request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<WalletLinkChallengeViewModel>(ct);
+        var result = await response.Content.ReadFromJsonAsync<WalletLinkChallengeViewModel>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to deserialize wallet link challenge response");
     }
 
@@ -230,7 +231,7 @@ public class ParticipantApiService : IParticipantApiService
             request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<LinkedWalletViewModel>(ct);
+        var result = await response.Content.ReadFromJsonAsync<LinkedWalletViewModel>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to deserialize wallet link verification response");
     }
 
@@ -250,7 +251,7 @@ public class ParticipantApiService : IParticipantApiService
         var response = await _httpClient.GetAsync(url, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<List<LinkedWalletViewModel>>(ct);
+        var result = await response.Content.ReadFromJsonAsync<List<LinkedWalletViewModel>>(JsonDefaults.Api, ct);
         return result ?? new List<LinkedWalletViewModel>();
     }
 

@@ -1,6 +1,7 @@
 @using System.Net.Http.Json
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Extensions
 @inject HttpClient Http
 
 <MudGrid>
@@ -132,7 +133,7 @@
         try
         {
             // Call the real health endpoint via API Gateway
-            var healthResponse = await Http.GetFromJsonAsync<BlueprintHealthResponse>(ApiConfiguration.BlueprintStatusUrl);
+            var healthResponse = await Http.GetFromJsonAsync<BlueprintHealthResponse>(ApiConfiguration.BlueprintStatusUrl, JsonDefaults.Api);
 
             if (healthResponse != null && healthResponse.Status == "healthy")
             {

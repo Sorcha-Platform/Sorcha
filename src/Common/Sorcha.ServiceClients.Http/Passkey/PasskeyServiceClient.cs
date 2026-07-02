@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Passkey;
 
@@ -16,11 +16,6 @@ public class PasskeyServiceClient : IPasskeyServiceClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<PasskeyServiceClient> _logger;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
 
     public PasskeyServiceClient(
         HttpClient httpClient,
@@ -56,7 +51,7 @@ public class PasskeyServiceClient : IPasskeyServiceClient
 
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<PasskeyRecoveryKeyInfo>(JsonOptions, ct);
+            var result = await response.Content.ReadFromJsonAsync<PasskeyRecoveryKeyInfo>(SorchaJson.Options, ct);
             _logger.LogDebug("Retrieved passkey public key for user {UserId}", userId);
             return result;
         }

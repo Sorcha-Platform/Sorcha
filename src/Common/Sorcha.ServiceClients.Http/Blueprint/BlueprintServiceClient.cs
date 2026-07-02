@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Blueprint.Models;
 using Sorcha.ServiceClients.Helpers;
@@ -109,7 +110,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
             {
                 BlueprintId = blueprintId,
                 ActionId = actionId,
-                Data = JsonSerializer.Deserialize<JsonElement>(payload)
+                Data = JsonSerializer.Deserialize<JsonElement>(payload, SorchaJson.Options)
             };
 
             await SetAuthHeaderAsync(cancellationToken);
@@ -127,7 +128,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
                 return false;
             }
 
-            var result = await response.Content.ReadFromJsonAsync<ValidateResponse>(JsonOptions, cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<ValidateResponse>(SorchaJson.Options, cancellationToken);
 
             if (result?.IsValid == true)
             {
@@ -187,7 +188,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
                 return null;
             }
 
-            var result = await response.Content.ReadFromJsonAsync<FileChunkRetrievalResponse>(JsonOptions, cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<FileChunkRetrievalResponse>(SorchaJson.Options, cancellationToken);
             if (result is null)
             {
                 _logger.LogWarning("Empty response retrieving file chunk {ChunkId}", chunkId);
@@ -255,7 +256,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
                 return null;
             }
 
-            var result = await response.Content.ReadFromJsonAsync<FileChunkSubmissionResponse>(JsonOptions, cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<FileChunkSubmissionResponse>(SorchaJson.Options, cancellationToken);
 
             if (result is null)
             {
@@ -454,7 +455,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<Rehearsal>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<Rehearsal>(SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException)
         {
@@ -521,8 +522,8 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         try
         {
             payload = string.IsNullOrWhiteSpace(request.PayloadJson)
-                ? JsonSerializer.Deserialize<JsonElement>("{}")
-                : JsonSerializer.Deserialize<JsonElement>(request.PayloadJson);
+                ? JsonSerializer.Deserialize<JsonElement>("{}", SorchaJson.Options)
+                : JsonSerializer.Deserialize<JsonElement>(request.PayloadJson, SorchaJson.Options);
         }
         catch (JsonException ex)
         {
@@ -555,7 +556,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<Rehearsal>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<Rehearsal>(SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException)
         {
@@ -588,7 +589,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
                 var rehearsal = await response.Content
-                    .ReadFromJsonAsync<RehearsalRequiredError>(JsonOptions, cancellationToken);
+                    .ReadFromJsonAsync<RehearsalRequiredError>(SorchaJson.Options, cancellationToken);
                 return new PublishBlueprintOutcome { RehearsalRequired = rehearsal ?? new RehearsalRequiredError() };
             }
 
@@ -603,7 +604,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
             }
 
             var result = await response.Content
-                .ReadFromJsonAsync<PublishBlueprintResult>(JsonOptions, cancellationToken);
+                .ReadFromJsonAsync<PublishBlueprintResult>(SorchaJson.Options, cancellationToken);
             return result is null ? null : new PublishBlueprintOutcome { Result = result };
         }
         catch (HttpRequestException ex)
@@ -632,7 +633,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<CloneFromPublishedResult>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<CloneFromPublishedResult>(SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException)
         {

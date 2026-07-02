@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services.Forms;
 using Sorcha.UI.Core.Services.HolderKeys;
 
@@ -85,7 +86,7 @@ public sealed class HttpApplicationActionClient : IApplicationActionClient
         try
         {
             var instance = await _http.GetFromJsonAsync<InstanceDto>(
-                $"api/instances/{instanceId:N}", JsonOptions, ct);
+                $"api/instances/{instanceId:N}", JsonDefaults.Api, ct);
             if (instance is null || string.IsNullOrEmpty(instance.BlueprintId))
             {
                 return null;
@@ -207,7 +208,7 @@ public sealed class HttpApplicationActionClient : IApplicationActionClient
         {
             if (el.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var id) && id == actionId)
             {
-                return el.Deserialize<Sorcha.Blueprint.Models.Action>(JsonOptions);
+                return el.Deserialize<Sorcha.Blueprint.Models.Action>(JsonDefaults.Api);
             }
         }
         return null;

@@ -7,6 +7,7 @@ using System.Text.Json;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Invitation;
 
@@ -64,7 +65,7 @@ public sealed class RegisterInvitationServiceClient : IRegisterInvitationService
         }
 
         return (await response.Content.ReadFromJsonAsync<InvitationCreatedResponse>(
-                   JsonOptions, cancellationToken))
+                   SorchaJson.Options, cancellationToken))
                ?? throw new InvalidOperationException("Empty body on create-invitation success.");
     }
 
@@ -88,7 +89,7 @@ public sealed class RegisterInvitationServiceClient : IRegisterInvitationService
         }
 
         return (await response.Content.ReadFromJsonAsync<InvitationAcceptedResponse>(
-                   JsonOptions, cancellationToken))
+                   SorchaJson.Options, cancellationToken))
                ?? throw new InvalidOperationException("Empty body on accept-invitation success.");
     }
 
@@ -107,7 +108,7 @@ public sealed class RegisterInvitationServiceClient : IRegisterInvitationService
         }
 
         return (await response.Content.ReadFromJsonAsync<InvitationListResponse>(
-                   JsonOptions, cancellationToken))
+                   SorchaJson.Options, cancellationToken))
                ?? new InvitationListResponse { Invitations = Array.Empty<InvitationSummary>(), TotalCount = 0 };
     }
 

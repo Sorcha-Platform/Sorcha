@@ -31,6 +31,7 @@
 @using Microsoft.Extensions.Logging
 @using Sorcha.UI.Core.Components.EnrolGate
 @using Sorcha.UI.Core.Services.User.Pairing
+@using Sorcha.UI.Core.Extensions
 @inject HttpClient Http
 @inject NavigationManager Nav
 @inject IPwaInstallabilityProbe InstallProbe
@@ -183,7 +184,7 @@
                 return;
             }
 
-            var body = await response.Content.ReadFromJsonAsync<MintResponseShape>();
+            var body = await response.Content.ReadFromJsonAsync<MintResponseShape>(JsonDefaults.Api);
             if (body is null || string.IsNullOrEmpty(body.QrUrl))
             {
                 _error = "Couldn't generate a pairing code. Try again.";
@@ -216,7 +217,7 @@
                 return;
             }
 
-            var body = await response.Content.ReadFromJsonAsync<ShortCodeMintResponseShape>();
+            var body = await response.Content.ReadFromJsonAsync<ShortCodeMintResponseShape>(JsonDefaults.Api);
             _shortCode = body?.Code;
         }
         catch (Exception ex)

@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.JSInterop;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.Wallet.Pwa.Services;
 
@@ -143,7 +144,7 @@ public sealed class AuthService : IAuthService
             }
             response.EnsureSuccessStatusCode();
 
-            var body = await response.Content.ReadFromJsonAsync<LoginResponse>(ct);
+            var body = await response.Content.ReadFromJsonAsync<LoginResponse>(JsonDefaults.Api, ct);
             if (body is null) return new SignInResult(SignInStatus.ServerError, "Empty response from auth server.");
 
             if (body.RequiresTwoFactor)
@@ -192,7 +193,7 @@ public sealed class AuthService : IAuthService
             }
             response.EnsureSuccessStatusCode();
 
-            var body = await response.Content.ReadFromJsonAsync<LoginResponse>(ct);
+            var body = await response.Content.ReadFromJsonAsync<LoginResponse>(JsonDefaults.Api, ct);
             if (body is null || string.IsNullOrEmpty(body.AccessToken))
             {
                 return new SignInResult(SignInStatus.ServerError, "Verification succeeded but no token was returned.");
@@ -219,7 +220,7 @@ public sealed class AuthService : IAuthService
                 "api/auth/passkey/assertion/options",
                 new AssertionOptionsRequest(string.IsNullOrWhiteSpace(email) ? null : email.Trim()), ct);
             optionsResp.EnsureSuccessStatusCode();
-            var options = await optionsResp.Content.ReadFromJsonAsync<AssertionOptionsResponse>(ct);
+            var options = await optionsResp.Content.ReadFromJsonAsync<AssertionOptionsResponse>(JsonDefaults.Api, ct);
             if (options is null || string.IsNullOrEmpty(options.TransactionId))
                 return new SignInResult(SignInStatus.ServerError, "Could not start passkey sign-in.");
 
@@ -235,7 +236,7 @@ public sealed class AuthService : IAuthService
                 return new SignInResult(SignInStatus.InvalidCredentials, "That passkey isn't recognised.");
             verifyResp.EnsureSuccessStatusCode();
 
-            var body = await verifyResp.Content.ReadFromJsonAsync<PublicTokenBody>(ct);
+            var body = await verifyResp.Content.ReadFromJsonAsync<PublicTokenBody>(JsonDefaults.Api, ct);
             if (body is null || string.IsNullOrEmpty(body.AccessToken))
                 return new SignInResult(SignInStatus.ServerError, "Passkey sign-in returned no token.");
 
@@ -269,7 +270,7 @@ public sealed class AuthService : IAuthService
                 // wallet surface is always login-only — provider linking happens in the web app, not the PWA
                 new SocialInitiateBody(provider, "login", "wallet"), ct);
             if (!resp.IsSuccessStatusCode) return null;
-            var body = await resp.Content.ReadFromJsonAsync<SocialInitiateBodyResponse>(ct);
+            var body = await resp.Content.ReadFromJsonAsync<SocialInitiateBodyResponse>(JsonDefaults.Api, ct);
             return body?.AuthorizationUrl;
         }
         catch (HttpRequestException) { return null; }

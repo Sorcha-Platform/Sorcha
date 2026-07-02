@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
 
@@ -18,8 +19,6 @@ namespace Sorcha.UI.Core.Services.Authentication;
 /// </summary>
 public class CustomAuthenticationStateProvider : AuthenticationStateProvider
 {
-    private static readonly JsonSerializerOptions CaseInsensitiveJson = new() { PropertyNameCaseInsensitive = true };
-
     private readonly ITokenCache _tokenCache;
     private readonly IConfigurationService _configurationService;
     private readonly IJSRuntime _jsRuntime;
@@ -149,7 +148,7 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
             if (string.IsNullOrEmpty(json))
                 return null;
 
-            var result = JsonSerializer.Deserialize<FragmentTokenResult>(json, CaseInsensitiveJson);
+            var result = JsonSerializer.Deserialize<FragmentTokenResult>(json, JsonDefaults.Api);
             if (result?.Token is null)
                 return null;
 

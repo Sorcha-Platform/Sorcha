@@ -21,6 +21,7 @@
     <ProjectReference Include="..\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
     <!-- Feature 114: citizen wallet DTO surface -->
     <ProjectReference Include="..\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
+    <ProjectReference Include="..\Sorcha.Json\Sorcha.Json.csproj" />
   </ItemGroup>
 
   <ItemGroup>

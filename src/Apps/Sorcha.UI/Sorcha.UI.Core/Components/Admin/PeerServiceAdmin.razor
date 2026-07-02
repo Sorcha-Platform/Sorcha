@@ -4,6 +4,7 @@
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Authentication
 @using Sorcha.UI.Core.Services.Configuration
+@using Sorcha.UI.Core.Extensions
 @inject HttpClient Http
 @inject IAuthenticationService AuthService
 @inject IConfigurationService ConfigService
@@ -466,7 +467,7 @@
     {
         try
         {
-            var healthResponse = await Http.GetFromJsonAsync<PeerHealthResponse>(ApiConfiguration.PeerStatusUrl);
+            var healthResponse = await Http.GetFromJsonAsync<PeerHealthResponse>(ApiConfiguration.PeerStatusUrl, JsonDefaults.Api);
 
             if (healthResponse != null && healthResponse.Status == "healthy")
             {
@@ -518,7 +519,7 @@
     {
         try
         {
-            var result = await Http.GetFromJsonAsync<List<EnhancedPeerInfo>>($"{ApiConfiguration.PeerServiceUrl}/peers");
+            var result = await Http.GetFromJsonAsync<List<EnhancedPeerInfo>>($"{ApiConfiguration.PeerServiceUrl}/peers", JsonDefaults.Api);
             if (result != null)
             {
                 enhancedPeers = result;
@@ -534,7 +535,7 @@
     {
         try
         {
-            var result = await Http.GetFromJsonAsync<List<PeerQualityInfo>>($"{ApiConfiguration.PeerServiceUrl}/peers/quality");
+            var result = await Http.GetFromJsonAsync<List<PeerQualityInfo>>($"{ApiConfiguration.PeerServiceUrl}/peers/quality", JsonDefaults.Api);
             if (result != null)
             {
                 qualityScores = result;
@@ -550,7 +551,7 @@
     {
         try
         {
-            var result = await Http.GetFromJsonAsync<List<RegisterSubscriptionInfo>>($"{ApiConfiguration.PeerServiceUrl}/registers/subscriptions");
+            var result = await Http.GetFromJsonAsync<List<RegisterSubscriptionInfo>>($"{ApiConfiguration.PeerServiceUrl}/registers/subscriptions", JsonDefaults.Api);
             if (result != null)
             {
                 subscriptions = result;

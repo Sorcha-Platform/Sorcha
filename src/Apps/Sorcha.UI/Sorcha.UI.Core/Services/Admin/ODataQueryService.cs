@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Common;
 using Sorcha.UI.Core.Models.Explorer;
 using Sorcha.UI.Core.Models.Registers;
@@ -30,7 +31,7 @@ public class ODataQueryService : IODataQueryService
         try
         {
             var url = BuildODataUrl("/odata/Transactions", query);
-            var result = await _httpClient.GetFromJsonAsync<PaginatedList<TransactionViewModel>>(url, cancellationToken);
+            var result = await _httpClient.GetFromJsonAsync<PaginatedList<TransactionViewModel>>(url, JsonDefaults.Api, cancellationToken);
             return result ?? new PaginatedList<TransactionViewModel>();
         }
         catch (Exception ex)
@@ -45,7 +46,7 @@ public class ODataQueryService : IODataQueryService
         try
         {
             var url = BuildODataUrl("/odata/Registers", query);
-            var result = await _httpClient.GetFromJsonAsync<PaginatedList<RegisterViewModel>>(url, cancellationToken);
+            var result = await _httpClient.GetFromJsonAsync<PaginatedList<RegisterViewModel>>(url, JsonDefaults.Api, cancellationToken);
             return result ?? new PaginatedList<RegisterViewModel>();
         }
         catch (Exception ex)

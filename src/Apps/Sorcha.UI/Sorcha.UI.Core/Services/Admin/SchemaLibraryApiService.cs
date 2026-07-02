@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.SchemaLibrary;
 
 namespace Sorcha.UI.Core.Services;
@@ -48,7 +49,7 @@ public class SchemaLibraryApiService : ISchemaLibraryApiService
             if (queryParams.Count > 0)
                 url += "?" + string.Join("&", queryParams);
 
-            var response = await _httpClient.GetFromJsonAsync<SchemaIndexSearchResponse>(url, cancellationToken);
+            var response = await _httpClient.GetFromJsonAsync<SchemaIndexSearchResponse>(url, JsonDefaults.Api, cancellationToken);
             return response ?? new SchemaIndexSearchResponse([], 0, null, null);
         }
         catch (Exception ex)
@@ -66,6 +67,7 @@ public class SchemaLibraryApiService : ISchemaLibraryApiService
         {
             return await _httpClient.GetFromJsonAsync<SchemaIndexEntryDetailViewModel>(
                 $"/api/v1/schemas/index/{Uri.EscapeDataString(shortCode)}",
+                JsonDefaults.Api,
                 cancellationToken);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -87,6 +89,7 @@ public class SchemaLibraryApiService : ISchemaLibraryApiService
         {
             return await _httpClient.GetFromJsonAsync<JsonDocument>(
                 $"/api/v1/schemas/index/content/{Uri.EscapeDataString(shortCode)}",
+                JsonDefaults.Api,
                 cancellationToken);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -106,7 +109,7 @@ public class SchemaLibraryApiService : ISchemaLibraryApiService
         try
         {
             var sectors = await _httpClient.GetFromJsonAsync<List<SchemaSectorViewModel>>(
-                "/api/v1/schemas/sectors", cancellationToken);
+                "/api/v1/schemas/sectors", JsonDefaults.Api, cancellationToken);
             return sectors ?? [];
         }
         catch (Exception ex)
@@ -122,7 +125,7 @@ public class SchemaLibraryApiService : ISchemaLibraryApiService
         try
         {
             return await _httpClient.GetFromJsonAsync<OrganisationSectorPreferencesViewModel>(
-                "/api/v1/schemas/sectors/preferences", cancellationToken);
+                "/api/v1/schemas/sectors/preferences", JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -156,7 +159,7 @@ public class SchemaLibraryApiService : ISchemaLibraryApiService
         try
         {
             var statuses = await _httpClient.GetFromJsonAsync<List<SchemaProviderStatusViewModel>>(
-                "/api/v1/schemas/providers", cancellationToken);
+                "/api/v1/schemas/providers", JsonDefaults.Api, cancellationToken);
             return statuses ?? [];
         }
         catch (Exception ex)

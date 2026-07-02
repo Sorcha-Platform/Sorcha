@@ -4,7 +4,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Sorcha.Json;
+namespace Sorcha.Serialization;
 
 /// <summary>
 /// The single source of truth for Sorcha's JSON wire format. Both sides derive from it so they can

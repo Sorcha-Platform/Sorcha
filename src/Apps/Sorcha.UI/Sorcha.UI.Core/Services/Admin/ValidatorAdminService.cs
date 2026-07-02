@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 
 namespace Sorcha.UI.Core.Services;
@@ -32,7 +33,7 @@ public class ValidatorAdminService : IValidatorAdminService
                 return new ValidatorStatusViewModel { IsLoaded = false };
             }
 
-            var status = await response.Content.ReadFromJsonAsync<ValidatorStatusViewModel>(cancellationToken: cancellationToken);
+            var status = await response.Content.ReadFromJsonAsync<ValidatorStatusViewModel>(JsonDefaults.Api, cancellationToken);
             return status ?? new ValidatorStatusViewModel { IsLoaded = false };
         }
         catch (Exception ex)
@@ -47,7 +48,7 @@ public class ValidatorAdminService : IValidatorAdminService
         try
         {
             var stat = await _httpClient.GetFromJsonAsync<RegisterMempoolStat>(
-                $"/api/v1/transactions/mempool/{registerId}", cancellationToken);
+                $"/api/v1/transactions/mempool/{registerId}", JsonDefaults.Api, cancellationToken);
             return stat ?? new RegisterMempoolStat { RegisterId = registerId };
         }
         catch (Exception ex)
@@ -65,7 +66,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.GetAsync("/api/admin/validators/consent-queue", ct);
             if (!response.IsSuccessStatusCode) return new ConsentQueueViewModel();
-            return await response.Content.ReadFromJsonAsync<ConsentQueueViewModel>(cancellationToken: ct) ?? new ConsentQueueViewModel();
+            return await response.Content.ReadFromJsonAsync<ConsentQueueViewModel>(JsonDefaults.Api, ct) ?? new ConsentQueueViewModel();
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching consent queue"); return new ConsentQueueViewModel(); }
     }
@@ -76,7 +77,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.GetAsync($"/api/validators/{registerId}/pending", ct);
             if (!response.IsSuccessStatusCode) return [];
-            return await response.Content.ReadFromJsonAsync<List<PendingValidatorViewModel>>(cancellationToken: ct) ?? [];
+            return await response.Content.ReadFromJsonAsync<List<PendingValidatorViewModel>>(JsonDefaults.Api, ct) ?? [];
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching pending validators for {RegisterId}", registerId); return []; }
     }
@@ -141,7 +142,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.PostAsync($"/api/validators/{registerId}/refresh", null, ct);
             if (!response.IsSuccessStatusCode) return [];
-            return await response.Content.ReadFromJsonAsync<List<ApprovedValidatorInfo>>(cancellationToken: ct) ?? [];
+            return await response.Content.ReadFromJsonAsync<List<ApprovedValidatorInfo>>(JsonDefaults.Api, ct) ?? [];
         }
         catch (Exception ex) { _logger.LogError(ex, "Error refreshing validators for {RegisterId}", registerId); return []; }
     }
@@ -154,7 +155,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.GetAsync("/api/validator/metrics", ct);
             if (!response.IsSuccessStatusCode) return new AggregatedMetricsViewModel();
-            return await response.Content.ReadFromJsonAsync<AggregatedMetricsViewModel>(cancellationToken: ct) ?? new AggregatedMetricsViewModel();
+            return await response.Content.ReadFromJsonAsync<AggregatedMetricsViewModel>(JsonDefaults.Api, ct) ?? new AggregatedMetricsViewModel();
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching aggregated metrics"); return new AggregatedMetricsViewModel(); }
     }
@@ -165,7 +166,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.GetAsync("/api/validator/metrics/validation", ct);
             if (!response.IsSuccessStatusCode) return new ValidationSummaryViewModel();
-            return await response.Content.ReadFromJsonAsync<ValidationSummaryViewModel>(cancellationToken: ct) ?? new ValidationSummaryViewModel();
+            return await response.Content.ReadFromJsonAsync<ValidationSummaryViewModel>(JsonDefaults.Api, ct) ?? new ValidationSummaryViewModel();
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching validation metrics"); return new ValidationSummaryViewModel(); }
     }
@@ -176,7 +177,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.GetAsync("/api/validator/metrics/consensus", ct);
             if (!response.IsSuccessStatusCode) return new ConsensusSummaryViewModel();
-            return await response.Content.ReadFromJsonAsync<ConsensusSummaryViewModel>(cancellationToken: ct) ?? new ConsensusSummaryViewModel();
+            return await response.Content.ReadFromJsonAsync<ConsensusSummaryViewModel>(JsonDefaults.Api, ct) ?? new ConsensusSummaryViewModel();
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching consensus metrics"); return new ConsensusSummaryViewModel(); }
     }
@@ -187,7 +188,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.GetAsync("/api/validator/metrics/pools", ct);
             if (!response.IsSuccessStatusCode) return new PoolSummaryViewModel();
-            return await response.Content.ReadFromJsonAsync<PoolSummaryViewModel>(cancellationToken: ct) ?? new PoolSummaryViewModel();
+            return await response.Content.ReadFromJsonAsync<PoolSummaryViewModel>(JsonDefaults.Api, ct) ?? new PoolSummaryViewModel();
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching pool metrics"); return new PoolSummaryViewModel(); }
     }
@@ -198,7 +199,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.GetAsync("/api/validator/metrics/caches", ct);
             if (!response.IsSuccessStatusCode) return new CacheSummaryViewModel();
-            return await response.Content.ReadFromJsonAsync<CacheSummaryViewModel>(cancellationToken: ct) ?? new CacheSummaryViewModel();
+            return await response.Content.ReadFromJsonAsync<CacheSummaryViewModel>(JsonDefaults.Api, ct) ?? new CacheSummaryViewModel();
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching cache metrics"); return new CacheSummaryViewModel(); }
     }
@@ -211,7 +212,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.GetAsync("/api/v1/validators/threshold/status", ct);
             if (!response.IsSuccessStatusCode) return [];
-            return await response.Content.ReadFromJsonAsync<List<ThresholdConfigViewModel>>(cancellationToken: ct) ?? [];
+            return await response.Content.ReadFromJsonAsync<List<ThresholdConfigViewModel>>(JsonDefaults.Api, ct) ?? [];
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching threshold status"); return []; }
     }
@@ -220,7 +221,7 @@ public class ValidatorAdminService : IValidatorAdminService
     {
         var response = await _httpClient.PostAsJsonAsync("/api/v1/validators/threshold/setup", request, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ThresholdConfigViewModel>(cancellationToken: ct)
+        return await response.Content.ReadFromJsonAsync<ThresholdConfigViewModel>(JsonDefaults.Api, ct)
             ?? throw new InvalidOperationException("Failed to deserialize threshold setup response");
     }
 
@@ -232,7 +233,7 @@ public class ValidatorAdminService : IValidatorAdminService
         {
             var response = await _httpClient.GetAsync("/api/validator/metrics/config", ct);
             if (!response.IsSuccessStatusCode) return new ValidatorConfigViewModel();
-            return await response.Content.ReadFromJsonAsync<ValidatorConfigViewModel>(cancellationToken: ct) ?? new ValidatorConfigViewModel();
+            return await response.Content.ReadFromJsonAsync<ValidatorConfigViewModel>(JsonDefaults.Api, ct) ?? new ValidatorConfigViewModel();
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching validator config"); return new ValidatorConfigViewModel(); }
     }

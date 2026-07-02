@@ -7,6 +7,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Trust;
 
@@ -96,7 +97,7 @@ public sealed class TrustServiceClient : IOrgCertChainProvider
             JsonElement body;
             try
             {
-                body = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+                body = await response.Content.ReadFromJsonAsync<JsonElement>(SorchaJson.Options, ct);
             }
             catch (Exception ex)
             {

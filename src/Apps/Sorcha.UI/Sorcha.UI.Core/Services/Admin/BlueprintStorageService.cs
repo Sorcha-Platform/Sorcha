@@ -6,6 +6,7 @@ using System.Text.Json;
 using Blazored.LocalStorage;
 using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Models;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Designer;
 
 namespace Sorcha.UI.Core.Services;
@@ -90,7 +91,7 @@ public class BlueprintStorageService : IBlueprintStorageService
                 if (response.IsSuccessStatusCode)
                 {
                     var blueprint = await response.Content.ReadFromJsonAsync<Blueprint.Models.Blueprint>(
-                        JsonOptions, cancellationToken);
+                        JsonDefaults.Api, cancellationToken);
 
                     if (blueprint != null)
                     {
@@ -320,7 +321,7 @@ public class BlueprintStorageService : IBlueprintStorageService
             }
 
             return await response.Content.ReadFromJsonAsync<List<Blueprint.Models.Blueprint>>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -339,7 +340,7 @@ public class BlueprintStorageService : IBlueprintStorageService
                 return [];
             }
 
-            return JsonSerializer.Deserialize<List<Blueprint.Models.Blueprint>>(json, JsonOptions) ?? [];
+            return JsonSerializer.Deserialize<List<Blueprint.Models.Blueprint>>(json, JsonDefaults.Api) ?? [];
         }
         catch (Exception ex)
         {

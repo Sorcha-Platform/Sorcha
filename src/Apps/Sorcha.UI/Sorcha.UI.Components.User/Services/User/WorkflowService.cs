@@ -55,7 +55,7 @@ public class WorkflowService : IWorkflowService
         try
         {
             return await _httpClient.GetFromJsonAsync<WorkflowInstanceViewModel>(
-                $"/api/instances/{instanceId}", cancellationToken);
+                $"/api/instances/{instanceId}", JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -180,7 +180,7 @@ public class WorkflowService : IWorkflowService
         try
         {
             var blueprint = await _httpClient.GetFromJsonAsync<Sorcha.Blueprint.Models.Blueprint>(
-                $"/api/blueprints/{blueprintId}", cancellationToken);
+                $"/api/blueprints/{blueprintId}", JsonDefaults.Api, cancellationToken);
 
             if (blueprint != null)
                 _blueprintCache[blueprintId] = blueprint;

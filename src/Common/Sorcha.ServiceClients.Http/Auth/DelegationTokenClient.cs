@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Auth;
 
@@ -76,7 +77,7 @@ public class DelegationTokenClient : IDelegationTokenClient
                 return null;
             }
 
-            var tokenResponse = await response.Content.ReadFromJsonAsync<DelegationResponse>(cancellationToken);
+            var tokenResponse = await response.Content.ReadFromJsonAsync<DelegationResponse>(SorchaJson.Options, cancellationToken);
             if (tokenResponse?.AccessToken is null)
             {
                 _logger.LogWarning("Delegation token response was null or missing access_token");

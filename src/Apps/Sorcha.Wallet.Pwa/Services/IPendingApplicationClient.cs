@@ -3,6 +3,7 @@
 
 using System.Net;
 using System.Net.Http.Json;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.Wallet.Pwa.Services;
 
@@ -50,7 +51,7 @@ public sealed class HttpPendingApplicationClient : IPendingApplicationClient
         using var response = await _http.GetAsync(Path, ct).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
-        var envelope = await response.Content.ReadFromJsonAsync<PendingApplicationEnvelope>(ct).ConfigureAwait(false);
+        var envelope = await response.Content.ReadFromJsonAsync<PendingApplicationEnvelope>(JsonDefaults.Api, ct).ConfigureAwait(false);
         return envelope?.Notice;
     }
 
@@ -62,7 +63,7 @@ public sealed class HttpPendingApplicationClient : IPendingApplicationClient
             new SetPendingApplicationRequest(label),
             ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        var envelope = await response.Content.ReadFromJsonAsync<PendingApplicationEnvelope>(ct).ConfigureAwait(false);
+        var envelope = await response.Content.ReadFromJsonAsync<PendingApplicationEnvelope>(JsonDefaults.Api, ct).ConfigureAwait(false);
         return envelope?.Notice
             ?? throw new InvalidOperationException("Wallet service returned a SetPendingApplication response with no notice.");
     }

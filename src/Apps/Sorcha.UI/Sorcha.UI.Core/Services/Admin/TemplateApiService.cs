@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Models;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Blueprints;
 using Sorcha.UI.Core.Models.Templates;
 
@@ -31,7 +32,7 @@ public class TemplateApiService : ITemplateApiService
             var url = "/api/templates";
             if (!string.IsNullOrEmpty(category)) url += $"?category={Uri.EscapeDataString(category)}";
 
-            var templates = await _httpClient.GetFromJsonAsync<List<BlueprintTemplate>>(url, cancellationToken);
+            var templates = await _httpClient.GetFromJsonAsync<List<BlueprintTemplate>>(url, JsonDefaults.Api, cancellationToken);
             return templates?.Select(MapToViewModel).ToList() ?? [];
         }
         catch (Exception ex)
@@ -45,7 +46,7 @@ public class TemplateApiService : ITemplateApiService
     {
         try
         {
-            var template = await _httpClient.GetFromJsonAsync<BlueprintTemplate>($"/api/templates/{id}", cancellationToken);
+            var template = await _httpClient.GetFromJsonAsync<BlueprintTemplate>($"/api/templates/{id}", JsonDefaults.Api, cancellationToken);
             return template is not null ? MapToViewModel(template) : null;
         }
         catch (Exception ex)
@@ -63,7 +64,7 @@ public class TemplateApiService : ITemplateApiService
                 new { templateId = id, parameters }, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadFromJsonAsync<BlueprintListItemViewModel>(cancellationToken: cancellationToken);
+                return await response.Content.ReadFromJsonAsync<BlueprintListItemViewModel>(JsonDefaults.Api, cancellationToken);
             }
             return null;
         }
@@ -82,7 +83,7 @@ public class TemplateApiService : ITemplateApiService
                 new { templateId = id, parameters }, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<TemplateEvaluationResult>(cancellationToken: cancellationToken);
+                var result = await response.Content.ReadFromJsonAsync<TemplateEvaluationResult>(JsonDefaults.Api, cancellationToken);
                 return result?.Blueprint;
             }
             return null;

@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# JSON-options CI gate. Fails when any client-side (UI / PWA / service-client) System.Text.Json
+# HTTP-response deserialization (ReadFromJsonAsync / GetFromJsonAsync) is called BARE, i.e. without
+# explicit serializer options. The shared source of truth Sorcha.Serialization.SorchaJson.Options
+# (aliased JsonDefaults.Api in the UI) reads the services' kebab-case string enums; default options do
+# not, and silently yield empty results. See scripts/check-json-options.ps1.
+
+name: json-options-gate
+
+on:
+  pull_request:
+    paths:
+      - "src/Apps/Sorcha.UI/**"
+      - "src/Apps/Sorcha.Wallet.Pwa/**"
+      - "src/Common/Sorcha.ServiceClients.Http/**"
+      - "scripts/check-json-options.ps1"
+      - ".github/workflows/json-options-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  no-bare-json-deserialization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run JSON-options gate
+        shell: pwsh
+        run: ./scripts/check-json-options.ps1

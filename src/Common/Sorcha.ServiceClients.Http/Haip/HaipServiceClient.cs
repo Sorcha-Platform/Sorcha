@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
 
@@ -51,7 +52,7 @@ public class HaipServiceClient : IHaipServiceClient
         var response = await _httpClient.PostAsJsonAsync("/api/v1/offers", request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(SorchaJson.Options, ct);
 
         return new CreateOfferResult(
             Guid.Parse(result.GetProperty("offerId").GetString()!),
@@ -78,7 +79,7 @@ public class HaipServiceClient : IHaipServiceClient
         var response = await _httpClient.PostAsJsonAsync("/api/v1/verifier/requests", request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(SorchaJson.Options, ct);
 
         return new CreatePresentationRequestResult(
             Guid.Parse(result.GetProperty("requestId").GetString()!),
@@ -95,7 +96,7 @@ public class HaipServiceClient : IHaipServiceClient
         var response = await _httpClient.GetAsync($"/api/v1/offers/{offerId}", ct);
         if (!response.IsSuccessStatusCode) return null;
 
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(SorchaJson.Options, ct);
 
         return new OfferStatusResult(
             Guid.Parse(result.GetProperty("offerId").GetString()!),
@@ -113,7 +114,7 @@ public class HaipServiceClient : IHaipServiceClient
         var response = await _httpClient.GetAsync($"/api/v1/verifier/requests/{requestId}/result", ct);
         if (!response.IsSuccessStatusCode) return null;
 
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(SorchaJson.Options, ct);
 
         var isValid = result.TryGetProperty("result", out var resultProp) &&
                      resultProp.ValueKind != JsonValueKind.Null

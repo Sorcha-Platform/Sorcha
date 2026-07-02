@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Microsoft.JSInterop;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Configuration;
 
 namespace Sorcha.UI.Core.Services.Configuration;
@@ -57,7 +58,7 @@ public class ConfigurationService : IConfigurationService, IDisposable
             json = await _jsRuntime.InvokeAsync<string?>("localStorage.getItem", ProfilesStorageKey);
         }
 
-        return JsonSerializer.Deserialize<List<Profile>>(json!) ?? new List<Profile>();
+        return JsonSerializer.Deserialize<List<Profile>>(json!, JsonDefaults.Api) ?? new List<Profile>();
     }
 
     /// <inheritdoc />
@@ -193,7 +194,7 @@ public class ConfigurationService : IConfigurationService, IDisposable
             return UiConfiguration.Default();
         }
 
-        return JsonSerializer.Deserialize<UiConfiguration>(json) ?? UiConfiguration.Default();
+        return JsonSerializer.Deserialize<UiConfiguration>(json, JsonDefaults.Api) ?? UiConfiguration.Default();
     }
 
     /// <inheritdoc />

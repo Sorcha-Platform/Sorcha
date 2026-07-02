@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
 
 namespace Sorcha.UI.Core.Services.User.Presentation;
@@ -218,7 +219,7 @@ public sealed class PresentationSignal : IPresentationSignal, IAsyncDisposable
                 return null;
             }
             var payload = await response.Content
-                .ReadFromJsonAsync<StatusProbeShape>(ct)
+                .ReadFromJsonAsync<StatusProbeShape>(JsonDefaults.Api, ct)
                 .ConfigureAwait(false);
             return payload?.State;
         }

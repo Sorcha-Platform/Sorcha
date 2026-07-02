@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 
 namespace Sorcha.UI.Core.Services;
@@ -34,7 +35,7 @@ public class ServicePrincipalService : IServicePrincipalService
         {
             var query = includeInactive ? "?includeInactive=true" : "";
             var result = await _httpClient.GetFromJsonAsync<ServicePrincipalListResult>(
-                $"{BasePath}{query}", ct);
+                $"{BasePath}{query}", JsonDefaults.Api, ct);
             return result ?? new ServicePrincipalListResult();
         }
         catch (Exception ex)
@@ -50,7 +51,7 @@ public class ServicePrincipalService : IServicePrincipalService
         try
         {
             return await _httpClient.GetFromJsonAsync<ServicePrincipalViewModel>(
-                $"{BasePath}/{id}", ct);
+                $"{BasePath}/{id}", JsonDefaults.Api, ct);
         }
         catch (Exception ex)
         {
@@ -66,7 +67,7 @@ public class ServicePrincipalService : IServicePrincipalService
         {
             var response = await _httpClient.PostAsJsonAsync(BasePath, request, ct);
             response.EnsureSuccessStatusCode();
-            var result = await response.Content.ReadFromJsonAsync<ServicePrincipalSecretViewModel>(cancellationToken: ct);
+            var result = await response.Content.ReadFromJsonAsync<ServicePrincipalSecretViewModel>(JsonDefaults.Api, ct);
             return result ?? throw new InvalidOperationException("Empty response from create endpoint");
         }
         catch (Exception ex)
@@ -83,7 +84,7 @@ public class ServicePrincipalService : IServicePrincipalService
         {
             var response = await _httpClient.PutAsJsonAsync($"{BasePath}/{id}/scopes", new { scopes }, ct);
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<ServicePrincipalViewModel>(cancellationToken: ct);
+            return await response.Content.ReadFromJsonAsync<ServicePrincipalViewModel>(JsonDefaults.Api, ct);
         }
         catch (Exception ex)
         {
@@ -144,7 +145,7 @@ public class ServicePrincipalService : IServicePrincipalService
         {
             var response = await _httpClient.PostAsync($"{BasePath}/{id}/rotate-secret", null, ct);
             response.EnsureSuccessStatusCode();
-            var result = await response.Content.ReadFromJsonAsync<ServicePrincipalSecretViewModel>(cancellationToken: ct);
+            var result = await response.Content.ReadFromJsonAsync<ServicePrincipalSecretViewModel>(JsonDefaults.Api, ct);
             return result ?? throw new InvalidOperationException("Empty response from rotate secret endpoint");
         }
         catch (Exception ex)

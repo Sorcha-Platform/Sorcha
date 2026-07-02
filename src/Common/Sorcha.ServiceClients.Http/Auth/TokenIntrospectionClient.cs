@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Auth;
 
@@ -63,7 +64,7 @@ public class TokenIntrospectionClient : ITokenIntrospectionClient
                 return null;
             }
 
-            var result = await response.Content.ReadFromJsonAsync<IntrospectionResponse>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<IntrospectionResponse>(SorchaJson.Options, cancellationToken);
             if (result is null)
             {
                 _logger.LogWarning("Token introspection returned null response");

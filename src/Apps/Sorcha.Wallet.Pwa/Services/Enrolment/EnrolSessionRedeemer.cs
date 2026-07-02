@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.Wallet.Pwa.Services.Enrolment;
 
@@ -39,7 +40,7 @@ public sealed class EnrolSessionRedeemer : IEnrolSessionRedeemer
 
             if (response.IsSuccessStatusCode)
             {
-                var body = await response.Content.ReadFromJsonAsync<RedeemSuccessShape>(cancellationToken: ct)
+                var body = await response.Content.ReadFromJsonAsync<RedeemSuccessShape>(JsonDefaults.Api, ct)
                     .ConfigureAwait(false);
                 if (body is null || string.IsNullOrEmpty(body.AccessToken))
                 {
@@ -87,7 +88,7 @@ public sealed class EnrolSessionRedeemer : IEnrolSessionRedeemer
     {
         try
         {
-            return await response.Content.ReadFromJsonAsync<ErrorShape>(cancellationToken: ct).ConfigureAwait(false);
+            return await response.Content.ReadFromJsonAsync<ErrorShape>(JsonDefaults.Api, ct).ConfigureAwait(false);
         }
         catch
         {

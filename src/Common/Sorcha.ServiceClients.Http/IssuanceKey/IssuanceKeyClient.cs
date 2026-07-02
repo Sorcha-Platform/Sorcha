@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.IssuanceKey;
 
@@ -91,7 +92,7 @@ public sealed class IssuanceKeyClient : IIssuanceKeyClient
                 return null;
             }
 
-            var result = await resp.Content.ReadFromJsonAsync<SignOnBehalfResponse>(ct).ConfigureAwait(false);
+            var result = await resp.Content.ReadFromJsonAsync<SignOnBehalfResponse>(SorchaJson.Options, ct).ConfigureAwait(false);
             if (result is null) return null;
 
             var sig = Convert.FromBase64String(result.SignatureBase64Url

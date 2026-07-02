@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Participants;
 
 namespace Sorcha.UI.Core.Services.Participants;
@@ -27,7 +28,7 @@ public class ParticipantPublishingService : IParticipantPublishingService
         var response = await _httpClient.PostAsJsonAsync(url, request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<ParticipantPublishResultViewModel>(ct);
+        var result = await response.Content.ReadFromJsonAsync<ParticipantPublishResultViewModel>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to parse publish response");
     }
 
@@ -41,7 +42,7 @@ public class ParticipantPublishingService : IParticipantPublishingService
         var response = await _httpClient.PutAsJsonAsync(url, request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<ParticipantPublishResultViewModel>(ct);
+        var result = await response.Content.ReadFromJsonAsync<ParticipantPublishResultViewModel>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to parse update response");
     }
 

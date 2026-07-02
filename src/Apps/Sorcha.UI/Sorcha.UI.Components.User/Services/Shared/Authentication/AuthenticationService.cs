@@ -3,6 +3,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
 
@@ -102,7 +103,7 @@ public class AuthenticationService : IAuthenticationService
                 return false;
             }
 
-            var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>();
+            var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>(JsonDefaults.Api);
             if (tokenResponse == null || !tokenResponse.IsValid())
             {
                 return false;
@@ -147,7 +148,7 @@ public class AuthenticationService : IAuthenticationService
                 return false;
             }
 
-            var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>();
+            var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>(JsonDefaults.Api);
             if (tokenResponse is null || !tokenResponse.IsValid())
             {
                 return false;

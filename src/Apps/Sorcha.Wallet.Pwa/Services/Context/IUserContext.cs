@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.Wallet.Pwa.Services;
 
 namespace Sorcha.Wallet.Pwa.Services.Context;
@@ -133,7 +134,7 @@ public sealed class ManagedUserContext : IUserContext
                 }
 
                 var payload = await response.Content
-                    .ReadFromJsonAsync<SwitchOrgResponse>(cancellationToken: ct).ConfigureAwait(false);
+                    .ReadFromJsonAsync<SwitchOrgResponse>(JsonDefaults.Api, ct).ConfigureAwait(false);
                 if (payload is null || string.IsNullOrEmpty(payload.AccessToken))
                 {
                     _logger.LogWarning("Context switch returned an empty token payload.");

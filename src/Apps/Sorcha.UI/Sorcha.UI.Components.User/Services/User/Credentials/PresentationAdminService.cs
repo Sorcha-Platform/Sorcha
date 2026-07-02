@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Credentials;
 
 namespace Sorcha.UI.Core.Services.Credentials;
@@ -12,11 +12,6 @@ public class PresentationAdminService : IPresentationAdminService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<PresentationAdminService> _logger;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
 
     public PresentationAdminService(HttpClient httpClient, ILogger<PresentationAdminService> logger)
     {
@@ -38,7 +33,7 @@ public class PresentationAdminService : IPresentationAdminService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<PresentationRequestResultViewModel>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<PresentationRequestResultViewModel>(JsonDefaults.Api, ct);
         }
         catch (HttpRequestException ex)
         {
@@ -86,7 +81,7 @@ public class PresentationAdminService : IPresentationAdminService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<PresentationRequestResultViewModel>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<PresentationRequestResultViewModel>(JsonDefaults.Api, ct);
         }
         catch (HttpRequestException ex)
         {

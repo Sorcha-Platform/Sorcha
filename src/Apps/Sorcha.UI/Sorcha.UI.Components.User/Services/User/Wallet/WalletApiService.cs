@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Wallet;
 
 namespace Sorcha.UI.Core.Services.Wallet;
@@ -25,7 +26,7 @@ public class WalletApiService : IWalletApiService
         var response = await _httpClient.GetAsync(BasePath, ct);
         response.EnsureSuccessStatusCode();
 
-        var wallets = await response.Content.ReadFromJsonAsync<List<WalletDto>>(ct);
+        var wallets = await response.Content.ReadFromJsonAsync<List<WalletDto>>(JsonDefaults.Api, ct);
         return wallets ?? new List<WalletDto>();
     }
 
@@ -40,7 +41,7 @@ public class WalletApiService : IWalletApiService
         }
 
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<WalletDto>(ct);
+        return await response.Content.ReadFromJsonAsync<WalletDto>(JsonDefaults.Api, ct);
     }
 
     /// <inheritdoc />
@@ -49,7 +50,7 @@ public class WalletApiService : IWalletApiService
         var response = await _httpClient.PostAsJsonAsync(BasePath, request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<CreateWalletResponse>(ct);
+        var result = await response.Content.ReadFromJsonAsync<CreateWalletResponse>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to deserialize wallet creation response");
     }
 
@@ -59,7 +60,7 @@ public class WalletApiService : IWalletApiService
         var response = await _httpClient.PostAsJsonAsync($"{BasePath}/recover", request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<WalletDto>(ct);
+        var result = await response.Content.ReadFromJsonAsync<WalletDto>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to deserialize wallet recovery response");
     }
 
@@ -83,7 +84,7 @@ public class WalletApiService : IWalletApiService
         var response = await _httpClient.PostAsJsonAsync($"{BasePath}/{address}/sign", request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<SignTransactionResponse>(ct);
+        var result = await response.Content.ReadFromJsonAsync<SignTransactionResponse>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to deserialize signing response");
     }
 
@@ -93,7 +94,7 @@ public class WalletApiService : IWalletApiService
         var response = await _httpClient.GetAsync($"{BasePath}/{address}/addresses?page={page}&pageSize={pageSize}", ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<AddressListResponse>(ct);
+        var result = await response.Content.ReadFromJsonAsync<AddressListResponse>(JsonDefaults.Api, ct);
         return result ?? new AddressListResponse { WalletAddress = address };
     }
 
@@ -103,7 +104,7 @@ public class WalletApiService : IWalletApiService
         var response = await _httpClient.PostAsJsonAsync($"{BasePath}/{address}/addresses", request, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<WalletAddressDto>(ct);
+        var result = await response.Content.ReadFromJsonAsync<WalletAddressDto>(JsonDefaults.Api, ct);
         return result ?? throw new InvalidOperationException("Failed to deserialize address registration response");
     }
 }

@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.Wallet.Pwa.Services;
 
@@ -26,7 +27,7 @@ public sealed class SocialProvidersClient : ISocialProvidersClient
     {
         try
         {
-            var body = await _http.GetFromJsonAsync<ProvidersBody>("api/auth/social/providers", ct);
+            var body = await _http.GetFromJsonAsync<ProvidersBody>("api/auth/social/providers", JsonDefaults.Api, ct);
             return body?.Providers ?? [];
         }
         catch { return []; }
