@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Tenant.Models.Persona;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.Persona;
 
@@ -43,7 +44,7 @@ public sealed class PersonaHttpClient : IPersonaClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<PersonaReadModelV1>(cancellationToken: ct);
+            return await response.Content.ReadFromJsonAsync<PersonaReadModelV1>(JsonDefaults.Api, ct);
         }
         catch (Exception ex)
         {
@@ -74,7 +75,7 @@ public sealed class PersonaHttpClient : IPersonaClient
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<PersonaReadModelV1>(cancellationToken: ct);
+        var result = await response.Content.ReadFromJsonAsync<PersonaReadModelV1>(JsonDefaults.Api, ct);
         return result ?? new PersonaReadModelV1();
     }
 

@@ -26,6 +26,11 @@ public class CompleteProfileStepTests : DockerTestBase
     protected override bool AssertNoConsoleErrors => false;
     protected override bool AssertNoNetworkFailures => false;
 
+    // Pin the browser locale so navigator.language → Blazor CurrentCulture → phone-region resolution
+    // is deterministic (GB → +44). Without this, headless Chromium defaults to en-US and the GB
+    // national-number conversion (correctly) doesn't fire.
+    public override BrowserNewContextOptions ContextOptions() => new() { Locale = "en-GB" };
+
     private const string Password = "Onboard_Pass_2026!";
 
     /// <summary>
@@ -62,11 +67,6 @@ public class CompleteProfileStepTests : DockerTestBase
     /// verified by opening My Profile (which reads the persona, not the login claims).
     /// </summary>
     [Test]
-    [Ignore("Auto-seed persistence is proven server-side (persona PUT → 200, 'Persona saved', decrypt " +
-        "200), but asserting it purely through the My Profile read-back is timing-sensitive in the " +
-        "Docker E2E (the best-effort seed vs. the immediate skip + reload). Carry-across is covered " +
-        "green by Onboarding_CarriesSignupNameAndEmailIntoProfileStep; auto-seed logic is unit-covered " +
-        "by ProfilePrefillTests. Follow-up: stabilise the read-back assertion.")]
     public async Task Onboarding_AutoSeedsPersona_SoSkippingStillPopulatesProfile()
     {
         var email = $"onboard-seed-{Guid.NewGuid():N}@example.test";
@@ -100,6 +100,36 @@ public class CompleteProfileStepTests : DockerTestBase
             Assert.That(emailValue, Is.EqualTo(email),
                 "Persona should have been auto-seeded with the login email.");
         });
+    }
+
+    /// <summary>
+    /// The reported bug: the profile saves but "when I go back in, the form is empty". My Profile must
+    /// re-fetch and re-populate the stored persona across a full page reload — not show a blank form.
+    /// </summary>
+    [Test]
+    public async Task MyProfile_PersistsAcrossReload()
+    {
+        var email = $"myprofile-{Guid.NewGuid():N}@example.test";
+        await SignUpVerifyAndSignInAsync(email, "Reload Tester");
+        await CompleteWalletWizardAsync();
+        await WaitForProfileStepAsync();
+        await Page.Locator("[data-testid='profile-skip-button']").ClickAsync();
+
+        // My Profile shows the auto-seeded identity.
+        await NavigateAndWaitForBlazorAsync(TestConstants.AuthenticatedRoutes.Profile);
+        await Expect(Field("persona-given-name"))
+            .ToHaveValueAsync("Reload", new() { Timeout = TestConstants.PageLoadTimeout });
+
+        // Edit + save, then reload: the value must survive (the "empty on reload" regression).
+        var given = Field("persona-given-name");
+        await given.FillAsync("Reloaded");
+        await Page.Locator("[data-testid='persona-save-button']").ClickAsync();
+        await Page.WaitForTimeoutAsync(1500);
+
+        // Full reload (fresh navigation to the same route) — the persona must be re-fetched.
+        await NavigateAndWaitForBlazorAsync(TestConstants.AuthenticatedRoutes.Profile);
+        await Expect(Field("persona-given-name"))
+            .ToHaveValueAsync("Reloaded", new() { Timeout = TestConstants.PageLoadTimeout });
     }
 
     // ---------------------------------------------------------------------------------------------
