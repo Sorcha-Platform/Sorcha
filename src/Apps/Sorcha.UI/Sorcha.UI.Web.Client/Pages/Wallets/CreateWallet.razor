@@ -290,7 +290,11 @@
             await WalletPreferences.SetDefaultWalletAsync(walletAddress);
             // Feature 157 US1: return to the dashboard with ?onboarding=true so the
             // profile-capture step is shown immediately after wallet provisioning.
-            Navigation.NavigateTo("/?onboarding=true");
+            // Use a base-relative URL — the Blazor client is mounted under /app, so a
+            // leading-slash "/?onboarding=true" would navigate to the ORIGIN root (the
+            // marketing page) and the onboarding step would never be shown. BaseUri ends
+            // with "/" (e.g. ".../app/"), so this resolves to "/app/?onboarding=true".
+            Navigation.NavigateTo($"{Navigation.BaseUri}?onboarding=true");
         }
         else if (walletAddress != null)
         {

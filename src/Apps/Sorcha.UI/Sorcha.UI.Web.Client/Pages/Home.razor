@@ -411,13 +411,16 @@ else
     private void OnProfileStepContinue()
     {
         _showProfileStep = false;
-        Navigation.NavigateTo("/", forceLoad: false);
+        // Base-relative: the client is mounted under /app, so a leading-slash "/" would land on
+        // the origin-root marketing page. BaseUri (".../app/") returns to the app dashboard and
+        // drops the ?onboarding=true query.
+        Navigation.NavigateTo(Navigation.BaseUri, forceLoad: false);
     }
 
     private void OnProfileStepSkip()
     {
         _showProfileStep = false;
-        Navigation.NavigateTo("/", forceLoad: false);
+        Navigation.NavigateTo(Navigation.BaseUri, forceLoad: false);
     }
 
     private static string GetDisplayName(ClaimsPrincipal user)

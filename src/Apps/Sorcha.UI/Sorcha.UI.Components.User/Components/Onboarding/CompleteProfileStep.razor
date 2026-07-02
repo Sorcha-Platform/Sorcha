@@ -115,6 +115,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        var personaWasEmpty = false;
         try
         {
             var persona = await PersonaService.GetAsync(ct: default);
@@ -126,17 +127,45 @@ else
             _email = persona.DefaultEmail?.Value?.Value;
             _phone = persona.DefaultPhone?.Value?.Value;
 
-            // Fall back to auth display name when the persona is empty.
-            if (string.IsNullOrWhiteSpace(_givenName)
+            // Carry the signup identity across when the persona is empty (first run): split the
+            // display name into given/family (keeping the full name as the autofill fallback) and
+            // seed the contact email from the login email claim. Previously only the full name was
+            // copied and the email was left blank, so a fresh user's name/email never reached their
+            // profile (Feature 157 US1 gap).
+            personaWasEmpty =
+                string.IsNullOrWhiteSpace(_givenName)
                 && string.IsNullOrWhiteSpace(_familyName)
-                && string.IsNullOrWhiteSpace(_fullName))
+                && string.IsNullOrWhiteSpace(_fullName)
+                && string.IsNullOrWhiteSpace(_email);
+
+            if (personaWasEmpty)
             {
-                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-                var displayName = authState.User.FindFirst("name")?.Value
-                    ?? authState.User.FindFirst("preferred_username")?.Value;
-                if (!string.IsNullOrWhiteSpace(displayName))
+                var user = (await AuthStateProvider.GetAuthenticationStateAsync()).User;
+                var seed = ProfilePrefill.FromClaims(user);
+                _givenName = seed.GivenName;
+                _familyName = seed.FamilyName;
+                _fullName = seed.FullName;
+                _email = seed.Email;
+                _phone = seed.Phone;
+
+                // Auto-seed BEFORE the form is shown: persist the carried-across name + email now so
+                // the profile is populated even if the user immediately skips the review. Awaiting it
+                // here (rather than after _loading is cleared) means the persona is guaranteed written
+                // by the time the Skip / Save buttons become interactive — otherwise navigating away
+                // instantly races the write and loses it. Best-effort: a transient failure (e.g. the
+                // wallet isn't resolvable yet) is swallowed so the user can still save manually.
+                if (HasSeedData())
                 {
-                    _fullName = displayName;
+                    try
+                    {
+                        await PersonaService.UpdateAsync(BuildAttributes());
+                        PersonaService.InvalidateCache();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogInformation(ex,
+                            "CompleteProfileStep auto-seed skipped; profile will be saved on explicit continue");
+                    }
                 }
             }
         }
@@ -151,30 +180,39 @@ else
         }
     }
 
+    private bool HasSeedData() =>
+        !string.IsNullOrWhiteSpace(_givenName)
+        || !string.IsNullOrWhiteSpace(_familyName)
+        || !string.IsNullOrWhiteSpace(_fullName)
+        || !string.IsNullOrWhiteSpace(_email);
+
+    private PersonaAttributesV1 BuildAttributes()
+    {
+        var emails = new List<PersonaEmail>();
+        if (!string.IsNullOrWhiteSpace(_email))
+            emails.Add(new PersonaEmail(_email.Trim(), IsDefault: true));
+
+        var phones = new List<PersonaPhone>();
+        if (!string.IsNullOrWhiteSpace(_phone))
+            phones.Add(new PersonaPhone(_phone.Trim(), IsDefault: true));
+
+        return new PersonaAttributesV1
+        {
+            GivenName = string.IsNullOrWhiteSpace(_givenName) ? null : _givenName.Trim(),
+            FamilyName = string.IsNullOrWhiteSpace(_familyName) ? null : _familyName.Trim(),
+            FullName = string.IsNullOrWhiteSpace(_fullName) ? null : _fullName.Trim(),
+            Emails = emails,
+            Phones = phones
+        };
+    }
+
     private async Task SaveAsync()
     {
         _saving = true;
         Feedback.Clear();
         try
         {
-            var emails = new List<PersonaEmail>();
-            if (!string.IsNullOrWhiteSpace(_email))
-                emails.Add(new PersonaEmail(_email.Trim(), IsDefault: true));
-
-            var phones = new List<PersonaPhone>();
-            if (!string.IsNullOrWhiteSpace(_phone))
-                phones.Add(new PersonaPhone(_phone.Trim(), IsDefault: true));
-
-            var attributes = new PersonaAttributesV1
-            {
-                GivenName = string.IsNullOrWhiteSpace(_givenName) ? null : _givenName.Trim(),
-                FamilyName = string.IsNullOrWhiteSpace(_familyName) ? null : _familyName.Trim(),
-                FullName = string.IsNullOrWhiteSpace(_fullName) ? null : _fullName.Trim(),
-                Emails = emails,
-                Phones = phones
-            };
-
-            await PersonaService.UpdateAsync(attributes);
+            await PersonaService.UpdateAsync(BuildAttributes());
             PersonaService.InvalidateCache();
 
             if (OnContinue.HasDelegate)
