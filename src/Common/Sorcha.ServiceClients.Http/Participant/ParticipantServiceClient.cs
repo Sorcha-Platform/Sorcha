@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
 
@@ -67,7 +68,7 @@ public class ParticipantServiceClient : IParticipantServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<ParticipantInfo>(cancellationToken);
+            return await response.Content.ReadFromJsonAsync<ParticipantInfo>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -107,7 +108,7 @@ public class ParticipantServiceClient : IParticipantServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<ParticipantInfo>(cancellationToken);
+            return await response.Content.ReadFromJsonAsync<ParticipantInfo>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -147,7 +148,7 @@ public class ParticipantServiceClient : IParticipantServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<ParticipantInfo>(cancellationToken);
+            return await response.Content.ReadFromJsonAsync<ParticipantInfo>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -245,7 +246,7 @@ public class ParticipantServiceClient : IParticipantServiceClient
                 return [];
             }
 
-            var wallets = await response.Content.ReadFromJsonAsync<List<LinkedWalletInfo>>(cancellationToken);
+            var wallets = await response.Content.ReadFromJsonAsync<List<LinkedWalletInfo>>(SorchaJson.Options, cancellationToken);
             return wallets ?? [];
         }
         catch (Exception ex)
@@ -284,7 +285,7 @@ public class ParticipantServiceClient : IParticipantServiceClient
 
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<AutoLinkResultInfo>(cancellationToken);
+                var result = await response.Content.ReadFromJsonAsync<AutoLinkResultInfo>(SorchaJson.Options, cancellationToken);
                 return result ?? new AutoLinkResultInfo { SkipReason = "Empty response" };
             }
 

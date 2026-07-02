@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Inbox;
 
@@ -73,7 +74,7 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
         using var resp = await _httpClient.PostAsJsonAsync("api/internal/inbox", body, JsonOptions, ct).ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
 
-        var json = await resp.Content.ReadFromJsonAsync<InboxResponseEnvelope>(JsonOptions, ct).ConfigureAwait(false)
+        var json = await resp.Content.ReadFromJsonAsync<InboxResponseEnvelope>(SorchaJson.Options, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Tenant inbox endpoint returned empty body");
 
         return new InboxWriteOutcome(json.Entry?.Id ?? Guid.Empty, json.Idempotent);
@@ -92,7 +93,7 @@ public sealed class PlatformInboxClient : IPlatformInboxClient
         }
         resp.EnsureSuccessStatusCode();
 
-        var body = await resp.Content.ReadFromJsonAsync<PlatformUserResolutionShape>(JsonOptions, ct).ConfigureAwait(false);
+        var body = await resp.Content.ReadFromJsonAsync<PlatformUserResolutionShape>(SorchaJson.Options, ct).ConfigureAwait(false);
         return body?.PlatformUserId;
     }
 

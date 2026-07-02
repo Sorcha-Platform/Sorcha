@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 
 namespace Sorcha.UI.Core.Services;
@@ -37,7 +38,7 @@ public class AlertService : IAlertService
                 return CurrentAlerts ?? new AlertsResponse();
             }
 
-            var alertsResponse = await response.Content.ReadFromJsonAsync<AlertsResponse>(cancellationToken: cancellationToken);
+            var alertsResponse = await response.Content.ReadFromJsonAsync<AlertsResponse>(JsonDefaults.Api, cancellationToken);
             if (alertsResponse == null)
             {
                 return CurrentAlerts ?? new AlertsResponse();

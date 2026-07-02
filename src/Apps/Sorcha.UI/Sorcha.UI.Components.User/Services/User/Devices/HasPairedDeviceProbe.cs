@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.CitizenWallet.Abstractions.Models;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.User.Devices;
 
@@ -110,7 +111,7 @@ public sealed class HasPairedDeviceProbe : IHasPairedDeviceProbe
             }
 
             response.EnsureSuccessStatusCode();
-            var payload = await response.Content.ReadFromJsonAsync<HasAnyDeviceResponse>(cancellationToken: ct)
+            var payload = await response.Content.ReadFromJsonAsync<HasAnyDeviceResponse>(JsonDefaults.Api, ct)
                 .ConfigureAwait(false);
             if (payload is null)
             {

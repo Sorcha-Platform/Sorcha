@@ -6,6 +6,7 @@
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Components.Forms
+@using Sorcha.UI.Core.Extensions
 
 @inject IPayloadDecoderService Decoder
 @inject ICurrentUserWalletService CurrentUserWalletService
@@ -407,7 +408,7 @@
         {
             try
             {
-                _jsonElement = JsonSerializer.Deserialize<JsonElement>(_decodedContent);
+                _jsonElement = JsonSerializer.Deserialize<JsonElement>(_decodedContent, JsonDefaults.Api);
             }
             catch
             {

@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Blueprint.Models;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.Designer;
 
@@ -48,7 +49,7 @@ public sealed class RehearsalApiService : IRehearsalApiService
                 return StartRehearsalOutcome.Errored();
             }
 
-            var rehearsal = await response.Content.ReadFromJsonAsync<Rehearsal>(cancellationToken);
+            var rehearsal = await response.Content.ReadFromJsonAsync<Rehearsal>(JsonDefaults.Api, cancellationToken);
             return rehearsal is null
                 ? StartRehearsalOutcome.Errored()
                 : StartRehearsalOutcome.Started(rehearsal);
@@ -66,7 +67,7 @@ public sealed class RehearsalApiService : IRehearsalApiService
         try
         {
             return await _httpClient.GetFromJsonAsync<Rehearsal>(
-                $"/api/blueprints/{blueprintId}/rehearsals/{rehearsalId}", cancellationToken);
+                $"/api/blueprints/{blueprintId}/rehearsals/{rehearsalId}", JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -92,7 +93,7 @@ public sealed class RehearsalApiService : IRehearsalApiService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<Rehearsal>(cancellationToken);
+            return await response.Content.ReadFromJsonAsync<Rehearsal>(JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -113,7 +114,7 @@ public sealed class RehearsalApiService : IRehearsalApiService
             // 200 (applied) and 422 (validation failure) both carry the refreshed rehearsal body.
             if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.UnprocessableEntity)
             {
-                return await response.Content.ReadFromJsonAsync<Rehearsal>(cancellationToken);
+                return await response.Content.ReadFromJsonAsync<Rehearsal>(JsonDefaults.Api, cancellationToken);
             }
 
             _logger.LogWarning(

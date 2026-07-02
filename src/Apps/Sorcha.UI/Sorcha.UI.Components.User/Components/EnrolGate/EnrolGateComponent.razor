@@ -1,5 +1,6 @@
 @namespace Sorcha.UI.Core.Components.EnrolGate
 @using Sorcha.UI.Core.Services.User.Enrolment
+@using Sorcha.UI.Core.Extensions
 @inject ITierProbeService TierProbe
 @inject HttpClient Http
 
@@ -126,7 +127,7 @@ else
     {
         try
         {
-            var whoami = await Http.GetFromJsonAsync<WhoamiShape>("/api/auth/whoami");
+            var whoami = await Http.GetFromJsonAsync<WhoamiShape>("/api/auth/whoami", JsonDefaults.Api);
             return whoami?.PlatformUserId ?? Guid.Empty;
         }
         catch

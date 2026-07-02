@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.LocalRelationship;
 using Sorcha.ServiceClients.Register;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Blueprints;
 using Sorcha.UI.Core.Models.Registers;
@@ -50,7 +51,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
             }
 
             var registers = await response.Content.ReadFromJsonAsync<List<Register.Models.Register>>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
 
             return registers?.Select(MapToViewModel).ToList() ?? [];
         }
@@ -85,7 +86,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
             }
 
             var register = await response.Content.ReadFromJsonAsync<Register.Models.Register>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
 
             return register != null ? MapToViewModel(register) : null;
         }
@@ -120,7 +121,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
             }
 
             return await response.Content.ReadFromJsonAsync<GovernanceRosterViewModel>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -155,7 +156,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
             }
 
             var result = await response.Content.ReadFromJsonAsync<InitiateRegisterResponse>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
 
             _logger.LogInformation(
                 "Register initiation successful: {RegisterId}, {AttestationCount} attestation(s) to sign",
@@ -196,7 +197,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
             }
 
             var result = await response.Content.ReadFromJsonAsync<FinalizeRegisterResponse>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
 
             _logger.LogInformation(
                 "Register finalized successfully: {RegisterId}, status: {Status}",
@@ -218,7 +219,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
         {
             var response = await _httpClient.GetAsync($"/api/registers/{Uri.EscapeDataString(registerId)}/policy", ct);
             if (!response.IsSuccessStatusCode) return null;
-            return await response.Content.ReadFromJsonAsync<RegisterPolicyViewModel>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<RegisterPolicyViewModel>(JsonDefaults.Api, ct);
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching policy for register {RegisterId}", registerId); return null; }
     }
@@ -230,7 +231,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
         {
             var response = await _httpClient.GetAsync($"/api/registers/{Uri.EscapeDataString(registerId)}/policy/history?page={page}&pageSize={pageSize}", ct);
             if (!response.IsSuccessStatusCode) return new PolicyHistoryViewModel { RegisterId = registerId };
-            return await response.Content.ReadFromJsonAsync<PolicyHistoryViewModel>(JsonOptions, ct) ?? new PolicyHistoryViewModel { RegisterId = registerId };
+            return await response.Content.ReadFromJsonAsync<PolicyHistoryViewModel>(JsonDefaults.Api, ct) ?? new PolicyHistoryViewModel { RegisterId = registerId };
         }
         catch (Exception ex) { _logger.LogError(ex, "Error fetching policy history for register {RegisterId}", registerId); return new PolicyHistoryViewModel { RegisterId = registerId }; }
     }
@@ -242,7 +243,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
         {
             var response = await _httpClient.PostAsJsonAsync($"/api/registers/{Uri.EscapeDataString(registerId)}/policy/update", policy, JsonOptions, ct);
             if (!response.IsSuccessStatusCode) return null;
-            return await response.Content.ReadFromJsonAsync<PolicyUpdateProposalViewModel>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<PolicyUpdateProposalViewModel>(JsonDefaults.Api, ct);
         }
         catch (Exception ex) { _logger.LogError(ex, "Error proposing policy update for register {RegisterId}", registerId); return null; }
     }
@@ -279,7 +280,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
             }
 
             return await response.Content.ReadFromJsonAsync<RegisterLocalRelationship>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -311,7 +312,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
             }
 
             return await response.Content.ReadFromJsonAsync<RegisterSyncStateView>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -343,7 +344,7 @@ public class RegisterService : IRegisterReadService, IRegisterGovernanceService
             }
 
             var published = await response.Content.ReadFromJsonAsync<PublishedBlueprintsResponse>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
             return published?.Blueprints.Count ?? 0;
         }
         catch (Exception ex)

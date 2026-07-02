@@ -4,6 +4,7 @@
 using System;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 using Sorcha.ServiceClients.Http.Utilities;
 using Sorcha.ServiceClients.Wallet;
 
@@ -99,7 +100,7 @@ public class SorchaDidResolver : IDidResolver
                 .ConfigureAwait(false);
             if (resp.IsSuccessStatusCode)
             {
-                var doc = await resp.Content.ReadFromJsonAsync<DidDocument>(ct).ConfigureAwait(false);
+                var doc = await resp.Content.ReadFromJsonAsync<DidDocument>(SorchaJson.Options, ct).ConfigureAwait(false);
                 if (doc is null)
                     _logger.LogWarning("Published DID document for {Did} parsed to null", did);
                 return doc;

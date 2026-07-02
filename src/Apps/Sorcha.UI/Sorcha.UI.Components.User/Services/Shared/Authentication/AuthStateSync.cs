@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 using System.Net.Http.Json;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
 
@@ -41,7 +42,7 @@ public class AuthStateSync
                 return;
             }
 
-            var authState = await response.Content.ReadFromJsonAsync<AuthStateResponse>();
+            var authState = await response.Content.ReadFromJsonAsync<AuthStateResponse>(JsonDefaults.Api);
             
             if (authState == null || !authState.IsAuthenticated)
             {

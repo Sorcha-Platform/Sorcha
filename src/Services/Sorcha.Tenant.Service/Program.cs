@@ -31,10 +31,12 @@ builder.AddSorchaOpenApi("Sorcha Tenant Service API", "Multi-tenant organization
 // Add controllers and minimal API support
 builder.Services.AddEndpointsApiExplorer();
 
-// JSON serialization comes from the single shared source of truth (Sorcha.Json.SorchaJson) so the
-// service's wire format (camelCase + kebab-case string enums — including WebAuthn's "public-key")
-// stays byte-identical to what the UI clients deserialize with. Do not hand-roll the converter here.
-builder.Services.ConfigureHttpJsonOptions(options => Sorcha.Json.SorchaJson.Configure(options.SerializerOptions));
+// JSON serialization uses the single shared source of truth (Sorcha.Serialization.SorchaJson): camelCase
+// properties + kebab-case string enums (WebAuthn needs "public-key"). Applied here rather than platform-
+// wide because other services' responses feed standards surfaces (OAuth/OIDC snake_case, VC tokens) where
+// a uniform casing would be wrong; the clients read both formats, so central control stays here.
+builder.Services.ConfigureHttpJsonOptions(
+    options => Sorcha.Serialization.SorchaJson.Configure(options.SerializerOptions));
 
 // Add CORS - production restriction handled at API Gateway (YARP)
 builder.AddSorchaCors();

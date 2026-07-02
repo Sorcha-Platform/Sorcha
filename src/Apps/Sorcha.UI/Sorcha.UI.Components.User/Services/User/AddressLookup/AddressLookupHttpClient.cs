@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.AddressLookup;
 
@@ -36,7 +37,7 @@ public sealed class AddressLookupHttpClient : IAddressLookupClient
         try
         {
             var providers = await _httpClient.GetFromJsonAsync<List<ProviderInfo>>(
-                "/api/address-lookup/providers", JsonOptions, ct);
+                "/api/address-lookup/providers", JsonDefaults.Api, ct);
             return providers;
         }
         catch (OperationCanceledException)
@@ -69,7 +70,7 @@ public sealed class AddressLookupHttpClient : IAddressLookupClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<LookupResult>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<LookupResult>(JsonDefaults.Api, ct);
         }
         catch (OperationCanceledException)
         {

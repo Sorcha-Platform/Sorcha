@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Models;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Registers;
 
 namespace Sorcha.UI.Core.Services;
@@ -16,12 +16,6 @@ public class TransactionService : ITransactionService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<TransactionService> _logger;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
 
     public TransactionService(HttpClient httpClient, ILogger<TransactionService> logger)
     {
@@ -50,7 +44,7 @@ public class TransactionService : ITransactionService
             }
 
             var apiResponse = await response.Content.ReadFromJsonAsync<ApiTransactionListResponse>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
 
             if (apiResponse == null)
             {
@@ -97,7 +91,7 @@ public class TransactionService : ITransactionService
             }
 
             var transaction = await response.Content.ReadFromJsonAsync<TransactionModel>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
 
             return transaction != null ? MapToViewModel(transaction) : null;
         }
@@ -129,7 +123,7 @@ public class TransactionService : ITransactionService
             }
 
             var apiResponse = await response.Content.ReadFromJsonAsync<ApiTransactionQueryResponse>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
 
             if (apiResponse == null)
             {
@@ -178,7 +172,7 @@ public class TransactionService : ITransactionService
             }
 
             var apiResponse = await response.Content.ReadFromJsonAsync<ApiTransactionGraphResponse>(
-                JsonOptions, ct);
+                JsonDefaults.Api, ct);
 
             if (apiResponse is null)
             {

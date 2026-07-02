@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.Wallet.Pwa.Services.Actions.Models;
 
 namespace Sorcha.Wallet.Pwa.Services.Actions;
@@ -19,12 +19,6 @@ public sealed class HttpMyActionsClient : IMyActionsClient
 {
     private readonly HttpClient _http;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
-
     /// <summary>Initialises a new instance.</summary>
     public HttpMyActionsClient(HttpClient http) => _http = http ?? throw new ArgumentNullException(nameof(http));
 
@@ -38,7 +32,7 @@ public sealed class HttpMyActionsClient : IMyActionsClient
         int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
         var result = await _http.GetFromJsonAsync<PendingPage>(
-            $"api/actions/pending?page={page}&pageSize={pageSize}", JsonOptions, ct).ConfigureAwait(false);
+            $"api/actions/pending?page={page}&pageSize={pageSize}", JsonDefaults.Api, ct).ConfigureAwait(false);
 
         var items = result?.Items;
         if (items is null || items.Count == 0)
@@ -59,7 +53,7 @@ public sealed class HttpMyActionsClient : IMyActionsClient
     public async Task<PendingActionsCount> GetCountAsync(CancellationToken ct = default)
     {
         var dto = await _http.GetFromJsonAsync<CountDto>(
-            "api/actions/pending/count", JsonOptions, ct).ConfigureAwait(false);
+            "api/actions/pending/count", JsonDefaults.Api, ct).ConfigureAwait(false);
         return dto is null ? PendingActionsCount.Empty : new PendingActionsCount(dto.Count, dto.UrgentCount);
     }
 

@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.CitizenWallet.Abstractions.Models;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.CitizenWallet;
 
@@ -62,7 +63,7 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
             "api/v1/wallet/devices/enrol", request, JsonOptions, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<DeviceEnrolmentResponse>(JsonOptions, ct);
+        var result = await response.Content.ReadFromJsonAsync<DeviceEnrolmentResponse>(SorchaJson.Options, ct);
         return result ?? throw new InvalidOperationException(
             "Wallet Service returned an empty body for /devices/enrol.");
     }
@@ -78,7 +79,7 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         if (response.StatusCode == System.Net.HttpStatusCode.Gone) return null;
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadFromJsonAsync<SyncResponse>(JsonOptions, ct)
+        return await response.Content.ReadFromJsonAsync<SyncResponse>(SorchaJson.Options, ct)
             ?? throw new InvalidOperationException("Wallet Service returned an empty body for /sync.");
     }
 
@@ -88,7 +89,7 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         var response = await _httpClient.GetAsync("api/v1/wallet/credentials", ct);
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadFromJsonAsync<CredentialListResponse>(JsonOptions, ct)
+        return await response.Content.ReadFromJsonAsync<CredentialListResponse>(SorchaJson.Options, ct)
             ?? throw new InvalidOperationException("Wallet Service returned an empty body for /credentials.");
     }
 
@@ -104,7 +105,7 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadFromJsonAsync<DelegationRenewalResponse>(JsonOptions, ct)
+        return await response.Content.ReadFromJsonAsync<DelegationRenewalResponse>(SorchaJson.Options, ct)
             ?? throw new InvalidOperationException("Wallet Service returned an empty body for /devices/renew-delegation.");
     }
 
@@ -114,7 +115,7 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         var response = await _httpClient.GetAsync("api/v1/wallet/devices", ct);
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadFromJsonAsync<DeviceListResponse>(JsonOptions, ct)
+        return await response.Content.ReadFromJsonAsync<DeviceListResponse>(SorchaJson.Options, ct)
             ?? throw new InvalidOperationException("Wallet Service returned an empty body for /devices.");
     }
 
@@ -160,7 +161,7 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         var response = await _httpClient.GetAsync("api/v1/wallet/presentations", ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<PresentationHistoryResponse>(JsonOptions, ct)
+        var result = await response.Content.ReadFromJsonAsync<PresentationHistoryResponse>(SorchaJson.Options, ct)
             ?? throw new InvalidOperationException("Wallet Service returned an empty body for /presentations.");
         return result.Entries;
     }
@@ -178,7 +179,7 @@ public sealed class CitizenWalletClient : ICitizenWalletClient
         var response = await _httpClient.GetAsync("api/v1/wallet/pending-applications", ct);
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadFromJsonAsync<PendingApplicationResponse>(JsonOptions, ct)
+        return await response.Content.ReadFromJsonAsync<PendingApplicationResponse>(SorchaJson.Options, ct)
             ?? throw new InvalidOperationException("Wallet Service returned an empty body for /pending-applications.");
     }
 }

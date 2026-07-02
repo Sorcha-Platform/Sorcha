@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Blazored.LocalStorage;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Designer;
 
 namespace Sorcha.UI.Core.Services;
@@ -357,7 +358,7 @@ public class OfflineSyncService : IOfflineSyncService, IDisposable
         }
 
         var blueprint = JsonSerializer.Deserialize<Blueprint.Models.Blueprint>(
-            item.BlueprintJson, JsonOptions);
+            item.BlueprintJson, JsonDefaults.Api);
 
         var response = await _httpClient.PostAsJsonAsync(
             "/api/blueprints",
@@ -401,7 +402,7 @@ public class OfflineSyncService : IOfflineSyncService, IDisposable
         }
 
         var blueprint = JsonSerializer.Deserialize<Blueprint.Models.Blueprint>(
-            item.BlueprintJson, JsonOptions);
+            item.BlueprintJson, JsonDefaults.Api);
 
         // Check for conflicts by getting server version first
         var serverResponse = await _httpClient.GetAsync(
@@ -411,7 +412,7 @@ public class OfflineSyncService : IOfflineSyncService, IDisposable
         if (serverResponse.IsSuccessStatusCode)
         {
             var serverBlueprint = await serverResponse.Content.ReadFromJsonAsync<Blueprint.Models.Blueprint>(
-                JsonOptions, cancellationToken);
+                JsonDefaults.Api, cancellationToken);
 
             // Check for version conflict
             if (serverBlueprint != null && blueprint != null &&
@@ -517,7 +518,7 @@ public class OfflineSyncService : IOfflineSyncService, IDisposable
             var json = await _localStorage.GetItemAsStringAsync(SYNC_QUEUE_KEY);
             if (!string.IsNullOrEmpty(json))
             {
-                _cachedQueue = JsonSerializer.Deserialize<List<SyncQueueItem>>(json, JsonOptions) ?? [];
+                _cachedQueue = JsonSerializer.Deserialize<List<SyncQueueItem>>(json, JsonDefaults.Api) ?? [];
             }
         }
         catch (Exception ex)

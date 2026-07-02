@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models;
 
 namespace Sorcha.UI.Core.Services;
@@ -35,7 +36,7 @@ public class UserPreferencesService : IUserPreferencesService
     {
         try
         {
-            var response = await _httpClient.GetFromJsonAsync<UserPreferencesDto>("/api/preferences");
+            var response = await _httpClient.GetFromJsonAsync<UserPreferencesDto>("/api/preferences", JsonDefaults.Api);
             return response ?? new UserPreferencesDto();
         }
         catch (Exception ex)
@@ -77,7 +78,7 @@ public class UserPreferencesService : IUserPreferencesService
         {
             var response = await _httpClient.PutAsJsonAsync("/api/preferences", request);
             response.EnsureSuccessStatusCode();
-            var result = await response.Content.ReadFromJsonAsync<UserPreferencesDto>();
+            var result = await response.Content.ReadFromJsonAsync<UserPreferencesDto>(JsonDefaults.Api);
             return result ?? new UserPreferencesDto();
         }
         catch (Exception ex)
@@ -91,7 +92,7 @@ public class UserPreferencesService : IUserPreferencesService
     {
         try
         {
-            var response = await _httpClient.GetFromJsonAsync<DefaultWalletResponse>("/api/preferences/default-wallet");
+            var response = await _httpClient.GetFromJsonAsync<DefaultWalletResponse>("/api/preferences/default-wallet", JsonDefaults.Api);
             return response?.DefaultWalletAddress;
         }
         catch (Exception ex)

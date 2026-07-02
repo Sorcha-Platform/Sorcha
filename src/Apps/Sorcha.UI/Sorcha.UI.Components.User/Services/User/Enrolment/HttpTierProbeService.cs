@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.User.Enrolment;
 
@@ -65,7 +66,7 @@ public sealed class HttpTierProbeService : ITierProbeService
                 return 0;
             }
 
-            var payload = await response.Content.ReadFromJsonAsync<DeviceListProbeShape>(cts.Token).ConfigureAwait(false);
+            var payload = await response.Content.ReadFromJsonAsync<DeviceListProbeShape>(JsonDefaults.Api, cts.Token).ConfigureAwait(false);
             return payload?.ActiveCount ?? payload?.Devices?.Count(d => string.Equals(d.Status, "active", StringComparison.OrdinalIgnoreCase)) ?? 0;
         }
         catch (Exception ex)

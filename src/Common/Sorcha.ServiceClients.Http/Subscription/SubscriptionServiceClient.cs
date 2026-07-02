@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
 
@@ -89,7 +90,7 @@ public class SubscriptionServiceClient : ISubscriptionServiceClient
                 }
 
                 var result = await response.Content
-                    .ReadFromJsonAsync<SubscriptionListResponse>(cancellationToken);
+                    .ReadFromJsonAsync<SubscriptionListResponse>(SorchaJson.Options, cancellationToken);
 
                 if (result?.Items is null)
                 {

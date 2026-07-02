@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models;
 
 namespace Sorcha.UI.Core.Services;
@@ -51,7 +52,7 @@ public class PendingActionService : IPendingActionService
             if (!string.IsNullOrEmpty(blueprintId))
                 url += $"&blueprintId={Uri.EscapeDataString(blueprintId)}";
 
-            var response = await _httpClient.GetFromJsonAsync<PendingActionListResponse>(url);
+            var response = await _httpClient.GetFromJsonAsync<PendingActionListResponse>(url, JsonDefaults.Api);
             return response ?? new PendingActionListResponse();
         }
         catch (Exception ex)
@@ -66,7 +67,7 @@ public class PendingActionService : IPendingActionService
     {
         try
         {
-            var response = await _httpClient.GetFromJsonAsync<PendingActionCountResponse>("/api/actions/pending/count");
+            var response = await _httpClient.GetFromJsonAsync<PendingActionCountResponse>("/api/actions/pending/count", JsonDefaults.Api);
             return response ?? new PendingActionCountResponse();
         }
         catch (Exception ex)

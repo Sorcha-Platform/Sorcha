@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services;
 
@@ -96,7 +97,7 @@ public class AuditService : IAuditService
             var response = await _httpClient.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<AuditQueryResult>(cancellationToken: cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<AuditQueryResult>(JsonDefaults.Api, cancellationToken);
             return result ?? new AuditQueryResult();
         }
         catch (HttpRequestException ex)
@@ -123,7 +124,7 @@ public class AuditService : IAuditService
             var response = await _httpClient.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<AuditRetentionDto>(cancellationToken: cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<AuditRetentionDto>(JsonDefaults.Api, cancellationToken);
             return result ?? new AuditRetentionDto { RetentionMonths = 12 };
         }
         catch (HttpRequestException ex)

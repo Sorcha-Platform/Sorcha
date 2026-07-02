@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.Identity;
 
@@ -37,7 +38,7 @@ public class DomainRestrictionClientService : IDomainRestrictionClientService
         try
         {
             var result = await _httpClient.GetFromJsonAsync<DomainRestrictionsDto>(
-                BaseUrl(organizationId), ct);
+                BaseUrl(organizationId), JsonDefaults.Api, ct);
 
             return result ?? new DomainRestrictionsDto();
         }

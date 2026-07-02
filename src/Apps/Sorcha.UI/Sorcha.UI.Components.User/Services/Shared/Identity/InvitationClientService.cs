@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.Identity;
 
@@ -36,7 +37,7 @@ public class InvitationClientService : IInvitationClientService
 
         try
         {
-            var result = await _httpClient.GetFromJsonAsync<InvitationListResult>(url, ct);
+            var result = await _httpClient.GetFromJsonAsync<InvitationListResult>(url, JsonDefaults.Api, ct);
             return result ?? new InvitationListResult();
         }
         catch (HttpRequestException ex)
@@ -56,7 +57,7 @@ public class InvitationClientService : IInvitationClientService
 
         try
         {
-            return await _httpClient.GetFromJsonAsync<InvitationDto>(url, ct);
+            return await _httpClient.GetFromJsonAsync<InvitationDto>(url, JsonDefaults.Api, ct);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -83,7 +84,7 @@ public class InvitationClientService : IInvitationClientService
             var response = await _httpClient.PostAsJsonAsync(url, request, ct);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<InvitationDto>(ct);
+            var result = await response.Content.ReadFromJsonAsync<InvitationDto>(JsonDefaults.Api, ct);
             return result ?? throw new InvalidOperationException("Failed to deserialize invitation response.");
         }
         catch (HttpRequestException ex)

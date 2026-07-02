@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.JSInterop;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 
 namespace Sorcha.UI.Core.Services;
@@ -61,7 +62,7 @@ public class AlertDismissalService : IAlertDismissalService
             var json = await _jsRuntime.InvokeAsync<string?>("localStorage.getItem", StorageKeyPrefix);
             if (!string.IsNullOrEmpty(json))
             {
-                var ids = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
+                var ids = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json, JsonDefaults.Api);
                 _cache = ids != null ? new HashSet<string>(ids) : [];
             }
             else

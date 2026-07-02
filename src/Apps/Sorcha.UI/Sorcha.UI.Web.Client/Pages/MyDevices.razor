@@ -155,7 +155,7 @@
         _loadError = null;
         try
         {
-            var response = await Http.GetFromJsonAsync<DeviceListResponse>("/api/v1/me/devices");
+            var response = await Http.GetFromJsonAsync<DeviceListResponse>("/api/v1/me/devices", JsonDefaults.Api);
             _devices = response?.Devices.ToList() ?? new List<DeviceSummary>();
         }
         catch (Exception ex)

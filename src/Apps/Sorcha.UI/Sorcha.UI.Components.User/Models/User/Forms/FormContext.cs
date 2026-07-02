@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Models.Forms;
 
@@ -140,7 +141,7 @@ public class FormContext
             if (value is JsonElement jsonElement)
             {
                 var json = jsonElement.GetRawText();
-                return JsonSerializer.Deserialize<T>(json);
+                return JsonSerializer.Deserialize<T>(json, JsonDefaults.Api);
             }
 
             return (T)Convert.ChangeType(value, typeof(T));

@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Microsoft.JSInterop;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services;
 
@@ -54,7 +55,7 @@ public class PasskeyInteropService : IAsyncDisposable
         var module = await GetModuleAsync();
         var optionsJson = options.GetRawText();
         var responseJson = await module.InvokeAsync<string>("createCredential", optionsJson);
-        return JsonSerializer.Deserialize<JsonElement>(responseJson);
+        return JsonSerializer.Deserialize<JsonElement>(responseJson, JsonDefaults.Api);
     }
 
     /// <summary>
@@ -67,7 +68,7 @@ public class PasskeyInteropService : IAsyncDisposable
         var module = await GetModuleAsync();
         var optionsJson = options.GetRawText();
         var responseJson = await module.InvokeAsync<string>("getCredential", optionsJson);
-        return JsonSerializer.Deserialize<JsonElement>(responseJson);
+        return JsonSerializer.Deserialize<JsonElement>(responseJson, JsonDefaults.Api);
     }
 
     /// <summary>

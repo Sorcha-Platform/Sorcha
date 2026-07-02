@@ -1,6 +1,7 @@
 @namespace Sorcha.UI.Core.Components.EnrolGate
 @using System.Net.Http.Json
 @using Sorcha.UI.Core.Services.User.Enrolment
+@using Sorcha.UI.Core.Extensions
 @inject HttpClient Http
 @inject IEnrolPairingSignal PairingSignal
 @implements IAsyncDisposable
@@ -122,7 +123,7 @@
                 _mintError = "Couldn't generate an enrolment code — try again or refresh the page.";
                 return;
             }
-            _minted = await response.Content.ReadFromJsonAsync<MintEnrolSessionResponseShape>();
+            _minted = await response.Content.ReadFromJsonAsync<MintEnrolSessionResponseShape>(JsonDefaults.Api);
             if (_minted is not null)
             {
                 _ = WatchForExpiryAsync(_minted.ExpiresAt, _expiryWatcher.Token);

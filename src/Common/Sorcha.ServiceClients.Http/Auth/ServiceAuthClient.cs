@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Auth;
 
@@ -115,7 +116,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
                 return null;
             }
 
-            var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken);
+            var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>(SorchaJson.Options, cancellationToken);
             if (tokenResponse?.AccessToken is null)
             {
                 _logger.LogWarning(

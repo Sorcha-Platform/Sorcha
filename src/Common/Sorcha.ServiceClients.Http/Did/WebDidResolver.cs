@@ -5,6 +5,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Did;
 
@@ -18,10 +19,6 @@ public class WebDidResolver : IDidResolver
     private const string Method = "web";
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<WebDidResolver> _logger;
@@ -72,7 +69,7 @@ public class WebDidResolver : IDidResolver
             }
 
             var json = await response.Content.ReadAsStringAsync(cts.Token);
-            var doc = JsonSerializer.Deserialize<DidDocument>(json, JsonOptions);
+            var doc = JsonSerializer.Deserialize<DidDocument>(json, SorchaJson.Options);
 
             if (doc is null)
             {

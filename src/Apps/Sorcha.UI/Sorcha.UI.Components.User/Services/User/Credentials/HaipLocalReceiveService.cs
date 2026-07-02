@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.Credentials;
 
@@ -74,7 +75,7 @@ public sealed class HaipLocalReceiveService : IHaipLocalReceiveService
 
             // 2. Fetch the wallet detail so we know the public key + algorithm.
             var walletDto = await _httpClient.GetFromJsonAsync<WalletPublicKeyDto>(
-                $"/api/v1/wallets/{walletAddress}", JsonOptions, ct);
+                $"/api/v1/wallets/{walletAddress}", JsonDefaults.Api, ct);
             if (walletDto is null || string.IsNullOrEmpty(walletDto.PublicKey))
             {
                 return HaipLocalReceiveResult.Fail($"Wallet {walletAddress} not found or missing public key");
@@ -92,7 +93,7 @@ public sealed class HaipLocalReceiveService : IHaipLocalReceiveService
 
             // 3. Fetch issuer metadata so we know the token + credential endpoints.
             var metadataUrl = $"{issuerUrl.TrimEnd('/')}/.well-known/openid-credential-issuer";
-            var metadata = await _httpClient.GetFromJsonAsync<JsonElement>(metadataUrl, JsonOptions, ct);
+            var metadata = await _httpClient.GetFromJsonAsync<JsonElement>(metadataUrl, JsonDefaults.Api, ct);
             var tokenEndpoint = metadata.GetProperty("token_endpoint").GetString()!;
             var credentialEndpoint = metadata.GetProperty("credential_endpoint").GetString()!;
             var credentialIssuer = metadata.GetProperty("credential_issuer").GetString()!;
@@ -112,7 +113,7 @@ public sealed class HaipLocalReceiveService : IHaipLocalReceiveService
                 return HaipLocalReceiveResult.Fail(
                     $"Token exchange failed ({(int)tokenResponse.StatusCode})", code: "token_exchange_failed");
             }
-            var tokenJson = await tokenResponse.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+            var tokenJson = await tokenResponse.Content.ReadFromJsonAsync<JsonElement>(JsonDefaults.Api, ct);
             var accessToken = tokenJson.GetProperty("access_token").GetString()!;
             var cNonce = tokenJson.GetProperty("c_nonce").GetString()!;
 
@@ -167,7 +168,7 @@ public sealed class HaipLocalReceiveService : IHaipLocalReceiveService
                 return HaipLocalReceiveResult.Fail(
                     $"Wallet signing failed ({(int)signResponse.StatusCode})", code: "wallet_sign_failed");
             }
-            var signResult = await signResponse.Content.ReadFromJsonAsync<SignResponse>(JsonOptions, ct);
+            var signResult = await signResponse.Content.ReadFromJsonAsync<SignResponse>(JsonDefaults.Api, ct);
             if (signResult is null || string.IsNullOrEmpty(signResult.Signature))
             {
                 return HaipLocalReceiveResult.Fail("Wallet sign returned no signature");
@@ -198,7 +199,7 @@ public sealed class HaipLocalReceiveService : IHaipLocalReceiveService
                     $"Credential request failed ({(int)credentialResponse.StatusCode})",
                     code: "credential_request_failed");
             }
-            var credResult = await credentialResponse.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+            var credResult = await credentialResponse.Content.ReadFromJsonAsync<JsonElement>(JsonDefaults.Api, ct);
             var sdJwt = credResult.GetProperty("credential").GetString()!;
 
             // 7. Determine the credential type from the offer.

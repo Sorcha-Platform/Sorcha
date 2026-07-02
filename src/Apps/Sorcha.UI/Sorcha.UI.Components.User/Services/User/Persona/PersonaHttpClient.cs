@@ -60,7 +60,7 @@ public sealed class PersonaHttpClient : IPersonaClient
 
         if (response.StatusCode == HttpStatusCode.BadRequest)
         {
-            var problem = await response.Content.ReadFromJsonAsync<ValidationProblemWire>(cancellationToken: ct);
+            var problem = await response.Content.ReadFromJsonAsync<ValidationProblemWire>(JsonDefaults.Api, ct);
             if (problem?.Errors is { Count: > 0 })
             {
                 throw new PersonaValidationException(problem.Errors);

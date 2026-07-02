@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Dashboard;
 
 namespace Sorcha.UI.Core.Services;
@@ -35,7 +36,7 @@ public class DashboardService : IDashboardService
                 return new DashboardStatsViewModel { IsLoaded = false };
             }
 
-            var stats = await response.Content.ReadFromJsonAsync<DashboardStatsViewModel>(cancellationToken: cancellationToken);
+            var stats = await response.Content.ReadFromJsonAsync<DashboardStatsViewModel>(JsonDefaults.Api, cancellationToken);
             return stats is not null
                 ? stats with { IsLoaded = true }
                 : new DashboardStatsViewModel { IsLoaded = false };

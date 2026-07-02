@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 
 namespace Sorcha.UI.Core.Services;
@@ -37,7 +38,7 @@ public class OrganizationAdminService : IOrganizationAdminService
         try
         {
             var response = await _httpClient.GetFromJsonAsync<OrganizationListResult>(
-                url, cancellationToken);
+                url, JsonDefaults.Api, cancellationToken);
 
             return response ?? new OrganizationListResult();
         }
@@ -55,7 +56,7 @@ public class OrganizationAdminService : IOrganizationAdminService
         try
         {
             return await _httpClient.GetFromJsonAsync<OrganizationDto>(
-                $"{BaseUrl}/{id}", cancellationToken);
+                $"{BaseUrl}/{id}", JsonDefaults.Api, cancellationToken);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -77,7 +78,7 @@ public class OrganizationAdminService : IOrganizationAdminService
             var response = await _httpClient.PostAsJsonAsync(BaseUrl, request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<OrganizationDto>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<OrganizationDto>(JsonDefaults.Api, cancellationToken);
 
             if (result != null)
             {
@@ -115,7 +116,7 @@ public class OrganizationAdminService : IOrganizationAdminService
 
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<OrganizationDto>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<OrganizationDto>(JsonDefaults.Api, cancellationToken);
 
             if (result != null)
             {
@@ -176,7 +177,7 @@ public class OrganizationAdminService : IOrganizationAdminService
                 $"{BaseUrl}/validate-subdomain/{subdomain}", cancellationToken);
 
             var result = await response.Content.ReadFromJsonAsync<SubdomainValidationResult>(
-                cancellationToken);
+                JsonDefaults.Api, cancellationToken);
 
             return result ?? new SubdomainValidationResult
             {
@@ -203,7 +204,7 @@ public class OrganizationAdminService : IOrganizationAdminService
         try
         {
             var response = await _httpClient.GetFromJsonAsync<StatsResponse>(
-                $"{BaseUrl}/stats", cancellationToken);
+                $"{BaseUrl}/stats", JsonDefaults.Api, cancellationToken);
 
             return new PlatformKpis
             {
@@ -240,7 +241,7 @@ public class OrganizationAdminService : IOrganizationAdminService
         try
         {
             var response = await _httpClient.GetFromJsonAsync<UserListResult>(
-                url, cancellationToken);
+                url, JsonDefaults.Api, cancellationToken);
 
             return response ?? new UserListResult();
         }
@@ -290,7 +291,7 @@ public class OrganizationAdminService : IOrganizationAdminService
         try
         {
             return await _httpClient.GetFromJsonAsync<UserDto>(
-                $"{BaseUrl}/{organizationId}/users/{userId}", cancellationToken);
+                $"{BaseUrl}/{organizationId}/users/{userId}", JsonDefaults.Api, cancellationToken);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -316,7 +317,7 @@ public class OrganizationAdminService : IOrganizationAdminService
 
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<UserDto>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<UserDto>(JsonDefaults.Api, cancellationToken);
 
             if (result != null)
             {
@@ -359,7 +360,7 @@ public class OrganizationAdminService : IOrganizationAdminService
 
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<UserDto>(cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<UserDto>(JsonDefaults.Api, cancellationToken);
 
             if (result != null)
             {

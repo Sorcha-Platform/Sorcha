@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.Wallet.Pwa.Services.Catalogue;
 
@@ -46,7 +47,7 @@ public sealed class HttpCatalogueClient : ICatalogueClient
     /// <inheritdoc />
     public async Task<IReadOnlyList<CatalogueItem>> GetServicesAsync(CancellationToken ct = default)
     {
-        var items = await _http.GetFromJsonAsync<List<CatalogueItem>>("api/catalogue", JsonOptions, ct)
+        var items = await _http.GetFromJsonAsync<List<CatalogueItem>>("api/catalogue", JsonDefaults.Api, ct)
             .ConfigureAwait(false);
         return items ?? (IReadOnlyList<CatalogueItem>)Array.Empty<CatalogueItem>();
     }
@@ -64,7 +65,7 @@ public sealed class HttpCatalogueClient : ICatalogueClient
             {
                 return null;
             }
-            var created = await response.Content.ReadFromJsonAsync<CreatedInstance>(JsonOptions, ct).ConfigureAwait(false);
+            var created = await response.Content.ReadFromJsonAsync<CreatedInstance>(JsonDefaults.Api, ct).ConfigureAwait(false);
             return string.IsNullOrEmpty(created?.Id) ? null : created!.Id;
         }
         catch (OperationCanceledException)

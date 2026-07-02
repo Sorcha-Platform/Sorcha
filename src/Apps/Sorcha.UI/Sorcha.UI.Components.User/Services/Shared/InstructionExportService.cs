@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Sorcha.Blueprint.Models;
+using Sorcha.UI.Core.Extensions;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 
 namespace Sorcha.UI.Core.Services;
@@ -80,7 +81,7 @@ public class InstructionExportService
         ArgumentNullException.ThrowIfNull(blueprint);
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
 
-        var entries = JsonSerializer.Deserialize<Dictionary<string, string>>(json)
+        var entries = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonDefaults.Api)
             ?? throw new JsonException("Failed to deserialize instruction JSON");
 
         var isPrimaryLocale = string.IsNullOrWhiteSpace(locale) ||

@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 
 namespace Sorcha.UI.Core.Services;
@@ -36,7 +37,7 @@ public class SystemRegisterService : ISystemRegisterService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<SystemRegisterViewModel>(cancellationToken: ct);
+            return await response.Content.ReadFromJsonAsync<SystemRegisterViewModel>(JsonDefaults.Api, ct);
         }
         catch (Exception ex)
         {
@@ -58,7 +59,7 @@ public class SystemRegisterService : ISystemRegisterService
                 return new BlueprintPageResult();
             }
 
-            return await response.Content.ReadFromJsonAsync<BlueprintPageResult>(cancellationToken: ct)
+            return await response.Content.ReadFromJsonAsync<BlueprintPageResult>(JsonDefaults.Api, ct)
                 ?? new BlueprintPageResult();
         }
         catch (Exception ex)
@@ -102,7 +103,7 @@ public class SystemRegisterService : ISystemRegisterService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<BlueprintDetailViewModel>(cancellationToken: ct);
+            return await response.Content.ReadFromJsonAsync<BlueprintDetailViewModel>(JsonDefaults.Api, ct);
         }
         catch (Exception ex)
         {
@@ -125,7 +126,7 @@ public class SystemRegisterService : ISystemRegisterService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<BlueprintDetailViewModel>(cancellationToken: ct);
+            return await response.Content.ReadFromJsonAsync<BlueprintDetailViewModel>(JsonDefaults.Api, ct);
         }
         catch (Exception ex)
         {

@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Components.User.Services.Verification;
 
@@ -33,7 +34,7 @@ public sealed class HaipVerifierClient : IHaipVerifierClient
         using var response = await _http.PostAsJsonAsync("/api/v1/verifier/requests", body, JsonOptions, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<CreateResultDto>(JsonOptions, ct)
+        var result = await response.Content.ReadFromJsonAsync<CreateResultDto>(JsonDefaults.Api, ct)
             ?? throw new InvalidOperationException("HAIP verifier returned an empty create-request response.");
 
         return new HaipCreateResult(
@@ -52,7 +53,7 @@ public sealed class HaipVerifierClient : IHaipVerifierClient
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<PollResultDto>(JsonOptions, ct)
+        var result = await response.Content.ReadFromJsonAsync<PollResultDto>(JsonDefaults.Api, ct)
             ?? throw new InvalidOperationException("HAIP verifier returned an empty poll response.");
 
         return new HaipPollResult(

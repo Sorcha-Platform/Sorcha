@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Models;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Explorer;
 using Sorcha.UI.Core.Models.Registers;
 
@@ -18,12 +18,6 @@ public class DocketService : IDocketService
     private readonly HttpClient _httpClient;
     private readonly ILogger<DocketService> _logger;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     public DocketService(HttpClient httpClient, ILogger<DocketService> logger)
     {
         _httpClient = httpClient;
@@ -35,7 +29,7 @@ public class DocketService : IDocketService
         try
         {
             var dtos = await _httpClient.GetFromJsonAsync<List<DocketDto>>(
-                $"/api/registers/{registerId}/dockets", JsonOptions, cancellationToken);
+                $"/api/registers/{registerId}/dockets", JsonDefaults.Api, cancellationToken);
 
             if (dtos is null or { Count: 0 })
                 return [];
@@ -67,7 +61,7 @@ public class DocketService : IDocketService
         try
         {
             var dto = await _httpClient.GetFromJsonAsync<DocketDto>(
-                $"/api/registers/{registerId}/dockets/{docketId}", JsonOptions, cancellationToken);
+                $"/api/registers/{registerId}/dockets/{docketId}", JsonDefaults.Api, cancellationToken);
 
             return dto is not null ? MapToViewModel(dto, true) : null;
         }
@@ -83,7 +77,7 @@ public class DocketService : IDocketService
         try
         {
             var transactions = await _httpClient.GetFromJsonAsync<List<TransactionModel>>(
-                $"/api/registers/{registerId}/dockets/{docketId}/transactions", JsonOptions, cancellationToken);
+                $"/api/registers/{registerId}/dockets/{docketId}/transactions", JsonDefaults.Api, cancellationToken);
 
             return transactions?.Select(MapTransactionToViewModel).ToList() ?? [];
         }
@@ -99,7 +93,7 @@ public class DocketService : IDocketService
         try
         {
             var dto = await _httpClient.GetFromJsonAsync<DocketDto>(
-                $"/api/registers/{registerId}/dockets/latest", JsonOptions, cancellationToken);
+                $"/api/registers/{registerId}/dockets/latest", JsonDefaults.Api, cancellationToken);
 
             return dto is not null ? MapToViewModel(dto, true) : null;
         }

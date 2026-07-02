@@ -10,6 +10,7 @@ using Sorcha.Register.Models.LocalRelationship;
 using Sorcha.Register.Models.Observations;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.Register;
 
@@ -227,7 +228,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            var docket = await response.Content.ReadFromJsonAsync<DocketResponse>(JsonOptions, cancellationToken);
+            var docket = await response.Content.ReadFromJsonAsync<DocketResponse>(SorchaJson.Options, cancellationToken);
             if (docket == null)
             {
                 return null;
@@ -281,7 +282,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            var docket = await response.Content.ReadFromJsonAsync<DocketResponse>(JsonOptions, cancellationToken);
+            var docket = await response.Content.ReadFromJsonAsync<DocketResponse>(SorchaJson.Options, cancellationToken);
             if (docket == null)
             {
                 return null;
@@ -380,7 +381,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 throw new HttpRequestException($"Failed to submit transaction: {response.StatusCode}");
             }
 
-            var result = await response.Content.ReadFromJsonAsync<TransactionModel>(JsonOptions, cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<TransactionModel>(SorchaJson.Options, cancellationToken);
             _logger.LogInformation(
                 "Successfully submitted transaction {TransactionId} to register {RegisterId}",
                 transaction.Id, registerId);
@@ -431,7 +432,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<TransactionModel>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<TransactionModel>(SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -478,7 +479,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return new TransactionPage { Page = page, PageSize = pageSize };
             }
 
-            var result = await response.Content.ReadFromJsonAsync<TransactionPage>(JsonOptions, cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<TransactionPage>(SorchaJson.Options, cancellationToken);
             return result ?? new TransactionPage { Page = page, PageSize = pageSize };
         }
         catch (HttpRequestException ex)
@@ -520,7 +521,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return new TransactionPage { Page = page, PageSize = pageSize };
             }
 
-            var transactions = await response.Content.ReadFromJsonAsync<List<TransactionModel>>(JsonOptions, cancellationToken);
+            var transactions = await response.Content.ReadFromJsonAsync<List<TransactionModel>>(SorchaJson.Options, cancellationToken);
             return new TransactionPage
             {
                 Page = page,
@@ -581,7 +582,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return new TransactionPage { Page = page, PageSize = pageSize };
             }
 
-            var result = await response.Content.ReadFromJsonAsync<PrevTxIdQueryResponse>(JsonOptions, cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<PrevTxIdQueryResponse>(SorchaJson.Options, cancellationToken);
             if (result == null)
             {
                 return new TransactionPage { Page = page, PageSize = pageSize };
@@ -641,7 +642,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return [];
             }
 
-            var transactions = await response.Content.ReadFromJsonAsync<List<TransactionModel>>(JsonOptions, cancellationToken);
+            var transactions = await response.Content.ReadFromJsonAsync<List<TransactionModel>>(SorchaJson.Options, cancellationToken);
             return transactions ?? [];
         }
         catch (HttpRequestException ex)
@@ -700,7 +701,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return new TransactionPage { Page = page, PageSize = pageSize };
             }
 
-            var result = await response.Content.ReadFromJsonAsync<TransactionPage>(JsonOptions, cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<TransactionPage>(SorchaJson.Options, cancellationToken);
             return result ?? new TransactionPage { Page = page, PageSize = pageSize };
         }
         catch (HttpRequestException ex)
@@ -750,7 +751,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             var result = await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.GovernanceProposalResponse>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
 
             _logger.LogInformation(
                 "Successfully submitted governance proposal ({OperationType}) to register {RegisterId}",
@@ -810,7 +811,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             var result = await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.GovernanceProposalPage>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
             return result ?? new Sorcha.ServiceClients.Register.Models.GovernanceProposalPage { Page = page, PageSize = pageSize };
         }
         catch (HttpRequestException ex)
@@ -863,7 +864,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<GovernanceRosterResponse>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<GovernanceRosterResponse>(SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -999,7 +1000,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<Sorcha.Register.Models.Register>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<Sorcha.Register.Models.Register>(SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -1049,7 +1050,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 throw new HttpRequestException($"Failed to create register: {response.StatusCode}");
             }
 
-            var register = await response.Content.ReadFromJsonAsync<Sorcha.Register.Models.Register>(JsonOptions, cancellationToken);
+            var register = await response.Content.ReadFromJsonAsync<Sorcha.Register.Models.Register>(SorchaJson.Options, cancellationToken);
             _logger.LogInformation("Successfully created register {RegisterId}", registerId);
             return register ?? throw new InvalidOperationException("Failed to deserialize register response");
         }
@@ -1096,7 +1097,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             var result = await response.Content.ReadFromJsonAsync<InitiateRegisterCreationResponse>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
             return result ?? throw new InvalidOperationException(
                 "Failed to deserialize register initiation response");
         }
@@ -1143,7 +1144,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             var result = await response.Content.ReadFromJsonAsync<FinalizeRegisterCreationResponse>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
             return result ?? throw new InvalidOperationException(
                 "Failed to deserialize register finalization response");
         }
@@ -1190,7 +1191,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             var result = await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.ParticipantPage>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
             return result ?? new Sorcha.ServiceClients.Register.Models.ParticipantPage { PageSize = top };
         }
         catch (HttpRequestException ex)
@@ -1222,7 +1223,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             response.EnsureSuccessStatusCode();
 
             return await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -1253,7 +1254,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             response.EnsureSuccessStatusCode();
 
             return await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -1300,7 +1301,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             response.EnsureSuccessStatusCode();
 
             return await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -1345,7 +1346,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             response.EnsureSuccessStatusCode();
 
             return await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.PublicKeyResolution>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -1387,7 +1388,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             var result = await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
             return result ?? new Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse();
         }
         catch (HttpRequestException ex)
@@ -1435,7 +1436,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<RegisterPolicyResponse>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<RegisterPolicyResponse>(SorchaJson.Options, ct);
         }
         catch (HttpRequestException ex)
         {
@@ -1482,7 +1483,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<PolicyHistoryResponse>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<PolicyHistoryResponse>(SorchaJson.Options, ct);
         }
         catch (HttpRequestException ex)
         {
@@ -1568,7 +1569,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             var registers = await response.Content.ReadFromJsonAsync<List<InternalRegisterInfo>>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
 
             return registers ?? [];
         }
@@ -1611,7 +1612,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             return await response.Content.ReadFromJsonAsync<SubscriptionNotificationResponse>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -1660,7 +1661,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             return await response.Content.ReadFromJsonAsync<PublishedBlueprintsResponse>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -1797,7 +1798,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<RegisterLocalRelationship>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<RegisterLocalRelationship>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -1830,7 +1831,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<RegisterSyncStateView>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<RegisterSyncStateView>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -1868,7 +1869,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            var payload = await response.Content.ReadFromJsonAsync<MyValidatedRegistersResponse>(JsonOptions, cancellationToken);
+            var payload = await response.Content.ReadFromJsonAsync<MyValidatedRegistersResponse>(SorchaJson.Options, cancellationToken);
             // A successful response with a null/missing RegisterIds field is treated as an empty
             // set (validator legitimately on no rosters), not a failure.
             return (IReadOnlyList<string>)(payload?.RegisterIds ?? Array.Empty<string>());
@@ -1909,7 +1910,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             var payload = await response.Content.ReadFromJsonAsync<RegisterStatsResponse>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
             return payload ?? new RegisterStatsResponse();
         }
         catch (Exception ex)
@@ -1941,7 +1942,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             return await response.Content.ReadFromJsonAsync<RegisterTransactionStatistics>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -1967,7 +1968,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             }
 
             var registers = await response.Content.ReadFromJsonAsync<List<RegisterSummaryInfo>>(
-                JsonOptions, cancellationToken);
+                SorchaJson.Options, cancellationToken);
 
             if (registers == null)
             {
@@ -2015,7 +2016,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<TransactionStatusResponse>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<TransactionStatusResponse>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -2052,7 +2053,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<MerkleInclusionProof>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<MerkleInclusionProof>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -2089,7 +2090,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<VerificationBundle>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<VerificationBundle>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -2126,7 +2127,7 @@ public class RegisterServiceClient : IRegisterServiceClient
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<RevokeTransactionResult>(JsonOptions, cancellationToken);
+            return await response.Content.ReadFromJsonAsync<RevokeTransactionResult>(SorchaJson.Options, cancellationToken);
         }
         catch (Exception ex)
         {

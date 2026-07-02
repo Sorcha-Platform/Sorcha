@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models;
 
 namespace Sorcha.UI.Core.Services;
@@ -74,7 +75,7 @@ public class TotpClientService : ITotpClientService
         {
             var response = await _httpClient.PostAsync("/api/totp/setup", null);
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<TotpSetupResponse>();
+            return await response.Content.ReadFromJsonAsync<TotpSetupResponse>(JsonDefaults.Api);
         }
         catch (Exception ex)
         {
@@ -136,7 +137,7 @@ public class TotpClientService : ITotpClientService
     {
         try
         {
-            var response = await _httpClient.GetFromJsonAsync<TotpStatusResponse>("/api/totp/status");
+            var response = await _httpClient.GetFromJsonAsync<TotpStatusResponse>("/api/totp/status", JsonDefaults.Api);
             return response ?? new TotpStatusResponse();
         }
         catch (Exception ex)

@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.UI.Core.Services.Identity;
 
@@ -35,7 +36,7 @@ public class IdpConfigurationClientService : IIdpConfigurationClientService
         try
         {
             var result = await _httpClient.GetFromJsonAsync<IReadOnlyList<IdpConfigurationDto>>(
-                BaseUrl(organizationId), ct);
+                BaseUrl(organizationId), JsonDefaults.Api, ct);
 
             return result ?? [];
         }
@@ -56,7 +57,7 @@ public class IdpConfigurationClientService : IIdpConfigurationClientService
         try
         {
             return await _httpClient.GetFromJsonAsync<IdpConfigurationDto>(
-                $"{BaseUrl(organizationId)}/{Uri.EscapeDataString(configId.ToString())}", ct);
+                $"{BaseUrl(organizationId)}/{Uri.EscapeDataString(configId.ToString())}", JsonDefaults.Api, ct);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -83,7 +84,7 @@ public class IdpConfigurationClientService : IIdpConfigurationClientService
 
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<IdpDiscoveryResult>(ct);
+            var result = await response.Content.ReadFromJsonAsync<IdpDiscoveryResult>(JsonDefaults.Api, ct);
 
             return result ?? new IdpDiscoveryResult { Success = false, Error = "Failed to parse discovery response" };
         }
@@ -108,7 +109,7 @@ public class IdpConfigurationClientService : IIdpConfigurationClientService
 
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<IdpConfigurationDto>(ct);
+            var result = await response.Content.ReadFromJsonAsync<IdpConfigurationDto>(JsonDefaults.Api, ct);
 
             return result ?? throw new InvalidOperationException("Failed to parse response");
         }
@@ -137,7 +138,7 @@ public class IdpConfigurationClientService : IIdpConfigurationClientService
 
             response.EnsureSuccessStatusCode();
 
-            return await response.Content.ReadFromJsonAsync<IdpConfigurationDto>(ct);
+            return await response.Content.ReadFromJsonAsync<IdpConfigurationDto>(JsonDefaults.Api, ct);
         }
         catch (HttpRequestException ex)
         {
@@ -160,7 +161,7 @@ public class IdpConfigurationClientService : IIdpConfigurationClientService
 
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<IdpConnectionTestResult>(ct);
+            var result = await response.Content.ReadFromJsonAsync<IdpConnectionTestResult>(JsonDefaults.Api, ct);
 
             return result ?? new IdpConnectionTestResult { Success = false, Error = "Failed to parse test response" };
         }

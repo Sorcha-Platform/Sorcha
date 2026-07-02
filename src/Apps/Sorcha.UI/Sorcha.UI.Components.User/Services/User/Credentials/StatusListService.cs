@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Credentials;
 
 namespace Sorcha.UI.Core.Services.Credentials;
@@ -12,11 +12,6 @@ public class StatusListService : IStatusListService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<StatusListService> _logger;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
 
     public StatusListService(HttpClient httpClient, ILogger<StatusListService> logger)
     {
@@ -44,7 +39,7 @@ public class StatusListService : IStatusListService
             }
 
             _logger.LogInformation("Successfully retrieved status list {ListId}", listId);
-            return await response.Content.ReadFromJsonAsync<StatusListViewModel>(JsonOptions, ct);
+            return await response.Content.ReadFromJsonAsync<StatusListViewModel>(JsonDefaults.Api, ct);
         }
         catch (HttpRequestException ex)
         {

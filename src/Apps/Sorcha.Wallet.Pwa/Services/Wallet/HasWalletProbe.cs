@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.CitizenWallet.Abstractions.Models;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.Wallet.Pwa.Services.Wallet;
 
@@ -42,7 +43,7 @@ public sealed class HasWalletProbe : IHasWalletProbe
                 return true;
             }
 
-            var payload = await response.Content.ReadFromJsonAsync<WalletExistsResponse>(cancellationToken: ct)
+            var payload = await response.Content.ReadFromJsonAsync<WalletExistsResponse>(JsonDefaults.Api, ct)
                 .ConfigureAwait(false);
             if (payload is null)
             {

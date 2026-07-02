@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
 
 namespace Sorcha.UI.Core.Services.User.Enrolment;
@@ -153,7 +154,7 @@ public sealed class EnrolPairingSignal : IEnrolPairingSignal, IAsyncDisposable
                     if (response.IsSuccessStatusCode)
                     {
                         var payload = await response.Content
-                            .ReadFromJsonAsync<DeviceListProbeShape>(ct)
+                            .ReadFromJsonAsync<DeviceListProbeShape>(JsonDefaults.Api, ct)
                             .ConfigureAwait(false);
                         var active = payload?.ActiveCount
                             ?? payload?.Devices?.Count(d => string.Equals(d.Status, "active", StringComparison.OrdinalIgnoreCase))

@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <PackageId>Sorcha.Json</PackageId>
+    <PackageId>Sorcha.Serialization</PackageId>
     <Description>Single source of truth for Sorcha's JSON wire format (camelCase properties + KebabCaseLower string enums). Referenced by every service (via ServiceDefaults, for serialization) and by the UI clients (for deserialization) so the two sides can never drift — the class of bug where a client can't decode a server response and silently shows an empty/failed page. Depends only on the framework's System.Text.Json.</Description>
     <PackageTags>sorcha;json;serialization;wire-format</PackageTags>
-    <RootNamespace>Sorcha.Json</RootNamespace>
+    <RootNamespace>Sorcha.Serialization</RootNamespace>
   </PropertyGroup>
 
 </Project>

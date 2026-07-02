@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 
 namespace Sorcha.Wallet.Pwa.Services.Context;
 
@@ -46,7 +47,7 @@ public sealed class HttpUserOrgMembershipsClient : IUserOrgMembershipsClient
     {
         try
         {
-            var payload = await _http.GetFromJsonAsync<OrgListEnvelope>("/api/auth/me/organizations", ct)
+            var payload = await _http.GetFromJsonAsync<OrgListEnvelope>("/api/auth/me/organizations", JsonDefaults.Api, ct)
                 .ConfigureAwait(false);
             return payload?.Organizations?
                 .Select(o => new UserOrgMembership(o.OrganizationId, o.Name, o.Role))

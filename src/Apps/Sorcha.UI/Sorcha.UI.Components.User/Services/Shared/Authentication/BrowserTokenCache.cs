@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 using System.Text.Json;
 using Microsoft.JSInterop;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Authentication;
 using Sorcha.UI.Core.Services.Encryption;
 
@@ -62,7 +63,7 @@ public class BrowserTokenCache : ITokenCache
             }
 
             var json = await _encryptionProvider.DecryptAsync(encrypted);
-            var entry = JsonSerializer.Deserialize<TokenCacheEntry>(json);
+            var entry = JsonSerializer.Deserialize<TokenCacheEntry>(json, JsonDefaults.Api);
 
             if (entry == null)
             {

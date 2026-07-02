@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
+using Sorcha.Serialization;
 
 namespace Sorcha.ServiceClients.PlatformUserDevice;
 
@@ -81,7 +82,7 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
             "api/internal/platform-user-devices", body, JsonOptions, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<PlatformUserDeviceRegistrationResult>(JsonOptions, ct);
+        var result = await response.Content.ReadFromJsonAsync<PlatformUserDeviceRegistrationResult>(SorchaJson.Options, ct);
         return result ?? throw new InvalidOperationException(
             "Tenant Service returned an empty body for platform-user-device registration.");
     }
@@ -99,7 +100,7 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadFromJsonAsync<PlatformUserDeviceLookupResult>(JsonOptions, ct);
+        return await response.Content.ReadFromJsonAsync<PlatformUserDeviceLookupResult>(SorchaJson.Options, ct);
     }
 
     /// <inheritdoc />
@@ -128,7 +129,7 @@ public sealed class PlatformUserDeviceClient : IPlatformUserDeviceClient
             $"api/internal/platform-user-devices?platformUserId={platformUserId}", ct);
         response.EnsureSuccessStatusCode();
 
-        var body = await response.Content.ReadFromJsonAsync<ListResponse>(JsonOptions, ct);
+        var body = await response.Content.ReadFromJsonAsync<ListResponse>(SorchaJson.Options, ct);
         return body?.Devices ?? Array.Empty<PlatformUserDeviceLookupResult>();
     }
 
