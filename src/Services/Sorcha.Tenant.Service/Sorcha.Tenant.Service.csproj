@@ -51,6 +51,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.AddressLookup\Sorcha.AddressLookup.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.AtomicCache\Sorcha.AtomicCache.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.CitizenWallet.Abstractions\Sorcha.CitizenWallet.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Json\Sorcha.Json.csproj" />
   </ItemGroup>
 
 </Project>
