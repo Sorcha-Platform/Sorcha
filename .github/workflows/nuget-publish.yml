@@ -36,7 +36,7 @@ jobs:
           SHA: ${{ github.sha }}
           FORCE: ${{ github.event.inputs.force_publish_all }}
         run: |
-          ALL_LIBS='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Blueprint.Schemas.Client","Sorcha.Storage.InMemory","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.Wallet.Portable","Sorcha.ServiceClients","Sorcha.ServiceClients.Http","Sorcha.ServiceDefaults","Sorcha.Blueprint.Engine","Sorcha.Blueprint.Fluent","Sorcha.Register.Core","Sorcha.Register.Storage","Sorcha.Register.Storage.InMemory","Sorcha.Register.Storage.MongoDB","Sorcha.Register.Storage.Redis"]'
+          ALL_LIBS='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Blueprint.Schemas.Client","Sorcha.Storage.InMemory","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.Wallet.Portable","Sorcha.ServiceClients","Sorcha.ServiceClients.Http","Sorcha.Serialization","Sorcha.ServiceDefaults","Sorcha.Blueprint.Engine","Sorcha.Blueprint.Fluent","Sorcha.Register.Core","Sorcha.Register.Storage","Sorcha.Register.Storage.InMemory","Sorcha.Register.Storage.MongoDB","Sorcha.Register.Storage.Redis"]'
 
           if [ "$FORCE" == "true" ]; then
             CHANGED="$ALL_LIBS"
@@ -108,7 +108,11 @@ jobs:
       - name: Pack
         run: |
           dotnet restore "${{ steps.lib.outputs.dir }}/"
-          dotnet pack "${{ steps.lib.outputs.dir }}/" --configuration Release --no-restore -o ./nupkg
+          # Build explicitly before packing. `dotnet pack` alone skips the build for some
+          # ProjectReference graphs (e.g. a lib that references Sorcha.Serialization), leaving
+          # no compiled assembly and failing with NU5026. Build-then-pack --no-build is robust.
+          dotnet build "${{ steps.lib.outputs.dir }}/" --configuration Release --no-restore
+          dotnet pack "${{ steps.lib.outputs.dir }}/" --configuration Release --no-restore --no-build -o ./nupkg
 
       - name: Publish to NuGet.org
         run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
