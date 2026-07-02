@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models;
 
 namespace Sorcha.UI.Core.Services;
@@ -260,7 +261,7 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
         try
         {
             return await _httpClient.GetFromJsonAsync<AuthMethodsResponse>(
-                "/api/me/auth-methods", cancellationToken);
+                "/api/me/auth-methods", JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -288,7 +289,7 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
             }
 
             var payload = await response.Content.ReadFromJsonAsync<SocialLinkInitiateResponse>(
-                cancellationToken: cancellationToken);
+                JsonDefaults.Api, cancellationToken);
             return payload?.AuthorizationUrl;
         }
         catch (Exception ex)
@@ -349,7 +350,7 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
             }
 
             return await response.Content.ReadFromJsonAsync<ChallengeInitiateResult>(
-                cancellationToken: cancellationToken);
+                JsonDefaults.Api, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -376,7 +377,7 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
             if (response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadFromJsonAsync<ChallengeVerifyBodyResponse>(
-                    cancellationToken: cancellationToken);
+                    JsonDefaults.Api, cancellationToken);
                 return body is null || string.IsNullOrEmpty(body.Token)
                     ? new ChallengeVerifyResult(false, null, ChallengeVerifyError.Failed)
                     : new ChallengeVerifyResult(true, body.Token, ChallengeVerifyError.None);
@@ -417,7 +418,7 @@ public sealed class AuthMethodsClientService : IAuthMethodsClientService
             }
 
             var body = await response.Content.ReadFromJsonAsync<PasskeyRegisterOptionsResponseBody>(
-                cancellationToken: cancellationToken);
+                JsonDefaults.Api, cancellationToken);
             return body is null
                 ? null
                 : new PasskeyAddBegunResult(body.TransactionId, body.Options);
