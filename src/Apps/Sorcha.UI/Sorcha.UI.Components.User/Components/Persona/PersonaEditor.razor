@@ -474,7 +474,10 @@
                 FullName = NullIfBlank(_fullName),
                 DateOfBirth = _dateOfBirth is { } dob ? DateOnly.FromDateTime(dob) : null,
                 Emails = _emails.Where(e => !string.IsNullOrWhiteSpace(e.Value)).ToList(),
-                Phones = _phones.Where(p => !string.IsNullOrWhiteSpace(p.Value)).ToList(),
+                Phones = _phones
+                    .Where(p => !string.IsNullOrWhiteSpace(p.Value))
+                    .Select(p => p with { Value = PhoneNormalizer.ToE164(p.Value) ?? p.Value })
+                    .ToList(),
                 Addresses = _addresses.Where(a => !string.IsNullOrWhiteSpace(a.Line1)).ToList(),
                 Nationalities = nationalities,
             };
@@ -490,7 +493,7 @@
             {
                 foreach (var err in errors)
                 {
-                    Feedback.ShowError($"{field}: {err}", autoDismissMs: 0);
+                    Feedback.ShowError(PhoneNormalizer.DescribeError(field, err), autoDismissMs: 0);
                 }
             }
         }
