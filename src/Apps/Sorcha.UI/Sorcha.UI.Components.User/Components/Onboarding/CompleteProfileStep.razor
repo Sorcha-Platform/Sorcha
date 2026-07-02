@@ -251,17 +251,56 @@ else
     }
 
     /// <summary>
-    /// Strips spaces, dashes, and brackets from a typed phone number so natural input like
-    /// "+44 7700 900123" becomes the E.164 "+447700900123". Keeps only digits and a leading "+";
-    /// it does not invent a country code, so a bare national number still fails validation (and the
-    /// user is told to use the international format).
+    /// Best-effort conversion of a typed phone number to E.164. Strips spaces/dashes/brackets, maps a
+    /// leading international access code ("00…" → "+…"), and — for the browser's own region — promotes
+    /// a national trunk-prefixed number ("07700 900123" in GB → "+447700900123"). If the region can't
+    /// be resolved to a known calling code the national number is left as-is, so a wrong country code
+    /// is never invented; validation then prompts the user for the international format.
     /// </summary>
     private static string? NormalisePhone(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
+
         var cleaned = new string(raw.Where(c => char.IsDigit(c) || c == '+').ToArray());
-        return string.IsNullOrEmpty(cleaned) ? null : cleaned;
+        if (string.IsNullOrEmpty(cleaned)) return null;
+
+        if (cleaned.StartsWith('+')) return cleaned;
+        if (cleaned.StartsWith("00")) return "+" + cleaned[2..];
+        if (cleaned.StartsWith('0'))
+        {
+            var callingCode = LocalCallingCode();
+            if (callingCode is not null) return "+" + callingCode + cleaned[1..];
+        }
+
+        return cleaned;
     }
+
+    /// <summary>
+    /// The calling code for the browser's current region, or null when it can't be resolved to a
+    /// known code (so callers leave the number untouched rather than guess).
+    /// </summary>
+    private static string? LocalCallingCode()
+    {
+        try
+        {
+            return CallingCodesByRegion.GetValueOrDefault(
+                System.Globalization.RegionInfo.CurrentRegion.TwoLetterISORegionName);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Common regions only — an unmapped region falls through to "leave the number as typed" rather
+    // than risk prepending the wrong country code.
+    private static readonly Dictionary<string, string> CallingCodesByRegion = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["GB"] = "44",  ["IE"] = "353", ["AU"] = "61", ["NZ"] = "64", ["FR"] = "33", ["DE"] = "49",
+        ["ES"] = "34",  ["IT"] = "39",  ["NL"] = "31", ["BE"] = "32", ["PT"] = "351", ["SE"] = "46",
+        ["NO"] = "47",  ["DK"] = "45",  ["FI"] = "358", ["CH"] = "41", ["AT"] = "43", ["PL"] = "48",
+        ["IN"] = "91",  ["ZA"] = "27",
+    };
 
     private static string DescribeValidationError(IReadOnlyDictionary<string, string[]> errors)
     {
