@@ -48,7 +48,7 @@
             <MudGrid Spacing="3">
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="_givenName" Label="Given name"
-                                  Variant="Variant.Outlined" />
+                                  Variant="Variant.Outlined" data-testid="persona-given-name" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="_familyName" Label="Family name"
@@ -87,6 +87,7 @@
                     <MudItem xs="12" sm="6">
                         <MudTextField Value="row.Value" Label="Email"
                                       Variant="Variant.Outlined"
+                                      data-testid="@($"persona-email-{idx}")"
                                       ValueChanged="@((string v) => _emails[idx] = row with { Value = v })" />
                     </MudItem>
                     <MudItem xs="8" sm="3">

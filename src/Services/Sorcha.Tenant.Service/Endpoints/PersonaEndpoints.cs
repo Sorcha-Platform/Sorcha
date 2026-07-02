@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceDefaults;
 using Sorcha.Tenant.Models.Persona;
 using Sorcha.Tenant.Service.Data;
@@ -108,6 +110,7 @@ public static class PersonaEndpoints
     private static async Task<IResult> ReplaceMyPersona(
         HttpContext context,
         IPersonaService personaService,
+        IWalletServiceClient walletClient,
         TenantDbContext db,
         PersonaAttributesV1 body,
         CancellationToken ct,
@@ -120,6 +123,31 @@ public static class PersonaEndpoints
             return ForbiddenContextResult();
 
         var walletAddress = context.User.FindFirst("wallet_address")?.Value;
+
+        // Fallback: resolve the caller's wallet server-side when the token carries no wallet_address
+        // claim. This is the norm for a consumer/citizen — Feature 136 strips wallet_address from
+        // consumer-tier tokens — and also happens for a brand-new user seeding their persona in the
+        // onboarding step right after the wizard (the wallet exists but the token predates it).
+        // Without this the persona save fail-closes with 409 and the profile the user just filled is
+        // silently lost. Wallet ownership keying mirrors the Wallet Service's own citizen-context
+        // resolver: new wallets are keyed by platform_user_id (post-#878), legacy wallets by
+        // sub/NameIdentifier — try both, newest-usable first.
+        if (string.IsNullOrEmpty(walletAddress))
+        {
+            var ownerCandidates = new[]
+            {
+                context.User.FindFirst("platform_user_id")?.Value,
+                context.User.FindFirst("sub")?.Value ?? context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value,
+            };
+
+            foreach (var ownerId in ownerCandidates)
+            {
+                if (string.IsNullOrEmpty(ownerId)) continue;
+                var wallets = await walletClient.GetWalletsByOwnerAsync(ownerId, ct);
+                walletAddress = wallets.FirstOrDefault()?.Address;
+                if (!string.IsNullOrEmpty(walletAddress)) break;
+            }
+        }
 
         try
         {
