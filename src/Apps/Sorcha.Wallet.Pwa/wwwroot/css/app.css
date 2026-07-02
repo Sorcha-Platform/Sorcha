@@ -32,6 +32,21 @@ html, body {
     padding-bottom: calc(116px + env(safe-area-inset-bottom, 0px));
 }
 
+/* Feature 141 — device safe-area (status bar / notch) on installed iOS/Android. The
+   WebView is edge-to-edge (viewport-fit=cover), so the fixed top app bar (shown on every
+   non-Home page — Home's gradient hero handles its own top inset in WalletHero.razor.css)
+   must grow by the top inset and pad its content down, and the content region below it
+   must clear the taller bar. env() is 0 on non-notched screens, so all of this is a no-op
+   on the web/desktop host. */
+.mud-appbar.mud-appbar-fixed-top {
+    padding-top: env(safe-area-inset-top, 0px);
+    height: calc(var(--mud-appbar-height, 64px) + env(safe-area-inset-top, 0px));
+}
+
+.wallet-content:not(.wallet-content--home) {
+    padding-top: calc(var(--mud-appbar-height, 64px) + env(safe-area-inset-top, 0px));
+}
+
 /* Build-version badge — fixed bottom-right corner on every screen so the running
    build is verifiable after a deploy. Tiny, muted, non-interactive; sits in the
    corner clear of the centred floating tab bar. */

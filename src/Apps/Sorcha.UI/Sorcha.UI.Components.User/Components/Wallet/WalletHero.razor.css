@@ -34,7 +34,12 @@
 .wallet-hero__content {
     position: relative;
     z-index: 1;
-    padding: 8px 16px 26px;
+    /* Push the hero content (greeting row + headline) below the device status bar /
+       notch on installed iOS/Android — Capacitor renders the WebView edge-to-edge
+       (viewport-fit=cover). The gradient background (.wallet-hero__bg, inset:0) stays
+       full-bleed to the top edge; only the content is inset. env() is 0 on non-notched
+       screens (web/desktop), so this is a no-op there. */
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 26px;
 }
 
 .wallet-hero__header {
