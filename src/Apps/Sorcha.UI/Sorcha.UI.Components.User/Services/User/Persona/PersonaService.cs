@@ -136,14 +136,17 @@ public sealed class PersonaService : IPersonaService
     /// <inheritdoc />
     public async Task SetAutofillEnabledAsync(bool enabled)
     {
+        // Best-effort: this is a per-device convenience preference in localStorage, NOT part of the
+        // (server-side, already-persisted) profile. On some mobile browsers a localStorage write can
+        // throw (private mode / storage partitioning); that must not surface as "couldn't save
+        // profile" after the persona itself saved successfully. Mirrors GetAutofillEnabledAsync.
         try
         {
             await _localStorage.SetItemAsync(AutofillPreferenceKey, enabled);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to write autofill preference.");
-            throw;
+            _logger.LogWarning(ex, "Failed to write autofill preference; continuing (local convenience setting).");
         }
     }
 

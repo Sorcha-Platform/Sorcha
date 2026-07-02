@@ -117,6 +117,7 @@
                 <MudText Typo="Typo.h6">Phone numbers</MudText>
                 <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined"
                            Color="Color.Primary" Disabled="@(_phones.Count >= MaxListEntries)"
+                           data-testid="persona-add-phone"
                            OnClick="AddPhone">Add phone</MudButton>
             </MudStack>
             @for (var i = 0; i < _phones.Count; i++)
@@ -127,6 +128,7 @@
                     <MudItem xs="12" sm="5">
                         <MudTextField Value="row.Value" Label="Phone (E.164, e.g. +441234567890)"
                                       Variant="Variant.Outlined"
+                                      data-testid="@($"persona-phone-{idx}")"
                                       ValueChanged="@((string v) => _phones[idx] = row with { Value = v })" />
                     </MudItem>
                     <MudItem xs="6" sm="2">
@@ -259,6 +261,7 @@
             </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.Save"
+                       data-testid="persona-save-button"
                        OnClick="HandleSave" Disabled="@_saving">
                 @(_saving ? "Saving…" : "Save profile")
             </MudButton>
