@@ -31,14 +31,10 @@ builder.AddSorchaOpenApi("Sorcha Tenant Service API", "Multi-tenant organization
 // Add controllers and minimal API support
 builder.Services.AddEndpointsApiExplorer();
 
-// Configure JSON serialization with kebab-case enum handling for WebAuthn spec compliance.
-// WebAuthn uses "public-key" (kebab-case) for PublicKeyCredentialType, which KebabCaseLower
-// handles for both serialization and deserialization.
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.Converters.Add(
-        new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower));
-});
+// JSON serialization comes from the single shared source of truth (Sorcha.Json.SorchaJson) so the
+// service's wire format (camelCase + kebab-case string enums — including WebAuthn's "public-key")
+// stays byte-identical to what the UI clients deserialize with. Do not hand-roll the converter here.
+builder.Services.ConfigureHttpJsonOptions(options => Sorcha.Json.SorchaJson.Configure(options.SerializerOptions));
 
 // Add CORS - production restriction handled at API Gateway (YARP)
 builder.AddSorchaCors();

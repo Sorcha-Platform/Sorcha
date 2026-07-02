@@ -2,30 +2,19 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Sorcha.UI.Core.Extensions;
 
 /// <summary>
-/// Shared JSON serializer options for API deserialization across UI services.
+/// Shared JSON serializer options for API (de)serialization across UI services. This is a thin alias
+/// over <see cref="Sorcha.Json.SorchaJson.Options"/> — the single source of truth shared with the
+/// services — so the client and server wire formats can never drift. Prefer <c>JsonDefaults.Api</c>
+/// (or <c>SorchaJson.Options</c>) for every <c>ReadFromJsonAsync</c> / <c>GetFromJsonAsync</c> on a
+/// Sorcha API response; the default options do not carry the kebab-case string-enum converter and
+/// silently throw on enum fields.
 /// </summary>
 public static class JsonDefaults
 {
-    /// <summary>
-    /// Standard options for deserializing API responses (case-insensitive property matching).
-    /// </summary>
-    public static readonly JsonSerializerOptions Api = CreateApiOptions();
-
-    private static JsonSerializerOptions CreateApiOptions()
-    {
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        // The services serialize enums as kebab-case strings (JsonStringEnumConverter with
-        // KebabCaseLower — e.g. PersonaAttributeSource -> "self-asserted"). Without a matching
-        // converter here, deserialising such a response throws and the caller silently gets an empty
-        // result (the "My Profile is empty even though it saved" class of bug). The converter also
-        // reads numeric enum values, so it is safe for any endpoint that emits numbers.
-        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower));
-        options.MakeReadOnly(populateMissingResolver: true);
-        return options;
-    }
+    /// <summary>Standard options for (de)serializing Sorcha API payloads.</summary>
+    public static readonly JsonSerializerOptions Api = Sorcha.Json.SorchaJson.Options;
 }
