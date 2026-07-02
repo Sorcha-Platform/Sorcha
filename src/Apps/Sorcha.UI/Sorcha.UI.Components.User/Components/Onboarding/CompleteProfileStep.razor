@@ -3,6 +3,7 @@
 
 @namespace Sorcha.UI.Components.User.Components.Onboarding
 
+@using System.Linq
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.Extensions.Logging
 @using Sorcha.Tenant.Models.Persona
@@ -193,8 +194,9 @@ else
             emails.Add(new PersonaEmail(_email.Trim(), IsDefault: true));
 
         var phones = new List<PersonaPhone>();
-        if (!string.IsNullOrWhiteSpace(_phone))
-            phones.Add(new PersonaPhone(_phone.Trim(), IsDefault: true));
+        var normalisedPhone = NormalisePhone(_phone);
+        if (!string.IsNullOrWhiteSpace(normalisedPhone))
+            phones.Add(new PersonaPhone(normalisedPhone, IsDefault: true));
 
         return new PersonaAttributesV1
         {
@@ -218,15 +220,18 @@ else
             if (OnContinue.HasDelegate)
                 await OnContinue.InvokeAsync();
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        catch (PersonaValidationException ex)
         {
-            Logger.LogWarning(ex, "Profile save rejected (400)");
-            Feedback.ShowError("Some of the values you entered are invalid. Please check and try again.", autoDismissMs: 0);
+            // The client throws typed persona exceptions (not HttpRequestException), so surface the
+            // actual reason — most commonly a phone number that isn't in E.164 form — rather than a
+            // generic "unexpected error".
+            Logger.LogWarning("Profile save rejected (validation): {Fields}", string.Join(", ", ex.Errors.Keys));
+            Feedback.ShowError(DescribeValidationError(ex.Errors), autoDismissMs: 0);
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Conflict)
+        catch (PersonaWalletNotProvisionedException ex)
         {
-            Logger.LogWarning(ex, "Profile save rejected (409) — wallet not yet provisioned");
-            Feedback.ShowError("Your wallet has not been created yet. Please create a wallet first and then retry.", autoDismissMs: 0);
+            Logger.LogWarning(ex, "Profile save rejected — wallet not provisioned");
+            Feedback.ShowError("Your wallet isn't ready yet. Please wait a moment and try again.", autoDismissMs: 0);
         }
         catch (Exception ex)
         {
@@ -243,5 +248,27 @@ else
     {
         if (OnSkip.HasDelegate)
             await OnSkip.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Strips spaces, dashes, and brackets from a typed phone number so natural input like
+    /// "+44 7700 900123" becomes the E.164 "+447700900123". Keeps only digits and a leading "+";
+    /// it does not invent a country code, so a bare national number still fails validation (and the
+    /// user is told to use the international format).
+    /// </summary>
+    private static string? NormalisePhone(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var cleaned = new string(raw.Where(c => char.IsDigit(c) || c == '+').ToArray());
+        return string.IsNullOrEmpty(cleaned) ? null : cleaned;
+    }
+
+    private static string DescribeValidationError(IReadOnlyDictionary<string, string[]> errors)
+    {
+        if (errors.Keys.Any(k => k.Contains("phone", StringComparison.OrdinalIgnoreCase)))
+            return "Please enter your phone number in international format, e.g. +447700900123 — or leave it blank.";
+        if (errors.Keys.Any(k => k.Contains("email", StringComparison.OrdinalIgnoreCase)))
+            return "That email address doesn't look valid. Please check it and try again.";
+        return "Some of the details you entered are invalid. Please check and try again.";
     }
 }
