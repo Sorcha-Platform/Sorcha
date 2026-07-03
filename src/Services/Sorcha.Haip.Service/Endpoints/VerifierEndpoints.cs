@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
 using Sorcha.Blueprint.Models.Credentials;
@@ -36,6 +38,7 @@ public static class VerifierEndpoints
                 "citizen wallet PWA (consumer tier), or desk verifier (platform/org tier).")
             .Produces<object>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
+            .WithRequestValidation() // VAL-001 (#327): DataAnnotations on CreatePresentationRequestBody → 400 ValidationProblem
             .RequireAuthorization(); // Feature 164 B3: any authenticated caller (FR-008)
 
         // Public — wallet fetches the signed Request Object
@@ -367,7 +370,10 @@ public static class VerifierEndpoints
 /// <summary>Request to create a presentation request.</summary>
 public class CreatePresentationRequestBody
 {
+    /// <summary>Credential type (vct) the presentation must satisfy (required).</summary>
+    [Required(AllowEmptyStrings = false)]
     public required string CredentialType { get; init; }
+
     public List<string>? RequiredClaims { get; init; }
     public List<string>? AcceptedIssuers { get; init; }
 }

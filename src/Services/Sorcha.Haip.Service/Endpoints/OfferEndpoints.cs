@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
 using Sorcha.Haip.Service.Services;
@@ -29,6 +31,7 @@ public static class OfferEndpoints
                 "Returns the offer details and a URI for QR code rendering.")
             .Produces<object>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
+            .WithRequestValidation() // VAL-001 (#327): DataAnnotations on CreateOfferRequest → 400 ValidationProblem
             .RequireAuthorization(AuthorizationPolicies.RequireService); // SEC-013
 
         group.MapGet("/{offerId:guid}", GetOfferStatus)
@@ -97,9 +100,18 @@ public static class OfferEndpoints
 /// </summary>
 public class CreateOfferRequest
 {
+    /// <summary>Wallet address of the issuing org (required).</summary>
+    [Required(AllowEmptyStrings = false)]
     public required string IssuerWalletAddress { get; init; }
+
+    /// <summary>Tenant/org scope the offer is created under (required).</summary>
+    [Required(AllowEmptyStrings = false)]
     public required string TenantId { get; init; }
+
+    /// <summary>Credential type (vct) to offer (required).</summary>
+    [Required(AllowEmptyStrings = false)]
     public required string CredentialType { get; init; }
+
     public Dictionary<string, object>? Claims { get; init; }
     public List<string>? DisclosablePaths { get; init; }
 }
