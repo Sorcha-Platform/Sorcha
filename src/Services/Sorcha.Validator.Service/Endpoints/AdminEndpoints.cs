@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Sorcha.Validator.Service.Services;
 
@@ -53,6 +55,7 @@ public static class AdminEndpoints
                 Message = $"Validator started for register {request.RegisterId}"
             });
         })
+        .WithRequestValidation()
         .WithName("StartValidator")
         .WithSummary("Start validator for a register")
         .WithDescription("Begins validation processing for the specified register")
@@ -96,6 +99,7 @@ public static class AdminEndpoints
                 MemPoolPersisted = request.PersistMemPool
             });
         })
+        .WithRequestValidation()
         .WithName("StopValidator")
         .WithSummary("Stop validator for a register")
         .WithDescription("Gracefully stops validation processing for the specified register")
@@ -192,6 +196,8 @@ public record StartValidatorRequest
     /// <summary>
     /// Register ID to validate
     /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string RegisterId { get; init; }
 }
 
@@ -203,6 +209,8 @@ public record StopValidatorRequest
     /// <summary>
     /// Register ID to stop
     /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string RegisterId { get; init; }
 
     /// <summary>
