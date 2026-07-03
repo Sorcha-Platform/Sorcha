@@ -2210,9 +2210,12 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         {
             try
             {
-                var preAllocationId = $"pending-{Guid.NewGuid()}";
+                // #220: allocation is keyed by (listId, index), not by credential id — and the real
+                // urn:uuid: id doesn't exist until the wallet signs the credential below. Pass null
+                // rather than a synthetic "pending-{guid}" so a future persistent status-list store
+                // can't mistake the placeholder for a real credential key.
                 var allocation = await _statusListManager.AllocateIndexAsync(
-                    senderWallet, instance.RegisterId, preAllocationId, cancellationToken);
+                    senderWallet, instance.RegisterId, credentialId: null, cancellationToken);
                 preAllocatedStatusListUrl = allocation.StatusListUrl;
                 preAllocatedStatusListIndex = allocation.Index;
 
