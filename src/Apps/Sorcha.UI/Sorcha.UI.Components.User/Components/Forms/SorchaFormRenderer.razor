@@ -100,7 +100,7 @@
                         var priorPages = Layout.Pages.Take(_currentPage).ToList();
                         <ReviewSummaryRenderer Page="@wizardPage"
                                                PriorPages="@priorPages"
-                                               RuntimeState="ActionRuntimeState.CitizenDraft"
+                                               RuntimeState="@RuntimeState"
                                                ActionCredentialRequirements="@Action?.CredentialRequirements"
                                                ActionCredentialIssuanceConfig="@Action?.CredentialIssuanceConfig"
                                                OnEditSection="HandleReviewEdit" />
@@ -292,6 +292,14 @@
 @code {
     [Parameter] public Sorcha.Blueprint.Models.Action? Action { get; set; }
     [Parameter] public JsonDocument? PreviousData { get; set; }
+
+    /// <summary>
+    /// Feature 107 — the lifecycle state the review/id-card is being rendered in (draft vs assessor-pending
+    /// vs issued credential), which drives the review summary's watermark/footer treatment. Defaults to
+    /// <see cref="ActionRuntimeState.CitizenDraft"/>; assessor and wallet-detail hosts set it explicitly so
+    /// the review page is no longer hard-pinned to the Draft watermark (issue #338).
+    /// </summary>
+    [Parameter] public ActionRuntimeState RuntimeState { get; set; } = ActionRuntimeState.CitizenDraft;
 
     /// <summary>
     /// Feature 152 — editable values to seed the form with on (re)open, keyed by JSON Pointer scope
