@@ -3,6 +3,7 @@
 
 #pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
 
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 
 using Sorcha.Blueprint.Models;
@@ -114,6 +115,7 @@ public static class SystemRegisterEndpoints
                     statusCode: StatusCodes.Status500InternalServerError);
             }
         })
+        .WithRequestValidation()
         .WithName("PublishBlueprint")
         .WithSummary("Publish a blueprint to the system register")
         .WithDescription(
@@ -405,6 +407,8 @@ public static class SystemRegisterEndpoints
     private record PublishBlueprintRequest
     {
         /// <summary>Unique blueprint identifier.</summary>
+        [Required(AllowEmptyStrings = false)]
+        [StringLength(200)]
         public required string BlueprintId { get; init; }
 
         /// <summary>Blueprint JSON document to publish.</summary>

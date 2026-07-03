@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Utilities;
@@ -157,6 +158,7 @@ public static class VerificationEndpoints
                 computedRoot = result.ComputedRoot
             });
         })
+        .WithRequestValidation()
         .WithName("VerifyMerkleInclusionProof")
         .WithSummary("Verify a Merkle inclusion proof (public)")
         .WithDescription("Verifies a standalone Merkle inclusion proof by recomputing the root from the proof path. " +
@@ -294,6 +296,7 @@ public static class VerificationEndpoints
                     status = "submitted"
                 });
         })
+        .WithRequestValidation()
         .WithName("RevokeTransaction")
         .WithSummary("Submit a transaction revocation")
         .WithDescription("Creates a revocation transaction that marks an existing transaction as revoked or superseded. " +
@@ -770,12 +773,17 @@ public static class VerificationEndpoints
 public class VerifyMerkleInclusionProofRequest
 {
     /// <summary>SHA-256 hash of the transaction to verify.</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(200)]
     public string TransactionHash { get; set; } = string.Empty;
 
     /// <summary>Expected Merkle root hash.</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(200)]
     public string MerkleRoot { get; set; } = string.Empty;
 
     /// <summary>Sibling hashes from leaf to root.</summary>
+    [Required]
     public IReadOnlyList<MerkleProofStep> ProofPath { get; set; } = [];
 }
 
@@ -785,18 +793,24 @@ public class VerifyMerkleInclusionProofRequest
 public class RevokeTransactionRequest
 {
     /// <summary>Transaction ID to revoke.</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(200)]
     public string OriginalTxId { get; set; } = string.Empty;
 
     /// <summary>Revocation reason (Superseded, Erroneous, Compromised, Expired, Withdrawn, Regulatory).</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(64)]
     public string Reason { get; set; } = string.Empty;
 
     /// <summary>Replacement transaction ID (required when reason is Superseded).</summary>
+    [StringLength(200)]
     public string? SupersededByTxId { get; set; }
 
     /// <summary>Additional context metadata (max 10 entries).</summary>
     public Dictionary<string, string>? Metadata { get; set; }
 
     /// <summary>Wallet address of the signer submitting the revocation.</summary>
+    [StringLength(256)]
     public string? SignerWalletAddress { get; set; }
 }
 

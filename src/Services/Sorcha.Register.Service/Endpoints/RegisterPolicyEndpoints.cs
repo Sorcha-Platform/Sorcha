@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.ComponentModel.DataAnnotations;
 using Sorcha.Register.Core.Services;
 using Sorcha.Register.Models;
 
@@ -161,6 +162,7 @@ public static class RegisterPolicyEndpoints
                     statusCode: 500);
             }
         })
+        .WithRequestValidation()
         .WithName("ProposeRegisterPolicyUpdate")
         .WithSummary("Validate and propose a register policy update")
         .WithDescription("Validates the proposed policy update against the current policy and returns acceptance status. " +
@@ -314,6 +316,7 @@ public class PolicyUpdateRequest
     /// <summary>
     /// The proposed policy with version incremented
     /// </summary>
+    [Required]
     public RegisterPolicy? Policy { get; set; }
 
     /// <summary>
@@ -324,6 +327,8 @@ public class PolicyUpdateRequest
     /// <summary>
     /// DID of the proposer
     /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(500)]
     public string UpdatedBy { get; set; } = string.Empty;
 }
 
