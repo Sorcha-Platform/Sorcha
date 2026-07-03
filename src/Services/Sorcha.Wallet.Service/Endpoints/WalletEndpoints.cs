@@ -6,6 +6,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -206,6 +207,7 @@ public static class WalletEndpoints
 
         // PATCH /api/v1/wallets/{address} - Update wallet metadata
         walletGroup.MapPatch("/{address}", UpdateWallet)
+            .WithRequestValidation()
             .WithName("UpdateWallet")
             .WithSummary("Update wallet metadata")
             .WithDescription("Update wallet name and tags")
@@ -275,6 +277,7 @@ public static class WalletEndpoints
 
         // POST /api/v1/wallets/{address}/addresses - Register derived address
         walletGroup.MapPost("/{address}/addresses", RegisterDerivedAddress)
+            .WithRequestValidation()
             .WithName("RegisterDerivedAddress")
             .WithSummary("Register a client-derived HD address")
             .WithDescription("Register an HD wallet address that was derived client-side. " +
@@ -306,6 +309,7 @@ public static class WalletEndpoints
 
         // PATCH /api/v1/wallets/{address}/addresses/{id} - Update address metadata
         walletGroup.MapPatch("/{address}/addresses/{id:guid}", UpdateAddress)
+            .WithRequestValidation()
             .WithName("UpdateAddress")
             .WithSummary("Update address metadata")
             .WithDescription("Update address label, notes, tags, and metadata")
