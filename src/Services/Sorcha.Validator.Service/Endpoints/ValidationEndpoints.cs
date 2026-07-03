@@ -2,7 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Buffers.Text;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services;
@@ -20,6 +22,7 @@ public static class ValidationEndpoints
     public static RouteGroupBuilder MapValidationEndpoints(this RouteGroupBuilder group)
     {
         group.MapPost("/validate", ValidateTransaction)
+            .WithRequestValidation()
             .WithName("ValidateTransaction")
             .WithSummary("Validate a transaction and submit it to the memory pool")
             .WithDescription("Validates transaction structure, payload hash, wallet signatures, and per-sender sequence number, then submits the transaction to the unverified pool for downstream consensus and docket sealing. Call this when an AI agent needs to record a signed action on a Sorcha register and obtain a verifiable receipt that the validator accepted it.")
@@ -207,16 +210,35 @@ public static class ValidationEndpoints
 /// </summary>
 public record ValidateTransactionRequest
 {
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string TransactionId { get; init; }
+
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string RegisterId { get; init; }
+
+    [StringLength(256)]
     public string? BlueprintId { get; init; }
+
+    [StringLength(256)]
     public string? ActionId { get; init; }
+
     public required JsonElement Payload { get; init; }
+
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(1024)]
     public required string PayloadHash { get; init; }
+
+    [Required]
     public required List<SignatureRequest> Signatures { get; init; }
+
     public required DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
+
+    [StringLength(256)]
     public string? PreviousTransactionId { get; init; }
+
     public TransactionPriority Priority { get; init; } = TransactionPriority.Normal;
     public Dictionary<string, string>? Metadata { get; init; }
 
@@ -224,6 +246,7 @@ public record ValidateTransactionRequest
     /// Per-sender monotonic sequence number for replay protection (SEC-AUDIT 4.2).
     /// Must equal sender's last sequence number + 1 on the target register.
     /// </summary>
+    [Range(0, long.MaxValue)]
     public long SequenceNumber { get; init; }
 
     /// <summary>
@@ -239,9 +262,19 @@ public record ValidateTransactionRequest
 /// </summary>
 public record SignatureRequest
 {
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(8192)]
     public required string PublicKey { get; init; }
+
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(8192)]
     public required string SignatureValue { get; init; }
+
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(64)]
     public required string Algorithm { get; init; }
+
+    [StringLength(256)]
     public string? SignedBy { get; init; }
 }
 

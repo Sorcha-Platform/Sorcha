@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
@@ -18,6 +20,7 @@ public static class ValidatorRegistrationEndpoints
     public static RouteGroupBuilder MapValidatorRegistrationEndpoints(this RouteGroupBuilder group)
     {
         group.MapPost("/register", RegisterValidator)
+            .WithRequestValidation()
             .WithName("RegisterValidator")
             .WithSummary("Register as a validator for a register")
             .WithDescription("Registers this validator node for participation in consensus. In public mode, registration is immediate. In consent mode, registration is pending until approved.")
@@ -55,6 +58,7 @@ public static class ValidatorRegistrationEndpoints
             .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/{registerId}/{validatorId}/approve", ApproveValidator)
+            .WithRequestValidation()
             .WithName("ApproveValidator")
             .WithSummary("Approve a pending validator")
             .WithDescription("Approves a pending validator registration (consent mode only). Requires register owner authorization.")
@@ -63,6 +67,7 @@ public static class ValidatorRegistrationEndpoints
             .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/{registerId}/{validatorId}/reject", RejectValidator)
+            .WithRequestValidation()
             .WithName("RejectValidator")
             .WithSummary("Reject a pending validator")
             .WithDescription("Rejects a pending validator registration (consent mode only). Requires register owner authorization.")
@@ -78,6 +83,7 @@ public static class ValidatorRegistrationEndpoints
             .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/{registerId}/{validatorId}/suspend", SuspendValidator)
+            .WithRequestValidation()
             .WithName("SuspendValidator")
             .WithSummary("Suspend an active validator")
             .WithDescription("Suspends an active validator, preventing consensus participation. Cannot suspend the last active validator. Requires SystemAdmin authorization.")
@@ -87,6 +93,7 @@ public static class ValidatorRegistrationEndpoints
             .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/{registerId}/{validatorId}/reactivate", ReactivateValidator)
+            .WithRequestValidation()
             .WithName("ReactivateValidator")
             .WithSummary("Reactivate a suspended validator")
             .WithDescription("Reactivates a previously suspended validator. Only valid from Suspended state. Requires SystemAdmin authorization.")
@@ -96,6 +103,7 @@ public static class ValidatorRegistrationEndpoints
             .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/{registerId}/{validatorId}/revoke", RevokeValidator)
+            .WithRequestValidation()
             .WithName("RevokeValidator")
             .WithSummary("Permanently revoke a validator")
             .WithDescription("Permanently revokes a validator (terminal state). Cannot be re-activated. Cannot revoke the last active validator. Requires SystemAdmin authorization.")
@@ -732,9 +740,13 @@ public static class ValidatorRegistrationEndpoints
 public record SuspendValidatorRequest
 {
     /// <summary>Wallet address of administrator</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string SuspendedBy { get; init; }
 
     /// <summary>Reason for suspension</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(2048)]
     public required string Reason { get; init; }
 }
 
@@ -744,9 +756,12 @@ public record SuspendValidatorRequest
 public record ReactivateValidatorRequest
 {
     /// <summary>Wallet address of administrator</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string ReactivatedBy { get; init; }
 
     /// <summary>Optional notes</summary>
+    [StringLength(2048)]
     public string? Notes { get; init; }
 }
 
@@ -756,9 +771,13 @@ public record ReactivateValidatorRequest
 public record RevokeValidatorRequest
 {
     /// <summary>Wallet address of administrator</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string RevokedBy { get; init; }
 
     /// <summary>Reason for revocation</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(2048)]
     public required string Reason { get; init; }
 }
 
@@ -768,15 +787,23 @@ public record RevokeValidatorRequest
 public record RegisterValidatorRequest
 {
     /// <summary>Register ID to join</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string RegisterId { get; init; }
 
     /// <summary>Validator's unique identifier (wallet address)</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string ValidatorId { get; init; }
 
     /// <summary>Validator's public key for signature verification</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(8192)]
     public required string PublicKey { get; init; }
 
     /// <summary>gRPC endpoint for peer communication</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(512)]
     public required string GrpcEndpoint { get; init; }
 
     /// <summary>Optional metadata</summary>
@@ -789,9 +816,12 @@ public record RegisterValidatorRequest
 public record ApproveValidatorRequest
 {
     /// <summary>Wallet address of approver (register owner)</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string ApprovedBy { get; init; }
 
     /// <summary>Optional approval notes</summary>
+    [StringLength(2048)]
     public string? ApprovalNotes { get; init; }
 }
 
@@ -801,8 +831,12 @@ public record ApproveValidatorRequest
 public record RejectValidatorRequest
 {
     /// <summary>Wallet address of rejector (register owner)</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(256)]
     public required string RejectedBy { get; init; }
 
     /// <summary>Reason for rejection</summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(2048)]
     public required string Reason { get; init; }
 }

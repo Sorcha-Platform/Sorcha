@@ -148,10 +148,12 @@ public class AdminEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         var response = await client.PostAsJsonAsync("/api/admin/validators/start", request);
 
         // Assert
+        // Request-DTO validation (VAL-001) short-circuits to an RFC 7807 ValidationProblem
+        // before the handler, so the empty RegisterId surfaces under the "errors" dictionary.
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-        result.GetProperty("error").GetString().Should().Contain("RegisterId is required");
+        result.GetProperty("errors").TryGetProperty("RegisterId", out _).Should().BeTrue();
     }
 
     [Fact]
@@ -259,10 +261,12 @@ public class AdminEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         var response = await client.PostAsJsonAsync("/api/admin/validators/stop", request);
 
         // Assert
+        // Request-DTO validation (VAL-001) short-circuits to an RFC 7807 ValidationProblem
+        // before the handler, so the empty RegisterId surfaces under the "errors" dictionary.
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-        result.GetProperty("error").GetString().Should().Contain("RegisterId is required");
+        result.GetProperty("errors").TryGetProperty("RegisterId", out _).Should().BeTrue();
     }
 
     [Fact]
