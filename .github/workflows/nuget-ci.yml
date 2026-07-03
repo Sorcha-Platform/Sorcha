@@ -116,8 +116,10 @@ jobs:
           # logs — but their non-zero exit does NOT gate this workflow until
           # the underlying issues are resolved. Remove from this list as each
           # project is cleaned up so regressions are caught from then on.
+          # (empty) — Sorcha.TransactionHandler.Tests removed after #453 was verified resolved:
+          # 250/250 pass on Linux, both on a host box and in the exact CI image
+          # (mcr.microsoft.com/dotnet/sdk:10.0). Add a project here only with a tracking issue.
           KNOWN_BROKEN=(
-            "Sorcha.TransactionHandler.Tests"     # 1 Linux-only flake — issue #453
           )
 
           # Test projects still on xunit v2 — direct dll invocation expects
