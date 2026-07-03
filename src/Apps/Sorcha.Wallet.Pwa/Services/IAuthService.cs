@@ -291,12 +291,30 @@ public sealed class AuthService : IAuthService
 
     private async Task PersistAsync(string accessToken, int expiresIn, string? email, string? refreshToken, CancellationToken ct)
     {
+        // Cross-user data-leak guard (Feature 114 — companion-first: one citizen per device). If the
+        // per-device cache belongs to a DIFFERENT user than the one now signing in, wipe every
+        // per-device store BEFORE loading the new session, so the new user never sees the previous
+        // user's credentials / personas / history. The owner marker is durable (not cleared on token
+        // expiry — only by the purge), so this also covers "previous token expired but the cached
+        // credentials lingered". Same-user re-auth (sub matches) keeps the cache.
+        var newOwner = JwtIdentity.ExtractSubject(accessToken) ?? email;
+        var priorOwner = await _store.GetDataOwnerAsync(ct);
+        if (!string.IsNullOrEmpty(priorOwner) && !string.Equals(priorOwner, newOwner, StringComparison.Ordinal))
+        {
+            await _purge.PurgeAsync(ct);
+        }
+
         var record = new AccessTokenRecord(
             accessToken,
             DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn)),
             email,
             refreshToken);
         await _store.SetAsync(record, ct);
+
+        if (!string.IsNullOrEmpty(newOwner))
+        {
+            await _store.SetDataOwnerAsync(newOwner, ct);
+        }
     }
 
     private sealed record LoginRequest(string Email, string Password, string Tier);
