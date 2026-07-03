@@ -35,6 +35,17 @@ public interface IAccessTokenStore
 
     /// <summary>Remove the home token (sign out, alongside <see cref="ClearAsync"/>).</summary>
     Task ClearHomeAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// The stable identity (JWT <c>sub</c>) of the user who owns the per-device cache. Written at
+    /// sign-in and used to detect a user switch. DELIBERATELY durable — unlike the access token it
+    /// is NOT cleared on expiry, only by the full sign-out/user-switch purge — so a stale cache left
+    /// by a signed-out-or-expired user is still attributable to them. Returns null on a fresh device.
+    /// </summary>
+    Task<string?> GetDataOwnerAsync(CancellationToken ct = default);
+
+    /// <summary>Records the owner of the per-device cache (the signing-in user's stable id).</summary>
+    Task SetDataOwnerAsync(string ownerId, CancellationToken ct = default);
 }
 
 /// <summary>The wallet's stored access token plus the identity context it carries.</summary>
@@ -49,8 +60,13 @@ public sealed class InMemoryAccessTokenStore : IAccessTokenStore
 {
     private AccessTokenRecord? _record;
     private AccessTokenRecord? _home;
+    private string? _dataOwner;
     /// <inheritdoc />
     public Task<AccessTokenRecord?> GetAsync(CancellationToken ct = default) => Task.FromResult(_record);
+    /// <inheritdoc />
+    public Task<string?> GetDataOwnerAsync(CancellationToken ct = default) => Task.FromResult(_dataOwner);
+    /// <inheritdoc />
+    public Task SetDataOwnerAsync(string ownerId, CancellationToken ct = default) { _dataOwner = ownerId; return Task.CompletedTask; }
     /// <inheritdoc />
     public Task SetAsync(AccessTokenRecord record, CancellationToken ct = default) { _record = record; return Task.CompletedTask; }
     /// <inheritdoc />
@@ -73,6 +89,7 @@ public sealed class IndexedDbAccessTokenStore : IAccessTokenStore
     private const string StoreName = "device";
     private const string Key = "access-token";
     private const string HomeKey = "home-access-token";
+    private const string DataOwnerKey = "data-owner";
 
     private readonly IJSRuntime _js;
 
@@ -151,5 +168,25 @@ public sealed class IndexedDbAccessTokenStore : IAccessTokenStore
     public async Task ClearHomeAsync(CancellationToken ct = default)
     {
         await _js.InvokeVoidAsync("SorchaIndexedDb.del", ct, StoreName, HomeKey);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> GetDataOwnerAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await _js.InvokeAsync<string?>("SorchaIndexedDb.get", ct, StoreName, DataOwnerKey);
+        }
+        catch (JSException)
+        {
+            // See GetAsync — degrade to "unknown owner" when the bridge is absent.
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task SetDataOwnerAsync(string ownerId, CancellationToken ct = default)
+    {
+        await _js.InvokeVoidAsync("SorchaIndexedDb.put", ct, StoreName, ownerId, DataOwnerKey);
     }
 }
