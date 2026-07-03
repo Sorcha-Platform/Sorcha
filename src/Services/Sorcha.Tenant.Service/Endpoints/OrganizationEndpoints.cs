@@ -32,6 +32,7 @@ public static class OrganizationEndpoints
 
         // Organization CRUD
         group.MapPost("/", CreateOrganization)
+            .WithRequestValidation()
             .WithName("CreateOrganization")
             .WithSummary("Create a new organization")
             .WithDescription("Creates a new organization. The authenticated user becomes the organization administrator.")
@@ -100,6 +101,7 @@ public static class OrganizationEndpoints
             .Produces<OrganizationStatsResponse>();
 
         group.MapPut("/{id:guid}", UpdateOrganization)
+            .WithRequestValidation()
             .WithName("UpdateOrganization")
             .WithSummary("Update an organization")
             .WithDescription("Updates an existing organization. Requires administrator role.")

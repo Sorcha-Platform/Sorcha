@@ -1658,6 +1658,7 @@ actionsGroup.MapPost("/", async (
         return Results.Problem("An error occurred processing the request.", statusCode: 400);
     }
 })
+.WithRequestValidation()
 .WithName("SubmitAction")
 .WithSummary("Submit an action")
 .WithDescription("Submit a new action for execution in a blueprint workflow");
@@ -2429,6 +2430,7 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/execute", async (
         return Results.Problem("An error occurred processing the request.", statusCode: 400);
     }
 })
+.WithRequestValidation()
 .WithName("ExecuteAction")
 .WithSummary("Execute action with orchestration")
 .WithDescription("Execute an action in a workflow instance with full orchestration: state reconstruction, validation, routing, transaction building, and notification. Requires X-Delegation-Token header.");
