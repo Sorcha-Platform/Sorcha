@@ -117,6 +117,52 @@ public class BuildClaimsFromMappingsPortraitTests
     }
 
     [Fact]
+    public void BuildClaimsFromMappings_PortraitOversize_CollectsClientWarning()
+    {
+        // #340 — when a warnings sink is supplied, the dropped portrait must surface a client-facing
+        // message (not only a server log line) so the submitter can be told the image was omitted.
+        var payload = new Dictionary<string, object?>
+        {
+            ["portrait"] = new Dictionary<string, object?>
+            {
+                ["tokenImageBase64"] = new string('A', Base64BoundBytes + 1)
+            },
+            ["givenName"] = "Alex"
+        };
+
+        var mappings = Mappings(
+            ("portrait", "/portrait/tokenImageBase64"),
+            ("givenName", "/givenName"));
+
+        var warnings = new List<string>();
+        var claims = ActionExecutionService.BuildClaimsFromMappings(
+            mappings, payload, NullLogger.Instance, warnings);
+
+        claims.Should().NotContainKey("portrait");
+        warnings.Should().ContainSingle()
+            .Which.Should().Contain("portrait").And.Contain("omitted");
+    }
+
+    [Fact]
+    public void BuildClaimsFromMappings_NoDroppedClaims_NoWarnings()
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["portrait"] = new Dictionary<string, object?> { ["tokenImageBase64"] = Base64String(5_000) },
+            ["givenName"] = "Alex"
+        };
+
+        var mappings = Mappings(
+            ("portrait", "/portrait/tokenImageBase64"),
+            ("givenName", "/givenName"));
+
+        var warnings = new List<string>();
+        ActionExecutionService.BuildClaimsFromMappings(mappings, payload, NullLogger.Instance, warnings);
+
+        warnings.Should().BeEmpty();
+    }
+
+    [Fact]
     public void BuildClaimsFromMappings_NonPortraitClaimsUnaffectedBySizeGate()
     {
         // A non-portrait claim with a very long value is NOT size-gated —
