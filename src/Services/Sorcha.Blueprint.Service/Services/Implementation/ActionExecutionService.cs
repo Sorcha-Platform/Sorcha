@@ -540,6 +540,11 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         var callerIssuerOrgName = caller?.FindFirst("org_name")?.Value;
         var callerIssuerTenantId = caller?.FindFirst("org_id")?.Value;
 
+        // Client-facing warnings raised while building the credential claims (e.g. the F107 portrait
+        // size gate dropping an oversized image). Surfaced on the response so the drop is visible to the
+        // submitter, not only in the server log (issue #340). Threaded to both the HAIP and internal paths.
+        var credentialWarnings = new List<string>();
+
         CreateOfferResult? haipOfferResult = null;
         if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet)
@@ -562,7 +567,8 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             {
                 var haipClaims = BuildClaimsFromMappings(
                     actionDef.CredentialIssuanceConfig.ClaimMappings,
-                    mergedData!);
+                    mergedData!,
+                    credentialWarnings);
                 var haipClaimsForWire = haipClaims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
 
                 _logger.LogInformation(
@@ -689,7 +695,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             try
             {
                 localWalletCredential = await IssueCredentialFromActionAsync(
-                    actionDef, mergedData, request.SenderWallet, instance, issuerOrgName, issuerTenantId, holderJwk, cancellationToken);
+                    actionDef, mergedData, request.SenderWallet, instance, issuerOrgName, issuerTenantId, holderJwk, credentialWarnings, cancellationToken);
             }
             catch (Exception ex) when (ex is not InvalidOperationException)
             {
@@ -1152,7 +1158,11 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
             NextActions = [],
             IsComplete = false,
             Calculations = calculations,
-            Warnings = validationResult.Warnings,
+            // Merge schema-validation warnings with any credential-claim warnings raised during issuance
+            // (e.g. the portrait size gate dropping the image) so the submitter sees them (issue #340).
+            Warnings = credentialWarnings.Count > 0
+                ? (validationResult.Warnings ?? new List<string>()).Concat(credentialWarnings).ToList()
+                : validationResult.Warnings,
             IssuedCredentialId = issuedCredential?.CredentialId,
             IssuedCredential = issuedCredentialResponse,
             CredentialOffer = haipOfferResult != null
@@ -1964,18 +1974,23 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
     /// </summary>
     private Dictionary<string, object?> BuildClaimsFromMappings(
         IEnumerable<Sorcha.Blueprint.Models.Credentials.ClaimMapping>? mappings,
-        IReadOnlyDictionary<string, object?> mergedData)
-        => BuildClaimsFromMappings(mappings, mergedData, _logger);
+        IReadOnlyDictionary<string, object?> mergedData,
+        ICollection<string>? warnings = null)
+        => BuildClaimsFromMappings(mappings, mergedData, _logger, warnings);
 
     /// <summary>
     /// Static logger-injected overload used by unit tests so the helper can
     /// be exercised without needing the full <see cref="ActionExecutionService"/>
-    /// constructor graph.
+    /// constructor graph. When <paramref name="warnings"/> is supplied, a
+    /// client-facing message is appended for each claim the server drops (e.g. an
+    /// oversized portrait) so the caller can surface it on the submission response
+    /// instead of the drop being visible only in the server log (issue #340).
     /// </summary>
     internal static Dictionary<string, object?> BuildClaimsFromMappings(
         IEnumerable<Sorcha.Blueprint.Models.Credentials.ClaimMapping>? mappings,
         IReadOnlyDictionary<string, object?> mergedData,
-        ILogger logger)
+        ILogger logger,
+        ICollection<string>? warnings = null)
     {
         var claims = new Dictionary<string, object?>();
         if (mappings is null) return claims;
@@ -2001,6 +2016,10 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
                         "Warning code: {WarningCode}",
                         mapping.ClaimName, PortraitTokenMaxBase64Chars, portraitBase64.Length,
                         ValidationWarningCodes.CredentialPortraitOversize);
+                    warnings?.Add(
+                        $"The portrait image for '{mapping.ClaimName}' exceeded the " +
+                        $"{PortraitTokenMaxBase64Chars:N0}-character limit and was omitted from the credential " +
+                        $"({ValidationWarningCodes.CredentialPortraitOversize}). Re-submit with a smaller image to include it.");
                     continue;
                 }
 
@@ -2131,6 +2150,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         string? issuerOrgName,
         string? issuerTenantId,
         JsonElement? holderJwk,
+        ICollection<string> warnings,
         CancellationToken cancellationToken)
     {
         var config = actionDef.CredentialIssuanceConfig!;
@@ -2143,7 +2163,7 @@ public class ActionExecutionService : IActionExecutionService, IPresentationRout
         // extraction walks the pointer segment-by-segment through nested
         // dictionaries and JsonElement objects. Missing segments log a
         // warning and skip the claim rather than failing the whole issue.
-        var claims = BuildClaimsFromMappings(config.ClaimMappings, mergedData!);
+        var claims = BuildClaimsFromMappings(config.ClaimMappings, mergedData!, warnings);
         // Wallet client expects non-nullable values. Safe because
         // TryResolveJsonPointer returns false on null-valued segments —
         // BuildClaimsFromMappings never produces a null value. If that

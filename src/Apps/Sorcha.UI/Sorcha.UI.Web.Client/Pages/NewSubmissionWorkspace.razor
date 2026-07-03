@@ -207,6 +207,17 @@
                 : $"Submission started — instance {result.InstanceId[..Math.Min(8, result.InstanceId.Length)]}...";
             Feedback.ShowSuccess(message);
 
+            // Surface server-side credential warnings (e.g. the F107 portrait was too large and was
+            // omitted from the credential) so the drop isn't silent to the submitter (issue #340).
+            // Persist (autoDismissMs: 0) — the user should acknowledge a dropped claim.
+            if (result.Warnings is { Count: > 0 })
+            {
+                foreach (var warning in result.Warnings)
+                {
+                    Feedback.ShowWarning(warning, autoDismissMs: 0);
+                }
+            }
+
             // HAIP external wallet interactions — show QR dialog before navigating away
             if (result.CredentialOffer is { } offer)
             {
