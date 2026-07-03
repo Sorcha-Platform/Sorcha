@@ -44,6 +44,17 @@ public class TransactionPoolPollerConfiguration
     public int MaxRetries { get; set; } = 3;
 
     /// <summary>
+    /// Maximum number of times a transaction may be returned to the unverified pool before it is
+    /// evicted (dropped, not re-submitted) and an operator alert is raised (<c>LogCritical</c> +
+    /// the <c>sorcha_validator_pool_transaction_evicted_total</c> counter). Distinct from
+    /// <see cref="MaxRetries"/> (transient Redis-operation retries): this bounds a transaction's
+    /// *lifetime* in the pool so one that can never be sealed cannot re-submit at ~1 Hz forever
+    /// (issue #787). Set high enough to clear legitimately-delayed transactions given your docket
+    /// cadence; <c>0</c> disables the bound (legacy unbounded behaviour).
+    /// </summary>
+    public int MaxTransactionRetries { get; set; } = 50;
+
+    /// <summary>
     /// Delay between retry attempts
     /// </summary>
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromMilliseconds(500);

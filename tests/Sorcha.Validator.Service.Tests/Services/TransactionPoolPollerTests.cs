@@ -1198,4 +1198,62 @@ public class TransactionPoolPollerTests
     }
 
     #endregion
+
+    #region ReturnTransactionsAsync retry-bound (#787)
+
+    [Fact]
+    public async Task ReturnTransactionsAsync_ExceedsMaxTransactionRetries_EvictsAndLogsCritical()
+    {
+        // Arrange — a transaction already at the bound; the increment tips it over.
+        _config.MaxTransactionRetries = 2;
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var stuck = CreateValidTransaction("tx-stuck");
+        stuck.RetryCount = 2; // ++ -> 3 > 2
+
+        // Act
+        await poller.ReturnTransactionsAsync("register-1", new[] { stuck });
+
+        // Assert — evicted (never re-submitted) and flagged for operators.
+        _mockDatabase.Verify(x => x.CreateTransaction(It.IsAny<object>()), Times.Never,
+            "an over-limit transaction must be evicted, not re-submitted to the pool");
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Critical,
+                It.IsAny<EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once,
+            "eviction must raise a LogCritical operator signal");
+    }
+
+    [Fact]
+    public async Task ReturnTransactionsAsync_UnderMaxTransactionRetries_ResubmitsNotEvicted()
+    {
+        // Arrange — comfortably under the bound; must be returned to the pool as before.
+        _config.MaxTransactionRetries = 50;
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var mockTransaction = new Mock<ITransaction>();
+        _mockDatabase.Setup(x => x.CreateTransaction(It.IsAny<object>())).Returns(mockTransaction.Object);
+        _mockDatabase.Setup(x => x.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(false);
+        mockTransaction.Setup(x => x.ExecuteAsync(It.IsAny<CommandFlags>())).ReturnsAsync(true);
+        var ok = CreateValidTransaction("tx-ok"); // RetryCount 0 -> 1
+
+        // Act
+        await poller.ReturnTransactionsAsync("register-1", new[] { ok });
+
+        // Assert — re-submitted, no eviction alert.
+        _mockDatabase.Verify(x => x.CreateTransaction(It.IsAny<object>()), Times.AtLeastOnce,
+            "an under-limit transaction must be re-submitted to the pool");
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Critical,
+                It.IsAny<EventId>(),
+                It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never);
+    }
+
+    #endregion
 }

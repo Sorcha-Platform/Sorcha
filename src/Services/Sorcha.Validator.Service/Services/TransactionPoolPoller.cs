@@ -287,15 +287,37 @@ public class TransactionPoolPoller : ITransactionPoolPoller
             transactions.Count, registerId);
 
         var returned = 0;
+        var evicted = 0;
         foreach (var transaction in transactions)
         {
             // Increment retry count
             transaction.RetryCount++;
 
+            // #787 — bound the pool lifetime. A transaction that can never be sealed would otherwise
+            // re-submit at the poll cadence forever with no operator signal. Once it exceeds the
+            // configured bound, evict it (do NOT re-submit) and raise a LogCritical + metric so the
+            // stuck transaction is actionable rather than silently churning.
+            if (_config.MaxTransactionRetries > 0 && transaction.RetryCount > _config.MaxTransactionRetries)
+            {
+                _logger.LogCritical(
+                    "Evicting transaction {TransactionId} from register {RegisterId}'s unverified pool: it could not be sealed after {RetryCount} attempts (limit {MaxTransactionRetries}). It will NOT be retried further and requires operator attention.",
+                    transaction.TransactionId, registerId, transaction.RetryCount, _config.MaxTransactionRetries);
+                FederationValidatorMetrics.PoolTransactionEvicted();
+                evicted++;
+                continue;
+            }
+
             if (await SubmitTransactionAsync(registerId, transaction, ct))
             {
                 returned++;
             }
+        }
+
+        if (evicted > 0)
+        {
+            _logger.LogWarning(
+                "Evicted {Evicted} unsealable transaction(s) from register {RegisterId}'s unverified pool (exceeded {MaxTransactionRetries} retries)",
+                evicted, registerId, _config.MaxTransactionRetries);
         }
 
         Interlocked.Add(ref _totalReturned, returned);
