@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Buffers.Text;
 using System.CommandLine;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Sorcha.Agent.Haip;
 using Sorcha.Cryptography.SdJwt;
@@ -37,11 +35,18 @@ public class HaipPresentCommand : Command
             Description = "Wallet directory for keys and credentials",
             DefaultValueFactory = _ => "./wallet"
         };
+        var verifierThumbprintOption = new Option<string?>("--verifier-jwk-thumbprint")
+        {
+            Description = "RFC 7638 thumbprint of the trusted verifier's signing jwk. When set, the signed " +
+                          "request object's key is pinned to it (RFC 9101 §4 trust anchor); a mismatch is refused. " +
+                          "When omitted, the signature is still verified for integrity but the key is unpinned."
+        };
 
         Options.Add(requestUriOption);
         Options.Add(credentialOption);
         Options.Add(discloseOption);
         Options.Add(walletDirOption);
+        Options.Add(verifierThumbprintOption);
 
         this.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -49,14 +54,15 @@ public class HaipPresentCommand : Command
             var credentialType = parseResult.GetValue(credentialOption)!;
             var disclose = parseResult.GetValue(discloseOption)!;
             var walletDir = parseResult.GetValue(walletDirOption) ?? "./wallet";
+            var verifierThumbprint = parseResult.GetValue(verifierThumbprintOption);
 
-            return await ExecuteAsync(requestUri, credentialType, disclose, walletDir, cancellationToken);
+            return await ExecuteAsync(requestUri, credentialType, disclose, walletDir, verifierThumbprint, cancellationToken);
         });
     }
 
     private static async Task<int> ExecuteAsync(
         string requestUri, string credentialType, string disclose,
-        string walletDir, CancellationToken ct)
+        string walletDir, string? expectedVerifierJwkThumbprint, CancellationToken ct)
     {
         try
         {
@@ -81,23 +87,19 @@ public class HaipPresentCommand : Command
 
             using var httpClient = new HttpClient();
 
-            // Step 3: Fetch the request object. Per RFC 9101 §4 the verifier
-            // returns a signed JWT with content-type
-            // application/oauth-authz-req+jwt. The claims live in the JWT
-            // payload, so decode it rather than parsing the raw response as
-            // JSON. Signature verification is the verifier's job on
-            // direct_post — we only need the payload to build the
-            // presentation. Feature 107 PR 2 fix.
+            // Step 3: Fetch the request object. Per RFC 9101 §4 the verifier returns a signed JWT
+            // (application/oauth-authz-req+jwt). We VERIFY its signature against the JOSE-header-embedded
+            // jwk before acting on any claim, and pin to --verifier-jwk-thumbprint when supplied (#344).
             Console.WriteLine($"[haip present] Fetching request object from {requestUri}");
             JsonElement requestObject;
             try
             {
                 var responseText = await httpClient.GetStringAsync(requestUri, ct);
-                requestObject = ParseRequestObjectPayload(responseText);
+                requestObject = ParseRequestObjectPayload(responseText, expectedVerifierJwkThumbprint);
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[ERROR] Failed to fetch request object: {ex.Message}");
+                Console.Error.WriteLine($"[ERROR] Failed to fetch/verify request object: {ex.Message}");
                 return 2;
             }
 
@@ -176,43 +178,55 @@ public class HaipPresentCommand : Command
     }
 
     /// <summary>
-    /// Parses the verifier's RFC 9101 §4 request-object response. The
-    /// response may be either a signed JWT (starts with <c>eyJ</c> —
-    /// <c>application/oauth-authz-req+jwt</c>) or a bare JSON object
-    /// (legacy callers). Returns the payload as a <see cref="JsonElement"/>
-    /// either way.
+    /// Parses AND verifies the verifier's RFC 9101 §4 request-object response before any claim is used.
+    /// A signed JWT (starts with <c>eyJ</c>, <c>application/oauth-authz-req+jwt</c>) has its signature
+    /// verified against the JOSE-header-embedded <c>jwk</c> (rejecting <c>alg:none</c> / tampering); when
+    /// <paramref name="expectedVerifierJwkThumbprint"/> is supplied the signing key is additionally pinned
+    /// to that RFC 7638 thumbprint (else it verifies integrity only and warns that the key is unpinned).
+    /// A bare JSON object is accepted as an unsigned legacy body with a warning. Issue #344.
     /// </summary>
-    internal static JsonElement ParseRequestObjectPayload(string responseText)
+    internal static JsonElement ParseRequestObjectPayload(string responseText, string? expectedVerifierJwkThumbprint = null)
     {
         var trimmed = responseText.Trim();
 
-        // Bare JSON object.
+        // Bare JSON object — unsigned. HAIP 1.0 §6.1 mandates a signed request object; accept unsigned
+        // only for legacy/local callers, and say so loudly.
         if (trimmed.StartsWith('{'))
         {
+            Console.Error.WriteLine(
+                "[WARN] Request object is an unsigned JSON body — there is no signature to verify " +
+                "(HAIP 1.0 §6.1 expects a signed application/oauth-authz-req+jwt).");
             return JsonSerializer.Deserialize<JsonElement>(trimmed);
         }
 
-        // JWT/JWS-compact: every base64url-encoded JOSE header that begins with
-        // '{"alg"' or '{"typ"' (i.e. any compliant JWS or JWE) base64url-encodes
-        // to a string starting with "eyJ". Anything else here is a server error
-        // page, redirect body, plain text, or other non-JOSE response.
+        // Compact JWS (base64url JOSE header ⇒ starts "eyJ"). RFC 9101 §4: verify the request-object
+        // signature against its embedded jwk BEFORE acting on any claim.
         if (trimmed.StartsWith("eyJ", StringComparison.Ordinal))
         {
-            // TODO(SEC): tracked in issue #344 — agent should verify the JWT
-            // signature against the verifier's JWKS per RFC 9101 §4 before
-            // acting on its claims. Today the agent is a demo/test tool
-            // against trusted localhost verifiers only; any production use
-            // must fetch jwks_uri from the verifier's well-known config and
-            // validate the signature before reaching this point.
-            var parts = trimmed.Split('.');
-            if (parts.Length < 2)
+            if (!SdJwtService.TryVerifyCompactJwsWithEmbeddedJwk(
+                    trimmed, out var payload, out var thumbprint, out var verifyError))
             {
-                throw new InvalidOperationException(
-                    "Request object looks like a JWT (begins with 'eyJ') but does not have at least " +
-                    "two dot-separated segments — cannot extract payload.");
+                throw new InvalidOperationException($"Request object signature verification failed: {verifyError}");
             }
-            var payloadBytes = Base64Url.DecodeFromChars(parts[1].AsSpan());
-            return JsonSerializer.Deserialize<JsonElement>(payloadBytes);
+
+            if (!string.IsNullOrWhiteSpace(expectedVerifierJwkThumbprint))
+            {
+                if (!string.Equals(expectedVerifierJwkThumbprint, thumbprint, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"Request object signing key is not the pinned verifier key (expected thumbprint " +
+                        $"'{expectedVerifierJwkThumbprint}', got '{thumbprint}'). Refusing to present.");
+                }
+            }
+            else
+            {
+                Console.Error.WriteLine(
+                    $"[WARN] Request object signature verified but the signing key is UNPINNED (jwk thumbprint " +
+                    $"'{thumbprint}'). Pass --verifier-jwk-thumbprint to bind to a known verifier (RFC 9101 §4 " +
+                    "trust anchor); without it a substituted-key MITM cannot be detected.");
+            }
+
+            return payload;
         }
 
         // Anything else — give the caller a quoted preview so they can see what
