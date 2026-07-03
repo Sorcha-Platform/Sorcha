@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.ComponentModel.DataAnnotations;
+
 namespace Sorcha.Tenant.Service.Models.Dtos;
 
 /// <summary>
@@ -11,11 +13,16 @@ public record CreateOrganizationRequest
     /// <summary>
     /// Organization display name.
     /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(100, MinimumLength = 1)]
     public required string Name { get; init; }
 
     /// <summary>
-    /// Unique subdomain (3-50 alphanumeric characters with hyphens).
+    /// Unique subdomain (3-50 lowercase letters, digits, or hyphens).
     /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(50, MinimumLength = 3)]
+    [RegularExpression("^[a-z0-9-]+$", ErrorMessage = "Subdomain must contain only lowercase letters, digits, and hyphens.")]
     public required string Subdomain { get; init; }
 
     /// <summary>
@@ -32,6 +39,7 @@ public record UpdateOrganizationRequest
     /// <summary>
     /// Updated organization name.
     /// </summary>
+    [StringLength(100, MinimumLength = 1)]
     public string? Name { get; init; }
 
     /// <summary>
@@ -53,21 +61,26 @@ public record BrandingConfigurationDto
     /// <summary>
     /// URL to organization logo (HTTPS required).
     /// </summary>
+    [StringLength(2048)]
+    [RegularExpression(@"^https://.+", ErrorMessage = "LogoUrl must be an https:// URL.")]
     public string? LogoUrl { get; init; }
 
     /// <summary>
-    /// Primary brand color (hex format).
+    /// Primary brand color (hex format, e.g. #1A2B3C).
     /// </summary>
+    [RegularExpression("^#[0-9a-fA-F]{6}$", ErrorMessage = "PrimaryColor must be a 6-digit hex colour, e.g. #1A2B3C.")]
     public string? PrimaryColor { get; init; }
 
     /// <summary>
-    /// Secondary brand color (hex format).
+    /// Secondary brand color (hex format, e.g. #1A2B3C).
     /// </summary>
+    [RegularExpression("^#[0-9a-fA-F]{6}$", ErrorMessage = "SecondaryColor must be a 6-digit hex colour, e.g. #1A2B3C.")]
     public string? SecondaryColor { get; init; }
 
     /// <summary>
     /// Company tagline.
     /// </summary>
+    [StringLength(200)]
     public string? CompanyTagline { get; init; }
 }
 
@@ -135,16 +148,22 @@ public record AdminCreateOrganizationRequest
     /// <summary>
     /// Organisation display name (3-100 characters).
     /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(100, MinimumLength = 3)]
     public required string Name { get; init; }
 
     /// <summary>
     /// Unique subdomain (3-50 chars, lowercase alphanumeric + hyphens).
     /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(50, MinimumLength = 3)]
+    [RegularExpression("^[a-z0-9-]+$", ErrorMessage = "Subdomain must contain only lowercase letters, digits, and hyphens.")]
     public required string Subdomain { get; init; }
 
     /// <summary>
     /// Optional organisation description (max 500 characters).
     /// </summary>
+    [StringLength(500)]
     public string? Description { get; init; }
 
     /// <summary>
@@ -152,6 +171,9 @@ public record AdminCreateOrganizationRequest
     /// If the email matches an existing PlatformUser, they are added directly.
     /// If new, a pending invitation is created for acceptance on signup.
     /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    [EmailAddress]
+    [StringLength(254)]
     public required string AdminEmail { get; init; }
 
     /// <summary>

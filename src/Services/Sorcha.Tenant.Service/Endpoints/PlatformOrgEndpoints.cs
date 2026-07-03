@@ -25,6 +25,7 @@ public static class PlatformOrgEndpoints
             .WithTags("Platform Organisations");
 
         group.MapPost("/", CreateOrganization)
+            .WithRequestValidation()
             .WithName("AdminCreateOrganization")
             .WithSummary("Admin-initiated organisation creation with invite")
             .WithDescription("Creates a private org and invites the specified admin by email. " +
