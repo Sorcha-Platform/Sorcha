@@ -886,6 +886,91 @@ public class SdJwtService : ISdJwtService
         }
     }
 
+    /// <summary>
+    /// Verifies a compact JWS whose JOSE header embeds the signing public key as a <c>jwk</c> — e.g. an
+    /// RFC 9101 §4 request object served as <c>application/oauth-authz-req+jwt</c>. Rejects <c>alg:none</c>,
+    /// headers with no embedded key, alg/key-type confusion, and any bad or tampered signature. The payload
+    /// is returned ONLY when the signature verifies against the embedded key.
+    /// <para>
+    /// This proves <b>integrity</b> (the payload was not altered after signing), NOT <b>authenticity</b>:
+    /// a substituted-key attacker can re-sign with their own key and it will still verify. Callers MUST pin
+    /// the returned <paramref name="jwkThumbprint"/> (RFC 7638) to a known verifier key to close that gap.
+    /// </para>
+    /// </summary>
+    /// <returns><c>true</c> (and sets <paramref name="payload"/> + <paramref name="jwkThumbprint"/>) when the
+    /// embedded-key signature is valid; otherwise <c>false</c> with <paramref name="error"/> set.</returns>
+    public static bool TryVerifyCompactJwsWithEmbeddedJwk(
+        string compactJws, out JsonElement payload, out string? jwkThumbprint, out string? error)
+    {
+        payload = default;
+        jwkThumbprint = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(compactJws)) { error = "empty token"; return false; }
+        var parts = compactJws.Split('.');
+        if (parts.Length != 3) { error = "not a 3-part compact JWS"; return false; }
+
+        JsonElement header;
+        try { header = JsonSerializer.Deserialize<JsonElement>(Base64UrlDecode(parts[0])); }
+        catch (Exception ex) { error = $"invalid JOSE header: {ex.Message}"; return false; }
+
+        var alg = header.TryGetProperty("alg", out var algEl) ? algEl.GetString() : null;
+        if (string.IsNullOrEmpty(alg) || string.Equals(alg, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            error = $"unsigned or 'alg:none' request object rejected (alg='{alg ?? "<missing>"}')";
+            return false;
+        }
+
+        if (!header.TryGetProperty("jwk", out var jwk) || jwk.ValueKind != JsonValueKind.Object)
+        {
+            error = "JOSE header carries no embedded 'jwk' to verify against";
+            return false;
+        }
+
+        var keyBytes = ExportPublicKeyFromJwk(jwk, out var keyAlg);
+        if (keyBytes == null)
+        {
+            error = "unsupported or invalid embedded jwk (only P-256 EC and Ed25519 OKP are accepted)";
+            return false;
+        }
+
+        // The declared JOSE alg must match the key we resolved — block alg/key-type confusion.
+        if (!string.Equals(MapAlgorithm(alg), keyAlg, StringComparison.Ordinal))
+        {
+            error = $"header alg '{alg}' does not match embedded key type '{keyAlg}'";
+            return false;
+        }
+
+        byte[] signature;
+        try { signature = Base64UrlDecode(parts[2]); }
+        catch (Exception ex) { error = $"invalid signature encoding: {ex.Message}"; return false; }
+
+        var signingInput = Encoding.UTF8.GetBytes($"{parts[0]}.{parts[1]}");
+        bool ok;
+        try { ok = Verify(signingInput, signature, keyBytes, keyAlg); }
+        catch (Exception ex) { error = $"signature verification error: {ex.Message}"; return false; }
+        if (!ok) { error = "request object signature is invalid"; return false; }
+
+        try { payload = JsonSerializer.Deserialize<JsonElement>(Base64UrlDecode(parts[1])); }
+        catch (Exception ex) { error = $"invalid payload: {ex.Message}"; return false; }
+
+        jwkThumbprint = ComputeJwkThumbprint(jwk);
+        return true;
+    }
+
+    /// <summary>RFC 7638 JWK thumbprint — base64url SHA-256 of the canonical required members.</summary>
+    private static string? ComputeJwkThumbprint(JsonElement jwk)
+    {
+        if (!jwk.TryGetProperty("kty", out var ktyEl)) return null;
+        var canonical = ktyEl.GetString() switch
+        {
+            "OKP" => $"{{\"crv\":\"{jwk.GetProperty("crv").GetString()}\",\"kty\":\"OKP\",\"x\":\"{jwk.GetProperty("x").GetString()}\"}}",
+            "EC" => $"{{\"crv\":\"{jwk.GetProperty("crv").GetString()}\",\"kty\":\"EC\",\"x\":\"{jwk.GetProperty("x").GetString()}\",\"y\":\"{jwk.GetProperty("y").GetString()}\"}}",
+            _ => null,
+        };
+        return canonical is null ? null : Base64UrlEncode(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+    }
+
     private static string CreateDisclosure(string claimName, object claimValue)
     {
         var salt = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Buffers.Text;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
@@ -11,17 +12,41 @@ using Xunit;
 namespace Sorcha.Agent.Tests.Commands;
 
 /// <summary>
-/// Tests for HaipPresentCommand.ParseRequestObjectPayload, the response-format
-/// detector for OpenID4VP request objects fetched from a verifier. Issue #346
-/// tightened the detection so non-JSON, non-JWT bodies (HTML error pages,
-/// redirect bodies, plain text) produce a clear error with a quoted preview
-/// rather than falling into the JWT-decode branch and surfacing a cryptic
-/// base64 error.
+/// Tests for HaipPresentCommand.ParseRequestObjectPayload, the response detector + verifier for OpenID4VP
+/// request objects fetched from a verifier. Issue #346 tightened detection so non-JSON, non-JWT bodies
+/// produce a clear error with a quoted preview. Issue #344 added RFC 9101 §4 signature verification: a
+/// signed request object's JWS is verified against its embedded jwk (rejecting alg:none / tampering) before
+/// any claim is used, and the signing key can be pinned to a trusted RFC 7638 thumbprint.
 /// </summary>
 public class HaipPresentCommandTests
 {
     private static string Base64UrlEncode(string s) =>
         Base64Url.EncodeToString(Encoding.UTF8.GetBytes(s));
+
+    /// <summary>
+    /// Signs a request-object payload with a fresh ES256 (P-256) key, embedding the public key as a
+    /// JOSE-header jwk exactly as the verifier's RequestObjectSigner does. Returns the compact JWS and the
+    /// RFC 7638 thumbprint of the embedded jwk.
+    /// </summary>
+    private static (string Jwt, string Thumbprint) SignEs256(string payloadJson)
+    {
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var p = ecdsa.ExportParameters(includePrivateParameters: false);
+        var x = Base64Url.EncodeToString(p.Q.X!);
+        var y = Base64Url.EncodeToString(p.Q.Y!);
+
+        var headerJson = $"{{\"alg\":\"ES256\",\"typ\":\"oauth-authz-req+jwt\",\"jwk\":{{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"{x}\",\"y\":\"{y}\"}}}}";
+        var h = Base64Url.EncodeToString(Encoding.UTF8.GetBytes(headerJson));
+        var pl = Base64Url.EncodeToString(Encoding.UTF8.GetBytes(payloadJson));
+        var signingInput = Encoding.ASCII.GetBytes($"{h}.{pl}");
+        var sig = ecdsa.SignData(signingInput, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        var jwt = $"{h}.{pl}.{Base64Url.EncodeToString(sig)}";
+
+        // RFC 7638 thumbprint for an EC key: canonical members {crv, kty, x, y} in lexicographic order.
+        var canonical = $"{{\"crv\":\"P-256\",\"kty\":\"EC\",\"x\":\"{x}\",\"y\":\"{y}\"}}";
+        var thumbprint = Base64Url.EncodeToString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+        return (jwt, thumbprint);
+    }
 
     [Fact]
     public void ParseRequestObjectPayload_BareJsonObject_DeserialisesPayload()
@@ -45,19 +70,63 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void ParseRequestObjectPayload_CompactJwt_ReturnsPayloadSegment()
+    public void ParseRequestObjectPayload_ValidSignedJwt_ReturnsVerifiedPayload()
     {
-        // A real JWS-compact: header.payload.signature, all base64url. We don't
-        // verify the signature here (issue #344 tracks that); we just need the
-        // payload segment to decode to JSON.
-        var header = Base64UrlEncode("""{"alg":"none","typ":"oauth-authz-req+jwt"}""");
-        var body = Base64UrlEncode("""{"client_id":"demo","nonce":"xyz"}""");
-        var jwt = $"{header}.{body}.";
+        var (jwt, _) = SignEs256("""{"client_id":"demo","nonce":"xyz"}""");
 
         var payload = HaipPresentCommand.ParseRequestObjectPayload(jwt);
 
         payload.GetProperty("client_id").GetString().Should().Be("demo");
         payload.GetProperty("nonce").GetString().Should().Be("xyz");
+    }
+
+    [Fact]
+    public void ParseRequestObjectPayload_PinnedThumbprintMatches_ReturnsPayload()
+    {
+        var (jwt, thumbprint) = SignEs256("""{"client_id":"demo","nonce":"xyz"}""");
+
+        var payload = HaipPresentCommand.ParseRequestObjectPayload(jwt, thumbprint);
+
+        payload.GetProperty("client_id").GetString().Should().Be("demo");
+    }
+
+    [Fact]
+    public void ParseRequestObjectPayload_PinnedThumbprintMismatch_Throws()
+    {
+        var (jwt, _) = SignEs256("""{"client_id":"demo","nonce":"xyz"}""");
+
+        var act = () => HaipPresentCommand.ParseRequestObjectPayload(jwt, "NOT_THE_REAL_THUMBPRINT");
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*not the pinned verifier key*");
+    }
+
+    [Fact]
+    public void ParseRequestObjectPayload_TamperedPayload_Throws()
+    {
+        var (jwt, _) = SignEs256("""{"client_id":"demo","nonce":"xyz"}""");
+        var parts = jwt.Split('.');
+        // Swap the payload for a different one but keep the original signature — verification must fail.
+        var tampered = $"{parts[0]}.{Base64UrlEncode("""{"client_id":"attacker","nonce":"xyz"}""")}.{parts[2]}";
+
+        var act = () => HaipPresentCommand.ParseRequestObjectPayload(tampered);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*signature verification failed*");
+    }
+
+    [Fact]
+    public void ParseRequestObjectPayload_AlgNoneJwt_Rejected()
+    {
+        // An unsigned "alg:none" token must never be trusted (the classic JWT downgrade bypass).
+        var header = Base64UrlEncode("""{"alg":"none","typ":"oauth-authz-req+jwt"}""");
+        var body = Base64UrlEncode("""{"client_id":"demo","nonce":"xyz"}""");
+        var jwt = $"{header}.{body}.";
+
+        var act = () => HaipPresentCommand.ParseRequestObjectPayload(jwt);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*verification failed*");
     }
 
     [Fact]
@@ -97,13 +166,12 @@ public class HaipPresentCommandTests
     }
 
     [Fact]
-    public void ParseRequestObjectPayload_LeadingEyJButOnlyOneSegment_Throws()
+    public void ParseRequestObjectPayload_LeadingEyJButNotThreeSegments_Throws()
     {
-        // Defensive: something starts with "eyJ" but isn't a real JWT. The detector
-        // routes it down the JWT branch but the missing-segments check catches it.
+        // Something starts with "eyJ" but isn't a real 3-segment JWS — verification rejects it.
         var act = () => HaipPresentCommand.ParseRequestObjectPayload("eyJalgIsNoneAndNoDot");
 
         act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*JWT*at least two dot-separated segments*");
+            .WithMessage("*verification failed*3-part*");
     }
 }
