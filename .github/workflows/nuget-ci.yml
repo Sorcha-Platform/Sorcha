@@ -122,13 +122,13 @@ jobs:
           KNOWN_BROKEN=(
           )
 
-          # Test projects still on xunit v2 — direct dll invocation expects
-          # xunit.v3's Microsoft.Testing.Platform CLI flags, which v2 doesn't
-          # recognise (fails with FormatException on --report-xunit-trx-*).
-          # Skip until migrated to xunit.v3.
+          # Projects skipped by the direct-dll test runner, which expects xunit.v3's
+          # Microsoft.Testing.Platform CLI flags. Sorcha.Wallet.Providers.Azure.Tests was
+          # migrated to xunit.v3 (#450) and removed. Sorcha.Performance.Tests is an NBomber
+          # load-test EXE (not a xunit unit-test project), so it stays skipped here — it is
+          # not a xunit-v3 migration target.
           XUNIT_V2_PENDING_MIGRATION=(
             "Sorcha.Performance.Tests"
-            "Sorcha.Wallet.Providers.Azure.Tests"
           )
 
           is_in() {
